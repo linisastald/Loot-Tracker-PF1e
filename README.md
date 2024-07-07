@@ -17,3 +17,9 @@ Features to be added
 - - Show transactions in the last 6 realtime months 
 - - Show total party gold available
 - - Have a quick way to distribute gold to players with option to leave gold in party loot
+- Automatically calculate appraisal amounts for each character at time of input 
+
+
+
+Plan is to have it dockerized, so we don't need to include features to seperate different campaigns, as each one will have its own container
+
