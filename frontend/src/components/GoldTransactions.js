@@ -57,6 +57,11 @@ const GoldTransactions = () => {
     setTotals(totals);
   };
 
+  const formatDate = (dateString) => {
+    const options = { year: 'numeric', month: '2-digit', day: '2-digit' };
+    return new Date(dateString).toLocaleDateString(undefined, options);
+  };
+
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
@@ -96,7 +101,7 @@ const GoldTransactions = () => {
           <TableBody>
             {transactions.map((transaction) => (
               <TableRow key={transaction.id}>
-                <TableCell>{transaction.session_date}</TableCell>
+                <TableCell>{formatDate(transaction.session_date)}</TableCell>
                 <TableCell>{transaction.transaction_type}</TableCell>
                 <TableCell>{transaction.notes}</TableCell>
                 <TableCell>{((transaction.platinum * 10) + transaction.gold + (transaction.silver / 10) + (transaction.copper / 100)).toFixed(2)}</TableCell>
