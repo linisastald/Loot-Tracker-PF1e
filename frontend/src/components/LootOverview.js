@@ -7,7 +7,7 @@ const LootOverview = () => {
   useEffect(() => {
     const fetchLoot = async () => {
       const token = localStorage.getItem('token');
-      const res = await axios.get('http://localhost:5000/api/loot', {
+      const res = await axios.get('http://192.168.0.64:5000/api/loot', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -21,7 +21,7 @@ const LootOverview = () => {
   const handleUpdateStatus = async (id, status) => {
     const token = localStorage.getItem('token');
     try {
-      await axios.put('http://localhost:5000/api/loot', { id, status }, {
+      await axios.put('http://192.168.0.64:5000/api/loot', { id, status }, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

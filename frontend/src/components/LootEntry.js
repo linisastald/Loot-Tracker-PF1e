@@ -9,7 +9,7 @@ const LootEntry = () => {
     e.preventDefault();
     const token = localStorage.getItem('token');
     try {
-      await axios.post('http://localhost:5000/api/loot', {
+      await axios.post('http://192.168.0.64:5000/api/loot', {
         item_name: itemName,
         item_description: itemDescription,
         campaign_id: 1,

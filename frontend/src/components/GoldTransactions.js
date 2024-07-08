@@ -7,7 +7,7 @@ const GoldTransactions = () => {
   useEffect(() => {
     const fetchTransactions = async () => {
       const token = localStorage.getItem('token');
-      const res = await axios.get('http://localhost:5000/api/gold-transactions', {
+      const res = await axios.get('http://192.168.0.64:5000/api/gold-transactions', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
