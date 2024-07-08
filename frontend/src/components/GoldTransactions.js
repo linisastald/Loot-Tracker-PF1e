@@ -68,16 +68,16 @@ const GoldTransactions = () => {
         <Typography variant="h6">Total Party Gold</Typography>
         <Grid container spacing={2}>
           <Grid item xs={6} sm={3}>
-            <Typography variant="body1">Copper: {totals.copper}</Typography>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Typography variant="body1">Silver: {totals.silver}</Typography>
+            <Typography variant="body1">Platinum: {totals.platinum}</Typography>
           </Grid>
           <Grid item xs={6} sm={3}>
             <Typography variant="body1">Gold: {totals.gold}</Typography>
           </Grid>
           <Grid item xs={6} sm={3}>
-            <Typography variant="body1">Platinum: {totals.platinum}</Typography>
+            <Typography variant="body1">Silver: {totals.silver}</Typography>
+          </Grid>
+          <Grid item xs={6} sm={3}>
+            <Typography variant="body1">Copper: {totals.copper}</Typography>
           </Grid>
           <Grid item xs={12}>
             <Typography variant="h6">Total Value: {totals.totalValue.toFixed(2)} GP</Typography>
