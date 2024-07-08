@@ -1,24 +1,25 @@
 import React from 'react';
-import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
-import Login from './components/Login';
-import LootEntry from './components/LootEntry';
+import { ThemeProvider } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+import theme from './theme';
 import UnprocessedLoot from './components/UnprocessedLoot';
+import LootEntry from './components/LootEntry';
 import GoldTransactions from './components/GoldTransactions';
-import MainLayout from './components/MainLayout';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 
-function App() {
+const App = () => {
   return (
-    <Router>
-      <Switch>
-        <Route path="/login" component={Login} />
-        <MainLayout>
-          <Route path="/loot-entry" component={LootEntry} />
-          <Route path="/unprocessed-loot" component={UnprocessedLoot} />
-          <Route path="/gold-transactions" component={GoldTransactions} />
-        </MainLayout>
-      </Switch>
-    </Router>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Router>
+        <Routes>
+          <Route path="/unprocessed-loot" element={<UnprocessedLoot />} />
+          <Route path="/loot-entry" element={<LootEntry />} />
+          <Route path="/gold-transactions" element={<GoldTransactions />} />
+        </Routes>
+      </Router>
+    </ThemeProvider>
   );
-}
+};
 
 export default App;
