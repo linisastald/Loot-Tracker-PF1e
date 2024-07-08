@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const pool = require('../db'); // Import the pool
 const lootController = require('../controllers/lootController');
 
 router.post('/', lootController.createLoot);
 router.get('/', lootController.getAllLoot);
+
 // Update item status
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
@@ -20,4 +22,5 @@ router.put('/:id', async (req, res) => {
     res.status(500).send('Server error');
   }
 });
+
 module.exports = router;
