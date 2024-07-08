@@ -10,6 +10,7 @@ import {
   FormControlLabel,
   MenuItem,
   IconButton,
+  Grid,
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -24,7 +25,7 @@ const LootEntry = () => {
     {
       sessionDate: new Date(),
       quantity: 1,
-      itemName: '',
+      name: '',
       unidentified: false,
       type: '',
       size: '',
@@ -44,7 +45,7 @@ const LootEntry = () => {
       {
         sessionDate: new Date(),
         quantity: 1,
-        itemName: '',
+        name: '',
         unidentified: false,
         type: '',
         size: '',
@@ -61,7 +62,6 @@ const LootEntry = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
-    console.log('Submitting entries:', entries);
     try {
       await axios.post(
         'http://192.168.0.64:5000/api/loot',
@@ -72,13 +72,12 @@ const LootEntry = () => {
           },
         }
       );
-      console.log('Response:', response.data);
       // Reset form after submission
       setEntries([
         {
           sessionDate: new Date(),
           quantity: 1,
-          itemName: '',
+          name: '',
           unidentified: false,
           type: '',
           size: '',
@@ -112,93 +111,102 @@ const LootEntry = () => {
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
         {entries.map((entry, index) => (
           <Box key={index} sx={{ mb: 3, border: '1px solid #ccc', padding: 2 }}>
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker
-                label="Session Date"
-                value={entry.sessionDate}
-                onChange={(date) => handleInputChange(index, 'sessionDate', date)}
-                renderInput={(params) => <TextField {...params} fullWidth sx={{ mb: 2 }} />}
-              />
-            </LocalizationProvider>
-            <TextField
-              label="Quantity"
-              type="number"
-              fullWidth
-              value={entry.quantity}
-              onChange={(e) => handleInputChange(index, 'quantity', e.target.value)}
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              label="Item Name"
-              fullWidth
-              value={entry.itemName}
-              onChange={(e) => {
-                handleInputChange(index, 'itemName', e.target.value);
-                fetchSuggestions(e.target.value, index);
-              }}
-              sx={{ mb: 2 }}
-              autoComplete="off"
-            />
-            {entry.suggestions && (
-              <ul>
-                {entry.suggestions.map((suggestion, sIndex) => (
-                  <li
-                    key={sIndex}
-                    onClick={() => handleInputChange(index, 'itemName', suggestion.name)}
-                  >
-                    {suggestion.name}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={entry.unidentified}
-                  onChange={(e) => handleInputChange(index, 'unidentified', e.target.checked)}
+            <Grid container spacing={2}>
+              <Grid item xs={2}>
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DatePicker
+                    label="Session Date"
+                    value={entry.sessionDate}
+                    onChange={(date) => handleInputChange(index, 'sessionDate', date)}
+                    renderInput={(params) => <TextField {...params} fullWidth />}
+                  />
+                </LocalizationProvider>
+              </Grid>
+              <Grid item xs={1}>
+                <TextField
+                  label="Quantity"
+                  type="number"
+                  fullWidth
+                  value={entry.quantity}
+                  onChange={(e) => handleInputChange(index, 'quantity', e.target.value)}
                 />
-              }
-              label="Unidentified"
-              sx={{ mb: 2 }}
-            />
-            <TextField
-              label="Type"
-              select
-              fullWidth
-              value={entry.type}
-              onChange={(e) => handleInputChange(index, 'type', e.target.value)}
-              sx={{ mb: 2 }}
-            >
-              {itemTypes.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {type}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="Size"
-              select
-              fullWidth
-              value={entry.size}
-              onChange={(e) => handleInputChange(index, 'size', e.target.value)}
-              sx={{ mb: 2 }}
-            >
-              {itemSizes.map((size) => (
-                <MenuItem key={size} value={size}>
-                  {size}
-                </MenuItem>
-              ))}
-            </TextField>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <IconButton onClick={addEntry} color="primary">
-                <AddCircleOutlineIcon />
-              </IconButton>
-              {entries.length > 1 && (
-                <IconButton onClick={() => removeEntry(index)} color="secondary">
-                  <RemoveCircleOutlineIcon />
+              </Grid>
+              <Grid item xs={2}>
+                <TextField
+                  label="Name"
+                  fullWidth
+                  value={entry.name}
+                  onChange={(e) => {
+                    handleInputChange(index, 'name', e.target.value);
+                    fetchSuggestions(e.target.value, index);
+                  }}
+                  autoComplete="off"
+                />
+                {entry.suggestions && (
+                  <ul>
+                    {entry.suggestions.map((suggestion, sIndex) => (
+                      <li
+                        key={sIndex}
+                        onClick={() => handleInputChange(index, 'name', suggestion.name)}
+                      >
+                        {suggestion.name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Grid>
+              <Grid item xs={1}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={entry.unidentified}
+                      onChange={(e) => handleInputChange(index, 'unidentified', e.target.checked)}
+                    />
+                  }
+                  label="Unidentified"
+                />
+              </Grid>
+              <Grid item xs={2}>
+                <TextField
+                  label="Type"
+                  select
+                  fullWidth
+                  value={entry.type}
+                  onChange={(e) => handleInputChange(index, 'type', e.target.value)}
+                >
+                  {itemTypes.map((type) => (
+                    <MenuItem key={type} value={type}>
+                      {type}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={2}>
+                <TextField
+                  label="Size"
+                  select
+                  fullWidth
+                  value={entry.size}
+                  onChange={(e) => handleInputChange(index, 'size', e.target.value)}
+                >
+                  {itemSizes.map((size) => (
+                    <MenuItem key={size} value={size}>
+                      {size}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={2} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <IconButton onClick={addEntry} color="primary">
+                  <AddCircleOutlineIcon />
                 </IconButton>
-              )}
-            </Box>
+                {entries.length > 1 && (
+                  <IconButton onClick={() => removeEntry(index)} color="secondary">
+                    <RemoveCircleOutlineIcon />
+                  </IconButton>
+                )}
+              </Grid>
+            </Grid>
           </Box>
         ))}
         <Button type="submit" fullWidth variant="contained" sx={{ mt: 3, mb: 2 }}>
