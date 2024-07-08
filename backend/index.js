@@ -23,7 +23,7 @@ pool.connect((err) => {
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors());  // Ensure CORS is used
 app.use(bodyParser.json());
 
 app.get('/', (req, res) => {

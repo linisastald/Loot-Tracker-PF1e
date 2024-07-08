@@ -1,15 +1,24 @@
 import React from 'react';
 import { useHistory } from 'react-router-dom';
+import axios from 'axios';
 import { Container, TextField, Button, Typography, Box } from '@mui/material';
 
 const Login = () => {
   const history = useHistory();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Dummy login logic
-    localStorage.setItem('token', 'dummy_token');
-    history.push('/loot-entry');
+    try {
+      // Ensure the URL points to the backend server
+      const response = await axios.post('http://192.168.0.64:5000/api/auth/login', {
+        character_name: 'dummy_character',
+        password: 'dummy_password',
+      });
+      localStorage.setItem('token', response.data.token);
+      history.push('/loot-entry');
+    } catch (error) {
+      console.error('Login failed', error);
+    }
   };
 
   return (
