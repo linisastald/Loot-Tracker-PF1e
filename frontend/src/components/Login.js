@@ -1,70 +1,61 @@
-import React from 'react';
-import { useHistory } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // Import useNavigate instead of useHistory
 import axios from 'axios';
-import { Container, TextField, Button, Typography, Box } from '@mui/material';
+import { Button, TextField, Typography, Container, Paper } from '@mui/material';
 
 const Login = () => {
-  const history = useHistory();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const navigate = useNavigate(); // Use useNavigate instead of useHistory
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleLogin = async () => {
     try {
-      // Ensure the URL points to the backend server
-      const response = await axios.post('http://192.168.0.64:5000/api/auth/login', {
-        character_name: 'dummy_character',
-        password: 'dummy_password',
-      });
+      const response = await axios.post('http://192.168.0.64:5000/api/auth/login', { username, password });
       localStorage.setItem('token', response.data.token);
-      history.push('/loot-entry');
-    } catch (error) {
-      console.error('Login failed', error);
+      navigate('/loot-entry'); // Use navigate instead of history.push
+    } catch (err) {
+      setError('Invalid username or password');
     }
   };
 
   return (
     <Container component="main" maxWidth="xs">
-      <Box
-        sx={{
-          marginTop: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
+      <Paper sx={{ p: 2, mt: 8 }}>
         <Typography component="h1" variant="h5">
-          Login
+          Sign in
         </Typography>
-        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            id="characterName"
-            label="Character Name"
-            name="characterName"
-            autoComplete="characterName"
-            autoFocus
-          />
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            name="password"
-            label="Password"
-            type="password"
-            id="password"
-            autoComplete="current-password"
-          />
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            sx={{ mt: 3, mb: 2 }}
-          >
-            Login
-          </Button>
-        </Box>
-      </Box>
+        <TextField
+          variant="outlined"
+          margin="normal"
+          required
+          fullWidth
+          label="Username"
+          autoFocus
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
+        <TextField
+          variant="outlined"
+          margin="normal"
+          required
+          fullWidth
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        {error && <Typography color="error">{error}</Typography>}
+        <Button
+          fullWidth
+          variant="contained"
+          color="primary"
+          sx={{ mt: 3, mb: 2 }}
+          onClick={handleLogin}
+        >
+          Sign In
+        </Button>
+      </Paper>
     </Container>
   );
 };
