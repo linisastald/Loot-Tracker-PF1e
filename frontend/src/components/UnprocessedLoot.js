@@ -19,7 +19,7 @@ const UnprocessedLoot = () => {
   const [loot, setLoot] = useState([]);
   const [selected, setSelected] = useState([]);
   const [order, setOrder] = useState('asc');
-  const [orderBy, setOrderBy] = useState('item_name');
+  const [orderBy, setOrderBy] = useState('name');
 
   useEffect(() => {
     const fetchLoot = async () => {
@@ -135,7 +135,7 @@ const UnprocessedLoot = () => {
                   />
                 </TableCell>
                 <TableCell>{item.quantity}</TableCell>
-                <TableCell>{item.item_name}</TableCell>
+                <TableCell>{item.name}</TableCell>
                 <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
                 <TableCell>{item.type}</TableCell>
                 <TableCell>{item.size}</TableCell>
