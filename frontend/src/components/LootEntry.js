@@ -6,8 +6,6 @@ import {
   Button,
   Typography,
   Box,
-  Checkbox,
-  FormControlLabel,
   MenuItem,
   IconButton,
   Grid,
@@ -19,6 +17,10 @@ import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 
 const itemTypes = ['Weapon', 'Armor', 'Magic', 'Gear', 'Trade Good', 'Other'];
 const itemSizes = ['Fine', 'Diminutive', 'Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan', 'Colossal'];
+const identifiedOptions = [
+  { label: 'Identified', value: false },
+  { label: 'Unidentified', value: true },
+];
 
 const LootEntry = () => {
   const [entries, setEntries] = useState([
@@ -62,6 +64,11 @@ const LootEntry = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
+    const invalidEntries = entries.some(entry => !entry.quantity || !entry.name || !entry.type);
+    if (invalidEntries) {
+      alert('Please fill in all required fields');
+      return;
+    }
     try {
       await axios.post(
         'http://192.168.0.64:5000/api/loot',
@@ -129,6 +136,7 @@ const LootEntry = () => {
                   fullWidth
                   value={entry.quantity}
                   onChange={(e) => handleInputChange(index, 'quantity', e.target.value)}
+                  required
                 />
               </Grid>
               <Grid item xs={2}>
@@ -141,6 +149,7 @@ const LootEntry = () => {
                     fetchSuggestions(e.target.value, index);
                   }}
                   autoComplete="off"
+                  required
                 />
                 {entry.suggestions && (
                   <ul>
@@ -155,16 +164,20 @@ const LootEntry = () => {
                   </ul>
                 )}
               </Grid>
-              <Grid item xs={1}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={entry.unidentified}
-                      onChange={(e) => handleInputChange(index, 'unidentified', e.target.checked)}
-                    />
-                  }
-                  label="Unidentified"
-                />
+              <Grid item xs={2}>
+                <TextField
+                  label="Identified"
+                  select
+                  fullWidth
+                  value={entry.unidentified}
+                  onChange={(e) => handleInputChange(index, 'unidentified', e.target.value)}
+                >
+                  {identifiedOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Grid>
               <Grid item xs={2}>
                 <TextField
@@ -173,6 +186,7 @@ const LootEntry = () => {
                   fullWidth
                   value={entry.type}
                   onChange={(e) => handleInputChange(index, 'type', e.target.value)}
+                  required
                 >
                   {itemTypes.map((type) => (
                     <MenuItem key={type} value={type}>
@@ -196,7 +210,7 @@ const LootEntry = () => {
                   ))}
                 </TextField>
               </Grid>
-              <Grid item xs={2} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Grid item xs={1} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <IconButton onClick={addEntry} color="primary">
                   <AddCircleOutlineIcon />
                 </IconButton>
