@@ -45,12 +45,24 @@ const UnprocessedLoot = () => {
     fetchLoot();
   }, []);
 
-  const handleSelect = (id) => {
-    setSelected((prevSelected) =>
-      prevSelected.includes(id)
-        ? prevSelected.filter((item) => item !== id)
-        : [...prevSelected, id]
-    );
+  const handleSelect = (event, id) => {
+    const selectedIndex = selected.indexOf(id);
+    let newSelected = [];
+
+    if (selectedIndex === -1) {
+      newSelected = newSelected.concat(selected, id);
+    } else if (selectedIndex === 0) {
+      newSelected = newSelected.concat(selected.slice(1));
+    } else if (selectedIndex === selected.length - 1) {
+      newSelected = newSelected.concat(selected.slice(0, -1));
+    } else if (selectedIndex > 0) {
+      newSelected = newSelected.concat(
+        selected.slice(0, selectedIndex),
+        selected.slice(selectedIndex + 1),
+      );
+    }
+
+    setSelected(newSelected);
   };
 
   const handleSelectAll = (event) => {
@@ -118,6 +130,8 @@ const UnprocessedLoot = () => {
       console.error('Error updating item status', error);
     }
   };
+
+  const isSelected = (id) => selected.indexOf(id) !== -1;
 
   return (
     <Container component="main">
@@ -225,24 +239,32 @@ const UnprocessedLoot = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {sortedLoot.map((item) => (
-                <TableRow key={item.id} selected={selected.includes(item.id)} sx={{ height: '40px' }}>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      checked={selected.includes(item.id)}
-                      onChange={() => handleSelect(item.id)}
-                    />
-                  </TableCell>
-                  <TableCell>{item.quantity}</TableCell>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{item.type}</TableCell>
-                  <TableCell>{item.size}</TableCell>
-                  <TableCell></TableCell> {/* Believed Value - Blank for now */}
-                  <TableCell></TableCell> {/* Average Appraisal - Blank for now */}
-                  <TableCell>{item.status === 'Pending Sale' ? '✔️' : ''}</TableCell>
-                </TableRow>
-              ))}
+              {sortedLoot.map((item) => {
+                const isItemSelected = isSelected(item.id);
+                return (
+                  <TableRow
+                    key={item.id}
+                    selected={isItemSelected}
+                    sx={{ height: '40px' }}
+                    onClick={(event) => handleSelect(event, item.id)}
+                  >
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={isItemSelected}
+                        onChange={(event) => handleSelect(event, item.id)}
+                      />
+                    </TableCell>
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>{item.type}</TableCell>
+                    <TableCell>{item.size}</TableCell>
+                    <TableCell></TableCell> {/* Believed Value - Blank for now */}
+                    <TableCell></TableCell> {/* Average Appraisal - Blank for now */}
+                    <TableCell>{item.status === 'Pending Sale' ? '✔️' : ''}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
