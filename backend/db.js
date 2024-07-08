@@ -1,12 +1,19 @@
-const { Pool } = require('pg');
-require('dotenv').config();
+const express = require('express');
+const router = express.Router();
+const goldController = require('../controllers/goldController');
+const pool = require('../db'); // Ensure this points to your db configuration
 
-const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT,
+router.post('/', goldController.createGoldEntry);
+
+// Get all gold transactions
+router.get('/', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM gold');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching gold transactions', error);
+    res.status(500).send('Server error');
+  }
 });
 
-module.exports = pool;
+module.exports = router;
