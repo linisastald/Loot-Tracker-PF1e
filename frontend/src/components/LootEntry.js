@@ -22,7 +22,7 @@ const magicalOptions = [
   { label: 'Identified', value: false },
   { label: 'Unidentified', value: true },
 ];
-const transactionTypes = ['Withdrawl', 'Deposit', 'Purchase', 'Sale', 'Party Loot Purchase', 'Other'];
+const transactionTypes = ['Withdrawal', 'Deposit', 'Purchase', 'Sale', 'Party Loot Purchase', 'Other'];
 
 const LootEntry = () => {
   const [entries, setEntries] = useState([]);
@@ -87,6 +87,15 @@ const LootEntry = () => {
       return;
     }
 
+    goldEntries.forEach(entry => {
+      if (['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(entry.transactionType)) {
+        entry.platinum = -Math.abs(entry.platinum);
+        entry.gold = -Math.abs(entry.gold);
+        entry.silver = -Math.abs(entry.silver);
+        entry.copper = -Math.abs(entry.copper);
+      }
+    });
+
     try {
       if (itemEntries.length > 0) {
         await axios.post(
@@ -139,7 +148,7 @@ const LootEntry = () => {
       </Typography>
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
         {entries.map((entry, index) => (
-          <Box key={index} sx={{ mb: 3, border: '1px solid #ccc', padding: 2 }}>
+          <Box key={index} sx={{ mb: 3, padding: 2 }}>
             <Grid container spacing={2}>
               <Grid item xs={2}>
                 <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -261,8 +270,9 @@ const LootEntry = () => {
                       label="Platinum"
                       type="number"
                       fullWidth
+                      inputProps={{ min: 0 }}
                       value={entry.platinum}
-                      onChange={(e) => handleInputChange(index, 'platinum', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'platinum', Math.max(0, e.target.value))}
                     />
                   </Grid>
                   <Grid item xs={1}>
@@ -270,8 +280,9 @@ const LootEntry = () => {
                       label="Gold"
                       type="number"
                       fullWidth
+                      inputProps={{ min: 0 }}
                       value={entry.gold}
-                      onChange={(e) => handleInputChange(index, 'gold', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'gold', Math.max(0, e.target.value))}
                     />
                   </Grid>
                   <Grid item xs={1}>
@@ -279,8 +290,9 @@ const LootEntry = () => {
                       label="Silver"
                       type="number"
                       fullWidth
+                      inputProps={{ min: 0 }}
                       value={entry.silver}
-                      onChange={(e) => handleInputChange(index, 'silver', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'silver', Math.max(0, e.target.value))}
                     />
                   </Grid>
                   <Grid item xs={1}>
@@ -288,8 +300,9 @@ const LootEntry = () => {
                       label="Copper"
                       type="number"
                       fullWidth
+                      inputProps={{ min: 0 }}
                       value={entry.copper}
-                      onChange={(e) => handleInputChange(index, 'copper', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'copper', Math.max(0, e.target.value))}
                     />
                   </Grid>
                   <Grid item xs={2}>
