@@ -9,8 +9,9 @@ import {
   MenuItem,
   IconButton,
   Grid,
-  Tabs,
-  Tab,
+  Select,
+  InputLabel,
+  FormControl,
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -25,76 +26,52 @@ const magicalOptions = [
   { label: 'Unidentified', value: true },
 ];
 const transactionTypes = ['Withdrawl', 'Deposit', 'Purchase', 'Sale', 'Party Loot Purchase', 'Other'];
+const entryTypes = ['Item', 'Gold'];
 
 const LootEntry = () => {
   const [entries, setEntries] = useState([
     {
+      entryType: 'Item',
       sessionDate: new Date(),
       quantity: 1,
       name: '',
       unidentified: null,
       type: '',
       size: '',
-      suggestions: [],
-    },
-  ]);
-
-  const [goldEntries, setGoldEntries] = useState([
-    {
-      sessionDate: new Date(),
-      transactionType: '',
       platinum: 0,
       gold: 0,
       silver: 0,
       copper: 0,
+      transactionType: '',
       notes: '',
+      suggestions: [],
     },
   ]);
 
-  const [tabIndex, setTabIndex] = useState(0);
-
-  const handleTabChange = (event, newIndex) => {
-    setTabIndex(newIndex);
-  };
-
-  const handleItemInputChange = (index, field, value) => {
+  const handleInputChange = (index, field, value) => {
     const newEntries = [...entries];
     newEntries[index][field] = value;
     setEntries(newEntries);
-  };
-
-  const handleGoldInputChange = (index, field, value) => {
-    const newEntries = [...goldEntries];
-    newEntries[index][field] = value;
-    setGoldEntries(newEntries);
   };
 
   const addEntry = () => {
     setEntries([
       ...entries,
       {
+        entryType: 'Item',
         sessionDate: new Date(),
         quantity: 1,
         name: '',
         unidentified: null,
         type: '',
         size: '',
-        suggestions: [],
-      },
-    ]);
-  };
-
-  const addGoldEntry = () => {
-    setGoldEntries([
-      ...goldEntries,
-      {
-        sessionDate: new Date(),
-        transactionType: '',
         platinum: 0,
         gold: 0,
         silver: 0,
         copper: 0,
+        transactionType: '',
         notes: '',
+        suggestions: [],
       },
     ]);
   };
@@ -104,16 +81,14 @@ const LootEntry = () => {
     setEntries(newEntries);
   };
 
-  const removeGoldEntry = (index) => {
-    const newEntries = goldEntries.filter((_, i) => i !== index);
-    setGoldEntries(newEntries);
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
-    const invalidEntries = entries.some(entry => !entry.quantity || !entry.name || !entry.type);
-    if (invalidEntries) {
+    const itemEntries = entries.filter(entry => entry.entryType === 'Item');
+    const goldEntries = entries.filter(entry => entry.entryType === 'Gold');
+
+    const invalidItemEntries = itemEntries.some(entry => !entry.quantity || !entry.name || !entry.type);
+    if (invalidItemEntries) {
       alert('Please fill in all required fields for item entries');
       return;
     }
@@ -122,46 +97,48 @@ const LootEntry = () => {
       alert('Please fill in all required fields for gold entries');
       return;
     }
+
     try {
-      await axios.post(
-        'http://192.168.0.64:5000/api/loot',
-        { entries },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      await axios.post(
-        'http://192.168.0.64:5000/api/gold',
-        { goldEntries },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      if (itemEntries.length > 0) {
+        await axios.post(
+          'http://192.168.0.64:5000/api/loot',
+          { entries: itemEntries },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      }
+      if (goldEntries.length > 0) {
+        await axios.post(
+          'http://192.168.0.64:5000/api/gold',
+          { goldEntries },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      }
+
       // Reset form after submission
       setEntries([
         {
+          entryType: 'Item',
           sessionDate: new Date(),
           quantity: 1,
           name: '',
           unidentified: null,
           type: '',
           size: '',
-          suggestions: [],
-        },
-      ]);
-      setGoldEntries([
-        {
-          sessionDate: new Date(),
-          transactionType: '',
           platinum: 0,
           gold: 0,
           silver: 0,
           copper: 0,
+          transactionType: '',
           notes: '',
+          suggestions: [],
         },
       ]);
     } catch (error) {
@@ -188,33 +165,46 @@ const LootEntry = () => {
       <Typography component="h1" variant="h5" sx={{ mt: 3 }}>
         Add Loot
       </Typography>
-      <Tabs value={tabIndex} onChange={handleTabChange} aria-label="entry tabs">
-        <Tab label="Item Entry" />
-        <Tab label="Gold Entry" />
-      </Tabs>
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
-        {tabIndex === 0 && (
-          <div>
-            {entries.map((entry, index) => (
-              <Box key={index} sx={{ mb: 3, border: '1px solid #ccc', padding: 2 }}>
-                <Grid container spacing={2}>
-                  <Grid item xs={2}>
-                    <LocalizationProvider dateAdapter={AdapterDateFns}>
-                      <DatePicker
-                        label="Session Date"
-                        value={entry.sessionDate}
-                        onChange={(date) => handleItemInputChange(index, 'sessionDate', date)}
-                        renderInput={(params) => <TextField {...params} fullWidth />}
-                      />
-                    </LocalizationProvider>
-                  </Grid>
+        {entries.map((entry, index) => (
+          <Box key={index} sx={{ mb: 3, border: '1px solid #ccc', padding: 2 }}>
+            <Grid container spacing={2}>
+              <Grid item xs={2}>
+                <FormControl fullWidth>
+                  <InputLabel>Entry Type</InputLabel>
+                  <Select
+                    label="Entry Type"
+                    value={entry.entryType}
+                    onChange={(e) => handleInputChange(index, 'entryType', e.target.value)}
+                  >
+                    {entryTypes.map((type) => (
+                      <MenuItem key={type} value={type}>
+                        {type}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={2}>
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DatePicker
+                    label="Session Date"
+                    value={entry.sessionDate}
+                    onChange={(date) => handleInputChange(index, 'sessionDate', date)}
+                    renderInput={(params) => <TextField {...params} fullWidth />}
+                  />
+                </LocalizationProvider>
+              </Grid>
+
+              {entry.entryType === 'Item' && (
+                <>
                   <Grid item xs={1}>
                     <TextField
                       label="Quantity"
                       type="number"
                       fullWidth
                       value={entry.quantity}
-                      onChange={(e) => handleItemInputChange(index, 'quantity', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'quantity', e.target.value)}
                       required
                     />
                   </Grid>
@@ -224,7 +214,7 @@ const LootEntry = () => {
                       fullWidth
                       value={entry.name}
                       onChange={(e) => {
-                        handleItemInputChange(index, 'name', e.target.value);
+                        handleInputChange(index, 'name', e.target.value);
                         fetchSuggestions(e.target.value, index);
                       }}
                       autoComplete="off"
@@ -235,7 +225,7 @@ const LootEntry = () => {
                         {entry.suggestions.map((suggestion, sIndex) => (
                           <li
                             key={sIndex}
-                            onClick={() => handleItemInputChange(index, 'name', suggestion.name)}
+                            onClick={() => handleInputChange(index, 'name', suggestion.name)}
                           >
                             {suggestion.name}
                           </li>
@@ -249,7 +239,7 @@ const LootEntry = () => {
                       select
                       fullWidth
                       value={entry.unidentified}
-                      onChange={(e) => handleItemInputChange(index, 'unidentified', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'unidentified', e.target.value)}
                     >
                       {magicalOptions.map((option) => (
                         <MenuItem key={option.value} value={option.value}>
@@ -264,7 +254,7 @@ const LootEntry = () => {
                       select
                       fullWidth
                       value={entry.type}
-                      onChange={(e) => handleItemInputChange(index, 'type', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'type', e.target.value)}
                       required
                     >
                       {itemTypes.map((type) => (
@@ -280,7 +270,7 @@ const LootEntry = () => {
                       select
                       fullWidth
                       value={entry.size}
-                      onChange={(e) => handleItemInputChange(index, 'size', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'size', e.target.value)}
                     >
                       {itemSizes.map((size) => (
                         <MenuItem key={size} value={size}>
@@ -289,43 +279,18 @@ const LootEntry = () => {
                       ))}
                     </TextField>
                   </Grid>
-                  <Grid item xs={1} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <IconButton onClick={addEntry} color="primary">
-                      <AddCircleOutlineIcon />
-                    </IconButton>
-                    {entries.length > 1 && (
-                      <IconButton onClick={() => removeEntry(index)} color="secondary">
-                        <RemoveCircleOutlineIcon />
-                      </IconButton>
-                    )}
-                  </Grid>
-                </Grid>
-              </Box>
-            ))}
-          </div>
-        )}
-        {tabIndex === 1 && (
-          <div>
-            {goldEntries.map((entry, index) => (
-              <Box key={index} sx={{ mb: 3, border: '1px solid #ccc', padding: 2 }}>
-                <Grid container spacing={2}>
-                  <Grid item xs={2}>
-                    <LocalizationProvider dateAdapter={AdapterDateFns}>
-                      <DatePicker
-                        label="Session Date"
-                        value={entry.sessionDate}
-                        onChange={(date) => handleGoldInputChange(index, 'sessionDate', date)}
-                        renderInput={(params) => <TextField {...params} fullWidth />}
-                      />
-                    </LocalizationProvider>
-                  </Grid>
+                </>
+              )}
+
+              {entry.entryType === 'Gold' && (
+                <>
                   <Grid item xs={2}>
                     <TextField
                       label="Type"
                       select
                       fullWidth
                       value={entry.transactionType}
-                      onChange={(e) => handleGoldInputChange(index, 'transactionType', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'transactionType', e.target.value)}
                       required
                     >
                       {transactionTypes.map((type) => (
@@ -341,7 +306,7 @@ const LootEntry = () => {
                       type="number"
                       fullWidth
                       value={entry.platinum}
-                      onChange={(e) => handleGoldInputChange(index, 'platinum', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'platinum', e.target.value)}
                     />
                   </Grid>
                   <Grid item xs={1}>
@@ -350,7 +315,7 @@ const LootEntry = () => {
                       type="number"
                       fullWidth
                       value={entry.gold}
-                      onChange={(e) => handleGoldInputChange(index, 'gold', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'gold', e.target.value)}
                     />
                   </Grid>
                   <Grid item xs={1}>
@@ -359,7 +324,7 @@ const LootEntry = () => {
                       type="number"
                       fullWidth
                       value={entry.silver}
-                      onChange={(e) => handleGoldInputChange(index, 'silver', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'silver', e.target.value)}
                     />
                   </Grid>
                   <Grid item xs={1}>
@@ -368,7 +333,7 @@ const LootEntry = () => {
                       type="number"
                       fullWidth
                       value={entry.copper}
-                      onChange={(e) => handleGoldInputChange(index, 'copper', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'copper', e.target.value)}
                     />
                   </Grid>
                   <Grid item xs={2}>
@@ -376,25 +341,26 @@ const LootEntry = () => {
                       label="Notes"
                       fullWidth
                       value={entry.notes}
-                      onChange={(e) => handleGoldInputChange(index, 'notes', e.target.value)}
+                      onChange={(e) => handleInputChange(index, 'notes', e.target.value)}
                       inputProps={{ maxLength: 120 }}
                     />
                   </Grid>
-                  <Grid item xs={1} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <IconButton onClick={addGoldEntry} color="primary">
-                      <AddCircleOutlineIcon />
-                    </IconButton>
-                    {goldEntries.length > 1 && (
-                      <IconButton onClick={() => removeGoldEntry(index)} color="secondary">
-                        <RemoveCircleOutlineIcon />
-                      </IconButton>
-                    )}
-                  </Grid>
-                </Grid>
-              </Box>
-            ))}
-          </div>
-        )}
+                </>
+              )}
+
+              <Grid item xs={2} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <IconButton onClick={addEntry} color="primary">
+                  <AddCircleOutlineIcon />
+                </IconButton>
+                {entries.length > 1 && (
+                  <IconButton onClick={() => removeEntry(index)} color="secondary">
+                    <RemoveCircleOutlineIcon />
+                  </IconButton>
+                )}
+              </Grid>
+            </Grid>
+          </Box>
+        ))}
         <Button type="submit" fullWidth variant="contained" sx={{ mt: 3, mb: 2 }}>
           Submit
         </Button>
