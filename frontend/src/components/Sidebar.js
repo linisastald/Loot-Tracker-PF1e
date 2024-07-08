@@ -19,8 +19,8 @@ const Sidebar = () => {
         <ListItem button component={Link} to="/loot-entry">
           <ListItemText primary="Loot Entry" />
         </ListItem>
-        <ListItem button component={Link} to="/loot-overview">
-          <ListItemText primary="Loot Overview" />
+        <ListItem button component={Link} to="/unprocessed-loot">
+          <ListItemText primary="Unprocessed Loot" />
         </ListItem>
         <ListItem button component={Link} to="/gold-transactions">
           <ListItemText primary="Gold Transactions" />

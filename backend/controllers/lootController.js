@@ -24,9 +24,3 @@ exports.getAllLoot = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
-exports.updateLootStatus = async (req, res) => {
-  const { id, status } = req.body;
-  const updatedItem = await Loot.updateStatus(id, status);
-  res.json(updatedItem);
-};
