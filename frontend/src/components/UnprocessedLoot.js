@@ -45,24 +45,12 @@ const UnprocessedLoot = () => {
     fetchLoot();
   }, []);
 
-  const handleSelect = (event, id) => {
-    const selectedIndex = selected.indexOf(id);
-    let newSelected = [];
-
-    if (selectedIndex === -1) {
-      newSelected = newSelected.concat(selected, id);
-    } else if (selectedIndex === 0) {
-      newSelected = newSelected.concat(selected.slice(1));
-    } else if (selectedIndex === selected.length - 1) {
-      newSelected = newSelected.concat(selected.slice(0, -1));
-    } else if (selectedIndex > 0) {
-      newSelected = newSelected.concat(
-        selected.slice(0, selectedIndex),
-        selected.slice(selectedIndex + 1),
-      );
-    }
-
-    setSelected(newSelected);
+  const handleSelect = (id) => {
+    setSelected((prevSelected) =>
+      prevSelected.includes(id)
+        ? prevSelected.filter((item) => item !== id)
+        : [...prevSelected, id]
+    );
   };
 
   const handleSelectAll = (event) => {
@@ -248,10 +236,13 @@ const UnprocessedLoot = () => {
                     sx={{ height: '40px' }}
                     onClick={(event) => handleSelect(event, item.id)}
                   >
-                    <TableCell padding="checkbox">
+                    <TableCell padding="checkbox" onClick={(event) => event.stopPropagation()}>
                       <Checkbox
                         checked={isItemSelected}
-                        onChange={(event) => handleSelect(event, item.id)}
+                        onChange={(event) => {
+                          event.stopPropagation();
+                          handleSelect(item.id);
+                        }}
                       />
                     </TableCell>
                     <TableCell>{item.quantity}</TableCell>
