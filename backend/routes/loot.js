@@ -1,9 +1,8 @@
 const express = require('express');
-const { createLoot, getAllLoot, updateLootStatus } = require('../controllers/lootController');
 const router = express.Router();
+const lootController = require('../controllers/lootController');
 
-router.post('/', createLoot);
-router.get('/', getAllLoot);
-router.put('/', updateLootStatus);
+router.post('/', lootController.createLoot);
+router.get('/', lootController.getAllLoot);
 
 module.exports = router;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const LootOverview = () => {
+const UnprocessedLoot = () => {
   const [loot, setLoot] = useState([]);
 
   useEffect(() => {
@@ -50,4 +50,4 @@ const LootOverview = () => {
   );
 };
 
-export default LootOverview;
+export default UnprocessedLoot;

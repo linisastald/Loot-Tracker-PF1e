@@ -16,9 +16,13 @@ exports.createLoot = async (req, res) => {
 };
 
 exports.getAllLoot = async (req, res) => {
-  const { campaign_id } = req.query;
-  const loot = await Loot.findAll(campaign_id);
-  res.json(loot);
+  try {
+    const loot = await Loot.findAll();
+    res.status(200).json(loot);
+  } catch (error) {
+    console.error('Error fetching loot', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 };
 
 exports.updateLootStatus = async (req, res) => {
