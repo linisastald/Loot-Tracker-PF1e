@@ -10,7 +10,8 @@ const pool = new Pool({
 const Loot = {
   async create(item_name, item_description, campaign_id) {
     const res = await pool.query(
-      'INSERT INTO item (name, type, campaign_id) VALUES ($1, $2, $3) RETURNING *',
+      'INSERT INTO item (session_date, quantity, item_name, unidentified, type, size)\n' +
+        '        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
       [item_name, item_description, campaign_id]
     );
     return res.rows[0];
