@@ -119,8 +119,6 @@ const UnprocessedLoot = () => {
     }
   };
 
-  const isSelected = (id) => selected.indexOf(id) !== -1;
-
   return (
     <Container component="main">
       <Paper sx={{ p: 2 }}>
@@ -227,35 +225,24 @@ const UnprocessedLoot = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {sortedLoot.map((item) => {
-                const isItemSelected = isSelected(item.id);
-                return (
-                  <TableRow
-                    key={item.id}
-                    selected={isItemSelected}
-                    sx={{ height: '40px' }}
-                    onClick={(event) => handleSelect(event, item.id)}
-                  >
-                    <TableCell padding="checkbox" onClick={(event) => event.stopPropagation()}>
-                      <Checkbox
-                        checked={isItemSelected}
-                        onChange={(event) => {
-                          event.stopPropagation();
-                          handleSelect(item.id);
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
-                    <TableCell>{item.type}</TableCell>
-                    <TableCell>{item.size}</TableCell>
-                    <TableCell></TableCell> {/* Believed Value - Blank for now */}
-                    <TableCell></TableCell> {/* Average Appraisal - Blank for now */}
-                    <TableCell>{item.status === 'Pending Sale' ? '✔️' : ''}</TableCell>
-                  </TableRow>
-                );
-              })}
+              {sortedLoot.map((item) => (
+                <TableRow key={item.id} selected={selected.includes(item.id)} sx={{ height: '40px' }}>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selected.includes(item.id)}
+                      onChange={() => handleSelect(item.id)}
+                    />
+                  </TableCell>
+                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell>{item.name}</TableCell>
+                  <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{item.type}</TableCell>
+                  <TableCell>{item.size}</TableCell>
+                  <TableCell></TableCell> {/* Believed Value - Blank for now */}
+                  <TableCell></TableCell> {/* Average Appraisal - Blank for now */}
+                  <TableCell>{item.status === 'Pending Sale' ? '✔️' : ''}</TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </TableContainer>
@@ -277,17 +264,15 @@ const UnprocessedLoot = () => {
         </Button>
         <Button
           variant="contained"
+          color="default"
           sx={{ mt: 2, ml: 2 }}
-          onClick={() => {
-            const characterName = localStorage.getItem('characterName');
-            updateItemStatus('Kept Self', characterName);
-          }}
+          onClick={() => updateItemStatus('Kept Self', 'YourCharacterName')} // Replace 'YourCharacterName' with actual logged-in character's name
         >
           Keep Self
         </Button>
         <Button
           variant="contained"
-          color="success"
+          color="default"
           sx={{ mt: 2, ml: 2 }}
           onClick={() => updateItemStatus('Kept Party')}
         >
