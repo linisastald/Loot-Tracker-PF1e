@@ -36,19 +36,19 @@ const UnprocessedLoot = () => {
 
   const handleSelect = (item) => {
     setSelected((prevSelected) =>
-      prevSelected.includes(item.id)
-        ? prevSelected.filter((id) => id !== item.id)
-        : [...prevSelected, item.id]
+      prevSelected.includes(item.name)
+        ? prevSelected.filter((name) => name !== item.name)
+        : [...prevSelected, item.name]
     );
   };
 
   const handleSelectAll = () => {
     setSelected((prevSelected) =>
-      prevSelected.length === loot.length ? [] : loot.map((item) => item.id)
+      prevSelected.length === loot.length ? [] : loot.map((item) => item.name)
     );
   };
 
-  const isSelected = (id) => selected.includes(id);
+  const isSelected = (name) => selected.includes(name);
 
   const handleRequestSort = (property) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -127,10 +127,10 @@ const UnprocessedLoot = () => {
           </TableHead>
           <TableBody>
             {sortedLoot.map((item) => (
-              <TableRow key={item.id} selected={isSelected(item.id)}>
+              <TableRow key={item.name} selected={isSelected(item.name)}>
                 <TableCell padding="checkbox">
                   <Checkbox
-                    checked={isSelected(item.id)}
+                    checked={isSelected(item.name)}
                     onChange={() => handleSelect(item)}
                   />
                 </TableCell>
