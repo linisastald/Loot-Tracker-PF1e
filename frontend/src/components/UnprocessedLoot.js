@@ -211,9 +211,32 @@ const UnprocessedLoot = () => {
           variant="contained"
           color="primary"
           sx={{ mt: 2 }}
-          onClick={() => console.log('Process selected items')}
+          onClick={() => console.log('Sell selected items')}
         >
-          Process Selected
+          Sell
+        </Button>
+        <Button
+          variant="contained"
+          color="secondary"
+          sx={{ mt: 2, ml: 2 }}
+          onClick={() => console.log('Trash selected items')}
+        >
+          Trash
+        </Button>
+        <Button
+          variant="contained"
+          sx={{ mt: 2, ml: 2 }}
+          onClick={() => console.log('Keep selected items for self')}
+        >
+          Keep Self
+        </Button>
+        <Button
+          variant="contained"
+          color="success"
+          sx={{ mt: 2, ml: 2 }}
+          onClick={() => console.log('Keep selected items for party')}
+        >
+          Keep Party
         </Button>
       </Paper>
     </Container>
