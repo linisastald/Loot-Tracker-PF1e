@@ -4,19 +4,19 @@ import Login from './components/Login';
 import LootEntry from './components/LootEntry';
 import LootOverview from './components/LootOverview';
 import GoldTransactions from './components/GoldTransactions';
+import MainLayout from './components/MainLayout';
 
 function App() {
   return (
     <Router>
-      <div className="App">
-        <Switch>
-          <Route path="/login" component={Login} />
+      <Switch>
+        <Route path="/login" component={Login} />
+        <MainLayout>
           <Route path="/loot-entry" component={LootEntry} />
           <Route path="/loot-overview" component={LootOverview} />
           <Route path="/gold-transactions" component={GoldTransactions} />
-          <Route exact path="/" component={Login} />
-        </Switch>
-      </div>
+        </MainLayout>
+      </Switch>
     </Router>
   );
 }

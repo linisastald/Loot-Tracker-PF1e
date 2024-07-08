@@ -1,0 +1,25 @@
+.sidebar {
+  width: 200px;
+  height: 100vh;
+  background-color: #f8f9fa;
+  padding: 20px;
+  position: fixed;
+}
+
+.sidebar h2 {
+  text-align: center;
+}
+
+.sidebar ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.sidebar ul li {
+  margin: 10px 0;
+}
+
+.sidebar ul li a {
+  text-decoration: none;
+  color: #000;
+}
