@@ -9,9 +9,6 @@ import {
   MenuItem,
   IconButton,
   Grid,
-  Select,
-  InputLabel,
-  FormControl,
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -140,14 +137,6 @@ const LootEntry = () => {
       <Typography component="h1" variant="h5" sx={{ mt: 3 }}>
         Add Loot
       </Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3, mb: 3 }}>
-        <Button variant="contained" onClick={addItemEntry}>
-          Add Item Entry
-        </Button>
-        <Button variant="contained" onClick={addGoldEntry}>
-          Add Gold Entry
-        </Button>
-      </Box>
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
         {entries.map((entry, index) => (
           <Box key={index} sx={{ mb: 3, border: '1px solid #ccc', padding: 2 }}>
@@ -325,9 +314,17 @@ const LootEntry = () => {
             </Grid>
           </Box>
         ))}
-        <Button type="submit" fullWidth variant="contained" sx={{ mt: 3, mb: 2 }}>
-          Submit
-        </Button>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+          <Button variant="contained" onClick={addItemEntry}>
+            Add Item Entry
+          </Button>
+          <Button variant="contained" onClick={addGoldEntry}>
+            Add Gold Entry
+          </Button>
+          <Button type="submit" variant="contained">
+            Submit
+          </Button>
+        </Box>
       </Box>
     </Container>
   );
