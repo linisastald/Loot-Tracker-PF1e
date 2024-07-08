@@ -61,6 +61,7 @@ const LootEntry = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
+    console.log('Submitting entries:', entries);
     try {
       await axios.post(
         'http://192.168.0.64:5000/api/loot',
@@ -71,6 +72,7 @@ const LootEntry = () => {
           },
         }
       );
+      console.log('Response:', response.data);
       // Reset form after submission
       setEntries([
         {
