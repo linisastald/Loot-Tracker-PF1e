@@ -17,7 +17,8 @@ import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 
 const itemTypes = ['Weapon', 'Armor', 'Magic', 'Gear', 'Trade Good', 'Other'];
 const itemSizes = ['Fine', 'Diminutive', 'Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan', 'Colossal'];
-const identifiedOptions = [
+const magicalOptions = [
+  { label: 'Not Magical', value: null },
   { label: 'Identified', value: false },
   { label: 'Unidentified', value: true },
 ];
@@ -28,7 +29,7 @@ const LootEntry = () => {
       sessionDate: new Date(),
       quantity: 1,
       name: '',
-      unidentified: false,
+      unidentified: null,
       type: '',
       size: '',
       suggestions: [],
@@ -48,7 +49,7 @@ const LootEntry = () => {
         sessionDate: new Date(),
         quantity: 1,
         name: '',
-        unidentified: false,
+        unidentified: null,
         type: '',
         size: '',
         suggestions: [],
@@ -85,7 +86,7 @@ const LootEntry = () => {
           sessionDate: new Date(),
           quantity: 1,
           name: '',
-          unidentified: false,
+          unidentified: null,
           type: '',
           size: '',
           suggestions: [],
@@ -166,13 +167,13 @@ const LootEntry = () => {
               </Grid>
               <Grid item xs={2}>
                 <TextField
-                  label="Identified"
+                  label="Magical?"
                   select
                   fullWidth
                   value={entry.unidentified}
                   onChange={(e) => handleInputChange(index, 'unidentified', e.target.value)}
                 >
-                  {identifiedOptions.map((option) => (
+                  {magicalOptions.map((option) => (
                     <MenuItem key={option.value} value={option.value}>
                       {option.label}
                     </MenuItem>
