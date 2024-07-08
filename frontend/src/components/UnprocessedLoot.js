@@ -12,11 +12,14 @@ import {
   TableRow,
   Checkbox,
   Button,
+  TableSortLabel,
 } from '@mui/material';
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState([]);
   const [selected, setSelected] = useState([]);
+  const [order, setOrder] = useState('asc');
+  const [orderBy, setOrderBy] = useState('item_name');
 
   useEffect(() => {
     const fetchLoot = async () => {
@@ -47,6 +50,18 @@ const UnprocessedLoot = () => {
 
   const isSelected = (id) => selected.includes(id);
 
+  const handleRequestSort = (property) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
+
+  const sortedLoot = [...loot].sort((a, b) => {
+    if (a[orderBy] < b[orderBy]) return order === 'asc' ? -1 : 1;
+    if (a[orderBy] > b[orderBy]) return order === 'asc' ? 1 : -1;
+    return 0;
+  });
+
   return (
     <Container component="main">
       <Typography component="h1" variant="h5" sx={{ mt: 3 }}>
@@ -63,15 +78,55 @@ const UnprocessedLoot = () => {
                   onChange={handleSelectAll}
                 />
               </TableCell>
-              <TableCell>Quantity</TableCell>
-              <TableCell>Name</TableCell>
-              <TableCell>Unidentified</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Size</TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={orderBy === 'quantity'}
+                  direction={orderBy === 'quantity' ? order : 'asc'}
+                  onClick={() => handleRequestSort('quantity')}
+                >
+                  Quantity
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={orderBy === 'name'}
+                  direction={orderBy === 'name' ? order : 'asc'}
+                  onClick={() => handleRequestSort('name')}
+                >
+                  Name
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={orderBy === 'unidentified'}
+                  direction={orderBy === 'unidentified' ? order : 'asc'}
+                  onClick={() => handleRequestSort('unidentified')}
+                >
+                  Unidentified
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={orderBy === 'type'}
+                  direction={orderBy === 'type' ? order : 'asc'}
+                  onClick={() => handleRequestSort('type')}
+                >
+                  Type
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={orderBy === 'size'}
+                  direction={orderBy === 'size' ? order : 'asc'}
+                  onClick={() => handleRequestSort('size')}
+                >
+                  Size
+                </TableSortLabel>
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {loot.map((item) => (
+            {sortedLoot.map((item) => (
               <TableRow key={item.id} selected={isSelected(item.id)}>
                 <TableCell padding="checkbox">
                   <Checkbox
