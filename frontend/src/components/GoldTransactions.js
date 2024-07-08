@@ -80,7 +80,7 @@ const GoldTransactions = () => {
             <Typography variant="body1">Platinum: {totals.platinum}</Typography>
           </Grid>
           <Grid item xs={12}>
-            <Typography variant="h6">Total Value: {totals.totalValue.toFixed(2)}</Typography>
+            <Typography variant="h6">Total Value: {totals.totalValue.toFixed(2)} GP</Typography>
           </Grid>
         </Grid>
       </Paper>
