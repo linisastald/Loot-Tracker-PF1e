@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Container,
-  Typography,
-  Box,
   Table,
   TableBody,
   TableCell,
@@ -12,19 +10,30 @@ import {
   TableRow,
   Checkbox,
   Button,
-  TableSortLabel,
+  Paper,
+  TextField,
+  MenuItem,
+  Grid,
 } from '@mui/material';
+
+const itemTypes = ['Weapon', 'Armor', 'Magic', 'Gear', 'Trade Good', 'Other'];
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [order, setOrder] = useState('asc');
-  const [orderBy, setOrderBy] = useState('name');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [unidentifiedFilter, setUnidentifiedFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
 
   useEffect(() => {
     const fetchLoot = async () => {
       try {
-        const response = await axios.get('http://192.168.0.64:5000/api/loot');
+        const token = localStorage.getItem('token');
+        const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
         setLoot(response.data);
       } catch (error) {
         console.error('Error fetching loot', error);
@@ -34,130 +43,113 @@ const UnprocessedLoot = () => {
     fetchLoot();
   }, []);
 
-  const handleSelect = (item) => {
+  const handleSelect = (id) => {
     setSelected((prevSelected) =>
-      prevSelected.includes(item.name)
-        ? prevSelected.filter((name) => name !== item.name)
-        : [...prevSelected, item.name]
+      prevSelected.includes(id)
+        ? prevSelected.filter((item) => item !== id)
+        : [...prevSelected, id]
     );
   };
 
-  const handleSelectAll = () => {
-    setSelected((prevSelected) =>
-      prevSelected.length === loot.length ? [] : loot.map((item) => item.name)
+  const filteredLoot = loot.filter(item => {
+    return (
+      (searchQuery === '' || item.name.toLowerCase().includes(searchQuery.toLowerCase())) &&
+      (unidentifiedFilter === '' || item.unidentified === (unidentifiedFilter === 'true')) &&
+      (typeFilter === '' || item.type === typeFilter)
     );
-  };
-
-  const isSelected = (name) => selected.includes(name);
-
-  const handleRequestSort = (property) => {
-    const isAsc = orderBy === property && order === 'asc';
-    setOrder(isAsc ? 'desc' : 'asc');
-    setOrderBy(property);
-  };
-
-  const sortedLoot = [...loot].sort((a, b) => {
-    if (a[orderBy] < b[orderBy]) return order === 'asc' ? -1 : 1;
-    if (a[orderBy] > b[orderBy]) return order === 'asc' ? 1 : -1;
-    return 0;
   });
 
   return (
     <Container component="main">
-      <Typography component="h1" variant="h5" sx={{ mt: 3 }}>
-        Unprocessed Loot
-      </Typography>
-      <TableContainer component={Box} sx={{ mt: 3 }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell padding="checkbox">
-                <Checkbox
-                  indeterminate={selected.length > 0 && selected.length < loot.length}
-                  checked={loot.length > 0 && selected.length === loot.length}
-                  onChange={handleSelectAll}
-                />
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={orderBy === 'quantity'}
-                  direction={orderBy === 'quantity' ? order : 'asc'}
-                  onClick={() => handleRequestSort('quantity')}
-                >
-                  Quantity
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={orderBy === 'name'}
-                  direction={orderBy === 'name' ? order : 'asc'}
-                  onClick={() => handleRequestSort('name')}
-                >
-                  Name
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={orderBy === 'unidentified'}
-                  direction={orderBy === 'unidentified' ? order : 'asc'}
-                  onClick={() => handleRequestSort('unidentified')}
-                >
-                  Unidentified
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={orderBy === 'type'}
-                  direction={orderBy === 'type' ? order : 'asc'}
-                  onClick={() => handleRequestSort('type')}
-                >
-                  Type
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={orderBy === 'size'}
-                  direction={orderBy === 'size' ? order : 'asc'}
-                  onClick={() => handleRequestSort('size')}
-                >
-                  Size
-                </TableSortLabel>
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {sortedLoot.map((item) => (
-              <TableRow key={item.name} selected={isSelected(item.name)}>
-                <TableCell padding="checkbox">
-                  <Checkbox
-                    checked={isSelected(item.name)}
-                    onChange={() => handleSelect(item)}
-                  />
-                </TableCell>
-                <TableCell>{item.quantity}</TableCell>
-                <TableCell>{item.name}</TableCell>
-                <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
-                <TableCell>{item.type}</TableCell>
-                <TableCell>{item.size}</TableCell>
+      <Paper sx={{ p: 2 }}>
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          <Grid item xs={12} sm={4}>
+            <TextField
+              label="Search"
+              variant="outlined"
+              fullWidth
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={6} sm={4}>
+            <TextField
+              label="Unidentified"
+              select
+              variant="outlined"
+              fullWidth
+              value={unidentifiedFilter}
+              onChange={(e) => setUnidentifiedFilter(e.target.value)}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="true">Yes</MenuItem>
+              <MenuItem value="false">No</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={6} sm={4}>
+            <TextField
+              label="Type"
+              select
+              variant="outlined"
+              fullWidth
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <MenuItem value="">All</MenuItem>
+              {itemTypes.map((type) => (
+                <MenuItem key={type} value={type}>
+                  {type}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+        </Grid>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Select</TableCell>
+                <TableCell>Quantity</TableCell>
+                <TableCell>Name</TableCell>
+                <TableCell>Unidentified</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Size</TableCell>
+                <TableCell>Believed Value</TableCell>
+                <TableCell>Average Appraisal</TableCell>
+                <TableCell>Pending Sale</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-        <Button variant="contained" color="primary" sx={{ mr: 1 }}>
-          Sell
+            </TableHead>
+            <TableBody>
+              {filteredLoot.map((item) => (
+                <TableRow key={item.id} selected={selected.includes(item.id)} sx={{ height: '40px' }}>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selected.includes(item.id)}
+                      onChange={() => handleSelect(item.id)}
+                    />
+                  </TableCell>
+                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell>{item.name}</TableCell>
+                  <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{item.type}</TableCell>
+                  <TableCell>{item.size}</TableCell>
+                  <TableCell></TableCell> {/* Believed Value - Blank for now */}
+                  <TableCell></TableCell> {/* Average Appraisal - Blank for now */}
+                  <TableCell>{item.status === 'Pending Sale' ? '✔️' : ''}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <Button
+          variant="contained"
+          color="primary"
+          sx={{ mt: 2 }}
+          onClick={() => console.log('Process selected items')}
+        >
+          Process Selected
         </Button>
-        <Button variant="contained" color="secondary" sx={{ mr: 1 }}>
-          Trash
-        </Button>
-        <Button variant="contained" color="primary" sx={{ mr: 1 }}>
-          Keep Self
-        </Button>
-        <Button variant="contained" color="primary">
-          Keep Party
-        </Button>
-      </Box>
+      </Paper>
     </Container>
   );
 };
