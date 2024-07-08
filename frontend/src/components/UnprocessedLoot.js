@@ -11,6 +11,7 @@ import {
   Checkbox,
   Button,
   Paper,
+  TableSortLabel,
   TextField,
   MenuItem,
   Grid,
@@ -21,7 +22,8 @@ const itemTypes = ['Weapon', 'Armor', 'Magic', 'Gear', 'Trade Good', 'Other'];
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [order, setOrder] = useState('asc');
+  const [orderBy, setOrderBy] = useState('name');
   const [unidentifiedFilter, setUnidentifiedFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
 
@@ -51,28 +53,39 @@ const UnprocessedLoot = () => {
     );
   };
 
+  const handleRequestSort = (property) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
+
   const filteredLoot = loot.filter(item => {
     return (
-      (searchQuery === '' || item.name.toLowerCase().includes(searchQuery.toLowerCase())) &&
       (unidentifiedFilter === '' || item.unidentified === (unidentifiedFilter === 'true')) &&
       (typeFilter === '' || item.type === typeFilter)
     );
+  });
+
+  const sortedLoot = filteredLoot.sort((a, b) => {
+    if (orderBy === 'unidentified') {
+      return order === 'asc'
+        ? (a.unidentified === b.unidentified ? 0 : a.unidentified ? -1 : 1)
+        : (a.unidentified === b.unidentified ? 0 : a.unidentified ? 1 : -1);
+    }
+    if (a[orderBy] < b[orderBy]) {
+      return order === 'asc' ? -1 : 1;
+    }
+    if (a[orderBy] > b[orderBy]) {
+      return order === 'asc' ? 1 : -1;
+    }
+    return 0;
   });
 
   return (
     <Container component="main">
       <Paper sx={{ p: 2 }}>
         <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid item xs={12} sm={4}>
-            <TextField
-              label="Search"
-              variant="outlined"
-              fullWidth
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </Grid>
-          <Grid item xs={6} sm={4}>
+          <Grid item xs={6} sm={6}>
             <TextField
               label="Unidentified"
               select
@@ -86,7 +99,7 @@ const UnprocessedLoot = () => {
               <MenuItem value="false">No</MenuItem>
             </TextField>
           </Grid>
-          <Grid item xs={6} sm={4}>
+          <Grid item xs={6} sm={6}>
             <TextField
               label="Type"
               select
@@ -108,19 +121,72 @@ const UnprocessedLoot = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Select</TableCell>
-                <TableCell>Quantity</TableCell>
-                <TableCell>Name</TableCell>
-                <TableCell>Unidentified</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Size</TableCell>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    checked={selected.length === loot.length}
+                    onChange={() => setSelected(selected.length === loot.length ? [] : loot.map((item) => item.id))}
+                  />
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={orderBy === 'quantity'}
+                    direction={orderBy === 'quantity' ? order : 'asc'}
+                    onClick={() => handleRequestSort('quantity')}
+                  >
+                    Quantity
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={orderBy === 'name'}
+                    direction={orderBy === 'name' ? order : 'asc'}
+                    onClick={() => handleRequestSort('name')}
+                  >
+                    Name
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={orderBy === 'unidentified'}
+                    direction={orderBy === 'unidentified' ? order : 'asc'}
+                    onClick={() => handleRequestSort('unidentified')}
+                  >
+                    Unidentified
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={orderBy === 'type'}
+                    direction={orderBy === 'type' ? order : 'asc'}
+                    onClick={() => handleRequestSort('type')}
+                  >
+                    Type
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={orderBy === 'size'}
+                    direction={orderBy === 'size' ? order : 'asc'}
+                    onClick={() => handleRequestSort('size')}
+                  >
+                    Size
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell>Believed Value</TableCell>
                 <TableCell>Average Appraisal</TableCell>
-                <TableCell>Pending Sale</TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={orderBy === 'status'}
+                    direction={orderBy === 'status' ? order : 'asc'}
+                    onClick={() => handleRequestSort('status')}
+                  >
+                    Pending Sale
+                  </TableSortLabel>
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredLoot.map((item) => (
+              {sortedLoot.map((item) => (
                 <TableRow key={item.id} selected={selected.includes(item.id)} sx={{ height: '40px' }}>
                   <TableCell padding="checkbox">
                     <Checkbox
