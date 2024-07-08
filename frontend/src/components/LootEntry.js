@@ -26,27 +26,9 @@ const magicalOptions = [
   { label: 'Unidentified', value: true },
 ];
 const transactionTypes = ['Withdrawl', 'Deposit', 'Purchase', 'Sale', 'Party Loot Purchase', 'Other'];
-const entryTypes = ['Item', 'Gold'];
 
 const LootEntry = () => {
-  const [entries, setEntries] = useState([
-    {
-      entryType: 'Item',
-      sessionDate: new Date(),
-      quantity: 1,
-      name: '',
-      unidentified: null,
-      type: '',
-      size: '',
-      platinum: 0,
-      gold: 0,
-      silver: 0,
-      copper: 0,
-      transactionType: '',
-      notes: '',
-      suggestions: [],
-    },
-  ]);
+  const [entries, setEntries] = useState([]);
 
   const handleInputChange = (index, field, value) => {
     const newEntries = [...entries];
@@ -54,7 +36,7 @@ const LootEntry = () => {
     setEntries(newEntries);
   };
 
-  const addEntry = () => {
+  const addItemEntry = () => {
     setEntries([
       ...entries,
       {
@@ -65,13 +47,23 @@ const LootEntry = () => {
         unidentified: null,
         type: '',
         size: '',
+        suggestions: [],
+      },
+    ]);
+  };
+
+  const addGoldEntry = () => {
+    setEntries([
+      ...entries,
+      {
+        entryType: 'Gold',
+        sessionDate: new Date(),
+        transactionType: '',
         platinum: 0,
         gold: 0,
         silver: 0,
         copper: 0,
-        transactionType: '',
         notes: '',
-        suggestions: [],
       },
     ]);
   };
@@ -123,24 +115,7 @@ const LootEntry = () => {
       }
 
       // Reset form after submission
-      setEntries([
-        {
-          entryType: 'Item',
-          sessionDate: new Date(),
-          quantity: 1,
-          name: '',
-          unidentified: null,
-          type: '',
-          size: '',
-          platinum: 0,
-          gold: 0,
-          silver: 0,
-          copper: 0,
-          transactionType: '',
-          notes: '',
-          suggestions: [],
-        },
-      ]);
+      setEntries([]);
     } catch (error) {
       console.error('Error submitting loot entry', error);
     }
@@ -165,26 +140,18 @@ const LootEntry = () => {
       <Typography component="h1" variant="h5" sx={{ mt: 3 }}>
         Add Loot
       </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3, mb: 3 }}>
+        <Button variant="contained" onClick={addItemEntry}>
+          Add Item Entry
+        </Button>
+        <Button variant="contained" onClick={addGoldEntry}>
+          Add Gold Entry
+        </Button>
+      </Box>
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
         {entries.map((entry, index) => (
           <Box key={index} sx={{ mb: 3, border: '1px solid #ccc', padding: 2 }}>
             <Grid container spacing={2}>
-              <Grid item xs={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Entry Type</InputLabel>
-                  <Select
-                    label="Entry Type"
-                    value={entry.entryType}
-                    onChange={(e) => handleInputChange(index, 'entryType', e.target.value)}
-                  >
-                    {entryTypes.map((type) => (
-                      <MenuItem key={type} value={type}>
-                        {type}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
               <Grid item xs={2}>
                 <LocalizationProvider dateAdapter={AdapterDateFns}>
                   <DatePicker
@@ -349,9 +316,6 @@ const LootEntry = () => {
               )}
 
               <Grid item xs={2} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <IconButton onClick={addEntry} color="primary">
-                  <AddCircleOutlineIcon />
-                </IconButton>
                 {entries.length > 1 && (
                   <IconButton onClick={() => removeEntry(index)} color="secondary">
                     <RemoveCircleOutlineIcon />
