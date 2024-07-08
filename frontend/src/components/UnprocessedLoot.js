@@ -53,6 +53,15 @@ const UnprocessedLoot = () => {
     );
   };
 
+  const handleSelectAll = (event) => {
+    if (event.target.checked) {
+      const newSelecteds = loot.map((item) => item.id);
+      setSelected(newSelecteds);
+    } else {
+      setSelected([]);
+    }
+  };
+
   const handleRequestSort = (property) => {
     const isAsc = orderBy === property && order === 'asc';
     setOrder(isAsc ? 'desc' : 'asc');
@@ -152,8 +161,9 @@ const UnprocessedLoot = () => {
               <TableRow>
                 <TableCell padding="checkbox">
                   <Checkbox
-                    checked={selected.length === loot.length}
-                    onChange={() => setSelected(selected.length === loot.length ? [] : loot.map((item) => item.id))}
+                    indeterminate={selected.length > 0 && selected.length < loot.length}
+                    checked={loot.length > 0 && selected.length === loot.length}
+                    onChange={handleSelectAll}
                   />
                 </TableCell>
                 <TableCell>
