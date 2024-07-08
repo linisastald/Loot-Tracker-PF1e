@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Route, Switch } from 'react-router-dom'; // Updated import for Routes
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom'; // Updated import for Routes
 import Login from './components/Login';
 import LootEntry from './components/LootEntry';
 import UnprocessedLoot from './components/UnprocessedLoot';
@@ -14,14 +14,14 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <Switch>
+        <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<MainLayout />}>
             <Route path="/loot-entry" element={<LootEntry />} />
             <Route path="/unprocessed-loot" element={<UnprocessedLoot />} />
             <Route path="/gold-transactions" element={<GoldTransactions />} />
           </Route>
-        </Switch>
+        </Routes>
       </Router>
     </ThemeProvider>
   );
