@@ -14,6 +14,7 @@ function App() {
           <Route path="/loot-entry" component={LootEntry} />
           <Route path="/loot-overview" component={LootOverview} />
           <Route path="/gold-transactions" component={GoldTransactions} />
+          <Route exact path="/" component={Login} />
         </Switch>
       </div>
     </Router>
