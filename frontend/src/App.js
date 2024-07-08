@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom'; // Updated import for Routes
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom'; // Include Navigate for redirection
 import Login from './components/Login';
 import LootEntry from './components/LootEntry';
 import UnprocessedLoot from './components/UnprocessedLoot';
@@ -15,6 +15,7 @@ function App() {
       <CssBaseline />
       <Router>
         <Routes>
+          <Route path="/" element={<Navigate to="/login" />} /> {/* Redirect root to /login */}
           <Route path="/login" element={<Login />} />
           <Route element={<MainLayout />}>
             <Route path="/loot-entry" element={<LootEntry />} />
