@@ -14,14 +14,14 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <Routes>
+        <Switch>
           <Route path="/login" element={<Login />} />
           <Route element={<MainLayout />}>
             <Route path="/loot-entry" element={<LootEntry />} />
             <Route path="/unprocessed-loot" element={<UnprocessedLoot />} />
             <Route path="/gold-transactions" element={<GoldTransactions />} />
           </Route>
-        </Routes>
+        </Switch>
       </Router>
     </ThemeProvider>
   );
