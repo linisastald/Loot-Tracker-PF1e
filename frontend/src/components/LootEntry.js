@@ -28,6 +28,7 @@ const LootEntry = () => {
       unidentified: false,
       type: '',
       size: '',
+      suggestions: [],
     },
   ]);
 
@@ -47,6 +48,7 @@ const LootEntry = () => {
         unidentified: false,
         type: '',
         size: '',
+        suggestions: [],
       },
     ]);
   };
@@ -78,6 +80,7 @@ const LootEntry = () => {
           unidentified: false,
           type: '',
           size: '',
+          suggestions: [],
         },
       ]);
     } catch (error) {
