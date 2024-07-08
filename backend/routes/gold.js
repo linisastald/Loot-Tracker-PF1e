@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const pool = require('../db'); // Add this line
 const goldController = require('../controllers/goldController');
 
 router.post('/', goldController.createGoldEntry);
+
 // Get all gold transactions
 router.get('/', async (req, res) => {
   try {
@@ -13,4 +15,5 @@ router.get('/', async (req, res) => {
     res.status(500).send('Server error');
   }
 });
+
 module.exports = router;
