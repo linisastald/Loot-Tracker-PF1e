@@ -81,6 +81,35 @@ const UnprocessedLoot = () => {
     return 0;
   });
 
+  const updateItemStatus = async (status, who = null) => {
+    const token = localStorage.getItem('token');
+    try {
+      await Promise.all(
+        selected.map(id =>
+          axios.put(
+            `http://192.168.0.64:5000/api/loot/${id}`,
+            { status, who },
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          )
+        )
+      );
+      // Refresh loot data
+      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setLoot(response.data);
+      setSelected([]); // Clear selection after update
+    } catch (error) {
+      console.error('Error updating item status', error);
+    }
+  };
+
   return (
     <Container component="main">
       <Paper sx={{ p: 2 }}>
@@ -211,7 +240,7 @@ const UnprocessedLoot = () => {
           variant="contained"
           color="primary"
           sx={{ mt: 2 }}
-          onClick={() => console.log('Sell selected items')}
+          onClick={() => updateItemStatus('Pending Sale')}
         >
           Sell
         </Button>
@@ -219,14 +248,17 @@ const UnprocessedLoot = () => {
           variant="contained"
           color="secondary"
           sx={{ mt: 2, ml: 2 }}
-          onClick={() => console.log('Trash selected items')}
+          onClick={() => updateItemStatus('Trash')}
         >
           Trash
         </Button>
         <Button
           variant="contained"
           sx={{ mt: 2, ml: 2 }}
-          onClick={() => console.log('Keep selected items for self')}
+          onClick={() => {
+            const characterName = localStorage.getItem('characterName');
+            updateItemStatus('Kept Self', characterName);
+          }}
         >
           Keep Self
         </Button>
@@ -234,7 +266,7 @@ const UnprocessedLoot = () => {
           variant="contained"
           color="success"
           sx={{ mt: 2, ml: 2 }}
-          onClick={() => console.log('Keep selected items for party')}
+          onClick={() => updateItemStatus('Kept Party')}
         >
           Keep Party
         </Button>
