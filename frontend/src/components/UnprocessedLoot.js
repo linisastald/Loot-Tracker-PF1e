@@ -8,277 +8,90 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Paper,
   Checkbox,
   Button,
-  Paper,
-  TableSortLabel,
-  TextField,
-  MenuItem,
-  Grid,
+  Typography
 } from '@mui/material';
-
-const itemTypes = ['Weapon', 'Armor', 'Magic', 'Gear', 'Trade Good', 'Other'];
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState([]);
-  const [selected, setSelected] = useState([]);
-  const [order, setOrder] = useState('asc');
-  const [orderBy, setOrderBy] = useState('name');
-  const [unidentifiedFilter, setUnidentifiedFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
+  const [selectedItems, setSelectedItems] = useState([]);
 
   useEffect(() => {
     const fetchLoot = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await axios.get('http://192.168.0.64:5000/api/loot', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        setLoot(response.data);
-      } catch (error) {
-        console.error('Error fetching loot', error);
-      }
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setLoot(response.data);
     };
 
     fetchLoot();
   }, []);
 
-  const handleSelect = (id) => {
-    setSelected((prevSelected) =>
-      prevSelected.includes(id)
-        ? prevSelected.filter((item) => item !== id)
-        : [...prevSelected, id]
+  const handleSelectItem = (id) => {
+    setSelectedItems((prevSelectedItems) =>
+      prevSelectedItems.includes(id)
+        ? prevSelectedItems.filter((itemId) => itemId !== id)
+        : [...prevSelectedItems, id]
     );
-  };
-
-  const handleSelectAll = (event) => {
-    if (event.target.checked) {
-      const newSelecteds = loot.map((item) => item.id);
-      setSelected(newSelecteds);
-    } else {
-      setSelected([]);
-    }
-  };
-
-  const handleRequestSort = (property) => {
-    const isAsc = orderBy === property && order === 'asc';
-    setOrder(isAsc ? 'desc' : 'asc');
-    setOrderBy(property);
-  };
-
-  const filteredLoot = loot.filter(item => {
-    return (
-      (unidentifiedFilter === '' || item.unidentified === (unidentifiedFilter === 'true')) &&
-      (typeFilter === '' || item.type === typeFilter)
-    );
-  });
-
-  const sortedLoot = filteredLoot.sort((a, b) => {
-    if (orderBy === 'unidentified') {
-      return order === 'asc'
-        ? (a.unidentified === b.unidentified ? 0 : a.unidentified ? -1 : 1)
-        : (a.unidentified === b.unidentified ? 0 : a.unidentified ? 1 : -1);
-    }
-    if (a[orderBy] < b[orderBy]) {
-      return order === 'asc' ? -1 : 1;
-    }
-    if (a[orderBy] > b[orderBy]) {
-      return order === 'asc' ? 1 : -1;
-    }
-    return 0;
-  });
-
-  const updateItemStatus = async (status, who = null) => {
-    const token = localStorage.getItem('token');
-    try {
-      await Promise.all(
-        selected.map(id =>
-          axios.put(
-            `http://192.168.0.64:5000/api/loot/${id}`,
-            { status, who },
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          )
-        )
-      );
-      // Refresh loot data
-      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      setLoot(response.data);
-      setSelected([]); // Clear selection after update
-    } catch (error) {
-      console.error('Error updating item status', error);
-    }
   };
 
   return (
     <Container component="main">
-      <Paper sx={{ p: 2 }}>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid item xs={6} sm={6}>
-            <TextField
-              label="Unidentified"
-              select
-              variant="outlined"
-              fullWidth
-              value={unidentifiedFilter}
-              onChange={(e) => setUnidentifiedFilter(e.target.value)}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Yes</MenuItem>
-              <MenuItem value="false">No</MenuItem>
-            </TextField>
-          </Grid>
-          <Grid item xs={6} sm={6}>
-            <TextField
-              label="Type"
-              select
-              variant="outlined"
-              fullWidth
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <MenuItem value="">All</MenuItem>
-              {itemTypes.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {type}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-        </Grid>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell padding="checkbox">
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Typography variant="h6">Unprocessed Loot</Typography>
+      </Paper>
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Select</TableCell>
+              <TableCell>Quantity</TableCell>
+              <TableCell>Name</TableCell>
+              <TableCell>Unidentified</TableCell>
+              <TableCell>Type</TableCell>
+              <TableCell>Size</TableCell>
+              <TableCell>Believed Value</TableCell>
+              <TableCell>Average Appraisal</TableCell>
+              <TableCell>Pending Sale</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loot.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
                   <Checkbox
-                    indeterminate={selected.length > 0 && selected.length < loot.length}
-                    checked={loot.length > 0 && selected.length === loot.length}
-                    onChange={handleSelectAll}
+                    checked={selectedItems.includes(item.id)}
+                    onChange={() => handleSelectItem(item.id)}
                   />
                 </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={orderBy === 'quantity'}
-                    direction={orderBy === 'quantity' ? order : 'asc'}
-                    onClick={() => handleRequestSort('quantity')}
-                  >
-                    Quantity
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={orderBy === 'name'}
-                    direction={orderBy === 'name' ? order : 'asc'}
-                    onClick={() => handleRequestSort('name')}
-                  >
-                    Name
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={orderBy === 'unidentified'}
-                    direction={orderBy === 'unidentified' ? order : 'asc'}
-                    onClick={() => handleRequestSort('unidentified')}
-                  >
-                    Unidentified
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={orderBy === 'type'}
-                    direction={orderBy === 'type' ? order : 'asc'}
-                    onClick={() => handleRequestSort('type')}
-                  >
-                    Type
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={orderBy === 'size'}
-                    direction={orderBy === 'size' ? order : 'asc'}
-                    onClick={() => handleRequestSort('size')}
-                  >
-                    Size
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell>Believed Value</TableCell>
-                <TableCell>Average Appraisal</TableCell>
-                <TableCell>
-                  <TableSortLabel
-                    active={orderBy === 'status'}
-                    direction={orderBy === 'status' ? order : 'asc'}
-                    onClick={() => handleRequestSort('status')}
-                  >
-                    Pending Sale
-                  </TableSortLabel>
-                </TableCell>
+                <TableCell>{item.quantity}</TableCell>
+                <TableCell>{item.name}</TableCell>
+                <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
+                <TableCell>{item.type}</TableCell>
+                <TableCell>{item.size}</TableCell>
+                <TableCell>{item.believed_value || ''}</TableCell>
+                <TableCell>{item.average_appraisal || ''}</TableCell>
+                <TableCell>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {sortedLoot.map((item) => (
-                <TableRow key={item.id} selected={selected.includes(item.id)} sx={{ height: '40px' }}>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      checked={selected.includes(item.id)}
-                      onChange={() => handleSelect(item.id)}
-                    />
-                  </TableCell>
-                  <TableCell>{item.quantity}</TableCell>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{item.type}</TableCell>
-                  <TableCell>{item.size}</TableCell>
-                  <TableCell></TableCell> {/* Believed Value - Blank for now */}
-                  <TableCell></TableCell> {/* Average Appraisal - Blank for now */}
-                  <TableCell>{item.status === 'Pending Sale' ? '✔️' : ''}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        <Button
-          variant="contained"
-          color="primary"
-          sx={{ mt: 2 }}
-          onClick={() => updateItemStatus('Pending Sale')}
-        >
-          Sell
-        </Button>
-        <Button
-          variant="contained"
-          color="secondary"
-          sx={{ mt: 2, ml: 2 }}
-          onClick={() => updateItemStatus('Trash')}
-        >
-          Trash
-        </Button>
-        <Button
-          variant="contained"
-          color="default"
-          sx={{ mt: 2, ml: 2 }}
-          onClick={() => updateItemStatus('Kept Self', 'YourCharacterName')} // Replace 'YourCharacterName' with actual logged-in character's name
-        >
-          Keep Self
-        </Button>
-        <Button
-          variant="contained"
-          color="default"
-          sx={{ mt: 2, ml: 2 }}
-          onClick={() => updateItemStatus('Kept Party')}
-        >
-          Keep Party
-        </Button>
-      </Paper>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }}>
+        Sell
+      </Button>
+      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }}>
+        Trash
+      </Button>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }}>
+        Keep Self
+      </Button>
+      <Button variant="contained" color="primary" sx={{ mt: 2 }}>
+        Keep Party
+      </Button>
     </Container>
   );
 };
