@@ -7,15 +7,13 @@ import {
   Grid,
   TextField,
   Button,
-  FormControlLabel,
-  Checkbox,
+  FormControl,
   MenuItem,
   Select,
   InputLabel,
-  FormControl
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
-import AdapterDateFns from '@mui/x-date-pickers/AdapterDateFns';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 
 const LootEntry = () => {
   const [entries, setEntries] = useState([]);
