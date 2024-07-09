@@ -17,6 +17,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/login" />} /> {/* Redirect root to /login */}
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route element={<MainLayout />}>
             <Route path="/loot-entry" element={<LootEntry />} />
             <Route path="/unprocessed-loot" element={<UnprocessedLoot />} />
