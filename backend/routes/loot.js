@@ -1,13 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db'); // Import the pool
 const lootController = require('../controllers/lootController');
+const verifyToken = require('../middleware/auth'); // Add this line
 
-router.post('/', lootController.createLoot);
-router.get('/', lootController.getAllLoot);
-
-// Update item status
-router.put('/:id', async (req, res) => {
+router.post('/', verifyToken, lootController.createLoot); // Protect route with verifyToken
+router.get('/', verifyToken, lootController.getAllLoot);
+router.put('/:id', verifyToken, async (req, res) => {
   const { id } = req.params;
   const { status, who } = req.body;
 

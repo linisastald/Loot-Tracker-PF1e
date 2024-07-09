@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db'); // Add this line
 const goldController = require('../controllers/goldController');
+const verifyToken = require('../middleware/auth'); // Add this line
 
-router.post('/', goldController.createGoldEntry);
+router.post('/', verifyToken, goldController.createGoldEntry);
 
 // Get all gold transactions
 router.get('/', async (req, res) => {

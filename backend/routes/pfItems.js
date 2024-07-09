@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db'); // Ensure this points to your db configuration
-
-router.get('/', async (req, res) => {
+const verifyToken = require('../middleware/auth'); // Add this line
+//
+router.get('/', verifyToken, async (req, res) => {
   const { name } = req.query;
   try {
     const query = `SELECT * FROM pf_items WHERE name ILIKE $1`;
