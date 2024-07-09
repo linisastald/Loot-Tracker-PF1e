@@ -1,29 +1,79 @@
 const bcrypt = require('bcryptjs');
+const pool = require('../db');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
 
-exports.register = async (req, res) => {
-  const { character_name, password, campaign_id } = req.body;
-  const user = await User.findByCharacterName(character_name);
-  if (user) {
-    return res.status(400).json({ message: 'Character name already exists' });
+exports.registerUser = async (req, res) => {
+  const { username, password, role } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
   }
-  const password_hash = await bcrypt.hash(password, 10);
-  const newUser = await User.create(character_name, password_hash, campaign_id);
-  const token = jwt.sign({ id: newUser.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-  res.json({ token, user: newUser });
+
+  try {
+    // Check if a DM already exists
+    if (role === 'DM') {
+      const dmResult = await pool.query('SELECT * FROM users WHERE role = $1', ['DM']);
+      if (dmResult.rows.length > 0) {
+        return res.status(400).json({ error: 'A DM already exists. Only one DM can be registered.' });
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const userRole = role === 'DM' ? 'DM' : 'Player'; // Default to Player if not DM
+    const result = await pool.query(
+      'INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING *',
+      [username, hashedPassword, userRole]
+    );
+    const user = result.rows[0];
+
+    // Generate JWT token
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, process.env.JWT_SECRET, {
+      expiresIn: '1h',
+    });
+
+    res.status(201).json({ token });
+  } catch (error) {
+    console.error('Error registering user', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 };
 
-exports.login = async (req, res) => {
-  const { character_name, password } = req.body;
-  const user = await User.findByCharacterName(character_name);
-  if (!user) {
-    return res.status(400).json({ message: 'Character name or password is incorrect' });
+exports.loginUser = async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
   }
-  const isMatch = await bcrypt.compare(password, user.password_hash);
-  if (!isMatch) {
-    return res.status(400).json({ message: 'Character name or password is incorrect' });
+
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    const user = result.rows[0];
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid username or password' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Invalid username or password' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, process.env.JWT_SECRET, {
+      expiresIn: '1h',
+    });
+
+    res.status(200).json({ token });
+  } catch (error) {
+    console.error('Error logging in user', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-  res.json({ token, user });
+};
+exports.checkForDm = async (req, res) => {
+  try {
+    const dmResult = await pool.query('SELECT * FROM users WHERE role = $1', ['DM']);
+    const dmExists = dmResult.rows.length > 0;
+    res.status(200).json({ dmExists });
+  } catch (error) {
+    console.error('Error checking for DM', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 };

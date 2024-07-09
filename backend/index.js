@@ -2,7 +2,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const pool = require('./db'); // Ensure this points to your db configuration
-require('dotenv').config();
+const dotenv = require('dotenv');
+
+dotenv.config(); // Load environment variables
 
 const app = express();
 const port = process.env.PORT || 5000;
