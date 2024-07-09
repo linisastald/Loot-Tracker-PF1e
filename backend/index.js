@@ -19,12 +19,14 @@ app.get('/', (req, res) => {
 const authRoutes = require('./routes/auth');
 const lootRoutes = require('./routes/loot');
 const pfItemsRoutes = require('./routes/pfItems');
-const goldRoutes = require('./routes/gold'); // Add this line
+const goldRoutes = require('./routes/gold');
+const userRoutes = require('./routes/user');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/loot', lootRoutes);
 app.use('/api/pf_items', pfItemsRoutes);
-app.use('/api/gold', goldRoutes); // Add this line
+app.use('/api/gold', goldRoutes);
+app.use('/api/user', userRoutes);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
