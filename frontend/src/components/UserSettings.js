@@ -46,9 +46,14 @@ const UserSettings = () => {
       const token = localStorage.getItem('token');
       const url = character.id ? 'http://192.168.0.64:5000/api/user/characters' : 'http://192.168.0.64:5000/api/user/characters';
       const method = character.id ? 'put' : 'post';
+      const payload = {
+        ...character,
+        birthday: character.birthday || null,
+        deathday: character.deathday || null
+      };
       await axios[method](
         url,
-        character,
+        payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setCharacter({ name: '', appraisal_bonus: '', birthday: '', deathday: '', active: true });

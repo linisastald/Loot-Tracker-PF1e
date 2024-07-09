@@ -48,7 +48,14 @@ exports.addCharacter = async (req, res) => {
   try {
     const result = await pool.query(
       'INSERT INTO characters (user_id, name, appraisal_bonus, birthday, deathday, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [userId, name, appraisal_bonus, birthday, deathday, active]
+      [
+        userId,
+        name,
+        appraisal_bonus,
+        birthday ? birthday : null,
+        deathday ? deathday : null,
+        active
+      ]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -64,7 +71,15 @@ exports.updateCharacter = async (req, res) => {
   try {
     const result = await pool.query(
       'UPDATE characters SET name = $1, appraisal_bonus = $2, birthday = $3, deathday = $4, active = $5 WHERE id = $6 AND user_id = $7 RETURNING *',
-      [name, appraisal_bonus, birthday, deathday, active, id, userId]
+      [
+        name,
+        appraisal_bonus,
+        birthday ? birthday : null,
+        deathday ? deathday : null,
+        active,
+        id,
+        userId
+      ]
     );
     res.status(200).json(result.rows[0]);
   } catch (error) {
