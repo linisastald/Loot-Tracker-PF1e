@@ -52,8 +52,8 @@ exports.addCharacter = async (req, res) => {
         userId,
         name,
         appraisal_bonus,
-        birthday ? birthday : null,
-        deathday ? deathday : null,
+        birthday || null,
+        deathday || null,
         active
       ]
     );
@@ -74,8 +74,8 @@ exports.updateCharacter = async (req, res) => {
       [
         name,
         appraisal_bonus,
-        birthday ? birthday : null,
-        deathday ? deathday : null,
+        birthday || null,
+        deathday || null,
         active,
         id,
         userId

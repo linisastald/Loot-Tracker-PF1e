@@ -14,3 +14,13 @@ exports.createGoldEntry = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+exports.getAllGoldEntries = async (req, res) => {
+  try {
+    const goldEntries = await Gold.findAll();
+    res.status(200).json(goldEntries);
+  } catch (error) {
+    console.error('Error fetching gold entries', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

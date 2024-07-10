@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../db');
 const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 exports.registerUser = async (req, res) => {
   const { username, password, role } = req.body;
@@ -67,6 +68,7 @@ exports.loginUser = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.checkForDm = async (req, res) => {
   try {
     const dmResult = await pool.query('SELECT * FROM users WHERE role = $1', ['DM']);
