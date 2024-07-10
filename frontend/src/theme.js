@@ -9,6 +9,14 @@ const theme = createTheme({
     secondary: {
       main: '#f48fb1',
     },
+     customColor1: {
+      main: '#ff9800',
+      contrastText: '#fff',
+    },
+    customColor2: {
+      main: '#4caf50',
+      contrastText: '#000',
+    },
   },
   components: {
     MuiButton: {
