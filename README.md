@@ -101,11 +101,11 @@ MVP - Required features for release
 | Gold Entry              | MVP H    | Complete             | Ready for bug testing                                  |
 | Loot Entry              | MVP H    | In Progress, but MVP | Mostly working, add auto fill stuff                    |
 | Unprocessed Loot View   | MVP H    | Complete             | Ready for bug testing                                  |
-| Gold View               | MVP H    | Complete             |                                                        |
+| Gold View               | MVP H    | Complete             | Ready for bug testing                                  |
 | Loot Update             | MVP M    | Complete             | Ready for bug testing                                  |
 | Item DB                 | Med      | In Progress          | Have the items mostly, need to insert                  |
 | Kept Loot View          | MVP M    | To Do                |                                                        |
-| Party Kept Loot         | MVP M    | Complete             |                                                        |
+| Party Kept Loot         | MVP M    | Complete             | Ready for bug testing                                  |
 | Sold View               | MVP M    | To Do                |                                                        |
 | Campaign Settings       | High     | Pending              |                                                        |
 | DM Pages                | High     | Pending              |                                                        |
