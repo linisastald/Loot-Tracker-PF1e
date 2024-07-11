@@ -28,6 +28,9 @@ const Sidebar = () => {
         <ListItem button component={Link} to="/user-settings">
           <ListItemText primary="User Settings" />
         </ListItem>
+        <ListItem button component={Link} to="/given-away-or-trashed">
+          <ListItemText primary="Given Away or Trashed" />
+        </ListItem>
       </List>
     </Drawer>
   );

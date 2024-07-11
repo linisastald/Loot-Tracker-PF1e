@@ -5,7 +5,8 @@ import Register from './components/Register';
 import LootEntry from './components/LootEntry';
 import UnprocessedLoot from './components/UnprocessedLoot';
 import GoldTransactions from './components/GoldTransactions';
-import UserSettings from './components/UserSettings'; // Import UserSettings
+import UserSettings from './components/UserSettings';
+import GivenAwayOrTrashed from './components/GivenAwayOrTrashed'; // Import GivenAwayOrTrashed
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ThemeProvider } from '@mui/material/styles';
@@ -25,7 +26,8 @@ function App() {
             <Route path="/loot-entry" element={<LootEntry />} />
             <Route path="/unprocessed-loot" element={<UnprocessedLoot />} />
             <Route path="/gold-transactions" element={<GoldTransactions />} />
-            <Route path="/user-settings" element={<UserSettings />} /> {/* Add this line */}
+            <Route path="/user-settings" element={<UserSettings />} />
+            <Route path="/given-away-or-trashed" element={<GivenAwayOrTrashed />} /> {/* Add this line */}
           </Route>
         </Routes>
       </Router>
