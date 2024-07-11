@@ -39,7 +39,6 @@ const initialGoldEntry = {
 
 const LootEntry = () => {
   const [entries, setEntries] = useState([{ type: 'item', data: initialItemEntry }]);
-  const [entryType, setEntryType] = useState('item');
 
   const handleEntryChange = (index, e) => {
     const newEntries = [...entries];
@@ -69,15 +68,14 @@ const LootEntry = () => {
     const userId = decodedToken.id;
     try {
       for (const entry of entries) {
+        const data = { ...entry.data, whoupdated: userId };
         if (entry.type === 'item') {
-          const data = { ...entry.data, whoupdated: userId };
           await axios.post(
             'http://192.168.0.64:5000/api/loot',
             data,
             { headers: { Authorization: `Bearer ${token}` } }
           );
         } else {
-          const data = { ...entry.data, whoupdated: userId };
           await axios.post(
             'http://192.168.0.64:5000/api/gold',
             data,
@@ -154,10 +152,10 @@ const LootEntry = () => {
                       <InputLabel>Magical?</InputLabel>
                       <Select
                         name="unidentified"
-                        value={entry.data.unidentified || ''}
+                        value={entry.data.unidentified === null ? '' : entry.data.unidentified}
                         onChange={(e) => handleEntryChange(index, e)}
                       >
-                        <MenuItem value={null}>Not Magical</MenuItem>
+                        <MenuItem value="">Not Magical</MenuItem>
                         <MenuItem value={false}>Identified</MenuItem>
                         <MenuItem value={true}>Unidentified</MenuItem>
                       </Select>
@@ -168,7 +166,7 @@ const LootEntry = () => {
                       <InputLabel>Masterwork</InputLabel>
                       <Select
                         name="masterwork"
-                        value={entry.data.masterwork || ''}
+                        value={entry.data.masterwork === null ? '' : entry.data.masterwork}
                         onChange={(e) => handleEntryChange(index, e)}
                       >
                         <MenuItem value={true}>Yes</MenuItem>
