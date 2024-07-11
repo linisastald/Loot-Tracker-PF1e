@@ -38,27 +38,31 @@ const initialGoldEntry = {
 };
 
 const LootEntry = () => {
-  const [entries, setEntries] = useState([{ type: 'item', data: initialItemEntry }]);
+  const [entries, setEntries] = useState([{ type: 'item', data: { ...initialItemEntry } }]);
 
   const handleEntryChange = (index, e) => {
-    const newEntries = [...entries];
-    newEntries[index].data[e.target.name] = e.target.value;
-    setEntries(newEntries);
+    const { name, value } = e.target;
+    setEntries(prevEntries =>
+      prevEntries.map((entry, i) =>
+        i === index ? { ...entry, data: { ...entry.data, [name]: value } } : entry
+      )
+    );
   };
 
   const handleDateChange = (index, name, date) => {
-    const newEntries = [...entries];
-    newEntries[index].data[name] = date;
-    setEntries(newEntries);
+    setEntries(prevEntries =>
+      prevEntries.map((entry, i) =>
+        i === index ? { ...entry, data: { ...entry.data, [name]: date } } : entry
+      )
+    );
   };
 
   const handleAddEntry = (type) => {
-    setEntries([...entries, { type, data: type === 'item' ? initialItemEntry : initialGoldEntry }]);
+    setEntries([...entries, { type, data: type === 'item' ? { ...initialItemEntry } : { ...initialGoldEntry } }]);
   };
 
   const handleRemoveEntry = (index) => {
-    const newEntries = entries.filter((_, i) => i !== index);
-    setEntries(newEntries);
+    setEntries(entries.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e) => {
@@ -83,7 +87,7 @@ const LootEntry = () => {
           );
         }
       }
-      setEntries([{ type: 'item', data: initialItemEntry }]);
+      setEntries([{ type: 'item', data: { ...initialItemEntry } }]);
     } catch (error) {
       console.error('Error submitting entry', error);
     }
