@@ -12,15 +12,16 @@ import {
   Typography,
   Button,
   Grid,
-  TextField,
   MenuItem,
   Select,
   InputLabel,
-  FormControl
+  FormControl,
+  Checkbox
 } from '@mui/material';
 
 const KeptParty = () => {
   const [loot, setLoot] = useState([]);
+  const [selectedItems, setSelectedItems] = useState([]);
   const [typeFilter, setTypeFilter] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
 
@@ -53,6 +54,14 @@ const KeptParty = () => {
     } else if (name === 'size') {
       setSizeFilter(value);
     }
+  };
+
+  const handleSelectItem = (id) => {
+    setSelectedItems((prevSelectedItems) =>
+      prevSelectedItems.includes(id)
+        ? prevSelectedItems.filter((itemId) => itemId !== id)
+        : [...prevSelectedItems, id]
+    );
   };
 
   const filteredLoot = Array.isArray(loot) ? loot.filter(item => {
@@ -112,6 +121,7 @@ const KeptParty = () => {
         <Table>
           <TableHead>
             <TableRow>
+              <TableCell>Select</TableCell>
               <TableCell>Quantity</TableCell>
               <TableCell>Name</TableCell>
               <TableCell>Type</TableCell>
@@ -123,6 +133,12 @@ const KeptParty = () => {
           <TableBody>
             {filteredLoot.map((item) => (
               <TableRow key={item.id}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedItems.includes(item.id)}
+                    onChange={() => handleSelectItem(item.id)}
+                  />
+                </TableCell>
                 <TableCell>{item.quantity}</TableCell>
                 <TableCell>{item.name}</TableCell>
                 <TableCell>{item.type}</TableCell>
