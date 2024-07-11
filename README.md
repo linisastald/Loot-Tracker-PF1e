@@ -214,7 +214,7 @@ MVP - Required features for release
 | Feature                 | Priority | Status             | Notes                                                   | 
 |-------------------------|----------|--------------------|---------------------------------------------------------|
 | DB Redesign             | MVP VH   | Complete           |                                                         |
-| Login                   | MVP H    | In Progress        | Dummy login atm, any details work                       |
+| Login                   | MVP H    | Complete           | Registration and Login works                            |
 | Gold Entry              | MVP H    | In Progress        | Mostly working                                          |
 | Loot Entry              | MVP H    | In Progress        | Mostly working                                          |
 | Unprocessed Loot View   | MVP H    | Complete           | Ready for bug testing                                   |
