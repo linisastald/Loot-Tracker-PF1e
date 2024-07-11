@@ -198,6 +198,26 @@ const GoldTransactions = () => {
         </Grid>
       </Paper>
       <Paper sx={{ p: 2, mb: 2 }}>
+        <Button variant="contained" color="primary" onClick={handleDistributeAll} sx={{ mr: 2 }}>
+          Distribute All
+        </Button>
+        <Button variant="contained" color="primary" onClick={handleDistributePlusPartyLoot} sx={{ mr: 2 }}>
+          Distribute + Party Loot
+        </Button>
+        <Button variant="contained" color="primary" onClick={() => setOpenPartyLootDialog(true)} sx={{ mr: 2 }}>
+          Define Party Loot Distribute
+        </Button>
+        <Button variant="contained" color="primary" onClick={() => setOpenCharacterDistributeDialog(true)} sx={{ mr: 2 }}>
+          Define Character Distribute
+        </Button>
+        {userRole === 'DM' && (
+          <Button variant="contained" color="primary" onClick={handleBalance}>
+            Balance
+          </Button>
+        )}
+        {error && <Typography color="error">{error}</Typography>}
+      </Paper>
+      <Paper sx={{ p: 2, mb: 2 }}>
         <LocalizationProvider dateAdapter={AdapterDateFns}>
           <Grid container spacing={2} alignItems="center">
             <Grid item>
@@ -235,26 +255,6 @@ const GoldTransactions = () => {
             <Button variant="contained" onClick={() => handleQuickFilter(12)}>Last Year</Button>
           </Grid>
         </Grid>
-      </Paper>
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Button variant="contained" color="primary" onClick={handleDistributeAll} sx={{ mr: 2 }}>
-          Distribute All
-        </Button>
-        <Button variant="contained" color="primary" onClick={handleDistributePlusPartyLoot} sx={{ mr: 2 }}>
-          Distribute + Party Loot
-        </Button>
-        <Button variant="contained" color="primary" onClick={() => setOpenPartyLootDialog(true)} sx={{ mr: 2 }}>
-          Define Party Loot Distribute
-        </Button>
-        <Button variant="contained" color="primary" onClick={() => setOpenCharacterDistributeDialog(true)} sx={{ mr: 2 }}>
-          Define Character Distribute
-        </Button>
-        {userRole === 'DM' && (
-          <Button variant="contained" color="primary" onClick={handleBalance}>
-            Balance
-          </Button>
-        )}
-        {error && <Typography color="error">{error}</Typography>}
       </Paper>
       <TableContainer component={Paper}>
         <Table>
