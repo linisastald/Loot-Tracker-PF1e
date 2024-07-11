@@ -5,7 +5,15 @@ exports.createGoldEntry = async (req, res) => {
   try {
     const createdEntries = [];
     for (const entry of goldEntries) {
-      const createdEntry = await Gold.create(entry);
+      const { transactionType, platinum, gold, silver, copper } = entry;
+      const adjustedEntry = {
+        ...entry,
+        platinum: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(platinum) : platinum,
+        gold: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(gold) : gold,
+        silver: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(silver) : silver,
+        copper: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(copper) : copper
+      };
+      const createdEntry = await Gold.create(adjustedEntry);
       createdEntries.push(createdEntry);
     }
     res.status(201).json(createdEntries);

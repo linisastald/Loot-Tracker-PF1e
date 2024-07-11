@@ -72,7 +72,19 @@ const LootEntry = () => {
     const userId = decodedToken.id;
     try {
       for (const entry of entries) {
-        const data = { ...entry.data, whoupdated: userId };
+        let data = { ...entry.data, whoupdated: userId };
+        if (entry.type === 'gold') {
+          const { transactionType, platinum, gold, silver, copper } = data;
+          if (['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType)) {
+            data = {
+              ...data,
+              platinum: platinum ? -Math.abs(platinum) : 0,
+              gold: gold ? -Math.abs(gold) : 0,
+              silver: silver ? -Math.abs(silver) : 0,
+              copper: copper ? -Math.abs(copper) : 0
+            };
+          }
+        }
         if (entry.type === 'item') {
           await axios.post(
             'http://192.168.0.64:5000/api/loot',
@@ -255,6 +267,7 @@ const LootEntry = () => {
                       value={entry.data.platinum || ''}
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
+                      inputProps={{ min: 0 }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={3}>
@@ -265,6 +278,7 @@ const LootEntry = () => {
                       value={entry.data.gold || ''}
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
+                      inputProps={{ min: 0 }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={3}>
@@ -275,6 +289,7 @@ const LootEntry = () => {
                       value={entry.data.silver || ''}
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
+                      inputProps={{ min: 0 }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={3}>
@@ -285,6 +300,7 @@ const LootEntry = () => {
                       value={entry.data.copper || ''}
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
+                      inputProps={{ min: 0 }}
                     />
                   </Grid>
                   <Grid item xs={12}>
