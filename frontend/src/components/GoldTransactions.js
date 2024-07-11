@@ -55,7 +55,7 @@ const GoldTransactions = () => {
       const token = localStorage.getItem('token');
       const decodedToken = jwt_decode(token);
       const userId = decodedToken.id;
-      const response = await axios.get(`http://192.168.0.64:5000/api/users/${userId}`, {
+      const response = await axios.get(`http://192.168.0.64:5000/api/user/${userId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setUserRole(response.data.role);
