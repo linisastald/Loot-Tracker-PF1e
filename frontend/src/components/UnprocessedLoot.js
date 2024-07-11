@@ -21,14 +21,20 @@ const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
   const [openItems, setOpenItems] = useState({});
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchLoot = async () => {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setLoot(response.data);
+      try {
+        const token = localStorage.getItem('token');
+        const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setLoot(response.data);
+      } catch (error) {
+        console.error('Error fetching loot:', error);
+        setError('Failed to fetch loot data.');
+      }
     };
 
     fetchLoot();
@@ -57,6 +63,7 @@ const UnprocessedLoot = () => {
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Unprocessed Loot</Typography>
+        {error && <Typography color="error">{error}</Typography>}
       </Paper>
       <TableContainer component={Paper}>
         <Table>
@@ -105,7 +112,7 @@ const UnprocessedLoot = () => {
                     <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
                     <TableCell>{item.type}</TableCell>
                     <TableCell>{item.size}</TableCell>
-                    <TableCell>{item.believed_value || ''}</TableCell>
+                    <TableCell>{item.believedvalue || ''}</TableCell>
                     <TableCell>{item.average_appraisal || ''}</TableCell>
                     <TableCell>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                   </TableRow>
@@ -127,8 +134,8 @@ const UnprocessedLoot = () => {
                                 <TableCell>{subItem.unidentified ? 'Yes' : 'No'}</TableCell>
                                 <TableCell>{subItem.type}</TableCell>
                                 <TableCell>{subItem.size}</TableCell>
-                                <TableCell>{subItem.believed_value || ''}</TableCell>
-                                <TableCell>{subItem.average_appraisal || ''}</TableCell>
+                                <TableCell>{subItem.believedvalue || ''}</TableCell>
+                                <TableCell>{subItem.appraisalroll || ''}</TableCell>
                                 <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                               </TableRow>
                             ))}
