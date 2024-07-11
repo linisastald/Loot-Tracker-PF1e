@@ -1,8 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Drawer, List, ListItem, ListItemText, Typography } from '@mui/material';
+import {
+  Drawer,
+  List,
+  ListItem,
+  ListItemText,
+  Typography,
+  Collapse,
+  ListItemIcon,
+} from '@mui/material';
+import { ExpandLess, ExpandMore } from '@mui/icons-material';
 
 const Sidebar = () => {
+  const [openLootViews, setOpenLootViews] = useState(false);
+  const [openGold, setOpenGold] = useState(false);
+  const [openSettings, setOpenSettings] = useState(false);
+
+  const handleToggleLootViews = () => {
+    setOpenLootViews(!openLootViews);
+  };
+
+  const handleToggleGold = () => {
+    setOpenGold(!openGold);
+  };
+
+  const handleToggleSettings = () => {
+    setOpenSettings(!openSettings);
+  };
+
   return (
     <Drawer
       variant="permanent"
@@ -19,24 +44,48 @@ const Sidebar = () => {
         <ListItem button component={Link} to="/loot-entry">
           <ListItemText primary="Loot Entry" />
         </ListItem>
-        <ListItem button component={Link} to="/unprocessed-loot">
-          <ListItemText primary="Unprocessed Loot" />
+        <ListItem button onClick={handleToggleLootViews}>
+          <ListItemText primary="Loot Views" />
+          {openLootViews ? <ExpandLess /> : <ExpandMore />}
         </ListItem>
-        <ListItem button component={Link} to="/kept-party">
-          <ListItemText primary="Kept - Party" />
+        <Collapse in={openLootViews} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            <ListItem button component={Link} to="/unprocessed-loot" sx={{ pl: 4 }}>
+              <ListItemText primary="Unprocessed Loot" />
+            </ListItem>
+            <ListItem button component={Link} to="/kept-party" sx={{ pl: 4 }}>
+              <ListItemText primary="Kept - Party" />
+            </ListItem>
+            <ListItem button component={Link} to="/kept-character" sx={{ pl: 4 }}>
+              <ListItemText primary="Kept - Character" />
+            </ListItem>
+            <ListItem button component={Link} to="/given-away-or-trashed" sx={{ pl: 4 }}>
+              <ListItemText primary="Given Away or Trashed" />
+            </ListItem>
+          </List>
+        </Collapse>
+        <ListItem button onClick={handleToggleGold}>
+          <ListItemText primary="Gold" />
+          {openGold ? <ExpandLess /> : <ExpandMore />}
         </ListItem>
-        <ListItem button component={Link} to="/kept-character">
-          <ListItemText primary="Kept - Character" />
+        <Collapse in={openGold} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            <ListItem button component={Link} to="/gold-transactions" sx={{ pl: 4 }}>
+              <ListItemText primary="Gold Transactions" />
+            </ListItem>
+          </List>
+        </Collapse>
+        <ListItem button onClick={handleToggleSettings}>
+          <ListItemText primary="Settings" />
+          {openSettings ? <ExpandLess /> : <ExpandMore />}
         </ListItem>
-        <ListItem button component={Link} to="/given-away-or-trashed">
-          <ListItemText primary="Given Away or Trashed" />
-        </ListItem>
-        <ListItem button component={Link} to="/gold-transactions">
-          <ListItemText primary="Gold Transactions" />
-        </ListItem>
-        <ListItem button component={Link} to="/user-settings">
-          <ListItemText primary="User Settings" />
-        </ListItem>
+        <Collapse in={openSettings} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            <ListItem button component={Link} to="/user-settings" sx={{ pl: 4 }}>
+              <ListItemText primary="User Settings" />
+            </ListItem>
+          </List>
+        </Collapse>
       </List>
     </Drawer>
   );
