@@ -25,6 +25,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  TableSortLabel,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import jwt_decode from 'jwt-decode';
@@ -39,6 +40,8 @@ const UnprocessedLoot = () => {
   const [splitQuantities, setSplitQuantities] = useState([]);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
 
   useEffect(() => {
     fetchLoot();
@@ -184,29 +187,181 @@ const UnprocessedLoot = () => {
     }
   };
 
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedLoot = [...loot.summary].sort((a, b) => {
+    if (a[sortConfig.key] < b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? -1 : 1;
+    }
+    if (a[sortConfig.key] > b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((prevFilters) => ({
+      ...prevFilters,
+      [name]: value,
+    }));
+  };
+
+  const filteredLoot = sortedLoot.filter((item) => {
+    return (
+      (filters.unidentified === '' || String(item.unidentified) === filters.unidentified) &&
+      (filters.type === '' || item.type === filters.type) &&
+      (filters.size === '' || item.size === filters.size) &&
+      (filters.pendingSale === '' || (item.status === 'Pending Sale') === (filters.pendingSale === 'true'))
+    );
+  });
+
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Unprocessed Loot</Typography>
         {error && <Typography color="error">{error}</Typography>}
       </Paper>
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={3}>
+          <FormControl fullWidth>
+            <InputLabel>Unidentified</InputLabel>
+            <Select
+              name="unidentified"
+              value={filters.unidentified}
+              onChange={handleFilterChange}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="true">Unidentified</MenuItem>
+              <MenuItem value="false">Identified</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid item xs={3}>
+          <FormControl fullWidth>
+            <InputLabel>Type</InputLabel>
+            <Select
+              name="type"
+              value={filters.type}
+              onChange={handleFilterChange}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="Weapon">Weapon</MenuItem>
+              <MenuItem value="Armor">Armor</MenuItem>
+              <MenuItem value="Magic">Magic</MenuItem>
+              <MenuItem value="Gear">Gear</MenuItem>
+              <MenuItem value="Trade Good">Trade Good</MenuItem>
+              <MenuItem value="Other">Other</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid item xs={3}>
+          <FormControl fullWidth>
+            <InputLabel>Size</InputLabel>
+            <Select
+              name="size"
+              value={filters.size}
+              onChange={handleFilterChange}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="Fine">Fine</MenuItem>
+              <MenuItem value="Diminutive">Diminutive</MenuItem>
+              <MenuItem value="Tiny">Tiny</MenuItem>
+              <MenuItem value="Small">Small</MenuItem>
+              <MenuItem value="Medium">Medium</MenuItem>
+              <MenuItem value="Large">Large</MenuItem>
+              <MenuItem value="Huge">Huge</MenuItem>
+              <MenuItem value="Gargantuan">Gargantuan</MenuItem>
+              <MenuItem value="Colossal">Colossal</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid item xs={3}>
+          <FormControl fullWidth>
+            <InputLabel>Pending Sale</InputLabel>
+            <Select
+              name="pendingSale"
+              value={filters.pendingSale}
+              onChange={handleFilterChange}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="true">Pending Sale</MenuItem>
+              <MenuItem value="false">Not Pending Sale</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+      </Grid>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
               <TableCell>Select</TableCell>
-              <TableCell>Quantity</TableCell>
-              <TableCell>Name</TableCell>
-              <TableCell>Unidentified</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Size</TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'quantity'}
+                  direction={sortConfig.direction}
+                  onClick={() => handleSort('quantity')}
+                >
+                  Quantity
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'name'}
+                  direction={sortConfig.direction}
+                  onClick={() => handleSort('name')}
+                >
+                  Name
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'unidentified'}
+                  direction={sortConfig.direction}
+                  onClick={() => handleSort('unidentified')}
+                >
+                  Unidentified
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'type'}
+                  direction={sortConfig.direction}
+                  onClick={() => handleSort('type')}
+                >
+                  Type
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'size'}
+                  direction={sortConfig.direction}
+                  onClick={() => handleSort('size')}
+                >
+                  Size
+                </TableSortLabel>
+              </TableCell>
               <TableCell>Believed Value</TableCell>
               <TableCell>Average Appraisal</TableCell>
-              <TableCell>Pending Sale</TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'status'}
+                  direction={sortConfig.direction}
+                  onClick={() => handleSort('status')}
+                >
+                  Pending Sale
+                </TableSortLabel>
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {loot.summary.map((item) => {
+            {filteredLoot.map((item) => {
               const individualItems = getIndividualItems(item.name);
               const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
               const isPendingSale = individualItems.some((item) => item.status === 'Pending Sale');
@@ -237,7 +392,13 @@ const UnprocessedLoot = () => {
                       )}
                       {item.name}
                     </TableCell>
-                    <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>
+                      {item.unidentified === null
+                        ? ''
+                        : item.unidentified
+                        ? <strong>Unidentified</strong>
+                        : 'Identified'}
+                    </TableCell>
                     <TableCell>{item.type}</TableCell>
                     <TableCell>{item.size}</TableCell>
                     <TableCell>{item.believedvalue || ''}</TableCell>
@@ -260,7 +421,13 @@ const UnprocessedLoot = () => {
                                   </TableCell>
                                   <TableCell>{subItem.quantity}</TableCell>
                                   <TableCell>{subItem.name}</TableCell>
-                                  <TableCell>{subItem.unidentified ? 'Yes' : 'No'}</TableCell>
+                                  <TableCell>
+                                    {subItem.unidentified === null
+                                      ? ''
+                                      : subItem.unidentified
+                                      ? <strong>Unidentified</strong>
+                                      : 'Identified'}
+                                  </TableCell>
                                   <TableCell>{subItem.type}</TableCell>
                                   <TableCell>{subItem.size}</TableCell>
                                   <TableCell>{subItem.believedvalue || ''}</TableCell>
