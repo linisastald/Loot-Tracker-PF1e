@@ -215,7 +215,7 @@ const UnprocessedLoot = () => {
 
               return (
                 <React.Fragment key={item.name}>
-                  <TableRow>
+                  <TableRow key={`${item.name}-${item.unidentified}-${item.type}`}>
                     <TableCell>
                       <Checkbox
                         checked={individualItems.every((item) => selectedItems.includes(item.id))}

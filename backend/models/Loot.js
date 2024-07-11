@@ -124,12 +124,10 @@ exports.splitStack = async (id, splits, userId) => {
 
 exports.updateEntry = async (id, updatedEntry) => {
   try {
-    // Get current entry
     const currentEntryQuery = `SELECT * FROM loot WHERE id = $1`;
     const currentEntryResult = await pool.query(currentEntryQuery, [id]);
     const currentEntry = currentEntryResult.rows[0];
 
-    // Merge current entry with updated entry, prioritizing updated fields
     const mergedEntry = {
       ...currentEntry,
       ...updatedEntry,
@@ -160,4 +158,3 @@ exports.updateEntry = async (id, updatedEntry) => {
     throw error;
   }
 };
-
