@@ -13,15 +13,28 @@ import {
   Button,
   Typography,
   Collapse,
-  IconButton
+  IconButton,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  TextField,
+  Grid,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import jwt_decode from 'jwt-decode';
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
   const [openItems, setOpenItems] = useState({});
   const [error, setError] = useState(null);
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [splitQuantities, setSplitQuantities] = useState([]);
+  const [updatedEntry, setUpdatedEntry] = useState({});
+  const [activeUser, setActiveUser] = useState(null);
 
   useEffect(() => {
     const fetchLoot = async () => {
@@ -37,7 +50,16 @@ const UnprocessedLoot = () => {
       }
     };
 
+    const fetchActiveUser = () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const decodedToken = jwt_decode(token);
+        setActiveUser(decodedToken);
+      }
+    };
+
     fetchLoot();
+    fetchActiveUser();
   }, []);
 
   const handleSelectItem = (id) => {
@@ -57,6 +79,107 @@ const UnprocessedLoot = () => {
 
   const getIndividualItems = (name) => {
     return loot.individual.filter((item) => item.name === name);
+  };
+
+  const updateLootStatus = async (status) => {
+    try {
+      const token = localStorage.getItem('token');
+      const selectedId = selectedItems[0]; // Only handle one selected item at a time
+      const selectedItem = loot.individual.find((item) => item.id === selectedId);
+      const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
+      await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
+        id: selectedId,
+        status,
+        userId: activeUser.id,
+        whohas,
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSelectedItems([]);
+      fetchLoot();
+    } catch (error) {
+      console.error(`Error updating loot status to ${status}:`, error);
+    }
+  };
+
+  const handleSell = () => updateLootStatus('Pending Sale');
+  const handleTrash = () => updateLootStatus('Trashed');
+  const handleKeepSelf = () => updateLootStatus('Kept Self');
+  const handleKeepParty = () => updateLootStatus('Kept Party');
+
+  const handleSplitStack = () => {
+    if (selectedItems.length !== 1) return;
+    const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
+    setSplitQuantities(new Array(selectedItem.quantity).fill(''));
+    setSplitDialogOpen(true);
+  };
+
+  const handleUpdate = () => {
+    if (selectedItems.length !== 1) return;
+    const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
+    setUpdatedEntry({ ...selectedItem });
+    setUpdateDialogOpen(true);
+  };
+
+  const handleSplitDialogClose = () => {
+    setSplitDialogOpen(false);
+  };
+
+  const handleUpdateDialogClose = () => {
+    setUpdateDialogOpen(false);
+  };
+
+  const handleSplitChange = (index, value) => {
+    const updatedSplits = [...splitQuantities];
+    updatedSplits[index] = value;
+    setSplitQuantities(updatedSplits);
+  };
+
+  const handleUpdateChange = (e) => {
+    const { name, value } = e.target;
+    setUpdatedEntry((prevEntry) => ({
+      ...prevEntry,
+      [name]: value,
+    }));
+  };
+
+  const handleSplitSubmit = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const selectedId = selectedItems[0];
+      const splits = splitQuantities.map((quantity) => ({
+        quantity: parseInt(quantity, 10),
+      }));
+      await axios.post('http://192.168.0.64:5000/api/loot/split-stack', {
+        id: selectedId,
+        splits,
+        userId: activeUser.id,
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSelectedItems([]);
+      setSplitDialogOpen(false);
+      fetchLoot();
+    } catch (error) {
+      console.error('Error splitting stack:', error);
+    }
+  };
+
+  const handleUpdateSubmit = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put('http://192.168.0.64:5000/api/loot/update-entry', {
+        id: selectedItems[0],
+        updatedEntry,
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSelectedItems([]);
+      setUpdateDialogOpen(false);
+      fetchLoot();
+    } catch (error) {
+      console.error('Error updating entry:', error);
+    }
   };
 
   return (
@@ -150,18 +273,131 @@ const UnprocessedLoot = () => {
           </TableBody>
         </Table>
       </TableContainer>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSell}>
         Sell
       </Button>
-      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }}>
+      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={handleTrash}>
         Trash
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleKeepSelf}>
         Keep Self
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2 }}>
+      <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={handleKeepParty}>
         Keep Party
       </Button>
+      {selectedItems.length === 1 && (
+        <>
+          <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStack}>
+            Split Stack
+          </Button>
+          <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={handleUpdate}>
+            Update
+          </Button>
+        </>
+      )}
+
+      {/* Split Stack Dialog */}
+      <Dialog open={splitDialogOpen} onClose={handleSplitDialogClose}>
+        <DialogTitle>Split Stack</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Enter the quantities for each new stack:
+          </DialogContentText>
+          {splitQuantities.map((quantity, index) => (
+            <TextField
+              key={index}
+              autoFocus
+              margin="dense"
+              label={`Quantity ${index + 1}`}
+              type="number"
+              fullWidth
+              value={quantity}
+              onChange={(e) => handleSplitChange(index, e.target.value)}
+            />
+          ))}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleSplitDialogClose}>Cancel</Button>
+          <Button onClick={handleSplitSubmit}>Split</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Update Dialog */}
+      <Dialog open={updateDialogOpen} onClose={handleUpdateDialogClose}>
+        <DialogTitle>Update Entry</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Quantity"
+                type="number"
+                name="quantity"
+                value={updatedEntry.quantity || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Item Name"
+                name="name"
+                value={updatedEntry.name || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Unidentified"
+                name="unidentified"
+                value={updatedEntry.unidentified || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Masterwork"
+                name="masterwork"
+                value={updatedEntry.masterwork || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Type"
+                name="type"
+                value={updatedEntry.type || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Size"
+                name="size"
+                value={updatedEntry.size || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Notes"
+                name="notes"
+                value={updatedEntry.notes || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleUpdateDialogClose}>Cancel</Button>
+          <Button onClick={handleUpdateSubmit}>Update</Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

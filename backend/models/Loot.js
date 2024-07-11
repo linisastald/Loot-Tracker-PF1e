@@ -23,7 +23,6 @@ exports.create = async (entry) => {
 
 exports.findAll = async () => {
   try {
-    // Query for the summarized loot
     const summaryQuery = `
       SELECT l.name, SUM(l.quantity) as quantity, l.unidentified, l.masterwork, l.type, l.size, l.status
       FROM loot l
@@ -33,7 +32,6 @@ exports.findAll = async () => {
     `;
     const summaryResult = await pool.query(summaryQuery);
 
-    // Query for the individual loot items
     const individualQuery = `
       SELECT l.id, l.session_date, l.quantity, l.name, l.unidentified, l.masterwork, l.type, l.size, l.status, a.believedvalue, a.appraisalroll
       FROM loot l
@@ -63,6 +61,78 @@ exports.updateStatus = async (id, status, whohas) => {
     await pool.query(query, values);
   } catch (error) {
     console.error('Error updating loot status:', error);
+    throw error;
+  }
+};
+
+exports.splitStack = async (id, splits, userId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const originalItemQuery = 'SELECT * FROM loot WHERE id = $1';
+    const originalItemResult = await client.query(originalItemQuery, [id]);
+    const originalItem = originalItemResult.rows[0];
+
+    const deleteOriginalQuery = 'DELETE FROM loot WHERE id = $1';
+    await client.query(deleteOriginalQuery, [id]);
+
+    const insertSplitQuery = `
+      INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, status, whoupdated, lastupdate, whohas, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, $10, $11)
+    `;
+
+    for (const split of splits) {
+      const values = [
+        originalItem.session_date,
+        split.quantity,
+        originalItem.name,
+        originalItem.unidentified,
+        originalItem.masterwork,
+        originalItem.type,
+        originalItem.size,
+        originalItem.status,
+        userId,
+        originalItem.whohas,
+        originalItem.notes,
+      ];
+      await client.query(insertSplitQuery, values);
+    }
+
+    await client.query('COMMIT');
+  } catch (error) {
+    console.error('Error splitting stack:', error);
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+exports.updateEntry = async (id, updatedEntry) => {
+  try {
+    const query = `
+      UPDATE loot
+      SET session_date = $1, quantity = $2, name = $3, unidentified = $4, masterwork = $5, type = $6, size = $7, status = $8, whoupdated = $9, lastupdate = CURRENT_TIMESTAMP, whohas = $10, notes = $11
+      WHERE id = $12
+    `;
+    const values = [
+      updatedEntry.sessionDate,
+      updatedEntry.quantity,
+      updatedEntry.name,
+      updatedEntry.unidentified,
+      updatedEntry.masterwork,
+      updatedEntry.type,
+      updatedEntry.size,
+      updatedEntry.status,
+      updatedEntry.whoupdated,
+      updatedEntry.whohas,
+      updatedEntry.notes,
+      id
+    ];
+    await pool.query(query, values);
+  } catch (error) {
+    console.error('Error updating entry:', error);
     throw error;
   }
 };
