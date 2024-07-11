@@ -17,7 +17,7 @@ import {
 const GoldTransactions = () => {
   const [goldEntries, setGoldEntries] = useState([]);
   const [error, setError] = useState(null);
-  const [totals, setTotals] = useState({ platinum: 0, gold: 0, silver: 0, copper: 0 });
+  const [totals, setTotals] = useState({ platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0 });
 
   useEffect(() => {
     fetchGoldEntries();
@@ -48,6 +48,7 @@ const GoldTransactions = () => {
       },
       { platinum: 0, gold: 0, silver: 0, copper: 0 }
     );
+    totals.fullTotal = (10 * totals.platinum) + totals.gold + (totals.silver / 10) + (totals.copper / 100);
     setTotals(totals);
   };
 
@@ -75,10 +76,23 @@ const GoldTransactions = () => {
         <Typography variant="h6">Gold Transactions</Typography>
       </Paper>
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="body1">Total Platinum: {totals.platinum}</Typography>
-        <Typography variant="body1">Total Gold: {totals.gold}</Typography>
-        <Typography variant="body1">Total Silver: {totals.silver}</Typography>
-        <Typography variant="body1">Total Copper: {totals.copper}</Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Typography variant="body1"><strong>Total Platinum:</strong> {totals.platinum}</Typography>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Typography variant="body1"><strong>Total Gold:</strong> {totals.gold}</Typography>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Typography variant="body1"><strong>Total Silver:</strong> {totals.silver}</Typography>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Typography variant="body1"><strong>Total Copper:</strong> {totals.copper}</Typography>
+          </Grid>
+          <Grid item xs={12}>
+            <Typography variant="h6"><strong>Full Total (GP):</strong> {totals.fullTotal.toFixed(2)}</Typography>
+          </Grid>
+        </Grid>
       </Paper>
       <Paper sx={{ p: 2, mb: 2 }}>
         <Button variant="contained" color="primary" onClick={handleDistributeAll}>
