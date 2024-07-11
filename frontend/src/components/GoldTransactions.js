@@ -12,12 +12,22 @@ import {
   TableHead,
   TableRow,
   Grid,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  TextField,
 } from '@mui/material';
 
 const GoldTransactions = () => {
   const [goldEntries, setGoldEntries] = useState([]);
   const [error, setError] = useState(null);
   const [totals, setTotals] = useState({ platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0 });
+  const [partyLootAmount, setPartyLootAmount] = useState(0);
+  const [characterDistributeAmount, setCharacterDistributeAmount] = useState(0);
+  const [openPartyLootDialog, setOpenPartyLootDialog] = useState(false);
+  const [openCharacterDistributeDialog, setOpenCharacterDistributeDialog] = useState(false);
 
   useEffect(() => {
     fetchGoldEntries();
@@ -78,6 +88,43 @@ const GoldTransactions = () => {
     }
   };
 
+  const handleDefinePartyLootDistribute = async () => {
+    if (partyLootAmount > totals.gold) {
+      setError('Party loot amount cannot be greater than total gold.');
+      return;
+    }
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('http://192.168.0.64:5000/api/gold/define-party-loot-distribute', { partyLootAmount }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchGoldEntries(); // Refresh the gold entries after distribution
+      setOpenPartyLootDialog(false);
+    } catch (error) {
+      console.error('Error defining party loot distribute:', error);
+      setError('Failed to define party loot distribute.');
+    }
+  };
+
+  const handleDefineCharacterDistribute = async () => {
+    const totalDistributeAmount = characterDistributeAmount * activeCharacters.length;
+    if (totalDistributeAmount > totals.gold) {
+      setError('Not enough gold to distribute to each character.');
+      return;
+    }
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('http://192.168.0.64:5000/api/gold/define-character-distribute', { characterDistributeAmount }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchGoldEntries(); // Refresh the gold entries after distribution
+      setOpenCharacterDistributeDialog(false);
+    } catch (error) {
+      console.error('Error defining character distribute:', error);
+      setError('Failed to define character distribute.');
+    }
+  };
+
   const formatDate = (dateString) => {
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
     return new Date(dateString).toLocaleDateString(undefined, options);
@@ -111,8 +158,14 @@ const GoldTransactions = () => {
         <Button variant="contained" color="primary" onClick={handleDistributeAll} sx={{ mr: 2 }}>
           Distribute All
         </Button>
-        <Button variant="contained" color="primary" onClick={handleDistributePlusPartyLoot}>
+        <Button variant="contained" color="primary" onClick={handleDistributePlusPartyLoot} sx={{ mr: 2 }}>
           Distribute + Party Loot
+        </Button>
+        <Button variant="contained" color="primary" onClick={() => setOpenPartyLootDialog(true)} sx={{ mr: 2 }}>
+          Define Party Loot Distribute
+        </Button>
+        <Button variant="contained" color="primary" onClick={() => setOpenCharacterDistributeDialog(true)}>
+          Define Character Distribute
         </Button>
         {error && <Typography color="error">{error}</Typography>}
       </Paper>
@@ -144,6 +197,52 @@ const GoldTransactions = () => {
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Define Party Loot Distribute Dialog */}
+      <Dialog open={openPartyLootDialog} onClose={() => setOpenPartyLootDialog(false)}>
+        <DialogTitle>Define Party Loot Distribute</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Enter the amount to leave in party loot:
+          </DialogContentText>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Party Loot Amount"
+            type="number"
+            fullWidth
+            value={partyLootAmount}
+            onChange={(e) => setPartyLootAmount(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenPartyLootDialog(false)}>Cancel</Button>
+          <Button onClick={handleDefinePartyLootDistribute}>Distribute</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Define Character Distribute Dialog */}
+      <Dialog open={openCharacterDistributeDialog} onClose={() => setOpenCharacterDistributeDialog(false)}>
+        <DialogTitle>Define Character Distribute</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Enter the amount to give to each active character:
+          </DialogContentText>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Character Distribute Amount"
+            type="number"
+            fullWidth
+            value={characterDistributeAmount}
+            onChange={(e) => setCharacterDistributeAmount(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenCharacterDistributeDialog(false)}>Cancel</Button>
+          <Button onClick={handleDefineCharacterDistribute}>Distribute</Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
