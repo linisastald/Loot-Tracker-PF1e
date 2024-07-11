@@ -6,6 +6,7 @@ import LootEntry from './components/LootEntry';
 import UnprocessedLoot from './components/UnprocessedLoot';
 import GoldTransactions from './components/GoldTransactions';
 import UserSettings from './components/UserSettings';
+import KeptParty from './components/KeptParty';
 import GivenAwayOrTrashed from './components/GivenAwayOrTrashed'; // Import GivenAwayOrTrashed
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
