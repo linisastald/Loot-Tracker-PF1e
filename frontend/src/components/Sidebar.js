@@ -22,20 +22,20 @@ const Sidebar = () => {
         <ListItem button component={Link} to="/unprocessed-loot">
           <ListItemText primary="Unprocessed Loot" />
         </ListItem>
-        <ListItem button component={Link} to="/gold-transactions">
-          <ListItemText primary="Gold Transactions" />
-        </ListItem>
-        <ListItem button component={Link} to="/user-settings">
-          <ListItemText primary="User Settings" />
-        </ListItem>
-        <ListItem button component={Link} to="/given-away-or-trashed">
-          <ListItemText primary="Given Away or Trashed" />
-        </ListItem>
         <ListItem button component={Link} to="/kept-party">
           <ListItemText primary="Kept - Party" />
         </ListItem>
         <ListItem button component={Link} to="/kept-character">
           <ListItemText primary="Kept - Character" />
+        </ListItem>
+        <ListItem button component={Link} to="/given-away-or-trashed">
+          <ListItemText primary="Given Away or Trashed" />
+        </ListItem>
+        <ListItem button component={Link} to="/gold-transactions">
+          <ListItemText primary="Gold Transactions" />
+        </ListItem>
+        <ListItem button component={Link} to="/user-settings">
+          <ListItemText primary="User Settings" />
         </ListItem>
       </List>
     </Drawer>
