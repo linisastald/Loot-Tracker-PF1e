@@ -57,6 +57,15 @@ exports.getTrashedLoot = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+exports.getKeptCharacterLoot = async (req, res) => {
+  try {
+    const loot = await Loot.findByStatus('Kept Self');
+    res.status(200).json(loot);
+  } catch (error) {
+    console.error('Error fetching kept character loot:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
 
 
 exports.splitStack = async (req, res) => {
