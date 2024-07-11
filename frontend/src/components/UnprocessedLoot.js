@@ -212,10 +212,11 @@ const UnprocessedLoot = () => {
             {loot.summary.map((item) => {
               const individualItems = getIndividualItems(item.name);
               const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
+              const isPendingSale = individualItems.some((item) => item.status === 'Pending Sale');
 
               return (
-                <React.Fragment key={item.name}>
-                  <TableRow key={`${item.name}-${item.unidentified}-${item.type}`}>
+                <React.Fragment key={`${item.name}-${item.unidentified}-${item.type}`}>
+                  <TableRow>
                     <TableCell>
                       <Checkbox
                         checked={individualItems.every((item) => selectedItems.includes(item.id))}
@@ -242,7 +243,7 @@ const UnprocessedLoot = () => {
                     <TableCell>{item.size}</TableCell>
                     <TableCell>{item.believedvalue || ''}</TableCell>
                     <TableCell>{item.average_appraisal || ''}</TableCell>
-                    <TableCell>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
+                    <TableCell>{isPendingSale ? '✔' : ''}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={9}>
