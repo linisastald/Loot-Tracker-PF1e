@@ -31,6 +31,9 @@ const Sidebar = () => {
         <ListItem button component={Link} to="/given-away-or-trashed">
           <ListItemText primary="Given Away or Trashed" />
         </ListItem>
+        <ListItem button component={Link} to="/kept-party">
+          <ListItemText primary="Kept - Party" />
+        </ListItem>
       </List>
     </Drawer>
   );

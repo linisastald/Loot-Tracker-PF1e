@@ -27,7 +27,8 @@ function App() {
             <Route path="/unprocessed-loot" element={<UnprocessedLoot />} />
             <Route path="/gold-transactions" element={<GoldTransactions />} />
             <Route path="/user-settings" element={<UserSettings />} />
-            <Route path="/given-away-or-trashed" element={<GivenAwayOrTrashed />} /> {/* Add this line */}
+            <Route path="/given-away-or-trashed" element={<GivenAwayOrTrashed />} />
+            <Route path="/kept-party" element={<KeptParty />} />
           </Route>
         </Routes>
       </Router>
