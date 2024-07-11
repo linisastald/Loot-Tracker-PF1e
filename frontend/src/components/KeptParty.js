@@ -27,11 +27,15 @@ const KeptParty = () => {
   useEffect(() => {
     const fetchLoot = async () => {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { status: 'Kept Party' }
-      });
-      setLoot(response.data);
+      try {
+        const response = await axios.get('http://192.168.0.64:5000/api/loot/kept-party', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setLoot(response.data);
+      } catch (error) {
+        console.error('Error fetching loot:', error);
+        setLoot([]); // Ensure loot is an array even if the request fails
+      }
     };
 
     fetchLoot();
@@ -51,12 +55,12 @@ const KeptParty = () => {
     }
   };
 
-  const filteredLoot = loot.filter(item => {
+  const filteredLoot = Array.isArray(loot) ? loot.filter(item => {
     return (
       (typeFilter ? item.type === typeFilter : true) &&
       (sizeFilter ? item.size === sizeFilter : true)
     );
-  });
+  }) : [];
 
   return (
     <Container component="main">
