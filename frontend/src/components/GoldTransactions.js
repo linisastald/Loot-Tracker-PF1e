@@ -19,6 +19,8 @@ import {
   DialogTitle,
   TextField,
 } from '@mui/material';
+import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import jwt_decode from 'jwt-decode';
 
 const GoldTransactions = () => {
@@ -30,17 +32,20 @@ const GoldTransactions = () => {
   const [openPartyLootDialog, setOpenPartyLootDialog] = useState(false);
   const [openCharacterDistributeDialog, setOpenCharacterDistributeDialog] = useState(false);
   const [userRole, setUserRole] = useState('');
+  const [startDate, setStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 6)));
+  const [endDate, setEndDate] = useState(new Date());
 
   useEffect(() => {
     fetchGoldEntries();
     fetchUserRole();
-  }, []);
+  }, [startDate, endDate]);
 
   const fetchGoldEntries = async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get('http://192.168.0.64:5000/api/gold', {
         headers: { Authorization: `Bearer ${token}` },
+        params: { startDate, endDate }
       });
       setGoldEntries(response.data);
       calculateTotals(response.data);
@@ -156,6 +161,13 @@ const GoldTransactions = () => {
     }
   };
 
+  const handleQuickFilter = (months) => {
+    const startDate = new Date(new Date().setMonth(new Date().getMonth() - months));
+    const endDate = new Date();
+    setStartDate(startDate);
+    setEndDate(endDate);
+  };
+
   const formatDate = (dateString) => {
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
     return new Date(dateString).toLocaleDateString(undefined, options);
@@ -182,6 +194,45 @@ const GoldTransactions = () => {
           </Grid>
           <Grid item xs={12}>
             <Typography variant="h6"><strong>Full Total (GP):</strong> {totals.fullTotal.toFixed(2)}</Typography>
+          </Grid>
+        </Grid>
+      </Paper>
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <LocalizationProvider dateAdapter={AdapterDateFns}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item>
+              <DatePicker
+                label="Start Date"
+                value={startDate}
+                onChange={(date) => setStartDate(date)}
+                renderInput={(params) => <TextField {...params} />}
+              />
+            </Grid>
+            <Grid item>
+              <DatePicker
+                label="End Date"
+                value={endDate}
+                onChange={(date) => setEndDate(date)}
+                renderInput={(params) => <TextField {...params} />}
+              />
+            </Grid>
+            <Grid item>
+              <Button variant="contained" color="primary" onClick={fetchGoldEntries}>Apply</Button>
+            </Grid>
+          </Grid>
+        </LocalizationProvider>
+        <Grid container spacing={2} sx={{ mt: 2 }}>
+          <Grid item>
+            <Button variant="contained" onClick={() => handleQuickFilter(1)}>Last Month</Button>
+          </Grid>
+          <Grid item>
+            <Button variant="contained" onClick={() => handleQuickFilter(3)}>Last 3 Months</Button>
+          </Grid>
+          <Grid item>
+            <Button variant="contained" onClick={() => handleQuickFilter(6)}>Last 6 Months</Button>
+          </Grid>
+          <Grid item>
+            <Button variant="contained" onClick={() => handleQuickFilter(12)}>Last Year</Button>
           </Grid>
         </Grid>
       </Paper>

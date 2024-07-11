@@ -26,9 +26,14 @@ exports.createGoldEntry = async (req, res) => {
 };
 
 exports.getAllGoldEntries = async (req, res) => {
+  const { startDate, endDate } = req.query;
   try {
-    const goldEntries = await Gold.findAll();
-    res.status(200).json(goldEntries);
+    const query = `
+      SELECT * FROM gold
+      WHERE session_date BETWEEN $1 AND $2
+    `;
+    const result = await pool.query(query, [startDate, endDate]);
+    res.status(200).json(result.rows);
   } catch (error) {
     console.error('Error fetching gold entries', error);
     res.status(500).json({ error: 'Internal server error' });
