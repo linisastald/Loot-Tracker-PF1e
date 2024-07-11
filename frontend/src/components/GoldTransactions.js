@@ -2,113 +2,83 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Container,
+  Paper,
+  Typography,
+  Button,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Typography,
-  Grid,
 } from '@mui/material';
 
 const GoldTransactions = () => {
-  const [transactions, setTransactions] = useState([]);
-  const [totals, setTotals] = useState({
-    copper: 0,
-    silver: 0,
-    gold: 0,
-    platinum: 0,
-    totalValue: 0,
-  });
+  const [goldEntries, setGoldEntries] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await axios.get('http://192.168.0.64:5000/api/gold', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        setTransactions(response.data);
-        calculateTotals(response.data);
-      } catch (error) {
-        console.error('Error fetching transactions', error);
-      }
-    };
-
-    fetchTransactions();
+    fetchGoldEntries();
   }, []);
 
-  const calculateTotals = (transactions) => {
-    const totals = transactions.reduce(
-      (acc, transaction) => {
-        acc.copper += transaction.copper || 0;
-        acc.silver += transaction.silver || 0;
-        acc.gold += transaction.gold || 0;
-        acc.platinum += transaction.platinum || 0;
-        acc.totalValue += (transaction.platinum * 10) + transaction.gold + (transaction.silver / 10) + (transaction.copper / 100);
-        return acc;
-      },
-      { copper: 0, silver: 0, gold: 0, platinum: 0, totalValue: 0 }
-    );
-    setTotals(totals);
+  const fetchGoldEntries = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://192.168.0.64:5000/api/gold', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setGoldEntries(response.data);
+    } catch (error) {
+      console.error('Error fetching gold entries:', error);
+      setError('Failed to fetch gold entries.');
+    }
   };
 
-  const formatDate = (dateString) => {
-    const options = { year: 'numeric', month: '2-digit', day: '2-digit' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+  const handleDistributeAll = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('http://192.168.0.64:5000/api/gold/distribute-all', {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchGoldEntries(); // Refresh the gold entries after distribution
+    } catch (error) {
+      console.error('Error distributing gold:', error);
+      setError('Failed to distribute gold.');
+    }
   };
 
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Total Party Gold</Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={6} sm={3}>
-            <Typography variant="body1">Platinum: {totals.platinum}</Typography>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Typography variant="body1">Gold: {totals.gold}</Typography>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Typography variant="body1">Silver: {totals.silver}</Typography>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Typography variant="body1">Copper: {totals.copper}</Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="h6">Total Value: {totals.totalValue.toFixed(2)} GP</Typography>
-          </Grid>
-        </Grid>
+        <Typography variant="h6">Gold Transactions</Typography>
+        <Button variant="contained" color="primary" onClick={handleDistributeAll} sx={{ mt: 2 }}>
+          Distribute All
+        </Button>
+        {error && <Typography color="error">{error}</Typography>}
       </Paper>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
               <TableCell>Session Date</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Notes</TableCell>
-              <TableCell>Total</TableCell>
+              <TableCell>Transaction Type</TableCell>
               <TableCell>Platinum</TableCell>
               <TableCell>Gold</TableCell>
               <TableCell>Silver</TableCell>
               <TableCell>Copper</TableCell>
+              <TableCell>Notes</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {transactions.map((transaction) => (
-              <TableRow key={transaction.id}>
-                <TableCell>{formatDate(transaction.session_date)}</TableCell>
-                <TableCell>{transaction.transaction_type}</TableCell>
-                <TableCell>{transaction.notes}</TableCell>
-                <TableCell>{((transaction.platinum * 10) + transaction.gold + (transaction.silver / 10) + (transaction.copper / 100)).toFixed(2)}</TableCell>
-                <TableCell>{transaction.platinum}</TableCell>
-                <TableCell>{transaction.gold}</TableCell>
-                <TableCell>{transaction.silver}</TableCell>
-                <TableCell>{transaction.copper}</TableCell>
+            {goldEntries.map((entry) => (
+              <TableRow key={entry.id}>
+                <TableCell>{entry.session_date}</TableCell>
+                <TableCell>{entry.transaction_type}</TableCell>
+                <TableCell>{entry.platinum}</TableCell>
+                <TableCell>{entry.gold}</TableCell>
+                <TableCell>{entry.silver}</TableCell>
+                <TableCell>{entry.copper}</TableCell>
+                <TableCell>{entry.notes}</TableCell>
               </TableRow>
             ))}
           </TableBody>
