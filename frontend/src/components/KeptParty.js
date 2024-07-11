@@ -20,7 +20,6 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogContentText,
   DialogActions,
   TextField
 } from '@mui/material';
@@ -32,7 +31,7 @@ const KeptParty = () => {
   const [sizeFilter, setSizeFilter] = useState('');
   const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
   const [openSplitDialog, setOpenSplitDialog] = useState(false);
-  const [updateData, setUpdateData] = useState({});
+  const [updatedEntry, setUpdatedEntry] = useState({});
   const [splitData, setSplitData] = useState({ quantity: 0 });
 
   useEffect(() => {
@@ -76,7 +75,7 @@ const KeptParty = () => {
 
   const handleOpenUpdateDialog = () => {
     const selectedItem = loot.find(item => item.id === selectedItems[0]);
-    setUpdateData(selectedItem);
+    setUpdatedEntry(selectedItem);
     setOpenUpdateDialog(true);
   };
 
@@ -86,10 +85,18 @@ const KeptParty = () => {
     setOpenSplitDialog(true);
   };
 
+  const handleUpdateChange = (e) => {
+    const { name, value } = e.target;
+    setUpdatedEntry((prevState) => ({
+      ...prevState,
+      [name]: value === '' ? null : value,
+    }));
+  };
+
   const handleUpdateSubmit = async () => {
     const token = localStorage.getItem('token');
     try {
-      await axios.put(`http://192.168.0.64:5000/api/loot/${updateData.id}`, updateData, {
+      await axios.put(`http://192.168.0.64:5000/api/loot/${updatedEntry.id}`, updatedEntry, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setOpenUpdateDialog(false);
@@ -114,6 +121,10 @@ const KeptParty = () => {
     } catch (error) {
       console.error('Error splitting stack:', error);
     }
+  };
+
+  const handleUpdateDialogClose = () => {
+    setOpenUpdateDialog(false);
   };
 
   const filteredLoot = Array.isArray(loot) ? loot.filter(item => {
@@ -226,7 +237,7 @@ const KeptParty = () => {
         </>
       )}
       {/* Update Dialog */}
-      <Dialog open={updateDialogOpen} onClose={handleUpdateDialogClose}>
+      <Dialog open={openUpdateDialog} onClose={handleUpdateDialogClose}>
         <DialogTitle>Update Entry</DialogTitle>
         <DialogContent>
           <Grid container spacing={2}>
