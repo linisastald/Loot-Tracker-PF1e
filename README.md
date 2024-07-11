@@ -105,7 +105,7 @@ MVP - Required features for release
 | Loot Update             | MVP M    | Complete             | Ready for bug testing                                  |
 | Item DB                 | Med      | In Progress          | Have the items mostly, need to insert                  |
 | Kept Loot View          | MVP M    | To Do                |                                                        |
-| Party Kept Loot         | MVP M    | In Progress          |                                                        |
+| Party Kept Loot         | MVP M    | Complete             |                                                        |
 | Sold View               | MVP M    | To Do                |                                                        |
 | Campaign Settings       | High     | Pending              |                                                        |
 | DM Pages                | High     | Pending              |                                                        |
