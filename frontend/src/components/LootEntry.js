@@ -72,13 +72,13 @@ const LootEntry = () => {
         if (entry.type === 'item') {
           await axios.post(
             'http://192.168.0.64:5000/api/loot',
-            data,
+            { entries: [data] },
             { headers: { Authorization: `Bearer ${token}` } }
           );
         } else {
           await axios.post(
             'http://192.168.0.64:5000/api/gold',
-            data,
+            { goldEntries: [data] },
             { headers: { Authorization: `Bearer ${token}` } }
           );
         }

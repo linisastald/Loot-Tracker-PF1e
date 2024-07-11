@@ -23,10 +23,10 @@ exports.create = async (entry) => {
 
 exports.findAll = async () => {
   const query = `
-    SELECT name, SUM(quantity) as quantity, unidentified, type, size, status
+    SELECT name, SUM(quantity) as quantity, unidentified, masterwork, type, size, status
     FROM loot
     WHERE (status IS NULL or status = 'Pending Sale')
-    GROUP BY name, unidentified, type, size, status
+    GROUP BY name, unidentified, masterwork, type, size, status
   `;
   const result = await pool.query(query);
   return result.rows;
