@@ -96,28 +96,28 @@ MVP - Required features for release
 
 | Feature                 | Priority | Status               | Notes                                                  | 
 |-------------------------|----------|----------------------|--------------------------------------------------------|
-| DB Redesign             | MVP VH   | Complete             |                                                        |
-| Login                   | MVP H    | Complete             | Registration and Login works                           |
-| Gold Entry              | MVP H    | Complete             | Ready for bug testing                                  |
 | Loot Entry              | MVP H    | In Progress, but MVP | Mostly working, add auto fill stuff                    |
-| Unprocessed Loot View   | MVP H    | Complete             | Ready for bug testing                                  |
-| Gold View               | MVP H    | Complete             | Ready for bug testing                                  |
-| Loot Update             | MVP M    | Complete             | Ready for bug testing                                  |
-| Item DB                 | Med      | In Progress          | Have the items mostly, need to insert                  |
-| Kept Loot View          | MVP M    | To Do                |                                                        |
-| Party Kept Loot         | MVP M    | Complete             | Ready for bug testing                                  |
 | Sold View               | MVP M    | To Do                |                                                        |
+| User Settings           | High     | In Progress          |                                                        |
+| Item DB                 | Med      | In Progress          | Have the items mostly, need to insert                  |
 | Campaign Settings       | High     | Pending              |                                                        |
 | DM Pages                | High     | Pending              |                                                        |
-| User Settings           | High     | In Progress          |                                                        |
-| Given Away/Trash View   | Med      | Complete             |                                                        |
 | GPT to Break items down | Med      | Pending              |                                                        |
 | Session Tracking        | Low      | Pending              |                                                        |
 | Spell Book Page         | Low      | Pending              |                                                        |
 | Google Sheets           | Low      | Pending              |                                                        |
 | Attendance Tracker      | V. Low   | Pending              | Include tracking of chores?                            |
 | Search Items            | V. Low   | Pending              | Search page that allows finding of items the party had |
-| Wealth by Level Check   | V. Low   | Will Not Implement   |                                                        |
 | Google Login            | V. Low   | Pending              | Requires some stuff I dont have setup atm              |
 | Identify Item Action    | Low      | Pending              |                                                        |
-
+| Stats page              | Low      | Pending              |                                                        |
+| DB Redesign             | MVP VH   | Complete             |                                                        |
+| Login                   | MVP H    | Complete             | Registration and Login works                           |
+| Gold Entry              | MVP H    | Complete             | Ready for bug testing                                  |
+| Unprocessed Loot View   | MVP H    | Complete             | Ready for bug testing                                  |
+| Gold View               | MVP H    | Complete             | Ready for bug testing                                  |
+| Loot Update             | MVP M    | Complete             | Ready for bug testing                                  |
+| Kept Loot View          | MVP M    | Complete             | Ready for bug testing                                  |
+| Party Kept Loot         | MVP M    | Complete             | Ready for bug testing                                  |
+| Given Away/Trash View   | Med      | Complete             |                                                        |
+| Wealth by Level Check   | V. Low   | Will Not Implement   |                                                        |
