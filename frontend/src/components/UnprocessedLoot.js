@@ -226,13 +226,15 @@ const UnprocessedLoot = () => {
                     </TableCell>
                     <TableCell>{totalQuantity}</TableCell>
                     <TableCell>
-                      <IconButton
-                        aria-label="expand row"
-                        size="small"
-                        onClick={() => handleToggleOpen(item.name)}
-                      >
-                        {openItems[item.name] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
-                      </IconButton>
+                      {individualItems.length > 1 && (
+                        <IconButton
+                          aria-label="expand row"
+                          size="small"
+                          onClick={() => handleToggleOpen(item.name)}
+                        >
+                          {openItems[item.name] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                        </IconButton>
+                      )}
                       {item.name}
                     </TableCell>
                     <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
@@ -242,34 +244,36 @@ const UnprocessedLoot = () => {
                     <TableCell>{item.average_appraisal || ''}</TableCell>
                     <TableCell>{isPendingSale ? '✔' : ''}</TableCell>
                   </TableRow>
-                  <TableRow>
-                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={9}>
-                      <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
-                        <Table size="small">
-                          <TableBody>
-                            {individualItems.map((subItem) => (
-                              <TableRow key={subItem.id}>
-                                <TableCell>
-                                  <Checkbox
-                                    checked={selectedItems.includes(subItem.id)}
-                                    onChange={() => handleSelectItem(subItem.id)}
-                                  />
-                                </TableCell>
-                                <TableCell>{subItem.quantity}</TableCell>
-                                <TableCell>{subItem.name}</TableCell>
-                                <TableCell>{subItem.unidentified ? 'Yes' : 'No'}</TableCell>
-                                <TableCell>{subItem.type}</TableCell>
-                                <TableCell>{subItem.size}</TableCell>
-                                <TableCell>{subItem.believedvalue || ''}</TableCell>
-                                <TableCell>{subItem.appraisalroll || ''}</TableCell>
-                                <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </Collapse>
-                    </TableCell>
-                  </TableRow>
+                  {individualItems.length > 1 && (
+                    <TableRow>
+                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={9}>
+                        <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
+                          <Table size="small">
+                            <TableBody>
+                              {individualItems.map((subItem) => (
+                                <TableRow key={subItem.id}>
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedItems.includes(subItem.id)}
+                                      onChange={() => handleSelectItem(subItem.id)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>{subItem.quantity}</TableCell>
+                                  <TableCell>{subItem.name}</TableCell>
+                                  <TableCell>{subItem.unidentified ? 'Yes' : 'No'}</TableCell>
+                                  <TableCell>{subItem.type}</TableCell>
+                                  <TableCell>{subItem.size}</TableCell>
+                                  <TableCell>{subItem.believedvalue || ''}</TableCell>
+                                  <TableCell>{subItem.appraisalroll || ''}</TableCell>
+                                  <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </Collapse>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </React.Fragment>
               );
             })}
