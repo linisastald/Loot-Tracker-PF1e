@@ -159,7 +159,7 @@ const LootEntry = () => {
                         value={entry.data.unidentified === null ? '' : entry.data.unidentified}
                         onChange={(e) => handleEntryChange(index, e)}
                       >
-                        <MenuItem value="">Not Magical</MenuItem>
+                        <MenuItem value={null}>Not Magical</MenuItem>
                         <MenuItem value={false}>Identified</MenuItem>
                         <MenuItem value={true}>Unidentified</MenuItem>
                       </Select>
