@@ -16,6 +16,7 @@ import {
 const GoldTransactions = () => {
   const [goldEntries, setGoldEntries] = useState([]);
   const [error, setError] = useState(null);
+  const [totals, setTotals] = useState({ platinum: 0, gold: 0, silver: 0, copper: 0 });
 
   useEffect(() => {
     fetchGoldEntries();
@@ -28,10 +29,25 @@ const GoldTransactions = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       setGoldEntries(response.data);
+      calculateTotals(response.data);
     } catch (error) {
       console.error('Error fetching gold entries:', error);
       setError('Failed to fetch gold entries.');
     }
+  };
+
+  const calculateTotals = (entries) => {
+    const totals = entries.reduce(
+      (acc, entry) => {
+        acc.platinum += entry.platinum;
+        acc.gold += entry.gold;
+        acc.silver += entry.silver;
+        acc.copper += entry.copper;
+        return acc;
+      },
+      { platinum: 0, gold: 0, silver: 0, copper: 0 }
+    );
+    setTotals(totals);
   };
 
   const handleDistributeAll = async () => {
@@ -51,6 +67,10 @@ const GoldTransactions = () => {
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Gold Transactions</Typography>
+        <Typography variant="body1">Total Platinum: {totals.platinum}</Typography>
+        <Typography variant="body1">Total Gold: {totals.gold}</Typography>
+        <Typography variant="body1">Total Silver: {totals.silver}</Typography>
+        <Typography variant="body1">Total Copper: {totals.copper}</Typography>
         <Button variant="contained" color="primary" onClick={handleDistributeAll} sx={{ mt: 2 }}>
           Distribute All
         </Button>
