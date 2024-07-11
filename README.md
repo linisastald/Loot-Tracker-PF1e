@@ -231,4 +231,5 @@ MVP - Required features for release
 | Attendance Tracker      | V. Low   | Pending            | Include tracking of chores?                                |
 | Search Items            | V. Low   | Pending            | Search page that allows finding of items the party had     |
 | Wealth by Level Check   | V. Low   | Will Not Implement |                                                            |
+| Google Login            | V. Low   | Pending            | Requires some stuff I dont have setup atm                  |
 
