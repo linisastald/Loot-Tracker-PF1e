@@ -11,6 +11,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Grid,
 } from '@mui/material';
 
 const GoldTransactions = () => {
@@ -63,15 +64,24 @@ const GoldTransactions = () => {
     }
   };
 
+  const formatDate = (dateString) => {
+    const options = { year: 'numeric', month: 'long', day: 'numeric' };
+    return new Date(dateString).toLocaleDateString(undefined, options);
+  };
+
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Gold Transactions</Typography>
+      </Paper>
+      <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="body1">Total Platinum: {totals.platinum}</Typography>
         <Typography variant="body1">Total Gold: {totals.gold}</Typography>
         <Typography variant="body1">Total Silver: {totals.silver}</Typography>
         <Typography variant="body1">Total Copper: {totals.copper}</Typography>
-        <Button variant="contained" color="primary" onClick={handleDistributeAll} sx={{ mt: 2 }}>
+      </Paper>
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Button variant="contained" color="primary" onClick={handleDistributeAll}>
           Distribute All
         </Button>
         {error && <Typography color="error">{error}</Typography>}
@@ -92,7 +102,7 @@ const GoldTransactions = () => {
           <TableBody>
             {goldEntries.map((entry) => (
               <TableRow key={entry.id}>
-                <TableCell>{entry.session_date}</TableCell>
+                <TableCell>{formatDate(entry.session_date)}</TableCell>
                 <TableCell>{entry.transaction_type}</TableCell>
                 <TableCell>{entry.platinum}</TableCell>
                 <TableCell>{entry.gold}</TableCell>
