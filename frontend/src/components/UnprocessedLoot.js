@@ -215,7 +215,7 @@ const UnprocessedLoot = () => {
               const isPendingSale = individualItems.some((item) => item.status === 'Pending Sale');
 
               return (
-                <React.Fragment key={`${item.name}-${item.unidentified}-${item.type}`}>
+                <React.Fragment key={`${item.name}-${item.unidentified}-${item.type}-${item.size}`}>
                   <TableRow>
                     <TableCell>
                       <Checkbox

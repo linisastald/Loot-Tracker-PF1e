@@ -24,19 +24,47 @@ exports.create = async (entry) => {
 exports.findAll = async () => {
   try {
     const summaryQuery = `
-      SELECT l.name, SUM(l.quantity) as quantity, l.unidentified, l.masterwork, l.type, l.size, l.status
-      FROM loot l
-      LEFT JOIN appraisal a ON l.id = a.lootid
-      WHERE (l.status IS NULL or l.status = 'Pending Sale')
-      GROUP BY l.name, l.unidentified, l.masterwork, l.type, l.size, l.status
+      SELECT
+        l.name,
+        SUM(l.quantity) AS quantity,
+        l.unidentified,
+        l.masterwork,
+        l.type,
+        l.size,
+        CASE 
+          WHEN COUNT(CASE WHEN l.status = 'Pending Sale' THEN 1 END) > 0 THEN 'Pending Sale'
+          ELSE NULL
+        END AS status
+      FROM
+        loot l
+      LEFT JOIN
+        appraisal a ON l.id = a.lootid
+      WHERE
+        l.status IS NULL OR l.status = 'Pending Sale'
+      GROUP BY
+        l.name, l.unidentified, l.masterwork, l.type, l.size;
     `;
     const summaryResult = await pool.query(summaryQuery);
 
     const individualQuery = `
-      SELECT l.id, l.session_date, l.quantity, l.name, l.unidentified, l.masterwork, l.type, l.size, l.status, a.believedvalue, a.appraisalroll
-      FROM loot l
-      LEFT JOIN appraisal a ON l.id = a.lootid
-      WHERE (l.status IS NULL or l.status = 'Pending Sale')
+      SELECT
+        l.id,
+        l.session_date,
+        l.quantity,
+        l.name,
+        l.unidentified,
+        l.masterwork,
+        l.type,
+        l.size,
+        l.status,
+        a.believedvalue,
+        a.appraisalroll
+      FROM
+        loot l
+      LEFT JOIN
+        appraisal a ON l.id = a.lootid
+      WHERE
+        l.status IS NULL OR l.status = 'Pending Sale';
     `;
     const individualResult = await pool.query(individualQuery);
 
@@ -50,27 +78,14 @@ exports.findAll = async () => {
   }
 };
 
-exports.updateStatus = async (id, status, userId, whohas = null) => {
+exports.updateStatus = async (id, status, whohas) => {
   try {
-    let query;
-    let values;
-
-    if (whohas) {
-      query = `
-        UPDATE loot
-        SET status = $1, whohas = $2, whoupdated = $3, lastupdate = CURRENT_TIMESTAMP
-        WHERE id = $4
-      `;
-      values = [status, whohas, userId, id];
-    } else {
-      query = `
-        UPDATE loot
-        SET status = $1, whoupdated = $2, lastupdate = CURRENT_TIMESTAMP
-        WHERE id = $3
-      `;
-      values = [status, userId, id];
-    }
-
+    const query = `
+      UPDATE loot
+      SET status = $1, whohas = $2, lastupdate = CURRENT_TIMESTAMP
+      WHERE id = $3
+    `;
+    const values = [status, whohas, id];
     await pool.query(query, values);
   } catch (error) {
     console.error('Error updating loot status:', error);
