@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import {
   Container,
@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { UserContext } from '../context/UserContext'; // Assuming you have a UserContext to provide user information
+import jwt_decode from 'jwt-decode';
 
 const initialItemEntry = {
   sessionDate: new Date(),
@@ -40,7 +40,6 @@ const initialGoldEntry = {
 
 const LootEntry = () => {
   const [entries, setEntries] = useState([{ type: 'item', data: initialItemEntry }]);
-  const { user } = useContext(UserContext); // Access user information from context
 
   const handleEntryChange = (index, e) => {
     const newEntries = [...entries];
@@ -66,11 +65,14 @@ const LootEntry = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
+    const decodedToken = jwt_decode(token);
+    const userId = decodedToken.id;
+
     try {
       for (const entry of entries) {
         const dataToSubmit = {
           ...entry.data,
-          whoupdated: user.id // Include user ID
+          whoupdated: userId // Include user ID
         };
         if (entry.type === 'item') {
           await axios.post(
