@@ -65,6 +65,19 @@ const GoldTransactions = () => {
     }
   };
 
+  const handleDistributePlusPartyLoot = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('http://192.168.0.64:5000/api/gold/distribute-plus-party-loot', {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchGoldEntries(); // Refresh the gold entries after distribution
+    } catch (error) {
+      console.error('Error distributing gold plus party loot:', error);
+      setError('Failed to distribute gold plus party loot.');
+    }
+  };
+
   const formatDate = (dateString) => {
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
     return new Date(dateString).toLocaleDateString(undefined, options);
@@ -95,8 +108,11 @@ const GoldTransactions = () => {
         </Grid>
       </Paper>
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Button variant="contained" color="primary" onClick={handleDistributeAll}>
+        <Button variant="contained" color="primary" onClick={handleDistributeAll} sx={{ mr: 2 }}>
           Distribute All
+        </Button>
+        <Button variant="contained" color="primary" onClick={handleDistributePlusPartyLoot}>
+          Distribute + Party Loot
         </Button>
         {error && <Typography color="error">{error}</Typography>}
       </Paper>
