@@ -197,7 +197,6 @@ const LootEntry = () => {
                         name="type"
                         value={entry.data.type || ''}
                         onChange={(e) => handleEntryChange(index, e)}
-                        required
                       >
                         <MenuItem value="Weapon">Weapon</MenuItem>
                         <MenuItem value="Armor">Armor</MenuItem>
