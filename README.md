@@ -105,12 +105,12 @@ MVP - Required features for release
 | Loot Update             | MVP M    | Complete             | Ready for bug testing                                  |
 | Item DB                 | Med      | In Progress          | Have the items mostly, need to insert                  |
 | Kept Loot View          | MVP M    | To Do                |                                                        |
-| Party Kept Loot         | MVP M    | To Do                |                                                        |
+| Party Kept Loot         | MVP M    | In Progress          |                                                        |
 | Sold View               | MVP M    | To Do                |                                                        |
 | Campaign Settings       | High     | Pending              |                                                        |
 | DM Pages                | High     | Pending              |                                                        |
 | User Settings           | High     | In Progress          |                                                        |
-| Given Away/Trash View   | Med      | To Do                |                                                        |
+| Given Away/Trash View   | Med      | Complete             |                                                        |
 | GPT to Break items down | Med      | Pending              |                                                        |
 | Session Tracking        | Low      | Pending              |                                                        |
 | Spell Book Page         | Low      | Pending              |                                                        |
