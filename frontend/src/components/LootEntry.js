@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import jwt_decode from 'jwt-decode';
 import {
   Container,
   Paper,
@@ -11,11 +12,9 @@ import {
   MenuItem,
   Select,
   InputLabel,
-  Box
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import jwt_decode from 'jwt-decode';
 
 const initialItemEntry = {
   sessionDate: new Date(),
@@ -40,10 +39,11 @@ const initialGoldEntry = {
 
 const LootEntry = () => {
   const [entries, setEntries] = useState([{ type: 'item', data: initialItemEntry }]);
+  const [entryType, setEntryType] = useState('item');
 
   const handleEntryChange = (index, e) => {
     const newEntries = [...entries];
-    newEntries[index].data[e.target.name] = e.target.value || '';
+    newEntries[index].data[e.target.name] = e.target.value;
     setEntries(newEntries);
   };
 
@@ -67,23 +67,20 @@ const LootEntry = () => {
     const token = localStorage.getItem('token');
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
-
     try {
       for (const entry of entries) {
-        const dataToSubmit = {
-          ...entry.data,
-          whoupdated: userId // Include user ID
-        };
         if (entry.type === 'item') {
+          const data = { ...entry.data, whoupdated: userId };
           await axios.post(
             'http://192.168.0.64:5000/api/loot',
-            { entries: [dataToSubmit] },
+            data,
             { headers: { Authorization: `Bearer ${token}` } }
           );
         } else {
+          const data = { ...entry.data, whoupdated: userId };
           await axios.post(
             'http://192.168.0.64:5000/api/gold',
-            { entries: [dataToSubmit] },
+            data,
             { headers: { Authorization: `Bearer ${token}` } }
           );
         }
@@ -98,14 +95,12 @@ const LootEntry = () => {
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Loot Entry</Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button variant="contained" color="primary" onClick={() => handleAddEntry('item')}>
-            Add Item Entry
-          </Button>
-          <Button variant="contained" color="secondary" onClick={() => handleAddEntry('gold')}>
-            Add Gold Entry
-          </Button>
-        </Box>
+        <Button variant="contained" color="primary" onClick={() => handleAddEntry('item')} sx={{ mr: 2 }}>
+          Add Item Entry
+        </Button>
+        <Button variant="contained" color="secondary" onClick={() => handleAddEntry('gold')}>
+          Add Gold Entry
+        </Button>
       </Paper>
 
       <form onSubmit={handleSubmit}>
@@ -226,8 +221,7 @@ const LootEntry = () => {
                       value={entry.data.notes || ''}
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
-                      multiline
-                      rows={4}
+                      inputProps={{ maxLength: 120 }}
                     />
                   </Grid>
                 </>
