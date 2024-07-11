@@ -223,7 +223,7 @@ const LootEntry = () => {
                       value={entry.data.notes || ''}
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
-                      inputProps={{ maxLength: 120 }}
+                      inputProps={{ maxLength: 511 }}
                     />
                   </Grid>
                 </>

@@ -15,7 +15,7 @@ exports.create = async (entry) => {
     entry.type,
     entry.size,
     entry.whoupdated,
-    entry.notes
+    entry.notes,
   ];
   const result = await pool.query(query, values);
   return result.rows[0];

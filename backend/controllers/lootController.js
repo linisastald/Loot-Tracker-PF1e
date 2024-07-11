@@ -2,10 +2,6 @@ const Loot = require('../models/Loot');
 
 exports.createLoot = async (req, res) => {
   const { entries } = req.body;
-  if (!entries || !Array.isArray(entries)) {
-    return res.status(400).json({ error: 'Entries must be a valid array' });
-  }
-
   try {
     const createdEntries = [];
     for (const entry of entries) {
