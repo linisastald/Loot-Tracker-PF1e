@@ -14,7 +14,7 @@
     "@mui/icons-material": "^5.2.4",
     "@mui/x-date-pickers": "^5.0.0",
     "date-fns": "^2.23.0",
-    "jwt-decode": "^3.1.2" // Added jwt-decode here
+    "jwt-decode": "^3.1.2"
   },
   "scripts": {
     "start": "react-scripts start",
