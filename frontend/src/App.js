@@ -13,6 +13,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import theme from './theme';
+import KeptCharacter from "./components/KeptCharacter";
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="/user-settings" element={<UserSettings />} />
             <Route path="/given-away-or-trashed" element={<GivenAwayOrTrashed />} />
             <Route path="/kept-party" element={<KeptParty />} />
+            <Route path="/kept-character" element={<KeptCharacter />} />
           </Route>
         </Routes>
       </Router>

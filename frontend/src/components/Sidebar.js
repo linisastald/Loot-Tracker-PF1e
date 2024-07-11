@@ -34,6 +34,9 @@ const Sidebar = () => {
         <ListItem button component={Link} to="/kept-party">
           <ListItemText primary="Kept - Party" />
         </ListItem>
+        <ListItem button component={Link} to="/kept-character">
+          <ListItemText primary="Kept - Character" />
+        </ListItem>
       </List>
     </Drawer>
   );
