@@ -80,12 +80,22 @@ exports.findAll = async () => {
 
 exports.updateStatus = async (id, status, whohas) => {
   try {
-    const query = `
+    let query = `
       UPDATE loot
-      SET status = $1, whohas = $2, lastupdate = CURRENT_TIMESTAMP
-      WHERE id = $3
+      SET status = $1, lastupdate = CURRENT_TIMESTAMP
+      WHERE id = $2
     `;
-    const values = [status, whohas, id];
+    let values = [status, id];
+
+    if (status === 'Kept Self') {
+      query = `
+        UPDATE loot
+        SET status = $1, whohas = $2, lastupdate = CURRENT_TIMESTAMP
+        WHERE id = $3
+      `;
+      values = [status, whohas, id];
+    }
+
     await pool.query(query, values);
   } catch (error) {
     console.error('Error updating loot status:', error);

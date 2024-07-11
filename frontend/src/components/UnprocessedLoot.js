@@ -91,11 +91,8 @@ const UnprocessedLoot = () => {
       const selectedId = selectedItems[0]; // Only handle one selected item at a time
       const selectedItem = loot.individual.find((item) => item.id === selectedId);
       const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
-      await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, {
-        status,
-        userId: activeUser.id,
-        whohas,
-      }, {
+      const data = status === 'Kept Self' ? { status, userId: activeUser.id, whohas } : { status, userId: activeUser.id };
+      await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setSelectedItems([]);
