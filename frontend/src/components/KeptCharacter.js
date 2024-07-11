@@ -30,6 +30,8 @@ const KeptCharacter = () => {
   const [selectedItems, setSelectedItems] = useState([]);
   const [typeFilter, setTypeFilter] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
+  const [characterFilter, setCharacterFilter] = useState('');
+  const [characters, setCharacters] = useState([]);
   const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
   const [openSplitDialog, setOpenSplitDialog] = useState(false);
   const [updatedEntry, setUpdatedEntry] = useState({});
@@ -43,6 +45,8 @@ const KeptCharacter = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         setLoot(response.data);
+        const uniqueCharacters = [...new Set(response.data.map(item => item.character_name))];
+        setCharacters(uniqueCharacters);
       } catch (error) {
         console.error('Error fetching loot:', error);
         setLoot([]); // Ensure loot is an array even if the request fails
@@ -63,6 +67,8 @@ const KeptCharacter = () => {
       setTypeFilter(value);
     } else if (name === 'size') {
       setSizeFilter(value);
+    } else if (name === 'character') {
+      setCharacterFilter(value);
     }
   };
 
@@ -131,7 +137,8 @@ const KeptCharacter = () => {
   const filteredLoot = Array.isArray(loot) ? loot.filter(item => {
     return (
       (typeFilter ? item.type === typeFilter : true) &&
-      (sizeFilter ? item.size === sizeFilter : true)
+      (sizeFilter ? item.size === sizeFilter : true) &&
+      (characterFilter ? item.character_name === characterFilter : true)
     );
   }) : [];
 
@@ -143,7 +150,7 @@ const KeptCharacter = () => {
         <Typography variant="h6">Kept - Character</Typography>
       </Paper>
       <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <FormControl fullWidth>
             <InputLabel>Type</InputLabel>
             <Select
@@ -161,7 +168,7 @@ const KeptCharacter = () => {
             </Select>
           </FormControl>
         </Grid>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <FormControl fullWidth>
             <InputLabel>Size</InputLabel>
             <Select
@@ -179,6 +186,23 @@ const KeptCharacter = () => {
               <MenuItem value="Huge">Huge</MenuItem>
               <MenuItem value="Gargantuan">Gargantuan</MenuItem>
               <MenuItem value="Colossal">Colossal</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <FormControl fullWidth>
+            <InputLabel>Who Has It?</InputLabel>
+            <Select
+              name="character"
+              value={characterFilter}
+              onChange={handleFilterChange}
+            >
+              <MenuItem value="">All</MenuItem>
+              {characters.map((character, index) => (
+                <MenuItem key={index} value={character}>
+                  {character}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Grid>
