@@ -20,8 +20,8 @@ const initialItemEntry = {
   sessionDate: new Date(),
   quantity: '',
   name: '',
-  unidentified: '',
-  masterwork: '',
+  unidentified: null,
+  masterwork: null,
   type: '',
   size: '',
   notes: ''
@@ -44,7 +44,7 @@ const LootEntry = () => {
     const { name, value } = e.target;
     setEntries(prevEntries =>
       prevEntries.map((entry, i) =>
-        i === index ? { ...entry, data: { ...entry.data, [name]: value } } : entry
+        i === index ? { ...entry, data: { ...entry.data, [name]: value === '' ? null : value } } : entry
       )
     );
   };
