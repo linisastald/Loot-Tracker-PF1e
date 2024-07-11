@@ -50,14 +50,27 @@ exports.findAll = async () => {
   }
 };
 
-exports.updateStatus = async (id, status, whohas) => {
+exports.updateStatus = async (id, status, userId, whohas = null) => {
   try {
-    const query = `
-      UPDATE loot
-      SET status = $1, whohas = $2, lastupdate = CURRENT_TIMESTAMP
-      WHERE id = $3
-    `;
-    const values = [status, whohas, id];
+    let query;
+    let values;
+
+    if (whohas) {
+      query = `
+        UPDATE loot
+        SET status = $1, whohas = $2, whoupdated = $3, lastupdate = CURRENT_TIMESTAMP
+        WHERE id = $4
+      `;
+      values = [status, whohas, userId, id];
+    } else {
+      query = `
+        UPDATE loot
+        SET status = $1, whoupdated = $2, lastupdate = CURRENT_TIMESTAMP
+        WHERE id = $3
+      `;
+      values = [status, userId, id];
+    }
+
     await pool.query(query, values);
   } catch (error) {
     console.error('Error updating loot status:', error);

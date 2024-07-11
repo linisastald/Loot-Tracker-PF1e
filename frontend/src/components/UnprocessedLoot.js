@@ -87,8 +87,7 @@ const UnprocessedLoot = () => {
       const selectedId = selectedItems[0]; // Only handle one selected item at a time
       const selectedItem = loot.individual.find((item) => item.id === selectedId);
       const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
-      await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
-        id: selectedId,
+      await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, {
         status,
         userId: activeUser.id,
         whohas,
@@ -101,6 +100,7 @@ const UnprocessedLoot = () => {
       console.error(`Error updating loot status to ${status}:`, error);
     }
   };
+
 
   const handleSell = () => updateLootStatus('Pending Sale');
   const handleTrash = () => updateLootStatus('Trashed');

@@ -27,17 +27,17 @@ exports.getAllLoot = async (req, res) => {
 
 exports.updateLootStatus = async (req, res) => {
   const { id } = req.params;
-  const { status, whohas } = req.body;
-  const { userId } = req.body;  // Assuming you have the userId in the request body
+  const { status, whohas, userId } = req.body;
 
   try {
-    await Loot.updateStatus(id, status, userId, whohas);
+    await Loot.updateStatus(id, status, userId, status === 'Kept Self' ? whohas : null);
     res.status(200).send('Loot status updated');
   } catch (error) {
     console.error('Error updating loot status', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 
 exports.splitStack = async (req, res) => {
   const { id, splits, userId } = req.body;
