@@ -226,68 +226,107 @@ const KeptParty = () => {
         </>
       )}
       {/* Update Dialog */}
-      <Dialog open={openUpdateDialog} onClose={() => setOpenUpdateDialog(false)}>
-        <DialogTitle>Update Item</DialogTitle>
+      <Dialog open={updateDialogOpen} onClose={handleUpdateDialogClose}>
+        <DialogTitle>Update Entry</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            Update the details of the selected item.
-          </DialogContentText>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Quantity"
-            type="number"
-            fullWidth
-            value={updateData.quantity}
-            onChange={(e) => setUpdateData({ ...updateData, quantity: e.target.value })}
-          />
-          <TextField
-            margin="dense"
-            label="Name"
-            type="text"
-            fullWidth
-            value={updateData.name}
-            onChange={(e) => setUpdateData({ ...updateData, name: e.target.value })}
-          />
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Type</InputLabel>
-            <Select
-              value={updateData.type}
-              onChange={(e) => setUpdateData({ ...updateData, type: e.target.value })}
-            >
-              <MenuItem value="Weapon">Weapon</MenuItem>
-              <MenuItem value="Armor">Armor</MenuItem>
-              <MenuItem value="Magic">Magic</MenuItem>
-              <MenuItem value="Gear">Gear</MenuItem>
-              <MenuItem value="Trade Good">Trade Good</MenuItem>
-              <MenuItem value="Other">Other</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="dense">
-            <InputLabel>Size</InputLabel>
-            <Select
-              value={updateData.size}
-              onChange={(e) => setUpdateData({ ...updateData, size: e.target.value })}
-            >
-              <MenuItem value="Fine">Fine</MenuItem>
-              <MenuItem value="Diminutive">Diminutive</MenuItem>
-              <MenuItem value="Tiny">Tiny</MenuItem>
-              <MenuItem value="Small">Small</MenuItem>
-              <MenuItem value="Medium">Medium</MenuItem>
-              <MenuItem value="Large">Large</MenuItem>
-              <MenuItem value="Huge">Huge</MenuItem>
-              <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-              <MenuItem value="Colossal">Colossal</MenuItem>
-            </Select>
-          </FormControl>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Quantity"
+                type="number"
+                name="quantity"
+                value={updatedEntry.quantity || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Item Name"
+                name="name"
+                value={updatedEntry.name || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Magical?</InputLabel>
+                <Select
+                  name="unidentified"
+                  value={updatedEntry.unidentified === null ? '' : updatedEntry.unidentified}
+                  onChange={handleUpdateChange}
+                >
+                  <MenuItem value={null}>Not Magical</MenuItem>
+                  <MenuItem value={false}>Identified</MenuItem>
+                  <MenuItem value={true}>Unidentified</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Masterwork</InputLabel>
+                <Select
+                  name="masterwork"
+                  value={updatedEntry.masterwork === null ? '' : updatedEntry.masterwork}
+                  onChange={handleUpdateChange}
+                >
+                  <MenuItem value={true}>Yes</MenuItem>
+                  <MenuItem value={false}>No</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  name="type"
+                  value={updatedEntry.type || ''}
+                  onChange={handleUpdateChange}
+                >
+                  <MenuItem value="Weapon">Weapon</MenuItem>
+                  <MenuItem value="Armor">Armor</MenuItem>
+                  <MenuItem value="Magic">Magic</MenuItem>
+                  <MenuItem value="Gear">Gear</MenuItem>
+                  <MenuItem value="Trade Good">Trade Good</MenuItem>
+                  <MenuItem value="Other">Other</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Size</InputLabel>
+                <Select
+                  name="size"
+                  value={updatedEntry.size || ''}
+                  onChange={handleUpdateChange}
+                >
+                  <MenuItem value="Fine">Fine</MenuItem>
+                  <MenuItem value="Diminutive">Diminutive</MenuItem>
+                  <MenuItem value="Tiny">Tiny</MenuItem>
+                  <MenuItem value="Small">Small</MenuItem>
+                  <MenuItem value="Medium">Medium</MenuItem>
+                  <MenuItem value="Large">Large</MenuItem>
+                  <MenuItem value="Huge">Huge</MenuItem>
+                  <MenuItem value="Gargantuan">Gargantuan</MenuItem>
+                  <MenuItem value="Colossal">Colossal</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Notes"
+                name="notes"
+                value={updatedEntry.notes || ''}
+                onChange={handleUpdateChange}
+                fullWidth
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenUpdateDialog(false)} color="primary">
-            Cancel
-          </Button>
-          <Button onClick={handleUpdateSubmit} color="primary">
-            Update
-          </Button>
+          <Button onClick={handleUpdateDialogClose}>Cancel</Button>
+          <Button onClick={handleUpdateSubmit}>Update</Button>
         </DialogActions>
       </Dialog>
       {/* Split Dialog */}
