@@ -1,5 +1,6 @@
 const Gold = require('../models/Gold');
 const pool = require('../db');
+const jwt_decode = require('jwt-decode');
 
 exports.createGoldEntry = async (req, res) => {
   const { goldEntries } = req.body;

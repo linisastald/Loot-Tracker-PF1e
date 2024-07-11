@@ -18,3 +18,9 @@ exports.create = async (entry) => {
   const result = await pool.query(query, values);
   return result.rows[0];
 };
+
+exports.findAll = async () => {
+  const query = 'SELECT * FROM gold';
+  const result = await pool.query(query);
+  return result.rows;
+};
