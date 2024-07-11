@@ -272,6 +272,57 @@ exports.defineCharacterDistribute = async (req, res) => {
     }
   } catch (error) {
     console.error('Error defining character distribute', error);
+    res.status500().json({ error: 'Internal server error' });
+  }
+};
+
+exports.balance = async (req, res) => {
+  try {
+    const client = await pool.connect();
+    try {
+      const token = req.headers.authorization.split(' ')[1];
+      const decodedToken = jwt_decode(token);
+      const userId = decodedToken.id;
+
+      // Get total copper and silver
+      const totalResult = await client.query('SELECT SUM(copper) AS total_copper, SUM(silver) AS total_silver FROM gold');
+      const totalCopper = parseInt(totalResult.rows[0].total_copper, 10);
+      const totalSilver = parseInt(totalResult.rows[0].total_silver, 10);
+
+      // Convert copper to silver
+      const additionalSilver = Math.floor(totalCopper / 10);
+      const remainingCopper = totalCopper % 10;
+
+      // Convert silver to gold
+      const additionalGold = Math.floor((totalSilver + additionalSilver) / 10);
+      const remainingSilver = (totalSilver + additionalSilver) % 10;
+
+      // Update the gold transactions
+      await client.query('DELETE FROM gold WHERE copper != 0 OR silver != 0');
+
+      const balanceEntries = [
+        {
+          sessionDate: new Date(),
+          transactionType: 'Balance',
+          platinum: 0,
+          gold: additionalGold,
+          silver: remainingSilver,
+          copper: remainingCopper,
+          notes: 'Balanced currencies',
+          userId,
+        },
+      ];
+
+      for (const entry of balanceEntries) {
+        await Gold.create(entry);
+      }
+
+      res.status(201).json(balanceEntries);
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error balancing gold', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

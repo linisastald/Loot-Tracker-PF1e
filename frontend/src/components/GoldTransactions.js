@@ -19,6 +19,7 @@ import {
   DialogTitle,
   TextField,
 } from '@mui/material';
+import jwt_decode from 'jwt-decode';
 
 const GoldTransactions = () => {
   const [goldEntries, setGoldEntries] = useState([]);
@@ -28,9 +29,11 @@ const GoldTransactions = () => {
   const [characterDistributeAmount, setCharacterDistributeAmount] = useState(0);
   const [openPartyLootDialog, setOpenPartyLootDialog] = useState(false);
   const [openCharacterDistributeDialog, setOpenCharacterDistributeDialog] = useState(false);
+  const [userRole, setUserRole] = useState('');
 
   useEffect(() => {
     fetchGoldEntries();
+    fetchUserRole();
   }, []);
 
   const fetchGoldEntries = async () => {
@@ -44,6 +47,21 @@ const GoldTransactions = () => {
     } catch (error) {
       console.error('Error fetching gold entries:', error);
       setError('Failed to fetch gold entries.');
+    }
+  };
+
+  const fetchUserRole = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const decodedToken = jwt_decode(token);
+      const userId = decodedToken.id;
+      const response = await axios.get(`http://192.168.0.64:5000/api/users/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setUserRole(response.data.role);
+    } catch (error) {
+      console.error('Error fetching user role:', error);
+      setError('Failed to fetch user role.');
     }
   };
 
@@ -125,6 +143,19 @@ const GoldTransactions = () => {
     }
   };
 
+  const handleBalance = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('http://192.168.0.64:5000/api/gold/balance', {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchGoldEntries(); // Refresh the gold entries after balancing
+    } catch (error) {
+      console.error('Error balancing gold:', error);
+      setError('Failed to balance gold.');
+    }
+  };
+
   const formatDate = (dateString) => {
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
     return new Date(dateString).toLocaleDateString(undefined, options);
@@ -164,9 +195,14 @@ const GoldTransactions = () => {
         <Button variant="contained" color="primary" onClick={() => setOpenPartyLootDialog(true)} sx={{ mr: 2 }}>
           Define Party Loot Distribute
         </Button>
-        <Button variant="contained" color="primary" onClick={() => setOpenCharacterDistributeDialog(true)}>
+        <Button variant="contained" color="primary" onClick={() => setOpenCharacterDistributeDialog(true)} sx={{ mr: 2 }}>
           Define Character Distribute
         </Button>
+        {userRole === 'DM' && (
+          <Button variant="contained" color="primary" onClick={handleBalance}>
+            Balance
+          </Button>
+        )}
         {error && <Typography color="error">{error}</Typography>}
       </Paper>
       <TableContainer component={Paper}>

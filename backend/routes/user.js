@@ -7,5 +7,6 @@ router.put('/change-password', verifyToken, userController.changePassword);
 router.get('/characters', verifyToken, userController.getCharacters);
 router.post('/characters', verifyToken, userController.addCharacter);
 router.put('/characters', verifyToken, userController.updateCharacter);
+router.get('/:id', verifyToken, userController.getUserById); // Add this line
 
 module.exports = router;

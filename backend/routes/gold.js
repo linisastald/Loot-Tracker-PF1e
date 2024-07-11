@@ -9,5 +9,6 @@ router.post('/distribute-all', verifyToken, goldController.distributeAllGold);
 router.post('/distribute-plus-party-loot', verifyToken, goldController.distributePlusPartyLoot);
 router.post('/define-party-loot-distribute', verifyToken, goldController.definePartyLootDistribute);
 router.post('/define-character-distribute', verifyToken, goldController.defineCharacterDistribute);
+router.post('/balance', verifyToken, goldController.balance);
 
 module.exports = router;
