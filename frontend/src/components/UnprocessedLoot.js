@@ -37,30 +37,30 @@ const UnprocessedLoot = () => {
   const [activeUser, setActiveUser] = useState(null);
 
   useEffect(() => {
-    const fetchLoot = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await axios.get('http://192.168.0.64:5000/api/loot', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setLoot(response.data);
-      } catch (error) {
-        console.error('Error fetching loot:', error);
-        setError('Failed to fetch loot data.');
-      }
-    };
-
-    const fetchActiveUser = () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        const decodedToken = jwt_decode(token);
-        setActiveUser(decodedToken);
-      }
-    };
-
     fetchLoot();
     fetchActiveUser();
   }, []);
+
+  const fetchLoot = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setLoot(response.data);
+    } catch (error) {
+      console.error('Error fetching loot:', error);
+      setError('Failed to fetch loot data.');
+    }
+  };
+
+  const fetchActiveUser = () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      const decodedToken = jwt_decode(token);
+      setActiveUser(decodedToken);
+    }
+  };
 
   const handleSelectItem = (id) => {
     setSelectedItems((prevSelectedItems) =>
@@ -100,7 +100,6 @@ const UnprocessedLoot = () => {
       console.error(`Error updating loot status to ${status}:`, error);
     }
   };
-
 
   const handleSell = () => updateLootStatus('Pending Sale');
   const handleTrash = () => updateLootStatus('Trashed');
@@ -168,8 +167,7 @@ const UnprocessedLoot = () => {
   const handleUpdateSubmit = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put('http://192.168.0.64:5000/api/loot/update-entry', {
-        id: selectedItems[0],
+      await axios.put(`http://192.168.0.64:5000/api/loot/update-entry/${selectedItems[0]}`, {
         updatedEntry,
       }, {
         headers: { Authorization: `Bearer ${token}` },
