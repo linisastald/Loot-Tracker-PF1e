@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import axios from 'axios';
 import {
   Container,
@@ -11,17 +11,21 @@ import {
   MenuItem,
   Select,
   InputLabel,
+  Box
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { UserContext } from '../context/UserContext'; // Assuming you have a UserContext to provide user information
 
 const initialItemEntry = {
   sessionDate: new Date(),
   quantity: '',
   name: '',
   unidentified: '',
+  masterwork: '',
   type: '',
-  size: ''
+  size: '',
+  notes: ''
 };
 
 const initialGoldEntry = {
@@ -36,7 +40,7 @@ const initialGoldEntry = {
 
 const LootEntry = () => {
   const [entries, setEntries] = useState([{ type: 'item', data: initialItemEntry }]);
-  const [entryType, setEntryType] = useState('item');
+  const { user } = useContext(UserContext); // Access user information from context
 
   const handleEntryChange = (index, e) => {
     const newEntries = [...entries];
@@ -64,16 +68,20 @@ const LootEntry = () => {
     const token = localStorage.getItem('token');
     try {
       for (const entry of entries) {
+        const dataToSubmit = {
+          ...entry.data,
+          whoupdated: user.id // Include user ID
+        };
         if (entry.type === 'item') {
           await axios.post(
             'http://192.168.0.64:5000/api/loot',
-            entry.data,
+            { entries: [dataToSubmit] },
             { headers: { Authorization: `Bearer ${token}` } }
           );
         } else {
           await axios.post(
             'http://192.168.0.64:5000/api/gold',
-            entry.data,
+            { entries: [dataToSubmit] },
             { headers: { Authorization: `Bearer ${token}` } }
           );
         }
@@ -88,12 +96,14 @@ const LootEntry = () => {
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Loot Entry</Typography>
-        <Button variant="contained" color="primary" onClick={() => handleAddEntry('item')} sx={{ mr: 2 }}>
-          Add Item Entry
-        </Button>
-        <Button variant="contained" color="secondary" onClick={() => handleAddEntry('gold')}>
-          Add Gold Entry
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button variant="contained" color="primary" onClick={() => handleAddEntry('item')}>
+            Add Item Entry
+          </Button>
+          <Button variant="contained" color="secondary" onClick={() => handleAddEntry('gold')}>
+            Add Gold Entry
+          </Button>
+        </Box>
       </Paper>
 
       <form onSubmit={handleSubmit}>
@@ -158,6 +168,19 @@ const LootEntry = () => {
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
+                      <InputLabel>Masterwork</InputLabel>
+                      <Select
+                        name="masterwork"
+                        value={entry.data.masterwork || ''}
+                        onChange={(e) => handleEntryChange(index, e)}
+                      >
+                        <MenuItem value={true}>Yes</MenuItem>
+                        <MenuItem value={false}>No</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
                       <InputLabel>Type</InputLabel>
                       <Select
                         name="type"
@@ -193,6 +216,17 @@ const LootEntry = () => {
                         <MenuItem value="Colossal">Colossal</MenuItem>
                       </Select>
                     </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Notes"
+                      name="notes"
+                      value={entry.data.notes || ''}
+                      onChange={(e) => handleEntryChange(index, e)}
+                      fullWidth
+                      multiline
+                      rows={4}
+                    />
                   </Grid>
                 </>
               ) : (
