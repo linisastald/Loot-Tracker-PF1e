@@ -38,6 +38,16 @@ exports.updateLootStatus = async (req, res) => {
   }
 };
 
+exports.getTrashedLoot = async (req, res) => {
+  try {
+    const loot = await Loot.findByStatus('Trashed');
+    res.status(200).json(loot);
+  } catch (error) {
+    console.error('Error fetching trashed loot', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 
 exports.splitStack = async (req, res) => {
   const { id, splits, userId } = req.body;
