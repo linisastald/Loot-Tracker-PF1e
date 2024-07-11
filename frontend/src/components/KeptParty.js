@@ -123,6 +123,8 @@ const KeptParty = () => {
     );
   }) : [];
 
+  const selectedItem = loot.find(item => item.id === selectedItems[0]);
+
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
@@ -216,9 +218,11 @@ const KeptParty = () => {
           <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleOpenUpdateDialog}>
             Update
           </Button>
-          <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleOpenSplitDialog}>
-            Split Stack
-          </Button>
+          {selectedItem && selectedItem.quantity > 1 && (
+            <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleOpenSplitDialog}>
+              Split Stack
+            </Button>
+          )}
         </>
       )}
       {/* Update Dialog */}
