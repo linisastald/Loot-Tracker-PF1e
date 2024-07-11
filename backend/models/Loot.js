@@ -22,14 +22,27 @@ exports.create = async (entry) => {
 };
 
 exports.findAll = async () => {
-  const query = `
+  // Query for the summarized loot
+  const summaryQuery = `
     SELECT name, SUM(quantity) as quantity, unidentified, masterwork, type, size, status
     FROM loot
     WHERE (status IS NULL or status = 'Pending Sale')
     GROUP BY name, unidentified, masterwork, type, size, status
   `;
-  const result = await pool.query(query);
-  return result.rows;
+  const summaryResult = await pool.query(summaryQuery);
+
+  // Query for the individual loot items
+  const individualQuery = `
+    SELECT id, session_date, quantity, name, unidentified, masterwork, type, size, status, believed_value, average_appraisal
+    FROM loot
+    WHERE (status IS NULL or status = 'Pending Sale')
+  `;
+  const individualResult = await pool.query(individualQuery);
+
+  return {
+    summary: summaryResult.rows,
+    individual: individualResult.rows,
+  };
 };
 
 exports.updateStatus = async (id, status, whohas) => {
