@@ -124,24 +124,35 @@ exports.splitStack = async (id, splits, userId) => {
 
 exports.updateEntry = async (id, updatedEntry) => {
   try {
+    // Get current entry
+    const currentEntryQuery = `SELECT * FROM loot WHERE id = $1`;
+    const currentEntryResult = await pool.query(currentEntryQuery, [id]);
+    const currentEntry = currentEntryResult.rows[0];
+
+    // Merge current entry with updated entry, prioritizing updated fields
+    const mergedEntry = {
+      ...currentEntry,
+      ...updatedEntry,
+    };
+
     const query = `
       UPDATE loot
       SET session_date = $1, quantity = $2, name = $3, unidentified = $4, masterwork = $5, type = $6, size = $7, status = $8, whoupdated = $9, lastupdate = CURRENT_TIMESTAMP, whohas = $10, notes = $11
       WHERE id = $12
     `;
     const values = [
-      updatedEntry.sessionDate,
-      updatedEntry.quantity,
-      updatedEntry.name,
-      updatedEntry.unidentified,
-      updatedEntry.masterwork,
-      updatedEntry.type,
-      updatedEntry.size,
-      updatedEntry.status,
-      updatedEntry.whoupdated,
-      updatedEntry.whohas,
-      updatedEntry.notes,
-      id
+      mergedEntry.session_date,
+      mergedEntry.quantity,
+      mergedEntry.name,
+      mergedEntry.unidentified,
+      mergedEntry.masterwork,
+      mergedEntry.type,
+      mergedEntry.size,
+      mergedEntry.status,
+      mergedEntry.whoupdated,
+      mergedEntry.whohas,
+      mergedEntry.notes,
+      id,
     ];
     await pool.query(query, values);
   } catch (error) {
@@ -149,3 +160,4 @@ exports.updateEntry = async (id, updatedEntry) => {
     throw error;
   }
 };
+

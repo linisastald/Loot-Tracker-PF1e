@@ -21,6 +21,10 @@ import {
   DialogTitle,
   TextField,
   Grid,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import jwt_decode from 'jwt-decode';
@@ -167,8 +171,11 @@ const UnprocessedLoot = () => {
   const handleUpdateSubmit = async () => {
     try {
       const token = localStorage.getItem('token');
+      const filteredUpdatedEntry = Object.fromEntries(
+        Object.entries(updatedEntry).filter(([key, value]) => value !== '' && value !== null)
+      );
       await axios.put(`http://192.168.0.64:5000/api/loot/update-entry/${selectedItems[0]}`, {
-        updatedEntry,
+        updatedEntry: filteredUpdatedEntry,
       }, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -345,40 +352,68 @@ const UnprocessedLoot = () => {
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                label="Unidentified"
-                name="unidentified"
-                value={updatedEntry.unidentified || ''}
-                onChange={handleUpdateChange}
-                fullWidth
-              />
+              <FormControl fullWidth>
+                <InputLabel>Magical?</InputLabel>
+                <Select
+                  name="unidentified"
+                  value={updatedEntry.unidentified === null ? '' : updatedEntry.unidentified}
+                  onChange={handleUpdateChange}
+                >
+                  <MenuItem value={null}>Not Magical</MenuItem>
+                  <MenuItem value={false}>Identified</MenuItem>
+                  <MenuItem value={true}>Unidentified</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                label="Masterwork"
-                name="masterwork"
-                value={updatedEntry.masterwork || ''}
-                onChange={handleUpdateChange}
-                fullWidth
-              />
+              <FormControl fullWidth>
+                <InputLabel>Masterwork</InputLabel>
+                <Select
+                  name="masterwork"
+                  value={updatedEntry.masterwork === null ? '' : updatedEntry.masterwork}
+                  onChange={handleUpdateChange}
+                >
+                  <MenuItem value={true}>Yes</MenuItem>
+                  <MenuItem value={false}>No</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                label="Type"
-                name="type"
-                value={updatedEntry.type || ''}
-                onChange={handleUpdateChange}
-                fullWidth
-              />
+              <FormControl fullWidth>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  name="type"
+                  value={updatedEntry.type || ''}
+                  onChange={handleUpdateChange}
+                >
+                  <MenuItem value="Weapon">Weapon</MenuItem>
+                  <MenuItem value="Armor">Armor</MenuItem>
+                  <MenuItem value="Magic">Magic</MenuItem>
+                  <MenuItem value="Gear">Gear</MenuItem>
+                  <MenuItem value="Trade Good">Trade Good</MenuItem>
+                  <MenuItem value="Other">Other</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                label="Size"
-                name="size"
-                value={updatedEntry.size || ''}
-                onChange={handleUpdateChange}
-                fullWidth
-              />
+              <FormControl fullWidth>
+                <InputLabel>Size</InputLabel>
+                <Select
+                  name="size"
+                  value={updatedEntry.size || ''}
+                  onChange={handleUpdateChange}
+                >
+                  <MenuItem value="Fine">Fine</MenuItem>
+                  <MenuItem value="Diminutive">Diminutive</MenuItem>
+                  <MenuItem value="Tiny">Tiny</MenuItem>
+                  <MenuItem value="Small">Small</MenuItem>
+                  <MenuItem value="Medium">Medium</MenuItem>
+                  <MenuItem value="Large">Large</MenuItem>
+                  <MenuItem value="Huge">Huge</MenuItem>
+                  <MenuItem value="Gargantuan">Gargantuan</MenuItem>
+                  <MenuItem value="Colossal">Colossal</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12}>
               <TextField
