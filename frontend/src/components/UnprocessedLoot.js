@@ -44,6 +44,7 @@ const UnprocessedLoot = () => {
   const [activeUser, setActiveUser] = useState(null);
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [openItems, setOpenItems] = useState({});
 
   useEffect(() => {
     fetchLoot();
@@ -65,7 +66,6 @@ const UnprocessedLoot = () => {
   const fetchActiveUserDetails = async () => {
     await fetchActiveUser(setActiveUser);
   };
-
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
@@ -162,8 +162,8 @@ const UnprocessedLoot = () => {
         individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
-        openItems={{}}
-        setOpenItems={() => {}} // placeholder for state function
+        openItems={openItems}
+        setOpenItems={setOpenItems}
         handleSelectItem={handleSelectItem}
         handleSort={handleSort}
         sortConfig={sortConfig}
