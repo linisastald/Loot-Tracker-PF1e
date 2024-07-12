@@ -91,6 +91,7 @@ exports.findByStatus = async (status) => {
         l.type,
         l.size,
         l.status,
+        l.lastupdate,
         a.believedvalue,
         a.appraisalroll
       FROM
@@ -107,7 +108,6 @@ exports.findByStatus = async (status) => {
     throw error;
   }
 };
-
 
 exports.updateStatus = async (id, status, whohas) => {
   try {

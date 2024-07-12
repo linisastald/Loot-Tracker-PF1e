@@ -14,7 +14,6 @@ exports.createLoot = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getAllLoot = async (req, res) => {
   try {
     const loot = await Loot.findAll();
@@ -24,8 +23,6 @@ exports.getAllLoot = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
-
 exports.updateLootStatus = async (req, res) => {
   const { id } = req.params;
   const { status, userId, whohas } = req.body;
@@ -42,8 +39,6 @@ exports.updateLootStatus = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
-
 exports.getKeptPartyLoot = async (req, res) => {
   try {
     const loot = await Loot.findByStatus('Kept Party');
@@ -53,10 +48,9 @@ exports.getKeptPartyLoot = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getTrashedLoot = async (req, res) => {
   try {
-    const loot = await Loot.findByStatus('trash');
+    const loot = await Loot.findByStatus('Trashed');
     res.status(200).json(loot);
   } catch (error) {
     console.error('Error fetching trashed loot', error);
@@ -72,8 +66,6 @@ exports.getKeptCharacterLoot = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
-
 exports.splitStack = async (req, res) => {
   const { id, splits, userId } = req.body;
 
@@ -85,7 +77,6 @@ exports.splitStack = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.updateEntry = async (req, res) => {
   const { id } = req.params;
   const { updatedEntry } = req.body;
