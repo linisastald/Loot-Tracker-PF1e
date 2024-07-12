@@ -64,14 +64,15 @@ const UnprocessedLoot = () => {
   };
 
   const fetchActiveUserDetails = async () => {
-  const user = await fetchActiveUser();
-  if (user && user.activeCharacterId) {
-    console.log('Setting active user:', user);
-    setActiveUser(user);
-  } else {
-    console.error('Active character ID is not available');
-  }
-};
+    const user = await fetchActiveUser();
+    if (user && user.activeCharacterId) {
+      console.log('Setting active user:', user);  // Add log here
+      setActiveUser(user);
+    } else {
+      console.error('Active character ID is not available');
+    }
+  };
+
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters((prevFilters) => ({
@@ -86,11 +87,6 @@ const UnprocessedLoot = () => {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
-  };
-  const handleSplitStackClick = () => {
-    const selectedItem = loot.individual.find(item => item.id === selectedItems[0]);
-    setSplitQuantities([0, selectedItem.quantity]);
-    setOpenSplitDialog(true);
   };
 
   return (
@@ -184,19 +180,17 @@ const UnprocessedLoot = () => {
       <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleTrash(selectedItems, fetchLoot)}>
         Trash
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, fetchLoot)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, fetchLoot, activeUser)}>
         Keep Self
       </Button>
       <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-          <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStackClick}>
-            Split Stack
-          </Button>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStackClick}>
+          Split Stack
+        </Button>
       )}
-
-
       {selectedItems.length === 1 && (
         <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
           Update
@@ -204,15 +198,14 @@ const UnprocessedLoot = () => {
       )}
 
       <CustomSplitStackDialog
-          open={openSplitDialog}
-          handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
-          splitQuantities={splitQuantities}
-          setSplitQuantities={setSplitQuantities}
-          handleSplitChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
-          handleAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities)}
-          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
+        open={openSplitDialog}
+        handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
+        splitQuantities={splitQuantities}
+        setSplitQuantities={setSplitQuantities}
+        handleSplitChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
+        handleAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities)}
+        handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
       />
-
 
       <CustomUpdateDialog
         open={openUpdateDialog}
