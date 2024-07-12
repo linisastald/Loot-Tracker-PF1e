@@ -1,9 +1,9 @@
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@mui/material';
 
-const CustomSplitStackDialog = ({ open, onClose, splitQuantities, onSplitChange, onAddSplit, onSplitSubmit }) => {
+const CustomSplitStackDialog = ({ open, handleClose, splitQuantities, handleSplitChange, handleAddSplit, handleSplitSubmit }) => {
   return (
-    <Dialog open={open} onClose={onClose}>
+    <Dialog open={open} onClose={handleClose}>
       <DialogTitle>Split Stack</DialogTitle>
       <DialogContent>
         {splitQuantities && splitQuantities.map((quantity, index) => (
@@ -12,16 +12,16 @@ const CustomSplitStackDialog = ({ open, onClose, splitQuantities, onSplitChange,
             label={`Quantity ${index + 1}`}
             type="number"
             value={quantity}
-            onChange={(e) => onSplitChange(index, e.target.value)}
+            onChange={(e) => handleSplitChange(index, e.target.value)}
             fullWidth
             margin="normal"
           />
         ))}
-        <Button onClick={onAddSplit}>Add Split</Button>
+        <Button onClick={handleAddSplit}>Add Split</Button>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={onSplitSubmit}>Split</Button>
+        <Button onClick={handleClose}>Cancel</Button>
+        <Button onClick={handleSplitSubmit}>Split</Button>
       </DialogActions>
     </Dialog>
   );

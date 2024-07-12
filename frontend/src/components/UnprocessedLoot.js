@@ -82,6 +82,11 @@ const UnprocessedLoot = () => {
     }
     setSortConfig({ key, direction });
   };
+  const handleSplitStackClick = () => {
+    const selectedItem = loot.individual.find(item => item.id === selectedItems[0]);
+    setSplitQuantities([0, selectedItem.quantity]);
+    setOpenSplitDialog(true);
+  };
 
   return (
     <Container component="main">
@@ -181,10 +186,11 @@ const UnprocessedLoot = () => {
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSplitStack(loot.individual, selectedItems, setSplitQuantities, setOpenSplitDialog)}>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStackClick}>
           Split Stack
         </Button>
       )}
+
       {selectedItems.length === 1 && (
         <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
           Update
