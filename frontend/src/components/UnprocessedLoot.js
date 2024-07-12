@@ -158,7 +158,7 @@ const UnprocessedLoot = () => {
         </Grid>
       </Grid>
       <CustomLootTable
-        loot={loot}
+        loot={loot.summary}
         individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
