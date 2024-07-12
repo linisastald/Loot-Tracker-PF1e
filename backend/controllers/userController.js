@@ -89,7 +89,7 @@ exports.updateCharacter = async (req, res) => {
   }
 };
 
-exports.getUserById = async (req, res) => {
+exports.getUser = async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
@@ -103,7 +103,7 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-exports.getUser = async (req, res) => {
+exports.getUserById = async (req, res) => {
   const { id } = req.params;
 
   try {
