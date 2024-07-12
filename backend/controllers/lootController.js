@@ -25,7 +25,6 @@ exports.getAllLoot = async (req, res) => {
   }
 };
 
-const Loot = require('../models/Loot');
 
 exports.updateLootStatus = async (req, res) => {
   const { id } = req.params;
