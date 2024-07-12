@@ -108,6 +108,16 @@ const UserSettings = () => {
     setCharacter({ id: null, name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true });
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: '2-digit',
+    });
+  };
+
   const StyledTableRow = styled(TableRow)(({ theme, active }) => ({
     backgroundColor: active ? theme.palette.action.hover : 'inherit',
   }));
@@ -164,8 +174,8 @@ const UserSettings = () => {
                 <StyledTableRow key={char.id} active={char.active}>
                   <TableCell>{char.name}</TableCell>
                   <TableCell>{char.appraisal_bonus}</TableCell>
-                  <TableCell>{char.birthday}</TableCell>
-                  <TableCell>{char.deathday}</TableCell>
+                  <TableCell>{formatDate(char.birthday)}</TableCell>
+                  <TableCell>{formatDate(char.deathday)}</TableCell>
                   <TableCell>{char.active ? 'Yes' : 'No'}</TableCell>
                   <TableCell>
                     <Button variant="outlined" onClick={() => handleEditCharacter(char)}>
