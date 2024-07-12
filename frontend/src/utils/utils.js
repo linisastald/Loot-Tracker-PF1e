@@ -124,11 +124,11 @@ export const handleOpenUpdateDialog = (loot, selectedItems, setUpdatedEntry, set
 };
 
 // Open split dialog
-export const handleOpenSplitDialog = (loot, selectedItems, setSplitQuantities, setOpenSplitDialog) => {
-  const selectedItem = loot.find(item => item.id === selectedItems[0]);
+export const handleOpenSplitDialog = (loot, selectedItems, setSplitQuantities, setSplitDialogOpen) => {
+  const selectedItem = loot.individual.find(item => item.id === selectedItems[0]);
   if (selectedItem) {
-    setSplitQuantities([0, 0]);
-    setOpenSplitDialog(true);
+    setSplitQuantities([0, selectedItem.quantity]); // or initialize as needed
+    setSplitDialogOpen(true);
   }
 };
 

@@ -2,16 +2,23 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Container,
-  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Paper,
+  Checkbox,
+  Button,
   Typography,
   Grid,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  TableSortLabel,
 } from '@mui/material';
 import jwt_decode from 'jwt-decode';
+import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
+import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
+import CustomLootTable from './CustomLootTable';
 import {
   fetchActiveUser,
   handleSelectItem,
@@ -30,20 +37,20 @@ import {
   handleUpdateDialogClose,
   handleSplitDialogClose,
   formatDate,
-  handleUpdateChange, // Import the function here
+  handleUpdateChange,
 } from '../utils/utils';
-import CustomLootTable from './CustomLootTable';
-import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
-import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
+  const [openItems, setOpenItems] = useState({});
+  const [error, setError] = useState(null);
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [splitQuantities, setSplitQuantities] = useState([0, 0]);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
 
   useEffect(() => {
@@ -54,14 +61,33 @@ const UnprocessedLoot = () => {
   const fetchLoot = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/loot`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);
+      setError('Failed to fetch loot data.');
     }
   };
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedLoot = [...loot.summary].sort((a, b) => {
+    if (a[sortConfig.key] < b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? -1 : 1;
+    }
+    if (a[sortConfig.key] > b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
@@ -71,22 +97,20 @@ const UnprocessedLoot = () => {
     }));
   };
 
-  const filteredLoot = {
-    summary: loot.summary.filter((item) => {
-      return (
-        (filters.unidentified === '' || String(item.unidentified) === filters.unidentified) &&
-        (filters.type === '' || item.type === filters.type) &&
-        (filters.size === '' || item.size === filters.size) &&
-        (filters.pendingSale === '' || (item.status === 'Pending Sale') === (filters.pendingSale === 'true'))
-      );
-    }),
-    individual: loot.individual,
-  };
+  const filteredLoot = sortedLoot.filter((item) => {
+    return (
+      (filters.unidentified === '' || String(item.unidentified) === filters.unidentified) &&
+      (filters.type === '' || item.type === filters.type) &&
+      (filters.size === '' || item.size === filters.size) &&
+      (filters.pendingSale === '' || (item.status === 'Pending Sale') === (filters.pendingSale === 'true'))
+    );
+  });
 
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Unprocessed Loot</Typography>
+        {error && <Typography color="error">{error}</Typography>}
       </Paper>
       <Grid container spacing={2} sx={{ mb: 2 }}>
         <Grid item xs={3}>
@@ -157,17 +181,19 @@ const UnprocessedLoot = () => {
           </FormControl>
         </Grid>
       </Grid>
-      <CustomLootTable
-        loot={filteredLoot}
-        selectedItems={selectedItems}
-        setSelectedItems={setSelectedItems}
-        setUpdatedEntry={setUpdatedEntry}
-        setUpdateDialogOpen={setUpdateDialogOpen}
-        setSplitQuantities={setSplitQuantities}
-        setSplitDialogOpen={setSplitDialogOpen}
-        handleSelectItem={handleSelectItem}
-        formatDate={formatDate}
-      />
+      <TableContainer component={Paper}>
+        <CustomLootTable
+          loot={filteredLoot}
+          individualLoot={loot.individual}
+          selectedItems={selectedItems}
+          setSelectedItems={setSelectedItems}
+          openItems={openItems}
+          setOpenItems={setOpenItems}
+          handleSelectItem={handleSelectItem}
+          handleSort={handleSort}
+          sortConfig={sortConfig}
+        />
+      </TableContainer>
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
       </Button>
