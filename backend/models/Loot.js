@@ -115,7 +115,7 @@ exports.findByStatus = async (status) => {
 };
 
 
-exports.updateStatus = async (id, status, whohas) => {
+exports.updateStatus = async (ids, status, whohas) => {
   try {
     let query;
     let values;
@@ -124,16 +124,16 @@ exports.updateStatus = async (id, status, whohas) => {
       query = `
         UPDATE loot
         SET status = $1, whohas = $2, lastupdate = CURRENT_TIMESTAMP
-        WHERE id = $3
+        WHERE id = ANY($3::uuid[])
       `;
-      values = [status, whohas, id];
+      values = [status, whohas, ids];
     } else {
       query = `
         UPDATE loot
         SET status = $1, lastupdate = CURRENT_TIMESTAMP
-        WHERE id = $2
+        WHERE id = ANY($2::uuid[])
       `;
-      values = [status, id];
+      values = [status, ids];
     }
 
     await pool.query(query, values);

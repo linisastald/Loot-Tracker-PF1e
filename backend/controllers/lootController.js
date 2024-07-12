@@ -24,15 +24,14 @@ exports.getAllLoot = async (req, res) => {
   }
 };
 exports.updateLootStatus = async (req, res) => {
-  const { id } = req.params;
-  const { status, userId, whohas } = req.body;
+  const { ids, status, userId, whohas } = req.body;
 
-  if (!id || !status || !userId) {
+  if (!ids || !status || !userId) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
   try {
-    await Loot.updateStatus(id, status, status === 'Kept Self' ? whohas : null);
+    await Loot.updateStatus(ids, status, status === 'Kept Self' ? whohas : null);
     res.status(200).send('Loot status updated');
   } catch (error) {
     console.error('Error updating loot status', error);
@@ -90,3 +89,19 @@ exports.updateEntry = async (req, res) => {
   }
 };
 
+exports.updateSingleLootStatus = async (req, res) => {
+  const { id } = req.params;
+  const { status, userId, whohas } = req.body;
+
+  if (!id || !status || !userId) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    await Loot.updateStatus([id], status, status === 'Kept Self' ? whohas : null);
+    res.status(200).send('Loot status updated');
+  } catch (error) {
+    console.error('Error updating loot status', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

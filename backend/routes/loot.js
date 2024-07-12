@@ -11,5 +11,7 @@ router.put('/update-entry/:id', verifyToken, lootController.updateEntry);
 router.get('/trash', verifyToken, lootController.getTrashedLoot);
 router.get('/kept-party', verifyToken, lootController.getKeptPartyLoot);
 router.get('/kept-character', verifyToken, lootController.getKeptCharacterLoot);
+router.put('/update-status', verifyToken, lootController.updateLootStatus);
+
 
 module.exports = router;

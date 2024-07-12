@@ -40,34 +40,67 @@ export const updateLootStatus = async (id, updatedEntry) => {
 
 // Handle sell action
 export const handleSell = async (selectedItems, fetchLoot) => {
-  await axios.post(`${API_BASE_URL}/api/loot/sell`, { ids: selectedItems }, {
-    headers: getAuthHeaders(),
-  });
-  fetchLoot();
+  try {
+    await axios.put(`${API_BASE_URL}/api/loot/update-status`, {
+      ids: selectedItems,
+      status: 'Pending Sale',
+      userId: jwt_decode(getToken()).id,
+    }, {
+      headers: getAuthHeaders(),
+    });
+    fetchLoot();
+  } catch (error) {
+    console.error('Error marking loot as pending sale:', error);
+  }
 };
 
 // Handle trash action
 export const handleTrash = async (selectedItems, fetchLoot) => {
-  await axios.post(`${API_BASE_URL}/api/loot/trash`, { ids: selectedItems }, {
-    headers: getAuthHeaders(),
-  });
-  fetchLoot();
+  try {
+    await axios.put(`${API_BASE_URL}/api/loot/update-status`, {
+      ids: selectedItems,
+      status: 'Trashed',
+      userId: jwt_decode(getToken()).id,
+    }, {
+      headers: getAuthHeaders(),
+    });
+    fetchLoot();
+  } catch (error) {
+    console.error('Error trashing loot:', error);
+  }
 };
 
 // Handle keep self action
 export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
-  await axios.post(`${API_BASE_URL}/api/loot/keep-self`, { ids: selectedItems, whohas: activeUser.activeCharacterId }, {
-    headers: getAuthHeaders(),
-  });
-  fetchLoot();
+  try {
+    await axios.put(`${API_BASE_URL}/api/loot/update-status`, {
+      ids: selectedItems,
+      status: 'Kept Self',
+      userId: jwt_decode(getToken()).id,
+      whohas: activeUser.activeCharacterId,
+    }, {
+      headers: getAuthHeaders(),
+    });
+    fetchLoot();
+  } catch (error) {
+    console.error('Error keeping loot for self:', error);
+  }
 };
 
 // Handle keep party action
 export const handleKeepParty = async (selectedItems, fetchLoot) => {
-  await axios.post(`${API_BASE_URL}/api/loot/keep-party`, { ids: selectedItems }, {
-    headers: getAuthHeaders(),
-  });
-  fetchLoot();
+  try {
+    await axios.put(`${API_BASE_URL}/api/loot/update-status`, {
+      ids: selectedItems,
+      status: 'Kept Party',
+      userId: jwt_decode(getToken()).id,
+    }, {
+      headers: getAuthHeaders(),
+    });
+    fetchLoot();
+  } catch (error) {
+    console.error('Error keeping loot for party:', error);
+  }
 };
 
 // Handle split stack action
