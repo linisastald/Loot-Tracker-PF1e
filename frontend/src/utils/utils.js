@@ -71,16 +71,16 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
 };
 
 // Handle split stack action
-export const handleSplitStack = async (splitData, selectedItems, fetchLoot) => {
-  const splits = Array.from({ length: splitData.length }, (_, i) => ({
-    ...splitData[i],
-    id: selectedItems[0],
-  }));
-  await axios.post(`${API_BASE_URL}/api/loot/split`, { splits }, {
-    headers: getAuthHeaders(),
-  });
-  fetchLoot();
+// Handle split stack action
+export const handleSplitStack = (loot, selectedItems, setSplitQuantities, setSplitDialogOpen) => {
+  if (selectedItems.length !== 1) return;
+  const selectedItem = loot.find((item) => item.id === selectedItems[0]);
+  if (selectedItem) {
+    setSplitQuantities([0, 0]);
+    setSplitDialogOpen(true);
+  }
 };
+
 
 // Handle update action
 export const handleUpdate = async (id, updatedEntry, fetchLoot) => {
