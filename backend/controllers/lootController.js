@@ -31,13 +31,14 @@ exports.updateLootStatus = async (req, res) => {
   }
 
   try {
-    await Loot.updateStatus(ids, status, status === 'Kept Self' ? whohas : null);
+    await Loot.updateStatus(ids.map(Number), status, status === 'Kept Self' ? whohas : null); // Ensure IDs are integers
     res.status(200).send('Loot status updated');
   } catch (error) {
     console.error('Error updating loot status', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.getKeptPartyLoot = async (req, res) => {
   try {
     const loot = await Loot.findByStatus('Kept Party');

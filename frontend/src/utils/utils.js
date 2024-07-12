@@ -42,7 +42,7 @@ export const updateLootStatus = async (id, updatedEntry) => {
 export const handleSell = async (selectedItems, fetchLoot) => {
   try {
     await axios.put(`${API_BASE_URL}/api/loot/update-status`, {
-      ids: selectedItems,
+      ids: selectedItems.map(Number), // Ensure IDs are integers
       status: 'Pending Sale',
       userId: jwt_decode(getToken()).id,
     }, {
@@ -58,7 +58,7 @@ export const handleSell = async (selectedItems, fetchLoot) => {
 export const handleTrash = async (selectedItems, fetchLoot) => {
   try {
     await axios.put(`${API_BASE_URL}/api/loot/update-status`, {
-      ids: selectedItems,
+      ids: selectedItems.map(Number), // Ensure IDs are integers
       status: 'Trashed',
       userId: jwt_decode(getToken()).id,
     }, {
@@ -74,7 +74,7 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
 export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
   try {
     await axios.put(`${API_BASE_URL}/api/loot/update-status`, {
-      ids: selectedItems,
+      ids: selectedItems.map(Number), // Ensure IDs are integers
       status: 'Kept Self',
       userId: jwt_decode(getToken()).id,
       whohas: activeUser.activeCharacterId,
@@ -91,7 +91,7 @@ export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
 export const handleKeepParty = async (selectedItems, fetchLoot) => {
   try {
     await axios.put(`${API_BASE_URL}/api/loot/update-status`, {
-      ids: selectedItems,
+      ids: selectedItems.map(Number), // Ensure IDs are integers
       status: 'Kept Party',
       userId: jwt_decode(getToken()).id,
     }, {

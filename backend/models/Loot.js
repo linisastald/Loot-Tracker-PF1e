@@ -124,14 +124,14 @@ exports.updateStatus = async (ids, status, whohas) => {
       query = `
         UPDATE loot
         SET status = $1, whohas = $2, lastupdate = CURRENT_TIMESTAMP
-        WHERE id = ANY($3::uuid[])
+        WHERE id = ANY($3::int[])
       `;
       values = [status, whohas, ids];
     } else {
       query = `
         UPDATE loot
         SET status = $1, lastupdate = CURRENT_TIMESTAMP
-        WHERE id = ANY($2::uuid[])
+        WHERE id = ANY($2::int[])
       `;
       values = [status, ids];
     }
@@ -142,6 +142,7 @@ exports.updateStatus = async (ids, status, whohas) => {
     throw error;
   }
 };
+
 
 exports.splitStack = async (id, splits, userId) => {
   const client = await pool.connect();
