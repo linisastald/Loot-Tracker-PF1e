@@ -43,6 +43,7 @@ const UnprocessedLoot = () => {
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
   useEffect(() => {
     fetchLoot();
@@ -72,6 +73,14 @@ const UnprocessedLoot = () => {
       ...prevFilters,
       [name]: value,
     }));
+  };
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
   };
 
   return (
@@ -150,12 +159,14 @@ const UnprocessedLoot = () => {
       </Grid>
       <CustomLootTable
         loot={loot}
-        filters={filters}
+        individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
-        handleOpenSplitDialog={handleOpenSplitDialog}
-        handleOpenUpdateDialog={handleOpenUpdateDialog}
-        formatDate={formatDate}
+        openItems={{}}
+        setOpenItems={() => {}} // placeholder for state function
+        handleSelectItem={handleSelectItem}
+        handleSort={handleSort}
+        sortConfig={sortConfig}
       />
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
