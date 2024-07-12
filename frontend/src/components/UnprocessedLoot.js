@@ -40,9 +40,9 @@ import {
   handleAddSplit,
   handleUpdateDialogClose,
   handleSplitDialogClose
-} from './utils'; // Importing utility functions
-import CustomSplitStackDialog from './components/dialogs/CustomSplitStackDialog';
-import CustomUpdateDialog from './components/dialogs/CustomUpdateDialog';
+} from '../utils'; // Importing utility functions
+import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
+import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
