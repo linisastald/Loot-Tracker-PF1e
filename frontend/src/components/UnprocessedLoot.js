@@ -97,25 +97,22 @@ const UnprocessedLoot = () => {
     return loot.individual.filter((item) => item.name === name);
   };
 
-const updateLootStatus = async (status) => {
-  try {
-    const token = localStorage.getItem('token');
-    const selectedId = selectedItems[0]; // Only handle one selected item at a time
-    const selectedItem = loot.individual.find((item) => item.id === selectedId);
-    const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
-    const data = status === 'Kept Self' ? { status, userId: activeUser.id, whohas } : { status, userId: activeUser.id };
-
-    console.log('Updating loot status with data:', data); // Add this line
-
-    await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    setSelectedItems([]);
-    fetchLoot();
-  } catch (error) {
-    console.error(`Error updating loot status to ${status}:`, error);
-  }
-};
+  const updateLootStatus = async (status) => {
+    try {
+      const token = localStorage.getItem('token');
+      const selectedId = selectedItems[0]; // Only handle one selected item at a time
+      const selectedItem = loot.individual.find((item) => item.id === selectedId);
+      const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
+      const data = { status, userId: activeUser.id, whohas };
+      await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSelectedItems([]);
+      fetchLoot();
+    } catch (error) {
+      console.error(`Error updating loot status to ${status}:`, error);
+    }
+  };
 
 
   const handleSell = () => updateLootStatus('Pending Sale');

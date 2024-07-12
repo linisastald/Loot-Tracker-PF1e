@@ -111,20 +111,23 @@ exports.findByStatus = async (status) => {
 
 exports.updateStatus = async (id, status, whohas) => {
   try {
-    let query = `
-      UPDATE loot
-      SET status = $1, lastupdate = CURRENT_TIMESTAMP
-      WHERE id = $2
-    `;
-    let values = [status, id];
+    let query;
+    let values;
 
-    if (status === 'Kept Self') {
+    if (status === 'Kept Self' && whohas) {
       query = `
         UPDATE loot
         SET status = $1, whohas = $2, lastupdate = CURRENT_TIMESTAMP
         WHERE id = $3
       `;
       values = [status, whohas, id];
+    } else {
+      query = `
+        UPDATE loot
+        SET status = $1, lastupdate = CURRENT_TIMESTAMP
+        WHERE id = $2
+      `;
+      values = [status, id];
     }
 
     await pool.query(query, values);

@@ -32,7 +32,7 @@ exports.updateLootStatus = async (req, res) => {
   }
 
   try {
-    await Loot.updateStatus(id, status, whohas);
+    await Loot.updateStatus(id, status, status === 'Kept Self' ? whohas : null);
     res.status(200).send('Loot status updated');
   } catch (error) {
     console.error('Error updating loot status', error);
