@@ -12,14 +12,19 @@ const getAuthHeaders = () => {
 };
 
 // Fetch the active user details
-export const fetchActiveUser = async (setActiveUser) => {
-  const token = getToken();
-  const decodedToken = jwt_decode(token);
-  const userId = decodedToken.id;
-  const response = await axios.get(`${API_BASE_URL}/api/user/${userId}`, {
-    headers: getAuthHeaders(),
-  });
-  setActiveUser(response.data);
+export const fetchActiveUser = async () => {
+  try {
+    const token = getToken();
+    const decodedToken = jwt_decode(token);
+    const userId = decodedToken.id;
+    const response = await axios.get(`${API_BASE_URL}/api/user/${userId}`, {
+      headers: getAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching active user:', error);
+    return null;
+  }
 };
 
 // Select an item for further actions
@@ -72,6 +77,11 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
 
 // Handle keep self action
 export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
+  if (!activeUser || !activeUser.activeCharacterId) {
+    console.error('Active character ID is not available');
+    return;
+  }
+
   try {
     await axios.put(`${API_BASE_URL}/api/loot/update-status`, {
       ids: selectedItems.map(Number), // Ensure IDs are integers
