@@ -53,7 +53,7 @@ const CustomLootTable = ({ loot = { summary: [], individual: [] }, selectedItems
           </TableRow>
         </TableHead>
         <TableBody>
-          {loot.summary.map((item) => {
+          {(loot.summary || []).map((item) => {
             const individualItems = getIndividualItems(item.name);
             const totalQuantity = individualItems.reduce((sum, subItem) => sum + subItem.quantity, 0);
             const isPendingSale = individualItems.some((subItem) => subItem.status === 'Pending Sale');
