@@ -20,7 +20,6 @@ export const fetchActiveUser = async () => {
     const response = await axios.get(`${API_BASE_URL}/api/user/${userId}`, {
       headers: getAuthHeaders(),
     });
-    console.log('Fetched active user:', response.data);  // Add log here
     return response.data;
   } catch (error) {
     console.error('Error fetching active user:', error);
@@ -78,7 +77,6 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
 
 // Handle keep self action
 export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
-  console.log('Active user in handleKeepSelf:', activeUser);  // Add log here
   if (!activeUser || !activeUser.activeCharacterId) {
     console.error('Active character ID is not available');
     return;

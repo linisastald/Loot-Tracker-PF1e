@@ -92,18 +92,16 @@ exports.updateCharacter = async (req, res) => {
 exports.getUserById = async (req, res) => {
   const { id } = req.params;
   try {
-    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+    const userResult = await pool.query('SELECT id, username, role, joined FROM users WHERE id = $1', [id]);
     if (userResult.rows.length === 0) {
       console.error('User not found');
       return res.status(404).json({ error: 'User not found' });
     }
 
     const user = userResult.rows[0];
-    console.log('Fetched user:', user);
 
     const activeCharacterResult = await User.getActiveCharacter(user.id);
     const activeCharacterId = activeCharacterResult ? activeCharacterResult.character_id : null;
-    console.log('Fetched active character:', activeCharacterResult);
 
     res.status(200).json({ ...user, activeCharacterId });
   } catch (error) {

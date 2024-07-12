@@ -2,7 +2,7 @@ const pool = require('../db');
 
 const User = {
   async findById(id) {
-    const res = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+    const res = await pool.query('SELECT id, username, role, joined FROM users WHERE id = $1', [id]);
     return res.rows[0];
   },
   async getActiveCharacter(userId) {
