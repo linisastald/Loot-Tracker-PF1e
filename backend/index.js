@@ -20,7 +20,7 @@ const authRoutes = require('./routes/auth');
 const lootRoutes = require('./routes/loot');
 const pfItemsRoutes = require('./routes/pfItems');
 const goldRoutes = require('./routes/gold');
-const userRoutes = require('./routes/user'); // Add user routes
+const userRoutes = require('./routes/user');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/loot', lootRoutes);

@@ -89,7 +89,7 @@ exports.updateCharacter = async (req, res) => {
   }
 };
 
-exports.getUser = async (req, res) => {
+exports.getUserById = async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
@@ -97,28 +97,6 @@ exports.getUser = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     res.status(200).json(result.rows[0]);
-  } catch (error) {
-    console.error('Error fetching user', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-
-exports.getUserById = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const activeCharacter = await User.getActiveCharacter(id);
-
-    res.status(200).json({
-      ...user,
-      activeCharacterId: activeCharacter ? activeCharacter.character_id : null,
-      characterName: activeCharacter ? activeCharacter.character_name : null,
-    });
   } catch (error) {
     console.error('Error fetching user', error);
     res.status(500).json({ error: 'Internal server error' });
