@@ -67,15 +67,18 @@ const UnprocessedLoot = () => {
     const token = localStorage.getItem('token');
     if (token) {
       const decodedToken = jwt_decode(token);
-      const userId = decodedToken.id;
       try {
-        const response = await axios.get(`http://192.168.0.64:5000/api/user/${userId}`, {
+        const response = await axios.get(`http://192.168.0.64:5000/api/user/${decodedToken.id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setActiveUser(response.data);
+        const user = response.data;
+        setActiveUser({
+          ...decodedToken,
+          activeCharacterId: user.activeCharacterId,
+          characterName: user.characterName,
+        });
       } catch (error) {
-        console.error('Error fetching active user:', error);
-        setError('Failed to fetch user data.');
+        console.error('Error fetching active user data:', error);
       }
     }
   };
@@ -116,7 +119,6 @@ const UnprocessedLoot = () => {
     }
   };
 
-
   const handleSell = () => updateLootStatus('Pending Sale');
   const handleTrash = () => updateLootStatus('Trashed');
   const handleKeepSelf = () => {
@@ -141,23 +143,24 @@ const UnprocessedLoot = () => {
     setUpdateDialogOpen(true);
   };
 
-
   const handleConfirmKeepSelf = async () => {
     try {
       const token = localStorage.getItem('token');
       const selectedId = selectedItems[0]; // Only handle one selected item at a time
-      const whohas = activeUser.activeCharacterId;
+      const selectedItem = loot.individual.find((item) => item.id === selectedId);
+      const whohas = activeUser.activeCharacterId; // This should be the ID of the active character
       const data = { status: 'Kept Self', userId: activeUser.id, whohas };
       await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setSelectedItems([]);
-      fetchLoot();
       setKeepSelfDialogOpen(false);
+      fetchLoot();
     } catch (error) {
-      console.error('Error updating loot status to Kept Self:', error);
+      console.error(`Error updating loot status to Kept Self:`, error);
     }
   };
+
   const handleSplitDialogClose = () => {
     setSplitDialogOpen(false);
   };
@@ -641,7 +644,9 @@ const UnprocessedLoot = () => {
           <DialogContentText>
             Are you sure you want to keep this item? The item will be assigned to your character:
           </DialogContentText>
-          <Typography variant="h6">{activeUser?.characterName}</Typography> {/* Assuming character name is stored in activeUser */}
+          <Typography variant="body1">
+            Character: {activeUser?.characterName || 'No active character'} (ID: {activeUser?.activeCharacterId || 'No ID'})
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setKeepSelfDialogOpen(false)}>Cancel</Button>
