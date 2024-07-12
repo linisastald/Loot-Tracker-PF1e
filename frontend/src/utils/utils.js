@@ -72,19 +72,23 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
 
 // Handle split stack action
 export const handleSplitStack = async (splitQuantities, selectedItems, fetchLoot) => {
-  const token = getToken();
-  const selectedId = selectedItems[0];
-  const splits = splitQuantities.map((quantity) => ({
-    quantity: parseInt(quantity, 10),
-  }));
-  await axios.post(`${API_BASE_URL}/api/loot/split-stack`, {
-    id: selectedId,
-    splits,
-    userId: jwt_decode(token).id,
-  }, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  fetchLoot();
+  try {
+    const token = getToken();
+    const selectedId = selectedItems[0];
+    const splits = splitQuantities.map((quantity) => ({
+      quantity: parseInt(quantity, 10),
+    }));
+    await axios.post(`${API_BASE_URL}/api/loot/split-stack`, {
+      id: selectedId,
+      splits,
+      userId: jwt_decode(token).id,
+    }, {
+      headers: getAuthHeaders(),
+    });
+    fetchLoot();
+  } catch (error) {
+    console.error('Error splitting stack:', error);
+  }
 };
 
 // Handle update action
