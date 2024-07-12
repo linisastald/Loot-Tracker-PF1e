@@ -12,18 +12,18 @@ const getAuthHeaders = () => {
 };
 
 // Fetch the active user details
-export const fetchActiveUser = async () => {
+export const fetchActiveUser = async (setActiveUser) => {
   const token = getToken();
   const decodedToken = jwt_decode(token);
   const userId = decodedToken.id;
   const response = await axios.get(`${API_BASE_URL}/api/user/${userId}`, {
     headers: getAuthHeaders(),
   });
-  return response.data;
+  setActiveUser(response.data);
 };
 
 // Select an item for further actions
-export const handleSelectItem = (id, selectedItems, setSelectedItems) => {
+export const handleSelectItem = (id, setSelectedItems) => {
   setSelectedItems((prevSelectedItems) =>
     prevSelectedItems.includes(id)
       ? prevSelectedItems.filter((itemId) => itemId !== id)
@@ -55,8 +55,8 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
 };
 
 // Handle keep self action
-export const handleKeepSelf = async (selectedItems, fetchLoot) => {
-  await axios.post(`${API_BASE_URL}/api/loot/keep-self`, { ids: selectedItems }, {
+export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
+  await axios.post(`${API_BASE_URL}/api/loot/keep-self`, { ids: selectedItems, whohas: activeUser.activeCharacterId }, {
     headers: getAuthHeaders(),
   });
   fetchLoot();
@@ -71,13 +71,20 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
 };
 
 // Handle split stack action
-export const handleSplitStack = (loot, selectedItems, setSplitQuantities, setSplitDialogOpen) => {
-  if (selectedItems.length !== 1) return;
-  const selectedItem = loot.find((item) => item.id === selectedItems[0]);
-  if (selectedItem) {
-    setSplitQuantities([0, 0]);
-    setSplitDialogOpen(true);
-  }
+export const handleSplitStack = async (splitQuantities, selectedItems, fetchLoot) => {
+  const token = getToken();
+  const selectedId = selectedItems[0];
+  const splits = splitQuantities.map((quantity) => ({
+    quantity: parseInt(quantity, 10),
+  }));
+  await axios.post(`${API_BASE_URL}/api/loot/split-stack`, {
+    id: selectedId,
+    splits,
+    userId: jwt_decode(token).id,
+  }, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  fetchLoot();
 };
 
 // Handle update action
@@ -125,11 +132,9 @@ export const handleOpenUpdateDialog = (loot, selectedItems, setUpdatedEntry, set
 
 // Open split dialog
 export const handleOpenSplitDialog = (loot, selectedItems, setSplitQuantities, setSplitDialogOpen) => {
-  const selectedItem = loot.individual.find(item => item.id === selectedItems[0]);
-  if (selectedItem) {
-    setSplitQuantities([0, selectedItem.quantity]); // or initialize as needed
-    setSplitDialogOpen(true);
-  }
+  const selectedItem = loot.find(item => item.id === selectedItems[0]);
+  setSplitQuantities([0, selectedItem.quantity]); // or initialize as needed
+  setSplitDialogOpen(true);
 };
 
 // Close update dialog
@@ -138,8 +143,8 @@ export const handleUpdateDialogClose = (setOpenUpdateDialog) => {
 };
 
 // Close split dialog
-export const handleSplitDialogClose = (setOpenSplitDialog) => {
-  setOpenSplitDialog(false);
+export const handleSplitDialogClose = (setSplitDialogOpen) => {
+  setSplitDialogOpen(false);
 };
 
 // Format date
@@ -148,6 +153,7 @@ export const formatDate = (dateString) => {
   return new Date(dateString).toLocaleDateString(undefined, options);
 };
 
+// Handle update change
 export const handleUpdateChange = (e, setUpdatedEntry) => {
   const { name, value } = e.target;
   setUpdatedEntry((prevEntry) => ({

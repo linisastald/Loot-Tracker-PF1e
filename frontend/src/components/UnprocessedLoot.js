@@ -2,18 +2,10 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Container,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Paper,
-  Checkbox,
   Button,
   Typography,
   Grid,
-  TableSortLabel,
   FormControl,
   InputLabel,
   Select,
@@ -185,19 +177,17 @@ const UnprocessedLoot = () => {
           </FormControl>
         </Grid>
       </Grid>
-      <TableContainer component={Paper}>
-        <CustomLootTable
-          loot={filteredLoot}
-          individualLoot={loot.individual}
-          selectedItems={selectedItems}
-          setSelectedItems={setSelectedItems}
-          openItems={openItems}
-          setOpenItems={setOpenItems}
-          handleSelectItem={handleSelectItem}
-          handleSort={handleSort}
-          sortConfig={sortConfig}
-        />
-      </TableContainer>
+      <CustomLootTable
+        loot={filteredLoot}
+        individualLoot={loot.individual}
+        selectedItems={selectedItems}
+        setSelectedItems={setSelectedItems}
+        openItems={openItems}
+        setOpenItems={setOpenItems}
+        handleSelectItem={handleSelectItem}
+        handleSort={handleSort}
+        sortConfig={sortConfig}
+      />
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
       </Button>
@@ -211,7 +201,7 @@ const UnprocessedLoot = () => {
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(loot, selectedItems, setSplitQuantities, setSplitDialogOpen)}>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(loot.individual, selectedItems, setSplitQuantities, setSplitDialogOpen)}>
           Split Stack
         </Button>
       )}
@@ -235,7 +225,7 @@ const UnprocessedLoot = () => {
       <CustomUpdateDialog
         open={updateDialogOpen}
         onClose={() => handleUpdateDialogClose(setUpdateDialogOpen)}
-        onSubmit={() => handleUpdate(updatedEntry.id, updatedEntry, fetchLoot)}
+        onSubmit={() => handleUpdate(selectedItems[0], updatedEntry, fetchLoot)}
         updatedEntry={updatedEntry}
         onChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
       />

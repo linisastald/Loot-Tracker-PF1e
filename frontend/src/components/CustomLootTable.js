@@ -1,5 +1,3 @@
-// CustomLootTable.js
-
 import React from 'react';
 import {
   Table,
@@ -15,25 +13,28 @@ import {
   TableSortLabel,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import { formatDate } from '../utils/utils';
 
 const CustomLootTable = ({
   loot,
+  individualLoot,
   selectedItems,
   setSelectedItems,
-  setUpdatedEntry,
-  setUpdateDialogOpen,
-  setSplitQuantities,
-  setSplitDialogOpen,
+  openItems,
+  setOpenItems,
   handleSelectItem,
-  formatDate,
+  handleSort,
+  sortConfig,
 }) => {
-  const [openItems, setOpenItems] = React.useState({});
-
   const handleToggleOpen = (name) => {
     setOpenItems((prevOpenItems) => ({
       ...prevOpenItems,
       [name]: !prevOpenItems[name],
     }));
+  };
+
+  const getIndividualItems = (name) => {
+    return individualLoot.filter((item) => item.name === name);
   };
 
   return (
@@ -43,61 +44,90 @@ const CustomLootTable = ({
           <TableRow>
             <TableCell>Select</TableCell>
             <TableCell>
-              <TableSortLabel>
+              <TableSortLabel
+                active={sortConfig.key === 'quantity'}
+                direction={sortConfig.direction}
+                onClick={() => handleSort('quantity')}
+              >
                 Quantity
               </TableSortLabel>
             </TableCell>
             <TableCell>
-              <TableSortLabel>
+              <TableSortLabel
+                active={sortConfig.key === 'name'}
+                direction={sortConfig.direction}
+                onClick={() => handleSort('name')}
+              >
                 Name
               </TableSortLabel>
             </TableCell>
             <TableCell>
-              <TableSortLabel>
+              <TableSortLabel
+                active={sortConfig.key === 'unidentified'}
+                direction={sortConfig.direction}
+                onClick={() => handleSort('unidentified')}
+              >
                 Unidentified
               </TableSortLabel>
             </TableCell>
             <TableCell>
-              <TableSortLabel>
+              <TableSortLabel
+                active={sortConfig.key === 'type'}
+                direction={sortConfig.direction}
+                onClick={() => handleSort('type')}
+              >
                 Type
               </TableSortLabel>
             </TableCell>
             <TableCell>
-              <TableSortLabel>
+              <TableSortLabel
+                active={sortConfig.key === 'size'}
+                direction={sortConfig.direction}
+                onClick={() => handleSort('size')}
+              >
                 Size
               </TableSortLabel>
             </TableCell>
             <TableCell>Believed Value</TableCell>
             <TableCell>Average Appraisal</TableCell>
             <TableCell>
-              <TableSortLabel>
+              <TableSortLabel
+                active={sortConfig.key === 'status'}
+                direction={sortConfig.direction}
+                onClick={() => handleSort('status')}
+              >
                 Pending Sale
               </TableSortLabel>
             </TableCell>
             <TableCell>
-              <TableSortLabel>
+              <TableSortLabel
+                active={sortConfig.key === 'session_date'}
+                direction={sortConfig.direction}
+                onClick={() => handleSort('session_date')}
+              >
                 Session Date
               </TableSortLabel>
             </TableCell>
+            <TableCell>Last Update</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {loot.summary.map((item) => {
-            const individualItems = loot.individual.filter((subItem) => subItem.name === item.name);
-            const totalQuantity = individualItems.reduce((sum, subItem) => sum + subItem.quantity, 0);
-            const isPendingSale = individualItems.some((subItem) => subItem.status === 'Pending Sale');
+          {loot.map((item) => {
+            const individualItems = getIndividualItems(item.name);
+            const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
+            const isPendingSale = individualItems.some((item) => item.status === 'Pending Sale');
 
             return (
-              <React.Fragment key={item.name}>
+              <React.Fragment key={`${item.name}-${item.unidentified}-${item.type}-${item.size}`}>
                 <TableRow>
                   <TableCell>
                     <Checkbox
-                      checked={individualItems.every((subItem) => selectedItems.includes(subItem.id))}
+                      checked={individualItems.every((item) => selectedItems.includes(item.id))}
                       indeterminate={
-                        individualItems.some((subItem) => selectedItems.includes(subItem.id)) &&
-                        !individualItems.every((subItem) => selectedItems.includes(subItem.id))
+                        individualItems.some((item) => selectedItems.includes(item.id)) &&
+                        !individualItems.every((item) => selectedItems.includes(item.id))
                       }
-                      onChange={() => individualItems.forEach((subItem) => handleSelectItem(subItem.id, selectedItems, setSelectedItems))}
+                      onChange={() => individualItems.forEach((item) => handleSelectItem(item.id, setSelectedItems))}
                     />
                   </TableCell>
                   <TableCell>{totalQuantity}</TableCell>
@@ -125,13 +155,12 @@ const CustomLootTable = ({
                   <TableCell>{item.believedvalue || ''}</TableCell>
                   <TableCell>{item.average_appraisal || ''}</TableCell>
                   <TableCell>{isPendingSale ? '✔' : ''}</TableCell>
-                  <TableCell>
-                    {item.session_date ? formatDate(item.session_date) : ''}
-                  </TableCell>
+                  <TableCell>{item.session_date ? formatDate(item.session_date) : ''}</TableCell>
+                  <TableCell>{item.lastupdate ? formatDate(item.lastupdate) : ''}</TableCell>
                 </TableRow>
                 {individualItems.length > 1 && (
                   <TableRow>
-                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
+                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={11}>
                       <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
                         <Table size="small">
                           <TableBody>
@@ -140,7 +169,7 @@ const CustomLootTable = ({
                                 <TableCell>
                                   <Checkbox
                                     checked={selectedItems.includes(subItem.id)}
-                                    onChange={() => handleSelectItem(subItem.id, selectedItems, setSelectedItems)}
+                                    onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
                                   />
                                 </TableCell>
                                 <TableCell>{subItem.quantity}</TableCell>
@@ -157,9 +186,8 @@ const CustomLootTable = ({
                                 <TableCell>{subItem.believedvalue || ''}</TableCell>
                                 <TableCell>{subItem.appraisalroll || ''}</TableCell>
                                 <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
-                                <TableCell>
-                                  {subItem.session_date ? formatDate(subItem.session_date) : ''}
-                                </TableCell>
+                                <TableCell>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>
+                                <TableCell>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>
                               </TableRow>
                             ))}
                           </TableBody>
