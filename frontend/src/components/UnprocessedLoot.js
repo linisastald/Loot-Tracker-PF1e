@@ -63,9 +63,9 @@ const UnprocessedLoot = () => {
   };
 
   const fetchActiveUserDetails = async () => {
-    const user = await fetchActiveUser();
-    setActiveUser(user);
+    await fetchActiveUser(setActiveUser);
   };
+
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
