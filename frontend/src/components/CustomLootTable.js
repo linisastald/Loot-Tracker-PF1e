@@ -1,7 +1,7 @@
 // /frontend/src/components/CustomLootTable.js
 import React, { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Checkbox, FormControl, InputLabel, Select, MenuItem, Grid, TextField } from '@mui/material';
-import { formatDate } from '../utils';
+import { formatDate } from '../utils/utils';
 
 const CustomLootTable = ({ loot, selectedItems, handleSelectItem, hiddenColumns = [] }) => {
   const [filters, setFilters] = useState({
