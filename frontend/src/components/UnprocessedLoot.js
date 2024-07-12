@@ -37,7 +37,8 @@ const UnprocessedLoot = () => {
   const [error, setError] = useState(null);
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
-  const [splitQuantities, setSplitQuantities] = useState([]);
+  const [splitQuantities, setSplitQuantities] = useState(['', '']);
+  const [maxQuantity, setMaxQuantity] = useState(0);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -132,7 +133,8 @@ const UnprocessedLoot = () => {
   const handleSplitStack = () => {
     if (selectedItems.length !== 1) return;
     const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
-    setSplitQuantities(new Array(selectedItem.quantity).fill(''));
+    setMaxQuantity(selectedItem.quantity);
+    setSplitQuantities(['', '']); // Initialize with two inputs
     setSplitDialogOpen(true);
   };
 
@@ -205,22 +207,9 @@ const UnprocessedLoot = () => {
     }
   };
 
-  const handleUpdateSubmit = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const filteredUpdatedEntry = Object.fromEntries(
-        Object.entries(updatedEntry).filter(([key, value]) => value !== '' && value !== null)
-      );
-      await axios.put(`http://192.168.0.64:5000/api/loot/update-entry/${selectedItems[0]}`, {
-        updatedEntry: filteredUpdatedEntry,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSelectedItems([]);
-      setUpdateDialogOpen(false);
-      fetchLoot();
-    } catch (error) {
-      console.error('Error updating entry:', error);
+  const handleAddSplit = () => {
+    if (splitQuantities.length < maxQuantity) {
+      setSplitQuantities([...splitQuantities, '']);
     }
   };
 
@@ -258,12 +247,6 @@ const UnprocessedLoot = () => {
       (filters.pendingSale === '' || (item.status === 'Pending Sale') === (filters.pendingSale === 'true'))
     );
   });
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const options = { year: 'numeric', month: 'long', day: 'numeric' };
-    return date.toLocaleDateString('en-US', options);
-  };
 
   return (
     <Container component="main">
@@ -345,7 +328,6 @@ const UnprocessedLoot = () => {
           <TableHead>
             <TableRow>
               <TableCell>Select</TableCell>
-              <TableCell>Session Date</TableCell>
               <TableCell>
                 <TableSortLabel
                   active={sortConfig.key === 'quantity'}
@@ -391,6 +373,7 @@ const UnprocessedLoot = () => {
                   Size
                 </TableSortLabel>
               </TableCell>
+              <TableCell>Session Date</TableCell>
               <TableCell>Believed Value</TableCell>
               <TableCell>Average Appraisal</TableCell>
               <TableCell>
@@ -409,6 +392,10 @@ const UnprocessedLoot = () => {
               const individualItems = getIndividualItems(item.name);
               const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
               const isPendingSale = individualItems.some((item) => item.status === 'Pending Sale');
+              const earliestSessionDate = individualItems.reduce((earliest, currentItem) => {
+                const currentSessionDate = new Date(currentItem.session_date);
+                return currentSessionDate < earliest ? currentSessionDate : earliest;
+              }, new Date());
 
               return (
                 <React.Fragment key={`${item.name}-${item.unidentified}-${item.type}-${item.size}`}>
@@ -423,7 +410,6 @@ const UnprocessedLoot = () => {
                         onChange={() => individualItems.forEach((item) => handleSelectItem(item.id))}
                       />
                     </TableCell>
-                    <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>{totalQuantity}</TableCell>
                     <TableCell>
                       {individualItems.length > 1 && (
@@ -446,13 +432,14 @@ const UnprocessedLoot = () => {
                     </TableCell>
                     <TableCell>{item.type}</TableCell>
                     <TableCell>{item.size}</TableCell>
+                    <TableCell>{earliestSessionDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</TableCell>
                     <TableCell>{item.believedvalue || ''}</TableCell>
                     <TableCell>{item.average_appraisal || ''}</TableCell>
                     <TableCell>{isPendingSale ? '✔' : ''}</TableCell>
                   </TableRow>
                   {individualItems.length > 1 && (
                     <TableRow>
-                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={9}>
+                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
                         <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
                           <Table size="small">
                             <TableBody>
@@ -464,7 +451,6 @@ const UnprocessedLoot = () => {
                                       onChange={() => handleSelectItem(subItem.id)}
                                     />
                                   </TableCell>
-                                  <TableCell>{formatDate(subItem.session_date)}</TableCell>
                                   <TableCell>{subItem.quantity}</TableCell>
                                   <TableCell>{subItem.name}</TableCell>
                                   <TableCell>
@@ -476,6 +462,7 @@ const UnprocessedLoot = () => {
                                   </TableCell>
                                   <TableCell>{subItem.type}</TableCell>
                                   <TableCell>{subItem.size}</TableCell>
+                                  <TableCell>{new Date(subItem.session_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</TableCell>
                                   <TableCell>{subItem.believedvalue || ''}</TableCell>
                                   <TableCell>{subItem.appraisalroll || ''}</TableCell>
                                   <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
@@ -535,6 +522,11 @@ const UnprocessedLoot = () => {
               onChange={(e) => handleSplitChange(index, e.target.value)}
             />
           ))}
+          {splitQuantities.length < maxQuantity && (
+            <Button onClick={handleAddSplit} sx={{ mt: 2 }}>
+              Add More
+            </Button>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleSplitDialogClose}>Cancel</Button>
