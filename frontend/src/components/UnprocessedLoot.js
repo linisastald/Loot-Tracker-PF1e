@@ -66,7 +66,6 @@ const UnprocessedLoot = () => {
   const fetchActiveUserDetails = async () => {
     const user = await fetchActiveUser();
     if (user && user.activeCharacterId) {
-      console.log('Setting active user:', user);  // Add log here
       setActiveUser(user);
     } else {
       console.error('Active character ID is not available');
@@ -87,6 +86,12 @@ const UnprocessedLoot = () => {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
+  };
+
+  const handleSplitStackClick = () => {
+    const selectedItem = loot.individual.find(item => item.id === selectedItems[0]);
+    setSplitQuantities([0, selectedItem.quantity]);
+    setOpenSplitDialog(true);
   };
 
   return (
