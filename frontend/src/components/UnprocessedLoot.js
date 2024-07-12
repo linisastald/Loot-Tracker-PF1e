@@ -260,7 +260,7 @@ const UnprocessedLoot = () => {
   });
 
   const formatDate = (dateString) => {
-    const options = { month: 'long', day: '2-digit', year: 'numeric' };
+    const options = { year: 'numeric', month: 'long', day: 'numeric' };
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
@@ -346,15 +346,6 @@ const UnprocessedLoot = () => {
               <TableCell>Select</TableCell>
               <TableCell>
                 <TableSortLabel
-                  active={sortConfig.key === 'session_date'}
-                  direction={sortConfig.direction}
-                  onClick={() => handleSort('session_date')}
-                >
-                  Session Date
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
                   active={sortConfig.key === 'quantity'}
                   direction={sortConfig.direction}
                   onClick={() => handleSort('quantity')}
@@ -369,6 +360,15 @@ const UnprocessedLoot = () => {
                   onClick={() => handleSort('name')}
                 >
                   Name
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortConfig.key === 'session_date'}
+                  direction={sortConfig.direction}
+                  onClick={() => handleSort('session_date')}
+                >
+                  Session Date
                 </TableSortLabel>
               </TableCell>
               <TableCell>
@@ -430,7 +430,6 @@ const UnprocessedLoot = () => {
                         onChange={() => individualItems.forEach((item) => handleSelectItem(item.id))}
                       />
                     </TableCell>
-                    <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>{totalQuantity}</TableCell>
                     <TableCell>
                       {individualItems.length > 1 && (
@@ -444,6 +443,7 @@ const UnprocessedLoot = () => {
                       )}
                       {item.name}
                     </TableCell>
+                    <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>
                       {item.unidentified === null
                         ? ''
@@ -471,9 +471,9 @@ const UnprocessedLoot = () => {
                                       onChange={() => handleSelectItem(subItem.id)}
                                     />
                                   </TableCell>
-                                  <TableCell>{formatDate(subItem.session_date)}</TableCell>
                                   <TableCell>{subItem.quantity}</TableCell>
                                   <TableCell>{subItem.name}</TableCell>
+                                  <TableCell>{formatDate(subItem.session_date)}</TableCell>
                                   <TableCell>
                                     {subItem.unidentified === null
                                       ? ''
