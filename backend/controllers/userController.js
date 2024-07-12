@@ -94,13 +94,16 @@ exports.getUserById = async (req, res) => {
   try {
     const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
     if (userResult.rows.length === 0) {
+      console.error('User not found');
       return res.status(404).json({ error: 'User not found' });
     }
 
     const user = userResult.rows[0];
+    console.log('Fetched user:', user);
 
     const activeCharacterResult = await User.getActiveCharacter(user.id);
     const activeCharacterId = activeCharacterResult ? activeCharacterResult.character_id : null;
+    console.log('Fetched active character:', activeCharacterResult);
 
     res.status(200).json({ ...user, activeCharacterId });
   } catch (error) {
@@ -108,6 +111,7 @@ exports.getUserById = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 
 exports.deactivateAllCharacters = async (req, res) => {
   const userId = req.user.id;

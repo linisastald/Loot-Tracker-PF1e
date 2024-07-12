@@ -64,14 +64,14 @@ const UnprocessedLoot = () => {
   };
 
   const fetchActiveUserDetails = async () => {
-    const user = await fetchActiveUser();
-    if (user && user.activeCharacterId) {
-      setActiveUser(user);
-    } else {
-      console.error('Active character ID is not available');
-    }
-  };
-
+  const user = await fetchActiveUser();
+  if (user && user.activeCharacterId) {
+    console.log('Setting active user:', user);
+    setActiveUser(user);
+  } else {
+    console.error('Active character ID is not available');
+  }
+};
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters((prevFilters) => ({
