@@ -78,41 +78,6 @@ exports.findAll = async () => {
   }
 };
 
-exports.findByStatus = async (status) => {
-  try {
-    const query = `
-      SELECT
-        l.id,
-        l.session_date,
-        l.quantity,
-        l.name,
-        l.unidentified,
-        l.masterwork,
-        l.type,
-        l.size,
-        l.status,
-        a.believedvalue,
-        a.appraisalroll,
-        c.name AS character_name
-      FROM
-        loot l
-      LEFT JOIN
-        appraisal a ON l.id = a.lootid
-      LEFT JOIN
-        characters c ON l.whohas = c.id
-      WHERE
-        l.status = $1;
-    `;
-    const values = [status];
-    const result = await pool.query(query, values);
-    return result.rows;
-  } catch (error) {
-    console.error('Error fetching loot by status:', error);
-    throw error;
-  }
-};
-
-
 exports.updateStatus = async (id, status, whohas) => {
   try {
     let query = `

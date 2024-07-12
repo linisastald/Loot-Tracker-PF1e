@@ -25,6 +25,8 @@ exports.getAllLoot = async (req, res) => {
   }
 };
 
+const Loot = require('../models/Loot');
+
 exports.updateLootStatus = async (req, res) => {
   const { id } = req.params;
   const { status, userId, whohas } = req.body;
@@ -41,6 +43,7 @@ exports.updateLootStatus = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 
 exports.getKeptPartyLoot = async (req, res) => {
   try {
