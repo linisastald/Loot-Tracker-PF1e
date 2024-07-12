@@ -40,7 +40,7 @@ import {
   handleAddSplit,
   handleUpdateDialogClose,
   handleSplitDialogClose
-} from '../utils'; // Importing utility functions
+} from '../utils/utils'; // Importing utility functions
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
 
