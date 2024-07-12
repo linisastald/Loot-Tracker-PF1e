@@ -30,6 +30,7 @@ import {
   handleUpdateDialogClose,
   handleSplitDialogClose,
   formatDate,
+  handleUpdateChange,
 } from '../utils/utils';
 import CustomLootTable from './CustomLootTable';
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
