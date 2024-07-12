@@ -106,7 +106,6 @@ const UnprocessedLoot = () => {
     try {
       const token = localStorage.getItem('token');
       const selectedId = selectedItems[0]; // Only handle one selected item at a time
-      const selectedItem = loot.individual.find((item) => item.id === selectedId);
       const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
       const data = { status, userId: activeUser.id, whohas };
       await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
@@ -123,7 +122,6 @@ const UnprocessedLoot = () => {
   const handleTrash = () => updateLootStatus('Trashed');
   const handleKeepSelf = () => {
     if (selectedItems.length !== 1) return;
-    const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
     setSelectedCharacter(activeUser.activeCharacterId); // Assuming activeCharacterId is stored in activeUser
     setKeepSelfDialogOpen(true);
   };
@@ -147,7 +145,6 @@ const UnprocessedLoot = () => {
     try {
       const token = localStorage.getItem('token');
       const selectedId = selectedItems[0]; // Only handle one selected item at a time
-      const selectedItem = loot.individual.find((item) => item.id === selectedId);
       const whohas = activeUser.activeCharacterId; // This should be the ID of the active character
       const data = { status: 'Kept Self', userId: activeUser.id, whohas };
       await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
