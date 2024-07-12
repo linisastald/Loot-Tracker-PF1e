@@ -23,6 +23,7 @@ const UserSettings = () => {
   const [newPassword, setNewPassword] = useState('');
   const [characters, setCharacters] = useState([]);
   const [character, setCharacter] = useState({
+    id: null,
     name: '',
     appraisal_bonus: '',
     birthday: today,
@@ -86,7 +87,7 @@ const UserSettings = () => {
         payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setCharacter({ name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true });
+      setCharacter({ id: null, name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true });
       alert(`Character ${character.id ? 'updated' : 'added'} successfully`);
       // Refresh the character list
       const response = await axios.get('http://192.168.0.64:5000/api/user/characters', {
@@ -96,6 +97,14 @@ const UserSettings = () => {
     } catch (error) {
       setError('Error saving character');
     }
+  };
+
+  const handleEditCharacter = (char) => {
+    setCharacter({ ...char });
+  };
+
+  const handleCancelEdit = () => {
+    setCharacter({ id: null, name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true });
   };
 
   return (
@@ -142,6 +151,7 @@ const UserSettings = () => {
                 <TableCell>Birthday</TableCell>
                 <TableCell>Deathday</TableCell>
                 <TableCell>Active</TableCell>
+                <TableCell>Edit</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -152,6 +162,11 @@ const UserSettings = () => {
                   <TableCell>{char.birthday}</TableCell>
                   <TableCell>{char.deathday}</TableCell>
                   <TableCell>{char.active ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>
+                    <Button variant="outlined" onClick={() => handleEditCharacter(char)}>
+                      Edit
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -160,7 +175,7 @@ const UserSettings = () => {
       </Paper>
 
       <Paper sx={{ p: 2 }}>
-        <Typography variant="h6">Manage Characters</Typography>
+        <Typography variant="h6">{character.id ? 'Edit Character' : 'Add Character'}</Typography>
         <form onSubmit={handleCharacterSubmit}>
           <Grid container spacing={2}>
             <Grid item xs={12}>
@@ -224,6 +239,16 @@ const UserSettings = () => {
           >
             {character.id ? 'Update Character' : 'Add Character'}
           </Button>
+          {character.id && (
+            <Button
+              variant="contained"
+              color="secondary"
+              sx={{ mt: 2, ml: 2 }}
+              onClick={handleCancelEdit}
+            >
+              Cancel
+            </Button>
+          )}
         </form>
         {error && <Typography color="error">{error}</Typography>}
       </Paper>
