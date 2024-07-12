@@ -31,6 +31,7 @@ exports.findAll = async () => {
         l.masterwork,
         l.type,
         l.size,
+        MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
         CASE 
           WHEN COUNT(CASE WHEN l.status = 'Pending Sale' THEN 1 END) > 0 THEN 'Pending Sale'
           ELSE NULL
@@ -77,6 +78,7 @@ exports.findAll = async () => {
     throw error;
   }
 };
+
 
 exports.findByStatus = async (status) => {
   try {
