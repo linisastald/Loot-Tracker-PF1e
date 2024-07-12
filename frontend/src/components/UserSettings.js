@@ -14,8 +14,9 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
 } from '@mui/material';
+import { styled } from '@mui/system';
 
 const UserSettings = () => {
   const today = new Date().toISOString().split('T')[0];
@@ -107,6 +108,10 @@ const UserSettings = () => {
     setCharacter({ id: null, name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true });
   };
 
+  const StyledTableRow = styled(TableRow)(({ theme, active }) => ({
+    backgroundColor: active ? theme.palette.action.hover : 'inherit',
+  }));
+
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
@@ -156,7 +161,7 @@ const UserSettings = () => {
             </TableHead>
             <TableBody>
               {characters.map((char) => (
-                <TableRow key={char.id}>
+                <StyledTableRow key={char.id} active={char.active}>
                   <TableCell>{char.name}</TableCell>
                   <TableCell>{char.appraisal_bonus}</TableCell>
                   <TableCell>{char.birthday}</TableCell>
@@ -167,7 +172,7 @@ const UserSettings = () => {
                       Edit
                     </Button>
                   </TableCell>
-                </TableRow>
+                </StyledTableRow>
               ))}
             </TableBody>
           </Table>
