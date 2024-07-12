@@ -260,8 +260,9 @@ const UnprocessedLoot = () => {
   });
 
   const formatDate = (dateString) => {
+    const date = new Date(dateString);
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    return date.toLocaleDateString('en-US', options);
   };
 
   return (
@@ -344,6 +345,7 @@ const UnprocessedLoot = () => {
           <TableHead>
             <TableRow>
               <TableCell>Select</TableCell>
+              <TableCell>Session Date</TableCell>
               <TableCell>
                 <TableSortLabel
                   active={sortConfig.key === 'quantity'}
@@ -360,15 +362,6 @@ const UnprocessedLoot = () => {
                   onClick={() => handleSort('name')}
                 >
                   Name
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={sortConfig.key === 'session_date'}
-                  direction={sortConfig.direction}
-                  onClick={() => handleSort('session_date')}
-                >
-                  Session Date
                 </TableSortLabel>
               </TableCell>
               <TableCell>
@@ -430,6 +423,7 @@ const UnprocessedLoot = () => {
                         onChange={() => individualItems.forEach((item) => handleSelectItem(item.id))}
                       />
                     </TableCell>
+                    <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>{totalQuantity}</TableCell>
                     <TableCell>
                       {individualItems.length > 1 && (
@@ -443,7 +437,6 @@ const UnprocessedLoot = () => {
                       )}
                       {item.name}
                     </TableCell>
-                    <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>
                       {item.unidentified === null
                         ? ''
@@ -459,7 +452,7 @@ const UnprocessedLoot = () => {
                   </TableRow>
                   {individualItems.length > 1 && (
                     <TableRow>
-                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={10}>
+                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={9}>
                         <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
                           <Table size="small">
                             <TableBody>
@@ -471,9 +464,9 @@ const UnprocessedLoot = () => {
                                       onChange={() => handleSelectItem(subItem.id)}
                                     />
                                   </TableCell>
+                                  <TableCell>{formatDate(subItem.session_date)}</TableCell>
                                   <TableCell>{subItem.quantity}</TableCell>
                                   <TableCell>{subItem.name}</TableCell>
-                                  <TableCell>{formatDate(subItem.session_date)}</TableCell>
                                   <TableCell>
                                     {subItem.unidentified === null
                                       ? ''
