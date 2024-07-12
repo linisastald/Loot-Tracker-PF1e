@@ -37,7 +37,7 @@ const UnprocessedLoot = () => {
   const [error, setError] = useState(null);
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
-  const [splitQuantities, setSplitQuantities] = useState([]);
+  const [splitQuantities, setSplitQuantities] = useState([0, 0]);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -133,7 +133,7 @@ const UnprocessedLoot = () => {
     if (selectedItems.length !== 1) return;
     const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
     if (selectedItem) {
-      setSplitQuantities(new Array(selectedItem.quantity).fill(''));
+      setSplitQuantities([0, 0]);
       setSplitDialogOpen(true);
     }
   };
