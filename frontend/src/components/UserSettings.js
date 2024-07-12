@@ -18,13 +18,14 @@ import {
 } from '@mui/material';
 
 const UserSettings = () => {
+  const today = new Date().toISOString().split('T')[0];
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [characters, setCharacters] = useState([]);
   const [character, setCharacter] = useState({
     name: '',
     appraisal_bonus: '',
-    birthday: '',
+    birthday: today,
     deathday: '',
     active: true
   });
@@ -79,7 +80,7 @@ const UserSettings = () => {
         payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setCharacter({ name: '', appraisal_bonus: '', birthday: '', deathday: '', active: true });
+      setCharacter({ name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true });
       alert(`Character ${character.id ? 'updated' : 'added'} successfully`);
       // Refresh the character list
       const response = await axios.get('http://192.168.0.64:5000/api/user/characters', {

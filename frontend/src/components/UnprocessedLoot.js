@@ -40,6 +40,7 @@ const UnprocessedLoot = () => {
   const [splitQuantities, setSplitQuantities] = useState([]);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
+  const [activeCharacter, setActiveCharacter] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
 
@@ -61,11 +62,16 @@ const UnprocessedLoot = () => {
     }
   };
 
-  const fetchActiveUser = () => {
+  const fetchActiveUser = async () => {
     const token = localStorage.getItem('token');
     if (token) {
       const decodedToken = jwt_decode(token);
       setActiveUser(decodedToken);
+      const response = await axios.get(`http://192.168.0.64:5000/api/user/${decodedToken.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const activeChar = response.data.characters.find((char) => char.active);
+      setActiveCharacter(activeChar);
     }
   };
 
@@ -93,7 +99,7 @@ const UnprocessedLoot = () => {
       const token = localStorage.getItem('token');
       const selectedId = selectedItems[0]; // Only handle one selected item at a time
       const selectedItem = loot.individual.find((item) => item.id === selectedId);
-      const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
+      const whohas = status === 'Kept Self' ? activeCharacter.id : null;
       const data = status === 'Kept Self' ? { status, userId: activeUser.id, whohas } : { status, userId: activeUser.id };
       await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
         headers: { Authorization: `Bearer ${token}` },

@@ -27,13 +27,16 @@ exports.getAllLoot = async (req, res) => {
 
 exports.updateLootStatus = async (req, res) => {
   const { id } = req.params;
-  const { status, whohas, userId } = req.body;
+  const { status, whohas } = req.body;
 
   try {
-    await Loot.updateStatus(id, status, userId, status === 'Kept Self' ? whohas : null);
+    if (status === 'Kept Self' && !whohas) {
+      return res.status(400).json({ error: 'whohas is required for Kept Self status' });
+    }
+    await Loot.updateStatus(id, status, whohas);
     res.status(200).send('Loot status updated');
   } catch (error) {
-    console.error('Error updating loot status', error);
+    console.error('Error updating loot status:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
