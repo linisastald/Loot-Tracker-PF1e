@@ -93,11 +93,14 @@ exports.findByStatus = async (status) => {
         l.status,
         l.lastupdate,
         a.believedvalue,
-        a.appraisalroll
+        a.appraisalroll,
+        c.name AS character_name
       FROM
         loot l
       LEFT JOIN
         appraisal a ON l.id = a.lootid
+      LEFT JOIN
+        characters c ON l.whohas = c.id
       WHERE
         l.status = $1;
     `;
@@ -108,6 +111,7 @@ exports.findByStatus = async (status) => {
     throw error;
   }
 };
+
 
 exports.updateStatus = async (id, status, whohas) => {
   try {
