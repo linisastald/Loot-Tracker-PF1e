@@ -104,6 +104,9 @@ const UnprocessedLoot = () => {
       const selectedItem = loot.individual.find((item) => item.id === selectedId);
       const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
       const data = status === 'Kept Self' ? { status, userId: activeUser.id, whohas } : { status, userId: activeUser.id };
+
+      console.log('Updating loot status with data:', data); // Add this line
+
       await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -113,6 +116,7 @@ const UnprocessedLoot = () => {
       console.error(`Error updating loot status to ${status}:`, error);
     }
   };
+
 
   const handleSell = () => updateLootStatus('Pending Sale');
   const handleTrash = () => updateLootStatus('Trashed');
