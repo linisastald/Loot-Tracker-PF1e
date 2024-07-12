@@ -132,9 +132,10 @@ const UnprocessedLoot = () => {
   const handleSplitStack = () => {
     if (selectedItems.length !== 1) return;
     const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
-    if (!selectedItem) return;
-    setSplitQuantities(new Array(Math.min(2, selectedItem.quantity)).fill(''));
-    setSplitDialogOpen(true);
+    if (selectedItem) {
+      setSplitQuantities(new Array(selectedItem.quantity).fill(''));
+      setSplitDialogOpen(true);
+    }
   };
 
   const handleUpdate = () => {
@@ -178,8 +179,9 @@ const UnprocessedLoot = () => {
 
   const handleAddSplit = () => {
     const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
-    if (!selectedItem || splitQuantities.length >= selectedItem.quantity) return;
-    setSplitQuantities([...splitQuantities, '']);
+    if (selectedItem && splitQuantities.length < selectedItem.quantity) {
+      setSplitQuantities([...splitQuantities, '']);
+    }
   };
 
   const handleUpdateChange = (e) => {
@@ -553,7 +555,7 @@ const UnprocessedLoot = () => {
             color="primary"
             sx={{ mt: 2 }}
             onClick={handleAddSplit}
-            disabled={splitQuantities.length >= loot.individual.find(item => item.id === selectedItems[0]).quantity}
+            disabled={selectedItems.length !== 1 || (loot.individual.find((item) => item.id === selectedItems[0])?.quantity ?? 0) <= splitQuantities.length}
           >
             Add Split
           </Button>
