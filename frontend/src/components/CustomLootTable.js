@@ -1,181 +1,156 @@
-// /frontend/src/components/CustomLootTable.js
-import React, { useState, useEffect } from 'react';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Checkbox, FormControl, InputLabel, Select, MenuItem, Grid, TextField } from '@mui/material';
+import React, { useState } from 'react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Checkbox,
+  IconButton,
+  Collapse,
+  Typography,
+} from '@mui/material';
+import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import { formatDate } from '../utils/utils';
 
 const CustomLootTable = ({ loot, selectedItems, handleSelectItem, hiddenColumns = [] }) => {
-  const [filters, setFilters] = useState({
-    unidentified: '',
-    masterwork: '',
-    type: '',
-    size: '',
-    pending_sale: '',
-    who_has: '',
-  });
+  const [openItems, setOpenItems] = useState({});
 
-  const columns = [
-    { id: 'select', label: 'Select' },
-    { id: 'session_date', label: 'Session Date' },
-    { id: 'quantity', label: 'Quantity' },
-    { id: 'name', label: 'Name' },
-    { id: 'unidentified', label: 'Unidentified' },
-    { id: 'masterwork', label: 'Masterwork', render: (value) => (value ? '✔' : '') },
-    { id: 'type', label: 'Type' },
-    { id: 'size', label: 'Size' },
-    { id: 'pending_sale', label: 'Pending Sale' },
-    { id: 'charges', label: 'Charges' },
-    { id: 'who_has', label: 'Who Has?' },
-    { id: 'last_update', label: 'Last Update', render: (value) => formatDate(value) },
-    { id: 'notes', label: 'Notes' },
-  ];
-
-  const visibleColumns = columns.filter(column => !hiddenColumns.includes(column.id));
-
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters(prevFilters => ({
-      ...prevFilters,
-      [name]: value,
+  const handleToggleOpen = (name) => {
+    setOpenItems((prevOpenItems) => ({
+      ...prevOpenItems,
+      [name]: !prevOpenItems[name],
     }));
   };
 
-  const filteredLoot = loot.filter(item => {
-    return (
-      (filters.unidentified ? item.unidentified === (filters.unidentified === 'true') : true) &&
-      (filters.masterwork ? item.masterwork === (filters.masterwork === 'true') : true) &&
-      (filters.type ? item.type === filters.type : true) &&
-      (filters.size ? item.size === filters.size : true) &&
-      (filters.pending_sale ? item.pending_sale === (filters.pending_sale === 'true') : true) &&
-      (filters.who_has ? item.who_has === filters.who_has : true)
-    );
-  });
+  const getIndividualItems = (name) => {
+    return loot.individual.filter((item) => item.name === name);
+  };
+
+  const getMaxLastUpdate = (name) => {
+    const individualItems = getIndividualItems(name);
+    return individualItems.reduce((max, item) => (new Date(item.lastupdate) > new Date(max) ? item.lastupdate : max), individualItems[0]?.lastupdate || '');
+  };
 
   return (
-    <>
-      <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={12} sm={4}>
-          <FormControl fullWidth>
-            <InputLabel>Unidentified</InputLabel>
-            <Select
-              name="unidentified"
-              value={filters.unidentified}
-              onChange={handleFilterChange}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Yes</MenuItem>
-              <MenuItem value="false">No</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <FormControl fullWidth>
-            <InputLabel>Masterwork</InputLabel>
-            <Select
-              name="masterwork"
-              value={filters.masterwork}
-              onChange={handleFilterChange}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Yes</MenuItem>
-              <MenuItem value="false">No</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <FormControl fullWidth>
-            <InputLabel>Type</InputLabel>
-            <Select
-              name="type"
-              value={filters.type}
-              onChange={handleFilterChange}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="Weapon">Weapon</MenuItem>
-              <MenuItem value="Armor">Armor</MenuItem>
-              <MenuItem value="Magic">Magic</MenuItem>
-              <MenuItem value="Gear">Gear</MenuItem>
-              <MenuItem value="Trade Good">Trade Good</MenuItem>
-              <MenuItem value="Other">Other</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <FormControl fullWidth>
-            <InputLabel>Size</InputLabel>
-            <Select
-              name="size"
-              value={filters.size}
-              onChange={handleFilterChange}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="Fine">Fine</MenuItem>
-              <MenuItem value="Diminutive">Diminutive</MenuItem>
-              <MenuItem value="Tiny">Tiny</MenuItem>
-              <MenuItem value="Small">Small</MenuItem>
-              <MenuItem value="Medium">Medium</MenuItem>
-              <MenuItem value="Large">Large</MenuItem>
-              <MenuItem value="Huge">Huge</MenuItem>
-              <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-              <MenuItem value="Colossal">Colossal</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <FormControl fullWidth>
-            <InputLabel>Pending Sale</InputLabel>
-            <Select
-              name="pending_sale"
-              value={filters.pending_sale}
-              onChange={handleFilterChange}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Yes</MenuItem>
-              <MenuItem value="false">No</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <TextField
-            label="Who Has?"
-            name="who_has"
-            value={filters.who_has}
-            onChange={handleFilterChange}
-            fullWidth
-          />
-        </Grid>
-      </Grid>
-      <TableContainer>
-        <Table>
-          <TableHead>
-            <TableRow>
-              {visibleColumns.map(column => (
-                <TableCell key={column.id}>{column.label}</TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredLoot.map(item => (
-              <TableRow key={item.id}>
-                {visibleColumns.map(column => (
-                  <TableCell key={column.id}>
-                    {column.id === 'select' ? (
-                      <Checkbox
-                        checked={selectedItems.includes(item.id)}
-                        onChange={() => handleSelectItem(item.id)}
-                      />
-                    ) : column.render ? (
-                      column.render(item[column.id])
-                    ) : (
-                      item[column.id] || ''
-                    )}
+    <TableContainer component={Paper}>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableCell>Select</TableCell>
+            <TableCell>Quantity</TableCell>
+            <TableCell>Name</TableCell>
+            <TableCell>Unidentified</TableCell>
+            <TableCell>Type</TableCell>
+            <TableCell>Size</TableCell>
+            <TableCell>Believed Value</TableCell>
+            <TableCell>Average Appraisal</TableCell>
+            <TableCell>Pending Sale</TableCell>
+            <TableCell>Session Date</TableCell>
+            <TableCell>Last Update</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {loot.summary.map((item) => {
+            const individualItems = getIndividualItems(item.name);
+            const totalQuantity = individualItems.reduce((sum, subItem) => sum + subItem.quantity, 0);
+            const isPendingSale = individualItems.some((subItem) => subItem.status === 'Pending Sale');
+
+            return (
+              <React.Fragment key={`${item.name}-${item.unidentified}-${item.type}-${item.size}`}>
+                <TableRow>
+                  <TableCell>
+                    <Checkbox
+                      checked={individualItems.every((subItem) => selectedItems.includes(subItem.id))}
+                      indeterminate={
+                        individualItems.some((subItem) => selectedItems.includes(subItem.id)) &&
+                        !individualItems.every((subItem) => selectedItems.includes(subItem.id))
+                      }
+                      onChange={() => individualItems.forEach((subItem) => handleSelectItem(subItem.id))}
+                    />
                   </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </>
+                  <TableCell>{totalQuantity}</TableCell>
+                  <TableCell>
+                    {individualItems.length > 1 && (
+                      <IconButton
+                        aria-label="expand row"
+                        size="small"
+                        onClick={() => handleToggleOpen(item.name)}
+                      >
+                        {openItems[item.name] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                      </IconButton>
+                    )}
+                    {item.name}
+                  </TableCell>
+                  <TableCell>
+                    {item.unidentified === null
+                      ? ''
+                      : item.unidentified
+                      ? <strong>Unidentified</strong>
+                      : 'Identified'}
+                  </TableCell>
+                  <TableCell>{item.type}</TableCell>
+                  <TableCell>{item.size}</TableCell>
+                  <TableCell>{item.believedvalue || ''}</TableCell>
+                  <TableCell>{item.average_appraisal || ''}</TableCell>
+                  <TableCell>{isPendingSale ? '✔' : ''}</TableCell>
+                  <TableCell>
+                    {item.session_date ? formatDate(item.session_date) : ''}
+                  </TableCell>
+                  <TableCell>
+                    {item.lastupdate ? formatDate(getMaxLastUpdate(item.name)) : ''}
+                  </TableCell>
+                </TableRow>
+                {individualItems.length > 1 && (
+                  <TableRow>
+                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={11}>
+                      <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
+                        <Table size="small">
+                          <TableBody>
+                            {individualItems.map((subItem) => (
+                              <TableRow key={subItem.id}>
+                                <TableCell>
+                                  <Checkbox
+                                    checked={selectedItems.includes(subItem.id)}
+                                    onChange={() => handleSelectItem(subItem.id)}
+                                  />
+                                </TableCell>
+                                <TableCell>{subItem.quantity}</TableCell>
+                                <TableCell>{subItem.name}</TableCell>
+                                <TableCell>
+                                  {subItem.unidentified === null
+                                    ? ''
+                                    : subItem.unidentified
+                                    ? <strong>Unidentified</strong>
+                                    : 'Identified'}
+                                </TableCell>
+                                <TableCell>{subItem.type}</TableCell>
+                                <TableCell>{subItem.size}</TableCell>
+                                <TableCell>{subItem.believedvalue || ''}</TableCell>
+                                <TableCell>{subItem.appraisalroll || ''}</TableCell>
+                                <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
+                                <TableCell>
+                                  {subItem.session_date ? formatDate(subItem.session_date) : ''}
+                                </TableCell>
+                                <TableCell>
+                                  {subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 };
 
