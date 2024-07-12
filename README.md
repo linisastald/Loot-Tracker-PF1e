@@ -97,7 +97,7 @@ MVP - Required features for release
 | Search Items            | V. Low   | Pending              | Search page that allows finding of items the party had |
 | Google Login            | V. Low   | Pending              | Requires some stuff I dont have setup atm              |
 | Identify Item Action    | Low      | To Do                |                                                        |
-| Stats page              | Low      | To Do                |                                                        |
+| Stats page              | Low      | Pending              |                                                        |
 | DB Redesign             | MVP VH   | Complete             |                                                        |
 | Login                   | MVP H    | Complete             | Registration and Login works                           |
 | Gold Entry              | MVP H    | Complete             | Ready for bug testing                                  |
