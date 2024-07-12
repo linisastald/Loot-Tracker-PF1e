@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import {
   Container,
   Table,
@@ -19,28 +20,33 @@ import {
   Select,
   MenuItem,
   TableSortLabel,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  TextField,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import {
-  fetchLoot,
   fetchActiveUser,
   handleSelectItem,
-  handleToggleOpen,
-  handleSort,
-  formatDate,
-  handleSplitStack,
-  handleUpdate,
-  handleSplitSubmit,
-  handleUpdateSubmit,
+  updateLootStatus,
   handleSell,
   handleTrash,
   handleKeepSelf,
   handleKeepParty,
+  handleSplitStack,
+  handleUpdate,
   handleSplitChange,
   handleAddSplit,
+  handleSplitSubmit,
+  handleOpenUpdateDialog,
+  handleOpenSplitDialog,
   handleUpdateDialogClose,
-  handleSplitDialogClose
-} from '../utils/utils'; // Importing utility functions
+  handleSplitDialogClose,
+  formatDate,
+} from '../utils/utils';
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
 
@@ -60,25 +66,45 @@ const UnprocessedLoot = () => {
   const [selectedCharacter, setSelectedCharacter] = useState(null);
 
   useEffect(() => {
-    fetchLoot(setLoot);
+    fetchLoot();
     fetchActiveUser(setActiveUser);
   }, []);
 
-  const getIndividualItems = (name) => {
-    return loot.individual.filter((item) => item.name === name);
+  const fetchLoot = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setLoot(response.data);
+    } catch (error) {
+      console.error('Error fetching loot:', error);
+      setError('Failed to fetch loot data.');
+    }
   };
 
-  const updateLootStatus = async (status) => {
-    const token = localStorage.getItem('token');
-    const selectedId = selectedItems[0]; // Only handle one selected item at a time
-    const selectedItem = loot.individual.find((item) => item.id === selectedId);
-    const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
-    const data = { status, userId: activeUser.id, whohas };
-    await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    setSelectedItems([]);
-    fetchLoot(setLoot);
+  const handleKeepSelf = () => {
+    if (selectedItems.length !== 1) return;
+    const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
+    setSelectedCharacter(activeUser.activeCharacterId); // Assuming activeCharacterId is stored in activeUser
+    setKeepSelfDialogOpen(true);
+  };
+
+  const handleConfirmKeepSelf = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const selectedId = selectedItems[0]; // Only handle one selected item at a time
+      const whohas = activeUser.activeCharacterId; // This should be the ID of the active character
+      const data = { status: 'Kept Self', userId: activeUser.id, whohas };
+      await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSelectedItems([]);
+      setKeepSelfDialogOpen(false);
+      fetchLoot();
+    } catch (error) {
+      console.error(`Error updating loot status to Kept Self:`, error);
+    }
   };
 
   const handleFilterChange = (e) => {
@@ -87,6 +113,10 @@ const UnprocessedLoot = () => {
       ...prevFilters,
       [name]: value,
     }));
+  };
+
+  const getIndividualItems = (name) => {
+    return loot.individual.filter((item) => item.name === name);
   };
 
   const sortedLoot = [...loot.summary].sort((a, b) => {
@@ -107,6 +137,21 @@ const UnprocessedLoot = () => {
       (filters.pendingSale === '' || (item.status === 'Pending Sale') === (filters.pendingSale === 'true'))
     );
   });
+
+  const handleToggleOpen = (name) => {
+    setOpenItems((prevOpenItems) => ({
+      ...prevOpenItems,
+      [name]: !prevOpenItems[name],
+    }));
+  };
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   return (
     <Container component="main">
@@ -192,7 +237,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'quantity'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('quantity', sortConfig, setSortConfig)}
+                  onClick={() => handleSort('quantity')}
                 >
                   Quantity
                 </TableSortLabel>
@@ -201,7 +246,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'name'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('name', sortConfig, setSortConfig)}
+                  onClick={() => handleSort('name')}
                 >
                   Name
                 </TableSortLabel>
@@ -210,7 +255,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'unidentified'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('unidentified', sortConfig, setSortConfig)}
+                  onClick={() => handleSort('unidentified')}
                 >
                   Unidentified
                 </TableSortLabel>
@@ -219,7 +264,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'type'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('type', sortConfig, setSortConfig)}
+                  onClick={() => handleSort('type')}
                 >
                   Type
                 </TableSortLabel>
@@ -228,7 +273,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'size'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('size', sortConfig, setSortConfig)}
+                  onClick={() => handleSort('size')}
                 >
                   Size
                 </TableSortLabel>
@@ -239,7 +284,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'status'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('status', sortConfig, setSortConfig)}
+                  onClick={() => handleSort('status')}
                 >
                   Pending Sale
                 </TableSortLabel>
@@ -248,7 +293,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'session_date'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('session_date', sortConfig, setSortConfig)}
+                  onClick={() => handleSort('session_date')}
                 >
                   Session Date
                 </TableSortLabel>
@@ -280,7 +325,7 @@ const UnprocessedLoot = () => {
                         <IconButton
                           aria-label="expand row"
                           size="small"
-                          onClick={() => handleToggleOpen(item.name, openItems, setOpenItems)}
+                          onClick={() => handleToggleOpen(item.name)}
                         >
                           {openItems[item.name] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
                         </IconButton>
@@ -354,44 +399,40 @@ const UnprocessedLoot = () => {
       <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleTrash(selectedItems, fetchLoot)}>
         Trash
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, fetchLoot)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleKeepSelf}>
         Keep Self
       </Button>
       <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSplitStack(loot.individual, selectedItems, setSplitQuantities, setSplitDialogOpen)}>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(loot.individual, selectedItems, setSplitQuantities, setSplitDialogOpen)}>
           Split Stack
         </Button>
       )}
       {selectedItems.length === 1 && (
-        <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleUpdate(loot.individual, selectedItems, setUpdatedEntry, setUpdateDialogOpen)}>
+        <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setUpdateDialogOpen)}>
           Update
         </Button>
       )}
 
-      {/* Split Stack Dialog */}
       <CustomSplitStackDialog
         open={splitDialogOpen}
         onClose={() => handleSplitDialogClose(setSplitDialogOpen)}
         splitQuantities={splitQuantities}
-        setSplitQuantities={setSplitQuantities}
-        selectedItems={selectedItems}
-        fetchLoot={() => fetchLoot(setLoot)}
+        onSplitChange={(index, value) => handleSplitChange(index, value, splitQuantities, setSplitQuantities)}
+        onAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities, selectedItems, loot.individual)}
+        onSplitSubmit={() => handleSplitSubmit(selectedItems, splitQuantities, activeUser, fetchLoot)}
       />
 
-      {/* Update Dialog */}
       <CustomUpdateDialog
         open={updateDialogOpen}
         onClose={() => handleUpdateDialogClose(setUpdateDialogOpen)}
         updatedEntry={updatedEntry}
-        setUpdatedEntry={setUpdatedEntry}
-        selectedItems={selectedItems}
-        fetchLoot={() => fetchLoot(setLoot)}
+        onUpdateChange={(e) => setUpdatedEntry({ ...updatedEntry, [e.target.name]: e.target.value })}
+        onUpdateSubmit={() => handleUpdate(selectedItems, updatedEntry, fetchLoot)}
       />
 
-      {/* Keep Self Dialog */}
       <Dialog open={keepSelfDialogOpen} onClose={() => setKeepSelfDialogOpen(false)}>
         <DialogTitle>Confirm Keep Self</DialogTitle>
         <DialogContent>

@@ -81,7 +81,6 @@ export const handleSplitStack = (loot, selectedItems, setSplitQuantities, setSpl
   }
 };
 
-
 // Handle update action
 export const handleUpdate = async (id, updatedEntry, fetchLoot) => {
   await axios.put(`${API_BASE_URL}/api/loot/${id}`, updatedEntry, {
