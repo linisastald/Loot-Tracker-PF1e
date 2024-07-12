@@ -15,7 +15,7 @@ import {
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import { formatDate } from '../utils/utils';
 
-const CustomLootTable = ({ loot, selectedItems, handleSelectItem, hiddenColumns = [] }) => {
+const CustomLootTable = ({ loot = { summary: [], individual: [] }, selectedItems, handleSelectItem, hiddenColumns = [] }) => {
   const [openItems, setOpenItems] = useState({});
 
   const handleToggleOpen = (name) => {
