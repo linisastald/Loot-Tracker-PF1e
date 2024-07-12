@@ -147,3 +147,11 @@ export const formatDate = (dateString) => {
   const options = { year: 'numeric', month: 'long', day: 'numeric' };
   return new Date(dateString).toLocaleDateString(undefined, options);
 };
+
+export const handleUpdateChange = (e, setUpdatedEntry) => {
+  const { name, value } = e.target;
+  setUpdatedEntry((prevEntry) => ({
+    ...prevEntry,
+    [name]: value,
+  }));
+};
