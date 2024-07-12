@@ -260,8 +260,7 @@ const UnprocessedLoot = () => {
   });
 
   const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const options = { year: 'numeric', month: 'long', day: 'numeric' };
+    const options = { month: 'long', day: '2-digit', year: 'numeric' };
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
@@ -347,6 +346,15 @@ const UnprocessedLoot = () => {
               <TableCell>Select</TableCell>
               <TableCell>
                 <TableSortLabel
+                  active={sortConfig.key === 'session_date'}
+                  direction={sortConfig.direction}
+                  onClick={() => handleSort('session_date')}
+                >
+                  Session Date
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel
                   active={sortConfig.key === 'quantity'}
                   direction={sortConfig.direction}
                   onClick={() => handleSort('quantity')}
@@ -390,7 +398,6 @@ const UnprocessedLoot = () => {
                   Size
                 </TableSortLabel>
               </TableCell>
-              <TableCell>Session Date</TableCell>
               <TableCell>Believed Value</TableCell>
               <TableCell>Average Appraisal</TableCell>
               <TableCell>
@@ -423,6 +430,7 @@ const UnprocessedLoot = () => {
                         onChange={() => individualItems.forEach((item) => handleSelectItem(item.id))}
                       />
                     </TableCell>
+                    <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>{totalQuantity}</TableCell>
                     <TableCell>
                       {individualItems.length > 1 && (
@@ -445,7 +453,6 @@ const UnprocessedLoot = () => {
                     </TableCell>
                     <TableCell>{item.type}</TableCell>
                     <TableCell>{item.size}</TableCell>
-                    <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>{item.believedvalue || ''}</TableCell>
                     <TableCell>{item.average_appraisal || ''}</TableCell>
                     <TableCell>{isPendingSale ? '✔' : ''}</TableCell>
@@ -464,6 +471,7 @@ const UnprocessedLoot = () => {
                                       onChange={() => handleSelectItem(subItem.id)}
                                     />
                                   </TableCell>
+                                  <TableCell>{formatDate(subItem.session_date)}</TableCell>
                                   <TableCell>{subItem.quantity}</TableCell>
                                   <TableCell>{subItem.name}</TableCell>
                                   <TableCell>
@@ -475,7 +483,6 @@ const UnprocessedLoot = () => {
                                   </TableCell>
                                   <TableCell>{subItem.type}</TableCell>
                                   <TableCell>{subItem.size}</TableCell>
-                                  <TableCell>{formatDate(subItem.session_date)}</TableCell>
                                   <TableCell>{subItem.believedvalue || ''}</TableCell>
                                   <TableCell>{subItem.appraisalroll || ''}</TableCell>
                                   <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
