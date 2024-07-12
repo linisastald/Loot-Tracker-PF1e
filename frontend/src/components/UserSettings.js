@@ -75,6 +75,12 @@ const UserSettings = () => {
         birthday: character.birthday || null,
         deathday: character.deathday || null
       };
+      if (character.active) {
+        // Ensure only one character is active at a time
+        await axios.put('http://192.168.0.64:5000/api/user/deactivate-all-characters', {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
       await axios[method](
         url,
         payload,

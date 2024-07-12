@@ -102,3 +102,15 @@ exports.getUserById = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+exports.deactivateAllCharacters = async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    await pool.query('UPDATE characters SET active = false WHERE user_id = $1', [userId]);
+    res.status(200).json({ message: 'All characters deactivated' });
+  } catch (error) {
+    console.error('Error deactivating characters', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
