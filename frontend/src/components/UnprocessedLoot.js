@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import {
   Container,
   Table,
@@ -14,12 +13,6 @@ import {
   Typography,
   Collapse,
   IconButton,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  TextField,
   Grid,
   FormControl,
   InputLabel,
@@ -28,7 +21,28 @@ import {
   TableSortLabel,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
-import jwt_decode from 'jwt-decode';
+import {
+  fetchLoot,
+  fetchActiveUser,
+  handleSelectItem,
+  handleToggleOpen,
+  handleSort,
+  formatDate,
+  handleSplitStack,
+  handleUpdate,
+  handleSplitSubmit,
+  handleUpdateSubmit,
+  handleSell,
+  handleTrash,
+  handleKeepSelf,
+  handleKeepParty,
+  handleSplitChange,
+  handleAddSplit,
+  handleUpdateDialogClose,
+  handleSplitDialogClose
+} from './utils'; // Importing utility functions
+import CustomSplitStackDialog from './components/dialogs/CustomSplitStackDialog';
+import CustomUpdateDialog from './components/dialogs/CustomUpdateDialog';
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
@@ -46,199 +60,33 @@ const UnprocessedLoot = () => {
   const [selectedCharacter, setSelectedCharacter] = useState(null);
 
   useEffect(() => {
-    fetchLoot();
-    fetchActiveUser();
+    fetchLoot(setLoot);
+    fetchActiveUser(setActiveUser);
   }, []);
-
-  const fetchLoot = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setLoot(response.data);
-    } catch (error) {
-      console.error('Error fetching loot:', error);
-      setError('Failed to fetch loot data.');
-    }
-  };
-
-  const fetchActiveUser = async () => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      const decodedToken = jwt_decode(token);
-      try {
-        const response = await axios.get(`http://192.168.0.64:5000/api/user/${decodedToken.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const user = response.data;
-        setActiveUser({
-          ...decodedToken,
-          activeCharacterId: user.activeCharacterId,
-          characterName: user.characterName,
-        });
-      } catch (error) {
-        console.error('Error fetching active user data:', error);
-      }
-    }
-  };
-
-  const handleSelectItem = (id) => {
-    setSelectedItems((prevSelectedItems) =>
-      prevSelectedItems.includes(id)
-        ? prevSelectedItems.filter((itemId) => itemId !== id)
-        : [...prevSelectedItems, id]
-    );
-  };
-
-  const handleToggleOpen = (name) => {
-    setOpenItems((prevOpenItems) => ({
-      ...prevOpenItems,
-      [name]: !prevOpenItems[name],
-    }));
-  };
 
   const getIndividualItems = (name) => {
     return loot.individual.filter((item) => item.name === name);
   };
 
   const updateLootStatus = async (status) => {
-    try {
-      const token = localStorage.getItem('token');
-      const selectedId = selectedItems[0]; // Only handle one selected item at a time
-      const selectedItem = loot.individual.find((item) => item.id === selectedId);
-      const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
-      const data = { status, userId: activeUser.id, whohas };
-      await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSelectedItems([]);
-      fetchLoot();
-    } catch (error) {
-      console.error(`Error updating loot status to ${status}:`, error);
-    }
+    const token = localStorage.getItem('token');
+    const selectedId = selectedItems[0]; // Only handle one selected item at a time
+    const selectedItem = loot.individual.find((item) => item.id === selectedId);
+    const whohas = status === 'Kept Self' ? activeUser.activeCharacterId : null;
+    const data = { status, userId: activeUser.id, whohas };
+    await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setSelectedItems([]);
+    fetchLoot(setLoot);
   };
 
-  const handleSell = () => updateLootStatus('Pending Sale');
-  const handleTrash = () => updateLootStatus('Trashed');
-  const handleKeepSelf = () => {
-    if (selectedItems.length !== 1) return;
-    const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
-    setSelectedCharacter(activeUser.activeCharacterId); // Assuming activeCharacterId is stored in activeUser
-    setKeepSelfDialogOpen(true);
-  };
-  const handleKeepParty = () => updateLootStatus('Kept Party');
-
-  const handleSplitStack = () => {
-    if (selectedItems.length !== 1) return;
-    const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
-    if (selectedItem) {
-      setSplitQuantities([0, 0]);
-      setSplitDialogOpen(true);
-    }
-  };
-
-  const handleUpdate = () => {
-    if (selectedItems.length !== 1) return;
-    const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
-    setUpdatedEntry({ ...selectedItem });
-    setUpdateDialogOpen(true);
-  };
-
-  const handleConfirmKeepSelf = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const selectedId = selectedItems[0]; // Only handle one selected item at a time
-      const selectedItem = loot.individual.find((item) => item.id === selectedId);
-      const whohas = activeUser.activeCharacterId; // This should be the ID of the active character
-      const data = { status: 'Kept Self', userId: activeUser.id, whohas };
-      await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSelectedItems([]);
-      setKeepSelfDialogOpen(false);
-      fetchLoot();
-    } catch (error) {
-      console.error(`Error updating loot status to Kept Self:`, error);
-    }
-  };
-
-  const handleSplitDialogClose = () => {
-    setSplitDialogOpen(false);
-  };
-
-  const handleUpdateDialogClose = () => {
-    setUpdateDialogOpen(false);
-  };
-
-  const handleSplitChange = (index, value) => {
-    const updatedSplits = [...splitQuantities];
-    updatedSplits[index] = value;
-    setSplitQuantities(updatedSplits);
-  };
-
-  const handleAddSplit = () => {
-    const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
-    if (selectedItem && splitQuantities.length < selectedItem.quantity) {
-      setSplitQuantities([...splitQuantities, '']);
-    }
-  };
-
-  const handleUpdateChange = (e) => {
+  const handleFilterChange = (e) => {
     const { name, value } = e.target;
-    setUpdatedEntry((prevEntry) => ({
-      ...prevEntry,
+    setFilters((prevFilters) => ({
+      ...prevFilters,
       [name]: value,
     }));
-  };
-
-  const handleSplitSubmit = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const selectedId = selectedItems[0];
-      const splits = splitQuantities.map((quantity) => ({
-        quantity: parseInt(quantity, 10),
-      }));
-      await axios.post('http://192.168.0.64:5000/api/loot/split-stack', {
-        id: selectedId,
-        splits,
-        userId: activeUser.id,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSelectedItems([]);
-      setSplitDialogOpen(false);
-      fetchLoot();
-    } catch (error) {
-      console.error('Error splitting stack:', error);
-    }
-  };
-
-  const handleUpdateSubmit = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const filteredUpdatedEntry = Object.fromEntries(
-        Object.entries(updatedEntry).filter(([key, value]) => value !== '' && value !== null)
-      );
-      await axios.put(`http://192.168.0.64:5000/api/loot/update-entry/${selectedItems[0]}`, {
-        updatedEntry: filteredUpdatedEntry,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSelectedItems([]);
-      setUpdateDialogOpen(false);
-      fetchLoot();
-    } catch (error) {
-      console.error('Error updating entry:', error);
-    }
-  };
-
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
   };
 
   const sortedLoot = [...loot.summary].sort((a, b) => {
@@ -250,14 +98,6 @@ const UnprocessedLoot = () => {
     }
     return 0;
   });
-
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters((prevFilters) => ({
-      ...prevFilters,
-      [name]: value,
-    }));
-  };
 
   const filteredLoot = sortedLoot.filter((item) => {
     return (
@@ -352,7 +192,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'quantity'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('quantity')}
+                  onClick={() => handleSort('quantity', sortConfig, setSortConfig)}
                 >
                   Quantity
                 </TableSortLabel>
@@ -361,7 +201,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'name'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('name')}
+                  onClick={() => handleSort('name', sortConfig, setSortConfig)}
                 >
                   Name
                 </TableSortLabel>
@@ -370,7 +210,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'unidentified'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('unidentified')}
+                  onClick={() => handleSort('unidentified', sortConfig, setSortConfig)}
                 >
                   Unidentified
                 </TableSortLabel>
@@ -379,7 +219,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'type'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('type')}
+                  onClick={() => handleSort('type', sortConfig, setSortConfig)}
                 >
                   Type
                 </TableSortLabel>
@@ -388,7 +228,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'size'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('size')}
+                  onClick={() => handleSort('size', sortConfig, setSortConfig)}
                 >
                   Size
                 </TableSortLabel>
@@ -399,7 +239,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'status'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('status')}
+                  onClick={() => handleSort('status', sortConfig, setSortConfig)}
                 >
                   Pending Sale
                 </TableSortLabel>
@@ -408,7 +248,7 @@ const UnprocessedLoot = () => {
                 <TableSortLabel
                   active={sortConfig.key === 'session_date'}
                   direction={sortConfig.direction}
-                  onClick={() => handleSort('session_date')}
+                  onClick={() => handleSort('session_date', sortConfig, setSortConfig)}
                 >
                   Session Date
                 </TableSortLabel>
@@ -431,7 +271,7 @@ const UnprocessedLoot = () => {
                           individualItems.some((item) => selectedItems.includes(item.id)) &&
                           !individualItems.every((item) => selectedItems.includes(item.id))
                         }
-                        onChange={() => individualItems.forEach((item) => handleSelectItem(item.id))}
+                        onChange={() => individualItems.forEach((item) => handleSelectItem(item.id, selectedItems, setSelectedItems))}
                       />
                     </TableCell>
                     <TableCell>{totalQuantity}</TableCell>
@@ -440,7 +280,7 @@ const UnprocessedLoot = () => {
                         <IconButton
                           aria-label="expand row"
                           size="small"
-                          onClick={() => handleToggleOpen(item.name)}
+                          onClick={() => handleToggleOpen(item.name, openItems, setOpenItems)}
                         >
                           {openItems[item.name] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
                         </IconButton>
@@ -460,7 +300,7 @@ const UnprocessedLoot = () => {
                     <TableCell>{item.average_appraisal || ''}</TableCell>
                     <TableCell>{isPendingSale ? '✔' : ''}</TableCell>
                     <TableCell>
-                      {item.session_date ? new Date(item.session_date).toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }) : ''}
+                      {item.session_date ? formatDate(item.session_date) : ''}
                     </TableCell>
                   </TableRow>
                   {individualItems.length > 1 && (
@@ -474,7 +314,7 @@ const UnprocessedLoot = () => {
                                   <TableCell>
                                     <Checkbox
                                       checked={selectedItems.includes(subItem.id)}
-                                      onChange={() => handleSelectItem(subItem.id)}
+                                      onChange={() => handleSelectItem(subItem.id, selectedItems, setSelectedItems)}
                                     />
                                   </TableCell>
                                   <TableCell>{subItem.quantity}</TableCell>
@@ -492,7 +332,7 @@ const UnprocessedLoot = () => {
                                   <TableCell>{subItem.appraisalroll || ''}</TableCell>
                                   <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                                   <TableCell>
-                                    {subItem.session_date ? new Date(subItem.session_date).toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }) : ''}
+                                    {subItem.session_date ? formatDate(subItem.session_date) : ''}
                                   </TableCell>
                                 </TableRow>
                               ))}
@@ -508,168 +348,49 @@ const UnprocessedLoot = () => {
           </TableBody>
         </Table>
       </TableContainer>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSell}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
       </Button>
-      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={handleTrash}>
+      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleTrash(selectedItems, fetchLoot)}>
         Trash
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleKeepSelf}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, fetchLoot)}>
         Keep Self
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={handleKeepParty}>
+      <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStack}>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSplitStack(loot.individual, selectedItems, setSplitQuantities, setSplitDialogOpen)}>
           Split Stack
         </Button>
       )}
       {selectedItems.length === 1 && (
-        <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={handleUpdate}>
+        <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleUpdate(loot.individual, selectedItems, setUpdatedEntry, setUpdateDialogOpen)}>
           Update
         </Button>
       )}
 
       {/* Split Stack Dialog */}
-      <Dialog open={splitDialogOpen} onClose={handleSplitDialogClose}>
-        <DialogTitle>Split Stack</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Enter the quantities for each new stack:
-          </DialogContentText>
-          {splitQuantities.map((quantity, index) => (
-            <TextField
-              key={index}
-              autoFocus
-              margin="dense"
-              label={`Quantity ${index + 1}`}
-              type="number"
-              fullWidth
-              value={quantity}
-              onChange={(e) => handleSplitChange(index, e.target.value)}
-            />
-          ))}
-          <Button
-            variant="contained"
-            color="primary"
-            sx={{ mt: 2 }}
-            onClick={handleAddSplit}
-            disabled={selectedItems.length !== 1 || (loot.individual.find((item) => item.id === selectedItems[0])?.quantity ?? 0) <= splitQuantities.length}
-          >
-            Add Split
-          </Button>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleSplitDialogClose}>Cancel</Button>
-          <Button onClick={handleSplitSubmit}>Split</Button>
-        </DialogActions>
-      </Dialog>
+      <CustomSplitStackDialog
+        open={splitDialogOpen}
+        onClose={() => handleSplitDialogClose(setSplitDialogOpen)}
+        splitQuantities={splitQuantities}
+        setSplitQuantities={setSplitQuantities}
+        selectedItems={selectedItems}
+        fetchLoot={() => fetchLoot(setLoot)}
+      />
 
       {/* Update Dialog */}
-      <Dialog open={updateDialogOpen} onClose={handleUpdateDialogClose}>
-        <DialogTitle>Update Entry</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Quantity"
-                type="number"
-                name="quantity"
-                value={updatedEntry.quantity || ''}
-                onChange={handleUpdateChange}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Item Name"
-                name="name"
-                value={updatedEntry.name || ''}
-                onChange={handleUpdateChange}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Magical?</InputLabel>
-                <Select
-                  name="unidentified"
-                  value={updatedEntry.unidentified === null ? '' : updatedEntry.unidentified}
-                  onChange={handleUpdateChange}
-                >
-                  <MenuItem value={null}>Not Magical</MenuItem>
-                  <MenuItem value={false}>Identified</MenuItem>
-                  <MenuItem value={true}>Unidentified</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Masterwork</InputLabel>
-                <Select
-                  name="masterwork"
-                  value={updatedEntry.masterwork === null ? '' : updatedEntry.masterwork}
-                  onChange={handleUpdateChange}
-                >
-                  <MenuItem value={true}>Yes</MenuItem>
-                  <MenuItem value={false}>No</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Type</InputLabel>
-                <Select
-                  name="type"
-                  value={updatedEntry.type || ''}
-                  onChange={handleUpdateChange}
-                >
-                  <MenuItem value="Weapon">Weapon</MenuItem>
-                  <MenuItem value="Armor">Armor</MenuItem>
-                  <MenuItem value="Magic">Magic</MenuItem>
-                  <MenuItem value="Gear">Gear</MenuItem>
-                  <MenuItem value="Trade Good">Trade Good</MenuItem>
-                  <MenuItem value="Other">Other</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Size</InputLabel>
-                <Select
-                  name="size"
-                  value={updatedEntry.size || ''}
-                  onChange={handleUpdateChange}
-                >
-                  <MenuItem value="Fine">Fine</MenuItem>
-                  <MenuItem value="Diminutive">Diminutive</MenuItem>
-                  <MenuItem value="Tiny">Tiny</MenuItem>
-                  <MenuItem value="Small">Small</MenuItem>
-                  <MenuItem value="Medium">Medium</MenuItem>
-                  <MenuItem value="Large">Large</MenuItem>
-                  <MenuItem value="Huge">Huge</MenuItem>
-                  <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-                  <MenuItem value="Colossal">Colossal</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Notes"
-                name="notes"
-                value={updatedEntry.notes || ''}
-                onChange={handleUpdateChange}
-                fullWidth
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleUpdateDialogClose}>Cancel</Button>
-          <Button onClick={handleUpdateSubmit}>Update</Button>
-        </DialogActions>
-      </Dialog>
+      <CustomUpdateDialog
+        open={updateDialogOpen}
+        onClose={() => handleUpdateDialogClose(setUpdateDialogOpen)}
+        updatedEntry={updatedEntry}
+        setUpdatedEntry={setUpdatedEntry}
+        selectedItems={selectedItems}
+        fetchLoot={() => fetchLoot(setLoot)}
+      />
+
       {/* Keep Self Dialog */}
       <Dialog open={keepSelfDialogOpen} onClose={() => setKeepSelfDialogOpen(false)}>
         <DialogTitle>Confirm Keep Self</DialogTitle>
