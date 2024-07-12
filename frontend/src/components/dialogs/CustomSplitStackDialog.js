@@ -1,41 +1,31 @@
-// /frontend/src/components/dialogs/CustomSplitStackDialog.js
+// CustomSplitStackDialog.js
 import React from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, TextField } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@mui/material';
 
-const CustomSplitStackDialog = ({ open, onClose, onSubmit, quantities, onChange, onAddSplit }) => (
-  <Dialog open={open} onClose={onClose}>
-    <DialogTitle>Split Stack</DialogTitle>
-    <DialogContent>
-      <DialogContentText>
-        Enter the quantities for each new stack:
-      </DialogContentText>
-      {quantities.map((quantity, index) => (
-        <TextField
-          key={index}
-          autoFocus
-          margin="dense"
-          label={`Quantity ${index + 1}`}
-          type="number"
-          fullWidth
-          value={quantity}
-          onChange={(e) => onChange(index, e.target.value)}
-        />
-      ))}
-      <Button
-        variant="contained"
-        color="primary"
-        sx={{ mt: 2 }}
-        onClick={onAddSplit}
-        disabled={quantities.length >= 10} // Assuming maximum splits allowed is 10
-      >
-        Add Split
-      </Button>
-    </DialogContent>
-    <DialogActions>
-      <Button onClick={onClose}>Cancel</Button>
-      <Button onClick={onSubmit}>Split</Button>
-    </DialogActions>
-  </Dialog>
-);
+const CustomSplitStackDialog = ({ open, onClose, splitQuantities, onSplitChange, onAddSplit, onSplitSubmit }) => {
+  return (
+    <Dialog open={open} onClose={onClose}>
+      <DialogTitle>Split Stack</DialogTitle>
+      <DialogContent>
+        {splitQuantities && splitQuantities.map((quantity, index) => (
+          <TextField
+            key={index}
+            label={`Quantity ${index + 1}`}
+            type="number"
+            value={quantity}
+            onChange={(e) => onSplitChange(index, e.target.value)}
+            fullWidth
+            margin="normal"
+          />
+        ))}
+        <Button onClick={onAddSplit}>Add Split</Button>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onSplitSubmit}>Split</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
 
 export default CustomSplitStackDialog;
