@@ -30,7 +30,7 @@ import {
   handleUpdateDialogClose,
   handleSplitDialogClose,
   formatDate,
-  handleUpdateChange,
+  handleUpdateChange, // Import the function here
 } from '../utils/utils';
 import CustomLootTable from './CustomLootTable';
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
@@ -80,14 +80,7 @@ const UnprocessedLoot = () => {
         (filters.pendingSale === '' || (item.status === 'Pending Sale') === (filters.pendingSale === 'true'))
       );
     }),
-    individual: loot.individual.filter((item) => {
-      return (
-        (filters.unidentified === '' || String(item.unidentified) === filters.unidentified) &&
-        (filters.type === '' || item.type === filters.type) &&
-        (filters.size === '' || item.size === filters.size) &&
-        (filters.pendingSale === '' || (item.status === 'Pending Sale') === (filters.pendingSale === 'true'))
-      );
-    }),
+    individual: loot.individual,
   };
 
   return (
@@ -164,13 +157,17 @@ const UnprocessedLoot = () => {
           </FormControl>
         </Grid>
       </Grid>
-
       <CustomLootTable
         loot={filteredLoot}
         selectedItems={selectedItems}
+        setSelectedItems={setSelectedItems}
+        setUpdatedEntry={setUpdatedEntry}
+        setUpdateDialogOpen={setUpdateDialogOpen}
+        setSplitQuantities={setSplitQuantities}
+        setSplitDialogOpen={setSplitDialogOpen}
         handleSelectItem={handleSelectItem}
+        formatDate={formatDate}
       />
-
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, updateLootStatus, setSelectedItems, fetchLoot)}>
         Sell
       </Button>
@@ -184,12 +181,12 @@ const UnprocessedLoot = () => {
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(selectedItems, loot, setSplitQuantities, setSplitDialogOpen)}>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(loot, selectedItems, setSplitQuantities, setSplitDialogOpen)}>
           Split Stack
         </Button>
       )}
       {selectedItems.length === 1 && (
-        <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleOpenUpdateDialog(selectedItems, loot, setUpdatedEntry, setUpdateDialogOpen)}>
+        <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setUpdateDialogOpen)}>
           Update
         </Button>
       )}
@@ -197,20 +194,20 @@ const UnprocessedLoot = () => {
       {/* Split Stack Dialog */}
       <CustomSplitStackDialog
         open={splitDialogOpen}
-        onClose={handleSplitDialogClose}
-        onSubmit={() => handleSplitSubmit(selectedItems, splitQuantities, updateLootStatus, setSelectedItems, fetchLoot, setSplitDialogOpen, activeUser)}
+        onClose={() => handleSplitDialogClose(setSplitDialogOpen)}
+        onSubmit={() => handleSplitSubmit(selectedItems, splitQuantities, fetchLoot, setSelectedItems, setSplitDialogOpen)}
         splitQuantities={splitQuantities}
-        onChange={handleSplitChange}
-        onAddSplit={handleAddSplit}
+        onChange={(e) => handleSplitChange(e, setSplitQuantities)}
+        onAddSplit={() => handleAddSplit(selectedItems, loot, splitQuantities, setSplitQuantities)}
       />
 
       {/* Update Dialog */}
       <CustomUpdateDialog
         open={updateDialogOpen}
-        onClose={handleUpdateDialogClose}
+        onClose={() => handleUpdateDialogClose(setUpdateDialogOpen)}
         onSubmit={() => handleUpdateSubmit(selectedItems, updatedEntry, updateLootStatus, setSelectedItems, fetchLoot, setUpdateDialogOpen)}
         updatedEntry={updatedEntry}
-        onChange={handleUpdateChange}
+        onChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
       />
     </Container>
   );
