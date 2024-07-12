@@ -186,10 +186,11 @@ const UnprocessedLoot = () => {
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStackClick}>
-          Split Stack
-        </Button>
+          <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStackClick}>
+            Split Stack
+          </Button>
       )}
+
 
       {selectedItems.length === 1 && (
         <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
@@ -198,14 +199,15 @@ const UnprocessedLoot = () => {
       )}
 
       <CustomSplitStackDialog
-        open={openSplitDialog}
-        handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
-        splitQuantities={splitQuantities}
-        setSplitQuantities={setSplitQuantities}
-        handleSplitChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
-        handleAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities)}
-        handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
+          open={openSplitDialog}
+          handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
+          splitQuantities={splitQuantities}
+          setSplitQuantities={setSplitQuantities}
+          handleSplitChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
+          handleAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities)}
+          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
       />
+
 
       <CustomUpdateDialog
         open={openUpdateDialog}

@@ -71,15 +71,14 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
 };
 
 // Handle split stack action
-export const handleSplitStack = async (splitQuantities, selectedItems, fetchLoot) => {
+export const handleSplitSubmit = async (splitData, selectedItems, fetchLoot) => {
   try {
     const token = getToken();
-    const selectedId = selectedItems[0];
-    const splits = splitQuantities.map((quantity) => ({
+    const splits = splitData.map((quantity) => ({
       quantity: parseInt(quantity, 10),
     }));
     await axios.post(`${API_BASE_URL}/api/loot/split-stack`, {
-      id: selectedId,
+      id: selectedItems[0],
       splits,
       userId: jwt_decode(token).id,
     }, {
@@ -90,6 +89,8 @@ export const handleSplitStack = async (splitQuantities, selectedItems, fetchLoot
     console.error('Error splitting stack:', error);
   }
 };
+
+
 
 // Handle update action
 export const handleUpdate = async (id, updatedEntry, fetchLoot) => {
