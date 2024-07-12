@@ -71,14 +71,15 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
 };
 
 // Handle split stack action
-export const handleSplitSubmit = async (splitData, selectedItems, fetchLoot) => {
+export const handleSplitStack = async (splitQuantities, selectedItems, fetchLoot) => {
   try {
     const token = getToken();
-    const splits = splitData.map((quantity) => ({
+    const selectedId = selectedItems[0];
+    const splits = splitQuantities.map((quantity) => ({
       quantity: parseInt(quantity, 10),
     }));
     await axios.post(`${API_BASE_URL}/api/loot/split-stack`, {
-      id: selectedItems[0],
+      id: selectedId,
       splits,
       userId: jwt_decode(token).id,
     }, {
@@ -89,8 +90,6 @@ export const handleSplitSubmit = async (splitData, selectedItems, fetchLoot) => 
     console.error('Error splitting stack:', error);
   }
 };
-
-
 
 // Handle update action
 export const handleUpdate = async (id, updatedEntry, fetchLoot) => {
@@ -116,17 +115,24 @@ export const handleAddSplit = (splitData, setSplitData) => {
 
 // Handle split submit
 export const handleSplitSubmit = async (splitData, selectedItems, fetchLoot) => {
-  const token = getToken();
-  const splits = splitData.map((quantity, index) => ({
-    ...selectedItems[0], // Assuming this is the item being split
-    quantity,
-    id: `${selectedItems[0].id}_split_${index}`, // Creating a unique ID for each split item
-  }));
-  await axios.post(`${API_BASE_URL}/api/loot/split`, { splits }, {
-    headers: getAuthHeaders(),
-  });
-  fetchLoot();
+  try {
+    const token = getToken();
+    const splits = splitData.map((quantity) => ({
+      quantity: parseInt(quantity, 10),
+    }));
+    await axios.post(`${API_BASE_URL}/api/loot/split-stack`, {
+      id: selectedItems[0],
+      splits,
+      userId: jwt_decode(token).id,
+    }, {
+      headers: getAuthHeaders(),
+    });
+    fetchLoot();
+  } catch (error) {
+    console.error('Error splitting stack:', error);
+  }
 };
+
 
 // Open update dialog
 export const handleOpenUpdateDialog = (loot, selectedItems, setUpdatedEntry, setOpenUpdateDialog) => {
