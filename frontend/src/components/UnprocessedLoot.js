@@ -141,6 +141,23 @@ const UnprocessedLoot = () => {
     setUpdateDialogOpen(true);
   };
 
+
+  const handleConfirmKeepSelf = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const selectedId = selectedItems[0]; // Only handle one selected item at a time
+      const whohas = activeUser.activeCharacterId;
+      const data = { status: 'Kept Self', userId: activeUser.id, whohas };
+      await axios.put(`http://192.168.0.64:5000/api/loot/${selectedId}`, data, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSelectedItems([]);
+      fetchLoot();
+      setKeepSelfDialogOpen(false);
+    } catch (error) {
+      console.error('Error updating loot status to Kept Self:', error);
+    }
+  };
   const handleSplitDialogClose = () => {
     setSplitDialogOpen(false);
   };
