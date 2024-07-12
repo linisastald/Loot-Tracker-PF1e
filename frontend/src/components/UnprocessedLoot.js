@@ -168,16 +168,16 @@ const UnprocessedLoot = () => {
         handleSelectItem={handleSelectItem}
         formatDate={formatDate}
       />
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, updateLootStatus, setSelectedItems, fetchLoot)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
       </Button>
-      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleTrash(selectedItems, updateLootStatus, setSelectedItems, fetchLoot)}>
+      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleTrash(selectedItems, fetchLoot)}>
         Trash
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, updateLootStatus, setSelectedItems, fetchLoot, activeUser)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, fetchLoot, activeUser)}>
         Keep Self
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleKeepParty(selectedItems, updateLootStatus, setSelectedItems, fetchLoot)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
@@ -195,17 +195,17 @@ const UnprocessedLoot = () => {
       <CustomSplitStackDialog
         open={splitDialogOpen}
         onClose={() => handleSplitDialogClose(setSplitDialogOpen)}
-        onSubmit={() => handleSplitSubmit(selectedItems, splitQuantities, fetchLoot, setSelectedItems, setSplitDialogOpen)}
+        onSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
         splitQuantities={splitQuantities}
-        onChange={(e) => handleSplitChange(e, setSplitQuantities)}
-        onAddSplit={() => handleAddSplit(selectedItems, loot, splitQuantities, setSplitQuantities)}
+        onChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
+        onAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities)}
       />
 
       {/* Update Dialog */}
       <CustomUpdateDialog
         open={updateDialogOpen}
         onClose={() => handleUpdateDialogClose(setUpdateDialogOpen)}
-        onSubmit={() => handleUpdateSubmit(selectedItems, updatedEntry, updateLootStatus, setSelectedItems, fetchLoot, setUpdateDialogOpen)}
+        onSubmit={() => handleUpdate(updatedEntry.id, updatedEntry, fetchLoot)}
         updatedEntry={updatedEntry}
         onChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
       />
