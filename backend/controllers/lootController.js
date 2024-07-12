@@ -56,7 +56,7 @@ exports.getKeptPartyLoot = async (req, res) => {
 
 exports.getTrashedLoot = async (req, res) => {
   try {
-    const loot = await Loot.findByStatus('Trashed');
+    const loot = await Loot.findByStatus('trash');
     res.status(200).json(loot);
   } catch (error) {
     console.error('Error fetching trashed loot', error);
