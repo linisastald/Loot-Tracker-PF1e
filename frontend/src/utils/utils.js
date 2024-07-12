@@ -71,7 +71,6 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
 };
 
 // Handle split stack action
-// Handle split stack action
 export const handleSplitStack = (loot, selectedItems, setSplitQuantities, setSplitDialogOpen) => {
   if (selectedItems.length !== 1) return;
   const selectedItem = loot.find((item) => item.id === selectedItems[0]);
@@ -105,9 +104,11 @@ export const handleAddSplit = (splitData, setSplitData) => {
 
 // Handle split submit
 export const handleSplitSubmit = async (splitData, selectedItems, fetchLoot) => {
-  const splits = splitData.map((data) => ({
-    ...data,
-    id: selectedItems[0],
+  const token = getToken();
+  const splits = splitData.map((quantity, index) => ({
+    ...selectedItems[0], // Assuming this is the item being split
+    quantity,
+    id: `${selectedItems[0].id}_split_${index}`, // Creating a unique ID for each split item
   }));
   await axios.post(`${API_BASE_URL}/api/loot/split`, { splits }, {
     headers: getAuthHeaders(),
@@ -124,8 +125,11 @@ export const handleOpenUpdateDialog = (loot, selectedItems, setUpdatedEntry, set
 
 // Open split dialog
 export const handleOpenSplitDialog = (loot, selectedItems, setSplitQuantities, setOpenSplitDialog) => {
-  setSplitQuantities([0, 0]); // Assuming initial split quantities
-  setOpenSplitDialog(true);
+  const selectedItem = loot.find(item => item.id === selectedItems[0]);
+  if (selectedItem) {
+    setSplitQuantities([0, 0]);
+    setOpenSplitDialog(true);
+  }
 };
 
 // Close update dialog

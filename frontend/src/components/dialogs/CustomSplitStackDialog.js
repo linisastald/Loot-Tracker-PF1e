@@ -1,4 +1,3 @@
-// CustomSplitStackDialog.js
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@mui/material';
 
