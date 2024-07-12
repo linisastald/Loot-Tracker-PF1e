@@ -42,6 +42,8 @@ const UnprocessedLoot = () => {
   const [activeUser, setActiveUser] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
+  const [keepSelfDialogOpen, setKeepSelfDialogOpen] = useState(false);
+  const [selectedCharacter, setSelectedCharacter] = useState(null);
 
   useEffect(() => {
     fetchLoot();
@@ -117,7 +119,12 @@ const UnprocessedLoot = () => {
 
   const handleSell = () => updateLootStatus('Pending Sale');
   const handleTrash = () => updateLootStatus('Trashed');
-  const handleKeepSelf = () => updateLootStatus('Kept Self');
+  const handleKeepSelf = () => {
+    if (selectedItems.length !== 1) return;
+    const selectedItem = loot.individual.find((item) => item.id === selectedItems[0]);
+    setSelectedCharacter(activeUser.activeCharacterId); // Assuming activeCharacterId is stored in activeUser
+    setKeepSelfDialogOpen(true);
+  };
   const handleKeepParty = () => updateLootStatus('Kept Party');
 
   const handleSplitStack = () => {
@@ -608,6 +615,20 @@ const UnprocessedLoot = () => {
         <DialogActions>
           <Button onClick={handleUpdateDialogClose}>Cancel</Button>
           <Button onClick={handleUpdateSubmit}>Update</Button>
+        </DialogActions>
+      </Dialog>
+      {/* Keep Self Dialog */}
+      <Dialog open={keepSelfDialogOpen} onClose={() => setKeepSelfDialogOpen(false)}>
+        <DialogTitle>Confirm Keep Self</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to keep this item? The item will be assigned to your character:
+          </DialogContentText>
+          <Typography variant="h6">{activeUser?.characterName}</Typography> {/* Assuming character name is stored in activeUser */}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setKeepSelfDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleConfirmKeepSelf} color="primary">Confirm</Button>
         </DialogActions>
       </Dialog>
     </Container>
