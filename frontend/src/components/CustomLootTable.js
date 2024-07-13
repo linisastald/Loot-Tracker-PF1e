@@ -152,6 +152,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                         <Table size="small">
                           <TableHead>
                             <TableRow>
+                              <TableCell style={cellStyle}>Select</TableCell>
                               <TableCell style={cellStyle}>Quantity</TableCell>
                               <TableCell style={cellStyle}>Size</TableCell>
                               <TableCell style={cellStyle}>Pending Sale</TableCell>
@@ -162,6 +163,12 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                           <TableBody>
                             {individualItems.map((subItem) => (
                               <SubItemTableRow key={subItem.id}>
+                                <TableCell style={cellStyle}>
+                                  <Checkbox
+                                    checked={selectedItems.includes(subItem.id)}
+                                    onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
+                                  />
+                                </TableCell>
                                 <TableCell style={cellStyle}>{subItem.quantity}</TableCell>
                                 <TableCell style={cellStyle}>{subItem.size}</TableCell>
                                 <TableCell style={cellStyle}>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
