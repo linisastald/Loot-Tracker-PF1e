@@ -50,7 +50,7 @@ const ItemManagement = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('API Response:', response.data);
-      const itemsData = Array.isArray(response.data) ? response.data : [];
+      const itemsData = response.data.individual || [];
       setItems(itemsData);
     } catch (error) {
       console.error('Error fetching items', error);
@@ -155,7 +155,7 @@ const ItemManagement = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredItems && filteredItems.map((item) => (
+              {filteredItems.map((item) => (
                 <TableRow key={item.id} onClick={() => setUpdatedItem(item)}>
                   <TableCell>
                     <Checkbox
