@@ -4,18 +4,30 @@ import { Container, Paper, Typography } from '@mui/material';
 import CustomLootTable from './CustomLootTable'; // Adjust the path as necessary
 
 const GivenAwayOrTrashed = () => {
-  const [loot, setLoot] = useState([]);
+  const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [individualLoot, setIndividualLoot] = useState([]);
 
   useEffect(() => {
     const fetchLoot = async () => {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot/trash', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const trashedLoot = response.data.filter(item => item.status === 'Trashed');
-      setLoot(trashedLoot);
-      setIndividualLoot(trashedLoot); // Assuming each item is an individual item in this context
+      try {
+        const response = await axios.get('http://192.168.0.64:5000/api/loot/trash', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        console.log('Fetched Loot:', response.data); // Log fetched data
+
+        // Ensure response.data is in the expected format
+        if (response.data && response.data.summary && response.data.individual) {
+          const trashedLoot = response.data.individual.filter(item => item.status === 'Trashed');
+          setLoot(response.data);
+          setIndividualLoot(trashedLoot);
+        } else {
+          console.error('Unexpected response format:', response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching loot:', error);
+        setLoot({ summary: [], individual: [] }); // Ensure loot is an object with summary and individual arrays
+      }
     };
 
     fetchLoot();
@@ -27,7 +39,7 @@ const GivenAwayOrTrashed = () => {
         <Typography variant="h6">Given Away or Trashed</Typography>
       </Paper>
       <CustomLootTable
-        loot={loot}
+        loot={loot.summary}
         individualLoot={individualLoot}
         selectedItems={[]}
         setSelectedItems={() => {}}
