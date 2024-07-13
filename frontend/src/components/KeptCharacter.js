@@ -46,6 +46,7 @@ const KeptCharacter = () => {
   const [openSplitDialog, setOpenSplitDialog] = useState(false);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [splitQuantities, setSplitQuantities] = useState([]);
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [activeUser, setActiveUser] = useState(null);
   const [openItems, setOpenItems] = useState({});
 
