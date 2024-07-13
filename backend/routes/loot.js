@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const lootController = require('../controllers/lootController');
 const verifyToken = require('../middleware/auth');
+const checkRole = require('../middleware/checkRole');
 
 router.post('/', verifyToken, lootController.createLoot);
 router.get('/', verifyToken, lootController.getAllLoot);
