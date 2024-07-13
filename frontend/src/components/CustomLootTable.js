@@ -25,6 +25,7 @@ const CustomLootTable = ({
     select: true,
     unidentified: true,
     pendingSale: true,
+    whoHasIt: true, // Ensure the whoHasIt column is included by default
   }
 }) => {
   const handleToggleOpen = (name) => {
@@ -94,6 +95,7 @@ const CustomLootTable = ({
                 Size
               </TableSortLabel>
             </TableCell>
+            {showColumns.whoHasIt && <TableCell style={mainCellStyle}>Who Has It?</TableCell>}
             <TableCell style={mainCellStyle}>Believed Value</TableCell>
             <TableCell style={mainCellStyle}>Average Appraisal</TableCell>
             {showColumns.pendingSale && (
@@ -165,6 +167,7 @@ const CustomLootTable = ({
                   )}
                   <TableCell style={mainCellStyle}>{item.type}</TableCell>
                   <TableCell style={mainCellStyle}>{item.size}</TableCell>
+                  {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{item.whoHasIt}</TableCell>}
                   <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>
                   <TableCell style={mainCellStyle}>{item.average_appraisal || ''}</TableCell>
                   {showColumns.pendingSale && (
@@ -175,7 +178,7 @@ const CustomLootTable = ({
                 </TableRow>
                 {individualItems.length > 1 && (
                   <TableRow>
-                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={showColumns.unidentified ? 10 : 9}>
+                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={showColumns.unidentified ? 11 : 10}>
                       <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
                         <Table size="small">
                           <TableHead>
