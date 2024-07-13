@@ -42,6 +42,7 @@ const KeptCharacter = () => {
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [splitQuantities, setSplitQuantities] = useState([]);
   const [activeUser, setActiveUser] = useState(null);
+  const [openItems, setOpenItems] = useState({});
 
   useEffect(() => {
     const fetchLoot = async () => {
@@ -50,7 +51,7 @@ const KeptCharacter = () => {
         const response = await axios.get(`http://192.168.0.64:5000/api/loot/kept-character`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        console.log('Fetched Loot:', response.data); // Add logging
+        console.log('Fetched Loot:', response.data); // Log fetched data
         setLoot(response.data);
         const uniqueCharacters = [...new Set(response.data.individual.map(item => item.character_name))];
         setCharacters(uniqueCharacters);
@@ -65,16 +66,16 @@ const KeptCharacter = () => {
   }, []);
 
   useEffect(() => {
-    console.log('Loot State Updated:', loot); // Add logging
+    console.log('Loot State Updated:', loot); // Log updated loot state
   }, [loot]);
 
-  const filteredLoot = loot.summary.filter(item => {
+  const filteredLoot = loot.summary?.filter(item => {
     return (
       (typeFilter ? item.type === typeFilter : true) &&
       (sizeFilter ? item.size === sizeFilter : true) &&
       (characterFilter ? item.character_name === characterFilter : true)
     );
-  });
+  }) || [];
 
   const handleSplitDialogClose = () => {
     setOpenSplitDialog(false);
@@ -154,8 +155,8 @@ const KeptCharacter = () => {
         individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
-        openItems={{}}
-        setOpenItems={() => {}}
+        openItems={openItems}
+        setOpenItems={setOpenItems}
         handleSelectItem={(id) => handleSelectItem(id, setSelectedItems)}
         handleSort={() => {}}
         sortConfig={{ key: 'lastupdate', direction: 'desc' }}
