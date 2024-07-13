@@ -68,13 +68,13 @@ const KeptParty = () => {
     console.log('Loot State Updated:', loot); // Add logging
   }, [loot]);
 
-  const filteredLoot = loot.summary.filter(item => {
+  const filteredLoot = loot.summary?.filter(item => {
     return (
       (typeFilter ? item.type === typeFilter : true) &&
       (sizeFilter ? item.size === sizeFilter : true) &&
       (characterFilter ? item.character_name === characterFilter : true)
     );
-  });
+  }) || [];
 
   const handleSplitDialogClose = () => {
     setOpenSplitDialog(false);
