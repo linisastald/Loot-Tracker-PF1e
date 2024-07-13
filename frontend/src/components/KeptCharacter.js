@@ -17,18 +17,23 @@ import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog'; // Adjust
 import {
   fetchActiveUser,
   handleSelectItem,
+  updateLootStatus,
   handleSell,
   handleTrash,
+  handleKeepSelf,
   handleKeepParty,
-  handleOpenUpdateDialog,
-  handleOpenSplitDialog,
-  handleUpdateChange,
+  handleSplitStack,
+  handleUpdate,
   handleSplitChange,
   handleAddSplit,
   handleSplitSubmit,
-  handleUpdate,
-  handleFilterChange
-} from '../utils/utils'; // Adjust the path as necessary
+  handleOpenUpdateDialog,
+  handleOpenSplitDialog,
+  handleUpdateDialogClose,
+  handleSplitDialogClose,
+  formatDate,
+} from '../utils/utils';
+
 
 const KeptCharacter = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
@@ -44,23 +49,23 @@ const KeptCharacter = () => {
   const [activeUser, setActiveUser] = useState(null);
   const [openItems, setOpenItems] = useState({});
 
-  useEffect(() => {
-    const fetchLoot = async () => {
-      const token = localStorage.getItem('token');
-      try {
-        const response = await axios.get(`http://192.168.0.64:5000/api/loot/kept-character`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        console.log('Fetched Loot:', response.data); // Log fetched data
-        setLoot(response.data);
-        const uniqueCharacters = [...new Set(response.data.individual.map(item => item.character_name))];
-        setCharacters(uniqueCharacters);
-      } catch (error) {
-        console.error('Error fetching loot:', error);
-        setLoot({ summary: [], individual: [] }); // Ensure loot is an object with summary and individual arrays
-      }
-    };
+  const fetchLoot = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await axios.get(`http://192.168.0.64:5000/api/loot/kept-character`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log('Fetched Loot:', response.data);
+      setLoot(response.data);
+      const uniqueCharacters = [...new Set(response.data.individual.map(item => item.character_name))];
+      setCharacters(uniqueCharacters);
+    } catch (error) {
+      console.error('Error fetching loot:', error);
+      setLoot({ summary: [], individual: [] });
+    }
+  };
 
+  useEffect(() => {
     fetchLoot();
     fetchActiveUser(setActiveUser);
   }, []);
