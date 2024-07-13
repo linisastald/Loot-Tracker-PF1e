@@ -13,7 +13,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
@@ -26,7 +25,6 @@ import {
 
 const ItemManagement = () => {
   const [items, setItems] = useState([]);
-  const [selectedItems, setSelectedItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
   const [pendingSaleTotal, setPendingSaleTotal] = useState(0);
@@ -40,7 +38,6 @@ const ItemManagement = () => {
 
   useEffect(() => {
     calculatePendingSaleSummary(items);
-    setFilteredItems(items);
   }, [items]);
 
   const fetchItems = async () => {
@@ -63,14 +60,6 @@ const ItemManagement = () => {
     const total = pendingItems.reduce((sum, item) => sum + (item.value / 2), 0);
     setPendingSaleTotal(total);
     setPendingSaleCount(pendingItems.length);
-  };
-
-  const handleItemSelect = (itemId) => {
-    setSelectedItems((prevSelected) =>
-      prevSelected.includes(itemId)
-        ? prevSelected.filter((id) => id !== itemId)
-        : [...prevSelected, itemId]
-    );
   };
 
   const handleItemUpdateSubmit = async () => {
@@ -133,55 +122,50 @@ const ItemManagement = () => {
         </Box>
 
         {/* Items Table */}
-        <TableContainer component={Paper} sx={{ mt: 2 }}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Select</TableCell>
-                <TableCell>Session Date</TableCell>
-                <TableCell>Quantity</TableCell>
-                <TableCell>Name</TableCell>
-                <TableCell>Unidentified</TableCell>
-                <TableCell>Masterwork</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Size</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Item ID</TableCell>
-                <TableCell>Mod IDs</TableCell>
-                <TableCell>Charges</TableCell>
-                <TableCell>Value</TableCell>
-                <TableCell>Who Has</TableCell>
-                <TableCell>Notes</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredItems.map((item) => (
-                <TableRow key={item.id} onClick={() => setUpdatedItem(item)}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedItems.includes(item.id)}
-                      onChange={() => handleItemSelect(item.id)}
-                    />
-                  </TableCell>
-                  <TableCell>{item.session_date}</TableCell>
-                  <TableCell>{item.quantity}</TableCell>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{item.masterwork ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{item.type}</TableCell>
-                  <TableCell>{item.size}</TableCell>
-                  <TableCell>{item.status}</TableCell>
-                  <TableCell>{item.itemid}</TableCell>
-                  <TableCell>{item.modids}</TableCell>
-                  <TableCell>{item.charges}</TableCell>
-                  <TableCell>{item.value}</TableCell>
-                  <TableCell>{item.whohas}</TableCell>
-                  <TableCell>{item.notes}</TableCell>
+        {filteredItems.length > 0 && (
+          <TableContainer component={Paper} sx={{ mt: 2 }}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Session Date</TableCell>
+                  <TableCell>Quantity</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Unidentified</TableCell>
+                  <TableCell>Masterwork</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Size</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Item ID</TableCell>
+                  <TableCell>Mod IDs</TableCell>
+                  <TableCell>Charges</TableCell>
+                  <TableCell>Value</TableCell>
+                  <TableCell>Who Has</TableCell>
+                  <TableCell>Notes</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {filteredItems.map((item) => (
+                  <TableRow key={item.id} onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
+                    <TableCell>{item.session_date}</TableCell>
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>{item.masterwork ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>{item.type}</TableCell>
+                    <TableCell>{item.size}</TableCell>
+                    <TableCell>{item.status}</TableCell>
+                    <TableCell>{item.itemid}</TableCell>
+                    <TableCell>{item.modids}</TableCell>
+                    <TableCell>{item.charges}</TableCell>
+                    <TableCell>{item.value}</TableCell>
+                    <TableCell>{item.whohas}</TableCell>
+                    <TableCell>{item.notes}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
 
         {/* Pending Sale Summary */}
         <Box mt={2}>
