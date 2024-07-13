@@ -25,17 +25,23 @@ import {
 } from '@mui/material';
 
 const ItemManagement = () => {
-  const [items, setItems] = useState([]); // Ensure items is initialized as an empty array
+  const [items, setItems] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
   const [pendingSaleTotal, setPendingSaleTotal] = useState(0);
   const [pendingSaleCount, setPendingSaleCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filteredItems, setFilteredItems] = useState([]);
 
   useEffect(() => {
     fetchItems();
   }, []);
+
+  useEffect(() => {
+    calculatePendingSaleSummary(items);
+    setFilteredItems(items);
+  }, [items]);
 
   const fetchItems = async () => {
     try {
@@ -45,10 +51,9 @@ const ItemManagement = () => {
       });
       const itemsData = Array.isArray(response.data) ? response.data : [];
       setItems(itemsData);
-      calculatePendingSaleSummary(itemsData);
     } catch (error) {
       console.error('Error fetching items', error);
-      setItems([]); // Ensure items is always an array even in case of error
+      setItems([]);
     }
   };
 
@@ -100,10 +105,10 @@ const ItemManagement = () => {
   };
 
   const handleSearch = () => {
-    const filteredItems = items.filter(item =>
+    const filtered = items.filter(item =>
       item.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
-    setItems(filteredItems);
+    setFilteredItems(filtered);
   };
 
   return (
@@ -148,7 +153,7 @@ const ItemManagement = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {Array.isArray(items) && items.map((item) => (
+              {Array.isArray(filteredItems) && filteredItems.map((item) => (
                 <TableRow key={item.id} onClick={() => setUpdatedItem(item)}>
                   <TableCell>
                     <Checkbox
