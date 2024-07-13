@@ -151,7 +151,6 @@ const KeptCharacter = () => {
         </Grid>
       </Grid>
       <CustomLootTable
-        sx={{ flex: 1, width: '100%', overflow: 'auto' }}
         loot={filteredLoot}
         individualLoot={loot.individual}
         selectedItems={selectedItems}
