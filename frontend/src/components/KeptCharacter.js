@@ -50,18 +50,14 @@ const KeptCharacter = () => {
   const [openItems, setOpenItems] = useState({});
 
   const fetchLoot = async () => {
-    const token = localStorage.getItem('token');
     try {
-      const response = await axios.get(`http://192.168.0.64:5000/api/loot/kept-character`, {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://192.168.0.64:5000/api/loot/kept-character', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      console.log('Fetched Loot:', response.data);
       setLoot(response.data);
-      const uniqueCharacters = [...new Set(response.data.individual.map(item => item.character_name))];
-      setCharacters(uniqueCharacters);
     } catch (error) {
       console.error('Error fetching loot:', error);
-      setLoot({ summary: [], individual: [] });
     }
   };
 
