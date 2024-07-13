@@ -21,12 +21,14 @@ const lootRoutes = require('./routes/loot');
 const pfItemsRoutes = require('./routes/pfItems');
 const goldRoutes = require('./routes/gold');
 const userRoutes = require('./routes/user');
+const soldRoutes = require('./routes/sold'); // Import sold routes
 
 app.use('/api/auth', authRoutes);
 app.use('/api/loot', lootRoutes);
 app.use('/api/pf_items', pfItemsRoutes);
 app.use('/api/gold', goldRoutes);
 app.use('/api/user', userRoutes); // Use user routes
+app.use('/api/sold', soldRoutes); // Use sold routes
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
