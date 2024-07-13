@@ -4,94 +4,79 @@ import {
   Container,
   Paper,
   Typography,
-  Button,
   Grid,
-  FormControl,
-  InputLabel,
-  Select,
   MenuItem,
+  Select,
+  InputLabel,
+  FormControl,
+  Button
 } from '@mui/material';
-import CustomLootTable from './CustomLootTable';
-import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
-import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
+import CustomLootTable from './CustomLootTable'; // Adjust the path as necessary
+import CustomUpdateDialog from './dialogs/CustomUpdateDialog'; // Adjust the path as necessary
+import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog'; // Adjust the path as necessary
 import {
   fetchActiveUser,
   handleSelectItem,
-  updateLootStatus,
   handleSell,
   handleTrash,
   handleKeepSelf,
   handleKeepParty,
-  handleSplitStack,
-  handleUpdate,
+  handleOpenUpdateDialog,
+  handleOpenSplitDialog,
+  handleUpdateChange,
   handleSplitChange,
   handleAddSplit,
   handleSplitSubmit,
-  handleOpenUpdateDialog,
-  handleOpenSplitDialog,
-  handleUpdateDialogClose,
-  handleSplitDialogClose,
-  formatDate,
-} from '../utils/utils';
+  handleUpdate,
+  handleFilterChange
+} from '../utils/utils'; // Adjust the path as necessary
 
 const UnprocessedLoot = () => {
-  const [loot, setLoot] = useState({ summary: [], individual: [] });
+  const [loot, setLoot] = useState([]);
+  const [individualLoot, setIndividualLoot] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
+  const [typeFilter, setTypeFilter] = useState('');
+  const [sizeFilter, setSizeFilter] = useState('');
   const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
   const [openSplitDialog, setOpenSplitDialog] = useState(false);
-  const [splitQuantities, setSplitQuantities] = useState([0, 0]);
   const [updatedEntry, setUpdatedEntry] = useState({});
+  const [splitQuantities, setSplitQuantities] = useState([]);
   const [activeUser, setActiveUser] = useState(null);
-  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [openItems, setOpenItems] = useState({});
 
   useEffect(() => {
+    const fetchLoot = async () => {
+      const token = localStorage.getItem('token');
+      try {
+        const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setLoot(response.data);
+        setIndividualLoot(response.data); // Assuming each item is an individual item in this context
+      } catch (error) {
+        console.error('Error fetching loot:', error);
+        setLoot([]); // Ensure loot is an array even if the request fails
+      }
+    };
+
     fetchLoot();
-    fetchActiveUserDetails();
+    fetchActiveUser(setActiveUser);
   }, []);
 
-  const fetchLoot = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setLoot(response.data);
-    } catch (error) {
-      console.error('Error fetching loot:', error);
-    }
+  const filteredLoot = Array.isArray(loot) ? loot.filter(item => {
+    return (
+      (typeFilter ? item.type === typeFilter : true) &&
+      (sizeFilter ? item.size === sizeFilter : true)
+    );
+  }) : [];
+
+  const handleSplitDialogClose = () => {
+    setOpenSplitDialog(false);
+    setSplitQuantities([]);
   };
 
-  const fetchActiveUserDetails = async () => {
-    const user = await fetchActiveUser();
-    if (user && user.activeCharacterId) {
-      setActiveUser(user);
-    } else {
-      console.error('Active character ID is not available');
-    }
-  };
-
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters((prevFilters) => ({
-      ...prevFilters,
-      [name]: value,
-    }));
-  };
-
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
-
-  const handleSplitStackClick = () => {
-    const selectedItem = loot.individual.find(item => item.id === selectedItems[0]);
-    setSplitQuantities([0, selectedItem.quantity]);
-    setOpenSplitDialog(true);
+  const handleUpdateDialogClose = () => {
+    setOpenUpdateDialog(false);
+    setUpdatedEntry({});
   };
 
   return (
@@ -100,27 +85,13 @@ const UnprocessedLoot = () => {
         <Typography variant="h6">Unprocessed Loot</Typography>
       </Paper>
       <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={3}>
-          <FormControl fullWidth>
-            <InputLabel>Unidentified</InputLabel>
-            <Select
-              name="unidentified"
-              value={filters.unidentified}
-              onChange={handleFilterChange}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Unidentified</MenuItem>
-              <MenuItem value="false">Identified</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={3}>
+        <Grid item xs={12} sm={6}>
           <FormControl fullWidth>
             <InputLabel>Type</InputLabel>
             <Select
               name="type"
-              value={filters.type}
-              onChange={handleFilterChange}
+              value={typeFilter}
+              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="Weapon">Weapon</MenuItem>
@@ -132,13 +103,13 @@ const UnprocessedLoot = () => {
             </Select>
           </FormControl>
         </Grid>
-        <Grid item xs={3}>
+        <Grid item xs={12} sm={6}>
           <FormControl fullWidth>
             <InputLabel>Size</InputLabel>
             <Select
               name="size"
-              value={filters.size}
-              onChange={handleFilterChange}
+              value={sizeFilter}
+              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="Fine">Fine</MenuItem>
@@ -153,33 +124,33 @@ const UnprocessedLoot = () => {
             </Select>
           </FormControl>
         </Grid>
-        <Grid item xs={3}>
-          <FormControl fullWidth>
-            <InputLabel>Pending Sale</InputLabel>
-            <Select
-              name="pendingSale"
-              value={filters.pendingSale}
-              onChange={handleFilterChange}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Pending Sale</MenuItem>
-              <MenuItem value="false">Not Pending Sale</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
       </Grid>
       <CustomLootTable
-        loot={loot.summary}
-        individualLoot={loot.individual}
+        loot={filteredLoot}
+        individualLoot={individualLoot}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
-        openItems={openItems}
-        setOpenItems={setOpenItems}
-        handleSelectItem={handleSelectItem}
-        handleSort={handleSort}
-        sortConfig={sortConfig}
+        openItems={{}}
+        setOpenItems={() => {}}
+        handleSelectItem={(id) => handleSelectItem(id, setSelectedItems)}
+        handleSort={() => {}}
+        sortConfig={{ key: 'lastupdate', direction: 'desc' }}
+        showColumns={{
+          select: true,
+          quantity: true,
+          name: true,
+          type: true,
+          size: true,
+          whoHasIt: false, // Do not show "Who Has It?" on Unprocessed Loot page
+          believedValue: true,
+          averageAppraisal: true,
+          sessionDate: true,
+          lastUpdate: true,
+          unidentified: true,
+          pendingSale: true
+        }} // Specify columns to show
       />
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
+      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
       </Button>
       <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleTrash(selectedItems, fetchLoot)}>
@@ -188,36 +159,35 @@ const UnprocessedLoot = () => {
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, fetchLoot, activeUser)}>
         Keep Self
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
         Keep Party
       </Button>
-      {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStackClick}>
-          Split Stack
-        </Button>
-      )}
       {selectedItems.length === 1 && (
-        <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
-          Update
-        </Button>
+        <>
+          <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenUpdateDialog(setOpenUpdateDialog, loot, selectedItems, setUpdatedEntry)}>
+            Update
+          </Button>
+          {selectedItems[0] && loot.find(item => item.id === selectedItems[0]).quantity > 1 && (
+            <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(setOpenSplitDialog, loot, selectedItems, setSplitQuantities)}>
+              Split Stack
+            </Button>
+          )}
+        </>
       )}
-
-      <CustomSplitStackDialog
-        open={openSplitDialog}
-        handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
-        splitQuantities={splitQuantities}
-        setSplitQuantities={setSplitQuantities}
-        handleSplitChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
-        handleAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities)}
-        handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
-      />
-
       <CustomUpdateDialog
         open={openUpdateDialog}
-        handleClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
+        onClose={handleUpdateDialogClose}
         updatedEntry={updatedEntry}
-        handleUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        handleUpdateSubmit={() => handleUpdate(updatedEntry.id, updatedEntry, fetchLoot)}
+        onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
+        onUpdateSubmit={() => handleUpdate(updatedEntry.id, updatedEntry, fetchLoot)}
+      />
+      <CustomSplitStackDialog
+        open={openSplitDialog}
+        handleClose={handleSplitDialogClose}
+        splitQuantities={splitQuantities}
+        handleSplitChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
+        handleAddSplit={() => handleAddSplit(setSplitQuantities)}
+        handleSplitSubmit={() => handleSplitSubmit(setOpenSplitDialog, splitQuantities, fetchLoot)}
       />
     </Container>
   );
