@@ -47,6 +47,7 @@ const ItemManagement = () => {
       calculatePendingSaleSummary(itemsData);
     } catch (error) {
       console.error('Error fetching items', error);
+      setItems([]); // Ensure items is always an array even in case of error
     }
   };
 
@@ -141,7 +142,7 @@ const ItemManagement = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {items.map((item) => (
+              {Array.isArray(items) && items.map((item) => (
                 <TableRow key={item.id} onClick={() => setUpdatedItem(item)}>
                   <TableCell>
                     <Checkbox
