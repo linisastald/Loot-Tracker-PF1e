@@ -174,10 +174,11 @@ exports.getSettings = async (req, res) => {
 };
 exports.getAllUsers = async (req, res) => {
   try {
-    const usersResult = await pool.query('SELECT id, username, role, joined FROM users');
-    res.status(200).json(usersResult.rows);
+    const users = await pool.query('SELECT id, username, role, joined FROM users WHERE role != $1', ['deleted']);
+    res.json(users.rows);
   } catch (error) {
-    console.error('Error fetching users', error);
+    console.error('Error fetching all users:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
