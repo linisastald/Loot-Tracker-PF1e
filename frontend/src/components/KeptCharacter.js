@@ -82,6 +82,13 @@ const KeptCharacter = () => {
     setOpenSplitDialog(false);
     setSplitQuantities([]);
   };
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const handleUpdateDialogClose = () => {
     setOpenUpdateDialog(false);
