@@ -88,11 +88,11 @@ const KeptCharacter = () => {
   };
 
   return (
-    <Container component="main" sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
-      <Paper sx={{ p: 2, mb: 2, maxWidth: '100vw', overflowX: 'auto'  }}>
+    <Container component="main" sx={{ height: '100vh', maxWidth: '100vw', overflowX: 'auto', display: 'flex', flexDirection: 'column'  }}>
+      <Paper sx={{ p: 2, mb: 2, height: '100vh', maxWidth: '100vw', overflowX: 'auto'  }}>
         <Typography variant="h6">Kept - Character</Typography>
       </Paper>
-      <Grid container spacing={2} sx={{ mb: 2 }}>
+      <Grid container spacing={2} sx={{ mb: 2, width: '100%' }}>
         <Grid item xs={12} sm={4}>
           <FormControl fullWidth>
             <InputLabel>Type</InputLabel>
@@ -151,6 +151,7 @@ const KeptCharacter = () => {
         </Grid>
       </Grid>
       <CustomLootTable
+        sx={{ flex: 1, width: '100%', overflow: 'auto' }}
         loot={filteredLoot}
         individualLoot={loot.individual}
         selectedItems={selectedItems}
