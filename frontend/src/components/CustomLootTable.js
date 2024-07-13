@@ -2,6 +2,11 @@ import React from 'react';
 import { TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Paper, Checkbox, IconButton, Collapse, TableSortLabel, Tooltip } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
 import { formatDate } from '../utils/utils'; // Adjust the path as necessary
+import { styled } from '@mui/system';
+
+const SubItemTableRow = styled(TableRow)(({ theme }) => ({
+  backgroundColor: theme.palette.action.hover,
+}));
 
 const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems, openItems, setOpenItems, handleSelectItem, handleSort, sortConfig }) => {
   const handleToggleOpen = (name) => {
@@ -145,7 +150,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                         <Table size="small">
                           <TableBody>
                             {individualItems.map((subItem) => (
-                              <TableRow key={subItem.id} style={{ backgroundColor: '#f5f5f5' }}>
+                              <SubItemTableRow key={subItem.id}>
                                 <TableCell>
                                   <Checkbox
                                     checked={selectedItems.includes(subItem.id)}
@@ -172,7 +177,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                                 <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                                 <TableCell>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>
                                 <TableCell>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>
-                              </TableRow>
+                              </SubItemTableRow>
                             ))}
                           </TableBody>
                         </Table>
