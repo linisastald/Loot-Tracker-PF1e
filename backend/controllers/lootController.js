@@ -42,9 +42,9 @@ exports.updateLootStatus = async (req, res) => {
 exports.getKeptPartyLoot = async (req, res) => {
   try {
     const loot = await Loot.findByStatus('Kept Party');
-    res.status(200).json(Array.isArray(loot) ? loot : []); // Ensure the response is always an array
+    res.status(200).json(loot);
   } catch (error) {
-    console.error('Error fetching kept party loot', error);
+    console.error('Error fetching kept party loot:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
