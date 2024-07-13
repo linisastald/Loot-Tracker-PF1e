@@ -186,6 +186,7 @@ const CustomLootTable = ({
                               {showColumns.select && <TableCell style={subCellStyle}>Select</TableCell>}
                               <TableCell style={subCellStyle}>Quantity</TableCell>
                               <TableCell style={subCellStyle}>Size</TableCell>
+                              <TableCell style={subCellStyle}>Pending Sale</TableCell>
                               <TableCell style={subCellStyle}>Session Date</TableCell>
                               <TableCell style={subCellStyle}>Last Update</TableCell>
                             </TableRow>
@@ -203,6 +204,7 @@ const CustomLootTable = ({
                                 )}
                                 <TableCell style={subCellStyle}>{subItem.quantity}</TableCell>
                                 <TableCell style={subCellStyle}>{subItem.size}</TableCell>
+                                <TableCell style={subCellStyle}>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                                 <TableCell style={subCellStyle}>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>
                                 <TableCell style={subCellStyle}>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>
                               </SubItemTableRow>
