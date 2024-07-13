@@ -43,8 +43,8 @@ const CustomLootTable = ({
   const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
 
   return (
-    <TableContainer component={Paper} sx={{ maxWidth: '1000vw', overflowX: 'auto' }}>
-      <Table>
+    <TableContainer component={Paper} sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
+      <Table sx={{ minWidth: 650 }}>
         <TableHead>
           <TableRow>
             {showColumns.select && <TableCell style={mainCellStyle}>Select</TableCell>}
