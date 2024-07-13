@@ -12,8 +12,8 @@ import {
   Button
 } from '@mui/material';
 import CustomLootTable from './CustomLootTable'; // Adjust the path as necessary
-import CustomUpdateDialog from './dialogs/CustomUpdateDialog'; // Adjust the path as necessary
-import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog'; // Adjust the path as necessary
+import CustomUpdateDialog from './CustomUpdateDialog'; // Adjust the path as necessary
+import CustomSplitStackDialog from './CustomSplitStackDialog'; // Adjust the path as necessary
 import {
   fetchActiveUser,
   handleSelectItem,
@@ -25,8 +25,8 @@ import {
   handleUpdateChange,
   handleSplitChange,
   handleAddSplit,
-  handleUpdateSubmit,
   handleSplitSubmit,
+  handleUpdate,
   handleFilterChange
 } from '../utils/utils'; // Adjust the path as necessary
 
@@ -95,7 +95,7 @@ const KeptCharacter = () => {
             <Select
               name="type"
               value={typeFilter}
-              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter)}
+              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter, setCharacterFilter)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="Weapon">Weapon</MenuItem>
@@ -113,7 +113,7 @@ const KeptCharacter = () => {
             <Select
               name="size"
               value={sizeFilter}
-              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter)}
+              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter, setCharacterFilter)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="Fine">Fine</MenuItem>
@@ -134,7 +134,7 @@ const KeptCharacter = () => {
             <Select
               name="character"
               value={characterFilter}
-              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter)}
+              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter, setCharacterFilter)}
             >
               <MenuItem value="">All</MenuItem>
               {characters.map((character, index) => (
@@ -156,7 +156,20 @@ const KeptCharacter = () => {
         handleSelectItem={(id) => handleSelectItem(id, setSelectedItems)}
         handleSort={() => {}}
         sortConfig={{ key: 'lastupdate', direction: 'desc' }}
-        showColumns={{ select: true, unidentified: false, pendingSale: false }} // Specify columns to show
+        showColumns={{
+          select: true,
+          quantity: true,
+          name: true,
+          type: true,
+          size: true,
+          whoHasIt: true,
+          believedValue: true,
+          averageAppraisal: true,
+          sessionDate: true,
+          lastUpdate: true,
+          unidentified: false,
+          pendingSale: false
+        }} // Specify columns to show
       />
       <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
@@ -184,7 +197,7 @@ const KeptCharacter = () => {
         onClose={handleUpdateDialogClose}
         updatedEntry={updatedEntry}
         onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        onUpdateSubmit={() => handleUpdateSubmit(setOpenUpdateDialog, updatedEntry, fetchLoot)}
+        onUpdateSubmit={() => handleUpdate(updatedEntry.id, updatedEntry, fetchLoot)}
       />
       <CustomSplitStackDialog
         open={openSplitDialog}

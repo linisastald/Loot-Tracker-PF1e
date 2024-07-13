@@ -12,21 +12,21 @@ import {
   Button
 } from '@mui/material';
 import CustomLootTable from './CustomLootTable'; // Adjust the path as necessary
-import CustomUpdateDialog from './dialogs/CustomUpdateDialog'; // Adjust the path as necessary
-import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog'; // Adjust the path as necessary
+import CustomUpdateDialog from './CustomUpdateDialog'; // Adjust the path as necessary
+import CustomSplitStackDialog from './CustomSplitStackDialog'; // Adjust the path as necessary
 import {
   fetchActiveUser,
   handleSelectItem,
   handleSell,
   handleTrash,
-  handleKeepSelf,
+  handleKeepParty,
   handleOpenUpdateDialog,
   handleOpenSplitDialog,
   handleUpdateChange,
   handleSplitChange,
   handleAddSplit,
-  handleUpdateSubmit,
   handleSplitSubmit,
+  handleUpdate,
   handleFilterChange
 } from '../utils/utils'; // Adjust the path as necessary
 
@@ -134,7 +134,20 @@ const KeptParty = () => {
         handleSelectItem={(id) => handleSelectItem(id, setSelectedItems)}
         handleSort={() => {}}
         sortConfig={{ key: 'lastupdate', direction: 'desc' }}
-        showColumns={{ select: true, unidentified: false, pendingSale: false }} // Specify columns to show
+        showColumns={{
+          select: true,
+          quantity: true,
+          name: true,
+          type: true,
+          size: true,
+          whoHasIt: false, // This column is not needed in Kept Party
+          believedValue: true,
+          averageAppraisal: true,
+          sessionDate: true,
+          lastUpdate: true,
+          unidentified: false,
+          pendingSale: false
+        }} // Specify columns to show
       />
       <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
@@ -142,8 +155,8 @@ const KeptParty = () => {
       <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleTrash(selectedItems, fetchLoot)}>
         Trash
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, fetchLoot, activeUser)}>
-        Keep Self
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
+        Keep Party
       </Button>
       {selectedItems.length === 1 && (
         <>
@@ -162,7 +175,7 @@ const KeptParty = () => {
         onClose={handleUpdateDialogClose}
         updatedEntry={updatedEntry}
         onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        onUpdateSubmit={() => handleUpdateSubmit(setOpenUpdateDialog, updatedEntry, fetchLoot)}
+        onUpdateSubmit={() => handleUpdate(updatedEntry.id, updatedEntry, fetchLoot)}
       />
       <CustomSplitStackDialog
         open={openSplitDialog}
