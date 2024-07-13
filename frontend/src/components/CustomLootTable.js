@@ -44,7 +44,7 @@ const CustomLootTable = ({
 
   return (
     <TableContainer component={Paper} sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
-      <Table sx={{ minWidth: 650 }}>
+      <Table sx={{ minWidth: 800 }}>
         <TableHead>
           <TableRow>
             {showColumns.select && <TableCell style={mainCellStyle}>Select</TableCell>}
