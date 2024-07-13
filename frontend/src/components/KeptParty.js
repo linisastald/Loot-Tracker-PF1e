@@ -19,7 +19,7 @@ import {
   handleSelectItem,
   handleSell,
   handleTrash,
-  handleKeepParty,
+  handleKeepSelf,
   handleOpenUpdateDialog,
   handleOpenSplitDialog,
   handleUpdateChange,
@@ -31,11 +31,12 @@ import {
 } from '../utils/utils'; // Adjust the path as necessary
 
 const KeptParty = () => {
-  const [loot, setLoot] = useState([]);
-  const [individualLoot, setIndividualLoot] = useState([]);
+  const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
   const [typeFilter, setTypeFilter] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
+  const [characterFilter, setCharacterFilter] = useState('');
+  const [characters, setCharacters] = useState([]);
   const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
   const [openSplitDialog, setOpenSplitDialog] = useState(false);
   const [updatedEntry, setUpdatedEntry] = useState({});
@@ -46,14 +47,16 @@ const KeptParty = () => {
     const fetchLoot = async () => {
       const token = localStorage.getItem('token');
       try {
-        const response = await axios.get('http://192.168.0.64:5000/api/loot/kept-party', {
+        const response = await axios.get(`http://192.168.0.64:5000/api/loot/kept-party`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        console.log('Fetched Loot:', response.data); // Add logging
         setLoot(response.data);
-        setIndividualLoot(response.data); // Assuming each item is an individual item in this context
+        const uniqueCharacters = [...new Set(response.data.individual.map(item => item.character_name))];
+        setCharacters(uniqueCharacters);
       } catch (error) {
         console.error('Error fetching loot:', error);
-        setLoot([]); // Ensure loot is an array even if the request fails
+        setLoot({ summary: [], individual: [] }); // Ensure loot is an object with summary and individual arrays
       }
     };
 
@@ -61,12 +64,17 @@ const KeptParty = () => {
     fetchActiveUser(setActiveUser);
   }, []);
 
-  const filteredLoot = Array.isArray(loot) ? loot.filter(item => {
+  useEffect(() => {
+    console.log('Loot State Updated:', loot); // Add logging
+  }, [loot]);
+
+  const filteredLoot = loot.summary.filter(item => {
     return (
       (typeFilter ? item.type === typeFilter : true) &&
-      (sizeFilter ? item.size === sizeFilter : true)
+      (sizeFilter ? item.size === sizeFilter : true) &&
+      (characterFilter ? item.character_name === characterFilter : true)
     );
-  }) : [];
+  });
 
   const handleSplitDialogClose = () => {
     setOpenSplitDialog(false);
@@ -84,13 +92,13 @@ const KeptParty = () => {
         <Typography variant="h6">Kept - Party</Typography>
       </Paper>
       <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <FormControl fullWidth>
             <InputLabel>Type</InputLabel>
             <Select
               name="type"
               value={typeFilter}
-              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter)}
+              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter, setCharacterFilter)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="Weapon">Weapon</MenuItem>
@@ -102,13 +110,13 @@ const KeptParty = () => {
             </Select>
           </FormControl>
         </Grid>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <FormControl fullWidth>
             <InputLabel>Size</InputLabel>
             <Select
               name="size"
               value={sizeFilter}
-              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter)}
+              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter, setCharacterFilter)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="Fine">Fine</MenuItem>
@@ -123,10 +131,27 @@ const KeptParty = () => {
             </Select>
           </FormControl>
         </Grid>
+        <Grid item xs={12} sm={4}>
+          <FormControl fullWidth>
+            <InputLabel>Who Has It?</InputLabel>
+            <Select
+              name="character"
+              value={characterFilter}
+              onChange={(e) => handleFilterChange(e, setTypeFilter, setSizeFilter, setCharacterFilter)}
+            >
+              <MenuItem value="">All</MenuItem>
+              {characters.map((character, index) => (
+                <MenuItem key={index} value={character}>
+                  {character}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
       </Grid>
       <CustomLootTable
         loot={filteredLoot}
-        individualLoot={individualLoot}
+        individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
         openItems={{}}
@@ -140,7 +165,7 @@ const KeptParty = () => {
           name: true,
           type: true,
           size: true,
-          whoHasIt: false, // This column is not needed in Kept Party
+          whoHasIt: true,
           believedValue: true,
           averageAppraisal: true,
           sessionDate: true,
@@ -155,16 +180,16 @@ const KeptParty = () => {
       <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleTrash(selectedItems, fetchLoot)}>
         Trash
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
-        Keep Party
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, fetchLoot, activeUser)}>
+        Keep Self
       </Button>
       {selectedItems.length === 1 && (
         <>
-          <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenUpdateDialog(setOpenUpdateDialog, loot, selectedItems, setUpdatedEntry)}>
+          <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenUpdateDialog(setOpenUpdateDialog, loot.individual, selectedItems, setUpdatedEntry)}>
             Update
           </Button>
-          {selectedItems[0] && loot.find(item => item.id === selectedItems[0]).quantity > 1 && (
-            <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(setOpenSplitDialog, loot, selectedItems, setSplitQuantities)}>
+          {selectedItems[0] && loot.individual.find(item => item.id === selectedItems[0]).quantity > 1 && (
+            <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(setOpenSplitDialog, loot.individual, selectedItems, setSplitQuantities)}>
               Split Stack
             </Button>
           )}
