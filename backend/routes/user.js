@@ -7,7 +7,7 @@ const checkRole = require('../middleware/checkRole');
 router.put('/change-password', verifyToken, userController.changePassword);
 router.get('/characters', verifyToken, userController.getCharacters);
 router.post('/characters', verifyToken, userController.addCharacter);
-router.get('/all', verifyToken, userController.getAllUsers);
+router.get('/all', verifyToken, checkRole(['DM']), userController.getAllUsers);
 router.put('/characters', verifyToken, userController.updateCharacter);
 router.put('/deactivate-all-characters', verifyToken, userController.deactivateAllCharacters);
 router.put('/reset-password', verifyToken, checkRole(['DM']), userController.resetPassword);
