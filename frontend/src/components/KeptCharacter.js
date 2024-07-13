@@ -152,29 +152,30 @@ const KeptCharacter = () => {
         </Grid>
       </Grid>
       <CustomLootTable
-        loot={filteredLoot}
+        loot={loot.summary}
         individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
         openItems={openItems}
         setOpenItems={setOpenItems}
         handleSelectItem={handleSelectItem}
-        handleSort={() => {}}
-        sortConfig={{ key: 'lastupdate', direction: 'desc' }}
+        handleSort={handleSort}
+        sortConfig={sortConfig}
         showColumns={{
           select: true,
           quantity: true,
           name: true,
           type: true,
           size: true,
-          whoHasIt: true,
+          whoHasIt: true, // Do not show "Who Has It?" on Unprocessed Loot page
           believedValue: true,
           averageAppraisal: true,
           sessionDate: true,
           lastUpdate: true,
           unidentified: false,
           pendingSale: false
-        }} // Specify columns to show
+        }}
+
       />
       <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
@@ -191,26 +192,28 @@ const KeptCharacter = () => {
             Update
           </Button>
           {selectedItems[0] && loot.individual.find(item => item.id === selectedItems[0]).quantity > 1 && (
-            <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(setOpenSplitDialog, loot.individual, selectedItems, setSplitQuantities)}>
+            <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStackClick}>
               Split Stack
             </Button>
           )}
         </>
       )}
-      <CustomUpdateDialog
-        open={openUpdateDialog}
-        onClose={handleUpdateDialogClose}
-        updatedEntry={updatedEntry}
-        onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        onUpdateSubmit={() => handleUpdate(updatedEntry.id, updatedEntry, fetchLoot)}
-      />
       <CustomSplitStackDialog
         open={openSplitDialog}
-        handleClose={handleSplitDialogClose}
+        handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
         splitQuantities={splitQuantities}
+        setSplitQuantities={setSplitQuantities}
         handleSplitChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
-        handleAddSplit={() => handleAddSplit(setSplitQuantities)}
-        handleSplitSubmit={() => handleSplitSubmit(setOpenSplitDialog, splitQuantities, fetchLoot)}
+        handleAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities)}
+        handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
+      />
+
+      <CustomUpdateDialog
+        open={openUpdateDialog}
+        handleClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
+        updatedEntry={updatedEntry}
+        handleUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
+        handleUpdateSubmit={() => handleUpdate(updatedEntry.id, updatedEntry, fetchLoot)}
       />
     </Container>
   );
