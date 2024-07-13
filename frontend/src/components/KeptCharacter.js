@@ -88,7 +88,7 @@ const KeptCharacter = () => {
   };
 
   return (
-    <Container component="main" sx={{ maxWidth: '100vw', overflowX: 'auto', display: 'flex', flexDirection: 'column'  }}>
+    <Container component="main" >
       <Paper sx={{ p: 2, mb: 2}}>
         <Typography variant="h6">Kept - Character</Typography>
       </Paper>
