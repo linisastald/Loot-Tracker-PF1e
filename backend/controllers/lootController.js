@@ -160,14 +160,29 @@ exports.updateItem = async (req, res) => {
   const { id } = req.params;
   const { session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, modids, charges, value, whohas, notes } = req.body;
 
-  if (!id || !session_date || !quantity || !name || !type || !size || !status || !itemid || !modids || !charges || !value || !whohas || !notes) {
-    return res.status(400).json({ error: 'Missing required fields' });
+  if (!id) {
+    return res.status(400).json({ error: 'ID is required' });
   }
 
   try {
     const result = await pool.query(`
       UPDATE loot
-      SET session_date = $1, quantity = $2, name = $3, unidentified = $4, masterwork = $5, type = $6, size = $7, status = $8, itemid = $9, modids = $10, charges = $11, value = $12, whohas = $13, notes = $14, lastupdate = CURRENT_TIMESTAMP
+      SET 
+        session_date = COALESCE($1, session_date),
+        quantity = COALESCE($2, quantity),
+        name = COALESCE($3, name),
+        unidentified = COALESCE($4, unidentified),
+        masterwork = COALESCE($5, masterwork),
+        type = COALESCE($6, type),
+        size = COALESCE($7, size),
+        status = COALESCE($8, status),
+        itemid = COALESCE($9, itemid),
+        modids = COALESCE($10, modids),
+        charges = COALESCE($11, charges),
+        value = COALESCE($12, value),
+        whohas = COALESCE($13, whohas),
+        notes = COALESCE($14, notes),
+        lastupdate = CURRENT_TIMESTAMP
       WHERE id = $15
       RETURNING *
     `, [session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, modids, charges, value, whohas, notes, id]);
@@ -178,3 +193,4 @@ exports.updateItem = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+

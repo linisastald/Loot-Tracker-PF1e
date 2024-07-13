@@ -66,9 +66,10 @@ const ItemManagement = () => {
     try {
       const token = localStorage.getItem('token');
       console.log('Updated Item Payload:', updatedItem);
-      await axios.put(`http://192.168.0.64:5000/api/loot/${updatedItem.id}`, updatedItem, {
+      const response = await axios.put(`http://192.168.0.64:5000/api/loot/${updatedItem.id}`, updatedItem, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log('Update Response:', response);
       setUpdateDialogOpen(false);
       fetchItems();
     } catch (error) {
