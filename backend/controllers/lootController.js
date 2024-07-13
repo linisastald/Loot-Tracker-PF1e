@@ -106,3 +106,52 @@ exports.updateSingleLootStatus = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+exports.getPendingSaleItems = async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching pending sale items', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.searchItems = async (req, res) => {
+  const { query } = req.query;
+  try {
+    const result = await pool.query(`
+      SELECT * FROM loot
+      WHERE name ILIKE $1 OR notes ILIKE $1
+    `, [`%${query}%`]);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error searching items', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.confirmSale = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const pendingSaleItems = await client.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
+
+    for (const item of pendingSaleItems.rows) {
+      await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
+        item.id,
+        item.value / 2,
+        new Date(),
+      ]);
+      await client.query('UPDATE loot SET status = $1 WHERE id = $2', ['Sold', item.id]);
+    }
+
+    await client.query('COMMIT');
+    res.status(200).json({ message: 'Sale confirmed' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error confirming sale', error);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+};
