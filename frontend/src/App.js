@@ -16,6 +16,7 @@ import CharacterAndUserManagement from './components/CharacterAndUserManagement'
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import theme from './theme';
+import ItemManagement from "./components/ItemManagement";
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
             <Route path="/kept-character" element={<KeptCharacter />} />
             <Route path="/sold-loot" element={<SoldLoot />} />
             <Route path="/character-user-management" element={<CharacterAndUserManagement />} />
+            <Route path="/item-management" element={<ItemManagement />} />
           </Route>
         </Routes>
       </Router>

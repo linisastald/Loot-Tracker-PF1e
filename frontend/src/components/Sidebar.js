@@ -115,6 +115,9 @@ const Sidebar = () => {
                 <ListItem button component={Link} to="/character-user-management" sx={{ pl: 4 }}>
                   <ListItemText primary="Character and User Management" />
                 </ListItem>
+                <ListItem button component={Link} to="/item-management" sx={{ pl: 4 }}>
+                  <ListItemText primary="Item Management" />
+                </ListItem>
               </List>
             </Collapse>
           </div>
