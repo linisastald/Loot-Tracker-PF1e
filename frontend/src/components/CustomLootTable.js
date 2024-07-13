@@ -20,15 +20,13 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
     return individualLoot.filter((item) => item.name === name);
   };
 
-  const commonCellStyle = { padding: '8px', borderBottom: 'none' };
-
   return (
     <TableContainer component={Paper}>
       <Table>
         <TableHead>
           <TableRow>
-            <TableCell style={commonCellStyle}>Select</TableCell>
-            <TableCell style={commonCellStyle}>
+            <TableCell>Select</TableCell>
+            <TableCell>
               <TableSortLabel
                 active={sortConfig.key === 'quantity'}
                 direction={sortConfig.direction}
@@ -37,7 +35,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                 Quantity
               </TableSortLabel>
             </TableCell>
-            <TableCell style={commonCellStyle}>
+            <TableCell>
               <TableSortLabel
                 active={sortConfig.key === 'name'}
                 direction={sortConfig.direction}
@@ -46,7 +44,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                 Name
               </TableSortLabel>
             </TableCell>
-            <TableCell style={commonCellStyle}>
+            <TableCell>
               <TableSortLabel
                 active={sortConfig.key === 'unidentified'}
                 direction={sortConfig.direction}
@@ -55,7 +53,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                 Unidentified
               </TableSortLabel>
             </TableCell>
-            <TableCell style={commonCellStyle}>
+            <TableCell>
               <TableSortLabel
                 active={sortConfig.key === 'type'}
                 direction={sortConfig.direction}
@@ -64,7 +62,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                 Type
               </TableSortLabel>
             </TableCell>
-            <TableCell style={commonCellStyle}>
+            <TableCell>
               <TableSortLabel
                 active={sortConfig.key === 'size'}
                 direction={sortConfig.direction}
@@ -73,9 +71,9 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                 Size
               </TableSortLabel>
             </TableCell>
-            <TableCell style={commonCellStyle}>Believed Value</TableCell>
-            <TableCell style={commonCellStyle}>Average Appraisal</TableCell>
-            <TableCell style={commonCellStyle}>
+            <TableCell>Believed Value</TableCell>
+            <TableCell>Average Appraisal</TableCell>
+            <TableCell>
               <TableSortLabel
                 active={sortConfig.key === 'status'}
                 direction={sortConfig.direction}
@@ -84,7 +82,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                 Pending Sale
               </TableSortLabel>
             </TableCell>
-            <TableCell style={commonCellStyle}>
+            <TableCell>
               <TableSortLabel
                 active={sortConfig.key === 'session_date'}
                 direction={sortConfig.direction}
@@ -93,7 +91,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                 Session Date
               </TableSortLabel>
             </TableCell>
-            <TableCell style={commonCellStyle}>Last Update</TableCell>
+            <TableCell>Last Update</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -105,7 +103,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
             return (
               <React.Fragment key={`${item.name}-${item.unidentified}-${item.type}-${item.size}`}>
                 <TableRow>
-                  <TableCell style={commonCellStyle}>
+                  <TableCell>
                     <Checkbox
                       checked={individualItems.every((item) => selectedItems.includes(item.id))}
                       indeterminate={
@@ -115,8 +113,8 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                       onChange={() => individualItems.forEach((item) => handleSelectItem(item.id, setSelectedItems))}
                     />
                   </TableCell>
-                  <TableCell style={commonCellStyle}>{totalQuantity}</TableCell>
-                  <TableCell style={commonCellStyle}>
+                  <TableCell>{totalQuantity}</TableCell>
+                  <TableCell>
                     {individualItems.length > 1 && (
                       <IconButton
                         aria-label="expand row"
@@ -130,20 +128,20 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                       <span>{item.name}</span>
                     </Tooltip>
                   </TableCell>
-                  <TableCell style={commonCellStyle}>
+                  <TableCell>
                     {item.unidentified === null
                       ? ''
                       : item.unidentified
                       ? <strong>Unidentified</strong>
                       : 'Identified'}
                   </TableCell>
-                  <TableCell style={commonCellStyle}>{item.type}</TableCell>
-                  <TableCell style={commonCellStyle}>{item.size}</TableCell>
-                  <TableCell style={commonCellStyle}>{item.believedvalue || ''}</TableCell>
-                  <TableCell style={commonCellStyle}>{item.average_appraisal || ''}</TableCell>
-                  <TableCell style={commonCellStyle}>{isPendingSale ? '✔' : ''}</TableCell>
-                  <TableCell style={commonCellStyle}>{item.session_date ? formatDate(item.session_date) : ''}</TableCell>
-                  <TableCell style={commonCellStyle}>{item.lastupdate ? formatDate(item.lastupdate) : ''}</TableCell>
+                  <TableCell>{item.type}</TableCell>
+                  <TableCell>{item.size}</TableCell>
+                  <TableCell>{item.believedvalue || ''}</TableCell>
+                  <TableCell>{item.average_appraisal || ''}</TableCell>
+                  <TableCell>{isPendingSale ? '✔' : ''}</TableCell>
+                  <TableCell>{item.session_date ? formatDate(item.session_date) : ''}</TableCell>
+                  <TableCell>{item.lastupdate ? formatDate(item.lastupdate) : ''}</TableCell>
                 </TableRow>
                 {individualItems.length > 1 && (
                   <TableRow>
@@ -153,32 +151,32 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                           <TableBody>
                             {individualItems.map((subItem) => (
                               <SubItemTableRow key={subItem.id}>
-                                <TableCell style={commonCellStyle}>
+                                <TableCell>
                                   <Checkbox
                                     checked={selectedItems.includes(subItem.id)}
                                     onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
                                   />
                                 </TableCell>
-                                <TableCell style={commonCellStyle}>{subItem.quantity}</TableCell>
-                                <TableCell style={commonCellStyle}>
+                                <TableCell>{subItem.quantity}</TableCell>
+                                <TableCell>
                                   <Tooltip title={subItem.notes || 'No notes'} arrow>
                                     <span>{subItem.name}</span>
                                   </Tooltip>
                                 </TableCell>
-                                <TableCell style={commonCellStyle}>
+                                <TableCell>
                                   {subItem.unidentified === null
                                     ? ''
                                     : subItem.unidentified
                                     ? <strong>Unidentified</strong>
                                     : 'Identified'}
                                 </TableCell>
-                                <TableCell style={commonCellStyle}>{subItem.type}</TableCell>
-                                <TableCell style={commonCellStyle}>{subItem.size}</TableCell>
-                                <TableCell style={commonCellStyle}>{subItem.believedvalue || ''}</TableCell>
-                                <TableCell style={commonCellStyle}>{subItem.appraisalroll || ''}</TableCell>
-                                <TableCell style={commonCellStyle}>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
-                                <TableCell style={commonCellStyle}>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>
-                                <TableCell style={commonCellStyle}>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>
+                                <TableCell>{subItem.type}</TableCell>
+                                <TableCell>{subItem.size}</TableCell>
+                                <TableCell>{subItem.believedvalue || ''}</TableCell>
+                                <TableCell>{subItem.appraisalroll || ''}</TableCell>
+                                <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
+                                <TableCell>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>
+                                <TableCell>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>
                               </SubItemTableRow>
                             ))}
                           </TableBody>
