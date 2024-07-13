@@ -11,7 +11,7 @@ import {
   FormControl,
   Button
 } from '@mui/material';
-import CustomLootTable from './CustomLootTable'; // Adjust the path as necessary
+import CustomLootTable from './dialogs/CustomLootTable'; // Adjust the path as necessary
 import CustomUpdateDialog from './dialogs/CustomUpdateDialog'; // Adjust the path as necessary
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog'; // Adjust the path as necessary
 import {
