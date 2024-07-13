@@ -36,7 +36,7 @@ const GivenAwayOrTrashed = () => {
         handleSelectItem={() => {}}
         handleSort={() => {}}
         sortConfig={{ key: 'lastupdate', direction: 'desc' }}
-        showColumns={{ unidentified: false, pendingSale: false }} // Specify columns to hide
+        showColumns={{ select: false, unidentified: false, pendingSale: false }} // Specify columns to hide
       />
     </Container>
   );

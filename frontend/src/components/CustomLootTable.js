@@ -22,6 +22,7 @@ const CustomLootTable = ({
   handleSort,
   sortConfig,
   showColumns = {
+    select: true,
     unidentified: true,
     pendingSale: true,
   }
@@ -45,7 +46,7 @@ const CustomLootTable = ({
       <Table>
         <TableHead>
           <TableRow>
-            <TableCell style={mainCellStyle}>Select</TableCell>
+            {showColumns.select && <TableCell style={mainCellStyle}>Select</TableCell>}
             <TableCell style={mainCellStyle}>
               <TableSortLabel
                 active={sortConfig.key === 'quantity'}
@@ -126,16 +127,18 @@ const CustomLootTable = ({
             return (
               <React.Fragment key={`${item.name}-${item.unidentified}-${item.type}-${item.size}`}>
                 <TableRow>
-                  <TableCell style={mainCellStyle}>
-                    <Checkbox
-                      checked={individualItems.every((item) => selectedItems.includes(item.id))}
-                      indeterminate={
-                        individualItems.some((item) => selectedItems.includes(item.id)) &&
-                        !individualItems.every((item) => selectedItems.includes(item.id))
-                      }
-                      onChange={() => individualItems.forEach((item) => handleSelectItem(item.id, setSelectedItems))}
-                    />
-                  </TableCell>
+                  {showColumns.select && (
+                    <TableCell style={mainCellStyle}>
+                      <Checkbox
+                        checked={individualItems.every((item) => selectedItems.includes(item.id))}
+                        indeterminate={
+                          individualItems.some((item) => selectedItems.includes(item.id)) &&
+                          !individualItems.every((item) => selectedItems.includes(item.id))
+                        }
+                        onChange={() => individualItems.forEach((item) => handleSelectItem(item.id, setSelectedItems))}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell style={mainCellStyle}>{totalQuantity}</TableCell>
                   <TableCell style={mainCellStyle}>
                     {individualItems.length > 1 && (
@@ -172,12 +175,12 @@ const CustomLootTable = ({
                 </TableRow>
                 {individualItems.length > 1 && (
                   <TableRow>
-                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={showColumns.unidentified ? 11 : 10}>
+                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={showColumns.unidentified ? 10 : 9}>
                       <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
                         <Table size="small">
                           <TableHead>
                             <TableRow>
-                              <TableCell style={subCellStyle}>Select</TableCell>
+                              {showColumns.select && <TableCell style={subCellStyle}>Select</TableCell>}
                               <TableCell style={subCellStyle}>Quantity</TableCell>
                               <TableCell style={subCellStyle}>Size</TableCell>
                               <TableCell style={subCellStyle}>Session Date</TableCell>
@@ -187,12 +190,14 @@ const CustomLootTable = ({
                           <TableBody>
                             {individualItems.map((subItem) => (
                               <SubItemTableRow key={subItem.id}>
-                                <TableCell style={subCellStyle}>
-                                  <Checkbox
-                                    checked={selectedItems.includes(subItem.id)}
-                                    onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
-                                  />
-                                </TableCell>
+                                {showColumns.select && (
+                                  <TableCell style={subCellStyle}>
+                                    <Checkbox
+                                      checked={selectedItems.includes(subItem.id)}
+                                      onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
+                                    />
+                                  </TableCell>
+                                )}
                                 <TableCell style={subCellStyle}>{subItem.quantity}</TableCell>
                                 <TableCell style={subCellStyle}>{subItem.size}</TableCell>
                                 <TableCell style={subCellStyle}>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>
