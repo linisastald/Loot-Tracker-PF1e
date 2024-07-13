@@ -50,18 +50,23 @@ const KeptCharacter = () => {
         const response = await axios.get(`http://192.168.0.64:5000/api/loot/status/Kept%20Self`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        console.log('Fetched Loot:', response.data); // Add logging
         setLoot(response.data);
         const uniqueCharacters = [...new Set(response.data.individual.map(item => item.character_name))];
         setCharacters(uniqueCharacters);
       } catch (error) {
         console.error('Error fetching loot:', error);
-        setLoot({ summary: [], individual: [] }); // Ensure loot is an array even if the request fails
+        setLoot({ summary: [], individual: [] }); // Ensure loot is an object with summary and individual arrays
       }
     };
 
     fetchLoot();
     fetchActiveUser(setActiveUser);
   }, []);
+
+  useEffect(() => {
+    console.log('Loot State Updated:', loot); // Add logging
+  }, [loot]);
 
   const filteredLoot = loot.summary.filter(item => {
     return (
@@ -180,11 +185,11 @@ const KeptCharacter = () => {
       </Button>
       {selectedItems.length === 1 && (
         <>
-          <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenUpdateDialog(setOpenUpdateDialog, loot, selectedItems, setUpdatedEntry)}>
+          <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenUpdateDialog(setOpenUpdateDialog, loot.individual, selectedItems, setUpdatedEntry)}>
             Update
           </Button>
           {selectedItems[0] && loot.individual.find(item => item.id === selectedItems[0]).quantity > 1 && (
-            <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(setOpenSplitDialog, loot, selectedItems, setSplitQuantities)}>
+            <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(setOpenSplitDialog, loot.individual, selectedItems, setSplitQuantities)}>
               Split Stack
             </Button>
           )}
