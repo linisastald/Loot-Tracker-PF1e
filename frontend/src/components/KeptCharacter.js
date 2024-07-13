@@ -31,7 +31,7 @@ import {
 } from '../utils/utils'; // Adjust the path as necessary
 
 const KeptCharacter = () => {
-  const [loot, setLoot] = useState([]);
+  const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [individualLoot, setIndividualLoot] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
   const [typeFilter, setTypeFilter] = useState('');
@@ -48,16 +48,15 @@ const KeptCharacter = () => {
     const fetchLoot = async () => {
       const token = localStorage.getItem('token');
       try {
-        const response = await axios.get('http://192.168.0.64:5000/api/loot/kept-character', {
+        const response = await axios.get(`http://192.168.0.64:5000/api/loot/status/Kept%20Self`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setLoot(response.data);
-        setIndividualLoot(response.data); // Assuming each item is an individual item in this context
-        const uniqueCharacters = [...new Set(response.data.map(item => item.character_name))];
+        const uniqueCharacters = [...new Set(response.data.individual.map(item => item.character_name))];
         setCharacters(uniqueCharacters);
       } catch (error) {
         console.error('Error fetching loot:', error);
-        setLoot([]); // Ensure loot is an array even if the request fails
+        setLoot({ summary: [], individual: [] }); // Ensure loot is an object with summary and individual arrays
       }
     };
 
@@ -148,7 +147,7 @@ const KeptCharacter = () => {
       </Grid>
       <CustomLootTable
         loot={filteredLoot}
-        individualLoot={individualLoot}
+        individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
         openItems={{}}
