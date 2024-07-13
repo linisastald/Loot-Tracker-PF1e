@@ -178,6 +178,21 @@ const UnprocessedLoot = () => {
         handleSelectItem={handleSelectItem}
         handleSort={handleSort}
         sortConfig={sortConfig}
+        showColumns={{
+          select: true,
+          quantity: true,
+          name: true,
+          type: true,
+          size: true,
+          whoHasIt: false, // Do not show "Who Has It?" on Unprocessed Loot page
+          believedValue: true,
+          averageAppraisal: true,
+          sessionDate: true,
+          lastUpdate: true,
+          unidentified: true,
+          pendingSale: true
+        }}
+
       />
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
         Sell
