@@ -42,6 +42,7 @@ const KeptParty = () => {
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [splitQuantities, setSplitQuantities] = useState([]);
   const [activeUser, setActiveUser] = useState(null);
+  const [openItems, setOpenItems] = useState({});
 
   useEffect(() => {
     const fetchLoot = async () => {
@@ -154,8 +155,8 @@ const KeptParty = () => {
         individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
-        openItems={{}}
-        setOpenItems={() => {}}
+        openItems={openItems}
+        setOpenItems={setOpenItems}
         handleSelectItem={(id) => handleSelectItem(id, setSelectedItems)}
         handleSort={() => {}}
         sortConfig={{ key: 'lastupdate', direction: 'desc' }}
