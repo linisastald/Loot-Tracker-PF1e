@@ -4,12 +4,7 @@ import {
   Container,
   Paper,
   Typography,
-  TextField,
   Button,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
   Box,
   Table,
   TableBody,
@@ -18,22 +13,29 @@ import {
   TableHead,
   TableRow,
   Checkbox,
+  TableSortLabel,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  TextField,
 } from '@mui/material';
 
 const CharacterAndUserManagement = () => {
   const [users, setUsers] = useState([]);
   const [characters, setCharacters] = useState([]);
-  const [selectedUser, setSelectedUser] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -61,6 +63,24 @@ const CharacterAndUserManagement = () => {
 
     fetchData();
   }, []);
+
+  const handleSort = (columnKey) => {
+    let direction = 'asc';
+    if (sortConfig.key === columnKey && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key: columnKey, direction });
+  };
+
+  const sortedCharacters = [...characters].sort((a, b) => {
+    if (a[sortConfig.key] < b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? -1 : 1;
+    }
+    if (a[sortConfig.key] > b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
 
   const handleRegistrationToggle = async () => {
     try {
@@ -118,14 +138,22 @@ const CharacterAndUserManagement = () => {
   };
 
   const handleUserSelect = (userId) => {
-    const userIdInt = parseInt(userId, 10);
     setSelectedUsers((prevSelected) =>
-        prevSelected.includes(userIdInt)
-            ? prevSelected.filter((id) => id !== userIdInt)
-            : [...prevSelected, userIdInt]
+      prevSelected.includes(userId)
+        ? prevSelected.filter((id) => id !== userId)
+        : [...prevSelected, userId]
     );
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: '2-digit',
+    });
+  };
 
   return (
     <Container component="main">
@@ -220,26 +248,74 @@ const CharacterAndUserManagement = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Select</TableCell>
-                <TableCell>Name</TableCell>
-                <TableCell>Appraisal Bonus</TableCell>
-                <TableCell>Birthday</TableCell>
-                <TableCell>Deathday</TableCell>
-                <TableCell>Active</TableCell>
-                <TableCell>User</TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortConfig.key === 'name'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('name')}
+                  >
+                    Name
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortConfig.key === 'username'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('username')}
+                  >
+                    User
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortConfig.key === 'active'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('active')}
+                  >
+                    Active
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortConfig.key === 'appraisal_bonus'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('appraisal_bonus')}
+                  >
+                    Appraisal Bonus
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortConfig.key === 'birthday'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('birthday')}
+                  >
+                    Birthday
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sortConfig.key === 'deathday'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('deathday')}
+                  >
+                    Deathday
+                  </TableSortLabel>
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {characters.map((char) => (
+              {sortedCharacters.map((char) => (
                 <TableRow key={char.id}>
                   <TableCell>
                     <Checkbox />
                   </TableCell>
                   <TableCell>{char.name}</TableCell>
-                  <TableCell>{char.appraisal_bonus}</TableCell>
-                  <TableCell>{char.birthday}</TableCell>
-                  <TableCell>{char.deathday}</TableCell>
-                  <TableCell>{char.active ? 'Yes' : 'No'}</TableCell>
                   <TableCell>{char.username}</TableCell>
+                  <TableCell>{char.active ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{char.appraisal_bonus}</TableCell>
+                  <TableCell>{formatDate(char.birthday)}</TableCell>
+                  <TableCell>{formatDate(char.deathday)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
