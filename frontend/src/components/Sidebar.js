@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Drawer,
@@ -15,6 +15,8 @@ const Sidebar = () => {
   const [openLootViews, setOpenLootViews] = useState(false);
   const [openGold, setOpenGold] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
+  const [openDMSettings, setOpenDMSettings] = useState(false);
+  const [isDM, setIsDM] = useState(false);
 
   const handleToggleLootViews = () => {
     setOpenLootViews(!openLootViews);
@@ -27,6 +29,19 @@ const Sidebar = () => {
   const handleToggleSettings = () => {
     setOpenSettings(!openSettings);
   };
+
+  const handleToggleDMSettings = () => {
+    setOpenDMSettings(!openDMSettings);
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      // Decode the token to get the user role
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      setIsDM(payload.role === 'DM');
+    }
+  }, []);
 
   return (
     <Drawer
@@ -89,6 +104,21 @@ const Sidebar = () => {
             </ListItem>
           </List>
         </Collapse>
+        {isDM && (
+          <div>
+            <ListItem button onClick={handleToggleDMSettings}>
+              <ListItemText primary="DM Settings" />
+              {openDMSettings ? <ExpandLess /> : <ExpandMore />}
+            </ListItem>
+            <Collapse in={openDMSettings} timeout="auto" unmountOnExit>
+              <List component="div" disablePadding>
+                <ListItem button component={Link} to="/character-user-management" sx={{ pl: 4 }}>
+                  <ListItemText primary="Character and User Management" />
+                </ListItem>
+              </List>
+            </Collapse>
+          </div>
+        )}
       </List>
     </Drawer>
   );

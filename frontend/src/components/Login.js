@@ -13,6 +13,7 @@ const Login = () => {
     try {
       const response = await axios.post('http://192.168.0.64:5000/api/auth/login', { username, password });
       localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user)); // Store user details including role
       navigate('/loot-entry'); // Use navigate instead of history.push
     } catch (err) {
       setError('Invalid username or password');

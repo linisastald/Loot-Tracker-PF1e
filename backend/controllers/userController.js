@@ -122,3 +122,45 @@ exports.deactivateAllCharacters = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+exports.resetPassword = async (req, res) => {
+  try {
+    const { userId, newPassword } = req.body;
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
+    res.status(200).json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+exports.deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    await pool.query('UPDATE users SET role = $1 WHERE id = $2', ['deleted', userId]);
+    res.status(200).json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.updateSetting = async (req, res) => {
+  try {
+    const { name, value } = req.body;
+    await pool.query('INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value', [name, value]);
+    res.status(200).json({ message: 'Setting updated successfully' });
+  } catch (error) {
+    console.error('Error updating setting:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.getSettings = async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM settings');
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

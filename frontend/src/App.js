@@ -12,6 +12,7 @@ import KeptCharacter from './components/KeptCharacter';
 import SoldLoot from './components/SoldLoot'; // Import SoldLoot
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
+import CharacterAndUserManagement from './components/CharacterAndUserManagement';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import theme from './theme';
@@ -33,7 +34,8 @@ function App() {
             <Route path="/given-away-or-trashed" element={<GivenAwayOrTrashed />} />
             <Route path="/kept-party" element={<KeptParty />} />
             <Route path="/kept-character" element={<KeptCharacter />} />
-            <Route path="/sold-loot" element={<SoldLoot />} /> {/* Add SoldLoot route */}
+            <Route path="/sold-loot" element={<SoldLoot />} />
+            <Route path="/character-user-management" element={<CharacterAndUserManagement />} />
           </Route>
         </Routes>
       </Router>
