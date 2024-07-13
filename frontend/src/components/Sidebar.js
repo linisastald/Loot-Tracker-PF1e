@@ -59,7 +59,7 @@ const Sidebar = () => {
             <ListItem button component={Link} to="/kept-character" sx={{ pl: 4 }}>
               <ListItemText primary="Kept - Character" />
             </ListItem>
-            <ListItem button component={Link} to="/SoldLoot" sx={{ pl: 4 }}>
+            <ListItem button component={Link} to="/sold-loot" sx={{ pl: 4 }}>
               <ListItemText primary="Sold Loot" />
             </ListItem>
             <ListItem button component={Link} to="/given-away-or-trashed" sx={{ pl: 4 }}>
