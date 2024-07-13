@@ -93,7 +93,9 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                 Session Date
               </TableSortLabel>
             </TableCell>
-            <TableCell>Last Update</TableSortLabel>
+            <TableCell>
+              Last Update
+            </TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -153,32 +155,32 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                           <TableBody>
                             {individualItems.map((subItem) => (
                               <SubItemTableRow key={subItem.id}>
-                                <TableCell style={{ padding: 0, margin: 0 }}>
+                                <TableCell>
                                   <Checkbox
                                     checked={selectedItems.includes(subItem.id)}
                                     onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
                                   />
                                 </TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>{subItem.quantity}</TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>
+                                <TableCell>{subItem.quantity}</TableCell>
+                                <TableCell>
                                   <Tooltip title={subItem.notes || 'No notes'} arrow>
                                     <span>{subItem.name}</span>
                                   </Tooltip>
                                 </TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>
+                                <TableCell>
                                   {subItem.unidentified === null
                                     ? ''
                                     : subItem.unidentified
                                     ? <strong>Unidentified</strong>
                                     : 'Identified'}
                                 </TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>{subItem.type}</TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>{subItem.size}</TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>{subItem.believedvalue || ''}</TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>{subItem.appraisalroll || ''}</TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>
-                                <TableCell style={{ padding: 0, margin: 0 }}>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>
+                                <TableCell>{subItem.type}</TableCell>
+                                <TableCell>{subItem.size}</TableCell>
+                                <TableCell>{subItem.believedvalue || ''}</TableCell>
+                                <TableCell>{subItem.appraisalroll || ''}</TableCell>
+                                <TableCell>{subItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
+                                <TableCell>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>
+                                <TableCell>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>
                               </SubItemTableRow>
                             ))}
                           </TableBody>
