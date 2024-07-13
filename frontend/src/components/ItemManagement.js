@@ -25,7 +25,7 @@ import {
 } from '@mui/material';
 
 const ItemManagement = () => {
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState([]); // Ensure items is initialized as an empty array
   const [selectedItems, setSelectedItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
@@ -42,8 +42,8 @@ const ItemManagement = () => {
       const response = await axios.get('http://192.168.0.64:5000/api/loot', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setItems(response.data);
-      calculatePendingSaleSummary(response.data);
+      setItems(response.data || []); // Ensure response data is set as an array
+      calculatePendingSaleSummary(response.data || []);
     } catch (error) {
       console.error('Error fetching items', error);
     }
@@ -139,7 +139,7 @@ const ItemManagement = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {items.map((item) => (
+              {Array.isArray(items) && items.map((item) => (
                 <TableRow key={item.id} onClick={() => setUpdatedItem(item)}>
                   <TableCell>
                     <Checkbox
