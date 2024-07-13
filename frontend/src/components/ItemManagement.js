@@ -42,8 +42,9 @@ const ItemManagement = () => {
       const response = await axios.get('http://192.168.0.64:5000/api/loot', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setItems(response.data || []); // Ensure response data is set as an array
-      calculatePendingSaleSummary(response.data || []);
+      const itemsData = Array.isArray(response.data) ? response.data : [];
+      setItems(itemsData);
+      calculatePendingSaleSummary(itemsData);
     } catch (error) {
       console.error('Error fetching items', error);
     }
@@ -108,8 +109,9 @@ const ItemManagement = () => {
             variant="outlined"
             fullWidth
             onChange={(e) => {
+              const searchTerm = e.target.value.toLowerCase();
               const filteredItems = items.filter(item =>
-                item.name.toLowerCase().includes(e.target.value.toLowerCase())
+                item.name.toLowerCase().includes(searchTerm)
               );
               setItems(filteredItems);
             }}
@@ -139,7 +141,7 @@ const ItemManagement = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {Array.isArray(items) && items.map((item) => (
+              {items.map((item) => (
                 <TableRow key={item.id} onClick={() => setUpdatedItem(item)}>
                   <TableCell>
                     <Checkbox
