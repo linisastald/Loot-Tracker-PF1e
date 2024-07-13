@@ -43,7 +43,7 @@ const CharacterAndUserManagement = () => {
           axios.get('http://192.168.0.64:5000/api/user/all', {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get('http://192.168.0.64:5000/api/user/characters', {
+          axios.get('http://192.168.0.64:5000/api/user/all-characters', {
             headers: { Authorization: `Bearer ${token}` },
           }),
           axios.get('http://192.168.0.64:5000/api/user/settings', {

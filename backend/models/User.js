@@ -15,6 +15,19 @@ const User = {
     `, [userId]);
     return res.rows[0];
   },
+  async getAllCharacters() {
+    try {
+      const result = await pool.query(`
+        SELECT c.id, c.name, c.appraisal_bonus, c.birthday, c.deathday, c.active, u.username
+        FROM characters c
+            JOIN users u ON c.user_id = u.id
+        `);
+      return result.rows;
+    } catch (error) {
+      console.error('Error fetching all characters:', error);
+      throw error;
+    }
+  },
 };
 
 module.exports = User;

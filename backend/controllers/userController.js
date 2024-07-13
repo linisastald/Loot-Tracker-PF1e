@@ -181,4 +181,12 @@ exports.getAllUsers = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
+exports.getAllCharacters = async (req, res) => {
+  try {
+    const characters = await User.getAllCharacters();
+    res.status(200).json(characters);
+  } catch (error) {
+    console.error('Error fetching all characters', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
