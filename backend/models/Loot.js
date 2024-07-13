@@ -82,7 +82,33 @@ exports.findAll = async () => {
 
 exports.findByStatus = async (status) => {
   try {
-    const query = `
+    const summaryQuery = `
+      SELECT
+        l.name,
+        SUM(l.quantity) AS quantity,
+        l.unidentified,
+        l.masterwork,
+        l.type,
+        l.size,
+        MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
+        CASE 
+          WHEN $1 = 'Kept Self' THEN c.name
+          ELSE NULL
+        END AS character_name
+      FROM
+        loot l
+      LEFT JOIN
+        appraisal a ON l.id = a.lootid
+      LEFT JOIN
+        characters c ON l.whohas = c.id
+      WHERE
+        l.status = $1
+      GROUP BY
+        l.name, l.unidentified, l.masterwork, l.type, l.size, character_name;
+    `;
+    const summaryResult = await pool.query(summaryQuery, [status]);
+
+    const individualQuery = `
       SELECT
         l.id,
         l.session_date,
@@ -106,8 +132,12 @@ exports.findByStatus = async (status) => {
       WHERE
         l.status = $1;
     `;
-    const result = await pool.query(query, [status]);
-    return result.rows;
+    const individualResult = await pool.query(individualQuery, [status]);
+
+    return {
+      summary: summaryResult.rows,
+      individual: individualResult.rows,
+    };
   } catch (error) {
     console.error('Error fetching loot by status:', error);
     throw error;
