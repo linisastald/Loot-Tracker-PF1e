@@ -118,12 +118,14 @@ const CharacterAndUserManagement = () => {
   };
 
   const handleUserSelect = (userId) => {
+    const userIdInt = parseInt(userId, 10);
     setSelectedUsers((prevSelected) =>
-      prevSelected.includes(userId)
-        ? prevSelected.filter((id) => id !== userId)
-        : [...prevSelected, userId]
+        prevSelected.includes(userIdInt)
+            ? prevSelected.filter((id) => id !== userIdInt)
+            : [...prevSelected, userIdInt]
     );
   };
+
 
   return (
     <Container component="main">
@@ -237,7 +239,7 @@ const CharacterAndUserManagement = () => {
                   <TableCell>{char.birthday}</TableCell>
                   <TableCell>{char.deathday}</TableCell>
                   <TableCell>{char.active ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{char.username}</TableCell> }
+                  <TableCell>{char.username}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
