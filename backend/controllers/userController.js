@@ -91,8 +91,15 @@ exports.updateCharacter = async (req, res) => {
 
 exports.getUserById = async (req, res) => {
   const { id } = req.params;
+  const userId = parseInt(id, 10);
+
+  if (isNaN(userId)) {
+    console.error('Invalid user ID');
+    return res.status(400).json({ error: 'Invalid user ID' });
+  }
+
   try {
-    const userResult = await pool.query('SELECT id, username, role, joined FROM users WHERE id = $1', [id]);
+    const userResult = await pool.query('SELECT id, username, role, joined FROM users WHERE id = $1', [userId]);
     if (userResult.rows.length === 0) {
       console.error('User not found');
       return res.status(404).json({ error: 'User not found' });
@@ -109,6 +116,7 @@ exports.getUserById = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 
 
 exports.deactivateAllCharacters = async (req, res) => {
