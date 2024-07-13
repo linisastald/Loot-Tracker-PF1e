@@ -172,3 +172,12 @@ exports.getSettings = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+exports.getAllUsers = async (req, res) => {
+  try {
+    const usersResult = await pool.query('SELECT id, username, role, joined FROM users');
+    res.status(200).json(usersResult.rows);
+  } catch (error) {
+    console.error('Error fetching users', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

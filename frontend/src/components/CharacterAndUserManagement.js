@@ -40,10 +40,10 @@ const CharacterAndUserManagement = () => {
       try {
         const token = localStorage.getItem('token');
         const [usersResponse, charactersResponse, settingsResponse] = await Promise.all([
-          axios.get('http://192.168.0.64:5000/api/user', {
+          axios.get('http://192.168.0.64:5000/api/user/all', {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get('http://192.168.0.64:5000/api/characters', {
+          axios.get('http://192.168.0.64:5000/api/user/characters', {
             headers: { Authorization: `Bearer ${token}` },
           }),
           axios.get('http://192.168.0.64:5000/api/user/settings', {
@@ -237,7 +237,7 @@ const CharacterAndUserManagement = () => {
                   <TableCell>{char.birthday}</TableCell>
                   <TableCell>{char.deathday}</TableCell>
                   <TableCell>{char.active ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{char.username}</TableCell>
+                  <TableCell>{char.username}</TableCell> }
                 </TableRow>
               ))}
             </TableBody>

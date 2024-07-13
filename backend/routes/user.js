@@ -14,5 +14,6 @@ router.put('/reset-password', verifyToken, checkRole(['DM']), userController.res
 router.put('/delete-user', verifyToken, checkRole(['DM']), userController.deleteUser);
 router.put('/update-setting', verifyToken, checkRole(['DM']), userController.updateSetting);
 router.get('/settings', verifyToken, checkRole(['DM']), userController.getSettings);
+router.get('/all', verifyToken, checkRole('DM'), userController.getAllUsers);
 
 module.exports = router;
