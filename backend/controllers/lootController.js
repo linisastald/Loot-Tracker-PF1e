@@ -1,4 +1,5 @@
 const Loot = require('../models/Loot');
+const pool = require('../db');
 
 exports.createLoot = async (req, res) => {
   const { entries } = req.body;
