@@ -1,31 +1,8 @@
 import React from 'react';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Checkbox,
-  IconButton,
-  Collapse,
-  TableSortLabel,
-} from '@mui/material';
-import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
-import { formatDate } from '../utils/utils';
+import { TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Paper, Checkbox, IconButton, Collapse, TableSortLabel, Tooltip } from '@mui/material';
+import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
 
-const CustomLootTable = ({
-  loot,
-  individualLoot,
-  selectedItems,
-  setSelectedItems,
-  openItems,
-  setOpenItems,
-  handleSelectItem,
-  handleSort,
-  sortConfig,
-}) => {
+const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems, openItems, setOpenItems, handleSelectItem, handleSort, sortConfig }) => {
   const handleToggleOpen = (name) => {
     setOpenItems((prevOpenItems) => ({
       ...prevOpenItems,
@@ -141,7 +118,9 @@ const CustomLootTable = ({
                         {openItems[item.name] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
                       </IconButton>
                     )}
-                    {item.name}
+                    <Tooltip title={item.notes || 'No notes'} arrow>
+                      <span>{item.name}</span>
+                    </Tooltip>
                   </TableCell>
                   <TableCell>
                     {item.unidentified === null
@@ -173,7 +152,11 @@ const CustomLootTable = ({
                                   />
                                 </TableCell>
                                 <TableCell>{subItem.quantity}</TableCell>
-                                <TableCell>{subItem.name}</TableCell>
+                                <TableCell>
+                                  <Tooltip title={subItem.notes || 'No notes'} arrow>
+                                    <span>{subItem.name}</span>
+                                  </Tooltip>
+                                </TableCell>
                                 <TableCell>
                                   {subItem.unidentified === null
                                     ? ''
