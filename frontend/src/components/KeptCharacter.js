@@ -185,7 +185,7 @@ const KeptCharacter = () => {
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
         Keep Party
       </Button>
-      {selectedItems.length === 1 && (
+      {selectedItems.length === 1 && loot.individual.some(item => item.id === selectedItems[0]) && (
         <>
           <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenUpdateDialog(setOpenUpdateDialog, loot.individual, selectedItems, setUpdatedEntry)}>
             Update
