@@ -147,7 +147,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                   <TableRow>
                     <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={11}>
                       <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
-                        <Table size="small">
+                        <Table>
                           <TableBody>
                             {individualItems.map((subItem) => (
                               <SubItemTableRow key={subItem.id}>
