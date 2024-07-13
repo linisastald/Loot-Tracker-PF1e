@@ -162,7 +162,7 @@ const KeptCharacter = () => {
         setSelectedItems={setSelectedItems}
         openItems={openItems}
         setOpenItems={setOpenItems}
-        handleSelectItem={(id) => handleSelectItem(id, setSelectedItems)}
+        handleSelectItem={handleSelectItem}
         handleSort={() => {}}
         sortConfig={{ key: 'lastupdate', direction: 'desc' }}
         showColumns={{
