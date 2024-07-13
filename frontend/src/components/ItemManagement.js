@@ -31,6 +31,7 @@ const ItemManagement = () => {
   const [updatedItem, setUpdatedItem] = useState({});
   const [pendingSaleTotal, setPendingSaleTotal] = useState(0);
   const [pendingSaleCount, setPendingSaleCount] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchItems();
@@ -98,25 +99,30 @@ const ItemManagement = () => {
     }));
   };
 
+  const handleSearch = () => {
+    const filteredItems = items.filter(item =>
+      item.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setItems(filteredItems);
+  };
+
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Item Management</Typography>
 
         {/* Item Search */}
-        <Box mt={2} mb={2}>
+        <Box mt={2} mb={2} display="flex">
           <TextField
             label="Search Items"
             variant="outlined"
             fullWidth
-            onChange={(e) => {
-              const searchTerm = e.target.value.toLowerCase();
-              const filteredItems = items.filter(item =>
-                item.name.toLowerCase().includes(searchTerm)
-              );
-              setItems(filteredItems);
-            }}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
+          <Button variant="contained" color="primary" onClick={handleSearch} sx={{ ml: 2 }}>
+            Search
+          </Button>
         </Box>
 
         {/* Items Table */}
