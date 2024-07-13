@@ -4,16 +4,14 @@ import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
 import { formatDate } from '../utils/utils'; // Adjust the path as necessary
 import { styled } from '@mui/system';
 
-const commonRowStyles = {
+const commonRowStyles = ({ theme }) => ({
   '&:last-child td, &:last-child th': { border: 0 },
-};
+});
 
-const RegularTableRow = styled(TableRow)(({ theme }) => ({
-  ...commonRowStyles,
-}));
+const RegularTableRow = styled(TableRow)(commonRowStyles);
 
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
-  ...commonRowStyles,
+  ...commonRowStyles({ theme }),
   backgroundColor: theme.palette.action.hover,
 }));
 
