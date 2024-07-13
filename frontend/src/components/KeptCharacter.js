@@ -47,7 +47,7 @@ const KeptCharacter = () => {
     const fetchLoot = async () => {
       const token = localStorage.getItem('token');
       try {
-        const response = await axios.get(`http://192.168.0.64:5000/api/loot/status/Kept%20Self`, {
+        const response = await axios.get(`http://192.168.0.64:5000/api/loot/kept-character`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         console.log('Fetched Loot:', response.data); // Add logging
