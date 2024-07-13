@@ -32,6 +32,7 @@ exports.findAll = async () => {
         l.type,
         l.size,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
+        MAX(l.lastupdate) AS lastupdate,
         CASE 
           WHEN COUNT(CASE WHEN l.status = 'Pending Sale' THEN 1 END) > 0 THEN 'Pending Sale'
           ELSE NULL
@@ -91,6 +92,7 @@ exports.findByStatus = async (status) => {
         l.type,
         l.size,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
+        MAX(l.lastupdate) AS lastupdate,
         CASE 
           WHEN $1 = 'Kept Self' THEN c.name
           ELSE NULL
