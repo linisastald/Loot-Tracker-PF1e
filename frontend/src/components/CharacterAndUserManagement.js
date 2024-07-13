@@ -18,24 +18,34 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  TextField,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
-  TextField,
 } from '@mui/material';
 
 const CharacterAndUserManagement = () => {
   const [users, setUsers] = useState([]);
   const [characters, setCharacters] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
-  const [selectedUser, setSelectedUser] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [deleteUserDialogOpen, setDeleteUserDialogOpen] = useState(false);
+  const [updateCharacterDialogOpen, setUpdateCharacterDialogOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+  const [selectedCharacter, setSelectedCharacter] = useState(null);
+  const [updateCharacter, setUpdateCharacter] = useState({
+    name: '',
+    appraisal_bonus: '',
+    birthday: '',
+    deathday: '',
+    active: true,
+    user_id: '',
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -102,11 +112,11 @@ const CharacterAndUserManagement = () => {
       const token = localStorage.getItem('token');
       await axios.put(
         'http://192.168.0.64:5000/api/user/reset-password',
-        { userId: selectedUser, newPassword },
+        { userId: selectedUsers[0], newPassword },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setNewPassword('');
-      setSelectedUser('');
+      setSelectedUsers([]);
       setSuccess('Password reset successfully');
       setError('');
       setResetPasswordDialogOpen(false);
@@ -131,6 +141,7 @@ const CharacterAndUserManagement = () => {
       setSelectedUsers([]);
       setSuccess('User(s) deleted successfully');
       setError('');
+      setDeleteUserDialogOpen(false);
     } catch (err) {
       setError('Error deleting user(s)');
       setSuccess('');
@@ -153,6 +164,37 @@ const CharacterAndUserManagement = () => {
       month: 'long',
       day: '2-digit',
     });
+  };
+
+  const handleUpdateCharacter = (char) => {
+    setSelectedCharacter(char);
+    setUpdateCharacter({
+      name: char.name,
+      appraisal_bonus: char.appraisal_bonus,
+      birthday: char.birthday,
+      deathday: char.deathday,
+      active: char.active,
+      user_id: char.user_id,
+    });
+    setUpdateCharacterDialogOpen(true);
+  };
+
+  const handleCharacterUpdateSubmit = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(
+        'http://192.168.0.64:5000/api/user/characters',
+        { ...selectedCharacter, ...updateCharacter },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setUpdateCharacterDialogOpen(false);
+      setSuccess('Character updated successfully');
+      setError('');
+      setSelectedCharacter(null);
+    } catch (err) {
+      setError('Error updating character');
+      setSuccess('');
+    }
   };
 
   return (
@@ -195,10 +237,20 @@ const CharacterAndUserManagement = () => {
           </Table>
         </TableContainer>
         <Box mt={2} display="flex" justifyContent="space-between">
-          <Button variant="contained" color="primary" onClick={() => setResetPasswordDialogOpen(true)}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => setResetPasswordDialogOpen(true)}
+            disabled={selectedUsers.length !== 1}
+          >
             Reset Password
           </Button>
-          <Button variant="contained" color="secondary" onClick={handleDeleteUser}>
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={() => setDeleteUserDialogOpen(true)}
+            disabled={selectedUsers.length === 0}
+          >
             Delete User
           </Button>
         </Box>
@@ -206,20 +258,6 @@ const CharacterAndUserManagement = () => {
         <Dialog open={resetPasswordDialogOpen} onClose={() => setResetPasswordDialogOpen(false)}>
           <DialogTitle>Reset Password</DialogTitle>
           <DialogContent>
-            <FormControl fullWidth margin="normal">
-              <InputLabel id="user-select-label">User</InputLabel>
-              <Select
-                labelId="user-select-label"
-                value={selectedUser}
-                onChange={(e) => setSelectedUser(e.target.value)}
-              >
-                {users.map((user) => (
-                  <MenuItem key={user.id} value={user.id}>
-                    {user.username}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
             <TextField
               label="New Password"
               type="password"
@@ -238,6 +276,21 @@ const CharacterAndUserManagement = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        <Dialog open={deleteUserDialogOpen} onClose={() => setDeleteUserDialogOpen(false)}>
+          <DialogTitle>Confirm Delete</DialogTitle>
+          <DialogContent>
+            <Typography>Are you sure you want to delete the selected user(s)?</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleDeleteUser} color="primary" variant="contained">
+              Delete
+            </Button>
+            <Button onClick={() => setDeleteUserDialogOpen(false)} color="secondary" variant="contained">
+              Cancel
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Paper>
 
       {/* Character Management Section */}
@@ -247,7 +300,6 @@ const CharacterAndUserManagement = () => {
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Select</TableCell>
                 <TableCell>
                   <TableSortLabel
                     active={sortConfig.key === 'name'}
@@ -306,10 +358,7 @@ const CharacterAndUserManagement = () => {
             </TableHead>
             <TableBody>
               {sortedCharacters.map((char) => (
-                <TableRow key={char.id}>
-                  <TableCell>
-                    <Checkbox />
-                  </TableCell>
+                <TableRow key={char.id} onClick={() => handleUpdateCharacter(char)} style={{ cursor: 'pointer' }}>
                   <TableCell>{char.name}</TableCell>
                   <TableCell>{char.username}</TableCell>
                   <TableCell>{char.active ? 'Yes' : 'No'}</TableCell>
@@ -321,11 +370,77 @@ const CharacterAndUserManagement = () => {
             </TableBody>
           </Table>
         </TableContainer>
-        <Box mt={2}>
-          <Button variant="contained" color="primary">
-            Update Characters
-          </Button>
-        </Box>
+
+        <Dialog open={updateCharacterDialogOpen} onClose={() => setUpdateCharacterDialogOpen(false)}>
+          <DialogTitle>Update Character</DialogTitle>
+          <DialogContent>
+            <TextField
+              label="Name"
+              fullWidth
+              value={updateCharacter.name}
+              onChange={(e) => setUpdateCharacter({ ...updateCharacter, name: e.target.value })}
+              margin="normal"
+            />
+            <TextField
+              label="Appraisal Bonus"
+              type="number"
+              fullWidth
+              value={updateCharacter.appraisal_bonus}
+              onChange={(e) => setUpdateCharacter({ ...updateCharacter, appraisal_bonus: e.target.value })}
+              margin="normal"
+            />
+            <TextField
+              label="Birthday"
+              type="date"
+              fullWidth
+              value={updateCharacter.birthday}
+              onChange={(e) => setUpdateCharacter({ ...updateCharacter, birthday: e.target.value })}
+              margin="normal"
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Deathday"
+              type="date"
+              fullWidth
+              value={updateCharacter.deathday}
+              onChange={(e) => setUpdateCharacter({ ...updateCharacter, deathday: e.target.value })}
+              margin="normal"
+              InputLabelProps={{ shrink: true }}
+            />
+            <FormControl margin="normal" fullWidth>
+              <InputLabel id="user-select-label">User</InputLabel>
+              <Select
+                labelId="user-select-label"
+                value={updateCharacter.user_id}
+                onChange={(e) => setUpdateCharacter({ ...updateCharacter, user_id: e.target.value })}
+              >
+                {users
+                  .filter((user) => user.role === 'Player')
+                  .map((user) => (
+                    <MenuItem key={user.id} value={user.id}>
+                      {user.username}
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+            <FormControl margin="normal">
+              <InputLabel htmlFor="active-checkbox">Active</InputLabel>
+              <Checkbox
+                id="active-checkbox"
+                checked={updateCharacter.active}
+                onChange={(e) => setUpdateCharacter({ ...updateCharacter, active: e.target.checked })}
+              />
+            </FormControl>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCharacterUpdateSubmit} color="primary" variant="contained">
+              Update
+            </Button>
+            <Button onClick={() => setUpdateCharacterDialogOpen(false)} color="secondary" variant="contained">
+              Cancel
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Paper>
     </Container>
   );
