@@ -148,21 +148,6 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                     <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={11}>
                       <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
                         <Table size="small">
-                          <TableHead>
-                            <TableRow>
-                              <TableCell>Select</TableCell>
-                              <TableCell>Quantity</TableCell>
-                              <TableCell>Name</TableCell>
-                              <TableCell>Unidentified</TableCell>
-                              <TableCell>Type</TableCell>
-                              <TableCell>Size</TableCell>
-                              <TableCell>Believed Value</TableCell>
-                              <TableCell>Average Appraisal</TableCell>
-                              <TableCell>Pending Sale</TableCell>
-                              <TableCell>Session Date</TableCell>
-                              <TableCell>Last Update</TableCell>
-                            </TableRow>
-                          </TableHead>
                           <TableBody>
                             {individualItems.map((subItem) => (
                               <SubItemTableRow key={subItem.id}>
