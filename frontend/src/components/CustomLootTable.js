@@ -145,7 +145,7 @@ const CustomLootTable = ({ loot, individualLoot, selectedItems, setSelectedItems
                         <Table size="small">
                           <TableBody>
                             {individualItems.map((subItem) => (
-                              <TableRow key={subItem.id}>
+                              <TableRow key={subItem.id} style={{ backgroundColor: '#f5f5f5' }}>
                                 <TableCell>
                                   <Checkbox
                                     checked={selectedItems.includes(subItem.id)}
