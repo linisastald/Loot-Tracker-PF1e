@@ -215,3 +215,13 @@ export const handleUpdateChange = (e, setUpdatedEntry) => {
     [name]: value,
   }));
 };
+export const handleFilterChange = (event, setTypeFilter, setSizeFilter, setCharacterFilter) => {
+  const { name, value } = event.target;
+  if (name === 'type') {
+    setTypeFilter(value);
+  } else if (name === 'size') {
+    setSizeFilter(value);
+  } else if (name === 'character') {
+    setCharacterFilter(value);
+  }
+};
