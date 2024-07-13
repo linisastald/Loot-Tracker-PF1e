@@ -156,3 +156,25 @@ exports.confirmSale = async (req, res) => {
     client.release();
   }
 };
+exports.updateItem = async (req, res) => {
+  const { id } = req.params;
+  const { session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, modids, charges, value, whohas, notes } = req.body;
+
+  if (!id || !session_date || !quantity || !name || !type || !size || !status || !itemid || !modids || !charges || !value || !whohas || !notes) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    const result = await pool.query(`
+      UPDATE loot
+      SET session_date = $1, quantity = $2, name = $3, unidentified = $4, masterwork = $5, type = $6, size = $7, status = $8, itemid = $9, modids = $10, charges = $11, value = $12, whohas = $13, notes = $14, lastupdate = CURRENT_TIMESTAMP
+      WHERE id = $15
+      RETURNING *
+    `, [session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, modids, charges, value, whohas, notes, id]);
+
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating item', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};

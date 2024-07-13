@@ -20,50 +20,43 @@ import {
   DialogTitle,
   MenuItem,
   Select,
-  FormControl,
   InputLabel,
+  FormControl,
 } from '@mui/material';
 
 const ItemManagement = () => {
   const [items, setItems] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
   const [selectedItems, setSelectedItems] = useState([]);
-  const [pendingSaleItems, setPendingSaleItems] = useState([]);
-  const [totalPendingSaleValue, setTotalPendingSaleValue] = useState(0);
-  const [updateItemDialogOpen, setUpdateItemDialogOpen] = useState(false);
-  const [updateItem, setUpdateItem] = useState(null);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updatedItem, setUpdatedItem] = useState({});
+  const [pendingSaleTotal, setPendingSaleTotal] = useState(0);
+  const [pendingSaleCount, setPendingSaleCount] = useState(0);
 
   useEffect(() => {
-    fetchPendingSaleItems();
+    fetchItems();
   }, []);
 
-  const fetchPendingSaleItems = async () => {
+  const fetchItems = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot/pending-sale', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setPendingSaleItems(response.data);
-      const totalValue = response.data.reduce((sum, item) => sum + item.value, 0);
-      setTotalPendingSaleValue(totalValue / 2);
-    } catch (error) {
-      console.error('Error fetching pending sale items', error);
-    }
-  };
-
-  const handleSearch = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`http://192.168.0.64:5000/api/loot/search?query=${searchQuery}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+        headers: { Authorization: `Bearer ${token}` }
       });
       setItems(response.data);
+      calculatePendingSaleSummary(response.data);
     } catch (error) {
       console.error('Error fetching items', error);
     }
   };
 
-  const handleSelectItem = (itemId) => {
+  const calculatePendingSaleSummary = (items) => {
+    const pendingItems = items.filter(item => item.status === 'Pending Sale');
+    const total = pendingItems.reduce((sum, item) => sum + (item.value / 2), 0);
+    setPendingSaleTotal(total);
+    setPendingSaleCount(pendingItems.length);
+  };
+
+  const handleItemSelect = (itemId) => {
     setSelectedItems((prevSelected) =>
       prevSelected.includes(itemId)
         ? prevSelected.filter((id) => id !== itemId)
@@ -71,22 +64,14 @@ const ItemManagement = () => {
     );
   };
 
-  const handleUpdateItem = (item) => {
-    setUpdateItem(item);
-    setUpdateItemDialogOpen(true);
-  };
-
   const handleItemUpdateSubmit = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(
-        `http://192.168.0.64:5000/api/loot/${updateItem.id}`,
-        updateItem,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setUpdateItemDialogOpen(false);
-      fetchPendingSaleItems();
-      handleSearch();
+      await axios.put(`http://192.168.0.64:5000/api/loot/${updatedItem.id}`, updatedItem, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUpdateDialogOpen(false);
+      fetchItems();
     } catch (error) {
       console.error('Error updating item', error);
     }
@@ -95,26 +80,20 @@ const ItemManagement = () => {
   const handleConfirmSale = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(
-        'http://192.168.0.64:5000/api/loot/confirm-sale',
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      fetchPendingSaleItems();
-      handleSearch();
+      await axios.put('http://192.168.0.64:5000/api/loot/confirm-sale', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchItems();
     } catch (error) {
       console.error('Error confirming sale', error);
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: '2-digit',
-    });
+  const handleItemUpdateChange = (field, value) => {
+    setUpdatedItem(prevItem => ({
+      ...prevItem,
+      [field]: value
+    }));
   };
 
   return (
@@ -122,17 +101,19 @@ const ItemManagement = () => {
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Item Management</Typography>
 
-        {/* Search Section */}
-        <Box mt={2} mb={2} display="flex" alignItems="center">
+        {/* Item Search */}
+        <Box mt={2} mb={2}>
           <TextField
             label="Search Items"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            variant="outlined"
             fullWidth
+            onChange={(e) => {
+              const filteredItems = items.filter(item =>
+                item.name.toLowerCase().includes(e.target.value.toLowerCase())
+              );
+              setItems(filteredItems);
+            }}
           />
-          <Button variant="contained" color="primary" onClick={handleSearch} sx={{ ml: 2 }}>
-            Search
-          </Button>
         </Box>
 
         {/* Items Table */}
@@ -159,14 +140,14 @@ const ItemManagement = () => {
             </TableHead>
             <TableBody>
               {items.map((item) => (
-                <TableRow key={item.id} onClick={() => handleUpdateItem(item)} style={{ cursor: 'pointer' }}>
+                <TableRow key={item.id} onClick={() => setUpdatedItem(item)}>
                   <TableCell>
                     <Checkbox
                       checked={selectedItems.includes(item.id)}
-                      onChange={() => handleSelectItem(item.id)}
+                      onChange={() => handleItemSelect(item.id)}
                     />
                   </TableCell>
-                  <TableCell>{formatDate(item.session_date)}</TableCell>
+                  <TableCell>{item.session_date}</TableCell>
                   <TableCell>{item.quantity}</TableCell>
                   <TableCell>{item.name}</TableCell>
                   <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
@@ -187,139 +168,138 @@ const ItemManagement = () => {
         </TableContainer>
 
         {/* Pending Sale Summary */}
-        <Box mt={2} mb={2}>
+        <Box mt={2}>
           <Typography variant="h6">Pending Sale Summary</Typography>
-          <Typography>Total Items: {pendingSaleItems.length}</Typography>
-          <Typography>Total Value: {totalPendingSaleValue}</Typography>
+          <Typography>Number of Items: {pendingSaleCount}</Typography>
+          <Typography>Total Value: {pendingSaleTotal}</Typography>
           <Button variant="contained" color="primary" onClick={handleConfirmSale}>
             Confirm Sale
           </Button>
         </Box>
-      </Paper>
 
-      {/* Update Item Dialog */}
-      <Dialog open={updateItemDialogOpen} onClose={() => setUpdateItemDialogOpen(false)}>
-        <DialogTitle>Update Item</DialogTitle>
-        <DialogContent>
-          <TextField
-            label="Session Date"
-            type="date"
-            fullWidth
-            value={updateItem?.session_date || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, session_date: e.target.value })}
-            margin="normal"
-            InputLabelProps={{ shrink: true }}
-          />
-          <TextField
-            label="Quantity"
-            type="number"
-            fullWidth
-            value={updateItem?.quantity || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, quantity: e.target.value })}
-            margin="normal"
-          />
-          <TextField
-            label="Name"
-            fullWidth
-            value={updateItem?.name || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, name: e.target.value })}
-            margin="normal"
-          />
-          <FormControl fullWidth margin="normal">
-            <InputLabel id="unidentified-select-label">Unidentified</InputLabel>
-            <Select
-              labelId="unidentified-select-label"
-              value={updateItem?.unidentified || false}
-              onChange={(e) => setUpdateItem({ ...updateItem, unidentified: e.target.value })}
-            >
-              <MenuItem value={true}>Yes</MenuItem>
-              <MenuItem value={false}>No</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="normal">
-            <InputLabel id="masterwork-select-label">Masterwork</InputLabel>
-            <Select
-              labelId="masterwork-select-label"
-              value={updateItem?.masterwork || false}
-              onChange={(e) => setUpdateItem({ ...updateItem, masterwork: e.target.value })}
-            >
-              <MenuItem value={true}>Yes</MenuItem>
-              <MenuItem value={false}>No</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            label="Type"
-            fullWidth
-            value={updateItem?.type || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, type: e.target.value })}
-            margin="normal"
-          />
-          <TextField
-            label="Size"
-            fullWidth
-            value={updateItem?.size || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, size: e.target.value })}
-            margin="normal"
-          />
-          <TextField
-            label="Status"
-            fullWidth
-            value={updateItem?.status || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, status: e.target.value })}
-            margin="normal"
-          />
-          <TextField
-            label="Item ID"
-            fullWidth
-            value={updateItem?.itemid || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, itemid: e.target.value })}
-            margin="normal"
-          />
-          <TextField
-            label="Mod IDs"
-            fullWidth
-            value={updateItem?.modids || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, modids: e.target.value })}
-            margin="normal"
-          />
-          <TextField
-            label="Charges"
-            fullWidth
-            value={updateItem?.charges || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, charges: e.target.value })}
-            margin="normal"
-          />
-          <TextField
-            label="Value"
-            fullWidth
-            value={updateItem?.value || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, value: e.target.value })}
-            margin="normal"
-          />
-          <TextField
-            label="Who Has"
-            fullWidth
-            value={updateItem?.whohas || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, whohas: e.target.value })}
-            margin="normal"
-          />
-          <TextField
-            label="Notes"
-            fullWidth
-            value={updateItem?.notes || ''}
-            onChange={(e) => setUpdateItem({ ...updateItem, notes: e.target.value })}
-            margin="normal"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleItemUpdateSubmit} color="primary" variant="contained">
-            Update
-          </Button>
-          <Button onClick={() => setUpdateItemDialogOpen(false)} color="secondary" variant="contained">
-            Cancel
-          </Button>
-        </DialogActions>
-      </Dialog>
+        {/* Update Item Dialog */}
+        <Dialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)}>
+          <DialogTitle>Update Item</DialogTitle>
+          <DialogContent>
+            <TextField
+              label="Session Date"
+              type="date"
+              fullWidth
+              value={updatedItem.session_date || ''}
+              onChange={(e) => handleItemUpdateChange('session_date', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Quantity"
+              type="number"
+              fullWidth
+              value={updatedItem.quantity || ''}
+              onChange={(e) => handleItemUpdateChange('quantity', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Name"
+              fullWidth
+              value={updatedItem.name || ''}
+              onChange={(e) => handleItemUpdateChange('name', e.target.value)}
+              margin="normal"
+            />
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Unidentified</InputLabel>
+              <Select
+                value={updatedItem.unidentified || ''}
+                onChange={(e) => handleItemUpdateChange('unidentified', e.target.value)}
+              >
+                <MenuItem value={true}>Yes</MenuItem>
+                <MenuItem value={false}>No</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Masterwork</InputLabel>
+              <Select
+                value={updatedItem.masterwork || ''}
+                onChange={(e) => handleItemUpdateChange('masterwork', e.target.value)}
+              >
+                <MenuItem value={true}>Yes</MenuItem>
+                <MenuItem value={false}>No</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Type"
+              fullWidth
+              value={updatedItem.type || ''}
+              onChange={(e) => handleItemUpdateChange('type', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Size"
+              fullWidth
+              value={updatedItem.size || ''}
+              onChange={(e) => handleItemUpdateChange('size', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Status"
+              fullWidth
+              value={updatedItem.status || ''}
+              onChange={(e) => handleItemUpdateChange('status', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Item ID"
+              fullWidth
+              value={updatedItem.itemid || ''}
+              onChange={(e) => handleItemUpdateChange('itemid', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Mod IDs"
+              fullWidth
+              value={updatedItem.modids || ''}
+              onChange={(e) => handleItemUpdateChange('modids', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Charges"
+              type="number"
+              fullWidth
+              value={updatedItem.charges || ''}
+              onChange={(e) => handleItemUpdateChange('charges', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Value"
+              type="number"
+              fullWidth
+              value={updatedItem.value || ''}
+              onChange={(e) => handleItemUpdateChange('value', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Who Has"
+              fullWidth
+              value={updatedItem.whohas || ''}
+              onChange={(e) => handleItemUpdateChange('whohas', e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Notes"
+              fullWidth
+              value={updatedItem.notes || ''}
+              onChange={(e) => handleItemUpdateChange('notes', e.target.value)}
+              margin="normal"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleItemUpdateSubmit} color="primary" variant="contained">
+              Update Item
+            </Button>
+            <Button onClick={() => setUpdateDialogOpen(false)} color="secondary" variant="contained">
+              Cancel
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Paper>
     </Container>
   );
 };
