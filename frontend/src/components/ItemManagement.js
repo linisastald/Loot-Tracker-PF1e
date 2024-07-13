@@ -49,6 +49,7 @@ const ItemManagement = () => {
       const response = await axios.get('http://192.168.0.64:5000/api/loot', {
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log('API Response:', response.data);
       const itemsData = Array.isArray(response.data) ? response.data : [];
       setItems(itemsData);
     } catch (error) {
@@ -108,6 +109,7 @@ const ItemManagement = () => {
     const filtered = items.filter(item =>
       item.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
+    console.log('Filtered Items:', filtered);
     setFilteredItems(filtered);
   };
 
@@ -153,7 +155,7 @@ const ItemManagement = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {Array.isArray(filteredItems) && filteredItems.map((item) => (
+              {filteredItems && filteredItems.map((item) => (
                 <TableRow key={item.id} onClick={() => setUpdatedItem(item)}>
                   <TableCell>
                     <Checkbox
