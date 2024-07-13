@@ -7,13 +7,14 @@ import UnprocessedLoot from './components/UnprocessedLoot';
 import GoldTransactions from './components/GoldTransactions';
 import UserSettings from './components/UserSettings';
 import KeptParty from './components/KeptParty';
-import GivenAwayOrTrashed from './components/GivenAwayOrTrashed'; // Import GivenAwayOrTrashed
+import GivenAwayOrTrashed from './components/GivenAwayOrTrashed';
+import KeptCharacter from './components/KeptCharacter';
+import SoldLoot from './components/SoldLoot'; // Import SoldLoot
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import theme from './theme';
-import KeptCharacter from "./components/KeptCharacter";
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
             <Route path="/given-away-or-trashed" element={<GivenAwayOrTrashed />} />
             <Route path="/kept-party" element={<KeptParty />} />
             <Route path="/kept-character" element={<KeptCharacter />} />
+            <Route path="/sold-loot" element={<SoldLoot />} /> {/* Add SoldLoot route */}
           </Route>
         </Routes>
       </Router>
