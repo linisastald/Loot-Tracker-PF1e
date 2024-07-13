@@ -32,7 +32,6 @@ import {
 
 const KeptCharacter = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
-  const [individualLoot, setIndividualLoot] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
   const [typeFilter, setTypeFilter] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
@@ -56,7 +55,7 @@ const KeptCharacter = () => {
         setCharacters(uniqueCharacters);
       } catch (error) {
         console.error('Error fetching loot:', error);
-        setLoot({ summary: [], individual: [] }); // Ensure loot is an object with summary and individual arrays
+        setLoot({ summary: [], individual: [] }); // Ensure loot is an array even if the request fails
       }
     };
 
@@ -64,13 +63,13 @@ const KeptCharacter = () => {
     fetchActiveUser(setActiveUser);
   }, []);
 
-  const filteredLoot = Array.isArray(loot) ? loot.filter(item => {
+  const filteredLoot = loot.summary.filter(item => {
     return (
       (typeFilter ? item.type === typeFilter : true) &&
       (sizeFilter ? item.size === sizeFilter : true) &&
       (characterFilter ? item.character_name === characterFilter : true)
     );
-  }) : [];
+  });
 
   const handleSplitDialogClose = () => {
     setOpenSplitDialog(false);
@@ -184,7 +183,7 @@ const KeptCharacter = () => {
           <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenUpdateDialog(setOpenUpdateDialog, loot, selectedItems, setUpdatedEntry)}>
             Update
           </Button>
-          {selectedItems[0] && loot.find(item => item.id === selectedItems[0]).quantity > 1 && (
+          {selectedItems[0] && loot.individual.find(item => item.id === selectedItems[0]).quantity > 1 && (
             <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(setOpenSplitDialog, loot, selectedItems, setSplitQuantities)}>
               Split Stack
             </Button>
