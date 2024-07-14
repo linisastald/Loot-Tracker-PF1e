@@ -38,17 +38,18 @@ import {
 const KeptCharacter = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
+  const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
+  const [openSplitDialog, setOpenSplitDialog] = useState(false);
+  const [splitQuantities, setSplitQuantities] = useState([]);
+  const [updatedEntry, setUpdatedEntry] = useState({});
+  const [activeUser, setActiveUser] = useState(null);
+  const [filters, setFilters] = useState({ type: '', size: '', character: '' });
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [openItems, setOpenItems] = useState({});
   const [typeFilter, setTypeFilter] = useState('');
   const [sizeFilter, setSizeFilter] = useState('');
   const [characterFilter, setCharacterFilter] = useState('');
   const [characters, setCharacters] = useState([]);
-  const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
-  const [openSplitDialog, setOpenSplitDialog] = useState(false);
-  const [updatedEntry, setUpdatedEntry] = useState({});
-  const [splitQuantities, setSplitQuantities] = useState([]);
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [activeUser, setActiveUser] = useState(null);
-  const [openItems, setOpenItems] = useState({});
 
   const fetchLoot = async () => {
     try {

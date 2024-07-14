@@ -85,16 +85,23 @@ const LootEntry = () => {
             };
           }
         }
-        if (entry.type === 'item') {
+        if (entry.type === 'gold') {
+          const goldData = {
+            ...data,
+            platinum: data.platinum || null,
+            gold: data.gold || null,
+            silver: data.silver || null,
+            copper: data.copper || null
+          };
           await axios.post(
-            'http://192.168.0.64:5000/api/loot',
-            { entries: [data] },
+            'http://192.168.0.64:5000/api/gold',
+            { goldEntries: [goldData] },
             { headers: { Authorization: `Bearer ${token}` } }
           );
         } else {
           await axios.post(
-            'http://192.168.0.64:5000/api/gold',
-            { goldEntries: [data] },
+            'http://192.168.0.64:5000/api/loot',
+            { entries: [data] },
             { headers: { Authorization: `Bearer ${token}` } }
           );
         }
