@@ -232,7 +232,7 @@ export const handleSort = (sortConfig, setSortConfig, key) => {
   setSortConfig({ key, direction });
 };
 
-export const handleUpdateSubmit = async (updatedEntry, fetchLoot) => {
+export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateDialog) => {
   try {
     const token = localStorage.getItem('token');
     await axios.put(`http://192.168.0.64:5000/api/loot/update-entry/${updatedEntry.id}`, {
@@ -241,8 +241,10 @@ export const handleUpdateSubmit = async (updatedEntry, fetchLoot) => {
       headers: { Authorization: `Bearer ${token}` },
     });
     fetchLoot();
+    setOpenUpdateDialog(false);  // Close the dialog
   } catch (error) {
     console.error('Error updating item:', error);
   }
 };
+
 
