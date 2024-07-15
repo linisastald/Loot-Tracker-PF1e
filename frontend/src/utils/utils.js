@@ -107,7 +107,7 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
   }
 };
 
-export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, fetchLoot, setOpenSplitDialog) => {
+export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, fetchLoot, setOpenSplitDialog, setSelectedItems) => {
   try {
     const token = localStorage.getItem('token');
     const itemId = selectedItems[0];
@@ -229,7 +229,6 @@ export const handleUpdateSubmit = async () => {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
     });
     setUpdateDialogOpen(false);
-    setSelectedItems([]);
     fetchItems();
   } catch (error) {
     console.error('Error updating item', error);

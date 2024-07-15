@@ -222,7 +222,7 @@ const UnprocessedLoot = () => {
           splitQuantities={splitQuantities}
           handleSplitChange={handleSplitChange}
           handleAddSplit={handleAddSplit}
-          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, activeUser.id, fetchLoot, setOpenSplitDialog)}
+          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)}
       />
 
       <CustomUpdateDialog
@@ -230,7 +230,7 @@ const UnprocessedLoot = () => {
         onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
         updatedEntry={updatedEntry}
         onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot)}
+        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setSelectedItems)}
       />
     </Container>
   );
