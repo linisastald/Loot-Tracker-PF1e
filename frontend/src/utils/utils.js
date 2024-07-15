@@ -107,20 +107,21 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
   }
 };
 
-export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, fetchLoot) => {
+export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, fetchLoot, setOpenSplitDialog) => {
   try {
     const token = localStorage.getItem('token');
     const itemId = selectedItems[0];
     const response = await axios.post(`http://192.168.0.64:5000/api/loot/split-stack`, {
       id: itemId,
       splits: splitQuantities,
-      userId, // Ensure to pass the userId directly if available
+      userId,
     }, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (response.status === 200) {
-      fetchLoot();
-      setOpenSplitDialog(false);
+      await fetchLoot();
+      console.log('Closing dialog');
+      setOpenSplitDialog(false);  // Close the dialog
     } else {
       console.error('Error splitting loot item:', response.data);
     }
@@ -128,6 +129,7 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, 
     console.error('Error splitting loot item:', error);
   }
 };
+
 
 
 export const handleOpenUpdateDialog = (loot, selectedItems, setUpdatedEntry, setOpenUpdateDialog) => {
