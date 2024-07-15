@@ -33,13 +33,14 @@ export const fetchActiveUser = async () => {
     return null;
   }
 };
-export const handleSelectItem = (itemId, setSelectedItems) => {
-  setSelectedItems((prevSelected) =>
-    prevSelected.includes(itemId)
-      ? prevSelected.filter((id) => id !== itemId)
-      : [...prevSelected, itemId]
+export const handleSelectItem = (id, setSelectedItems) => {
+  setSelectedItems(prevSelectedItems =>
+    prevSelectedItems.includes(id)
+      ? prevSelectedItems.filter(item => item !== id)
+      : [...prevSelectedItems, id]
   );
 };
+
 
 export const handleSell = async (selectedItems, fetchLoot) => {
   try {
