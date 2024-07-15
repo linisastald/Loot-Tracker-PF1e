@@ -7,7 +7,7 @@ const MainLayout = () => {
   return (
     <Box className="main-layout">
       <Sidebar />
-      <Box className="content" sx={{ width: '90%' }}>
+      <Box className="content">
         <Outlet /> {/* Render the child routes */}
       </Box>
     </Box>
