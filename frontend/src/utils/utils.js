@@ -192,3 +192,10 @@ export const handleOpenSplitDialog = (item, setSplitItem, setSplitEntries, setSp
   setSplitEntries([{ quantity: item.quantity }]);
   setSplitDialogOpen(true);
 };
+export const handleSort = (sortConfig, setSortConfig, key) => {
+  let direction = 'ascending';
+  if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+    direction = 'descending';
+  }
+  setSortConfig({ key, direction });
+};

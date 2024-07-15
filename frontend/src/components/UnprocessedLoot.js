@@ -30,7 +30,8 @@ import {
   handleUpdate,
   handleFilterChange,
   applyFilters,
-  formatDate
+  formatDate,
+  handleSort
 } from '../utils/utils';
 
 const UnprocessedLoot = () => {
