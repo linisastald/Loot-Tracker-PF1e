@@ -174,3 +174,8 @@ export const applyFilters = (loot, filters) => {
 
   return filteredLoot;
 };
+
+export const formatDate = (dateString) => {
+  const options = { year: 'numeric', month: 'long', day: 'numeric' };
+  return new Date(dateString).toLocaleDateString(undefined, options);
+};
