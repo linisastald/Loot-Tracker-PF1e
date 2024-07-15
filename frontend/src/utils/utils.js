@@ -45,10 +45,13 @@ export const handleSelectItem = (id, setSelectedItems) => {
 export const handleSell = async (selectedItems, fetchLoot) => {
   try {
     const token = localStorage.getItem('token');
+    const decodedToken = jwt_decode(token);
+    const userId = decodedToken.userId;
+
     await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
       ids: selectedItems,
       status: 'Pending Sale',
-      userId: jwt_decode(token).userId,
+      userId,
     }, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -57,6 +60,7 @@ export const handleSell = async (selectedItems, fetchLoot) => {
     console.error('Error selling items:', error);
   }
 };
+
 
 export const handleTrash = async (selectedItems, fetchLoot) => {
   try {
