@@ -1,13 +1,26 @@
 import React from 'react';
-import { TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Paper, Checkbox, IconButton, Collapse, TableSortLabel, Tooltip } from '@mui/material';
+import {
+  TableContainer,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Paper,
+  Checkbox,
+  IconButton,
+  Collapse,
+  TableSortLabel,
+  Tooltip,
+} from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import { formatDate } from '../utils/utils'; // Adjust the path as necessary
+import { formatDate } from '../utils/utils';
 import { styled } from '@mui/system';
 
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   backgroundColor: theme.palette.action.hover,
   '& .MuiTableCell-root': {
-    padding: '4px', // Adjust padding to make the rows thinner
+    padding: '4px',
   },
 }));
 
@@ -25,8 +38,8 @@ const CustomLootTable = ({
     select: true,
     unidentified: true,
     pendingSale: true,
-    whoHasIt: true, // Ensure the whoHasIt column is included by default
-  }
+    whoHasIt: true,
+  },
 }) => {
   const handleToggleOpen = (name) => {
     setOpenItems((prevOpenItems) => ({
@@ -39,8 +52,16 @@ const CustomLootTable = ({
     return individualLoot.filter((item) => item.name === name);
   };
 
-  const mainCellStyle = { padding: '16px' }; // Default padding for main rows
-  const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
+  const mainCellStyle = { padding: '16px' };
+  const subCellStyle = { padding: '4px' };
+
+  const handleItemSelection = (id) => {
+    setSelectedItems((prevSelectedItems) =>
+      prevSelectedItems.includes(id)
+        ? prevSelectedItems.filter((item) => item !== id)
+        : [...prevSelectedItems, id]
+    );
+  };
 
   return (
     <TableContainer component={Paper} sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
@@ -153,6 +174,7 @@ const CustomLootTable = ({
                 </TableSortLabel>
               </TableCell>
             )}
+            <TableCell />
           </TableRow>
         </TableHead>
         <TableBody>
@@ -163,61 +185,61 @@ const CustomLootTable = ({
                   <TableCell>
                     <Checkbox
                       checked={selectedItems.includes(item.name)}
-                      onChange={() => handleSelectItem(item.name, setSelectedItems)}
+                      onChange={() => handleItemSelection(item.name)}
                     />
                   </TableCell>
                 )}
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.quantity}>
+                  <Tooltip title={item.quantity || ''}>
                     <span>{item.quantity}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.name}>
+                  <Tooltip title={item.name || ''}>
                     <span>{item.name}</span>
                   </Tooltip>
                 </TableCell>
                 {showColumns.unidentified && (
                   <TableCell style={mainCellStyle}>
-                    <Tooltip title={item.unidentified}>
+                    <Tooltip title={item.unidentified ? 'Yes' : 'No'}>
                       <span>{item.unidentified ? 'Yes' : 'No'}</span>
                     </Tooltip>
                   </TableCell>
                 )}
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.type}>
+                  <Tooltip title={item.type || ''}>
                     <span>{item.type}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.size}>
+                  <Tooltip title={item.size || ''}>
                     <span>{item.size}</span>
                   </Tooltip>
                 </TableCell>
                 {showColumns.whoHasIt && (
                   <TableCell style={mainCellStyle}>
-                    <Tooltip title={item.whoHasIt}>
+                    <Tooltip title={item.whoHasIt || ''}>
                       <span>{item.whoHasIt}</span>
                     </Tooltip>
                   </TableCell>
                 )}
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.believedValue}>
+                  <Tooltip title={item.believedValue || ''}>
                     <span>{item.believedValue}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.averageAppraisal}>
+                  <Tooltip title={item.averageAppraisal || ''}>
                     <span>{item.averageAppraisal}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={formatDate(item.sessionDate)}>
+                  <Tooltip title={formatDate(item.sessionDate) || ''}>
                     <span>{formatDate(item.sessionDate)}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={formatDate(item.lastUpdate)}>
+                  <Tooltip title={formatDate(item.lastUpdate) || ''}>
                     <span>{formatDate(item.lastUpdate)}</span>
                   </Tooltip>
                 </TableCell>
@@ -264,7 +286,7 @@ const CustomLootTable = ({
                               <TableCell>
                                 <Checkbox
                                   checked={selectedItems.includes(subItem.id)}
-                                  onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
+                                  onChange={() => handleItemSelection(subItem.id)}
                                 />
                               </TableCell>
                             )}
