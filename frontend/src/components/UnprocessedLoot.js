@@ -96,7 +96,7 @@ const UnprocessedLoot = () => {
   const filteredLoot = applyFilters(loot, filters);
 
   return (
-    <Container component="main">
+    <Container component="main" maxWidth={false}>
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Unprocessed Loot</Typography>
       </Paper>

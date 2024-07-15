@@ -5,24 +5,9 @@ import CssBaseline from '@mui/material/CssBaseline';
 import App from './App';
 
 const theme = createTheme({
-    components: {
-        MuiContainer: {
-            styleOverrides: {
-                root: {
-                    maxWidth: '1440px'
-                },
-                maxWidthMd: {
-                    maxWidth: 320,
-                },
-                maxWidthLg: {
-                    maxWidth: '1440px!important',
-                },
-            },
-        },
-        palette: {
-            mode: 'dark', // Set to 'light' for light mode
-        },
-    }
+  palette: {
+    mode: 'dark', // Set to 'light' for light mode
+  },
 });
 
 ReactDOM.render(
