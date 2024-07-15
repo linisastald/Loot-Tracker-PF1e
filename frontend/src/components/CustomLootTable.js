@@ -1,13 +1,26 @@
 import React from 'react';
-import { TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Paper, Checkbox, IconButton, Collapse, TableSortLabel, Tooltip } from '@mui/material';
+import {
+  TableContainer,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Paper,
+  Checkbox,
+  IconButton,
+  Collapse,
+  TableSortLabel,
+  Tooltip,
+} from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import { formatDate } from '../utils/utils'; // Adjust the path as necessary
+import { formatDate } from '../utils/utils';
 import { styled } from '@mui/system';
 
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   backgroundColor: theme.palette.action.hover,
   '& .MuiTableCell-root': {
-    padding: '4px', // Adjust padding to make the rows thinner
+    padding: '4px',
   },
 }));
 
@@ -25,8 +38,8 @@ const CustomLootTable = ({
     select: true,
     unidentified: true,
     pendingSale: true,
-    whoHasIt: true, // Ensure the whoHasIt column is included by default
-  }
+    whoHasIt: true,
+  },
 }) => {
   const handleToggleOpen = (name) => {
     setOpenItems((prevOpenItems) => ({
@@ -39,8 +52,16 @@ const CustomLootTable = ({
     return individualLoot.filter((item) => item.name === name);
   };
 
-  const mainCellStyle = { padding: '16px' }; // Default padding for main rows
-  const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
+  const mainCellStyle = { padding: '16px' };
+  const subCellStyle = { padding: '4px' };
+
+  const handleItemSelection = (id) => {
+    setSelectedItems((prevSelectedItems) =>
+      prevSelectedItems.includes(id)
+        ? prevSelectedItems.filter((item) => item !== id)
+        : [...prevSelectedItems, id]
+    );
+  };
 
   return (
     <TableContainer component={Paper} sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
@@ -163,7 +184,7 @@ const CustomLootTable = ({
                   <TableCell>
                     <Checkbox
                       checked={selectedItems.includes(item.name)}
-                      onChange={() => handleSelectItem(item.name, setSelectedItems)}
+                      onChange={() => handleItemSelection(item.name)}
                     />
                   </TableCell>
                 )}
@@ -264,7 +285,7 @@ const CustomLootTable = ({
                               <TableCell>
                                 <Checkbox
                                   checked={selectedItems.includes(subItem.id)}
-                                  onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
+                                  onChange={() => handleItemSelection(subItem.id)}
                                 />
                               </TableCell>
                             )}
