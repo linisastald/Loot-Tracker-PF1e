@@ -122,6 +122,7 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, 
       await fetchLoot();
       console.log('Closing dialog');
       setOpenSplitDialog(false);  // Close the dialog
+      setSelectedItems([]);
     } else {
       console.error('Error splitting loot item:', response.data);
     }
@@ -228,6 +229,7 @@ export const handleUpdateSubmit = async () => {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
     });
     setUpdateDialogOpen(false);
+    setSelectedItems([]);
     fetchItems();
   } catch (error) {
     console.error('Error updating item', error);
