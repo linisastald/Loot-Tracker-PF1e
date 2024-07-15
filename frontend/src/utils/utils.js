@@ -120,6 +120,7 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, 
     });
     if (response.status === 200) {
       fetchLoot();
+      setOpenSplitDialog(false);
     } else {
       console.error('Error splitting loot item:', response.data);
     }
