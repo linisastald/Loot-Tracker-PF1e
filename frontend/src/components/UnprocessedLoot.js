@@ -82,6 +82,7 @@ const UnprocessedLoot = () => {
     handleOpenSplitDialog(item, setSplitItem, setSplitQuantities, setOpenSplitDialog);
   };
 
+
   const handleSplitChange = (index, value) => {
     const updatedQuantities = [...splitQuantities];
     updatedQuantities[index].quantity = parseInt(value, 10); // Ensure the value is an integer
@@ -222,8 +223,8 @@ const UnprocessedLoot = () => {
           splitQuantities={splitQuantities}
           handleSplitChange={handleSplitChange}
           handleAddSplit={handleAddSplit}
-          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, item.quantity, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)}
-      />
+          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, splitItem.quantity, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)} // Pass the original item quantity
+          />
 
       <CustomUpdateDialog
           open={openUpdateDialog}
