@@ -1,14 +1,14 @@
 import React from 'react';
 import Sidebar from './Sidebar';
 import { Box } from '@mui/material';
-import { Outlet } from 'react-router-dom'; // Import Outlet to render child routes
+import { Outlet } from 'react-router-dom';
 
 const MainLayout = () => {
   return (
-    <Box className="main-layout">
+    <Box sx={{ display: 'flex', height: '100vh' }}>
       <Sidebar />
-      <Box className="content">
-        <Outlet /> {/* Render the child routes */}
+      <Box sx={{ flexGrow: 1, p: 3 }}>
+        <Outlet />
       </Box>
     </Box>
   );
