@@ -4,21 +4,32 @@ import jwt_decode from 'jwt-decode';
 export const fetchActiveUser = async () => {
   try {
     const token = localStorage.getItem('token');
-    if (!token) throw new Error('No token found');
+    if (!token) {
+      console.error('No token found in localStorage');
+      throw new Error('No token found');
+    }
+
     let decoded;
     try {
       decoded = jwt_decode(token);
     } catch (error) {
-      throw new Error('Invalid token');
+      console.error('Token decoding failed', error);
+      throw new Error('Invalid token decoding');
     }
-    const userId = decoded.userId;
-    if (!userId) throw new Error('Invalid token');
+
+    const userId = decoded.id;
+    if (!userId) {
+      console.error('No user ID in token');
+      throw new Error('Invalid token user ID');
+    }
+
     const response = await axios.get(`http://192.168.0.64:5000/api/user/${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+
     return response.data;
   } catch (error) {
-    console.error('Error fetching active user:', error);
+    console.error('Error fetching active user:', error.message);
     return null;
   }
 };
