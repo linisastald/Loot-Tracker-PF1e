@@ -65,10 +65,13 @@ export const handleSell = async (selectedItems, fetchLoot) => {
 export const handleTrash = async (selectedItems, fetchLoot) => {
   try {
     const token = localStorage.getItem('token');
+    const decodedToken = jwt_decode(token);
+    const userId = decodedToken.id;
+
     await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
       ids: selectedItems,
       status: 'Trashed',
-      userId: jwt_decode(token).userId,
+      userId,
     }, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -81,10 +84,13 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
 export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
   try {
     const token = localStorage.getItem('token');
+    const decodedToken = jwt_decode(token);
+    const userId = decodedToken.id;
+
     await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
       ids: selectedItems,
       status: 'Kept Self',
-      userId: jwt_decode(token).userId,
+      userId,
       whohas: activeUser.activeCharacterId,
     }, {
       headers: { Authorization: `Bearer ${token}` },
@@ -98,10 +104,13 @@ export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
 export const handleKeepParty = async (selectedItems, fetchLoot) => {
   try {
     const token = localStorage.getItem('token');
+    const decodedToken = jwt_decode(token);
+    const userId = decodedToken.id;
+
     await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
       ids: selectedItems,
       status: 'Kept Party',
-      userId: jwt_decode(token).userId,
+      userId,
     }, {
       headers: { Authorization: `Bearer ${token}` },
     });
