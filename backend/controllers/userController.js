@@ -117,8 +117,6 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-
-
 exports.deactivateAllCharacters = async (req, res) => {
   const userId = req.user.id;
 
