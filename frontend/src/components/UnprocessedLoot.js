@@ -39,7 +39,8 @@ const UnprocessedLoot = () => {
   const [selectedItems, setSelectedItems] = useState([]);
   const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
   const [openSplitDialog, setOpenSplitDialog] = useState(false);
-  const [splitQuantities, setSplitQuantities] = useState([]); // Ensure this is an array
+  const [splitItem, setSplitItem] = useState(null);
+  const [splitQuantities, setSplitQuantities] = useState([]);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
@@ -78,17 +79,17 @@ const UnprocessedLoot = () => {
   };
 
   const handleOpenSplitDialogWrapper = (item) => {
-    handleOpenSplitDialog(item, setSplitQuantities, setOpenSplitDialog);
+    handleOpenSplitDialog(item, setSplitItem, setSplitQuantities, setOpenSplitDialog);
   };
 
   const handleSplitChange = (index, value) => {
     const updatedQuantities = [...splitQuantities];
-    updatedQuantities[index] = value;
+    updatedQuantities[index].quantity = parseInt(value, 10); // Ensure the value is an integer
     setSplitQuantities(updatedQuantities);
   };
 
   const handleAddSplit = () => {
-    setSplitQuantities([...splitQuantities, 0]);
+    setSplitQuantities([...splitQuantities, { quantity: 0 }]);
   };
 
   const filteredLoot = applyFilters(loot, filters);

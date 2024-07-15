@@ -11,7 +11,7 @@ const CustomSplitStackDialog = ({ open, handleClose, splitQuantities, handleSpli
             key={index}
             label={`Quantity ${index + 1}`}
             type="number"
-            value={quantity}
+            value={quantity.quantity}
             onChange={(e) => handleSplitChange(index, e.target.value)}
             fullWidth
             margin="normal"
