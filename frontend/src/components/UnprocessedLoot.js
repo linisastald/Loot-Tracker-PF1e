@@ -14,7 +14,7 @@ import {
 import CustomLootTable from './CustomLootTable';
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
-import './globalStyles.css';
+import '../globalStyles.css';
 import {
   fetchActiveUser,
   handleSelectItem,
