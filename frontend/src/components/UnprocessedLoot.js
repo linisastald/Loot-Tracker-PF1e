@@ -17,22 +17,19 @@ import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
 import {
   fetchActiveUser,
   handleSelectItem,
-  updateLootStatus,
   handleSell,
   handleTrash,
   handleKeepSelf,
   handleKeepParty,
-  handleSplitStack,
-  handleUpdate,
-  handleSplitChange,
-  handleAddSplit,
   handleSplitSubmit,
   handleOpenUpdateDialog,
   handleOpenSplitDialog,
   handleUpdateDialogClose,
   handleSplitDialogClose,
-  formatDate,
   handleUpdateChange,
+  handleUpdate,
+  handleFilterChange,
+  applyFilters,
 } from '../utils/utils';
 
 const UnprocessedLoot = () => {
@@ -73,27 +70,12 @@ const UnprocessedLoot = () => {
     }
   };
 
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters((prevFilters) => ({
-      ...prevFilters,
-      [name]: value,
-    }));
+  const handleAction = (actionFunc) => {
+    actionFunc(selectedItems, fetchLoot, activeUser);
+    setSelectedItems([]);
   };
 
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
-
-  const handleSplitStackClick = () => {
-    const selectedItem = loot.individual.find(item => item.id === selectedItems[0]);
-    setSplitQuantities([0, selectedItem.quantity]);
-    setOpenSplitDialog(true);
-  };
+  const filteredLoot = applyFilters(loot, filters);
 
   return (
     <Container component="main">
@@ -107,7 +89,7 @@ const UnprocessedLoot = () => {
             <Select
               name="unidentified"
               value={filters.unidentified}
-              onChange={handleFilterChange}
+              onChange={(e) => handleFilterChange(e, setFilters)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="true">Unidentified</MenuItem>
@@ -121,7 +103,7 @@ const UnprocessedLoot = () => {
             <Select
               name="type"
               value={filters.type}
-              onChange={handleFilterChange}
+              onChange={(e) => handleFilterChange(e, setFilters)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="Weapon">Weapon</MenuItem>
@@ -139,7 +121,7 @@ const UnprocessedLoot = () => {
             <Select
               name="size"
               value={filters.size}
-              onChange={handleFilterChange}
+              onChange={(e) => handleFilterChange(e, setFilters)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="Fine">Fine</MenuItem>
@@ -160,7 +142,7 @@ const UnprocessedLoot = () => {
             <Select
               name="pendingSale"
               value={filters.pendingSale}
-              onChange={handleFilterChange}
+              onChange={(e) => handleFilterChange(e, setFilters)}
             >
               <MenuItem value="">All</MenuItem>
               <MenuItem value="true">Pending Sale</MenuItem>
@@ -170,8 +152,8 @@ const UnprocessedLoot = () => {
         </Grid>
       </Grid>
       <CustomLootTable
-        loot={loot.summary}
-        individualLoot={loot.individual}
+        loot={filteredLoot.summary}
+        individualLoot={filteredLoot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
         openItems={openItems}
@@ -185,7 +167,7 @@ const UnprocessedLoot = () => {
           name: true,
           type: true,
           size: true,
-          whoHasIt: false, // Do not show "Who Has It?" on Unprocessed Loot page
+          whoHasIt: false,
           believedValue: true,
           averageAppraisal: true,
           sessionDate: true,
@@ -193,18 +175,17 @@ const UnprocessedLoot = () => {
           unidentified: true,
           pendingSale: true
         }}
-
       />
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleSell(selectedItems, fetchLoot)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleSell)}>
         Sell
       </Button>
-      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleTrash(selectedItems, fetchLoot)}>
+      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleTrash)}>
         Trash
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleKeepSelf(selectedItems, fetchLoot, activeUser)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleKeepSelf)}>
         Keep Self
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleKeepParty(selectedItems, fetchLoot)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleAction(handleKeepParty)}>
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
