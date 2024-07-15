@@ -222,7 +222,7 @@ const UnprocessedLoot = () => {
           splitQuantities={splitQuantities}
           handleSplitChange={handleSplitChange}
           handleAddSplit={handleAddSplit}
-          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)}
+          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, item.quantity, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)}
       />
 
       <CustomUpdateDialog

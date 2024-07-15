@@ -225,7 +225,16 @@ export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateD
     console.error('Error updating item:', error);
   }
 };
-export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, fetchLoot, setOpenSplitDialog, setSelectedItems) => {
+export const handleSplitSubmit = async (splitQuantities, selectedItems, originalItemQuantity, userId, fetchLoot, setOpenSplitDialog, setSelectedItems) => {
+  // Calculate the sum of split quantities
+  const sumOfSplits = splitQuantities.reduce((total, current) => total + parseInt(current.quantity, 10), 0);
+
+  // Check if the sum of splits equals the original item quantity
+  if (sumOfSplits !== originalItemQuantity) {
+    alert("The sum of the split quantities must equal the original item's quantity.");
+    return; // Stop execution if they don't match
+  }
+
   try {
     const token = localStorage.getItem('token');
     const itemId = selectedItems[0];
@@ -238,9 +247,8 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, 
     });
     if (response.status === 200) {
       await fetchLoot();
-      console.log('Closing dialog');
       setOpenSplitDialog(false);  // Close the dialog
-      setSelectedItems([]);
+      setSelectedItems([]);       // Reset selected items
     } else {
       console.error('Error splitting loot item:', response.data);
     }
