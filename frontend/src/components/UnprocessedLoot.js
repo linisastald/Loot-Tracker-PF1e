@@ -202,7 +202,7 @@ const UnprocessedLoot = () => {
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleKeepSelf)}>
         Keep Self
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleAction(handleKeepParty)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleKeepParty)}>
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
