@@ -184,3 +184,11 @@ export const handleSplitChange = (index, value, splitEntries, setSplitEntries) =
   updatedEntries[index] = value;
   setSplitEntries(updatedEntries);
 };
+export const handleAddSplit = (splitEntries, setSplitEntries) => {
+  setSplitEntries([...splitEntries, { quantity: '' }]);
+};
+export const handleOpenSplitDialog = (item, setSplitItem, setSplitEntries, setSplitDialogOpen) => {
+  setSplitItem(item);
+  setSplitEntries([{ quantity: item.quantity }]);
+  setSplitDialogOpen(true);
+};
