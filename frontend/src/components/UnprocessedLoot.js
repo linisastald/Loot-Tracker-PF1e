@@ -14,7 +14,6 @@ import {
 import CustomLootTable from './CustomLootTable';
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
-import '../globalStyles.css';
 import {
   fetchActiveUser,
   handleSelectItem,
@@ -34,6 +33,7 @@ import {
   handleUpdateSubmit,
   handleSort,
 } from '../utils/utils';
+import './UnprocessedLoot.css'; // Import the CSS file
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
@@ -74,15 +74,14 @@ const UnprocessedLoot = () => {
     }
   };
 
-  const handleAction = (actionFunc) => {
-    actionFunc(selectedItems, fetchLoot, activeUser);
+  const handleAction = async (actionFunc) => {
+    await actionFunc(selectedItems, fetchLoot, activeUser);
     setSelectedItems([]);  // Ensure selection resets after action
   };
 
   const handleOpenSplitDialogWrapper = (item) => {
     handleOpenSplitDialog(item, setSplitItem, setSplitQuantities, setOpenSplitDialog);
   };
-
 
   const handleSplitChange = (index, value) => {
     const updatedQuantities = [...splitQuantities];
@@ -101,75 +100,6 @@ const UnprocessedLoot = () => {
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Unprocessed Loot</Typography>
       </Paper>
-      <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item xs={3}>
-          <FormControl fullWidth>
-            <InputLabel>Unidentified</InputLabel>
-            <Select
-              name="unidentified"
-              value={filters.unidentified}
-              onChange={(e) => handleFilterChange(e, setFilters)}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Unidentified</MenuItem>
-              <MenuItem value="false">Identified</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={3}>
-          <FormControl fullWidth>
-            <InputLabel>Type</InputLabel>
-            <Select
-              name="type"
-              value={filters.type}
-              onChange={(e) => handleFilterChange(e, setFilters)}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="Weapon">Weapon</MenuItem>
-              <MenuItem value="Armor">Armor</MenuItem>
-              <MenuItem value="Magic">Magic</MenuItem>
-              <MenuItem value="Gear">Gear</MenuItem>
-              <MenuItem value="Trade Good">Trade Good</MenuItem>
-              <MenuItem value="Other">Other</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={3}>
-          <FormControl fullWidth>
-            <InputLabel>Size</InputLabel>
-            <Select
-              name="size"
-              value={filters.size}
-              onChange={(e) => handleFilterChange(e, setFilters)}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="Fine">Fine</MenuItem>
-              <MenuItem value="Diminutive">Diminutive</MenuItem>
-              <MenuItem value="Tiny">Tiny</MenuItem>
-              <MenuItem value="Small">Small</MenuItem>
-              <MenuItem value="Medium">Medium</MenuItem>
-              <MenuItem value="Large">Large</MenuItem>
-              <MenuItem value="Huge">Huge</MenuItem>
-              <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-              <MenuItem value="Colossal">Colossal</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={3}>
-          <FormControl fullWidth>
-            <InputLabel>Pending Sale</InputLabel>
-            <Select
-              name="pendingSale"
-              value={filters.pendingSale}
-              onChange={(e) => handleFilterChange(e, setFilters)}
-            >
-              <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Pending Sale</MenuItem>
-              <MenuItem value="false">Not Pending Sale</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-      </Grid>
       <CustomLootTable
         loot={filteredLoot.summary}
         individualLoot={filteredLoot.individual}
@@ -194,6 +124,9 @@ const UnprocessedLoot = () => {
           unidentified: true,
           pendingSale: true
         }}
+        filters={['unidentified', 'type', 'size', 'pendingSale']} // Define available filters
+        setFilters={setFilters}
+        handleFilterChange={handleFilterChange}
       />
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleSell)}>
         Sell
@@ -204,35 +137,35 @@ const UnprocessedLoot = () => {
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleKeepSelf)}>
         Keep Self
       </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleKeepParty)}>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 2 }} onClick={() => handleAction(handleKeepParty)}>
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 2 }} onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
           Split Stack
         </Button>
       )}
       {selectedItems.length === 1 && (
-        <Button variant="contained" color="primary" sx={{ mt: 2 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 2 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
           Update
         </Button>
       )}
 
       <CustomSplitStackDialog
-          open={openSplitDialog}
-          handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
-          splitQuantities={splitQuantities}
-          handleSplitChange={handleSplitChange}
-          handleAddSplit={handleAddSplit}
-          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, splitItem.quantity, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)} // Pass the original item quantity
-          />
+        open={openSplitDialog}
+        handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
+        splitQuantities={splitQuantities}
+        handleSplitChange={handleSplitChange}
+        handleAddSplit={handleAddSplit}
+        handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, splitItem.quantity, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)} // Pass setOpenSplitDialog and setSelectedItems
+      />
 
       <CustomUpdateDialog
-          open={openUpdateDialog}
-          onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
-          updatedEntry={updatedEntry}
-          onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-          onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems)}
+        open={openUpdateDialog}
+        onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
+        updatedEntry={updatedEntry}
+        onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
+        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog)} // Pass updatedEntry and setOpenUpdateDialog
       />
     </Container>
   );
