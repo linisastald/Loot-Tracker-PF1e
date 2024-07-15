@@ -151,6 +151,7 @@ const CustomLootTable = ({
   const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
 
   // Apply filters to loot
+  console.log('Applying filters to loot:', loot);
   const filteredLoot = loot.filter((item) => {
     return (
       (filters.unidentified === '' || item.unidentified === (filters.unidentified === 'true')) &&
@@ -159,6 +160,7 @@ const CustomLootTable = ({
       (filters.pendingSale === '' || item.status === (filters.pendingSale === 'true' ? 'Pending Sale' : ''))
     );
   });
+  console.log('Filtered loot after applying filters:', filteredLoot);
 
   return (
     <Paper sx={{ p: 2 }}>
