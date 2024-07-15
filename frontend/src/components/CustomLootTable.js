@@ -150,6 +150,16 @@ const CustomLootTable = ({
   const mainCellStyle = { padding: '16px' }; // Default padding for main rows
   const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
 
+  // Apply filters to loot
+  const filteredLoot = loot.filter((item) => {
+    return (
+      (filters.unidentified === '' || item.unidentified === (filters.unidentified === 'true')) &&
+      (filters.type === '' || item.type === filters.type) &&
+      (filters.size === '' || item.size === filters.size) &&
+      (filters.pendingSale === '' || item.status === (filters.pendingSale === 'true' ? 'Pending Sale' : ''))
+    );
+  });
+
   return (
     <Paper sx={{ p: 2 }}>
       <Typography variant="h6">Loot Table</Typography>
@@ -235,7 +245,7 @@ const CustomLootTable = ({
             </TableRow>
           </TableHead>
           <TableBody>
-            {loot.map((item) => {
+            {filteredLoot.map((item) => {
               const individualItems = getIndividualItems(item.name);
               const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
 
