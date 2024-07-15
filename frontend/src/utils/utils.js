@@ -4,8 +4,10 @@ import jwt_decode from 'jwt-decode';
 export const fetchActiveUser = async () => {
   try {
     const token = localStorage.getItem('token');
+    if (!token) throw new Error('No token found');
     const decoded = jwt_decode(token);
     const userId = decoded.userId;
+    if (!userId) throw new Error('Invalid token');
     const response = await axios.get(`http://192.168.0.64:5000/api/user/${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -15,7 +17,6 @@ export const fetchActiveUser = async () => {
     return null;
   }
 };
-
 export const handleSelectItem = (itemId, setSelectedItems) => {
   setSelectedItems((prevSelected) =>
     prevSelected.includes(itemId)
