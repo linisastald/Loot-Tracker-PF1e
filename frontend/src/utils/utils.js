@@ -179,3 +179,8 @@ export const formatDate = (dateString) => {
   const options = { year: 'numeric', month: 'long', day: 'numeric' };
   return new Date(dateString).toLocaleDateString(undefined, options);
 };
+export const handleSplitChange = (index, value, splitEntries, setSplitEntries) => {
+  const updatedEntries = [...splitEntries];
+  updatedEntries[index] = value;
+  setSplitEntries(updatedEntries);
+};
