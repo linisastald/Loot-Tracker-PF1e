@@ -33,7 +33,6 @@ import {
   handleUpdateSubmit,
   handleSort,
 } from '../utils/utils';
-import './UnprocessedLoot.css'; // Import the CSS file
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
