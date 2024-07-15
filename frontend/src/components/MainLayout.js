@@ -5,9 +5,9 @@ import { Outlet } from 'react-router-dom'; // Import Outlet to render child rout
 
 const MainLayout = () => {
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box className="main-layout">
       <Sidebar />
-      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+      <Box className="content">
         <Outlet /> {/* Render the child routes */}
       </Box>
     </Box>

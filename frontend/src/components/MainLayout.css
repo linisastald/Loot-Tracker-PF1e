@@ -1,9 +1,11 @@
 .main-layout {
   display: flex;
+  height: 100%;
 }
 
 .content {
-  margin-left: 200px;
+  margin-left: 240px; /* Adjust this value based on Sidebar width */
   padding: 20px;
-  width: 100%;
+  flex-grow: 1;
+  width: calc(100% - 240px); /* Adjust to match Sidebar width */
 }
