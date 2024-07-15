@@ -153,6 +153,7 @@ const CustomLootTable = ({
   // Apply filters to loot
   console.log('Applying filters to loot:', loot);
   const filteredLoot = loot.filter((item) => {
+    console.log(`Item: ${item.name}, Unidentified: ${item.unidentified}, Type: ${item.type}, Size: ${item.size}, Pending Sale: ${item.status}`);
     return (
       (filters.unidentified === '' || item.unidentified === (filters.unidentified === 'true')) &&
       (filters.type === '' || item.type === filters.type) &&
