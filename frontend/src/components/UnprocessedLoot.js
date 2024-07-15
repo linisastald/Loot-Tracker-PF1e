@@ -226,11 +226,11 @@ const UnprocessedLoot = () => {
       />
 
       <CustomUpdateDialog
-        open={openUpdateDialog}
-        onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
-        updatedEntry={updatedEntry}
-        onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setSelectedItems)}
+          open={openUpdateDialog}
+          onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
+          updatedEntry={updatedEntry}
+          onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
+          onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot)} // Pass updatedEntry
       />
     </Container>
   );

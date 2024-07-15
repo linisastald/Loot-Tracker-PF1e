@@ -41,7 +41,6 @@ export const handleSelectItem = (id, setSelectedItems) => {
   );
 };
 
-
 export const handleSell = async (selectedItems, fetchLoot) => {
   try {
     const token = localStorage.getItem('token');
@@ -60,7 +59,6 @@ export const handleSell = async (selectedItems, fetchLoot) => {
     console.error('Error selling items:', error);
   }
 };
-
 
 export const handleTrash = async (selectedItems, fetchLoot) => {
   try {
@@ -143,8 +141,6 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, userId, 
     console.error('Error splitting loot item:', error);
   }
 };
-
-
 
 export const handleOpenUpdateDialog = (loot, selectedItems, setUpdatedEntry, setOpenUpdateDialog) => {
   const selectedItem = loot.find(item => item.id === selectedItems[0]);
@@ -236,14 +232,17 @@ export const handleSort = (sortConfig, setSortConfig, key) => {
   setSortConfig({ key, direction });
 };
 
-export const handleUpdateSubmit = async () => {
+export const handleUpdateSubmit = async (updatedEntry, fetchLoot) => {
   try {
-    await axios.put(`http://192.168.0.64:5000/api/loot/${updatedEntry.id}`, updatedEntry, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    const token = localStorage.getItem('token');
+    await axios.put(`http://192.168.0.64:5000/api/loot/update-entry/${updatedEntry.id}`, {
+      updatedEntry,
+    }, {
+      headers: { Authorization: `Bearer ${token}` },
     });
-    setUpdateDialogOpen(false);
-    fetchItems();
+    fetchLoot();
   } catch (error) {
-    console.error('Error updating item', error);
+    console.error('Error updating item:', error);
   }
 };
+
