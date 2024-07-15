@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import App from './App';
+import './globalStyles.css';
 
 const theme = createTheme({
   palette: {

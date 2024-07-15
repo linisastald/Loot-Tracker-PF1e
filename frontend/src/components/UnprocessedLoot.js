@@ -14,6 +14,7 @@ import {
 import CustomLootTable from './CustomLootTable';
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
+import './globalStyles.css';
 import {
   fetchActiveUser,
   handleSelectItem,
@@ -96,7 +97,7 @@ const UnprocessedLoot = () => {
   const filteredLoot = applyFilters(loot, filters);
 
   return (
-    <Container component="main" maxWidth={false} sx={{ paddingLeft: '240px', paddingTop: '20px' }}>
+    <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Unprocessed Loot</Typography>
       </Paper>
