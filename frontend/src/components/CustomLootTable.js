@@ -70,7 +70,7 @@ const CustomLootTable = ({
               <InputLabel>Unidentified</InputLabel>
               <Select
                 name="unidentified"
-                value={filters.unidentified}
+                value={filters.unidentified || ''}
                 onChange={(e) => handleFilterChange(e, setFilters)}
               >
                 <MenuItem value="">All</MenuItem>
@@ -87,7 +87,7 @@ const CustomLootTable = ({
               <InputLabel>Type</InputLabel>
               <Select
                 name="type"
-                value={filters.type}
+                value={filters.type || ''}
                 onChange={(e) => handleFilterChange(e, setFilters)}
               >
                 <MenuItem value="">All</MenuItem>
@@ -108,7 +108,7 @@ const CustomLootTable = ({
               <InputLabel>Size</InputLabel>
               <Select
                 name="size"
-                value={filters.size}
+                value={filters.size || ''}
                 onChange={(e) => handleFilterChange(e, setFilters)}
               >
                 <MenuItem value="">All</MenuItem>
@@ -132,7 +132,7 @@ const CustomLootTable = ({
               <InputLabel>Pending Sale</InputLabel>
               <Select
                 name="pendingSale"
-                value={filters.pendingSale}
+                value={filters.pendingSale || ''}
                 onChange={(e) => handleFilterChange(e, setFilters)}
               >
                 <MenuItem value="">All</MenuItem>
