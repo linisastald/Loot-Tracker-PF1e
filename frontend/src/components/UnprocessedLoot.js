@@ -39,7 +39,7 @@ const UnprocessedLoot = () => {
   const [selectedItems, setSelectedItems] = useState([]);
   const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
   const [openSplitDialog, setOpenSplitDialog] = useState(false);
-  const [splitQuantities, setSplitQuantities] = useState([0, 0]);
+  const [splitQuantities, setSplitQuantities] = useState([]); // Ensure this is an array
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
@@ -75,6 +75,20 @@ const UnprocessedLoot = () => {
   const handleAction = (actionFunc) => {
     actionFunc(selectedItems, fetchLoot, activeUser);
     setSelectedItems([]);  // Ensure selection resets after action
+  };
+
+  const handleOpenSplitDialogWrapper = (item) => {
+    handleOpenSplitDialog(item, setSplitQuantities, setOpenSplitDialog);
+  };
+
+  const handleSplitChange = (index, value) => {
+    const updatedQuantities = [...splitQuantities];
+    updatedQuantities[index] = value;
+    setSplitQuantities(updatedQuantities);
+  };
+
+  const handleAddSplit = () => {
+    setSplitQuantities([...splitQuantities, 0]);
   };
 
   const filteredLoot = applyFilters(loot, filters);
@@ -191,7 +205,7 @@ const UnprocessedLoot = () => {
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialog(loot.individual.find(item => item.id === selectedItems[0]), setSplitQuantities, setOpenSplitDialog)}>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
           Split Stack
         </Button>
       )}
@@ -205,8 +219,8 @@ const UnprocessedLoot = () => {
         open={openSplitDialog}
         handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
         splitQuantities={splitQuantities}
-        handleSplitChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
-        handleAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities)}
+        handleSplitChange={handleSplitChange}
+        handleAddSplit={handleAddSplit}
         handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
       />
 
