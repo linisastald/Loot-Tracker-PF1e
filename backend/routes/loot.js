@@ -14,9 +14,7 @@ router.put('/update-status', verifyToken, lootController.updateLootStatus);
 router.get('/pending-sale', verifyToken, checkRole('DM'), lootController.getPendingSaleItems);
 router.get('/search', verifyToken, checkRole('DM'), lootController.searchItems);
 router.put('/confirm-sale', verifyToken, checkRole('DM'), lootController.confirmSale);
-
-
 router.put('/update-entry/:id', verifyToken, lootController.updateEntry);
-router.put('/:id', verifyToken, lootController.updateLootStatus);
+router.put('/:id', verifyToken, lootController.updateSingleLootStatus);
 
 module.exports = router;

@@ -220,6 +220,7 @@ exports.splitStack = async (id, splits, userId) => {
   }
 };
 
+
 exports.updateEntry = async (id, updatedEntry) => {
   try {
     const currentEntryQuery = `SELECT * FROM loot WHERE id = $1`;

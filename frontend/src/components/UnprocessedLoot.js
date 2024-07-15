@@ -217,12 +217,12 @@ const UnprocessedLoot = () => {
       )}
 
       <CustomSplitStackDialog
-        open={openSplitDialog}
-        handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
-        splitQuantities={splitQuantities}
-        handleSplitChange={handleSplitChange}
-        handleAddSplit={handleAddSplit}
-        handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
+          open={openSplitDialog}
+          handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
+          splitQuantities={splitQuantities}
+          handleSplitChange={handleSplitChange}
+          handleAddSplit={handleAddSplit}
+          handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
       />
 
       <CustomUpdateDialog

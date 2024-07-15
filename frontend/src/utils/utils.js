@@ -108,28 +108,24 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
 };
 
 export const handleSplitSubmit = async (splitQuantities, selectedItems, fetchLoot) => {
-  const token = localStorage.getItem('token');
-  const splits = splitQuantities.filter(qty => qty > 0);
-  const total = splits.reduce((sum, qty) => sum + qty, 0);
-  const selectedItem = selectedItems[0];
-  const selectedItemData = await axios.get(`http://192.168.0.64:5000/api/loot/${selectedItem}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (total !== selectedItemData.data.quantity) {
-    alert("The sum of split quantities must equal the original quantity.");
-    return;
+  try {
+    const token = localStorage.getItem('token');
+    const itemId = selectedItems[0];
+    const response = await axios.post(`http://192.168.0.64:5000/api/loot/split-stack`, {
+      id: itemId,
+      splits: splitQuantities,
+      userId: token,  // Ensure to pass the userId correctly if needed
+    }, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 200) {
+      fetchLoot();
+    } else {
+      console.error('Error splitting loot item:', response.data);
+    }
+  } catch (error) {
+    console.error('Error splitting loot item:', error);
   }
-
-  await axios.post('http://192.168.0.64:5000/api/loot/split', {
-    id: selectedItem,
-    splits,
-    userId: jwt_decode(token).userId,
-  }, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  fetchLoot();
 };
 
 export const handleOpenUpdateDialog = (loot, selectedItems, setUpdatedEntry, setOpenUpdateDialog) => {
