@@ -32,6 +32,7 @@ import {
   handleUpdateDialogClose,
   handleSplitDialogClose,
   formatDate,
+  handleUpdateChange,
 } from '../utils/utils';
 
 const UnprocessedLoot = () => {
