@@ -44,7 +44,9 @@ export const handleSelectItem = (id, setSelectedItems) => {
 
 export const handleSell = async (selectedItems, fetchLoot) => {
   try {
-    const userId = fetchActiveUser();
+    const token = localStorage.getItem('token');
+    const decodedToken = jwt_decode(token);
+    const userId = decodedToken.id;
 
     await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
       ids: selectedItems,
