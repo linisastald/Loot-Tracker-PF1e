@@ -68,7 +68,7 @@ const UnprocessedLoot = () => {
     if (user && user.activeCharacterId) {
       setActiveUser(user);
     } else {
-      console.error('Active character ID is not available');
+      console.error('Active character ID is not available or user could not be fetched');
     }
   };
 

@@ -5,7 +5,12 @@ export const fetchActiveUser = async () => {
   try {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No token found');
-    const decoded = jwt_decode(token);
+    let decoded;
+    try {
+      decoded = jwt_decode(token);
+    } catch (error) {
+      throw new Error('Invalid token');
+    }
     const userId = decoded.userId;
     if (!userId) throw new Error('Invalid token');
     const response = await axios.get(`http://192.168.0.64:5000/api/user/${userId}`, {
