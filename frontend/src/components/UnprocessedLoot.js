@@ -230,7 +230,7 @@ const UnprocessedLoot = () => {
           onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
           updatedEntry={updatedEntry}
           onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-          onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog)}
+          onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems)}
       />
     </Container>
   );
