@@ -30,8 +30,8 @@ import {
   handleUpdate,
   handleFilterChange,
   applyFilters,
-  formatDate,
-  handleSort
+  handleUpdateSubmit,
+  handleSort,
 } from '../utils/utils';
 
 const UnprocessedLoot = () => {
@@ -74,7 +74,7 @@ const UnprocessedLoot = () => {
 
   const handleAction = (actionFunc) => {
     actionFunc(selectedItems, fetchLoot, activeUser);
-    setSelectedItems([]);
+    setSelectedItems([]);  // Ensure selection resets after action
   };
 
   const filteredLoot = applyFilters(loot, filters);
@@ -191,7 +191,7 @@ const UnprocessedLoot = () => {
         Keep Party
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleSplitStackClick}>
+        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleOpenSplitDialog}>
           Split Stack
         </Button>
       )}
@@ -205,7 +205,6 @@ const UnprocessedLoot = () => {
         open={openSplitDialog}
         handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
         splitQuantities={splitQuantities}
-        setSplitQuantities={setSplitQuantities}
         handleSplitChange={(index, value) => handleSplitChange(index, value, setSplitQuantities)}
         handleAddSplit={() => handleAddSplit(splitQuantities, setSplitQuantities)}
         handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, fetchLoot)}
@@ -213,10 +212,10 @@ const UnprocessedLoot = () => {
 
       <CustomUpdateDialog
         open={openUpdateDialog}
-        handleClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
+        onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
         updatedEntry={updatedEntry}
-        handleUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        handleUpdateSubmit={() => handleUpdate(updatedEntry.id, updatedEntry, fetchLoot)}
+        onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
+        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot)}
       />
     </Container>
   );

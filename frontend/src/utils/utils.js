@@ -179,23 +179,39 @@ export const formatDate = (dateString) => {
   const options = { year: 'numeric', month: 'long', day: 'numeric' };
   return new Date(dateString).toLocaleDateString(undefined, options);
 };
+
 export const handleSplitChange = (index, value, splitEntries, setSplitEntries) => {
   const updatedEntries = [...splitEntries];
   updatedEntries[index] = value;
   setSplitEntries(updatedEntries);
 };
+
 export const handleAddSplit = (splitEntries, setSplitEntries) => {
   setSplitEntries([...splitEntries, { quantity: '' }]);
 };
+
 export const handleOpenSplitDialog = (item, setSplitItem, setSplitEntries, setSplitDialogOpen) => {
   setSplitItem(item);
   setSplitEntries([{ quantity: item.quantity }]);
   setSplitDialogOpen(true);
 };
+
 export const handleSort = (sortConfig, setSortConfig, key) => {
   let direction = 'ascending';
   if (sortConfig.key === key && sortConfig.direction === 'ascending') {
     direction = 'descending';
   }
   setSortConfig({ key, direction });
+};
+
+export const handleUpdateSubmit = async () => {
+  try {
+    await axios.put(`http://192.168.0.64:5000/api/loot/${updatedEntry.id}`, updatedEntry, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    });
+    setUpdateDialogOpen(false);
+    fetchItems();
+  } catch (error) {
+    console.error('Error updating item', error);
+  }
 };

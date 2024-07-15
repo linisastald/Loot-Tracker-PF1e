@@ -2,7 +2,7 @@
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Grid, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 
-const CustomUpdateDialog = ({ open, onClose, updatedEntry, onUpdateChange, onUpdateSubmit }) => {
+const CustomUpdateDialog = ({ open, onClose, updatedEntry = {}, onUpdateChange, onUpdateSubmit }) => {
   return (
     <Dialog open={open} onClose={onClose}>
       <DialogTitle>Update Entry</DialogTitle>
