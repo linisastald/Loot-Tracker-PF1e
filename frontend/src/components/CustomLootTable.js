@@ -168,56 +168,56 @@ const CustomLootTable = ({
                   </TableCell>
                 )}
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.quantity}>
+                  <Tooltip title={item.quantity || ''}>
                     <span>{item.quantity}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.name}>
+                  <Tooltip title={item.name || ''}>
                     <span>{item.name}</span>
                   </Tooltip>
                 </TableCell>
                 {showColumns.unidentified && (
                   <TableCell style={mainCellStyle}>
-                    <Tooltip title={item.unidentified}>
+                    <Tooltip title={item.unidentified ? 'Yes' : 'No'}>
                       <span>{item.unidentified ? 'Yes' : 'No'}</span>
                     </Tooltip>
                   </TableCell>
                 )}
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.type}>
+                  <Tooltip title={item.type || ''}>
                     <span>{item.type}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.size}>
+                  <Tooltip title={item.size || ''}>
                     <span>{item.size}</span>
                   </Tooltip>
                 </TableCell>
                 {showColumns.whoHasIt && (
                   <TableCell style={mainCellStyle}>
-                    <Tooltip title={item.whoHasIt}>
+                    <Tooltip title={item.whoHasIt || ''}>
                       <span>{item.whoHasIt}</span>
                     </Tooltip>
                   </TableCell>
                 )}
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.believedValue}>
+                  <Tooltip title={item.believedValue || ''}>
                     <span>{item.believedValue}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={item.averageAppraisal}>
+                  <Tooltip title={item.averageAppraisal || ''}>
                     <span>{item.averageAppraisal}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={formatDate(item.sessionDate)}>
+                  <Tooltip title={formatDate(item.sessionDate) || ''}>
                     <span>{formatDate(item.sessionDate)}</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell style={mainCellStyle}>
-                  <Tooltip title={formatDate(item.lastUpdate)}>
+                  <Tooltip title={formatDate(item.lastUpdate) || ''}>
                     <span>{formatDate(item.lastUpdate)}</span>
                   </Tooltip>
                 </TableCell>
