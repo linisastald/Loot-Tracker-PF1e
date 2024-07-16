@@ -39,6 +39,7 @@ const UnprocessedLoot = () => {
   const [splitQuantities, setSplitQuantities] = useState([]);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
+  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [openItems, setOpenItems] = useState({});
 
@@ -88,7 +89,8 @@ const UnprocessedLoot = () => {
     setSplitQuantities([...splitQuantities, { quantity: 0 }]);
   };
 
-  const filteredLoot = applyFilters(loot, {});
+  const filteredLoot = applyFilters(loot, filters);
+  console.log('Filtered loot:', filteredLoot);
 
   return (
     <Container component="main">
@@ -103,9 +105,9 @@ const UnprocessedLoot = () => {
         openItems={openItems}
         setOpenItems={setOpenItems}
         handleSelectItem={handleSelectItem}
-        handleSort={handleSort}
+        handleSort={(key) => handleSort(sortConfig, setSortConfig, key)}
         sortConfig={sortConfig}
-        setSortConfig={setSortConfig} // Pass setSortConfig
+        setSortConfig={setSortConfig}  // Ensure this prop is passed
         showColumns={{
           select: true,
           quantity: true,
@@ -127,9 +129,6 @@ const UnprocessedLoot = () => {
           size: true,
           whoHas: false,
         }}
-        filters={[]}
-        setFilters={() => {}}
-        handleFilterChange={handleFilterChange}
       />
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleSell)}>
         Sell
