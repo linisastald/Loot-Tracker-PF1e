@@ -180,7 +180,6 @@ const CustomLootTable = ({
 
   return (
     <Paper sx={{ p: 2 }}>
-      <Typography variant="h6">Loot Table</Typography>
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {showFilters.pendingSale && (
           <Grid item>
