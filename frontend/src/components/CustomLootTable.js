@@ -89,7 +89,7 @@ const CustomLootTable = ({
   const filteredLoot = loot.filter(item =>
     (showPendingSales || item.status !== 'Pending Sale') &&
     (!showOnlyUnidentified || item.unidentified === true) &&
-    typeFilters[item.type]
+    (typeFilters[item.type] || (typeFilters['Other'] && !item.type))
   );
 
   console.log('Filtered loot after applying filters:', filteredLoot);
