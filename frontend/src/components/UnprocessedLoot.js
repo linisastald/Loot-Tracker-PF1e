@@ -105,6 +105,7 @@ const UnprocessedLoot = () => {
         handleSelectItem={handleSelectItem}
         handleSort={handleSort}
         sortConfig={sortConfig}
+        setSortConfig={setSortConfig} // Pass setSortConfig
         showColumns={{
           select: true,
           quantity: true,
@@ -117,7 +118,7 @@ const UnprocessedLoot = () => {
           sessionDate: true,
           lastUpdate: true,
           unidentified: true,
-          pendingSale: true,
+          pendingSale: true
         }}
         showFilters={{
           pendingSale: true,

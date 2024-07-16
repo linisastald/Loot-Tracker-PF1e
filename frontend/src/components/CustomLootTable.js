@@ -42,6 +42,7 @@ const CustomLootTable = ({
   handleSelectItem,
   handleSort,
   sortConfig,
+  setSortConfig, // Added prop
   showColumns = {
     select: true,
     unidentified: true,
@@ -105,10 +106,10 @@ const CustomLootTable = ({
     fetchWhoHasFilters();
   }, []);
 
-  const handleToggleOpen = (name) => {
+  const handleToggleOpen = (name, unidentified, masterwork, type, size) => {
     setOpenItems((prevOpenItems) => ({
       ...prevOpenItems,
-      [name]: !prevOpenItems[name],
+      [`${name}-${unidentified}-${masterwork}-${type}-${size}`]: !prevOpenItems[`${name}-${unidentified}-${masterwork}-${type}-${size}`],
     }));
   };
 
@@ -367,7 +368,7 @@ const CustomLootTable = ({
               const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
 
               return (
-                <React.Fragment key={`${item.name}-${item.unidentified}-${item.type}-${item.size}`}>
+                <React.Fragment key={`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`}>
                   <TableRow>
                     {showColumns.select && (
                       <TableCell style={mainCellStyle}>
@@ -387,9 +388,9 @@ const CustomLootTable = ({
                         <IconButton
                           aria-label="expand row"
                           size="small"
-                          onClick={() => handleToggleOpen(item.name)}
+                          onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type, item.size)}
                         >
-                          {openItems[item.name] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                          {openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
                         </IconButton>
                       )}
                       <Tooltip title={item.notes || 'No notes'} arrow>
@@ -419,7 +420,7 @@ const CustomLootTable = ({
                   {individualItems.length > 1 && (
                     <TableRow>
                       <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={showColumns.unidentified ? 11 : 10}>
-                        <Collapse in={openItems[item.name]} timeout="auto" unmountOnExit>
+                        <Collapse in={openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`]} timeout="auto" unmountOnExit>
                           <Table size="small">
                             <TableHead>
                               <TableRow>
