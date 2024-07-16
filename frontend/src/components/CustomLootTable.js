@@ -46,6 +46,7 @@ const CustomLootTable = ({
   },
 }) => {
   const [showPendingSales, setShowPendingSales] = useState(true); // New filter state
+  const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false); // New filter state
 
   const handleToggleOpen = (name) => {
     setOpenItems((prevOpenItems) => ({
@@ -58,7 +59,11 @@ const CustomLootTable = ({
     return individualLoot.filter((item) => item.name === name);
   };
 
-  const filteredLoot = loot.filter(item => showPendingSales || item.status !== 'Pending Sale');
+  const filteredLoot = loot.filter(item =>
+    (showPendingSales || item.status !== 'Pending Sale') &&
+    (!showOnlyUnidentified || item.unidentified === true)
+  );
+
   console.log('Filtered loot after applying filters:', filteredLoot);
 
   const mainCellStyle = { padding: '16px' }; // Default padding for main rows
@@ -67,10 +72,20 @@ const CustomLootTable = ({
   return (
     <Paper sx={{ p: 2 }}>
       <Typography variant="h6">Loot Table</Typography>
-      <FormControlLabel
-        control={<Switch checked={showPendingSales} onChange={() => setShowPendingSales(!showPendingSales)} />}
-        label="Show Pending Sales"
-      />
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item>
+          <FormControlLabel
+            control={<Switch checked={showPendingSales} onChange={() => setShowPendingSales(!showPendingSales)} />}
+            label="Show Pending Sales"
+          />
+        </Grid>
+        <Grid item>
+          <FormControlLabel
+            control={<Switch checked={showOnlyUnidentified} onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)} />}
+            label="Show Only Unidentified"
+          />
+        </Grid>
+      </Grid>
       <TableContainer component={Paper} sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
         <Table sx={{ minWidth: 650 }}>
           <TableHead>
