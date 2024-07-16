@@ -16,6 +16,9 @@ import {
   FormControlLabel,
   Switch,
   Typography,
+  Button,
+  Menu,
+  MenuItem,
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
 import { formatDate } from '../utils/utils'; // Adjust the path as necessary
@@ -47,6 +50,15 @@ const CustomLootTable = ({
 }) => {
   const [showPendingSales, setShowPendingSales] = useState(true); // New filter state
   const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false); // New filter state
+  const [anchorEl, setAnchorEl] = useState(null); // State for the type filter menu
+  const [typeFilters, setTypeFilters] = useState({
+    Weapon: true,
+    Armor: true,
+    Magic: true,
+    Gear: true,
+    'Trade Good': true,
+    Other: true,
+  });
 
   const handleToggleOpen = (name) => {
     setOpenItems((prevOpenItems) => ({
@@ -59,9 +71,25 @@ const CustomLootTable = ({
     return individualLoot.filter((item) => item.name === name);
   };
 
+  const handleTypeFilterChange = (type) => {
+    setTypeFilters((prevFilters) => ({
+      ...prevFilters,
+      [type]: !prevFilters[type],
+    }));
+  };
+
+  const handleTypeFilterMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleTypeFilterMenuClose = () => {
+    setAnchorEl(null);
+  };
+
   const filteredLoot = loot.filter(item =>
     (showPendingSales || item.status !== 'Pending Sale') &&
-    (!showOnlyUnidentified || item.unidentified === true)
+    (!showOnlyUnidentified || item.unidentified === true) &&
+    typeFilters[item.type]
   );
 
   console.log('Filtered loot after applying filters:', filteredLoot);
@@ -84,6 +112,30 @@ const CustomLootTable = ({
             control={<Switch checked={showOnlyUnidentified} onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)} />}
             label="Show Only Unidentified"
           />
+        </Grid>
+        <Grid item>
+          <Button variant="contained" onClick={handleTypeFilterMenuOpen}>
+            Type Filters
+          </Button>
+          <Menu
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleTypeFilterMenuClose}
+          >
+            {Object.keys(typeFilters).map((type) => (
+              <MenuItem key={type}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={typeFilters[type]}
+                      onChange={() => handleTypeFilterChange(type)}
+                    />
+                  }
+                  label={type}
+                />
+              </MenuItem>
+            ))}
+          </Menu>
         </Grid>
       </Grid>
       <TableContainer component={Paper} sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
