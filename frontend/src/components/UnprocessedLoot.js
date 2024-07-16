@@ -89,6 +89,10 @@ const UnprocessedLoot = () => {
     setSplitQuantities([...splitQuantities, { quantity: 0 }]);
   };
 
+  useEffect(() => {
+    setFilteredLoot(applyFilters(loot, filters));
+  }, [filters, loot]);
+
   const filteredLoot = applyFilters(loot, filters);
   console.log('Filtered loot:', filteredLoot);
 

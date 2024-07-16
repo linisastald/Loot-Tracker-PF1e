@@ -151,8 +151,8 @@ export const handleUpdate = async (id, updatedEntry, fetchLoot) => {
   fetchLoot();
 };
 
-export const handleFilterChange = (e, setFilters) => {
-  const { name, value } = e.target;
+export const handleFilterChange = (event, setFilters) => {
+  const { name, value } = event.target;
   setFilters((prevFilters) => ({
     ...prevFilters,
     [name]: value,
@@ -256,4 +256,5 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
     console.error('Error splitting loot item:', error);
   }
 };
+
 
