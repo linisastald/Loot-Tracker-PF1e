@@ -27,7 +27,6 @@ import {
   handleFilterChange,
   applyFilters,
   handleUpdateSubmit,
-  handleSort,
 } from '../utils/utils';
 
 const UnprocessedLoot = () => {
@@ -40,7 +39,6 @@ const UnprocessedLoot = () => {
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [openItems, setOpenItems] = useState({});
 
   useEffect(() => {
@@ -105,9 +103,6 @@ const UnprocessedLoot = () => {
         openItems={openItems}
         setOpenItems={setOpenItems}
         handleSelectItem={handleSelectItem}
-        handleSort={(key) => handleSort(sortConfig, setSortConfig, key)}
-        sortConfig={sortConfig}
-        setSortConfig={setSortConfig}  // Ensure this prop is passed
         showColumns={{
           select: true,
           quantity: true,
