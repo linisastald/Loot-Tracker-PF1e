@@ -80,7 +80,7 @@ const CustomLootTable = ({
     const fetchWhoHasFilters = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.get('http://192.168.0.64:5000/api/active-characters', {
+        const response = await axios.get('http://192.168.0.64:5000/api/user/active-characters', {
           headers: { Authorization: `Bearer ${token}` },
         });
         const characters = response.data;
