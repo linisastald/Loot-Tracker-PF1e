@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TableContainer,
   Table,
@@ -23,6 +23,7 @@ import {
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
 import { formatDate } from '../utils/utils'; // Adjust the path as necessary
 import { styled } from '@mui/system';
+import axios from 'axios';
 
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   backgroundColor: theme.palette.action.hover,
@@ -72,6 +73,30 @@ const CustomLootTable = ({
     Colossal: true,
     Unknown: true,
   });
+  const [whoHasFilters, setWhoHasFilters] = useState([]);
+  const [anchorElWhoHas, setAnchorElWhoHas] = useState(null); // State for the who has filter menu
+
+  useEffect(() => {
+    const fetchWhoHasFilters = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await axios.get('http://192.168.0.64:5000/api/characters/active', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const characters = response.data;
+        const filters = characters.map((character) => ({
+          name: character.name,
+          id: character.id,
+          checked: false,
+        }));
+        setWhoHasFilters(filters);
+      } catch (error) {
+        console.error('Error fetching characters:', error);
+      }
+    };
+
+    fetchWhoHasFilters();
+  }, []);
 
   const handleToggleOpen = (name) => {
     setOpenItems((prevOpenItems) => ({
@@ -98,12 +123,24 @@ const CustomLootTable = ({
     }));
   };
 
+  const handleWhoHasFilterChange = (id) => {
+    setWhoHasFilters((prevFilters) =>
+      prevFilters.map((filter) =>
+        filter.id === id ? { ...filter, checked: !filter.checked } : filter
+      )
+    );
+  };
+
   const handleTypeFilterMenuOpen = (event) => {
     setAnchorElType(event.currentTarget);
   };
 
   const handleSizeFilterMenuOpen = (event) => {
     setAnchorElSize(event.currentTarget);
+  };
+
+  const handleWhoHasFilterMenuOpen = (event) => {
+    setAnchorElWhoHas(event.currentTarget);
   };
 
   const handleTypeFilterMenuClose = () => {
@@ -114,12 +151,20 @@ const CustomLootTable = ({
     setAnchorElSize(null);
   };
 
-  const filteredLoot = loot.filter(item =>
-    (showPendingSales || item.status !== 'Pending Sale') &&
-    (!showOnlyUnidentified || item.unidentified === true) &&
-    (typeFilters[item.type] || (typeFilters['Other'] && !item.type)) &&
-    (sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size))
-  );
+  const handleWhoHasFilterMenuClose = () => {
+    setAnchorElWhoHas(null);
+  };
+
+  const filteredLoot = loot.filter((item) => {
+    const whoHasChecked = whoHasFilters.some((filter) => filter.checked && item.whohas === filter.id);
+    return (
+      (showPendingSales || item.status !== 'Pending Sale') &&
+      (!showOnlyUnidentified || item.unidentified === true) &&
+      (typeFilters[item.type] || (typeFilters['Other'] && !item.type)) &&
+      (sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size)) &&
+      (whoHasFilters.every((filter) => !filter.checked) || whoHasChecked)
+    );
+  });
 
   console.log('Filtered loot after applying filters:', filteredLoot);
 
@@ -185,6 +230,30 @@ const CustomLootTable = ({
                     />
                   }
                   label={size}
+                />
+              </MenuItem>
+            ))}
+          </Menu>
+        </Grid>
+        <Grid item>
+          <Button variant="contained" onClick={handleWhoHasFilterMenuOpen}>
+            Who Has Filters
+          </Button>
+          <Menu
+            anchorEl={anchorElWhoHas}
+            open={Boolean(anchorElWhoHas)}
+            onClose={handleWhoHasFilterMenuClose}
+          >
+            {whoHasFilters.map((filter) => (
+              <MenuItem key={filter.id}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={filter.checked}
+                      onChange={() => handleWhoHasFilterChange(filter.id)}
+                    />
+                  }
+                  label={filter.name}
                 />
               </MenuItem>
             ))}
