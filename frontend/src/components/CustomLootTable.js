@@ -48,6 +48,13 @@ const CustomLootTable = ({
     pendingSale: true,
     whoHasIt: true, // Ensure the whoHasIt column is included by default
   },
+  showFilters = {
+    pendingSale: true,
+    unidentified: true,
+    type: true,
+    size: true,
+    whoHas: true,
+  },
 }) => {
   const [showPendingSales, setShowPendingSales] = useState(true); // New filter state
   const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false); // New filter state
@@ -175,90 +182,100 @@ const CustomLootTable = ({
     <Paper sx={{ p: 2 }}>
       <Typography variant="h6">Loot Table</Typography>
       <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item>
-          <FormControlLabel
-            control={<Switch checked={showPendingSales} onChange={() => setShowPendingSales(!showPendingSales)} />}
-            label="Show Pending Sales"
-          />
-        </Grid>
-        <Grid item>
-          <FormControlLabel
-            control={<Switch checked={showOnlyUnidentified} onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)} />}
-            label="Show Only Unidentified"
-          />
-        </Grid>
-        <Grid item>
-          <Button variant="contained" onClick={handleTypeFilterMenuOpen}>
-            Type Filters
-          </Button>
-          <Menu
-            anchorEl={anchorElType}
-            open={Boolean(anchorElType)}
-            onClose={handleTypeFilterMenuClose}
-          >
-            {Object.keys(typeFilters).map((type) => (
-              <MenuItem key={type}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={typeFilters[type]}
-                      onChange={() => handleTypeFilterChange(type)}
-                    />
-                  }
-                  label={type}
-                />
-              </MenuItem>
-            ))}
-          </Menu>
-        </Grid>
-        <Grid item>
-          <Button variant="contained" onClick={handleSizeFilterMenuOpen}>
-            Size Filters
-          </Button>
-          <Menu
-            anchorEl={anchorElSize}
-            open={Boolean(anchorElSize)}
-            onClose={handleSizeFilterMenuClose}
-          >
-            {Object.keys(sizeFilters).map((size) => (
-              <MenuItem key={size}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={sizeFilters[size]}
-                      onChange={() => handleSizeFilterChange(size)}
-                    />
-                  }
-                  label={size}
-                />
-              </MenuItem>
-            ))}
-          </Menu>
-        </Grid>
-        <Grid item>
-          <Button variant="contained" onClick={handleWhoHasFilterMenuOpen}>
-            Who Has Filters
-          </Button>
-          <Menu
-            anchorEl={anchorElWhoHas}
-            open={Boolean(anchorElWhoHas)}
-            onClose={handleWhoHasFilterMenuClose}
-          >
-            {whoHasFilters.map((filter) => (
-              <MenuItem key={filter.id}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={filter.checked}
-                      onChange={() => handleWhoHasFilterChange(filter.id)}
-                    />
-                  }
-                  label={filter.name}
-                />
-              </MenuItem>
-            ))}
-          </Menu>
-        </Grid>
+        {showFilters.pendingSale && (
+          <Grid item>
+            <FormControlLabel
+              control={<Switch checked={showPendingSales} onChange={() => setShowPendingSales(!showPendingSales)} />}
+              label="Show Pending Sales"
+            />
+          </Grid>
+        )}
+        {showFilters.unidentified && (
+          <Grid item>
+            <FormControlLabel
+              control={<Switch checked={showOnlyUnidentified} onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)} />}
+              label="Show Only Unidentified"
+            />
+          </Grid>
+        )}
+        {showFilters.type && (
+          <Grid item>
+            <Button variant="contained" onClick={handleTypeFilterMenuOpen}>
+              Type Filters
+            </Button>
+            <Menu
+              anchorEl={anchorElType}
+              open={Boolean(anchorElType)}
+              onClose={handleTypeFilterMenuClose}
+            >
+              {Object.keys(typeFilters).map((type) => (
+                <MenuItem key={type}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={typeFilters[type]}
+                        onChange={() => handleTypeFilterChange(type)}
+                      />
+                    }
+                    label={type}
+                  />
+                </MenuItem>
+              ))}
+            </Menu>
+          </Grid>
+        )}
+        {showFilters.size && (
+          <Grid item>
+            <Button variant="contained" onClick={handleSizeFilterMenuOpen}>
+              Size Filters
+            </Button>
+            <Menu
+              anchorEl={anchorElSize}
+              open={Boolean(anchorElSize)}
+              onClose={handleSizeFilterMenuClose}
+            >
+              {Object.keys(sizeFilters).map((size) => (
+                <MenuItem key={size}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={sizeFilters[size]}
+                        onChange={() => handleSizeFilterChange(size)}
+                      />
+                    }
+                    label={size}
+                  />
+                </MenuItem>
+              ))}
+            </Menu>
+          </Grid>
+        )}
+        {showFilters.whoHas && (
+          <Grid item>
+            <Button variant="contained" onClick={handleWhoHasFilterMenuOpen}>
+              Who Has Filters
+            </Button>
+            <Menu
+              anchorEl={anchorElWhoHas}
+              open={Boolean(anchorElWhoHas)}
+              onClose={handleWhoHasFilterMenuClose}
+            >
+              {whoHasFilters.map((filter) => (
+                <MenuItem key={filter.id}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={filter.checked}
+                        onChange={() => handleWhoHasFilterChange(filter.id)}
+                      />
+                    }
+                    label={filter.name}
+                  />
+                </MenuItem>
+              ))}
+            </Menu>
+          </Grid>
+        )}
       </Grid>
       <TableContainer component={Paper} sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
         <Table sx={{ minWidth: 650 }}>

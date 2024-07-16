@@ -39,7 +39,6 @@ const UnprocessedLoot = () => {
   const [splitQuantities, setSplitQuantities] = useState([]);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
-  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [openItems, setOpenItems] = useState({});
 
@@ -89,8 +88,7 @@ const UnprocessedLoot = () => {
     setSplitQuantities([...splitQuantities, { quantity: 0 }]);
   };
 
-  const filteredLoot = applyFilters(loot, filters);
-  console.log('Filtered loot:', filteredLoot);
+  const filteredLoot = applyFilters(loot, {});
 
   return (
     <Container component="main">
@@ -119,10 +117,17 @@ const UnprocessedLoot = () => {
           sessionDate: true,
           lastUpdate: true,
           unidentified: true,
-          pendingSale: true
+          pendingSale: true,
         }}
-        filters={['unidentified', 'type', 'size', 'pendingSale']} // Define available filters
-        setFilters={setFilters}
+        showFilters={{
+          pendingSale: true,
+          unidentified: true,
+          type: true,
+          size: true,
+          whoHas: false,
+        }}
+        filters={[]}
+        setFilters={() => {}}
         handleFilterChange={handleFilterChange}
       />
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleSell)}>
