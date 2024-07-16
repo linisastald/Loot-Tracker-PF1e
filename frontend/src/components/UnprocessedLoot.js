@@ -32,6 +32,7 @@ import {
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
+  const [filteredLoot, setFilteredLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
   const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
   const [openSplitDialog, setOpenSplitDialog] = useState(false);
@@ -47,6 +48,10 @@ const UnprocessedLoot = () => {
     fetchLoot();
     fetchActiveUserDetails();
   }, []);
+
+  useEffect(() => {
+    setFilteredLoot(applyFilters(loot, filters));
+  }, [loot, filters]);
 
   const fetchLoot = async () => {
     try {
@@ -89,11 +94,6 @@ const UnprocessedLoot = () => {
     setSplitQuantities([...splitQuantities, { quantity: 0 }]);
   };
 
-  useEffect(() => {
-    setFilteredLoot(applyFilters(loot, filters));
-  }, [filters, loot]);
-
-  const filteredLoot = applyFilters(loot, filters);
   console.log('Filtered loot:', filteredLoot);
 
   return (
