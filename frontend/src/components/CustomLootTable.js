@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TableContainer,
   Table,
@@ -13,16 +13,18 @@ import {
   TableSortLabel,
   Tooltip,
   Grid,
-  FormControlLabel,
-  Switch,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
   Typography,
   Button,
   Menu,
-  MenuItem,
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
 import { formatDate } from '../utils/utils'; // Adjust the path as necessary
 import { styled } from '@mui/system';
+import axios from 'axios';
 
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   backgroundColor: theme.palette.action.hover,
@@ -47,31 +49,65 @@ const CustomLootTable = ({
     pendingSale: true,
     whoHasIt: true, // Ensure the whoHasIt column is included by default
   },
+  filters,
+  setFilters,
+  handleFilterChange,
 }) => {
-  const [showPendingSales, setShowPendingSales] = useState(true); // New filter state
-  const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false); // New filter state
-  const [anchorElType, setAnchorElType] = useState(null); // State for the type filter menu
-  const [anchorElSize, setAnchorElSize] = useState(null); // State for the size filter menu
-  const [typeFilters, setTypeFilters] = useState({
-    Weapon: true,
-    Armor: true,
-    Magic: true,
-    Gear: true,
-    'Trade Good': true,
-    Other: true,
-  });
-  const [sizeFilters, setSizeFilters] = useState({
-    Fine: true,
-    Diminutive: true,
-    Tiny: true,
-    Small: true,
-    Medium: true,
-    Large: true,
-    Huge: true,
-    Gargantuan: true,
-    Colossal: true,
-    Unknown: true,
-  });
+  const [whoHasFilterMenuOpen, setWhoHasFilterMenuOpen] = useState(false);
+  const [whoHasFilters, setWhoHasFilters] = useState([]);
+  const [characters, setCharacters] = useState([]);
+
+  useEffect(() => {
+    fetchCharacters();
+  }, []);
+
+  const fetchCharacters = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://192.168.0.64:5000/api/active-characters', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setCharacters(response.data);
+      setWhoHasFilters(response.data.map(character => ({ id: character.id, name: character.name, checked: false })));
+    } catch (error) {
+      console.error('Error fetching characters:', error);
+    }
+  };
+
+  const handleWhoHasFilterChange = (id) => {
+    setWhoHasFilters((prevFilters) =>
+      prevFilters.map((filter) =>
+        filter.id === id ? { ...filter, checked: !filter.checked } : filter
+      )
+    );
+  };
+
+  const renderWhoHasFilter = () => (
+    <Button
+      variant="contained"
+      onClick={() => setWhoHasFilterMenuOpen(true)}
+      sx={{ mb: 2 }}
+    >
+      Who Has Filters
+    </Button>
+  );
+
+  const whoHasFilterMenu = (
+    <Menu
+      open={whoHasFilterMenuOpen}
+      onClose={() => setWhoHasFilterMenuOpen(false)}
+    >
+      {whoHasFilters.map((filter) => (
+        <MenuItem key={filter.id}>
+          <Checkbox
+            checked={filter.checked}
+            onChange={() => handleWhoHasFilterChange(filter.id)}
+          />
+          {filter.name}
+        </MenuItem>
+      ))}
+    </Menu>
+  );
 
   const handleToggleOpen = (name) => {
     setOpenItems((prevOpenItems) => ({
@@ -84,112 +120,117 @@ const CustomLootTable = ({
     return individualLoot.filter((item) => item.name === name);
   };
 
-  const handleTypeFilterChange = (type) => {
-    setTypeFilters((prevFilters) => ({
-      ...prevFilters,
-      [type]: !prevFilters[type],
-    }));
+  const renderFilter = (filter) => {
+    switch (filter) {
+      case 'unidentified':
+        return (
+          <Grid item xs={3} key={filter}>
+            <FormControl fullWidth>
+              <InputLabel>Unidentified</InputLabel>
+              <Select
+                name="unidentified"
+                value={filters.unidentified || ''}
+                onChange={(e) => handleFilterChange(e, setFilters)}
+              >
+                <MenuItem value="">All</MenuItem>
+                <MenuItem value="true">Unidentified</MenuItem>
+                <MenuItem value="false">Identified</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        );
+      case 'type':
+        return (
+          <Grid item xs={3} key={filter}>
+            <FormControl fullWidth>
+              <InputLabel>Type</InputLabel>
+              <Select
+                name="type"
+                value={filters.type || ''}
+                onChange={(e) => handleFilterChange(e, setFilters)}
+              >
+                <MenuItem value="">All</MenuItem>
+                <MenuItem value="Weapon">Weapon</MenuItem>
+                <MenuItem value="Armor">Armor</MenuItem>
+                <MenuItem value="Magic">Magic</MenuItem>
+                <MenuItem value="Gear">Gear</MenuItem>
+                <MenuItem value="Trade Good">Trade Good</MenuItem>
+                <MenuItem value="Other">Other</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        );
+      case 'size':
+        return (
+          <Grid item xs={3} key={filter}>
+            <FormControl fullWidth>
+              <InputLabel>Size</InputLabel>
+              <Select
+                name="size"
+                value={filters.size || ''}
+                onChange={(e) => handleFilterChange(e, setFilters)}
+              >
+                <MenuItem value="">All</MenuItem>
+                <MenuItem value="Fine">Fine</MenuItem>
+                <MenuItem value="Diminutive">Diminutive</MenuItem>
+                <MenuItem value="Tiny">Tiny</MenuItem>
+                <MenuItem value="Small">Small</MenuItem>
+                <MenuItem value="Medium">Medium</MenuItem>
+                <MenuItem value="Large">Large</MenuItem>
+                <MenuItem value="Huge">Huge</MenuItem>
+                <MenuItem value="Gargantuan">Gargantuan</MenuItem>
+                <MenuItem value="Colossal">Colossal</MenuItem>
+                <MenuItem value="Unknown">Unknown</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        );
+      case 'pendingSale':
+        return (
+          <Grid item xs={3} key={filter}>
+            <FormControl fullWidth>
+              <InputLabel>Pending Sale</InputLabel>
+              <Select
+                name="pendingSale"
+                value={filters.pendingSale || ''}
+                onChange={(e) => handleFilterChange(e, setFilters)}
+              >
+                <MenuItem value="">All</MenuItem>
+                <MenuItem value="true">Pending Sale</MenuItem>
+                <MenuItem value="false">Not Pending Sale</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        );
+      default:
+        return null;
+    }
   };
-
-  const handleSizeFilterChange = (size) => {
-    setSizeFilters((prevFilters) => ({
-      ...prevFilters,
-      [size]: !prevFilters[size],
-    }));
-  };
-
-  const handleTypeFilterMenuOpen = (event) => {
-    setAnchorElType(event.currentTarget);
-  };
-
-  const handleSizeFilterMenuOpen = (event) => {
-    setAnchorElSize(event.currentTarget);
-  };
-
-  const handleTypeFilterMenuClose = () => {
-    setAnchorElType(null);
-  };
-
-  const handleSizeFilterMenuClose = () => {
-    setAnchorElSize(null);
-  };
-
-  const filteredLoot = loot.filter(item =>
-    (showPendingSales || item.status !== 'Pending Sale') &&
-    (!showOnlyUnidentified || item.unidentified === true) &&
-    (typeFilters[item.type] || (typeFilters['Other'] && !item.type)) &&
-    (sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size))
-  );
-
-  console.log('Filtered loot after applying filters:', filteredLoot);
 
   const mainCellStyle = { padding: '16px' }; // Default padding for main rows
   const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
+
+  // Apply filters to loot
+  console.log('Applying filters to loot:', loot);
+  const filteredLoot = loot.filter((item) => {
+    const whoHasChecked = whoHasFilters.some(filter => filter.checked && item.whohas === filter.id);
+    return (
+      (filters.unidentified === '' || filters.unidentified === undefined || item.unidentified === (filters.unidentified === 'true')) &&
+      (filters.type === '' || filters.type === undefined || item.type === filters.type) &&
+      (filters.size === '' || filters.size === undefined || item.size === filters.size) &&
+      (filters.pendingSale === '' || filters.pendingSale === undefined || item.status === (filters.pendingSale === 'true' ? 'Pending Sale' : '')) &&
+      (whoHasFilters.every(filter => !filter.checked) || whoHasChecked)
+    );
+  });
+  console.log('Filtered loot after applying filters:', filteredLoot);
 
   return (
     <Paper sx={{ p: 2 }}>
       <Typography variant="h6">Loot Table</Typography>
       <Grid container spacing={2} sx={{ mb: 2 }}>
-        <Grid item>
-          <FormControlLabel
-            control={<Switch checked={showPendingSales} onChange={() => setShowPendingSales(!showPendingSales)} />}
-            label="Show Pending Sales"
-          />
-        </Grid>
-        <Grid item>
-          <FormControlLabel
-            control={<Switch checked={showOnlyUnidentified} onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)} />}
-            label="Show Only Unidentified"
-          />
-        </Grid>
-        <Grid item>
-          <Button variant="contained" onClick={handleTypeFilterMenuOpen}>
-            Type Filters
-          </Button>
-          <Menu
-            anchorEl={anchorElType}
-            open={Boolean(anchorElType)}
-            onClose={handleTypeFilterMenuClose}
-          >
-            {Object.keys(typeFilters).map((type) => (
-              <MenuItem key={type}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={typeFilters[type]}
-                      onChange={() => handleTypeFilterChange(type)}
-                    />
-                  }
-                  label={type}
-                />
-              </MenuItem>
-            ))}
-          </Menu>
-        </Grid>
-        <Grid item>
-          <Button variant="contained" onClick={handleSizeFilterMenuOpen}>
-            Size Filters
-          </Button>
-          <Menu
-            anchorEl={anchorElSize}
-            open={Boolean(anchorElSize)}
-            onClose={handleSizeFilterMenuClose}
-          >
-            {Object.keys(sizeFilters).map((size) => (
-              <MenuItem key={size}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={sizeFilters[size]}
-                      onChange={() => handleSizeFilterChange(size)}
-                    />
-                  }
-                  label={size}
-                />
-              </MenuItem>
-            ))}
-          </Menu>
-        </Grid>
+        {filters && filters.map((filter) => renderFilter(filter))}
+        {renderWhoHasFilter()}
+        {whoHasFilterMenu}
       </Grid>
       <TableContainer component={Paper} sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
         <Table sx={{ minWidth: 650 }}>

@@ -80,7 +80,6 @@ exports.findAll = async () => {
   }
 };
 
-
 exports.findByStatus = async (status) => {
   try {
     const summaryQuery = `
@@ -146,7 +145,6 @@ exports.findByStatus = async (status) => {
   }
 };
 
-
 exports.updateStatus = async (ids, status, whohas) => {
   try {
     let query;
@@ -174,7 +172,6 @@ exports.updateStatus = async (ids, status, whohas) => {
     throw error;
   }
 };
-
 
 exports.splitStack = async (id, splits, userId) => {
   const client = await pool.connect();
@@ -219,7 +216,6 @@ exports.splitStack = async (id, splits, userId) => {
     client.release();
   }
 };
-
 
 exports.updateEntry = async (id, updatedEntry) => {
   try {

@@ -10,6 +10,7 @@ router.post('/characters', verifyToken, userController.addCharacter);
 router.get('/all', verifyToken, checkRole(['DM']), userController.getAllUsers);
 router.put('/characters', verifyToken, userController.updateCharacter);
 router.put('/deactivate-all-characters', verifyToken, userController.deactivateAllCharacters);
+router.get('/active-characters', verifyToken, userController.getActiveCharacters);
 
 // DM ONLY
 router.put('/reset-password', verifyToken, checkRole(['DM']), userController.resetPassword);

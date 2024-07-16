@@ -42,6 +42,16 @@ exports.getCharacters = async (req, res) => {
   }
 };
 
+exports.getActiveCharacters = async (req, res) => {
+  try {
+    const result = await pool.query('select name,id from characters where active is true order by name desc');
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching characters', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 exports.addCharacter = async (req, res) => {
   const { name, appraisal_bonus, birthday, deathday, active } = req.body;
   const userId = req.user.id;
