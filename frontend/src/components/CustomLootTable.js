@@ -112,8 +112,15 @@ const CustomLootTable = ({
     }));
   };
 
-  const getIndividualItems = (name) => {
-    return individualLoot.filter((item) => item.name === name);
+  const getIndividualItems = (name, unidentified, masterwork, type, size) => {
+    return individualLoot.filter(
+      (item) =>
+        item.name === name &&
+        item.unidentified === unidentified &&
+        item.masterwork === masterwork &&
+        item.type === type &&
+        item.size === size
+    );
   };
 
   const handleTypeFilterChange = (type) => {
@@ -356,7 +363,7 @@ const CustomLootTable = ({
           </TableHead>
           <TableBody>
             {filteredLoot.map((item) => {
-              const individualItems = getIndividualItems(item.name);
+              const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
               const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
 
               return (
