@@ -50,7 +50,8 @@ const CustomLootTable = ({
 }) => {
   const [showPendingSales, setShowPendingSales] = useState(true); // New filter state
   const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false); // New filter state
-  const [anchorEl, setAnchorEl] = useState(null); // State for the type filter menu
+  const [anchorElType, setAnchorElType] = useState(null); // State for the type filter menu
+  const [anchorElSize, setAnchorElSize] = useState(null); // State for the size filter menu
   const [typeFilters, setTypeFilters] = useState({
     Weapon: true,
     Armor: true,
@@ -58,6 +59,18 @@ const CustomLootTable = ({
     Gear: true,
     'Trade Good': true,
     Other: true,
+  });
+  const [sizeFilters, setSizeFilters] = useState({
+    Fine: true,
+    Diminutive: true,
+    Tiny: true,
+    Small: true,
+    Medium: true,
+    Large: true,
+    Huge: true,
+    Gargantuan: true,
+    Colossal: true,
+    Unknown: true,
   });
 
   const handleToggleOpen = (name) => {
@@ -78,18 +91,34 @@ const CustomLootTable = ({
     }));
   };
 
+  const handleSizeFilterChange = (size) => {
+    setSizeFilters((prevFilters) => ({
+      ...prevFilters,
+      [size]: !prevFilters[size],
+    }));
+  };
+
   const handleTypeFilterMenuOpen = (event) => {
-    setAnchorEl(event.currentTarget);
+    setAnchorElType(event.currentTarget);
+  };
+
+  const handleSizeFilterMenuOpen = (event) => {
+    setAnchorElSize(event.currentTarget);
   };
 
   const handleTypeFilterMenuClose = () => {
-    setAnchorEl(null);
+    setAnchorElType(null);
+  };
+
+  const handleSizeFilterMenuClose = () => {
+    setAnchorElSize(null);
   };
 
   const filteredLoot = loot.filter(item =>
     (showPendingSales || item.status !== 'Pending Sale') &&
     (!showOnlyUnidentified || item.unidentified === true) &&
-    (typeFilters[item.type] || (typeFilters['Other'] && !item.type))
+    (typeFilters[item.type] || (typeFilters['Other'] && !item.type)) &&
+    (sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size))
   );
 
   console.log('Filtered loot after applying filters:', filteredLoot);
@@ -118,8 +147,8 @@ const CustomLootTable = ({
             Type Filters
           </Button>
           <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
+            anchorEl={anchorElType}
+            open={Boolean(anchorElType)}
             onClose={handleTypeFilterMenuClose}
           >
             {Object.keys(typeFilters).map((type) => (
@@ -132,6 +161,30 @@ const CustomLootTable = ({
                     />
                   }
                   label={type}
+                />
+              </MenuItem>
+            ))}
+          </Menu>
+        </Grid>
+        <Grid item>
+          <Button variant="contained" onClick={handleSizeFilterMenuOpen}>
+            Size Filters
+          </Button>
+          <Menu
+            anchorEl={anchorElSize}
+            open={Boolean(anchorElSize)}
+            onClose={handleSizeFilterMenuClose}
+          >
+            {Object.keys(sizeFilters).map((size) => (
+              <MenuItem key={size}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={sizeFilters[size]}
+                      onChange={() => handleSizeFilterChange(size)}
+                    />
+                  }
+                  label={size}
                 />
               </MenuItem>
             ))}
