@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   TableContainer,
   Table,
@@ -13,10 +13,8 @@ import {
   TableSortLabel,
   Tooltip,
   Grid,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  FormControlLabel,
+  Switch,
   Typography,
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
@@ -46,10 +44,9 @@ const CustomLootTable = ({
     pendingSale: true,
     whoHasIt: true, // Ensure the whoHasIt column is included by default
   },
-  filters,
-  setFilters,
-  handleFilterChange,
 }) => {
+  const [showPendingSales, setShowPendingSales] = useState(true); // New filter state
+
   const handleToggleOpen = (name) => {
     setOpenItems((prevOpenItems) => ({
       ...prevOpenItems,
@@ -61,114 +58,19 @@ const CustomLootTable = ({
     return individualLoot.filter((item) => item.name === name);
   };
 
-  const renderFilter = (filter) => {
-    switch (filter) {
-      case 'unidentified':
-        return (
-          <Grid item xs={3} key={filter}>
-            <FormControl fullWidth>
-              <InputLabel>Unidentified</InputLabel>
-              <Select
-                name="unidentified"
-                value={filters.unidentified || ''}
-                onChange={(e) => handleFilterChange(e, setFilters)}
-              >
-                <MenuItem value="">All</MenuItem>
-                <MenuItem value="true">Unidentified</MenuItem>
-                <MenuItem value="false">Identified</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        );
-      case 'type':
-        return (
-          <Grid item xs={3} key={filter}>
-            <FormControl fullWidth>
-              <InputLabel>Type</InputLabel>
-              <Select
-                name="type"
-                value={filters.type || ''}
-                onChange={(e) => handleFilterChange(e, setFilters)}
-              >
-                <MenuItem value="">All</MenuItem>
-                <MenuItem value="Weapon">Weapon</MenuItem>
-                <MenuItem value="Armor">Armor</MenuItem>
-                <MenuItem value="Magic">Magic</MenuItem>
-                <MenuItem value="Gear">Gear</MenuItem>
-                <MenuItem value="Trade Good">Trade Good</MenuItem>
-                <MenuItem value="Other">Other</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        );
-      case 'size':
-        return (
-          <Grid item xs={3} key={filter}>
-            <FormControl fullWidth>
-              <InputLabel>Size</InputLabel>
-              <Select
-                name="size"
-                value={filters.size || ''}
-                onChange={(e) => handleFilterChange(e, setFilters)}
-              >
-                <MenuItem value="">All</MenuItem>
-                <MenuItem value="Fine">Fine</MenuItem>
-                <MenuItem value="Diminutive">Diminutive</MenuItem>
-                <MenuItem value="Tiny">Tiny</MenuItem>
-                <MenuItem value="Small">Small</MenuItem>
-                <MenuItem value="Medium">Medium</MenuItem>
-                <MenuItem value="Large">Large</MenuItem>
-                <MenuItem value="Huge">Huge</MenuItem>
-                <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-                <MenuItem value="Colossal">Colossal</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        );
-      case 'pendingSale':
-        return (
-          <Grid item xs={3} key={filter}>
-            <FormControl fullWidth>
-              <InputLabel>Pending Sale</InputLabel>
-              <Select
-                name="pendingSale"
-                value={filters.pendingSale || ''}
-                onChange={(e) => handleFilterChange(e, setFilters)}
-              >
-                <MenuItem value="">All</MenuItem>
-                <MenuItem value="true">Pending Sale</MenuItem>
-                <MenuItem value="false">Not Pending Sale</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        );
-      default:
-        return null;
-    }
-  };
+  const filteredLoot = loot.filter(item => showPendingSales || item.status !== 'Pending Sale');
+  console.log('Filtered loot after applying filters:', filteredLoot);
 
   const mainCellStyle = { padding: '16px' }; // Default padding for main rows
   const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
 
-  // Apply filters to loot
-  console.log('Applying filters to loot:', loot);
-  const filteredLoot = loot.filter((item) => {
-    console.log(`Item: ${item.name}, Unidentified: ${item.unidentified}, Type: ${item.type}, Size: ${item.size}, Pending Sale: ${item.status}`);
-    return (
-      (filters.unidentified === '' || filters.unidentified === undefined || item.unidentified === (filters.unidentified === 'true')) &&
-      (filters.type === '' || filters.type === undefined || item.type === filters.type) &&
-      (filters.size === '' || filters.size === undefined || item.size === filters.size) &&
-      (filters.pendingSale === '' || filters.pendingSale === undefined || item.status === (filters.pendingSale === 'true' ? 'Pending Sale' : ''))
-    );
-  });
-  console.log('Filtered loot after applying filters:', filteredLoot);
-
   return (
     <Paper sx={{ p: 2 }}>
       <Typography variant="h6">Loot Table</Typography>
-      <Grid container spacing={2} sx={{ mb: 2 }}>
-        {filters && filters.map((filter) => renderFilter(filter))}
-      </Grid>
+      <FormControlLabel
+        control={<Switch checked={showPendingSales} onChange={() => setShowPendingSales(!showPendingSales)} />}
+        label="Show Pending Sales"
+      />
       <TableContainer component={Paper} sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
         <Table sx={{ minWidth: 650 }}>
           <TableHead>
