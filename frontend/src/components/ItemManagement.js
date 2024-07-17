@@ -67,8 +67,8 @@ const ItemManagement = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('Pending Sale Items Response:', response.data);
-      setPendingSaleItems(response.data.items);
-      setPendingSaleCount(response.data.total);
+      setPendingSaleItems(response.data.items || []);
+      setPendingSaleCount(response.data.total || 0);
     } catch (error) {
       console.error('Error fetching pending sale items', error);
       setPendingSaleItems([]);
@@ -172,9 +172,10 @@ const ItemManagement = () => {
   };
 
   const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
+    const newRowsPerPage = parseInt(event.target.value, 10);
+    setRowsPerPage(newRowsPerPage);
     setPage(0);
-    fetchPendingSaleItems(0, parseInt(event.target.value, 10));
+    fetchPendingSaleItems(0, newRowsPerPage);
   };
 
   return (
@@ -279,7 +280,7 @@ const ItemManagement = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {pendingSaleItems.map((item) => (
+                {pendingSaleItems.length > 0 && pendingSaleItems.map((item) => (
                   <TableRow key={item.id} onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
                     <TableCell>{format(new Date(item.session_date), 'MMMM dd, yyyy')}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
