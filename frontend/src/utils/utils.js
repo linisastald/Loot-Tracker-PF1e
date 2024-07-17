@@ -260,7 +260,15 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
 
 export const fetchItemNames = async () => {
   try {
-    const response = await axios.get('http://192.168.0.64:5000/api/loot/items');
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.error('No token found in localStorage');
+      throw new Error('No token found');
+    }
+
+    const response = await axios.get('http://192.168.0.64:5000/api/loot/items', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     return response.data;
   } catch (error) {
     console.error('Error fetching item names:', error);
