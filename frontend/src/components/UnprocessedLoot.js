@@ -52,7 +52,6 @@ const UnprocessedLoot = () => {
       const response = await axios.get('http://192.168.0.64:5000/api/loot', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      console.log('Fetched loot:', response.data);
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);
@@ -88,7 +87,6 @@ const UnprocessedLoot = () => {
   };
 
   const filteredLoot = applyFilters(loot, filters);
-  console.log('Filtered loot:', filteredLoot);
 
   return (
     <Container component="main">
