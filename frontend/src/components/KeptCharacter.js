@@ -47,7 +47,7 @@ const UnprocessedLoot = () => {
   const fetchLoot = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+      const response = await axios.get('http://192.168.0.64:5000/api/loot/kept-character', {
         headers: { Authorization: `Bearer ${token}` },
       });
       setLoot(response.data);
