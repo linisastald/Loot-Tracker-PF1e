@@ -21,7 +21,10 @@ import {
   MenuItem,
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import { formatDate } from '../utils/utils'; // Adjust the path as necessary
+import {
+  formatDate,
+  handleSort,
+} from '../utils/utils'; // Adjust the path as necessary
 import { styled } from '@mui/system';
 import axios from 'axios';
 
@@ -40,6 +43,8 @@ const CustomLootTable = ({
   openItems,
   setOpenItems,
   handleSelectItem,
+  sortConfig,
+  setSortConfig, // Added prop
   showColumns = {
     select: true,
     unidentified: true,
@@ -80,7 +85,6 @@ const CustomLootTable = ({
   });
   const [whoHasFilters, setWhoHasFilters] = useState([]);
   const [anchorElWhoHas, setAnchorElWhoHas] = useState(null); // State for the who has filter menu
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' }); // State for sorting configuration
 
   useEffect(() => {
     const fetchWhoHasFilters = async () => {
@@ -104,20 +108,21 @@ const CustomLootTable = ({
     fetchWhoHasFilters();
   }, []);
 
-  const handleToggleOpen = (name, unidentified, masterwork, type) => {
+  const handleToggleOpen = (name, unidentified, masterwork, type, size) => {
     setOpenItems((prevOpenItems) => ({
       ...prevOpenItems,
-      [`${name}-${unidentified}-${masterwork}-${type}`]: !prevOpenItems[`${name}-${unidentified}-${masterwork}-${type}`],
+      [`${name}-${unidentified}-${masterwork}-${type}-${size}`]: !prevOpenItems[`${name}-${unidentified}-${masterwork}-${type}-${size}`],
     }));
   };
 
-  const getIndividualItems = (name, unidentified, masterwork, type) => {
+  const getIndividualItems = (name, unidentified, masterwork, type, size) => {
     return individualLoot.filter(
       (item) =>
         item.name === name &&
         item.unidentified === unidentified &&
         item.masterwork === masterwork &&
-        item.type === type
+        item.type === type &&
+        item.size === size
     );
   };
 
@@ -167,16 +172,8 @@ const CustomLootTable = ({
     setAnchorElWhoHas(null);
   };
 
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
-
   const filteredLoot = loot.filter((item) => {
-    const whoHasChecked = whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
+    const whoHasChecked = whoHasFilters.some((filter) => filter.checked && item.whohas === filter.id);
     return (
       (showPendingSales || item.status !== 'Pending Sale') &&
       (!showOnlyUnidentified || item.unidentified === true) &&
@@ -187,16 +184,6 @@ const CustomLootTable = ({
   });
 
   console.log('Filtered loot after applying filters:', filteredLoot);
-
-  const sortedLoot = filteredLoot.sort((a, b) => {
-    if (a[sortConfig.key] < b[sortConfig.key]) {
-      return sortConfig.direction === 'asc' ? -1 : 1;
-    }
-    if (a[sortConfig.key] > b[sortConfig.key]) {
-      return sortConfig.direction === 'asc' ? 1 : -1;
-    }
-    return 0;
-  });
 
   const mainCellStyle = { padding: '16px' }; // Default padding for main rows
   const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
@@ -378,12 +365,12 @@ const CustomLootTable = ({
             </TableRow>
           </TableHead>
           <TableBody>
-            {sortedLoot.map((item) => {
-              const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type);
+            {filteredLoot.map((item) => {
+              const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
               const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
 
               return (
-                <React.Fragment key={`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}`}>
+                <React.Fragment key={`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`}>
                   <TableRow>
                     {showColumns.select && (
                       <TableCell style={mainCellStyle}>
@@ -403,9 +390,9 @@ const CustomLootTable = ({
                         <IconButton
                           aria-label="expand row"
                           size="small"
-                          onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type)}
+                          onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type, item.size)}
                         >
-                          {openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}`] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                          {openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
                         </IconButton>
                       )}
                       <Tooltip title={item.notes || 'No notes'} arrow>
@@ -435,7 +422,7 @@ const CustomLootTable = ({
                   {individualItems.length > 1 && (
                     <TableRow>
                       <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={showColumns.unidentified ? 11 : 10}>
-                        <Collapse in={openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}`]} timeout="auto" unmountOnExit>
+                        <Collapse in={openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`]} timeout="auto" unmountOnExit>
                           <Table size="small">
                             <TableHead>
                               <TableRow>
