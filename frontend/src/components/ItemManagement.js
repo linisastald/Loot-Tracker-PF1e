@@ -83,6 +83,27 @@ const ItemManagement = () => {
       await axios.put('http://192.168.0.64:5000/api/loot/confirm-sale', {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      // Calculate gold, silver, and copper from pendingSaleTotal
+      const totalValue = pendingSaleTotal;
+      const gold = Math.floor(totalValue);
+      const silver = Math.floor((totalValue - gold) * 10);
+      const copper = Math.floor(((totalValue - gold) * 100) % 10);
+
+      const goldEntry = {
+        sessionDate: new Date(),
+        transactionType: 'Sale',
+        platinum: 0,
+        gold,
+        silver,
+        copper,
+        notes: 'Sale of items',
+      };
+
+      await axios.post('http://192.168.0.64:5000/api/gold', { goldEntries: [goldEntry] }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
       fetchItems();
     } catch (error) {
       console.error('Error confirming sale', error);
