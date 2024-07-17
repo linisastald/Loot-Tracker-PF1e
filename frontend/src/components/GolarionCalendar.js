@@ -29,23 +29,43 @@ const GolarionCalendar = () => {
     const days = Array.from({ length: month.days }, (_, i) => i + 1);
     const startDay = (new Date(currentYear, currentMonth, 1).getDay() + 6) % 7; // Adjusting to Moonday start
 
+    // Create an array of weeks with days
+    const weeks = [];
+    let currentWeek = Array(startDay).fill(null); // Start with empty days
+
+    days.forEach(day => {
+      currentWeek.push(day);
+      if (currentWeek.length === 7) {
+        weeks.push(currentWeek);
+        currentWeek = [];
+      }
+    });
+
+    // Add the remaining days to the last week
+    if (currentWeek.length > 0) {
+      weeks.push(currentWeek.concat(Array(7 - currentWeek.length).fill(null)));
+    }
+
     return (
       <Box>
-        <Typography variant="h6">{month.name} {currentYear}</Typography>
+        <Typography variant="h6" align="center">{month.name} {currentYear}</Typography>
         <Grid container spacing={1}>
           {daysOfWeek.map((day, index) => (
             <Grid item xs key={index}>
               <Typography variant="body2" align="center">{day}</Typography>
             </Grid>
           ))}
-          {Array.from({ length: startDay }).map((_, index) => (
-            <Grid item xs key={`empty-${index}`} />
-          ))}
-          {days.map(day => (
-            <Grid item xs key={day}>
-              <Paper>
-                <Typography variant="body2" align="center">{day}</Typography>
-              </Paper>
+          {weeks.map((week, index) => (
+            <Grid container item xs={12} spacing={1} key={index}>
+              {week.map((day, index) => (
+                <Grid item xs key={index}>
+                  <Paper>
+                    <Typography variant="body2" align="center">
+                      {day ? day : ''}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              ))}
             </Grid>
           ))}
         </Grid>
