@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+// LootEntry.js
+
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import jwt_decode from 'jwt-decode';
 import {
@@ -12,14 +14,17 @@ import {
   MenuItem,
   Select,
   InputLabel,
+  Autocomplete
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { fetchItemNames } from './utils';
 
 const initialItemEntry = {
   sessionDate: new Date(),
   quantity: '',
   name: '',
+  itemId: null, // Add itemId field
   unidentified: null,
   masterwork: null,
   type: '',
@@ -39,12 +44,29 @@ const initialGoldEntry = {
 
 const LootEntry = () => {
   const [entries, setEntries] = useState([{ type: 'item', data: { ...initialItemEntry } }]);
+  const [itemNames, setItemNames] = useState([]);
+
+  useEffect(() => {
+    const loadItemNames = async () => {
+      const names = await fetchItemNames();
+      setItemNames(names);
+    };
+    loadItemNames();
+  }, []);
 
   const handleEntryChange = (index, e) => {
     const { name, value } = e.target;
     setEntries(prevEntries =>
       prevEntries.map((entry, i) =>
         i === index ? { ...entry, data: { ...entry.data, [name]: value === '' ? null : value } } : entry
+      )
+    );
+  };
+
+  const handleItemSelect = (index, _, selectedItem) => {
+    setEntries(prevEntries =>
+      prevEntries.map((entry, i) =>
+        i === index ? { ...entry, data: { ...entry.data, name: selectedItem.name, itemId: selectedItem.id } } : entry
       )
     );
   };
@@ -161,13 +183,21 @@ const LootEntry = () => {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Item Name"
-                      name="name"
-                      value={entry.data.name || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
-                      fullWidth
-                      required
+                    <Autocomplete
+                      options={itemNames}
+                      getOptionLabel={(option) => option.name}
+                      onChange={(e, value) => handleItemSelect(index, e, value)}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Item Name"
+                          name="name"
+                          value={entry.data.name || ''}
+                          onChange={(e) => handleEntryChange(index, e)}
+                          fullWidth
+                          required
+                        />
+                      )}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>

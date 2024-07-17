@@ -225,6 +225,7 @@ export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateD
     console.error('Error updating item:', error);
   }
 };
+
 export const handleSplitSubmit = async (splitQuantities, selectedItems, originalItemQuantity, userId, fetchLoot, setOpenSplitDialog, setSelectedItems) => {
   // Calculate the sum of split quantities
   const sumOfSplits = splitQuantities.reduce((total, current) => total + parseInt(current.quantity, 10), 0);
@@ -257,4 +258,12 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
   }
 };
 
-
+export const fetchItemNames = async () => {
+  try {
+    const response = await axios.get('http://192.168.0.64:5000/api/items');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching item names:', error);
+    return [];
+  }
+};

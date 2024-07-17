@@ -6,7 +6,8 @@ const checkRole = require('../middleware/checkRole');
 
 router.post('/', verifyToken, lootController.createLoot);
 router.get('/', verifyToken, lootController.getAllLoot);
-router.post('/split-stack', verifyToken, lootController.splitStack);  // Ensure this route is correctly defined
+router.get('/items', verifyToken, lootController.getItems);
+router.post('/split-stack', verifyToken, lootController.splitStack);
 router.get('/trash', verifyToken, lootController.getTrashedLoot);
 router.get('/kept-party', verifyToken, lootController.getKeptPartyLoot);
 router.get('/kept-character', verifyToken, lootController.getKeptCharacterLoot);
