@@ -126,6 +126,9 @@ const Sidebar = () => {
                 <ListItem button component={Link} to="/item-management" className={isActiveRoute('/item-management')} sx={{ pl: 4 }}>
                   <ListItemText primary="Item Management" />
                 </ListItem>
+                <ListItem button component={Link} to="/golarion-calendar" className={isActiveRoute('/golarion-calendar')} sx={{ pl: 4 }}>
+                  <ListItemText primary="Golarion Calendar" />
+                </ListItem>
               </List>
             </Collapse>
           </div>

@@ -17,6 +17,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import theme from './theme';
 import ItemManagement from "./components/ItemManagement";
+import GolarionCalendar from "./components/GolarionCalendar";
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
             <Route path="/sold-loot" element={<SoldLoot />} />
             <Route path="/character-user-management" element={<CharacterAndUserManagement />} />
             <Route path="/item-management" element={<ItemManagement />} />
+            <Route path="/golarion-calendar" element={<ProtectedRoute component={GolarionCalendar} />} />
           </Route>
         </Routes>
       </Router>
