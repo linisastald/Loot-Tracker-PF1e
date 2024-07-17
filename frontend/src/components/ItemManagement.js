@@ -95,12 +95,18 @@ const ItemManagement = () => {
     }));
   };
 
-  const handleSearch = () => {
-    const filtered = items.filter(item =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    console.log('Filtered Items:', filtered);
-    setFilteredItems(filtered);
+  const handleSearch = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`http://192.168.0.64:5000/api/loot/search?query=${searchTerm}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      console.log('Search Response:', response.data);
+      setFilteredItems(response.data);
+    } catch (error) {
+      console.error('Error searching items', error);
+      setFilteredItems([]);
+    }
   };
 
   return (
