@@ -107,6 +107,10 @@ const LootEntry = () => {
     setEntries(entries.filter((_, i) => i !== index));
   };
 
+  const handleRemoveAllEntries = () => {
+    setEntries([]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
@@ -150,7 +154,7 @@ const LootEntry = () => {
           );
         }
       }
-      setEntries([{ type: 'item', data: { ...initialItemEntry } }]); // Reset the form state
+      handleRemoveAllEntries(); // Remove all entries after submission
     } catch (error) {
       console.error('Error submitting entry', error);
     }
