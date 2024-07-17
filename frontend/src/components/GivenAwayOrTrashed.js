@@ -21,7 +21,7 @@ const UnprocessedLoot = () => {
     type: '',
     size: '',
     pendingSale: ''
-  }), [openItems, setOpenItems] = useState({}), [sortConfig, setSortConfig] = useState({key: '', direction: 'asc'}); // Added state for sorting
+  }), [openItems, setOpenItems] = useState({}), [sortConfig, setSortConfig] = useState({key: '', direction: 'asc'});
 
   useEffect(() => {
     fetchLoot();
@@ -64,7 +64,7 @@ const UnprocessedLoot = () => {
         setOpenItems={setOpenItems}
         handleSelectItem={handleSelectItem}
         sortConfig={sortConfig}
-        setSortConfig={setSortConfig} // Pass down the sorting state and setter
+        setSortConfig={setSortConfig}
         showColumns={{
           select: false,
           quantity: true,
