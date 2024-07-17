@@ -4,33 +4,19 @@ import {
   Container,
   Paper,
   Typography,
-  Button,
 } from '@mui/material';
 import CustomLootTable from './CustomLootTable';
-import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
-import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
 import {
   fetchActiveUser,
   handleSelectItem,
-  handleSell,
-  handleTrash,
-  handleKeepSelf,
-  handleKeepParty,
-  handleSplitSubmit,
-  handleOpenUpdateDialog,
-  handleOpenSplitDialog,
-  handleUpdateDialogClose,
-  handleSplitDialogClose,
-  handleUpdateChange,
   applyFilters,
-  handleUpdateSubmit,
 } from '../utils/utils';
 
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({
     summary: [],
     individual: []
-  }), [selectedItems, setSelectedItems] = useState([]), [openUpdateDialog, setOpenUpdateDialog] = useState(false), [openSplitDialog, setOpenSplitDialog] = useState(false), [splitItem, setSplitItem] = useState(null), [splitQuantities, setSplitQuantities] = useState([]), [updatedEntry, setUpdatedEntry] = useState({}), [activeUser, setActiveUser] = useState(null), [filters, setFilters] = useState({
+  }), [selectedItems, setSelectedItems] = useState([]), [, setActiveUser] = useState(null), [filters] = useState({
     unidentified: '',
     type: '',
     size: '',
@@ -62,26 +48,6 @@ const UnprocessedLoot = () => {
       console.error('Active character ID is not available or user could not be fetched');
     }
   };
-
-  const handleAction = async (actionFunc) => {
-    await actionFunc(selectedItems, fetchLoot, activeUser);
-    setSelectedItems([]);  // Ensure selection resets after action
-  };
-
-  const handleOpenSplitDialogWrapper = (item) => {
-    handleOpenSplitDialog(item, setSplitItem, setSplitQuantities, setOpenSplitDialog);
-  };
-
-  const handleSplitChange = (index, value) => {
-    const updatedQuantities = [...splitQuantities];
-    updatedQuantities[index].quantity = parseInt(value, 10); // Ensure the value is an integer
-    setSplitQuantities(updatedQuantities);
-  };
-
-  const handleAddSplit = () => {
-    setSplitQuantities([...splitQuantities, { quantity: 0 }]);
-  };
-
   const filteredLoot = applyFilters(loot, filters);
 
   return (
