@@ -257,29 +257,7 @@ exports.updateEntry = async (id, updatedEntry) => {
 exports.getItems = async (status) => {
   try {
     const items = `
-      SELECT
-        l.name,
-        SUM(l.quantity) AS quantity,
-        l.unidentified,
-        l.masterwork,
-        l.type,
-        l.size,
-        MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
-        MAX(l.lastupdate) AS lastupdate,
-        CASE 
-          WHEN $1 = 'Kept Self' THEN c.name
-          ELSE NULL
-        END AS character_name
-      FROM
-        loot l
-      LEFT JOIN
-        appraisal a ON l.id = a.lootid
-      LEFT JOIN
-        characters c ON l.whohas = c.id
-      WHERE
-        l.status = $1
-      GROUP BY
-        l.name, l.unidentified, l.masterwork, l.type, l.size, character_name;
+      SELECT * from item;
     `;
     const itemsResult = await pool.query(items, [status]);
 
