@@ -1,3 +1,5 @@
+// ItemManagement.js
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -57,7 +59,7 @@ const ItemManagement = () => {
 
   const calculatePendingSaleSummary = (items) => {
     const pendingItems = items.filter(item => item.status === 'Pending Sale');
-    const total = pendingItems.reduce((sum, item) => sum + (item.value / 2), 0);
+    const total = pendingItems.reduce((sum, item) => sum + (item.value ? (item.value / 2) : 0), 0);
     setPendingSaleTotal(total);
     setPendingSaleCount(pendingItems.length);
   };
