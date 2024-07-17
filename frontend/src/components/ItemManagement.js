@@ -110,6 +110,11 @@ const ItemManagement = () => {
     }
   };
 
+  const handleClearSearch = () => {
+    setFilteredItems([]);
+    setSearchTerm('');
+  };
+
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
@@ -126,6 +131,9 @@ const ItemManagement = () => {
           />
           <Button variant="contained" color="primary" onClick={handleSearch} sx={{ ml: 2 }}>
             Search
+          </Button>
+          <Button variant="contained" color="secondary" onClick={handleClearSearch} sx={{ ml: 2 }}>
+            Clear
           </Button>
         </Box>
 
