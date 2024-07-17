@@ -57,7 +57,13 @@ const ItemManagement = () => {
 
   const calculatePendingSaleSummary = (items) => {
     const pendingItems = items.filter(item => item.status === 'Pending Sale');
-    const total = pendingItems.reduce((sum, item) => sum + (item.value ? (item.value / 2) : 0), 0);
+    const total = pendingItems.reduce((sum, item) => {
+      if (item.type === 'Trade Good') {
+        return sum + (item.value ? item.value : 0);
+      } else {
+        return sum + (item.value ? (item.value / 2) : 0);
+      }
+    }, 0);
     const roundedTotal = Math.ceil(total * 100) / 100; // Round up to the nearest hundredth
     setPendingSaleTotal(roundedTotal);
     setPendingSaleCount(pendingItems.length);
