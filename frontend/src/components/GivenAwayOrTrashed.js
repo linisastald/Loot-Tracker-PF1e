@@ -27,17 +27,15 @@ import {
 } from '../utils/utils';
 
 const UnprocessedLoot = () => {
-  const [loot, setLoot] = useState({ summary: [], individual: [] });
-  const [selectedItems, setSelectedItems] = useState([]);
-  const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
-  const [openSplitDialog, setOpenSplitDialog] = useState(false);
-  const [splitItem, setSplitItem] = useState(null);
-  const [splitQuantities, setSplitQuantities] = useState([]);
-  const [updatedEntry, setUpdatedEntry] = useState({});
-  const [activeUser, setActiveUser] = useState(null);
-  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
-  const [openItems, setOpenItems] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' }); // Added state for sorting
+  const [loot, setLoot] = useState({
+    summary: [],
+    individual: []
+  }), [selectedItems, setSelectedItems] = useState([]), [openUpdateDialog, setOpenUpdateDialog] = useState(false), [openSplitDialog, setOpenSplitDialog] = useState(false), [splitItem, setSplitItem] = useState(null), [splitQuantities, setSplitQuantities] = useState([]), [updatedEntry, setUpdatedEntry] = useState({}), [activeUser, setActiveUser] = useState(null), [filters, setFilters] = useState({
+    unidentified: '',
+    type: '',
+    size: '',
+    pendingSale: ''
+  }), [openItems, setOpenItems] = useState({}), [sortConfig, setSortConfig] = useState({key: '', direction: 'asc'}); // Added state for sorting
 
   useEffect(() => {
     fetchLoot();
