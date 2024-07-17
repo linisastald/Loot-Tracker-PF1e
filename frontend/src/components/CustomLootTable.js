@@ -20,7 +20,7 @@ import {
   MenuItem,
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import { formatDate, handleSort } from '../utils/utils'; // Adjust the path as necessary
+import { formatDate } from '../utils/utils'; // Adjust the path as necessary
 import { styled } from '@mui/system';
 import axios from 'axios';
 
@@ -179,6 +179,17 @@ const CustomLootTable = ({
     );
   });
 
+  // Add sorting logic
+  const sortedLoot = [...filteredLoot].sort((a, b) => {
+    if (a[sortConfig.key] < b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? -1 : 1;
+    }
+    if (a[sortConfig.key] > b[sortConfig.key]) {
+      return sortConfig.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
+
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -187,7 +198,7 @@ const CustomLootTable = ({
     setSortConfig({ key, direction });
   };
 
-  console.log('Filtered loot after applying filters:', filteredLoot);
+  console.log('Sorted loot after applying sorting:', sortedLoot);
 
   const mainCellStyle = { padding: '16px' }; // Default padding for main rows
   const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
@@ -369,7 +380,7 @@ const CustomLootTable = ({
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredLoot.map((item) => {
+            {sortedLoot.map((item) => {
               const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
               const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
 
