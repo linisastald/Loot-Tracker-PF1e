@@ -254,12 +254,12 @@ exports.updateEntry = async (id, updatedEntry) => {
   }
 };
 
-exports.getItems = async (status) => {
+exports.getItems = async () => {
   try {
     const items = `
       SELECT * from item;
     `;
-    const itemsResult = await pool.query(items, [status]);
+    const itemsResult = await pool.query(items);
 
     return {
       summary: itemsResult.rows
