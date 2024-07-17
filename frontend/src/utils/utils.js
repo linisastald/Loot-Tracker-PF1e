@@ -260,7 +260,7 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
 
 export const fetchItemNames = async () => {
   try {
-    const response = await axios.get('http://192.168.0.64:5000/api/items');
+    const response = await axios.get('http://192.168.0.64:5000/api/loot/items');
     return response.data;
   } catch (error) {
     console.error('Error fetching item names:', error);
