@@ -46,6 +46,7 @@ const initialGoldEntry = {
 const LootEntry = () => {
   const [entries, setEntries] = useState([{ type: 'item', data: { ...initialItemEntry } }]);
   const [itemNames, setItemNames] = useState([]);
+  const [selectedItems, setSelectedItems] = useState([]);
 
   useEffect(() => {
     const loadItemNames = async () => {
@@ -66,6 +67,9 @@ const LootEntry = () => {
 
   const handleItemSelect = (index, _, selectedItem) => {
     if (selectedItem) {
+      setSelectedItems(prevSelectedItems =>
+        prevSelectedItems.map((item, i) => (i === index ? true : item))
+      );
       setEntries(prevEntries =>
         prevEntries.map((entry, i) =>
           i === index ? {
@@ -80,10 +84,17 @@ const LootEntry = () => {
           } : entry
         )
       );
+    } else {
+      setSelectedItems(prevSelectedItems =>
+        prevSelectedItems.map((item, i) => (i === index ? false : item))
+      );
     }
   };
 
   const handleItemNameChange = (index, e, value) => {
+    setSelectedItems(prevSelectedItems =>
+      prevSelectedItems.map((item, i) => (i === index ? false : item))
+    );
     setEntries(prevEntries =>
       prevEntries.map((entry, i) =>
         i === index ? { ...entry, data: { ...entry.data, name: value, itemid: null, type: '', value: null } } : entry
@@ -101,14 +112,17 @@ const LootEntry = () => {
 
   const handleAddEntry = (type) => {
     setEntries([...entries, { type, data: type === 'item' ? { ...initialItemEntry } : { ...initialGoldEntry } }]);
+    setSelectedItems([...selectedItems, false]);
   };
 
   const handleRemoveEntry = (index) => {
     setEntries(entries.filter((_, i) => i !== index));
+    setSelectedItems(selectedItems.filter((_, i) => i !== index));
   };
 
   const handleRemoveAllEntries = () => {
     setEntries([]);
+    setSelectedItems([]);
   };
 
   const handleSubmit = async (e) => {
@@ -235,7 +249,7 @@ const LootEntry = () => {
                         name="type"
                         value={entry.data.type || ''}
                         onChange={(e) => handleEntryChange(index, e)}
-                        disabled
+                        disabled={selectedItems[index]}
                       >
                         <MenuItem value="Weapon">Weapon</MenuItem>
                         <MenuItem value="Armor">Armor</MenuItem>
