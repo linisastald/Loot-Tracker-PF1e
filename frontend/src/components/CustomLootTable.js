@@ -198,8 +198,6 @@ const CustomLootTable = ({
     setSortConfig({ key, direction });
   };
 
-  console.log('Sorted loot after applying sorting:', sortedLoot);
-
   const mainCellStyle = { padding: '16px' }; // Default padding for main rows
   const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
 
