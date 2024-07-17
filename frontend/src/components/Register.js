@@ -8,7 +8,7 @@ import { Button, TextField, Typography, Container, Paper, MenuItem } from '@mui/
 const Register = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('Player'); // Default role
+  const [role, setRole] = useState('Player');
   const [error, setError] = useState('');
   const [dmExists, setDmExists] = useState(false);
   const [registrationsOpen, setRegistrationsOpen] = useState(false);

@@ -1,10 +1,10 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const pool = require('./db'); // Ensure this points to your db configuration
+const pool = require('./db');
 const dotenv = require('dotenv');
 
-dotenv.config(); // Load environment variables
+dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -20,13 +20,13 @@ const authRoutes = require('./routes/auth');
 const lootRoutes = require('./routes/loot');
 const goldRoutes = require('./routes/gold');
 const userRoutes = require('./routes/user');
-const soldRoutes = require('./routes/sold'); // Import sold routes
+const soldRoutes = require('./routes/sold');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/loot', lootRoutes);
 app.use('/api/gold', goldRoutes);
-app.use('/api/user', userRoutes); // Use user routes
-app.use('/api/sold', soldRoutes); // Use sold routes
+app.use('/api/user', userRoutes);
+app.use('/api/sold', soldRoutes);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

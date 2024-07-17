@@ -10,7 +10,6 @@ exports.registerUser = async (req, res) => {
   }
 
   try {
-    // Check if a DM already exists
     if (role === 'DM') {
       const dmResult = await pool.query('SELECT * FROM users WHERE role = $1', ['DM']);
       if (dmResult.rows.length > 0) {
@@ -19,7 +18,7 @@ exports.registerUser = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const userRole = role === 'DM' ? 'DM' : 'Player'; // Default to Player if not DM
+    const userRole = role === 'DM' ? 'DM' : 'Player';
     const result = await pool.query(
       'INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING *',
       [username, hashedPassword, userRole]
