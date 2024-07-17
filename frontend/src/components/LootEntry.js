@@ -140,7 +140,7 @@ const LootEntry = () => {
           );
         }
       }
-      setEntries([{ type: 'item', data: { ...initialItemEntry } }]);
+      setEntries([{ type: 'item', data: { ...initialItemEntry } }]); // Reset the form state
     } catch (error) {
       console.error('Error submitting entry', error);
     }
