@@ -58,7 +58,8 @@ const ItemManagement = () => {
   const calculatePendingSaleSummary = (items) => {
     const pendingItems = items.filter(item => item.status === 'Pending Sale');
     const total = pendingItems.reduce((sum, item) => sum + (item.value ? (item.value / 2) : 0), 0);
-    setPendingSaleTotal(total);
+    const roundedTotal = Math.ceil(total * 100) / 100; // Round up to the nearest hundredth
+    setPendingSaleTotal(roundedTotal);
     setPendingSaleCount(pendingItems.length);
   };
 
@@ -208,7 +209,7 @@ const ItemManagement = () => {
         <Box mt={2}>
           <Typography variant="h6">Pending Sale Summary</Typography>
           <Typography>Number of Items: {pendingSaleCount}</Typography>
-          <Typography>Total Value: {pendingSaleTotal}</Typography>
+          <Typography>Total Value: {pendingSaleTotal.toFixed(2)}</Typography>
           <Button variant="contained" color="primary" onClick={handleConfirmSale}>
             Confirm Sale
           </Button>
