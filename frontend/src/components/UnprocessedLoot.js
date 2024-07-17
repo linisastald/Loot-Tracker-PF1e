@@ -22,8 +22,6 @@ import {
   handleUpdateDialogClose,
   handleSplitDialogClose,
   handleUpdateChange,
-  handleUpdate,
-  handleFilterChange,
   applyFilters,
   handleUpdateSubmit,
 } from '../utils/utils';
