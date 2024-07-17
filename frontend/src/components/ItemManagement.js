@@ -38,10 +38,6 @@ const ItemManagement = () => {
     fetchItems();
   }, []);
 
-  useEffect(() => {
-    calculatePendingSaleSummary(items);
-  }, [items]);
-
   const fetchItems = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -49,8 +45,9 @@ const ItemManagement = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('API Response:', response.data);
-      const itemsData = response.data.individual || [];
+      const itemsData = response.data || [];
       setItems(itemsData);
+      calculatePendingSaleSummary(itemsData);
     } catch (error) {
       console.error('Error fetching items', error);
       setItems([]);
