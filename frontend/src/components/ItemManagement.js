@@ -45,7 +45,7 @@ const ItemManagement = () => {
   const fetchItems = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot', {
+      const response = await axios.get('http://192.168.0.64:5000/api/loot/pending-sale', {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('API Response:', response.data);
