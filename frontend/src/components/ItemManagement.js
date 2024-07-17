@@ -104,7 +104,7 @@ const ItemManagement = () => {
         gold,
         silver,
         copper,
-        notes: 'Sale of items',
+        notes: 'Party Loot Stuff Sold',
       };
 
       await axios.post('http://192.168.0.64:5000/api/gold', { goldEntries: [goldEntry] }, {
