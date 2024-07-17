@@ -1,57 +1,130 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Container, Paper, Typography } from '@mui/material';
-import CustomLootTable from './CustomLootTable'; // Adjust the path as necessary
+import {
+  Container,
+  Paper,
+  Typography,
+  Button,
+} from '@mui/material';
+import CustomLootTable from './CustomLootTable';
+import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
+import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
+import {
+  fetchActiveUser,
+  handleSelectItem,
+  handleSell,
+  handleTrash,
+  handleKeepSelf,
+  handleKeepParty,
+  handleSplitSubmit,
+  handleOpenUpdateDialog,
+  handleOpenSplitDialog,
+  handleUpdateDialogClose,
+  handleSplitDialogClose,
+  handleUpdateChange,
+  applyFilters,
+  handleUpdateSubmit,
+} from '../utils/utils';
 
-const GivenAwayOrTrashed = () => {
+const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
-  const [individualLoot, setIndividualLoot] = useState([]);
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
+  const [openSplitDialog, setOpenSplitDialog] = useState(false);
+  const [splitItem, setSplitItem] = useState(null);
+  const [splitQuantities, setSplitQuantities] = useState([]);
+  const [updatedEntry, setUpdatedEntry] = useState({});
+  const [activeUser, setActiveUser] = useState(null);
+  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
+  const [openItems, setOpenItems] = useState({});
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' }); // Added state for sorting
 
   useEffect(() => {
-    const fetchLoot = async () => {
-      const token = localStorage.getItem('token');
-      try {
-        const response = await axios.get('http://192.168.0.64:5000/api/loot/trash', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        console.log('Fetched Loot:', response.data); // Log fetched data
-
-        // Ensure response.data is in the expected format
-        if (response.data && response.data.summary && response.data.individual) {
-          const trashedLoot = response.data.individual.filter(item => item.status === 'Trashed');
-          setLoot(response.data);
-          setIndividualLoot(trashedLoot);
-        } else {
-          console.error('Unexpected response format:', response.data);
-        }
-      } catch (error) {
-        console.error('Error fetching loot:', error);
-        setLoot({ summary: [], individual: [] }); // Ensure loot is an object with summary and individual arrays
-      }
-    };
-
     fetchLoot();
+    fetchActiveUserDetails();
   }, []);
+
+  const fetchLoot = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://192.168.0.64:5000/api/loot/trash', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setLoot(response.data);
+    } catch (error) {
+      console.error('Error fetching loot:', error);
+    }
+  };
+
+  const fetchActiveUserDetails = async () => {
+    const user = await fetchActiveUser();
+    if (user && user.activeCharacterId) {
+      setActiveUser(user);
+    } else {
+      console.error('Active character ID is not available or user could not be fetched');
+    }
+  };
+
+  const handleAction = async (actionFunc) => {
+    await actionFunc(selectedItems, fetchLoot, activeUser);
+    setSelectedItems([]);  // Ensure selection resets after action
+  };
+
+  const handleOpenSplitDialogWrapper = (item) => {
+    handleOpenSplitDialog(item, setSplitItem, setSplitQuantities, setOpenSplitDialog);
+  };
+
+  const handleSplitChange = (index, value) => {
+    const updatedQuantities = [...splitQuantities];
+    updatedQuantities[index].quantity = parseInt(value, 10); // Ensure the value is an integer
+    setSplitQuantities(updatedQuantities);
+  };
+
+  const handleAddSplit = () => {
+    setSplitQuantities([...splitQuantities, { quantity: 0 }]);
+  };
+
+  const filteredLoot = applyFilters(loot, filters);
 
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Given Away or Trashed</Typography>
+        <Typography variant="h6">Trashed or Given Away Loot</Typography>
       </Paper>
       <CustomLootTable
-        loot={loot.summary}
-        individualLoot={individualLoot}
-        selectedItems={[]}
-        setSelectedItems={() => {}}
-        openItems={{}}
-        setOpenItems={() => {}}
-        handleSelectItem={() => {}}
-        handleSort={() => {}}
-        sortConfig={{ key: 'lastupdate', direction: 'desc' }}
-        showColumns={{ select: false, unidentified: false, pendingSale: false }} // Specify columns to hide
+        loot={filteredLoot.summary}
+        individualLoot={filteredLoot.individual}
+        selectedItems={selectedItems}
+        setSelectedItems={setSelectedItems}
+        openItems={openItems}
+        setOpenItems={setOpenItems}
+        handleSelectItem={handleSelectItem}
+        sortConfig={sortConfig}
+        setSortConfig={setSortConfig} // Pass down the sorting state and setter
+        showColumns={{
+          select: false,
+          quantity: true,
+          name: true,
+          type: true,
+          size: false,
+          whoHasIt: false,
+          believedValue: false,
+          averageAppraisal: false,
+          sessionDate: true,
+          lastUpdate: true,
+          unidentified: false,
+          pendingSale: false
+        }}
+        showFilters={{
+          pendingSale: false,
+          unidentified: false,
+          type: true,
+          size: true,
+          whoHas: false,
+        }}
       />
     </Container>
   );
 };
 
-export default GivenAwayOrTrashed;
+export default UnprocessedLoot;
