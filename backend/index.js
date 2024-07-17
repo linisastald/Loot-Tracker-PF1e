@@ -18,7 +18,6 @@ app.get('/', (req, res) => {
 
 const authRoutes = require('./routes/auth');
 const lootRoutes = require('./routes/loot');
-const pfItemsRoutes = require('./routes/pfItems');
 const goldRoutes = require('./routes/gold');
 const userRoutes = require('./routes/user');
 const soldRoutes = require('./routes/sold'); // Import sold routes

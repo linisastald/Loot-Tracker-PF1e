@@ -1,3 +1,5 @@
+// Register.js
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -9,6 +11,7 @@ const Register = () => {
   const [role, setRole] = useState('Player'); // Default role
   const [error, setError] = useState('');
   const [dmExists, setDmExists] = useState(false);
+  const [registrationsOpen, setRegistrationsOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -21,7 +24,17 @@ const Register = () => {
       }
     };
 
+    const checkRegistrationStatus = async () => {
+      try {
+        const response = await axios.get('http://192.168.0.64:5000/api/auth/check-registration-status');
+        setRegistrationsOpen(response.data.isOpen);
+      } catch (error) {
+        console.error('Error checking registration status', error);
+      }
+    };
+
     checkForDm();
+    checkRegistrationStatus();
   }, []);
 
   const handleRegister = async () => {
@@ -33,6 +46,18 @@ const Register = () => {
       setError(err.response.data.error || 'Registration failed');
     }
   };
+
+  if (!registrationsOpen) {
+    return (
+      <Container component="main" maxWidth="xs">
+        <Paper sx={{ p: 2, mt: 8 }}>
+          <Typography component="h1" variant="h5">
+            Registrations are currently closed.
+          </Typography>
+        </Paper>
+      </Container>
+    );
+  }
 
   return (
     <Container component="main" maxWidth="xs">

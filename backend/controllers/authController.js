@@ -79,3 +79,13 @@ exports.checkForDm = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+exports.checkRegistrationStatus = async (req, res) => {
+  try {
+    const result = await pool.query("SELECT value FROM settings WHERE name = 'registrations open'");
+    const isOpen = result.rows[0] && result.rows[0].value === 1;
+    res.status(200).json({ isOpen });
+  } catch (error) {
+    console.error('Error checking registration status', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
