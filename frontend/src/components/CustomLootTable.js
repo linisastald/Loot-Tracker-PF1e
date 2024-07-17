@@ -15,7 +15,6 @@ import {
   Grid,
   FormControlLabel,
   Switch,
-  Typography,
   Button,
   Menu,
   MenuItem,
@@ -40,7 +39,7 @@ const CustomLootTable = ({
   openItems,
   setOpenItems,
   handleSelectItem,
-  sortConfig = { key: '', direction: 'asc' }, // Added default value for sortConfig
+  sortConfig,
   setSortConfig,
   showColumns = {
     select: true,
@@ -180,6 +179,14 @@ const CustomLootTable = ({
     );
   });
 
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   console.log('Filtered loot after applying filters:', filteredLoot);
 
   const mainCellStyle = { padding: '16px' }; // Default padding for main rows
@@ -276,7 +283,7 @@ const CustomLootTable = ({
                       />
                     }
                     label={filter.name}
-                  />
+                />
                 </MenuItem>
               ))}
             </Menu>

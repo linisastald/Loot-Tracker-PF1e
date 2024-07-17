@@ -5,7 +5,6 @@ import {
   Paper,
   Typography,
   Button,
-  Grid,
 } from '@mui/material';
 import CustomLootTable from './CustomLootTable';
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
@@ -40,6 +39,7 @@ const UnprocessedLoot = () => {
   const [activeUser, setActiveUser] = useState(null);
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
   const [openItems, setOpenItems] = useState({});
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' }); // Added state for sorting
 
   useEffect(() => {
     fetchLoot();
@@ -103,6 +103,8 @@ const UnprocessedLoot = () => {
         openItems={openItems}
         setOpenItems={setOpenItems}
         handleSelectItem={handleSelectItem}
+        sortConfig={sortConfig}
+        setSortConfig={setSortConfig} // Pass down the sorting state and setter
         showColumns={{
           select: true,
           quantity: true,
