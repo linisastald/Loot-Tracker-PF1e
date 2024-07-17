@@ -213,18 +213,6 @@ const LootEntry = () => {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Value"
-                      type="number"
-                      name="value"
-                      value={entry.data.value || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
-                      fullWidth
-                      required
-                      disabled
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
                       <InputLabel>Type</InputLabel>
                       <Select
