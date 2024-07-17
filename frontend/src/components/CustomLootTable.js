@@ -292,7 +292,7 @@ const CustomLootTable = ({
                       />
                     }
                     label={filter.name}
-                />
+                  />
                 </MenuItem>
               ))}
             </Menu>
@@ -304,24 +304,28 @@ const CustomLootTable = ({
           <TableHead>
             <TableRow>
               {showColumns.select && <TableCell style={mainCellStyle}>Select</TableCell>}
-              <TableCell style={mainCellStyle}>
-                <TableSortLabel
-                  active={sortConfig.key === 'quantity'}
-                  direction={sortConfig.direction}
-                  onClick={() => handleSort('quantity')}
-                >
-                  Quantity
-                </TableSortLabel>
-              </TableCell>
-              <TableCell style={mainCellStyle}>
-                <TableSortLabel
-                  active={sortConfig.key === 'name'}
-                  direction={sortConfig.direction}
-                  onClick={() => handleSort('name')}
-                >
-                  Name
-                </TableSortLabel>
-              </TableCell>
+              {showColumns.quantity && (
+                <TableCell style={mainCellStyle}>
+                  <TableSortLabel
+                    active={sortConfig.key === 'quantity'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('quantity')}
+                  >
+                    Quantity
+                  </TableSortLabel>
+                </TableCell>
+              )}
+              {showColumns.name && (
+                <TableCell style={mainCellStyle}>
+                  <TableSortLabel
+                    active={sortConfig.key === 'name'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('name')}
+                  >
+                    Name
+                  </TableSortLabel>
+                </TableCell>
+              )}
               {showColumns.unidentified && (
                 <TableCell style={mainCellStyle}>
                   <TableSortLabel
@@ -333,27 +337,35 @@ const CustomLootTable = ({
                   </TableSortLabel>
                 </TableCell>
               )}
-              <TableCell style={mainCellStyle}>
-                <TableSortLabel
-                  active={sortConfig.key === 'type'}
-                  direction={sortConfig.direction}
-                  onClick={() => handleSort('type')}
-                >
-                  Type
-                </TableSortLabel>
-              </TableCell>
-              <TableCell style={mainCellStyle}>
-                <TableSortLabel
-                  active={sortConfig.key === 'size'}
-                  direction={sortConfig.direction}
-                  onClick={() => handleSort('size')}
-                >
-                  Size
-                </TableSortLabel>
-              </TableCell>
+              {showColumns.type && (
+                <TableCell style={mainCellStyle}>
+                  <TableSortLabel
+                    active={sortConfig.key === 'type'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('type')}
+                  >
+                    Type
+                  </TableSortLabel>
+                </TableCell>
+              )}
+              {showColumns.size && (
+                <TableCell style={mainCellStyle}>
+                  <TableSortLabel
+                    active={sortConfig.key === 'size'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('size')}
+                  >
+                    Size
+                  </TableSortLabel>
+                </TableCell>
+              )}
               {showColumns.whoHasIt && <TableCell style={mainCellStyle}>Who Has It?</TableCell>}
-              <TableCell style={mainCellStyle}>Believed Value</TableCell>
-              <TableCell style={mainCellStyle}>Average Appraisal</TableCell>
+              {showColumns.believedValue && (
+                <TableCell style={mainCellStyle}>Believed Value</TableCell>
+              )}
+              {showColumns.averageAppraisal && (
+                <TableCell style={mainCellStyle}>Average Appraisal</TableCell>
+              )}
               {showColumns.pendingSale && (
                 <TableCell style={mainCellStyle}>
                   <TableSortLabel
@@ -365,16 +377,20 @@ const CustomLootTable = ({
                   </TableSortLabel>
                 </TableCell>
               )}
-              <TableCell style={mainCellStyle}>
-                <TableSortLabel
-                  active={sortConfig.key === 'session_date'}
-                  direction={sortConfig.direction}
-                  onClick={() => handleSort('session_date')}
-                >
-                  Session Date
-                </TableSortLabel>
-              </TableCell>
-              <TableCell style={mainCellStyle}>Last Update</TableCell>
+              {showColumns.sessionDate && (
+                <TableCell style={mainCellStyle}>
+                  <TableSortLabel
+                    active={sortConfig.key === 'session_date'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('session_date')}
+                  >
+                    Session Date
+                  </TableSortLabel>
+                </TableCell>
+              )}
+              {showColumns.lastUpdate && (
+                <TableCell style={mainCellStyle}>Last Update</TableCell>
+              )}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -397,21 +413,23 @@ const CustomLootTable = ({
                         />
                       </TableCell>
                     )}
-                    <TableCell style={mainCellStyle}>{totalQuantity}</TableCell>
-                    <TableCell style={mainCellStyle}>
-                      {individualItems.length > 1 && (
-                        <IconButton
-                          aria-label="expand row"
-                          size="small"
-                          onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type, item.size)}
-                        >
-                          {openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
-                        </IconButton>
-                      )}
-                      <Tooltip title={item.notes || 'No notes'} arrow>
-                        <span>{item.name}</span>
-                      </Tooltip>
-                    </TableCell>
+                    {showColumns.quantity && <TableCell style={mainCellStyle}>{totalQuantity}</TableCell>}
+                    {showColumns.name && (
+                      <TableCell style={mainCellStyle}>
+                        {individualItems.length > 1 && (
+                          <IconButton
+                            aria-label="expand row"
+                            size="small"
+                            onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type, item.size)}
+                          >
+                            {openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                          </IconButton>
+                        )}
+                        <Tooltip title={item.notes || 'No notes'} arrow>
+                          <span>{item.name}</span>
+                        </Tooltip>
+                      </TableCell>
+                    )}
                     {showColumns.unidentified && (
                       <TableCell style={mainCellStyle}>
                         {item.unidentified === null
@@ -421,29 +439,33 @@ const CustomLootTable = ({
                           : 'Identified'}
                       </TableCell>
                     )}
-                    <TableCell style={mainCellStyle}>{item.type}</TableCell>
-                    <TableCell style={mainCellStyle}>{item.size}</TableCell>
+                    {showColumns.type && <TableCell style={mainCellStyle}>{item.type}</TableCell>}
+                    {showColumns.size && <TableCell style={mainCellStyle}>{item.size}</TableCell>}
                     {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{item.character_name}</TableCell>}
-                    <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>
-                    <TableCell style={mainCellStyle}>{item.average_appraisal || ''}</TableCell>
+                    {showColumns.believedValue && <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
+                    {showColumns.averageAppraisal && <TableCell style={mainCellStyle}>{item.average_appraisal || ''}</TableCell>}
                     {showColumns.pendingSale && (
                       <TableCell style={mainCellStyle}>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                     )}
-                    <TableCell style={mainCellStyle}>{item.session_date ? formatDate(item.session_date) : ''}</TableCell>
-                    <TableCell style={mainCellStyle}>{item.lastupdate ? formatDate(item.lastupdate) : ''}</TableCell>
+                    {showColumns.sessionDate && (
+                      <TableCell style={mainCellStyle}>{item.session_date ? formatDate(item.session_date) : ''}</TableCell>
+                    )}
+                    {showColumns.lastUpdate && (
+                      <TableCell style={mainCellStyle}>{item.lastupdate ? formatDate(item.lastupdate) : ''}</TableCell>
+                    )}
                   </TableRow>
                   {individualItems.length > 1 && (
                     <TableRow>
-                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={showColumns.unidentified ? 11 : 10}>
+                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={Object.values(showColumns).filter(Boolean).length}>
                         <Collapse in={openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`]} timeout="auto" unmountOnExit>
                           <Table size="small">
                             <TableHead>
                               <TableRow>
                                 {showColumns.select && <TableCell style={subCellStyle}>Select</TableCell>}
                                 <TableCell style={subCellStyle}>Quantity</TableCell>
-                                <TableCell style={subCellStyle}>Size</TableCell>
-                                <TableCell style={subCellStyle}>Session Date</TableCell>
-                                <TableCell style={subCellStyle}>Last Update</TableCell>
+                                {showColumns.size && <TableCell style={subCellStyle}>Size</TableCell>}
+                                {showColumns.sessionDate && <TableCell style={subCellStyle}>Session Date</TableCell>}
+                                {showColumns.lastUpdate && <TableCell style={subCellStyle}>Last Update</TableCell>}
                               </TableRow>
                             </TableHead>
                             <TableBody>
@@ -458,9 +480,9 @@ const CustomLootTable = ({
                                     </TableCell>
                                   )}
                                   <TableCell style={subCellStyle}>{subItem.quantity}</TableCell>
-                                  <TableCell style={subCellStyle}>{subItem.size}</TableCell>
-                                  <TableCell style={subCellStyle}>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>
-                                  <TableCell style={subCellStyle}>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>
+                                  {showColumns.size && <TableCell style={subCellStyle}>{subItem.size}</TableCell>}
+                                  {showColumns.sessionDate && <TableCell style={subCellStyle}>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>}
+                                  {showColumns.lastUpdate && <TableCell style={subCellStyle}>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>}
                                 </SubItemTableRow>
                               ))}
                             </TableBody>
