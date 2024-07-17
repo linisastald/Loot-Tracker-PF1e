@@ -119,7 +119,7 @@ const UnprocessedLoot = () => {
           pendingSale: false,
           unidentified: false,
           type: true,
-          size: true,
+          size: false,
           whoHas: false,
         }}
       />
