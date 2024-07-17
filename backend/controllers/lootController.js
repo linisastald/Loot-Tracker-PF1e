@@ -28,14 +28,13 @@ exports.updateLootStatus = async (req, res) => {
   }
 
   try {
-    await Loot.updateStatus(ids.map(Number), status, status === 'Kept Self' ? whohas : null); // Ensure IDs are integers
+    await Loot.updateStatus(ids.map(Number), status, status === 'Kept Self' ? whohas : null);
     res.status(200).send('Loot status updated');
   } catch (error) {
     console.error('Error updating loot status', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getKeptPartyLoot = async (req, res) => {
   try {
     const loot = await Loot.findByStatus('Kept Party');
@@ -86,7 +85,6 @@ exports.updateEntry = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.updateSingleLootStatus = async (req, res) => {
   const { id } = req.params;
   const { status, userId, whohas } = req.body;
@@ -112,7 +110,6 @@ exports.getPendingSaleItems = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.searchItems = async (req, res) => {
   const { query } = req.query;
   try {
@@ -126,7 +123,6 @@ exports.searchItems = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.confirmSale = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -189,7 +185,6 @@ exports.updateItem = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getItems = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM item');

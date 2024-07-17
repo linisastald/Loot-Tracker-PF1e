@@ -24,7 +24,6 @@ exports.createGoldEntry = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getAllGoldEntries = async (req, res) => {
   const { startDate, endDate } = req.query;
   try {
@@ -39,7 +38,6 @@ exports.getAllGoldEntries = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.distributeAllGold = async (req, res) => {
   try {
     const client = await pool.connect();
@@ -92,7 +90,6 @@ exports.distributeAllGold = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.distributePlusPartyLoot = async (req, res) => {
   try {
     const client = await pool.connect();
@@ -118,7 +115,7 @@ exports.distributePlusPartyLoot = async (req, res) => {
       }
 
       // Distribute gold
-      const goldPerCharacter = totalGold / (activeCharacters.length + 1); // +1 for party loot
+      const goldPerCharacter = totalGold / (activeCharacters.length + 1);
       const createdEntries = [];
 
       for (const character of activeCharacters) {
@@ -159,7 +156,6 @@ exports.distributePlusPartyLoot = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.definePartyLootDistribute = async (req, res) => {
   const { partyLootAmount } = req.body;
   try {
@@ -227,7 +223,6 @@ exports.definePartyLootDistribute = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.defineCharacterDistribute = async (req, res) => {
   const { characterDistributeAmount } = req.body;
   try {
@@ -280,7 +275,6 @@ exports.defineCharacterDistribute = async (req, res) => {
     res.status500().json({ error: 'Internal server error' });
   }
 };
-
 exports.balance = async (req, res) => {
   try {
     const client = await pool.connect();

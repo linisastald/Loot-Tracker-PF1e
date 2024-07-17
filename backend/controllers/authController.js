@@ -36,7 +36,6 @@ exports.registerUser = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.loginUser = async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
@@ -67,7 +66,6 @@ exports.loginUser = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.checkForDm = async (req, res) => {
   try {
     const dmResult = await pool.query('SELECT * FROM users WHERE role = $1', ['DM']);

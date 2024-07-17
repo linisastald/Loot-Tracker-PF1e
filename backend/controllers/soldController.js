@@ -9,7 +9,6 @@ exports.create = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getAll = async (req, res) => {
   try {
     const soldItems = await Sold.findAll();
@@ -19,7 +18,6 @@ exports.getAll = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getDetailsByDate = async (req, res) => {
   try {
     const soldItemsDetails = await Sold.findDetailsByDate(req.params.soldon);

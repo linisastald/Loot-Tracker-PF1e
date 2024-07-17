@@ -29,7 +29,6 @@ exports.changePassword = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getCharacters = async (req, res) => {
   const userId = req.user.id;
 
@@ -41,7 +40,6 @@ exports.getCharacters = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getActiveCharacters = async (req, res) => {
   try {
     const result = await pool.query('select name,id from characters where active is true order by name desc');
@@ -51,7 +49,6 @@ exports.getActiveCharacters = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.addCharacter = async (req, res) => {
   const { name, appraisal_bonus, birthday, deathday, active } = req.body;
   const userId = req.user.id;
@@ -74,7 +71,6 @@ exports.addCharacter = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.updateCharacter = async (req, res) => {
   const { id, name, appraisal_bonus, birthday, deathday, active } = req.body;
   const userId = req.user.id;
@@ -98,7 +94,6 @@ exports.updateCharacter = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getUserById = async (req, res) => {
   const { id } = req.params;
   const userId = parseInt(id, 10);
@@ -126,7 +121,6 @@ exports.getUserById = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.deactivateAllCharacters = async (req, res) => {
   const userId = req.user.id;
 
@@ -159,7 +153,6 @@ exports.deleteUser = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.updateSetting = async (req, res) => {
   try {
     const { name, value } = req.body;
@@ -170,7 +163,6 @@ exports.updateSetting = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 exports.getSettings = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM settings');
