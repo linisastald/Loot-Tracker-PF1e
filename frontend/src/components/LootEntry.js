@@ -83,6 +83,14 @@ const LootEntry = () => {
     }
   };
 
+  const handleItemNameChange = (index, e, value) => {
+    setEntries(prevEntries =>
+      prevEntries.map((entry, i) =>
+        i === index ? { ...entry, data: { ...entry.data, name: value, itemid: null, type: '', value: '' } } : entry
+      )
+    );
+  };
+
   const handleDateChange = (index, name, date) => {
     setEntries(prevEntries =>
       prevEntries.map((entry, i) =>
@@ -196,9 +204,11 @@ const LootEntry = () => {
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <Autocomplete
+                      freeSolo
                       options={itemNames}
                       getOptionLabel={(option) => option.name}
                       onChange={(e, value) => handleItemSelect(index, e, value)}
+                      onInputChange={(e, value) => handleItemNameChange(index, e, value)}
                       renderInput={(params) => (
                         <TextField
                           {...params}
