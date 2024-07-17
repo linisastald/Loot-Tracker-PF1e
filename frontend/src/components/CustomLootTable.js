@@ -21,10 +21,7 @@ import {
   MenuItem,
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import {
-  formatDate,
-  handleSort,
-} from '../utils/utils'; // Adjust the path as necessary
+import { formatDate, handleSort } from '../utils/utils'; // Adjust the path as necessary
 import { styled } from '@mui/system';
 import axios from 'axios';
 
@@ -43,8 +40,8 @@ const CustomLootTable = ({
   openItems,
   setOpenItems,
   handleSelectItem,
-  sortConfig,
-  setSortConfig, // Added prop
+  sortConfig = { key: '', direction: 'asc' }, // Added default value for sortConfig
+  setSortConfig,
   showColumns = {
     select: true,
     unidentified: true,
