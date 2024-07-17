@@ -18,16 +18,17 @@ import {
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { fetchItemNames } from '../utils/utils';
+import { fetchItemNames } from './utils';
 
 const initialItemEntry = {
   sessionDate: new Date(),
   quantity: '',
   name: '',
-  itemId: null, // Add itemId field
+  itemid: null,
+  type: '',
+  value: '',
   unidentified: null,
   masterwork: null,
-  type: '',
   size: '',
   notes: ''
 };
@@ -64,11 +65,22 @@ const LootEntry = () => {
   };
 
   const handleItemSelect = (index, _, selectedItem) => {
-    setEntries(prevEntries =>
-      prevEntries.map((entry, i) =>
-        i === index ? { ...entry, data: { ...entry.data, name: selectedItem.name, itemId: selectedItem.id } } : entry
-      )
-    );
+    if (selectedItem) {
+      setEntries(prevEntries =>
+        prevEntries.map((entry, i) =>
+          i === index ? {
+            ...entry,
+            data: {
+              ...entry.data,
+              name: selectedItem.name,
+              itemid: selectedItem.id,
+              type: selectedItem.type,
+              value: selectedItem.value
+            }
+          } : entry
+        )
+      );
+    }
   };
 
   const handleDateChange = (index, name, date) => {
@@ -201,6 +213,36 @@ const LootEntry = () => {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Value"
+                      type="number"
+                      name="value"
+                      value={entry.data.value || ''}
+                      onChange={(e) => handleEntryChange(index, e)}
+                      fullWidth
+                      required
+                      disabled
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Type</InputLabel>
+                      <Select
+                        name="type"
+                        value={entry.data.type || ''}
+                        onChange={(e) => handleEntryChange(index, e)}
+                        disabled
+                      >
+                        <MenuItem value="Weapon">Weapon</MenuItem>
+                        <MenuItem value="Armor">Armor</MenuItem>
+                        <MenuItem value="Magic">Magic</MenuItem>
+                        <MenuItem value="Gear">Gear</MenuItem>
+                        <MenuItem value="Trade Good">Trade Good</MenuItem>
+                        <MenuItem value="Other">Other</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
                       <InputLabel>Magical?</InputLabel>
                       <Select
@@ -224,23 +266,6 @@ const LootEntry = () => {
                       >
                         <MenuItem value={true}>Yes</MenuItem>
                         <MenuItem value={false}>No</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth>
-                      <InputLabel>Type</InputLabel>
-                      <Select
-                        name="type"
-                        value={entry.data.type || ''}
-                        onChange={(e) => handleEntryChange(index, e)}
-                      >
-                        <MenuItem value="Weapon">Weapon</MenuItem>
-                        <MenuItem value="Armor">Armor</MenuItem>
-                        <MenuItem value="Magic">Magic</MenuItem>
-                        <MenuItem value="Gear">Gear</MenuItem>
-                        <MenuItem value="Trade Good">Trade Good</MenuItem>
-                        <MenuItem value="Other">Other</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
