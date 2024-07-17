@@ -2,16 +2,12 @@ const Loot = require('../models/Loot');
 const pool = require('../db');
 
 exports.createLoot = async (req, res) => {
-  const { entries } = req.body;
   try {
-    const createdEntries = [];
-    for (const entry of entries) {
-      const createdEntry = await Loot.create(entry);
-      createdEntries.push(createdEntry);
-    }
-    res.status(201).json(createdEntries);
+    const { entries } = req.body;
+    const results = await Promise.all(entries.map(entry => Loot.create(entry)));
+    res.status(201).json(results);
   } catch (error) {
-    console.error('Error creating loot entry', error);
+    console.error('Error creating loot:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

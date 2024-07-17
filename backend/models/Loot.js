@@ -2,7 +2,7 @@ const pool = require('../db');
 
 exports.create = async (entry) => {
   const query = `
-    INSERT INTO loot (session_date, quantity, name, itemid, unidentified, masterwork, type, size, value, whoupdated, notes)
+    INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, itemid, value, whoupdated, notes)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     RETURNING *
   `;
@@ -10,11 +10,11 @@ exports.create = async (entry) => {
     entry.sessionDate,
     entry.quantity,
     entry.name,
-    entry.itemid,
     entry.unidentified,
     entry.masterwork,
     entry.type,
     entry.size,
+    entry.itemid,
     entry.value,
     entry.whoupdated,
     entry.notes,
