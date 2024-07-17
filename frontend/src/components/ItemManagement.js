@@ -24,6 +24,7 @@ import {
   Select,
   InputLabel,
   FormControl,
+  TablePagination,
 } from '@mui/material';
 
 const ItemManagement = () => {
@@ -34,9 +35,13 @@ const ItemManagement = () => {
   const [pendingSaleCount, setPendingSaleCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredItems, setFilteredItems] = useState([]);
+  const [pendingSaleItems, setPendingSaleItems] = useState([]);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
 
   useEffect(() => {
     fetchItems();
+    fetchPendingSaleItems();
   }, []);
 
   const fetchItems = async () => {
@@ -52,6 +57,20 @@ const ItemManagement = () => {
     } catch (error) {
       console.error('Error fetching items', error);
       setItems([]);
+    }
+  };
+
+  const fetchPendingSaleItems = async (page = 0, rowsPerPage = 20) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`http://192.168.0.64:5000/api/loot/pending-sale?page=${page}&limit=${rowsPerPage}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      console.log('Pending Sale Items Response:', response.data);
+      setPendingSaleItems(response.data);
+    } catch (error) {
+      console.error('Error fetching pending sale items', error);
+      setPendingSaleItems([]);
     }
   };
 
@@ -79,6 +98,7 @@ const ItemManagement = () => {
       console.log('Update Response:', response);
       setUpdateDialogOpen(false);
       fetchItems();
+      fetchPendingSaleItems(page, rowsPerPage);
     } catch (error) {
       console.error('Error updating item', error);
     }
@@ -104,7 +124,7 @@ const ItemManagement = () => {
         gold,
         silver,
         copper,
-        notes: 'Party Loot Stuff Sold',
+        notes: 'Sale of items',
       };
 
       await axios.post('http://192.168.0.64:5000/api/gold', { goldEntries: [goldEntry] }, {
@@ -112,6 +132,7 @@ const ItemManagement = () => {
       });
 
       fetchItems();
+      fetchPendingSaleItems(page, rowsPerPage);
     } catch (error) {
       console.error('Error confirming sale', error);
     }
@@ -141,6 +162,17 @@ const ItemManagement = () => {
   const handleClearSearch = () => {
     setFilteredItems([]);
     setSearchTerm('');
+  };
+
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+    fetchPendingSaleItems(newPage, rowsPerPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+    fetchPendingSaleItems(0, parseInt(event.target.value, 10));
   };
 
   return (
@@ -219,6 +251,61 @@ const ItemManagement = () => {
           <Button variant="contained" color="primary" onClick={handleConfirmSale}>
             Confirm Sale
           </Button>
+        </Box>
+
+        {/* Pending Sale Items Table */}
+        <Box mt={4}>
+          <Typography variant="h6">Pending Sale Items</Typography>
+          <TableContainer component={Paper} sx={{ mt: 2 }}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Session Date</TableCell>
+                  <TableCell>Quantity</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Unidentified</TableCell>
+                  <TableCell>Masterwork</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Size</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Item ID</TableCell>
+                  <TableCell>Mod IDs</TableCell>
+                  <TableCell>Charges</TableCell>
+                  <TableCell>Value</TableCell>
+                  <TableCell>Who Has</TableCell>
+                  <TableCell>Notes</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pendingSaleItems.map((item) => (
+                  <TableRow key={item.id} onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
+                    <TableCell>{format(new Date(item.session_date), 'MMMM dd, yyyy')}</TableCell>
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>{item.masterwork ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>{item.type}</TableCell>
+                    <TableCell>{item.size}</TableCell>
+                    <TableCell>{item.status}</TableCell>
+                    <TableCell>{item.itemid}</TableCell>
+                    <TableCell>{item.modids}</TableCell>
+                    <TableCell>{item.charges}</TableCell>
+                    <TableCell>{item.value}</TableCell>
+                    <TableCell>{item.whohas}</TableCell>
+                    <TableCell>{item.notes}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            component="div"
+            count={pendingSaleCount}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+          />
         </Box>
 
         {/* Update Item Dialog */}
