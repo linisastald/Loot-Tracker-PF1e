@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { format } from 'date-fns';
 import {
   Container,
   Paper,
@@ -153,7 +154,7 @@ const ItemManagement = () => {
               <TableBody>
                 {filteredItems.map((item) => (
                   <TableRow key={item.id} onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
-                    <TableCell>{item.session_date}</TableCell>
+                    <TableCell>{format(new Date(item.session_date), 'MMMM dd, yyyy')}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
