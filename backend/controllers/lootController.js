@@ -196,10 +196,10 @@ exports.updateItem = async (req, res) => {
 
 exports.getItems = async (req, res) => {
   try {
-    const items = await Loot.getItems();
-    res.status(200).json(items);
+    const result = await pool.query('SELECT * FROM item');
+    res.status(200).json(result.rows);
   } catch (error) {
-    console.error('Error fetching loot', error);
+    console.error('Error fetching items', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
