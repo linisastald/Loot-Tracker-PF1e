@@ -37,7 +37,7 @@ const UnprocessedLoot = () => {
   const [activeUser, setActiveUser] = useState(null);
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
   const [openItems, setOpenItems] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' }); // Added state for sorting
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
   useEffect(() => {
     fetchLoot();
@@ -67,7 +67,7 @@ const UnprocessedLoot = () => {
 
   const handleAction = async (actionFunc) => {
     await actionFunc(selectedItems, fetchLoot, activeUser);
-    setSelectedItems([]);  // Ensure selection resets after action
+    setSelectedItems([]);
   };
 
   const handleOpenSplitDialogWrapper = (item) => {
@@ -76,7 +76,7 @@ const UnprocessedLoot = () => {
 
   const handleSplitChange = (index, value) => {
     const updatedQuantities = [...splitQuantities];
-    updatedQuantities[index].quantity = parseInt(value, 10); // Ensure the value is an integer
+    updatedQuantities[index].quantity = parseInt(value, 10);
     setSplitQuantities(updatedQuantities);
   };
 
@@ -100,7 +100,7 @@ const UnprocessedLoot = () => {
         setOpenItems={setOpenItems}
         handleSelectItem={handleSelectItem}
         sortConfig={sortConfig}
-        setSortConfig={setSortConfig} // Pass down the sorting state and setter
+        setSortConfig={setSortConfig}
         showColumns={{
           select: true,
           quantity: true,
@@ -152,7 +152,7 @@ const UnprocessedLoot = () => {
         splitQuantities={splitQuantities}
         handleSplitChange={handleSplitChange}
         handleAddSplit={handleAddSplit}
-        handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, splitItem.quantity, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)} // Pass setOpenSplitDialog and setSelectedItems
+        handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, splitItem.quantity, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)}
       />
 
       <CustomUpdateDialog
@@ -160,7 +160,7 @@ const UnprocessedLoot = () => {
         onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
         updatedEntry={updatedEntry}
         onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog)} // Pass updatedEntry and setOpenUpdateDialog
+        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog)}
       />
     </Container>
   );
