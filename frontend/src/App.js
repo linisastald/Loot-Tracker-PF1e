@@ -39,7 +39,7 @@ function App() {
             <Route path="/sold-loot" element={<SoldLoot />} />
             <Route path="/character-user-management" element={<CharacterAndUserManagement />} />
             <Route path="/item-management" element={<ItemManagement />} />
-            <Route path="/golarion-calendar" element={<ProtectedRoute component={GolarionCalendar} />} />
+            <Route path="/golarion-calendar" element={<GolarionCalendar />} />
           </Route>
         </Routes>
       </Router>
