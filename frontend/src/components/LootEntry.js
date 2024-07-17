@@ -26,7 +26,7 @@ const initialItemEntry = {
   name: '',
   itemid: null,
   type: '',
-  value: '',
+  value: null,
   unidentified: null,
   masterwork: null,
   size: '',
@@ -73,9 +73,9 @@ const LootEntry = () => {
             data: {
               ...entry.data,
               name: selectedItem.name,
-              itemid: selectedItem.id,
-              type: selectedItem.type,
-              value: selectedItem.value
+              itemid: selectedItem.id || null,
+              type: selectedItem.type || '',
+              value: selectedItem.value || null
             }
           } : entry
         )
@@ -86,7 +86,7 @@ const LootEntry = () => {
   const handleItemNameChange = (index, e, value) => {
     setEntries(prevEntries =>
       prevEntries.map((entry, i) =>
-        i === index ? { ...entry, data: { ...entry.data, name: value, itemid: null, type: '', value: '' } } : entry
+        i === index ? { ...entry, data: { ...entry.data, name: value, itemid: null, type: '', value: null } } : entry
       )
     );
   };
@@ -141,6 +141,8 @@ const LootEntry = () => {
             { headers: { Authorization: `Bearer ${token}` } }
           );
         } else {
+          data.itemid = data.itemid || null;
+          data.value = data.value || null;
           await axios.post(
             'http://192.168.0.64:5000/api/loot',
             { entries: [data] },
