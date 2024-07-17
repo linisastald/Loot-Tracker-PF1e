@@ -37,7 +37,7 @@ const ItemManagement = () => {
   const [filteredItems, setFilteredItems] = useState([]);
   const [pendingSaleItems, setPendingSaleItems] = useState([]);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   useEffect(() => {
     fetchItems();
@@ -60,17 +60,19 @@ const ItemManagement = () => {
     }
   };
 
-  const fetchPendingSaleItems = async (page = 0, rowsPerPage = 20) => {
+  const fetchPendingSaleItems = async (page = 0, rowsPerPage = 10) => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(`http://192.168.0.64:5000/api/loot/pending-sale?page=${page}&limit=${rowsPerPage}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('Pending Sale Items Response:', response.data);
-      setPendingSaleItems(response.data);
+      setPendingSaleItems(response.data.items);
+      setPendingSaleCount(response.data.total);
     } catch (error) {
       console.error('Error fetching pending sale items', error);
       setPendingSaleItems([]);
+      setPendingSaleCount(0);
     }
   };
 
@@ -305,6 +307,7 @@ const ItemManagement = () => {
             onPageChange={handleChangePage}
             rowsPerPage={rowsPerPage}
             onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[10, 25, 50, 100]}
           />
         </Box>
 
