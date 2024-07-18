@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom'; // Import useNavigate instead of useHistory
 import axios from 'axios';
 import { Button, TextField, Typography, Container, Paper } from '@mui/material';
-
+const API_URL = process.env.REACT_APP_API_URL;
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -11,7 +11,7 @@ const Login = () => {
 
   const handleLogin = async () => {
     try {
-      const response = await axios.post('http://192.168.0.64:5000/api/auth/login', { username, password });
+      const response = await axios.post(`${API_URL}/auth/login`, { username, password });
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user)); // Store user details including role
       navigate('/loot-entry'); // Use navigate instead of history.push

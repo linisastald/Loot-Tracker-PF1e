@@ -1,6 +1,8 @@
 import axios from 'axios';
 import jwt_decode from 'jwt-decode';
 
+const API_URL = process.env.API_URL;
+
 export const fetchActiveUser = async () => {
   try {
     const token = localStorage.getItem('token');
@@ -23,7 +25,7 @@ export const fetchActiveUser = async () => {
       throw new Error('Invalid token user ID');
     }
 
-    const response = await axios.get(`http://192.168.0.64:5000/api/user/${userId}`, {
+    const response = await axios.get(`${API_URL}/user/${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -33,6 +35,7 @@ export const fetchActiveUser = async () => {
     return null;
   }
 };
+
 export const handleSelectItem = (id, setSelectedItems) => {
   setSelectedItems(prevSelectedItems =>
     prevSelectedItems.includes(id)
@@ -47,7 +50,7 @@ export const handleSell = async (selectedItems, fetchLoot) => {
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
-    await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
+    await axios.put(`${API_URL}/loot/update-status`, {
       ids: selectedItems,
       status: 'Pending Sale',
       userId,
@@ -66,7 +69,7 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
-    await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
+    await axios.put(`${API_URL}/loot/update-status`, {
       ids: selectedItems,
       status: 'Trashed',
       userId,
@@ -85,7 +88,7 @@ export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
-    await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
+    await axios.put(`${API_URL}/loot/update-status`, {
       ids: selectedItems,
       status: 'Kept Self',
       userId,
@@ -105,7 +108,7 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
-    await axios.put('http://192.168.0.64:5000/api/loot/update-status', {
+    await axios.put(`${API_URL}/loot/update-status`, {
       ids: selectedItems,
       status: 'Kept Party',
       userId,
@@ -117,8 +120,6 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
     console.error('Error keeping items for party:', error);
   }
 };
-
-
 
 export const handleOpenUpdateDialog = (loot, selectedItems, setUpdatedEntry, setOpenUpdateDialog) => {
   const selectedItem = loot.find(item => item.id === selectedItems[0]);
@@ -144,7 +145,7 @@ export const handleUpdateChange = (e, setUpdatedEntry) => {
 
 export const handleUpdate = async (id, updatedEntry, fetchLoot) => {
   const token = localStorage.getItem('token');
-  await axios.put(`http://192.168.0.64:5000/api/loot/${id}`, { updatedEntry }, {
+  await axios.put(`${API_URL}/loot/${id}`, { updatedEntry }, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -213,7 +214,7 @@ export const handleSort = (sortConfig, setSortConfig, key) => {
 export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems) => {
   try {
     const token = localStorage.getItem('token');
-    await axios.put(`http://192.168.0.64:5000/api/loot/update-entry/${updatedEntry.id}`, {
+    await axios.put(`${API_URL}/loot/update-entry/${updatedEntry.id}`, {
       updatedEntry,
     }, {
       headers: { Authorization: `Bearer ${token}` },
@@ -239,7 +240,7 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
   try {
     const token = localStorage.getItem('token');
     const itemId = selectedItems[0];
-    const response = await axios.post(`http://192.168.0.64:5000/api/loot/split-stack`, {
+    const response = await axios.post(`${API_URL}/loot/split-stack`, {
       id: itemId,
       splits: splitQuantities,
       userId,
@@ -266,7 +267,7 @@ export const fetchItemNames = async () => {
       throw new Error('No token found');
     }
 
-    const response = await axios.get('http://192.168.0.64:5000/api/loot/items', {
+    const response = await axios.get(`${API_URL}/loot/items`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;

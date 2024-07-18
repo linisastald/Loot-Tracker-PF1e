@@ -12,6 +12,7 @@ import {
   applyFilters,
 } from '../utils/utils';
 
+const API_URL = process.env.REACT_APP_API_URL;
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({
     summary: [],
@@ -31,7 +32,7 @@ const UnprocessedLoot = () => {
   const fetchLoot = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot/trash', {
+      const response = await axios.get(`${API_URL}/loot/trash`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setLoot(response.data);

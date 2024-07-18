@@ -4,6 +4,8 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import App from './App';
 import './globalStyles.css';
+require('dotenv').config();
+
 
 const theme = createTheme({
   palette: {

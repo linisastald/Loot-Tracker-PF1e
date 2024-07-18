@@ -22,7 +22,7 @@ import {
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import jwt_decode from 'jwt-decode';
-
+const API_URL = process.env.REACT_APP_API_URL;
 const GoldTransactions = () => {
   const [goldEntries, setGoldEntries] = useState([]);
   const [error, setError] = useState(null);
@@ -43,7 +43,7 @@ const GoldTransactions = () => {
   const fetchGoldEntries = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/gold', {
+      const response = await axios.get(`${API_URL}/gold`, {
         headers: { Authorization: `Bearer ${token}` },
         params: { startDate, endDate }
       });
@@ -60,7 +60,7 @@ const GoldTransactions = () => {
       const token = localStorage.getItem('token');
       const decodedToken = jwt_decode(token);
       const userId = decodedToken.id;
-      const response = await axios.get(`http://192.168.0.64:5000/api/user/${userId}`, {
+      const response = await axios.get(`${API_URL}/user/${userId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setUserRole(response.data.role);
@@ -88,7 +88,7 @@ const GoldTransactions = () => {
   const handleDistributeAll = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://192.168.0.64:5000/api/gold/distribute-all', {}, {
+      await axios.post(`${API_URL}/gold/distribute-all`, {}, {
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchGoldEntries(); // Refresh the gold entries after distribution
@@ -101,7 +101,7 @@ const GoldTransactions = () => {
   const handleDistributePlusPartyLoot = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://192.168.0.64:5000/api/gold/distribute-plus-party-loot', {}, {
+      await axios.post(`${API_URL}/gold/distribute-plus-party-loot`, {}, {
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchGoldEntries(); // Refresh the gold entries after distribution
@@ -118,7 +118,7 @@ const GoldTransactions = () => {
     }
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://192.168.0.64:5000/api/gold/define-party-loot-distribute', { partyLootAmount }, {
+      await axios.post(`${API_URL}/gold/define-party-loot-distribute`, { partyLootAmount }, {
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchGoldEntries(); // Refresh the gold entries after distribution
@@ -137,7 +137,7 @@ const GoldTransactions = () => {
     }
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://192.168.0.64:5000/api/gold/define-character-distribute', { characterDistributeAmount }, {
+      await axios.post(`${API_URL}/gold/define-character-distribute`, { characterDistributeAmount }, {
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchGoldEntries(); // Refresh the gold entries after distribution
@@ -151,7 +151,7 @@ const GoldTransactions = () => {
   const handleBalance = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://192.168.0.64:5000/api/gold/balance', {}, {
+      await axios.post(`${API_URL}/gold/balance`, {}, {
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchGoldEntries(); // Refresh the gold entries after balancing

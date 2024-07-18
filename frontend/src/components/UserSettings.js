@@ -17,7 +17,7 @@ import {
   TableRow,
 } from '@mui/material';
 import { styled } from '@mui/system';
-
+const API_URL = process.env.REACT_APP_API_URL;
 const UserSettings = () => {
   const today = new Date().toISOString().split('T')[0];
   const [oldPassword, setOldPassword] = useState('');
@@ -37,7 +37,7 @@ const UserSettings = () => {
     const fetchCharacters = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.get('http://192.168.0.64:5000/api/user/characters', {
+        const response = await axios.get(`${API_URL}/user/characters`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setCharacters(response.data);
@@ -54,7 +54,7 @@ const UserSettings = () => {
     try {
       const token = localStorage.getItem('token');
       await axios.put(
-        'http://192.168.0.64:5000/api/user/change-password',
+        `${API_URL}/user/change-password`,
         { oldPassword, newPassword },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -70,7 +70,7 @@ const UserSettings = () => {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      const url = character.id ? 'http://192.168.0.64:5000/api/user/characters' : 'http://192.168.0.64:5000/api/user/characters';
+      const url = character.id ? `${API_URL}/user/characters` : `${API_URL}/user/characters`;
       const method = character.id ? 'put' : 'post';
       const payload = {
         ...character,
@@ -79,7 +79,7 @@ const UserSettings = () => {
       };
       if (character.active) {
         // Ensure only one character is active at a time
-        await axios.put('http://192.168.0.64:5000/api/user/deactivate-all-characters', {}, {
+        await axios.put(`${API_URL}/user/deactivate-all-characters`, {}, {
           headers: { Authorization: `Bearer ${token}` }
         });
       }
@@ -91,7 +91,7 @@ const UserSettings = () => {
       setCharacter({ id: null, name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true });
       alert(`Character ${character.id ? 'updated' : 'added'} successfully`);
       // Refresh the character list
-      const response = await axios.get('http://192.168.0.64:5000/api/user/characters', {
+      const response = await axios.get(`${API_URL}/user/characters`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setCharacters(response.data);

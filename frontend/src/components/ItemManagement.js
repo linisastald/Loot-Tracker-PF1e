@@ -26,7 +26,7 @@ import {
   FormControl,
   TablePagination,
 } from '@mui/material';
-
+const API_URL = process.env.REACT_APP_API_URL;
 const ItemManagement = () => {
   const [items, setItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
@@ -47,7 +47,7 @@ const ItemManagement = () => {
   const fetchItems = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://192.168.0.64:5000/api/loot/pending-sale', {
+      const response = await axios.get(`${API_URL}/loot/pending-sale`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('API Response:', response.data);
@@ -63,7 +63,7 @@ const ItemManagement = () => {
   const fetchPendingSaleItems = async (page = 0, rowsPerPage = 10) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`http://192.168.0.64:5000/api/loot/pending-sale?page=${page}&limit=${rowsPerPage}`, {
+      const response = await axios.get(`${API_URL}/loot/pending-sale?page=${page}&limit=${rowsPerPage}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('Pending Sale Items Response:', response.data);
@@ -94,7 +94,7 @@ const ItemManagement = () => {
     try {
       const token = localStorage.getItem('token');
       console.log('Updated Item Payload:', updatedItem);
-      const response = await axios.put(`http://192.168.0.64:5000/api/loot/${updatedItem.id}`, updatedItem, {
+      const response = await axios.put(`${API_URL}/loot/${updatedItem.id}`, updatedItem, {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('Update Response:', response);
@@ -109,7 +109,7 @@ const ItemManagement = () => {
   const handleConfirmSale = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put('http://192.168.0.64:5000/api/loot/confirm-sale', {}, {
+      await axios.put(`${API_URL}/loot/confirm-sale`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -129,7 +129,7 @@ const ItemManagement = () => {
         notes: 'Sale of items',
       };
 
-      await axios.post('http://192.168.0.64:5000/api/gold', { goldEntries: [goldEntry] }, {
+      await axios.post(`${API_URL}/gold`, { goldEntries: [goldEntry] }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -150,7 +150,7 @@ const ItemManagement = () => {
   const handleSearch = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`http://192.168.0.64:5000/api/loot/search?query=${searchTerm}`, {
+      const response = await axios.get(`${API_URL}/loot/search?query=${searchTerm}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('Search Response:', response.data);

@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
 import { formatDate } from '../utils/utils'; // Adjust the path as necessary
-
+const API_URL = process.env.REACT_APP_API_URL;
 const SoldLoot = () => {
   const [soldSummary, setSoldSummary] = useState([]);
   const [soldDetails, setSoldDetails] = useState({});
@@ -24,7 +24,7 @@ const SoldLoot = () => {
   useEffect(() => {
     const fetchSoldSummary = async () => {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`http://192.168.0.64:5000/api/sold`, {
+      const response = await axios.get(`${API_URL}/sold`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setSoldSummary(response.data);
@@ -42,7 +42,7 @@ const SoldLoot = () => {
     if (!soldDetails[date]) {
       const fetchSoldDetails = async () => {
         const token = localStorage.getItem('token');
-        const response = await axios.get(`http://192.168.0.64:5000/api/sold/${date}`, {
+        const response = await axios.get(`${API_URL}/sold/${date}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setSoldDetails((prevDetails) => ({

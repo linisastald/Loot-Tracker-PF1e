@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Button, TextField, Typography, Container, Paper, MenuItem } from '@mui/material';
-
+const API_URL = process.env.REACT_APP_API_URL;
 const Register = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -17,7 +17,7 @@ const Register = () => {
   useEffect(() => {
     const checkForDm = async () => {
       try {
-        const response = await axios.get('http://192.168.0.64:5000/api/auth/check-dm');
+        const response = await axios.get(`${API_URL}/auth/check-dm`);
         setDmExists(response.data.dmExists);
       } catch (error) {
         console.error('Error checking for DM', error);
@@ -26,7 +26,7 @@ const Register = () => {
 
     const checkRegistrationStatus = async () => {
       try {
-        const response = await axios.get('http://192.168.0.64:5000/api/auth/check-registration-status');
+        const response = await axios.get(`${API_URL}/auth/check-registration-status`);
         setRegistrationsOpen(response.data.isOpen);
       } catch (error) {
         console.error('Error checking registration status', error);
@@ -39,7 +39,7 @@ const Register = () => {
 
   const handleRegister = async () => {
     try {
-      const response = await axios.post('http://192.168.0.64:5000/api/auth/register', { username, password, role });
+      const response = await axios.post(`${API_URL}/auth/register`, { username, password, role });
       localStorage.setItem('token', response.data.token);
       navigate('/loot-entry');
     } catch (err) {

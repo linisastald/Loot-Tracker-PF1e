@@ -25,6 +25,8 @@ import {
   InputLabel,
 } from '@mui/material';
 
+const API_URL = process.env.REACT_APP_API_URL;
+
 const CharacterAndUserManagement = () => {
   const [users, setUsers] = useState([]);
   const [characters, setCharacters] = useState([]);
@@ -52,13 +54,13 @@ const CharacterAndUserManagement = () => {
       try {
         const token = localStorage.getItem('token');
         const [usersResponse, charactersResponse, settingsResponse] = await Promise.all([
-          axios.get('http://192.168.0.64:5000/api/user/all', {
+          axios.get(`${API_URL}/user/all`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get('http://192.168.0.64:5000/api/user/all-characters', {
+          axios.get(`${API_URL}/user/all-characters`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get('http://192.168.0.64:5000/api/user/settings', {
+          axios.get(`${API_URL}/user/settings`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -97,7 +99,7 @@ const CharacterAndUserManagement = () => {
       const token = localStorage.getItem('token');
       const newValue = registrationOpen ? 0 : 1;
       await axios.put(
-        'http://192.168.0.64:5000/api/user/update-setting',
+        `${API_URL}/user/update-setting`,
         { name: 'registrations open', value: newValue },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -111,7 +113,7 @@ const CharacterAndUserManagement = () => {
     try {
       const token = localStorage.getItem('token');
       await axios.put(
-        'http://192.168.0.64:5000/api/user/reset-password',
+        `${API_URL}/user/reset-password`,
         { userId: selectedUsers[0], newPassword },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -132,7 +134,7 @@ const CharacterAndUserManagement = () => {
       await Promise.all(
         selectedUsers.map(userId =>
           axios.put(
-            'http://192.168.0.64:5000/api/user/delete-user',
+            `${API_URL}/user/delete-user`,
             { userId },
             { headers: { Authorization: `Bearer ${token}` } }
           )
@@ -183,7 +185,7 @@ const CharacterAndUserManagement = () => {
     try {
       const token = localStorage.getItem('token');
       await axios.put(
-        'http://192.168.0.64:5000/api/user/characters',
+        `${API_URL}/user/characters`,
         { ...selectedCharacter, ...updateCharacter },
         { headers: { Authorization: `Bearer ${token}` } }
       );

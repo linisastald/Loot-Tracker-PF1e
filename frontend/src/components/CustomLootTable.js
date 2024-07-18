@@ -24,6 +24,8 @@ import { formatDate } from '../utils/utils'; // Adjust the path as necessary
 import { styled } from '@mui/system';
 import axios from 'axios';
 
+const API_URL = process.env.REACT_APP_API_URL;
+
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   backgroundColor: theme.palette.action.hover,
   '& .MuiTableCell-root': {
@@ -86,7 +88,7 @@ const CustomLootTable = ({
     const fetchWhoHasFilters = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.get('http://192.168.0.64:5000/api/user/active-characters', {
+        const response = await axios.get(`${API_URL}/user/active-characters`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const characters = response.data;

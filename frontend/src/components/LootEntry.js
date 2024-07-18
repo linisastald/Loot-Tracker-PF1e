@@ -19,7 +19,7 @@ import {
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { fetchItemNames } from '../utils/utils';
-
+const API_URL = process.env.REACT_APP_API_URL;
 const initialItemEntry = {
   sessionDate: new Date(),
   quantity: '',
@@ -154,7 +154,7 @@ const LootEntry = () => {
             copper: data.copper || null
           };
           await axios.post(
-            'http://192.168.0.64:5000/api/gold',
+            `${API_URL}/gold`,
             { goldEntries: [goldData] },
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -162,7 +162,7 @@ const LootEntry = () => {
           data.itemid = data.itemid || null;
           data.value = data.value || null;
           await axios.post(
-            'http://192.168.0.64:5000/api/loot',
+            `${API_URL}/loot`,
             { entries: [data] },
             { headers: { Authorization: `Bearer ${token}` } }
           );
