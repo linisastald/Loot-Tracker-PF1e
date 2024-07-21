@@ -70,7 +70,7 @@ exports.distributeAllGold = async (req, res) => {
       const distributeCopper = Math.floor(totalCopper / numCharacters);
 
       if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
-        return res.status(400).json({ error: 'Nothing to distribute' });
+        return;
       }
 
       const createdEntries = [];
@@ -132,7 +132,7 @@ exports.distributePlusPartyLoot = async (req, res) => {
       const distributeCopper = Math.floor(totalCopper / (numCharacters + 1));
 
       if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
-        return res.status(400).json({ error: 'Nothing to distribute' });
+        return;
       }
 
       const createdEntries = [];
