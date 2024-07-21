@@ -114,26 +114,17 @@ exports.distributePlusPartyLoot = async (req, res) => {
       // Get total balance for each currency
       const totalResult = await client.query('SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold');
       const totalPlatinum = parseFloat(totalResult.rows[0].total_platinum);
-      console.log(totalPlatinum);
       const totalGold = parseFloat(totalResult.rows[0].total_gold);
-      console.log(totalGold);
       const totalSilver = parseFloat(totalResult.rows[0].total_silver);
-      console.log(totalSilver);
       const totalCopper = parseFloat(totalResult.rows[0].total_copper);
-      console.log(totalCopper);
 
       const numCharacters = activeCharacters.length;
-      console.log(numCharacters)
 
       // Calculate distribution amounts
       const distributePlatinum = Math.floor(totalPlatinum / (numCharacters + 1));
-      console.log(distributePlatinum);
       const distributeGold = Math.floor(totalGold / (numCharacters + 1));
-      console.log(distributeGold);
       const distributeSilver = Math.floor(totalSilver / (numCharacters + 1));
-      console.log(distributeSilver);
       const distributeCopper = Math.floor(totalCopper / (numCharacters + 1));
-      console.log(distributeCopper);
 
       const createdEntries = [];
 
@@ -151,26 +142,6 @@ exports.distributePlusPartyLoot = async (req, res) => {
         const createdEntry = await Gold.create(entry);
         createdEntries.push(createdEntry);
       }
-
-      // Add remaining balances to party loot
-      const remainingPlatinum = totalPlatinum - distributePlatinum * numCharacters;
-      const remainingGold = totalGold - distributeGold * numCharacters;
-      const remainingSilver = totalSilver - distributeSilver * numCharacters;
-      const remainingCopper = totalCopper - distributeCopper * numCharacters;
-
-      const partyLootEntry = {
-        sessionDate: new Date(),
-        transactionType: 'Deposit',
-        platinum: remainingPlatinum,
-        gold: remainingGold,
-        silver: remainingSilver,
-        copper: remainingCopper,
-        notes: 'Remaining balances to party loot',
-        userId,
-      };
-      const createdPartyLootEntry = await Gold.create(partyLootEntry);
-      createdEntries.push(createdPartyLootEntry);
-
       res.status(201).json(createdEntries);
     } finally {
       client.release();
