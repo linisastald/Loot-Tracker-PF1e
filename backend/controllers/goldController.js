@@ -303,6 +303,9 @@ exports.balance = async (req, res) => {
       // Convert silver to gold
       const additionalGold = Math.floor((totalSilver + additionalSilver) / 10);
       const remainingSilver = (totalSilver + additionalSilver) % 10;
+      if (remainingCopper === 0 && remainingSilver === 0 && additionalGold === 0) {
+        return;
+      }
 
       // Create a single balance entry
       const balanceEntry = {
