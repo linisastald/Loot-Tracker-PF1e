@@ -76,9 +76,9 @@ const SoldLoot = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {soldSummary.map((item) => (
-              <React.Fragment key={item.soldon}>
-                <TableRow key={`summary-${item.soldon}`}>
+            {soldSummary.map((item, index) => (
+              <React.Fragment key={`summary-${item.soldon}`}>
+                <TableRow>
                   <TableCell>{formatDate(item.soldon)}</TableCell>
                   <TableCell>{item.number_of_items}</TableCell>
                   <TableCell>{item.total}</TableCell>
@@ -92,7 +92,7 @@ const SoldLoot = () => {
                     </IconButton>
                   </TableCell>
                 </TableRow>
-                <TableRow key={`details-${item.soldon}`}>
+                <TableRow>
                   <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={4}>
                     <Collapse in={openItems[item.soldon]} timeout="auto" unmountOnExit>
                       <Table size="small">
@@ -105,8 +105,8 @@ const SoldLoot = () => {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {soldDetails[item.soldon]?.map((detail) => (
-                            <TableRow key={`detail-${detail.id}`}>
+                          {soldDetails[item.soldon]?.map((detail, detailIndex) => (
+                            <TableRow key={`detail-${detail.id || `${item.soldon}-${detailIndex}`}`}>
                               <TableCell>{formatDate(detail.session_date)}</TableCell>
                               <TableCell>{detail.quantity}</TableCell>
                               <TableCell>{detail.name}</TableCell>
