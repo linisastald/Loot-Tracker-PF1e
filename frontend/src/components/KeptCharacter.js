@@ -89,7 +89,7 @@ const UnprocessedLoot = () => {
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Unprocessed Loot</Typography>
+        <Typography variant="h6">Loot Kept by Character</Typography>
       </Paper>
       <CustomLootTable
         loot={filteredLoot.summary}
