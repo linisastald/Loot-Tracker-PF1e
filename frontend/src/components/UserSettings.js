@@ -17,7 +17,9 @@ import {
   TableRow,
 } from '@mui/material';
 import { styled } from '@mui/system';
+
 const API_URL = process.env.REACT_APP_API_URL;
+
 const UserSettings = () => {
   const today = new Date().toISOString().split('T')[0];
   const [oldPassword, setOldPassword] = useState('');
@@ -122,6 +124,9 @@ const UserSettings = () => {
     backgroundColor: active ? theme.palette.action.hover : 'inherit',
   }));
 
+  // Sort characters with the active character on top
+  const sortedCharacters = [...characters].sort((a, b) => b.active - a.active);
+
   return (
     <Container component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
@@ -134,6 +139,7 @@ const UserSettings = () => {
             value={oldPassword}
             onChange={(e) => setOldPassword(e.target.value)}
             margin="normal"
+            autoComplete="current-password"
           />
           <TextField
             label="New Password"
@@ -142,6 +148,7 @@ const UserSettings = () => {
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             margin="normal"
+            autoComplete="new-password"
           />
           <Button
             type="submit"
@@ -170,8 +177,8 @@ const UserSettings = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {characters.map((char) => (
-                <StyledTableRow key={char.id} active={char.active}>
+              {sortedCharacters.map((char) => (
+                <StyledTableRow key={char.id} active={char.active ? 1 : 0}>
                   <TableCell>{char.name}</TableCell>
                   <TableCell>{char.appraisal_bonus}</TableCell>
                   <TableCell>{formatDate(char.birthday)}</TableCell>
