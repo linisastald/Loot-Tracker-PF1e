@@ -114,17 +114,26 @@ exports.distributePlusPartyLoot = async (req, res) => {
       // Get total balance for each currency
       const totalResult = await client.query('SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold');
       const totalPlatinum = parseFloat(totalResult.rows[0].total_platinum);
+      console.log(totalPlatinum);
       const totalGold = parseFloat(totalResult.rows[0].total_gold);
+      console.log(totalGold);
       const totalSilver = parseFloat(totalResult.rows[0].total_silver);
+      console.log(totalSilver);
       const totalCopper = parseFloat(totalResult.rows[0].total_copper);
+      console.log(totalCopper);
 
       const numCharacters = activeCharacters.length;
+      console.log(numCharacters)
 
       // Calculate distribution amounts
       const distributePlatinum = Math.floor(totalPlatinum / (numCharacters + 1));
+      console.log(distributePlatinum);
       const distributeGold = Math.floor(totalGold / (numCharacters + 1));
+      console.log(distributeGold);
       const distributeSilver = Math.floor(totalSilver / (numCharacters + 1));
+      console.log(distributeSilver);
       const distributeCopper = Math.floor(totalCopper / (numCharacters + 1));
+      console.log(distributeCopper);
 
       const createdEntries = [];
 
