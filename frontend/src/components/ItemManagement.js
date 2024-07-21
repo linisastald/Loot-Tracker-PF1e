@@ -134,7 +134,7 @@ const ItemManagement = () => {
       });
 
       fetchItems();
-      fetchPendingSaleItems(page, rowsPerPage);
+      fetchPendingSaleItems();
     } catch (error) {
       console.error('Error confirming sale', error);
     }
