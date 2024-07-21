@@ -63,7 +63,7 @@ const ItemManagement = () => {
   const fetchPendingSaleItems = async (page = 0, rowsPerPage = 10) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/loot/pending-sale?page=${page}&limit=${rowsPerPage}`, {
+      const response = await axios.get(`${API_URL}/loot/pending-sale`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('Pending Sale Items Response:', response.data);
