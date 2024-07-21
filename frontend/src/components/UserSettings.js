@@ -103,7 +103,11 @@ const UserSettings = () => {
   };
 
   const handleEditCharacter = (char) => {
-    setCharacter({ ...char });
+    setCharacter({
+      ...char,
+      birthday: char.birthday ? formatDate(char.birthday) : '',
+      deathday: char.deathday ? formatDate(char.deathday) : ''
+    });
   };
 
   const handleCancelEdit = () => {
