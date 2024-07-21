@@ -162,26 +162,37 @@ export const handleFilterChange = (event, setFilters) => {
 };
 
 export const applyFilters = (loot, filters) => {
-  let filteredLoot = { ...loot };
+  let filteredSummary = loot.summary;
+  let filteredIndividual = loot.individual;
 
-  if (filters.unidentified) {
-    filteredLoot.individual = filteredLoot.individual.filter(item => item.unidentified === (filters.unidentified === 'true'));
+  if (filters.unidentified !== '') {
+    filteredSummary = filteredSummary.filter(item => item.unidentified === filters.unidentified);
+    filteredIndividual = filteredIndividual.filter(item => item.unidentified === filters.unidentified);
   }
 
-  if (filters.type) {
-    filteredLoot.individual = filteredLoot.individual.filter(item => item.type === filters.type);
+  if (filters.type !== '') {
+    filteredSummary = filteredSummary.filter(item => item.type === filters.type);
+    filteredIndividual = filteredIndividual.filter(item => item.type === filters.type);
   }
 
-  if (filters.size) {
-    filteredLoot.individual = filteredLoot.individual.filter(item => item.size === filters.size);
+  if (filters.size !== '') {
+    filteredSummary = filteredSummary.filter(item => item.size === filters.size);
+    filteredIndividual = filteredIndividual.filter(item => item.size === filters.size);
   }
 
-  if (filters.pendingSale) {
-    filteredLoot.individual = filteredLoot.individual.filter(item => (item.status === 'Pending Sale') === (filters.pendingSale === 'true'));
+  if (filters.pendingSale !== '') {
+    filteredSummary = filteredSummary.filter(item => item.pendingSale === filters.pendingSale);
+    filteredIndividual = filteredIndividual.filter(item => item.pendingSale === filters.pendingSale);
   }
 
-  return filteredLoot;
+  if (filters.whoHas.length > 0) {
+    filteredSummary = filteredSummary.filter(item => filters.whoHas.includes(item.whoHas));
+    filteredIndividual = filteredIndividual.filter(item => filters.whoHas.includes(item.whoHas));
+  }
+
+  return { summary: filteredSummary, individual: filteredIndividual };
 };
+
 
 export const formatDate = (dateString) => {
   const options = { year: 'numeric', month: 'long', day: 'numeric' };
