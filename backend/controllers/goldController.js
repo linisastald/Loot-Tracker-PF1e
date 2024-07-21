@@ -58,7 +58,7 @@ exports.distributeAllGold = async (req, res) => {
       const totalGoldResult = await client.query('SELECT SUM(gold) AS total_gold FROM gold');
       const totalGold = parseFloat(totalGoldResult.rows[0].total_gold);
 
-      if (totalGold === 0) {
+      if (!totalGold || totalGold === 0) {
         return res.status(400).json({ error: 'No gold available to distribute' });
       }
 
@@ -82,12 +82,15 @@ exports.distributeAllGold = async (req, res) => {
       }
 
       res.status(201).json(createdEntries);
+    } catch (err) {
+      console.error('Error during gold distribution:', err);
+      res.status(500).json({ error: 'Internal server error during gold distribution' });
     } finally {
       client.release();
     }
   } catch (error) {
-    console.error('Error distributing all gold', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error connecting to the database:', error);
+    res.status(500).json({ error: 'Internal server error connecting to the database' });
   }
 };
 exports.distributePlusPartyLoot = async (req, res) => {
