@@ -252,7 +252,7 @@ const GoldTransactions = () => {
       </TableContainer>
 
       {/* Define Party Loot Distribute Dialog */}
-      <Dialog open={openPartyLootDialog} onClose={() => setOpenPartyLootDialog(false)}>
+       {/* <Dialog open={openPartyLootDialog} onClose={() => setOpenPartyLootDialog(false)}>
         <DialogTitle>Define Party Loot Distribute</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -274,7 +274,7 @@ const GoldTransactions = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Define Character Distribute Dialog */}
+      {/* Define Character Distribute Dialog
       <Dialog open={openCharacterDistributeDialog} onClose={() => setOpenCharacterDistributeDialog(false)}>
         <DialogTitle>Define Character Distribute</DialogTitle>
         <DialogContent>
@@ -295,7 +295,7 @@ const GoldTransactions = () => {
           <Button onClick={() => setOpenCharacterDistributeDialog(false)}>Cancel</Button>
           <Button onClick={handleDefineCharacterDistribute}>Distribute</Button>
         </DialogActions>
-      </Dialog>
+      </Dialog> */}
     </Container>
   );
 };
