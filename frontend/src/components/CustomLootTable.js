@@ -285,12 +285,12 @@ const CustomLootTable = ({
               onClose={handleWhoHasFilterMenuClose}
             >
               {whoHasFilters.map((filter) => (
-                <MenuItem key={filter.id}>
+                <MenuItem key={filter.name}>
                   <FormControlLabel
                     control={
                       <Switch
                         checked={filter.checked}
-                        onChange={() => handleWhoHasFilterChange(filter.id)}
+                        onChange={() => handleWhoHasFilterChange(filter.name)}
                       />
                     }
                     label={filter.name}
