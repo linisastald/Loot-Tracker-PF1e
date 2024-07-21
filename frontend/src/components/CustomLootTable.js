@@ -94,7 +94,6 @@ const CustomLootTable = ({
         const characters = response.data;
         const filters = characters.map((character) => ({
           name: character.name,
-          id: character.id,
           checked: false,
         }));
         setWhoHasFilters(filters);
@@ -138,10 +137,10 @@ const CustomLootTable = ({
     }));
   };
 
-  const handleWhoHasFilterChange = (id) => {
+  const handleWhoHasFilterChange = (name) => {
     setWhoHasFilters((prevFilters) =>
       prevFilters.map((filter) =>
-        filter.id === id ? { ...filter, checked: !filter.checked } : filter
+        filter.name === name ? { ...filter, checked: !filter.checked } : filter
       )
     );
   };
@@ -171,7 +170,7 @@ const CustomLootTable = ({
   };
 
   const filteredLoot = loot.filter((item) => {
-    const whoHasChecked = whoHasFilters.some((filter) => filter.checked && item.whohas === filter.id);
+    const whoHasChecked = whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
     return (
       (showPendingSales || item.status !== 'Pending Sale') &&
       (!showOnlyUnidentified || item.unidentified === true) &&
@@ -285,12 +284,12 @@ const CustomLootTable = ({
               onClose={handleWhoHasFilterMenuClose}
             >
               {whoHasFilters.map((filter) => (
-                <MenuItem key={filter.id}>
+                <MenuItem key={filter.name}>
                   <FormControlLabel
                     control={
                       <Switch
                         checked={filter.checked}
-                        onChange={() => handleWhoHasFilterChange(filter.id)}
+                        onChange={() => handleWhoHasFilterChange(filter.name)}
                       />
                     }
                     label={filter.name}
