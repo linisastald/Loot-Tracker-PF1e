@@ -69,6 +69,10 @@ exports.distributeAllGold = async (req, res) => {
       const distributeSilver = Math.floor(totalSilver / numCharacters);
       const distributeCopper = Math.floor(totalCopper / numCharacters);
 
+      if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
+        return res.status(400).json({ error: 'Nothing to distribute' });
+      }
+
       const createdEntries = [];
 
       for (const character of activeCharacters) {
@@ -95,6 +99,7 @@ exports.distributeAllGold = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.distributePlusPartyLoot = async (req, res) => {
   try {
     const client = await pool.connect();
@@ -126,6 +131,10 @@ exports.distributePlusPartyLoot = async (req, res) => {
       const distributeSilver = Math.floor(totalSilver / (numCharacters + 1));
       const distributeCopper = Math.floor(totalCopper / (numCharacters + 1));
 
+      if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
+        return res.status(400).json({ error: 'Nothing to distribute' });
+      }
+
       const createdEntries = [];
 
       for (const character of activeCharacters) {
@@ -142,6 +151,7 @@ exports.distributePlusPartyLoot = async (req, res) => {
         const createdEntry = await Gold.create(entry);
         createdEntries.push(createdEntry);
       }
+
       res.status(201).json(createdEntries);
     } finally {
       client.release();
@@ -151,6 +161,7 @@ exports.distributePlusPartyLoot = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 
 
 exports.definePartyLootDistribute = async (req, res) => {
