@@ -113,11 +113,7 @@ const UserSettings = () => {
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: '2-digit',
-    });
+    return date.toISOString().split('T')[0];
   };
 
   const StyledTableRow = styled(TableRow)(({ theme, active }) => ({
@@ -204,7 +200,7 @@ const UserSettings = () => {
               <TextField
                 label="Character Name"
                 fullWidth
-                value={character.name}
+                value={character.name || ''}
                 onChange={(e) => setCharacter({ ...character, name: e.target.value })}
                 margin="normal"
               />
@@ -214,7 +210,7 @@ const UserSettings = () => {
                 label="Appraisal Bonus"
                 type="number"
                 fullWidth
-                value={character.appraisal_bonus}
+                value={character.appraisal_bonus || ''}
                 onChange={(e) => setCharacter({ ...character, appraisal_bonus: e.target.value })}
                 margin="normal"
               />
@@ -225,7 +221,7 @@ const UserSettings = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={character.birthday}
+                value={character.birthday || ''}
                 onChange={(e) => setCharacter({ ...character, birthday: e.target.value })}
                 margin="normal"
               />
@@ -236,7 +232,7 @@ const UserSettings = () => {
                 type="date"
                 fullWidth
                 InputLabelProps={{ shrink: true }}
-                value={character.deathday}
+                value={character.deathday || ''}
                 onChange={(e) => setCharacter({ ...character, deathday: e.target.value })}
                 margin="normal"
               />
