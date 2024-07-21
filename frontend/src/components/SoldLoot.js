@@ -15,7 +15,9 @@ import {
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
 import { formatDate } from '../utils/utils'; // Adjust the path as necessary
+
 const API_URL = process.env.REACT_APP_API_URL;
+
 const SoldLoot = () => {
   const [soldSummary, setSoldSummary] = useState([]);
   const [soldDetails, setSoldDetails] = useState({});
@@ -76,7 +78,7 @@ const SoldLoot = () => {
           <TableBody>
             {soldSummary.map((item) => (
               <React.Fragment key={item.soldon}>
-                <TableRow>
+                <TableRow key={`summary-${item.soldon}`}>
                   <TableCell>{formatDate(item.soldon)}</TableCell>
                   <TableCell>{item.number_of_items}</TableCell>
                   <TableCell>{item.total}</TableCell>
@@ -90,7 +92,7 @@ const SoldLoot = () => {
                     </IconButton>
                   </TableCell>
                 </TableRow>
-                <TableRow>
+                <TableRow key={`details-${item.soldon}`}>
                   <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={4}>
                     <Collapse in={openItems[item.soldon]} timeout="auto" unmountOnExit>
                       <Table size="small">
@@ -104,7 +106,7 @@ const SoldLoot = () => {
                         </TableHead>
                         <TableBody>
                           {soldDetails[item.soldon]?.map((detail) => (
-                            <TableRow key={detail.id}>
+                            <TableRow key={`detail-${detail.id}`}>
                               <TableCell>{formatDate(detail.session_date)}</TableCell>
                               <TableCell>{detail.quantity}</TableCell>
                               <TableCell>{detail.name}</TableCell>
