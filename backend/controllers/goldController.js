@@ -319,27 +319,22 @@ exports.balance = async (req, res) => {
       const additionalGold = Math.floor((totalSilver + additionalSilver) / 10);
       const remainingSilver = (totalSilver + additionalSilver) % 10;
 
-      // Update the gold transactions
-      await client.query('DELETE FROM gold WHERE copper != 0 OR silver != 0');
+      // Create a single balance entry
+      const balanceEntry = {
+        sessionDate: new Date(),
+        transactionType: 'Balance',
+        platinum: 0,
+        gold: additionalGold,
+        silver: remainingSilver - totalSilver,
+        copper: remainingCopper - totalCopper,
+        notes: 'Balanced currencies',
+        userId,
+      };
 
-      const balanceEntries = [
-        {
-          sessionDate: new Date(),
-          transactionType: 'Balance',
-          platinum: 0,
-          gold: additionalGold,
-          silver: remainingSilver,
-          copper: remainingCopper,
-          notes: 'Balanced currencies',
-          userId,
-        },
-      ];
+      // Insert the balance entry
+      await Gold.create(balanceEntry);
 
-      for (const entry of balanceEntries) {
-        await Gold.create(entry);
-      }
-
-      res.status(201).json(balanceEntries);
+      res.status(201).json([balanceEntry]);
     } finally {
       client.release();
     }
