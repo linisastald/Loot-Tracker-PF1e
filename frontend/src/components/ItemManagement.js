@@ -24,9 +24,10 @@ import {
   Select,
   InputLabel,
   FormControl,
-  TablePagination,
 } from '@mui/material';
+
 const API_URL = process.env.REACT_APP_API_URL;
+
 const ItemManagement = () => {
   const [items, setItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
@@ -36,12 +37,9 @@ const ItemManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredItems, setFilteredItems] = useState([]);
   const [pendingSaleItems, setPendingSaleItems] = useState([]);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   useEffect(() => {
     fetchItems();
-    fetchPendingSaleItems();
   }, []);
 
   const fetchItems = async () => {
@@ -60,24 +58,8 @@ const ItemManagement = () => {
     }
   };
 
-  const fetchPendingSaleItems = async (page = 0, rowsPerPage = 10) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/loot/pending-sale`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      console.log('Pending Sale Items Response:', response.data);
-      setPendingSaleItems(response.data.items || []);
-      setPendingSaleCount(response.data.total || 0);
-    } catch (error) {
-      console.error('Error fetching pending sale items', error);
-      setPendingSaleItems([]);
-      setPendingSaleCount(0);
-    }
-  };
-
   const calculatePendingSaleSummary = (items) => {
-    const pendingItems = items.filter(item => item.status === 'Pending Sale');
+    const pendingItems = items.filter(item => item.status === 'Pending Sale' || item.status === null);
     const total = pendingItems.reduce((sum, item) => {
       if (item.type === 'Trade Good') {
         return sum + (item.value ? item.value : 0);
@@ -88,6 +70,7 @@ const ItemManagement = () => {
     const roundedTotal = Math.ceil(total * 100) / 100; // Round up to the nearest hundredth
     setPendingSaleTotal(roundedTotal);
     setPendingSaleCount(pendingItems.length);
+    setPendingSaleItems(pendingItems);
   };
 
   const handleItemUpdateSubmit = async () => {
@@ -100,7 +83,6 @@ const ItemManagement = () => {
       console.log('Update Response:', response);
       setUpdateDialogOpen(false);
       fetchItems();
-      fetchPendingSaleItems(page, rowsPerPage);
     } catch (error) {
       console.error('Error updating item', error);
     }
@@ -134,7 +116,6 @@ const ItemManagement = () => {
       });
 
       fetchItems();
-      fetchPendingSaleItems();
     } catch (error) {
       console.error('Error confirming sale', error);
     }
@@ -164,18 +145,6 @@ const ItemManagement = () => {
   const handleClearSearch = () => {
     setFilteredItems([]);
     setSearchTerm('');
-  };
-
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-    fetchPendingSaleItems(newPage, rowsPerPage);
-  };
-
-  const handleChangeRowsPerPage = (event) => {
-    const newRowsPerPage = parseInt(event.target.value, 10);
-    setRowsPerPage(newRowsPerPage);
-    setPage(0);
-    fetchPendingSaleItems(0, newRowsPerPage);
   };
 
   return (
@@ -280,7 +249,7 @@ const ItemManagement = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {pendingSaleItems.length > 0 && pendingSaleItems.map((item) => (
+                {pendingSaleItems.map((item) => (
                   <TableRow key={item.id} onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
                     <TableCell>{format(new Date(item.session_date), 'MMMM dd, yyyy')}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
@@ -301,15 +270,6 @@ const ItemManagement = () => {
               </TableBody>
             </Table>
           </TableContainer>
-          <TablePagination
-            component="div"
-            count={pendingSaleCount}
-            page={page}
-            onPageChange={handleChangePage}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={handleChangeRowsPerPage}
-            rowsPerPageOptions={[10, 25, 50, 100]}
-          />
         </Box>
 
         {/* Update Item Dialog */}
