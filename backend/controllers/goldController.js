@@ -54,26 +54,35 @@ exports.distributeAllGold = async (req, res) => {
         return res.status(400).json({ error: 'No active characters found' });
       }
 
-      // Get total gold
-      const totalGoldResult = await client.query('SELECT SUM(gold) AS total_gold FROM gold');
-      const totalGold = parseFloat(totalGoldResult.rows[0].total_gold);
+      // Get total amounts of platinum, gold, silver, and copper
+      const totalAmountsResult = await client.query('SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold');
+      const totalPlatinum = parseFloat(totalAmountsResult.rows[0].total_platinum) || 0;
+      const totalGold = parseFloat(totalAmountsResult.rows[0].total_gold) || 0;
+      const totalSilver = parseFloat(totalAmountsResult.rows[0].total_silver) || 0;
+      const totalCopper = parseFloat(totalAmountsResult.rows[0].total_copper) || 0;
 
-      if (!totalGold || totalGold === 0) {
-        return res.status(400).json({ error: 'No gold available to distribute' });
+      if (totalPlatinum === 0 && totalGold === 0 && totalSilver === 0 && totalCopper === 0) {
+        return res.status(400).json({ error: 'No amounts available to distribute' });
       }
 
-      // Distribute gold
-      const goldPerCharacter = totalGold / activeCharacters.length;
+      const numCharacters = activeCharacters.length;
+
+      // Calculate per character amounts
+      const platinumPerCharacter = Math.floor(totalPlatinum / numCharacters);
+      const goldPerCharacter = Math.floor(totalGold / numCharacters);
+      const silverPerCharacter = Math.floor(totalSilver / numCharacters);
+      const copperPerCharacter = Math.floor(totalCopper / numCharacters);
+
       const createdEntries = [];
 
       for (const character of activeCharacters) {
         const entry = {
           sessionDate: new Date(),
           transactionType: 'Withdrawal',
-          platinum: 0,
+          platinum: -Math.abs(platinumPerCharacter),
           gold: -Math.abs(goldPerCharacter),
-          silver: 0,
-          copper: 0,
+          silver: -Math.abs(silverPerCharacter),
+          copper: -Math.abs(copperPerCharacter),
           notes: `Distributed to ${character.name}`,
           userId,
         };
