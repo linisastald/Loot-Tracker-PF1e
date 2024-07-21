@@ -141,9 +141,9 @@ exports.distributePlusPartyLoot = async (req, res) => {
           sessionDate: new Date(),
           transactionType: 'Withdrawal',
           platinum: 0,
-          gold: -Math.abs(distributeValue),
-          silver: 0,
-          copper: 0,
+          gold: -Math.floor(distributeValue),
+          silver: -Math.floor((distributeValue % 1) * 10),
+          copper: -Math.floor(((distributeValue * 10) % 1) * 10),
           notes: `Distributed to ${character.name}`,
           userId,
         };
@@ -152,13 +152,17 @@ exports.distributePlusPartyLoot = async (req, res) => {
       }
 
       // Add remaining gold to party loot
+      const remainingGold = Math.floor(remainingValue);
+      const remainingSilver = Math.floor((remainingValue % 1) * 10);
+      const remainingCopper = Math.floor(((remainingValue * 10) % 1) * 10);
+
       const partyLootEntry = {
         sessionDate: new Date(),
         transactionType: 'Deposit',
         platinum: 0,
-        gold: distributeValue,
-        silver: 0,
-        copper: 0,
+        gold: remainingGold,
+        silver: remainingSilver,
+        copper: remainingCopper,
         notes: 'Remaining gold to party loot',
         userId,
       };
@@ -174,6 +178,7 @@ exports.distributePlusPartyLoot = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.definePartyLootDistribute = async (req, res) => {
   const { partyLootAmount } = req.body;
   try {
