@@ -25,8 +25,10 @@ import {
   applyFilters,
   handleUpdateSubmit,
 } from '../utils/utils';
+
 const API_URL = process.env.REACT_APP_API_URL;
-const UnprocessedLoot = () => {
+
+const KeptCharacter = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
   const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
@@ -35,9 +37,9 @@ const UnprocessedLoot = () => {
   const [splitQuantities, setSplitQuantities] = useState([]);
   const [updatedEntry, setUpdatedEntry] = useState({});
   const [activeUser, setActiveUser] = useState(null);
-  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '' });
+  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '', whoHas: [] });
   const [openItems, setOpenItems] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' }); // Added state for sorting
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
   useEffect(() => {
     fetchLoot();
@@ -122,6 +124,8 @@ const UnprocessedLoot = () => {
           size: true,
           whoHas: true,
         }}
+        filters={filters}
+        setFilters={setFilters} // Ensure filters can be updated
       />
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleSell)}>
         Sell
@@ -163,4 +167,4 @@ const UnprocessedLoot = () => {
   );
 };
 
-export default UnprocessedLoot;
+export default KeptCharacter;
