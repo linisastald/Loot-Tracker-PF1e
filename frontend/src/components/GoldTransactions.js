@@ -23,6 +23,7 @@ import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import jwt_decode from 'jwt-decode';
 const API_URL = process.env.REACT_APP_API_URL;
+
 const GoldTransactions = () => {
   const [goldEntries, setGoldEntries] = useState([]);
   const [error, setError] = useState(null);
@@ -111,43 +112,6 @@ const GoldTransactions = () => {
     }
   };
 
-  const handleDefinePartyLootDistribute = async () => {
-    if (partyLootAmount > totals.gold) {
-      setError('Party loot amount cannot be greater than total gold.');
-      return;
-    }
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}/gold/define-party-loot-distribute`, { partyLootAmount }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      fetchGoldEntries(); // Refresh the gold entries after distribution
-      setOpenPartyLootDialog(false);
-    } catch (error) {
-      console.error('Error defining party loot distribute:', error);
-      setError('Failed to define party loot distribute.');
-    }
-  };
-
-  const handleDefineCharacterDistribute = async () => {
-    const totalDistributeAmount = characterDistributeAmount * activeCharacters.length;
-    if (totalDistributeAmount > totals.gold) {
-      setError('Not enough gold to distribute to each character.');
-      return;
-    }
-    try {
-      const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}/gold/define-character-distribute`, { characterDistributeAmount }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      fetchGoldEntries(); // Refresh the gold entries after distribution
-      setOpenCharacterDistributeDialog(false);
-    } catch (error) {
-      console.error('Error defining character distribute:', error);
-      setError('Failed to define character distribute.');
-    }
-  };
-
   const handleBalance = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -204,12 +168,14 @@ const GoldTransactions = () => {
         <Button variant="contained" color="primary" onClick={handleDistributePlusPartyLoot} sx={{ mr: 2 }}>
           Distribute + Party Loot
         </Button>
-        <Button variant="contained" color="primary" onClick={() => setOpenPartyLootDialog(true)} sx={{ mr: 2 }}>
+        {/* Hidden button for Define Party Loot Distribute */}
+        {/* <Button variant="contained" color="primary" onClick={() => setOpenPartyLootDialog(true)} sx={{ mr: 2 }}>
           Define Party Loot Distribute
-        </Button>
-        <Button variant="contained" color="primary" onClick={() => setOpenCharacterDistributeDialog(true)} sx={{ mr: 2 }}>
+        </Button> */}
+        {/* Hidden button for Define Character Distribute */}
+        {/* <Button variant="contained" color="primary" onClick={() => setOpenCharacterDistributeDialog(true)} sx={{ mr: 2 }}>
           Define Character Distribute
-        </Button>
+        </Button> */}
         {userRole === 'DM' && (
           <Button variant="contained" color="primary" onClick={handleBalance}>
             Balance

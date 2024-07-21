@@ -119,15 +119,21 @@ exports.distributePlusPartyLoot = async (req, res) => {
       }
 
       // Get total gold
-      const totalGoldResult = await client.query('SELECT SUM(gold) AS total_gold FROM gold');
+      const totalGoldResult = await client.query('SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold');
+      const totalPlatinum = parseFloat(totalGoldResult.rows[0].total_platinum);
       const totalGold = parseFloat(totalGoldResult.rows[0].total_gold);
+      const totalSilver = parseFloat(totalGoldResult.rows[0].total_silver);
+      const totalCopper = parseFloat(totalGoldResult.rows[0].total_copper);
 
-      if (totalGold === 0) {
+      const totalValue = totalPlatinum * 10 + totalGold + totalSilver / 10 + totalCopper / 100;
+      if (totalValue === 0) {
         return res.status(400).json({ error: 'No gold available to distribute' });
       }
 
-      // Distribute gold
-      const goldPerCharacter = totalGold / (activeCharacters.length + 1);
+      // Calculate the distribution
+      const distributeValue = totalValue / (activeCharacters.length + 1);
+      const remainingValue = totalValue - distributeValue * activeCharacters.length;
+
       const createdEntries = [];
 
       for (const character of activeCharacters) {
@@ -135,7 +141,7 @@ exports.distributePlusPartyLoot = async (req, res) => {
           sessionDate: new Date(),
           transactionType: 'Withdrawal',
           platinum: 0,
-          gold: -Math.abs(goldPerCharacter),
+          gold: -Math.abs(distributeValue),
           silver: 0,
           copper: 0,
           notes: `Distributed to ${character.name}`,
@@ -150,7 +156,7 @@ exports.distributePlusPartyLoot = async (req, res) => {
         sessionDate: new Date(),
         transactionType: 'Deposit',
         platinum: 0,
-        gold: goldPerCharacter,
+        gold: distributeValue,
         silver: 0,
         copper: 0,
         notes: 'Remaining gold to party loot',
