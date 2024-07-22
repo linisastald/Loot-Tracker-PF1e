@@ -236,21 +236,39 @@ exports.appraiseLoot = async (req, res) => {
     `);
     const previousAppraisals = previousAppraisalsResult.rows;
 
-    // Helper function to round to the nearest 100th decimal place
-    const roundToNearestHundredth = (value) => {
-      return Math.round(value * 100) / 100;
-    };
-
-    // Helper function to round to the nearest 5 or 0
-    const roundToNearestFiveOrZero = (value) => {
-      const factor = 100;
-      const roundedValue = Math.round(value * factor);
-      if (Math.random() < 0.9) {
-        const lastDigit = roundedValue % 10;
-        const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-        return (roundedValue + adjust) / factor;
+    // Helper function to round based on specified probabilities
+    const customRounding = (value) => {
+      const randomValue = Math.random();
+      if (randomValue < 0.15) {
+        // Round to nearest hundredth
+        let roundedValue = Math.round(value * 100) / 100;
+        if (Math.random() < 0.99) {
+          const factor = 100;
+          const lastDigit = Math.round(roundedValue * factor) % 10;
+          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
+        }
+        return roundedValue;
+      } else if (randomValue < 0.4) {
+        // Round to nearest tenth
+        let roundedValue = Math.round(value * 10) / 10;
+        if (Math.random() < 0.75) {
+          const factor = 10;
+          const lastDigit = Math.round(roundedValue * factor) % 10;
+          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
+        }
+        return roundedValue;
+      } else {
+        // Round to nearest whole number
+        let roundedValue = Math.round(value);
+        if (Math.random() < 0.5) {
+          const lastDigit = roundedValue % 10;
+          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+          roundedValue += adjust;
+        }
+        return roundedValue;
       }
-      return value;
     };
 
     // Appraise each item
@@ -277,11 +295,10 @@ exports.appraiseLoot = async (req, res) => {
           } else if (appraisalRoll >= 15) {
             believedValue = lootValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
           } else {
-            believedValue = lootValue * (Math.random() * (3 - 0.01) + 0.01); // Wildly inaccurate
+            believedValue = lootValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
           }
 
-          believedValue = roundToNearestHundredth(believedValue);
-          believedValue = roundToNearestFiveOrZero(believedValue);
+          believedValue = customRounding(believedValue);
         }
       }
 

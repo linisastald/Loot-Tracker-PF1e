@@ -34,6 +34,7 @@ exports.findAll = async (activeCharacterId) => {
         l.type,
         l.size,
         a.believedvalue,
+        ROUND(AVG(a.believedvalue)::numeric, 2) AS average_appraisal,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
         MAX(l.lastupdate) AS lastupdate,
         CASE 
@@ -93,6 +94,7 @@ exports.findByStatus = async (status, activeCharacterId) => {
         l.type,
         l.size,
         a.believedvalue,
+        ROUND(AVG(a.believedvalue)::numeric, 2) AS average_appraisal,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
         MAX(l.lastupdate) AS lastupdate,
         CASE 
