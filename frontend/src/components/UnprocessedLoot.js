@@ -46,11 +46,12 @@ const UnprocessedLoot = () => {
     fetchActiveUserDetails();
   }, []);
 
-  const fetchLoot = async () => {
+  const fetchLoot = async (activeCharacterId) => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(`${API_URL}/loot`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { activeCharacterId }
       });
       setLoot(response.data);
     } catch (error) {
