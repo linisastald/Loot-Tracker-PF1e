@@ -108,7 +108,7 @@ exports.findByStatus = async (status, activeCharacterId) => {
       WHERE
         l.status = $1
       GROUP BY
-        l.name, l.unidentified, l.masterwork, l.type, l.size, character_name, a.believedvalue,;
+        l.name, l.unidentified, l.masterwork, l.type, l.size, character_name, a.believedvalue;
     `;
     const summaryResult = await pool.query(summaryQuery, [status, activeCharacterId]);
 
