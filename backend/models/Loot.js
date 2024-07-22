@@ -33,6 +33,7 @@ exports.findAll = async (activeCharacterId) => {
         l.masterwork,
         l.type,
         l.size,
+        a.believedvalue,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
         MAX(l.lastupdate) AS lastupdate,
         CASE 
@@ -46,7 +47,7 @@ exports.findAll = async (activeCharacterId) => {
       WHERE
         l.status IS NULL OR l.status = 'Pending Sale'
       GROUP BY
-        l.name, l.unidentified, l.masterwork, l.type, l.size;
+        l.name, l.unidentified, l.masterwork, l.type, l.size, a.believedvalue;
     `;
     const summaryResult = await pool.query(summaryQuery, [activeCharacterId]);
 
