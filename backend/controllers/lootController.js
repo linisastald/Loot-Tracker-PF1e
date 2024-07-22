@@ -277,7 +277,7 @@ exports.appraiseLoot = async (req, res) => {
           } else if (appraisalRoll >= 15) {
             believedValue = lootValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
           } else {
-            believedValue = lootValue * (Math.random() * (2 - 0.5) + 0.5); // Wildly inaccurate
+            believedValue = lootValue * (Math.random() * (3 - 0.01) + 0.01); // Wildly inaccurate
           }
 
           believedValue = roundToNearestHundredth(believedValue);
