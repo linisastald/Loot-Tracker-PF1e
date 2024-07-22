@@ -217,7 +217,7 @@ exports.appraiseLoot = async (req, res) => {
       SELECT l.id, l.value
       FROM loot l
       LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1
-      WHERE (l.status IS NULL OR l.status = 'Pending Sale') AND l.unidentified = false AND a.id IS NULL
+      WHERE (l.status IS NULL OR l.status = 'Pending Sale') AND (l.unidentified = false or l.unidentified is null) AND a.id IS NULL
     `, [characterId]);
     const lootToAppraise = lootToAppraiseResult.rows;
 
