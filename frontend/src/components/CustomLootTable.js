@@ -204,8 +204,9 @@ const CustomLootTable = ({
 
   const formatAverageAppraisal = (value) => {
     if (value === null || value === undefined) return '';
-    if (Number.isInteger(value)) return value.toString();
-    return value.toFixed(2).replace(/\.?0+$/, '');
+    const numValue = Number(value);
+    if (Number.isInteger(numValue)) return numValue.toString();
+    return numValue.toFixed(2).replace(/\.?0+$/, '');
   };
 
   return (
@@ -368,7 +369,11 @@ const CustomLootTable = ({
               )}
               {showColumns.whoHasIt && <TableCell style={mainCellStyle}>Who Has It?</TableCell>}
               {showColumns.believedValue && <TableCell style={mainCellStyle}>Believed Value</TableCell>}
-              {showColumns.averageAppraisal && <TableCell style={mainCellStyle}>Average Appraisal</TableCell>}
+              {showColumns.averageAppraisal && (
+                <TableCell style={mainCellStyle}>
+                  {formatAverageAppraisal(item.average_appraisal)}
+                </TableCell>
+              )}
               {showColumns.pendingSale && (
                 <TableCell style={mainCellStyle}>
                   <TableSortLabel
