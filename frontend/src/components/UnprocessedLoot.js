@@ -42,8 +42,8 @@ const UnprocessedLoot = () => {
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
   useEffect(() => {
-    fetchLoot();
     fetchActiveUserDetails();
+    fetchLoot();
   }, []);
 
   const fetchLoot = async (activeCharacterId) => {
