@@ -15,7 +15,6 @@ exports.createLoot = async (req, res) => {
 exports.getAllLoot = async (req, res) => {
   try {
     const userId = req.query.activeCharacterId;
-    console.log(userId)
     const loot = await Loot.findAll(userId);
     res.status(200).json(loot);
   } catch (error) {
