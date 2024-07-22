@@ -62,8 +62,7 @@ exports.findAll = async (activeCharacterId) => {
         l.type,
         l.size,
         l.status,
-        a.believedvalue,
-        a.appraisalroll
+        a.believedvalue
       FROM
         loot l
       LEFT JOIN
@@ -93,6 +92,7 @@ exports.findByStatus = async (status, activeCharacterId) => {
         l.masterwork,
         l.type,
         l.size,
+        a.believedvalue,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
         MAX(l.lastupdate) AS lastupdate,
         CASE 
@@ -108,7 +108,7 @@ exports.findByStatus = async (status, activeCharacterId) => {
       WHERE
         l.status = $1
       GROUP BY
-        l.name, l.unidentified, l.masterwork, l.type, l.size, character_name;
+        l.name, l.unidentified, l.masterwork, l.type, l.size, character_name, a.believedvalue,;
     `;
     const summaryResult = await pool.query(summaryQuery, [status, activeCharacterId]);
 
@@ -125,7 +125,6 @@ exports.findByStatus = async (status, activeCharacterId) => {
         l.status,
         l.lastupdate,
         a.believedvalue,
-        a.appraisalroll,
         c.name AS character_name
       FROM
         loot l
