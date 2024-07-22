@@ -35,7 +35,7 @@ exports.findAll = async (activeCharacterId) => {
         l.size,
         COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal,
         COALESCE(
-          ROUND(AVG(CASE WHEN a.characterid = $1 THEN a.believedvalue END)::numeric, 2),
+          CASE WHEN a.characterid = $1 THEN a.believedvalue END,
           NULL
         ) AS believedvalue,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
