@@ -53,6 +53,7 @@ const UnprocessedLoot = () => {
         headers: { Authorization: `Bearer ${token}` },
         params: { activeCharacterId }
       });
+      console.log(activeCharacterId)
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);

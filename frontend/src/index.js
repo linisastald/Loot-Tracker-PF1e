@@ -5,7 +5,6 @@ import CssBaseline from '@mui/material/CssBaseline';
 import App from './App';
 import './globalStyles.css';
 
-console.log('REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
 
 
 
