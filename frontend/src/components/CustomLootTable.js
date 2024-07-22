@@ -361,12 +361,8 @@ const CustomLootTable = ({
                 </TableCell>
               )}
               {showColumns.whoHasIt && <TableCell style={mainCellStyle}>Who Has It?</TableCell>}
-              {showColumns.believedValue && (
-                <TableCell style={mainCellStyle}>Believed Value</TableCell>
-              )}
-              {showColumns.averageAppraisal && (
-                <TableCell style={mainCellStyle}>Average Appraisal</TableCell>
-              )}
+              {showColumns.believedValue && <TableCell style={mainCellStyle}>Believed Value</TableCell>}
+              {showColumns.averageAppraisal && <TableCell style={mainCellStyle}>Average Appraisal</TableCell>}
               {showColumns.pendingSale && (
                 <TableCell style={mainCellStyle}>
                   <TableSortLabel
@@ -389,9 +385,7 @@ const CustomLootTable = ({
                   </TableSortLabel>
                 </TableCell>
               )}
-              {showColumns.lastUpdate && (
-                <TableCell style={mainCellStyle}>Last Update</TableCell>
-              )}
+              {showColumns.lastUpdate && <TableCell style={mainCellStyle}>Last Update</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>

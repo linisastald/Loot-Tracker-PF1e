@@ -14,13 +14,15 @@ exports.createLoot = async (req, res) => {
 };
 exports.getAllLoot = async (req, res) => {
   try {
-    const loot = await Loot.findAll();
+    const userId = req.user.id;
+    const loot = await Loot.findAll(userId);
     res.status(200).json(loot);
   } catch (error) {
     console.error('Error fetching loot', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.updateLootStatus = async (req, res) => {
   const { ids, status, userId, whohas } = req.body;
 
@@ -38,7 +40,8 @@ exports.updateLootStatus = async (req, res) => {
 };
 exports.getKeptPartyLoot = async (req, res) => {
   try {
-    const loot = await Loot.findByStatus('Kept Party');
+    const userId = req.user.id;
+    const loot = await Loot.findByStatus('Kept Party', userId);
     res.status(200).json(loot);
   } catch (error) {
     console.error('Error fetching kept party loot:', error);
@@ -47,22 +50,25 @@ exports.getKeptPartyLoot = async (req, res) => {
 };
 exports.getTrashedLoot = async (req, res) => {
   try {
-    const loot = await Loot.findByStatus('Trashed');
+    const userId = req.user.id;
+    const loot = await Loot.findByStatus('Trashed', userId);
     res.status(200).json(loot);
   } catch (error) {
-    console.error('Error fetching trashed loot', error);
+    console.error('Error fetching trashed loot:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
 exports.getKeptCharacterLoot = async (req, res) => {
   try {
-    const loot = await Loot.findByStatus('Kept Self');
+    const userId = req.user.id;
+    const loot = await Loot.findByStatus('Kept Self', userId);
     res.status(200).json(loot);
   } catch (error) {
     console.error('Error fetching kept character loot:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.splitStack = async (req, res) => {
   const { id, splits, userId } = req.body;
 

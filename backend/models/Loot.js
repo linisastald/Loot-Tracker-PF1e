@@ -23,7 +23,7 @@ exports.create = async (entry) => {
   return result.rows[0];
 };
 
-exports.findAll = async () => {
+exports.findAll = async (activeCharacterId) => {
   try {
     const summaryQuery = `
       SELECT
@@ -42,13 +42,13 @@ exports.findAll = async () => {
       FROM
         loot l
       LEFT JOIN
-        appraisal a ON l.id = a.lootid
+        appraisal a ON l.id = a.lootid AND a.characterid = $1
       WHERE
         l.status IS NULL OR l.status = 'Pending Sale'
       GROUP BY
         l.name, l.unidentified, l.masterwork, l.type, l.size;
     `;
-    const summaryResult = await pool.query(summaryQuery);
+    const summaryResult = await pool.query(summaryQuery, [activeCharacterId]);
 
     const individualQuery = `
       SELECT
@@ -66,11 +66,11 @@ exports.findAll = async () => {
       FROM
         loot l
       LEFT JOIN
-        appraisal a ON l.id = a.lootid
+        appraisal a ON l.id = a.lootid AND a.characterid = $1
       WHERE
         l.status IS NULL OR l.status = 'Pending Sale';
     `;
-    const individualResult = await pool.query(individualQuery);
+    const individualResult = await pool.query(individualQuery, [activeCharacterId]);
 
     return {
       summary: summaryResult.rows,
@@ -82,7 +82,7 @@ exports.findAll = async () => {
   }
 };
 
-exports.findByStatus = async (status) => {
+exports.findByStatus = async (status, activeCharacterId) => {
   try {
     const summaryQuery = `
       SELECT
@@ -101,7 +101,7 @@ exports.findByStatus = async (status) => {
       FROM
         loot l
       LEFT JOIN
-        appraisal a ON l.id = a.lootid
+        appraisal a ON l.id = a.lootid AND a.characterid = $2
       LEFT JOIN
         characters c ON l.whohas = c.id
       WHERE
@@ -109,7 +109,7 @@ exports.findByStatus = async (status) => {
       GROUP BY
         l.name, l.unidentified, l.masterwork, l.type, l.size, character_name;
     `;
-    const summaryResult = await pool.query(summaryQuery, [status]);
+    const summaryResult = await pool.query(summaryQuery, [status, activeCharacterId]);
 
     const individualQuery = `
       SELECT
@@ -129,13 +129,13 @@ exports.findByStatus = async (status) => {
       FROM
         loot l
       LEFT JOIN
-        appraisal a ON l.id = a.lootid
+        appraisal a ON l.id = a.lootid AND a.characterid = $2
       LEFT JOIN
         characters c ON l.whohas = c.id
       WHERE
         l.status = $1;
     `;
-    const individualResult = await pool.query(individualQuery, [status]);
+    const individualResult = await pool.query(individualQuery, [status, activeCharacterId]);
 
     return {
       summary: summaryResult.rows,
