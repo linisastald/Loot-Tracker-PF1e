@@ -34,10 +34,7 @@ exports.findAll = async (activeCharacterId) => {
         l.type,
         l.size,
         COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal,
-        COALESCE(
-          CASE WHEN a.characterid = $1 THEN a.believedvalue END,
-          NULL
-        ) AS believedvalue,
+        MAX(CASE WHEN a.characterid = $1 THEN a.believedvalue END) AS believedvalue,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
         MAX(l.lastupdate) AS lastupdate,
         CASE 
@@ -98,10 +95,7 @@ exports.findByStatus = async (status, activeCharacterId) => {
         l.type,
         l.size,
         COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal,
-        COALESCE(
-          ROUND(AVG(CASE WHEN a.characterid = $2 THEN a.believedvalue END)::numeric, 2),
-          NULL
-        ) AS believedvalue,
+        MAX(CASE WHEN a.characterid = $2 THEN a.believedvalue END) AS believedvalue,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
         MAX(l.lastupdate) AS lastupdate,
         CASE 
