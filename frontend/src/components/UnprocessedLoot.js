@@ -25,7 +25,9 @@ import {
   applyFilters,
   handleUpdateSubmit,
 } from '../utils/utils';
+
 const API_URL = process.env.REACT_APP_API_URL;
+
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
@@ -68,6 +70,19 @@ const UnprocessedLoot = () => {
   const handleAction = async (actionFunc) => {
     await actionFunc(selectedItems, fetchLoot, activeUser);
     setSelectedItems([]);
+  };
+
+  const handleAppraise = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${API_URL}/loot/appraise`, { userId: activeUser.id }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log('Appraisal results:', response.data);
+      fetchLoot(); // Refresh loot after appraisal
+    } catch (error) {
+      console.error('Error appraising loot:', error);
+    }
   };
 
   const handleOpenSplitDialogWrapper = (item) => {
@@ -134,6 +149,9 @@ const UnprocessedLoot = () => {
       </Button>
       <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleKeepParty)}>
         Keep Party
+      </Button>
+      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleAppraise}>
+        Appraise
       </Button>
       {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
         <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>

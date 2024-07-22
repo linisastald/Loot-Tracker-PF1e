@@ -4,3 +4,5 @@
 /frontend/package-lock.json
 /node_modules/
 backend/.env
+/.idea/dataSources.xml
+/.idea/sqldialects.xml

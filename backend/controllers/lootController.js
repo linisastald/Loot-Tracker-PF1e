@@ -1,4 +1,5 @@
 const Loot = require('../models/Loot');
+const Appraisal = require('../models/Appraisal');
 const pool = require('../db');
 
 exports.createLoot = async (req, res) => {
@@ -191,6 +192,65 @@ exports.getItems = async (req, res) => {
     res.status(200).json(result.rows);
   } catch (error) {
     console.error('Error fetching items', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+exports.appraiseLoot = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    // Get active character for the user
+    const activeCharacterResult = await pool.query(
+      'SELECT * FROM characters WHERE active = true AND user_id = $1',
+      [userId]
+    );
+    const activeCharacter = activeCharacterResult.rows[0];
+
+    if (!activeCharacter) {
+      return res.status(400).json({ error: 'No active character found' });
+    }
+
+    const { id: characterId, appraisal_bonus: appraisalBonus } = activeCharacter;
+
+    // Get loot items to be appraised
+    const lootToAppraiseResult = await pool.query(`
+      SELECT l.id, l.value
+      FROM loot l
+      LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1
+      WHERE (l.status IS NULL OR l.status = 'Pending Sale') AND l.unidentified = false AND a.id IS NULL
+    `, [characterId]);
+    const lootToAppraise = lootToAppraiseResult.rows;
+
+    // Appraise each item
+    const createdAppraisals = [];
+    for (const lootItem of lootToAppraise) {
+      const { id: lootId, value: lootValue } = lootItem;
+      const appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus;
+
+      let believedValue = null;
+      if (lootValue !== null) {
+        if (appraisalRoll >= 20) {
+          believedValue = lootValue;
+        } else if (appraisalRoll >= 15) {
+          believedValue = lootValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
+        } else {
+          believedValue = lootValue * (Math.random() * (2 - 0.5) + 0.5); // Wildly inaccurate
+        }
+      }
+
+      const appraisalEntry = {
+        characterid: characterId,
+        lootid: lootId,
+        appraisalroll: appraisalRoll,
+        believedvalue: believedValue,
+      };
+      const createdAppraisal = await Appraisal.create(appraisalEntry);
+      createdAppraisals.push(createdAppraisal);
+    }
+
+    res.status(201).json(createdAppraisals);
+  } catch (error) {
+    console.error('Error appraising loot:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
