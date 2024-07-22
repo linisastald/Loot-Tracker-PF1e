@@ -33,8 +33,11 @@ exports.findAll = async (activeCharacterId) => {
         l.masterwork,
         l.type,
         l.size,
-        a.believedvalue,
-        ROUND(AVG(a.believedvalue)::numeric, 2) AS average_appraisal,
+        COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal,
+        COALESCE(
+          ROUND(AVG(CASE WHEN a.characterid = $1 THEN a.believedvalue END)::numeric, 2),
+          NULL
+        ) AS believedvalue,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
         MAX(l.lastupdate) AS lastupdate,
         CASE 
@@ -44,11 +47,11 @@ exports.findAll = async (activeCharacterId) => {
       FROM
         loot l
       LEFT JOIN
-        appraisal a ON l.id = a.lootid AND a.characterid = $1
+        appraisal a ON l.id = a.lootid
       WHERE
         l.status IS NULL OR l.status = 'Pending Sale'
       GROUP BY
-        l.name, l.unidentified, l.masterwork, l.type, l.size, a.believedvalue;
+        l.name, l.unidentified, l.masterwork, l.type, l.size;
     `;
     const summaryResult = await pool.query(summaryQuery, [activeCharacterId]);
 
@@ -63,7 +66,8 @@ exports.findAll = async (activeCharacterId) => {
         l.type,
         l.size,
         l.status,
-        a.believedvalue
+        a.believedvalue,
+        (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal
       FROM
         loot l
       LEFT JOIN
@@ -93,24 +97,25 @@ exports.findByStatus = async (status, activeCharacterId) => {
         l.masterwork,
         l.type,
         l.size,
-        a.believedvalue,
-        ROUND(AVG(a.believedvalue)::numeric, 2) AS average_appraisal,
+        COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal,
+        COALESCE(
+          ROUND(AVG(CASE WHEN a.characterid = $2 THEN a.believedvalue END)::numeric, 2),
+          NULL
+        ) AS believedvalue,
         MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
         MAX(l.lastupdate) AS lastupdate,
         CASE 
-          WHEN $1 = 'Kept Self' THEN c.name
+          WHEN COUNT(CASE WHEN l.status = 'Pending Sale' THEN 1 END) > 0 THEN 'Pending Sale'
           ELSE NULL
-        END AS character_name
+        END AS status
       FROM
         loot l
       LEFT JOIN
-        appraisal a ON l.id = a.lootid AND a.characterid = $2
-      LEFT JOIN
-        characters c ON l.whohas = c.id
+        appraisal a ON l.id = a.lootid
       WHERE
         l.status = $1
       GROUP BY
-        l.name, l.unidentified, l.masterwork, l.type, l.size, character_name, a.believedvalue;
+        l.name, l.unidentified, l.masterwork, l.type, l.size;
     `;
     const summaryResult = await pool.query(summaryQuery, [status, activeCharacterId]);
 
@@ -125,15 +130,12 @@ exports.findByStatus = async (status, activeCharacterId) => {
         l.type,
         l.size,
         l.status,
-        l.lastupdate,
         a.believedvalue,
-        c.name AS character_name
+        (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal
       FROM
         loot l
       LEFT JOIN
         appraisal a ON l.id = a.lootid AND a.characterid = $2
-      LEFT JOIN
-        characters c ON l.whohas = c.id
       WHERE
         l.status = $1;
     `;
