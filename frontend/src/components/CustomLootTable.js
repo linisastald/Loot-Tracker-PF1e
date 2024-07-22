@@ -202,6 +202,12 @@ const CustomLootTable = ({
   const mainCellStyle = { padding: '16px' }; // Default padding for main rows
   const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
 
+  const formatAverageAppraisal = (value) => {
+    if (value === null || value === undefined) return '';
+    if (Number.isInteger(value)) return value.toString();
+    return value.toFixed(2).replace(/\.?0+$/, '');
+  };
+
   return (
     <Paper sx={{ p: 2 }}>
       <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -438,7 +444,11 @@ const CustomLootTable = ({
                     {showColumns.size && <TableCell style={mainCellStyle}>{item.size}</TableCell>}
                     {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{item.character_name}</TableCell>}
                     {showColumns.believedValue && <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
-                    {showColumns.averageAppraisal && <TableCell style={mainCellStyle}>{item.average_appraisal || ''}</TableCell>}
+                    {showColumns.averageAppraisal && (
+                      <TableCell style={mainCellStyle}>
+                        {formatAverageAppraisal(item.average_appraisal)}
+                      </TableCell>
+                    )}
                     {showColumns.pendingSale && (
                       <TableCell style={mainCellStyle}>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                     )}
