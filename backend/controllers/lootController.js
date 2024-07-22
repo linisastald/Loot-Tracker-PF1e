@@ -221,34 +221,74 @@ exports.appraiseLoot = async (req, res) => {
 
     // Get loot items to be appraised
     const lootToAppraiseResult = await pool.query(`
-      SELECT l.id, l.value
+      SELECT l.id, l.value, l.itemid, l.modids, l.name
       FROM loot l
       LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1
       WHERE (l.status IS NULL OR l.status = 'Pending Sale') AND (l.unidentified = false or l.unidentified is null) AND a.id IS NULL
     `, [characterId]);
     const lootToAppraise = lootToAppraiseResult.rows;
 
+    // Get all previous appraisals for comparison
+    const previousAppraisalsResult = await pool.query(`
+      SELECT l.itemid, l.modids, l.name, a.believedvalue
+      FROM appraisal a
+      JOIN loot l ON a.lootid = l.id
+    `);
+    const previousAppraisals = previousAppraisalsResult.rows;
+
+    // Helper function to round to the nearest 100th decimal place
+    const roundToNearestHundredth = (value) => {
+      return Math.round(value * 100) / 100;
+    };
+
+    // Helper function to round to the nearest 5 or 0
+    const roundToNearestFiveOrZero = (value) => {
+      const factor = 100;
+      const roundedValue = Math.round(value * factor);
+      if (Math.random() < 0.9) {
+        const lastDigit = roundedValue % 10;
+        const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+        return (roundedValue + adjust) / factor;
+      }
+      return value;
+    };
+
     // Appraise each item
     const createdAppraisals = [];
     for (const lootItem of lootToAppraise) {
-      const { id: lootId, value: lootValue } = lootItem;
-      const appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus;
+      const { id: lootId, value: lootValue, itemid: lootItemId, modids: lootModIds, name: lootName } = lootItem;
+
+      // Check for previous appraisals
+      let previousAppraisal = previousAppraisals.find(appraisal =>
+        appraisal.itemid === lootItemId &&
+        appraisal.modids === lootModIds &&
+        appraisal.name.toLowerCase() === lootName.toLowerCase()
+      );
 
       let believedValue = null;
-      if (lootValue !== null) {
-        if (appraisalRoll >= 20) {
-          believedValue = lootValue;
-        } else if (appraisalRoll >= 15) {
-          believedValue = lootValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
-        } else {
-          believedValue = lootValue * (Math.random() * (2 - 0.5) + 0.5); // Wildly inaccurate
+      if (previousAppraisal) {
+        believedValue = previousAppraisal.believedvalue;
+      } else {
+        const appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus;
+
+        if (lootValue !== null) {
+          if (appraisalRoll >= 20) {
+            believedValue = lootValue;
+          } else if (appraisalRoll >= 15) {
+            believedValue = lootValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
+          } else {
+            believedValue = lootValue * (Math.random() * (2 - 0.5) + 0.5); // Wildly inaccurate
+          }
+
+          believedValue = roundToNearestHundredth(believedValue);
+          believedValue = roundToNearestFiveOrZero(believedValue);
         }
       }
 
       const appraisalEntry = {
         characterid: characterId,
         lootid: lootId,
-        appraisalroll: appraisalRoll,
+        appraisalroll: previousAppraisal ? null : appraisalRoll, // Appraisal roll is null if using a previous appraisal
         believedvalue: believedValue,
       };
       const createdAppraisal = await Appraisal.create(appraisalEntry);
