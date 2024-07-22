@@ -369,11 +369,7 @@ const CustomLootTable = ({
               )}
               {showColumns.whoHasIt && <TableCell style={mainCellStyle}>Who Has It?</TableCell>}
               {showColumns.believedValue && <TableCell style={mainCellStyle}>Believed Value</TableCell>}
-              {showColumns.averageAppraisal && (
-                <TableCell style={mainCellStyle}>
-                  {formatAverageAppraisal(item.average_appraisal)}
-                </TableCell>
-              )}
+              {showColumns.averageAppraisal && <TableCell style={mainCellStyle}>Average Appraisal</TableCell>}
               {showColumns.pendingSale && (
                 <TableCell style={mainCellStyle}>
                   <TableSortLabel
