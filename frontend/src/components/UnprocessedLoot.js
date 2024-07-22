@@ -43,8 +43,13 @@ const UnprocessedLoot = () => {
 
   useEffect(() => {
     fetchActiveUserDetails();
-    fetchLoot();
   }, []);
+
+  useEffect(() => {
+    if (activeUser) {
+      fetchLoot(activeUser.activeCharacterId);
+    }
+  }, [activeUser]);
 
   const fetchLoot = async (activeCharacterId) => {
     try {
@@ -53,7 +58,7 @@ const UnprocessedLoot = () => {
         headers: { Authorization: `Bearer ${token}` },
         params: { activeCharacterId }
       });
-      console.log(activeCharacterId)
+      console.log(activeCharacterId);
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);
@@ -81,7 +86,7 @@ const UnprocessedLoot = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       console.log('Appraisal results:', response.data);
-      fetchLoot(); // Refresh loot after appraisal
+      fetchLoot(activeUser.activeCharacterId); // Refresh loot after appraisal
     } catch (error) {
       console.error('Error appraising loot:', error);
     }
