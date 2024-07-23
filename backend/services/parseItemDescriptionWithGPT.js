@@ -1,9 +1,8 @@
-const { OpenAIApi } = require('openai');
+import OpenAI from 'openai';
 
-const openai = new OpenAIApi({
-  apiKey: process.env.OPENAI_API_KEY, // Ensure your API key is stored securely
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY // This is also the default, can be omitted
 });
-
 // Function to call GPT API to parse item description
 const parseItemDescriptionWithGPT = async (description) => {
   try {
