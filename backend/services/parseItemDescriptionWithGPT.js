@@ -1,4 +1,4 @@
-const {OpenAIApi } = require("openai");
+const { OpenAIApi } = require('openai');
 
 const openai = new OpenAIApi({
   apiKey: process.env.OPENAI_API_KEY, // Ensure your API key is stored securely
