@@ -4,6 +4,9 @@ const lootController = require('../controllers/lootController');
 const verifyToken = require('../middleware/auth');
 const checkRole = require('../middleware/checkRole');
 
+// Add the route to parse item description
+router.post('/parse-item', lootController.parseItemDescription);
+
 router.post('/', verifyToken, lootController.createLoot);
 router.get('/', verifyToken, lootController.getAllLoot);
 router.get('/items', verifyToken, lootController.getItems);
@@ -17,8 +20,6 @@ router.get('/search', verifyToken, checkRole('DM'), lootController.searchItems);
 router.put('/confirm-sale', verifyToken, checkRole('DM'), lootController.confirmSale);
 router.put('/update-entry/:id', verifyToken, lootController.updateEntry);
 router.post('/appraise', lootController.appraiseLoot);
-
-
 
 router.put('/:id', verifyToken, lootController.updateSingleLootStatus);
 

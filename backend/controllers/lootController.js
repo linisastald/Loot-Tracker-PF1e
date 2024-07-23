@@ -1,17 +1,40 @@
 const Loot = require('../models/Loot');
 const Appraisal = require('../models/Appraisal');
 const pool = require('../db');
+const { parseItemDescriptionWithGPT } = require('../services/parseItemDescriptionWithGPT');
 
 exports.createLoot = async (req, res) => {
   try {
     const { entries } = req.body;
-    const results = await Promise.all(entries.map(entry => Loot.create(entry)));
+
+    const parsedEntries = await Promise.all(entries.map(async (entry) => {
+      if (!entry.itemid || !entry.modids) {
+        const parsedResult = await parseItemDescriptionWithGPT(entry.name);
+        const { mods, item } = parsedResult;
+
+        // Fetch item id and mod ids from database based on the parsed result
+        const itemResult = await pool.query('SELECT id FROM items WHERE name = $1', [item]);
+        const itemId = itemResult.rows[0]?.id;
+
+        const modResults = await Promise.all(mods.map(mod =>
+          pool.query('SELECT id FROM mods WHERE name = $1', [mod])
+        ));
+        const modIds = modResults.map(modResult => modResult.rows[0]?.id).filter(id => id !== undefined);
+
+        entry.itemid = itemId || null;
+        entry.modids = modIds.length ? modIds : null;
+      }
+      return entry;
+    }));
+
+    const results = await Promise.all(parsedEntries.map(entry => Loot.create(entry)));
     res.status(201).json(results);
   } catch (error) {
     console.error('Error creating loot:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.getAllLoot = async (req, res) => {
   try {
     const userId = req.query.activeCharacterId;
@@ -38,33 +61,36 @@ exports.updateLootStatus = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.getKeptPartyLoot = async (req, res) => {
   try {
     const userId = req.user.id;
     const loot = await Loot.findByStatus('Kept Party', userId);
     res.status(200).json(loot);
   } catch (error) {
-    console.error('Error fetching kept party loot:', error);
+    console.error('Error fetching kept party loot', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.getTrashedLoot = async (req, res) => {
   try {
     const userId = req.user.id;
     const loot = await Loot.findByStatus('Trashed', userId);
     res.status(200).json(loot);
   } catch (error) {
-    console.error('Error fetching trashed loot:', error);
+    console.error('Error fetching trashed loot', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.getKeptCharacterLoot = async (req, res) => {
   try {
     const userId = req.user.id;
     const loot = await Loot.findByStatus('Kept Self', userId);
     res.status(200).json(loot);
   } catch (error) {
-    console.error('Error fetching kept character loot:', error);
+    console.error('Error fetching kept character loot', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -80,6 +106,7 @@ exports.splitStack = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.updateEntry = async (req, res) => {
   const { id } = req.params;
   const { updatedEntry } = req.body;
@@ -92,6 +119,7 @@ exports.updateEntry = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.updateSingleLootStatus = async (req, res) => {
   const { id } = req.params;
   const { status, userId, whohas } = req.body;
@@ -108,6 +136,7 @@ exports.updateSingleLootStatus = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.getPendingSaleItems = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
@@ -117,6 +146,7 @@ exports.getPendingSaleItems = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.searchItems = async (req, res) => {
   const { query } = req.query;
   try {
@@ -130,6 +160,7 @@ exports.searchItems = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.confirmSale = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -155,6 +186,7 @@ exports.confirmSale = async (req, res) => {
     client.release();
   }
 };
+
 exports.updateItem = async (req, res) => {
   const { id } = req.params;
   const { session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, modids, charges, value, whohas, notes } = req.body;
@@ -192,6 +224,7 @@ exports.updateItem = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.getItems = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM item');
@@ -201,6 +234,7 @@ exports.getItems = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.appraiseLoot = async (req, res) => {
   try {
     const { userId } = req.body;
@@ -314,6 +348,18 @@ exports.appraiseLoot = async (req, res) => {
     res.status(201).json(createdAppraisals);
   } catch (error) {
     console.error('Error appraising loot:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.parseItemDescription = async (req, res) => {
+  try {
+    const { description } = req.body;
+    const parsedData = await parseItemDescriptionWithGPT(description);
+
+    res.status(200).json(parsedData);
+  } catch (error) {
+    console.error('Error parsing item description:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

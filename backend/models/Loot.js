@@ -2,8 +2,8 @@ const pool = require('../db');
 
 exports.create = async (entry) => {
   const query = `
-    INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, itemid, value, whoupdated, notes)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, itemid, modids, value, whoupdated, notes)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *
   `;
   const values = [
@@ -15,6 +15,7 @@ exports.create = async (entry) => {
     entry.type,
     entry.size,
     entry.itemid || null, // Ensure null if empty
+    entry.modids || null, // Ensure null if empty
     entry.value || null,  // Ensure null if empty
     entry.whoupdated,
     entry.notes,
@@ -230,8 +231,8 @@ exports.updateEntry = async (id, updatedEntry) => {
 
     const query = `
       UPDATE loot
-      SET session_date = $1, quantity = $2, name = $3, unidentified = $4, masterwork = $5, type = $6, size = $7, status = $8, whoupdated = $9, lastupdate = CURRENT_TIMESTAMP, whohas = $10, notes = $11
-      WHERE id = $12
+      SET session_date = $1, quantity = $2, name = $3, unidentified = $4, masterwork = $5, type = $6, size = $7, itemid = $8, modids = $9, value = $10, whoupdated = $11, lastupdate = CURRENT_TIMESTAMP, whohas = $12, notes = $13
+      WHERE id = $14
     `;
     const values = [
       mergedEntry.session_date,
@@ -241,7 +242,9 @@ exports.updateEntry = async (id, updatedEntry) => {
       mergedEntry.masterwork,
       mergedEntry.type,
       mergedEntry.size,
-      mergedEntry.status,
+      mergedEntry.itemid,
+      mergedEntry.modids,
+      mergedEntry.value,
       mergedEntry.whoupdated,
       mergedEntry.whohas,
       mergedEntry.notes,
