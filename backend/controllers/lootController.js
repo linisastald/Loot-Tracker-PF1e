@@ -2,6 +2,7 @@ const Loot = require('../models/Loot');
 const Appraisal = require('../models/Appraisal');
 const pool = require('../db');
 const { parseItemDescriptionWithGPT } = require('../services/parseItemDescriptionWithGPT');
+const { calculateFinalValue } = require('../services/calculateFinalValue');
 
 exports.createLoot = async (req, res) => {
   try {
