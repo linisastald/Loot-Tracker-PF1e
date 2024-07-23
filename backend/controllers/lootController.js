@@ -7,30 +7,15 @@ exports.createLoot = async (req, res) => {
   try {
     const { entries } = req.body;
 
-    const parsedEntries = await Promise.all(entries.map(async (entry) => {
-      if (!entry.itemid || !entry.modids) {
-        const parsedResult = await parseItemDescriptionWithGPT(entry.name);
-        const { mods, item } = parsedResult;
+    const createdEntries = [];
+    for (const entry of entries) {
+      const createdEntry = await Loot.create(entry);
+      createdEntries.push(createdEntry);
+    }
 
-        // Fetch item id and mod ids from database based on the parsed result
-        const itemResult = await pool.query('SELECT id FROM item WHERE name = $1', [item]);
-        const itemId = itemResult.rows[0]?.id;
-
-        const modResults = await Promise.all(mods.map(mod =>
-          pool.query('SELECT id FROM mod WHERE name = $1', [mod])
-        ));
-        const modIds = modResults.map(modResult => modResult.rows[0]?.id).filter(id => id !== undefined);
-
-        entry.itemid = itemId || null;
-        entry.modids = modIds.length ? modIds : null;
-      }
-      return entry;
-    }));
-
-    const results = await Promise.all(parsedEntries.map(entry => Loot.create(entry)));
-    res.status(201).json(results);
+    res.status(201).json(createdEntries);
   } catch (error) {
-    console.error('Error creating loot:', error);
+    console.error('Error creating loot entries:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -356,7 +341,6 @@ exports.parseItemDescription = async (req, res) => {
   try {
     const { description } = req.body;
     const parsedData = await parseItemDescriptionWithGPT(description);
-
     res.status(200).json(parsedData);
   } catch (error) {
     console.error('Error parsing item description:', error);
