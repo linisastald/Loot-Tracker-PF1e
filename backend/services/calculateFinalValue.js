@@ -1,9 +1,11 @@
-const calculateFinalValue = (itemValue, itemType, mods) => {
+const calculateFinalValue = (itemValue, itemType, mods, isMasterwork) => {
   let modifiedValue = itemValue;
   let totalPlus = 0;
+
   console.log("Initial item value:", modifiedValue);
   console.log("Item type:", itemType);
   console.log("Mods:", mods);
+  console.log("Is masterwork:", isMasterwork);
 
   mods.forEach(mod => {
     if (mod.valuecalc) {
@@ -19,6 +21,17 @@ const calculateFinalValue = (itemValue, itemType, mods) => {
       console.log("Total plus after adding mod:", totalPlus);
     }
   });
+
+  // Add masterwork value if applicable
+  if (isMasterwork || totalPlus >= 1) {
+    if (itemType.toLowerCase() === 'weapon') {
+      modifiedValue += 300;
+      console.log("Added masterwork weapon value:", 300);
+    } else if (itemType.toLowerCase() === 'armor') {
+      modifiedValue += 150;
+      console.log("Added masterwork armor value:", 150);
+    }
+  }
 
   // Determine additional value based on total plus
   const plusValueTables = {

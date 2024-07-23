@@ -10,7 +10,7 @@ exports.createLoot = async (req, res) => {
 
     const createdEntries = [];
     for (const entry of entries) {
-      const { itemid, modids, type } = entry;
+      const { itemid, modids, type, masterwork } = entry;
       let value = entry.value || 0;
 
       if (itemid) {
@@ -23,7 +23,7 @@ exports.createLoot = async (req, res) => {
       if (modids && modids.length > 0) {
         const modsResult = await pool.query('SELECT plus, valuecalc FROM mod WHERE id = ANY($1::int[])', [modids]);
         const mods = modsResult.rows;
-        value = calculateFinalValue(value, type, mods);
+        value = calculateFinalValue(value, type, mods, masterwork);
       }
 
       entry.value = value;
