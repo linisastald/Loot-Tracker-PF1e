@@ -144,8 +144,6 @@ const LootEntry = () => {
               copper: copper ? -Math.abs(copper) : 0
             };
           }
-        }
-        if (entry.type === 'gold') {
           const goldData = {
             ...data,
             platinum: data.platinum || null,
@@ -161,7 +159,6 @@ const LootEntry = () => {
         } else {
           data.itemid = data.itemid || null;
           data.value = data.value || null;
-
           if (!selectedItems[entries.indexOf(entry)]) {
             // Send the item description to the backend for parsing
             const response = await axios.post(
@@ -169,7 +166,6 @@ const LootEntry = () => {
               { description: data.name },
               { headers: { Authorization: `Bearer ${token}` } }
             );
-
             if (response.data) {
               data.itemid = response.data.itemId || null;
               data.modids = response.data.modIds || [];
@@ -177,7 +173,6 @@ const LootEntry = () => {
               data.value = response.data.itemValue || null;
             }
           }
-
           await axios.post(
             `${API_URL}/loot`,
             { entries: [data] },

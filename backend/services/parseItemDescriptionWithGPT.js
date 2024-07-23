@@ -12,7 +12,7 @@ const parseItemDescriptionWithGPT = async (description) => {
         {
           role: "system",
           content:
-            'You are a helpful assistant that parses item descriptions into mods and item names. Return the result in JSON format like this: { "mods": ["mod1", "mod2"], "item": "item_name" }',
+            'You are a helpful assistant that parses item descriptions into mods, material types, and item names. Material types are considered mods.  Return the result in JSON format like this: { "mods": ["mod1", "mod2"], "item": "item_name" }',
         },
         {
           role: "user",
