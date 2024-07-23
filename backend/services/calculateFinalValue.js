@@ -1,7 +1,7 @@
 const calculateFinalValue = (itemValue, itemType, mods) => {
   let modifiedValue = itemValue;
   let totalPlus = 0;
-
+  console.log(modifiedValue, itemType, mods )
   mods.forEach(mod => {
     if (mod.valuecalc) {
       // Apply value calculation
