@@ -6,7 +6,7 @@ const openai = new OpenAI({
 // Function to call GPT API to parse item description
 const parseItemDescriptionWithGPT = async (description) => {
   try {
-    const response = await openai.createChatCompletion({
+    const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         {
