@@ -1,5 +1,3 @@
-// LootEntry.js
-
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import jwt_decode from 'jwt-decode';
@@ -19,8 +17,9 @@ import {
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { fetchItemNames } from '../utils/utils';
-import parseItemDescriptionWithGPT from '../utils/parseItemDescriptionWithGPT';
+
 const API_URL = process.env.REACT_APP_API_URL;
+
 const initialItemEntry = {
   sessionDate: new Date(),
   quantity: '',
@@ -92,7 +91,7 @@ const LootEntry = () => {
     }
   };
 
-  const handleItemNameChange = async (index, e, value) => {
+  const handleItemNameChange = (index, e, value) => {
     setSelectedItems(prevSelectedItems =>
       prevSelectedItems.map((item, i) => (i === index ? false : item))
     );
@@ -101,39 +100,6 @@ const LootEntry = () => {
         i === index ? { ...entry, data: { ...entry.data, name: value, itemid: null, type: '', value: null } } : entry
       )
     );
-
-    if (value) {
-      const parsedData = await parseItemDescriptionWithGPT(value);
-      const itemName = parsedData.item;
-      const modNames = parsedData.mods;
-
-      const itemResponse = await axios.get(`${API_URL}/items?name=${itemName}`);
-      const itemData = itemResponse.data[0];
-
-      const modIds = [];
-      for (const modName of modNames) {
-        const modResponse = await axios.get(`${API_URL}/mods?name=${modName}`);
-        if (modResponse.data[0]) {
-          modIds.push(modResponse.data[0].id);
-        }
-      }
-
-      setEntries(prevEntries =>
-        prevEntries.map((entry, i) =>
-          i === index ? {
-            ...entry,
-            data: {
-              ...entry.data,
-              name: itemName,
-              itemid: itemData ? itemData.id : null,
-              modids: modIds,
-              type: itemData ? itemData.type : '',
-              value: itemData ? itemData.value : null
-            }
-          } : entry
-        )
-      );
-    }
   };
 
   const handleDateChange = (index, name, date) => {
@@ -195,6 +161,23 @@ const LootEntry = () => {
         } else {
           data.itemid = data.itemid || null;
           data.value = data.value || null;
+
+          if (!selectedItems[entries.indexOf(entry)]) {
+            // Send the item description to the backend for parsing
+            const response = await axios.post(
+              `${API_URL}/loot/parse-item`,
+              { description: data.name },
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            if (response.data) {
+              data.itemid = response.data.itemId || null;
+              data.modids = response.data.modIds || [];
+              data.type = response.data.itemType || '';
+              data.value = response.data.itemValue || null;
+            }
+          }
+
           await axios.post(
             `${API_URL}/loot`,
             { entries: [data] },
