@@ -130,9 +130,11 @@ const LootEntry = () => {
     const token = localStorage.getItem('token');
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
+
     try {
       for (const entry of entries) {
         let data = { ...entry.data, whoupdated: userId };
+
         if (entry.type === 'gold') {
           const { transactionType, platinum, gold, silver, copper } = data;
           if (['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType)) {
@@ -144,6 +146,7 @@ const LootEntry = () => {
               copper: copper ? -Math.abs(copper) : 0
             };
           }
+
           const goldData = {
             ...data,
             platinum: data.platinum || null,
@@ -151,14 +154,18 @@ const LootEntry = () => {
             silver: data.silver || null,
             copper: data.copper || null
           };
+
           await axios.post(
             `${API_URL}/gold`,
             { goldEntries: [goldData] },
             { headers: { Authorization: `Bearer ${token}` } }
           );
+
         } else {
           data.itemid = data.itemid || null;
           data.value = data.value || null;
+          data.modids = data.modids || []; // Ensure modids is always an array
+
           if (!selectedItems[entries.indexOf(entry)]) {
             // Send the item description to the backend for parsing
             const response = await axios.post(
@@ -166,13 +173,18 @@ const LootEntry = () => {
               { description: data.name },
               { headers: { Authorization: `Bearer ${token}` } }
             );
+
             if (response.data) {
               data.itemid = response.data.itemId || null;
-              data.modids = response.data.modIds || [];
+              data.modids = response.data.modIds || []; // Ensure modids is always an array
               data.type = response.data.itemType || '';
               data.value = response.data.itemValue || null;
             }
           }
+
+          // Ensure modids is an array of integers
+          data.modids = data.modids.map(id => parseInt(id, 10));
+
           await axios.post(
             `${API_URL}/loot`,
             { entries: [data] },
@@ -180,7 +192,9 @@ const LootEntry = () => {
           );
         }
       }
+
       handleRemoveAllEntries(); // Remove all entries after submission
+
     } catch (error) {
       console.error('Error submitting entry', error);
     }
