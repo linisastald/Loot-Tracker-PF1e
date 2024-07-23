@@ -341,6 +341,28 @@ exports.parseItemDescription = async (req, res) => {
   try {
     const { description } = req.body;
     const parsedData = await parseItemDescriptionWithGPT(description);
+
+    // Fetch mod IDs from the database based on mod names
+    const modNames = parsedData.mods || [];
+    const modIds = await Promise.all(modNames.map(async (mod) => {
+      const result = await pool.query('SELECT id FROM mod WHERE name = $1', [mod]);
+      return result.rows[0] ? result.rows[0].id : null;
+    }));
+
+    parsedData.modIds = modIds.filter(id => id !== null); // Filter out any null values
+
+    // Fetch item ID from the database based on item name
+    const itemResult = await pool.query('SELECT id, type, value FROM item WHERE name = $1', [parsedData.item]);
+    if (itemResult.rows.length > 0) {
+      parsedData.itemId = itemResult.rows[0].id;
+      parsedData.itemType = itemResult.rows[0].type;
+      parsedData.itemValue = itemResult.rows[0].value;
+    } else {
+      parsedData.itemId = null;
+      parsedData.itemType = '';
+      parsedData.itemValue = null;
+    }
+
     res.status(200).json(parsedData);
   } catch (error) {
     console.error('Error parsing item description:', error);

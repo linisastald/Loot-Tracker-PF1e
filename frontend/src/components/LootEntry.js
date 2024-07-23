@@ -133,10 +133,10 @@ const LootEntry = () => {
 
     try {
       for (const entry of entries) {
-        let data = { ...entry.data, whoupdated: userId };
+        let data = {...entry.data, whoupdated: userId};
 
         if (entry.type === 'gold') {
-          const { transactionType, platinum, gold, silver, copper } = data;
+          const {transactionType, platinum, gold, silver, copper} = data;
           if (['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType)) {
             data = {
               ...data,
@@ -156,9 +156,9 @@ const LootEntry = () => {
           };
 
           await axios.post(
-            `${API_URL}/gold`,
-            { goldEntries: [goldData] },
-            { headers: { Authorization: `Bearer ${token}` } }
+              `${API_URL}/gold`,
+              {goldEntries: [goldData]},
+              {headers: {Authorization: `Bearer ${token}`}}
           );
 
         } else {
@@ -169,9 +169,9 @@ const LootEntry = () => {
           if (!selectedItems[entries.indexOf(entry)]) {
             // Send the item description to the backend for parsing
             const response = await axios.post(
-              `${API_URL}/loot/parse-item`,
-              { description: data.name },
-              { headers: { Authorization: `Bearer ${token}` } }
+                `${API_URL}/loot/parse-item`,
+                {description: data.name},
+                {headers: {Authorization: `Bearer ${token}`}}
             );
 
             if (response.data) {
@@ -182,13 +182,10 @@ const LootEntry = () => {
             }
           }
 
-          // Ensure modids is an array of integers
-          data.modids = data.modids.map(id => parseInt(id, 10));
-
           await axios.post(
-            `${API_URL}/loot`,
-            { entries: [data] },
-            { headers: { Authorization: `Bearer ${token}` } }
+              `${API_URL}/loot`,
+              {entries: [data]},
+              {headers: {Authorization: `Bearer ${token}`}}
           );
         }
       }
