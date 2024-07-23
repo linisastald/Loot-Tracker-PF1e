@@ -6,14 +6,14 @@ const calculateFinalValue = (itemValue, itemType, mods) => {
     if (mod.valuecalc) {
       // Apply value calculation
       const valuecalc = mod.valuecalc.replace('item.wgt', '1'); // Default item weight to 1
-      console.log(modifiedValue)
-      console.log(valuecalc)
+      console.log("modval 1:",modifiedValue)
+      console.log("valcalc 1:",valuecalc)
       modifiedValue = eval(`${modifiedValue}${valuecalc}`);
-      console.log(modifiedValue)
+      console.log("modval 2:",modifiedValue)
     }
     if (mod.plus) {
       totalPlus += mod.plus;
-      console.log(totalPlus)
+      console.log("total plus:",totalPlus)
     }
   });
 
@@ -24,8 +24,9 @@ const calculateFinalValue = (itemValue, itemType, mods) => {
   };
 
   const additionalValue = plusValueTables[itemType]?.[totalPlus] || 0;
-
+  console.log("add val:",additionalValue)
   return modifiedValue + additionalValue;
+  console.log("modval3:",modifiedValue)
 };
 
 module.exports = { calculateFinalValue };
