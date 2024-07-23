@@ -6,10 +6,14 @@ const calculateFinalValue = (itemValue, itemType, mods) => {
     if (mod.valuecalc) {
       // Apply value calculation
       const valuecalc = mod.valuecalc.replace('item.wgt', '1'); // Default item weight to 1
+      console.log(modifiedValue)
+      console.log(valuecalc)
       modifiedValue = eval(`${modifiedValue}${valuecalc}`);
+      console.log(modifiedValue)
     }
     if (mod.plus) {
       totalPlus += mod.plus;
+      console.log(totalPlus)
     }
   });
 
