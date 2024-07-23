@@ -24,7 +24,7 @@ const parseItemDescriptionWithGPT = async (description) => {
       top_p: 1,
     });
 
-    const parsedData = JSON.parse(response.data.choices[0].message.content.trim());
+    const parsedData = JSON.parse(response.choices[0].message.content.trim());
     return parsedData;
   } catch (error) {
     console.error("Error parsing item description with GPT:", error);
