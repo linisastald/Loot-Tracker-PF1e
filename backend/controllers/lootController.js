@@ -13,11 +13,11 @@ exports.createLoot = async (req, res) => {
         const { mods, item } = parsedResult;
 
         // Fetch item id and mod ids from database based on the parsed result
-        const itemResult = await pool.query('SELECT id FROM items WHERE name = $1', [item]);
+        const itemResult = await pool.query('SELECT id FROM item WHERE name = $1', [item]);
         const itemId = itemResult.rows[0]?.id;
 
         const modResults = await Promise.all(mods.map(mod =>
-          pool.query('SELECT id FROM mods WHERE name = $1', [mod])
+          pool.query('SELECT id FROM mod WHERE name = $1', [mod])
         ));
         const modIds = modResults.map(modResult => modResult.rows[0]?.id).filter(id => id !== undefined);
 
