@@ -24,9 +24,10 @@ const calculateFinalValue = (itemValue, itemType, mods) => {
   };
 
   const additionalValue = plusValueTables[itemType]?.[totalPlus] || 0;
-  console.log("add val:",additionalValue)
+  console.log("add val:",additionalValue);
+  console.log("modval3:",modifiedValue + additionalValue);
   return modifiedValue + additionalValue;
-  console.log("modval3:",modifiedValue)
+
 };
 
 module.exports = { calculateFinalValue };
