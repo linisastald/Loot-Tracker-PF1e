@@ -2,7 +2,6 @@ const { Configuration, OpenAIApi } = require('openai');
 
 // Initialize OpenAI API client
 const configuration = new Configuration({
-  //apiKey: '', // Replace with your actual API key
   apiKey: process.env.OPENAI_API_KEY, // Ensure your API key is stored securely
 });
 const openai = new OpenAIApi(configuration);
