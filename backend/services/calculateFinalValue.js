@@ -22,6 +22,7 @@ const calculateFinalValue = (itemValue, itemType, mods) => {
     weapon: { 1: 2000, 2: 8000, 3: 18000, 4: 32000, 5: 50000, 6: 72000, 7: 98000, 8: 128000, 9: 162000, 10: 200000 },
     armor: { 1: 1000, 2: 4000, 3: 9000, 4: 16000, 5: 25000, 6: 36000, 7: 49000, 8: 64000, 9: 81000, 10: 100000 }
   };
+  console.log("test",plusValueTables[itemType]?.[totalPlus])
 
   const additionalValue = plusValueTables[itemType]?.[totalPlus] || 0;
   console.log("add val:",additionalValue);
