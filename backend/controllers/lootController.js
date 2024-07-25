@@ -361,17 +361,30 @@ exports.parseItemDescription = async (req, res) => {
     const { description } = req.body;
     const parsedData = await parseItemDescriptionWithGPT(description);
 
-    // Fetch mod IDs from the database based on mod names
+    // Fetch mod IDs from the database based on mod names (using similarity)
     const modNames = parsedData.mods || [];
     const modIds = await Promise.all(modNames.map(async (mod) => {
-      const result = await pool.query('SELECT id FROM mod WHERE name = $1', [mod]);
+      const result = await pool.query(`
+        SELECT id 
+        FROM mod 
+        WHERE SIMILARITY(name, $1) > 0.3
+        ORDER BY SIMILARITY(name, $1) DESC
+        LIMIT 1
+      `, [mod]);
       return result.rows[0] ? result.rows[0].id : null;
     }));
 
     parsedData.modIds = modIds.filter(id => id !== null); // Filter out any null values
 
-    // Fetch item ID from the database based on item name
-    const itemResult = await pool.query('SELECT id, type, value FROM item WHERE name = $1', [parsedData.item]);
+    // Fetch item ID from the database based on item name (using similarity)
+    const itemResult = await pool.query(`
+      SELECT id, type, value 
+      FROM item 
+      WHERE SIMILARITY(name, $1) > 0.3
+      ORDER BY SIMILARITY(name, $1) DESC
+      LIMIT 1
+    `, [parsedData.item]);
+
     if (itemResult.rows.length > 0) {
       parsedData.itemId = itemResult.rows[0].id;
       parsedData.itemType = itemResult.rows[0].type;
