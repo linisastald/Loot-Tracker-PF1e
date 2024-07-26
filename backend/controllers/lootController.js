@@ -12,8 +12,9 @@ exports.createLoot = async (req, res) => {
     const createdEntries = [];
     for (const entry of entries) {
       const {
-        itemId, name, quantity, notes, session_date,
-        item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds
+        itemId, name, quantity, notes, session_date, sessionDate,
+        item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
+        unidentified, masterwork, size, whoupdated
       } = entry;
       let itemData, modsData, isMasterwork;
 
@@ -34,9 +35,9 @@ exports.createLoot = async (req, res) => {
           itemData = {
             id: itemId, // Use provided itemId if available
             name: parsedItem,
-            type: itemType || 'weapon',
-            subtype: itemSubtype || 'ammunition',
-            value: itemValue || 0.05
+            type: itemType,
+            subtype: itemSubtype,
+            value: itemValue
           };
         }
 
@@ -85,37 +86,36 @@ exports.createLoot = async (req, res) => {
         } else {
           modsData = [];
         }
-        isMasterwork = entry.masterwork || false;
+        isMasterwork = masterwork || false;
       } else {
         console.log(`Invalid entry: no item id or parsed data for "${name}"`);
         continue;
       }
 
-      const value = calculateFinalValue(
+      const calculatedValue = calculateFinalValue(
         parseFloat(itemData.value),
         itemData.type,
         itemData.subtype,
         modsData,
         isMasterwork
       );
-      // session_date, quantity, name, unidentified, masterwork, type, size, itemid, modids, value, whoupdated, notes
 
       const createdEntry = await Loot.create({
-        session_date: itemData.sessionDate,
+        session_date: session_date || sessionDate,
         quantity,
-        name: itemData.name,
-        unidentified: entry.unidentified || false,
+        name: name || itemData.name,
+        unidentified: unidentified || false,
         masterwork: isMasterwork,
-        type: itemData.type,
-        size,
-        itemId: itemData.id,
+        type: itemData.type || type,
+        size: size || '',
+        itemid: itemData.id,
         modids: modsData.map(mod => mod.id),
-        value,
+        value: calculatedValue,
         whoupdated,
-        notes
+        notes: notes || ''
       });
-      console.log(createdEntry)
 
+      console.log(createdEntry);
       createdEntries.push(createdEntry);
     }
 
