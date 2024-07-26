@@ -58,7 +58,7 @@ const UnprocessedLoot = () => {
         headers: { Authorization: `Bearer ${token}` },
         params: { activeCharacterId }
       });
-      console.log(activeCharacterId);
+      console.log('Raw loot data:', response.data);
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);
@@ -107,6 +107,7 @@ const UnprocessedLoot = () => {
   };
 
   const filteredLoot = applyFilters(loot, filters);
+  console.log('Filtered loot data:', filteredLoot);
 
   return (
     <Container component="main">

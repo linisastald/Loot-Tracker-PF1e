@@ -208,6 +208,8 @@ const CustomLootTable = ({
     if (Number.isInteger(numValue)) return numValue.toString();
     return numValue.toFixed(2).replace(/\.?0+$/, '');
   };
+  console.log('Loot prop in CustomLootTable:', loot);
+  console.log('IndividualLoot prop in CustomLootTable:', individualLoot);
 
   return (
     <Paper sx={{ p: 2 }}>
