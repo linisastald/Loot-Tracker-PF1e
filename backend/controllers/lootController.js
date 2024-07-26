@@ -98,19 +98,21 @@ exports.createLoot = async (req, res) => {
         modsData,
         isMasterwork
       );
+      // session_date, quantity, name, unidentified, masterwork, type, size, itemid, modids, value, whoupdated, notes
 
       const createdEntry = await Loot.create({
-        itemId: itemData.id,
+        session_date: itemData.sessionDate,
         quantity,
         name: itemData.name,
         unidentified: entry.unidentified || false,
         masterwork: isMasterwork,
         type: itemData.type,
-        subtype: itemData.subtype,
-        value,
-        notes,
+        size,
+        itemId: itemData.id,
         modids: modsData.map(mod => mod.id),
-        session_date: itemData.sessionDate
+        value,
+        whoupdated,
+        notes
       });
       console.log(createdEntry)
 
