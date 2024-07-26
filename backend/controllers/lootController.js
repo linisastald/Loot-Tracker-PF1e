@@ -68,6 +68,7 @@ exports.createLoot = async (req, res) => {
               SIMILARITY(name, $1) DESC
             LIMIT 1
           `, [modName, item.type, item.subtype]);
+          console.log(result)
           return result.rows[0] || null;
         }));
         mods = mods.filter(mod => mod !== null);
