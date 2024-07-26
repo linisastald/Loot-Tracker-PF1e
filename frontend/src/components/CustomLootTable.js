@@ -434,6 +434,7 @@ const CustomLootTable = ({
                     )}
                     {showColumns.unidentified && (
                       <TableCell style={mainCellStyle}>
+                        {console.log('Unidentified value:', item.unidentified)}
                         {item.unidentified === null || item.unidentified === false
                           ? ''
                           : item.unidentified
