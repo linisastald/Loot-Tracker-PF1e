@@ -101,7 +101,7 @@ exports.createLoot = async (req, res) => {
       );
 
       const createdEntry = await Loot.create({
-        session_date: session_date || sessionDate,
+        sessionDate: session_date || sessionDate,
         quantity,
         name: name || itemData.name,
         unidentified: unidentified || false,
