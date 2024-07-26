@@ -11,10 +11,13 @@ exports.createLoot = async (req, res) => {
     console.log({entries});
     const createdEntries = [];
     for (const entry of entries) {
-      const {itemId, name, quantity, notes, session_date, parsedData} = entry;
-      let item, mods, isMasterwork;
+      const {
+        itemId, name, quantity, notes, session_date,
+        item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds
+      } = entry;
+      let itemData, modsData, isMasterwork;
 
-      if (parsedData && parsedData.item) {
+      if (parsedItem) {
         console.log("Using parsed data");
         // Use parsed data
         const itemResult = await pool.query(`
@@ -23,42 +26,47 @@ exports.createLoot = async (req, res) => {
           WHERE SIMILARITY(name, $1) > 0.3
           ORDER BY SIMILARITY(name, $1) DESC 
           LIMIT 1
-        `, [parsedData.item]);
+        `, [parsedItem]);
 
         if (itemResult.rows.length > 0) {
-          item = { ...itemResult.rows[0], name: parsedData.item };
+          itemData = { ...itemResult.rows[0], name: parsedItem };
         } else {
-          item = {
+          itemData = {
             id: itemId, // Use provided itemId if available
-            name: parsedData.item,
-            type: parsedData.itemType || 'weapon',
-            subtype: parsedData.itemSubtype || 'ammunition',
-            value: parsedData.itemValue || 0.05
+            name: parsedItem,
+            type: itemType || 'weapon',
+            subtype: itemSubtype || 'ammunition',
+            value: itemValue || 0.05
           };
         }
 
-        // Find matching mods
-        mods = await Promise.all(parsedData.mods.map(async (modName) => {
-          const result = await pool.query(`
-            SELECT id, name, plus, valuecalc, target, subtarget
-            FROM mod 
-            WHERE SIMILARITY(name, $1) > 0.3
-            AND (target = $2 OR target IS NULL)
-            AND (subtarget = $3 OR subtarget IS NULL)
-            ORDER BY 
-              CASE 
-                WHEN target = $2 AND subtarget = $3 THEN 1
-                WHEN target = $2 AND subtarget IS NULL THEN 2
-                WHEN target = $2 THEN 3
-                ELSE 4
-              END,
-              SIMILARITY(name, $1) DESC
-            LIMIT 1
-          `, [modName, item.type, item.subtype]);
-          return result.rows[0] || null;
-        }));
-        mods = mods.filter(mod => mod !== null);
-        isMasterwork = parsedData.mods.some(mod => mod.toLowerCase().includes('masterwork'));
+        // Use modIds if available, otherwise find matching mods
+        if (modIds && modIds.length > 0) {
+          const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [modIds]);
+          modsData = modsResult.rows;
+        } else {
+          modsData = await Promise.all(parsedMods.map(async (modName) => {
+            const result = await pool.query(`
+              SELECT id, name, plus, valuecalc, target, subtarget
+              FROM mod 
+              WHERE SIMILARITY(name, $1) > 0.3
+              AND (target = $2 OR target IS NULL)
+              AND (subtarget = $3 OR subtarget IS NULL)
+              ORDER BY 
+                CASE 
+                  WHEN target = $2 AND subtarget = $3 THEN 1
+                  WHEN target = $2 AND subtarget IS NULL THEN 2
+                  WHEN target = $2 THEN 3
+                  ELSE 4
+                END,
+                SIMILARITY(name, $1) DESC
+              LIMIT 1
+            `, [modName, itemData.type, itemData.subtype]);
+            return result.rows[0] || null;
+          }));
+        }
+        modsData = modsData.filter(mod => mod !== null);
+        isMasterwork = parsedMods.some(mod => mod.toLowerCase().includes('masterwork'));
       } else if (itemId) {
         console.log("Using itemId");
         // Item selected from autofill
@@ -67,15 +75,15 @@ exports.createLoot = async (req, res) => {
           console.log(`Item not found: id ${itemId}`);
           continue;
         }
-        item = itemResult.rows[0];
+        itemData = itemResult.rows[0];
 
         // Fetch mods if any
         if (entry.modids && entry.modids.length > 0) {
           console.log("Fetching mods");
           const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [entry.modids]);
-          mods = modsResult.rows;
+          modsData = modsResult.rows;
         } else {
-          mods = [];
+          modsData = [];
         }
         isMasterwork = entry.masterwork || false;
       } else {
@@ -84,24 +92,24 @@ exports.createLoot = async (req, res) => {
       }
 
       const value = calculateFinalValue(
-        item.value,
-        item.type,
-        item.subtype,
-        mods,
+        parseFloat(itemData.value),
+        itemData.type,
+        itemData.subtype,
+        modsData,
         isMasterwork
       );
 
       const createdEntry = await Loot.create({
-        itemId: item.id,
+        itemId: itemData.id,
         quantity,
-        name: item.name,
+        name: itemData.name,
         unidentified: entry.unidentified || false,
         masterwork: isMasterwork,
-        type: item.type,
-        subtype: item.subtype,
+        type: itemData.type,
+        subtype: itemData.subtype,
         value,
         notes,
-        modids: mods.map(mod => mod.id),
+        modids: modsData.map(mod => mod.id),
         session_date
       });
 
