@@ -10,36 +10,59 @@ exports.createLoot = async (req, res) => {
 
     const createdEntries = [];
     for (const entry of entries) {
-      const { itemid, mods: modNames, masterwork } = entry;
-      let value = entry.value || 0;
+      const { itemid, name, quantity, notes, parsedData } = entry;
+      let item, mods, isMasterwork;
 
       if (itemid) {
-        const itemResult = await pool.query('SELECT value, type, subtype FROM item WHERE id = $1', [itemid]);
-        if (itemResult.rows.length > 0) {
-          value = itemResult.rows[0].value;
-          entry.type = itemResult.rows[0].type.toLowerCase();
-          entry.subtype = itemResult.rows[0].subtype ? itemResult.rows[0].subtype.toLowerCase() : null;
+        // Item selected from autofill
+        const itemResult = await pool.query('SELECT id, name, type, subtype, value FROM item WHERE id = $1', [itemid]);
+        if (itemResult.rows.length === 0) {
+          console.log(`Item not found: id ${itemid}`);
+          continue;
         }
+        item = itemResult.rows[0];
+
+        // Fetch mods if any
+        if (entry.modids && entry.modids.length > 0) {
+          const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [entry.modids]);
+          mods = modsResult.rows;
+        } else {
+          mods = [];
+        }
+
+        isMasterwork = entry.masterwork || false;
+      } else if (parsedData) {
+        // Item manually entered and parsed
+        item = parsedData.item;
+        mods = parsedData.mods;
+        isMasterwork = parsedData.isMasterwork;
+      } else {
+        // Neither itemid nor parsed data available
+        console.log(`Invalid entry: no item id or parsed data for "${name}"`);
+        continue;
       }
 
-      let applicableMods = [];
-      if (modNames && modNames.length > 0) {
-        const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE name = ANY($1)', [modNames]);
-        const mods = modsResult.rows;
+      const value = calculateFinalValue(
+        item.value,
+        item.type,
+        item.subtype,
+        mods,
+        isMasterwork
+      );
 
-        applicableMods = mods.filter(mod =>
-          mod.target.toLowerCase() === entry.type &&
-          (!entry.subtype || !mod.subtarget || mod.subtarget.toLowerCase() === entry.subtype)
-        );
-      }
+      const createdEntry = await Loot.create({
+        itemid: item.id,
+        quantity,
+        name: item.name,
+        unidentified: entry.unidentified || false,
+        masterwork: isMasterwork,
+        type: item.type,
+        subtype: item.subtype,
+        value,
+        notes,
+        modids: mods.map(mod => mod.id)
+      });
 
-      console.log("Applicable mods:", applicableMods);
-
-      value = calculateFinalValue(value, entry.type, entry.subtype, applicableMods, masterwork);
-
-      entry.value = value;
-
-      const createdEntry = await Loot.create(entry);
       createdEntries.push(createdEntry);
     }
 
@@ -375,42 +398,49 @@ exports.parseItemDescription = async (req, res) => {
     // Function to find the best match using ILIKE and additional logic
     const findBestMatch = async (table, column, value) => {
       const result = await pool.query(`
-        SELECT id, ${column}, SIMILARITY(${column}, $1) AS similarity
+        SELECT id, ${column}, type, subtype, value, SIMILARITY(${column}, $1) AS similarity
         FROM ${table}
-        WHERE ${column} ILIKE $1
-        OR SIMILARITY(${column}, $1) > 0.3
+        WHERE ${column} ILIKE $1 OR SIMILARITY(${column}, $1) > 0.3
         ORDER BY SIMILARITY(${column}, $1) DESC
         LIMIT 1
       `, [`%${value}%`]);
-
       return result.rows.length > 0 ? result.rows[0] : null;
     };
 
-    // Fetch mod IDs from the database based on mod names (using ILIKE and additional logic)
+    // Fetch mod details from the database based on mod names
     const modNames = parsedData.mods || [];
-    const modIds = await Promise.all(modNames.map(async (mod) => {
+    const modDetails = await Promise.all(modNames.map(async (mod) => {
       const bestMatch = await findBestMatch('mod', 'name', mod);
       console.log(`Matching mod: ${mod} ->`, bestMatch);
-      return bestMatch ? bestMatch.id : null;
+      return bestMatch;
     }));
 
-    parsedData.modIds = modIds.filter(id => id !== null); // Filter out any null values
+    parsedData.mods = modDetails.filter(mod => mod !== null);
 
-    // Fetch item ID from the database based on item name (using ILIKE and additional logic)
+    // Fetch item details from the database based on item name
     const bestItemMatch = await findBestMatch('item', 'name', parsedData.item);
     console.log(`Matching item: ${parsedData.item} ->`, bestItemMatch);
+
     if (bestItemMatch) {
-      const itemResult = await pool.query('SELECT id, type, value FROM item WHERE id = $1', [bestItemMatch.id]);
-      if (itemResult.rows.length > 0) {
-        parsedData.itemId = itemResult.rows[0].id;
-        parsedData.itemType = itemResult.rows[0].type;
-        parsedData.itemValue = itemResult.rows[0].value;
-      }
+      parsedData.item = {
+        id: bestItemMatch.id,
+        name: bestItemMatch.name,
+        type: bestItemMatch.type,
+        subtype: bestItemMatch.subtype,
+        value: bestItemMatch.value
+      };
     } else {
-      parsedData.itemId = null;
-      parsedData.itemType = '';
-      parsedData.itemValue = null;
+      parsedData.item = {
+        id: null,
+        name: parsedData.item,
+        type: null,
+        subtype: null,
+        value: null
+      };
     }
+
+    // Determine if the item is masterwork
+    parsedData.isMasterwork = parsedData.mods.some(mod => mod.name.toLowerCase() === 'masterwork');
 
     res.status(200).json(parsedData);
   } catch (error) {
