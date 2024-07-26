@@ -7,6 +7,7 @@ const { calculateFinalValue } = require('../services/calculateFinalValue');
 exports.createLoot = async (req, res) => {
   try {
     const { entries } = req.body;
+    console.log("createLoot")
     const createdEntries = [];
     for (const entry of entries) {
       const { itemid, name, quantity, notes, session_date, parsedData } = entry;
@@ -427,6 +428,7 @@ exports.appraiseLoot = async (req, res) => {
 exports.parseItemDescription = async (req, res) => {
   try {
     const { description } = req.body;
+    console.log("parseItem")
     const parsedData = await parseItemDescriptionWithGPT(description);
 
     // Fetch item from the database based on item name (using similarity)
@@ -481,6 +483,7 @@ exports.parseItemDescription = async (req, res) => {
 exports.calculateValue = async (req, res) => {
   try {
     const { itemId, itemType, itemSubtype, isMasterwork, itemValue, mods } = req.body;
+    console.log("calculateValue")
 
     const modDetails = await Promise.all(mods.map(async (mod) => {
       const result = await pool.query('SELECT id, plus, valuecalc FROM mod WHERE id = $1', [mod.id]);
