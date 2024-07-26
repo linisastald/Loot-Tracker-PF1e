@@ -56,3 +56,5 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
   console.log("Final calculated value:", finalValue);
   return finalValue;
 };
+
+module.exports = { calculateFinalValue };
