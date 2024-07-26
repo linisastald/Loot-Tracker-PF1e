@@ -17,8 +17,8 @@ exports.createLoot = async (req, res) => {
         const itemResult = await pool.query('SELECT value, type, subtype FROM item WHERE id = $1', [itemid]);
         if (itemResult.rows.length > 0) {
           value = itemResult.rows[0].value;
-          entry.type = itemResult.rows[0].type;
-          entry.subtype = itemResult.rows[0].subtype;
+          entry.type = itemResult.rows[0].type.toLowerCase();
+          entry.subtype = itemResult.rows[0].subtype ? itemResult.rows[0].subtype.toLowerCase() : null;
         }
       }
 
@@ -29,10 +29,10 @@ exports.createLoot = async (req, res) => {
 
         // Filter and sort mods based on target and subtarget
         applicableMods = mods.filter(mod => {
-          if (mod.target !== entry.type) return false;
+          if (mod.target.toLowerCase() !== entry.type) return false;
 
           if (entry.subtype) {
-            if (mod.subtarget === entry.subtype) return true;
+            if (mod.subtarget && mod.subtarget.toLowerCase() === entry.subtype) return true;
             if (mod.subtarget === null) return true;
             return false;
           } else {
@@ -40,8 +40,8 @@ exports.createLoot = async (req, res) => {
           }
         }).sort((a, b) => {
           // Prioritize mods with matching subtarget
-          if (a.subtarget === entry.subtype && b.subtarget !== entry.subtype) return -1;
-          if (b.subtarget === entry.subtype && a.subtarget !== entry.subtype) return 1;
+          if (a.subtarget && a.subtarget.toLowerCase() === entry.subtype && (!b.subtarget || b.subtarget.toLowerCase() !== entry.subtype)) return -1;
+          if (b.subtarget && b.subtarget.toLowerCase() === entry.subtype && (!a.subtarget || a.subtarget.toLowerCase() !== entry.subtype)) return 1;
           return 0;
         });
       }
