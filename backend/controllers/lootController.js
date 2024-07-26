@@ -10,59 +10,25 @@ exports.createLoot = async (req, res) => {
 
     const createdEntries = [];
     for (const entry of entries) {
-      const { itemid, name, quantity, notes, parsedData } = entry;
-      let item, mods, isMasterwork;
+      const { itemid, modids, type, masterwork } = entry;
+      let value = entry.value || 0;
 
       if (itemid) {
-        // Item selected from autofill
-        const itemResult = await pool.query('SELECT id, name, type, subtype, value FROM item WHERE id = $1', [itemid]);
-        if (itemResult.rows.length === 0) {
-          console.log(`Item not found: id ${itemid}`);
-          continue;
+        const itemResult = await pool.query('SELECT value FROM item WHERE id = $1', [itemid]);
+        if (itemResult.rows.length > 0) {
+          value = itemResult.rows[0].value;
         }
-        item = itemResult.rows[0];
-
-        // Fetch mods if any
-        if (entry.modids && entry.modids.length > 0) {
-          const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [entry.modids]);
-          mods = modsResult.rows;
-        } else {
-          mods = [];
-        }
-
-        isMasterwork = entry.masterwork || false;
-      } else if (parsedData) {
-        // Item manually entered and parsed
-        item = parsedData.item;
-        mods = parsedData.mods;
-        isMasterwork = parsedData.isMasterwork;
-      } else {
-        // Neither itemid nor parsed data available
-        console.log(`Invalid entry: no item id or parsed data for "${name}"`);
-        continue;
       }
 
-      const value = calculateFinalValue(
-        item.value,
-        item.type,
-        item.subtype,
-        mods,
-        isMasterwork
-      );
+      if (modids && modids.length > 0) {
+        const modsResult = await pool.query('SELECT plus, valuecalc FROM mod WHERE id = ANY($1::int[])', [modids]);
+        const mods = modsResult.rows;
+        value = calculateFinalValue(value, type, mods, masterwork);
+      }
 
-      const createdEntry = await Loot.create({
-        itemid: item.id,
-        quantity,
-        name: item.name,
-        unidentified: entry.unidentified || false,
-        masterwork: isMasterwork,
-        type: item.type,
-        subtype: item.subtype,
-        value,
-        notes,
-        modids: mods.map(mod => mod.id)
-      });
+      entry.value = value;
 
+      const createdEntry = await Loot.create(entry);
       createdEntries.push(createdEntry);
     }
 
@@ -395,65 +361,43 @@ exports.parseItemDescription = async (req, res) => {
     const { description } = req.body;
     const parsedData = await parseItemDescriptionWithGPT(description);
 
-    // Function to find the best match using ILIKE and additional logic
-    const findBestMatch = async (table, column, value) => {
-      let query;
-      if (table === 'item') {
-        query = `
-          SELECT id, name, type, subtype, value, SIMILARITY(name, $1) AS similarity
-          FROM item
-          WHERE name ILIKE $1 OR SIMILARITY(name, $1) > 0.3
-          ORDER BY SIMILARITY(name, $1) DESC
-          LIMIT 1
-        `;
-      } else if (table === 'mod') {
-        query = `
-          SELECT id, name, plus, type, valuecalc, target, subtarget, SIMILARITY(name, $1) AS similarity
-          FROM mod
-          WHERE name ILIKE $1 OR SIMILARITY(name, $1) > 0.3
-          ORDER BY SIMILARITY(name, $1) DESC
-          LIMIT 1
-        `;
-      }
-
-      const result = await pool.query(query, [`%${value}%`]);
-      return result.rows.length > 0 ? result.rows[0] : null;
-    };
-
-    // Fetch mod details from the database based on mod names
+    // Fetch mod IDs from the database based on mod names
+    // Fetch mod IDs from the database based on mod names (using similarity)
     const modNames = parsedData.mods || [];
-    const modDetails = await Promise.all(modNames.map(async (mod) => {
-      const bestMatch = await findBestMatch('mod', 'name', mod);
-      console.log(`Matching mod: ${mod} ->`, bestMatch);
-      return bestMatch;
+    const modIds = await Promise.all(modNames.map(async (mod) => {
+      const result = await pool.query('SELECT id FROM mod WHERE name = $1', [mod]);
+      const result = await pool.query(`
+        SELECT id 
+        FROM mod 
+        WHERE SIMILARITY(name, $1) > 0.3
+        ORDER BY SIMILARITY(name, $1) DESC
+        LIMIT 1
+      `, [mod]);
+      return result.rows[0] ? result.rows[0].id : null;
     }));
 
-    parsedData.mods = modDetails.filter(mod => mod !== null);
+    parsedData.modIds = modIds.filter(id => id !== null); // Filter out any null values
 
-    // Fetch item details from the database based on item name
-    const bestItemMatch = await findBestMatch('item', 'name', parsedData.item);
-    console.log(`Matching item: ${parsedData.item} ->`, bestItemMatch);
+    // Fetch item ID from the database based on item name
+    const itemResult = await pool.query('SELECT id, type, value FROM item WHERE name = $1', [parsedData.item]);
+    // Fetch item ID from the database based on item name (using similarity)
+    const itemResult = await pool.query(`
+      SELECT id, type, value 
+      FROM item 
+      WHERE SIMILARITY(name, $1) > 0.3
+      ORDER BY SIMILARITY(name, $1) DESC
+      LIMIT 1
+    `, [parsedData.item]);
 
-    if (bestItemMatch) {
-      parsedData.item = {
-        id: bestItemMatch.id,
-        name: bestItemMatch.name,
-        type: bestItemMatch.type,
-        subtype: bestItemMatch.subtype,
-        value: bestItemMatch.value
-      };
+    if (itemResult.rows.length > 0) {
+      parsedData.itemId = itemResult.rows[0].id;
+      parsedData.itemType = itemResult.rows[0].type;
+      parsedData.itemValue = itemResult.rows[0].value;
     } else {
-      parsedData.item = {
-        id: null,
-        name: parsedData.item,
-        type: null,
-        subtype: null,
-        value: null
-      };
+      parsedData.itemId = null;
+      parsedData.itemType = '';
+      parsedData.itemValue = null;
     }
-
-    // Determine if the item is masterwork
-    parsedData.isMasterwork = parsedData.mods.some(mod => mod.name.toLowerCase() === 'masterwork');
 
     res.status(200).json(parsedData);
   } catch (error) {
