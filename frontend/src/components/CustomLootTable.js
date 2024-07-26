@@ -173,8 +173,15 @@ const CustomLootTable = ({
   console.log('Filtering item:', item);
 
   const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
-  const passesTypeFilter = typeFilters[item.type] || (typeFilters['Other'] && !item.type);
-  const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size);
+  const passesTypeFilter = Object.keys(typeFilters).some(type => {
+    const itemType = (item.type || '').toLowerCase();
+    const filterType = type.toLowerCase();
+    return (
+      (filterType === 'other' && (!itemType || itemType === '') && typeFilters[type]) ||
+      (itemType === filterType && typeFilters[type])
+    );
+  });
+  const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && (!item.size || item.size === ''));
   const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) ||
     whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
   const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
@@ -186,7 +193,8 @@ const CustomLootTable = ({
     whoHas: passesWhoHasFilter,
     pendingSale: passesPendingSaleFilter,
     showOnlyUnidentified,
-    itemUnidentified: item.unidentified
+    itemUnidentified: item.unidentified,
+    itemType: item.type
   });
 
   const passes = passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
