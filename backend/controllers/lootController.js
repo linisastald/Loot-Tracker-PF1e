@@ -110,7 +110,7 @@ exports.createLoot = async (req, res) => {
         value,
         notes,
         modids: modsData.map(mod => mod.id),
-        session_date
+        session_date: itemData.sessionDate
       });
 
       createdEntries.push(createdEntry);
