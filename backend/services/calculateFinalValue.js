@@ -1,8 +1,9 @@
 const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwork) => {
-  let modifiedValue = itemValue;
+  let baseValue = parseFloat(itemValue);
+  let additionalValue = 0;
   let totalPlus = 0;
 
-  console.log("Initial item value:", modifiedValue);
+  console.log("Initial item value:", baseValue);
   console.log("Item type:", itemType);
   console.log("Item subtype:", itemSubtype);
   console.log("Mods:", mods);
@@ -10,27 +11,23 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
 
   mods.forEach(mod => {
     if (mod.valuecalc) {
-      // Apply value calculation
       const valuecalc = mod.valuecalc.replace('item.wgt', '1'); // Default item weight to 1
-      console.log("Before applying valuecalc:", modifiedValue);
       console.log("Valuecalc to apply:", valuecalc);
-      modifiedValue = eval(`${modifiedValue}${valuecalc}`);
-      console.log("After applying valuecalc:", modifiedValue);
+      additionalValue += eval(valuecalc);
     }
     if (mod.plus) {
-      totalPlus += mod.plus;
-      console.log("Total plus after adding mod:", totalPlus);
+      totalPlus += parseInt(mod.plus);
     }
   });
+
+  console.log("Total plus:", totalPlus);
 
   // Add masterwork value if applicable
   if (isMasterwork || totalPlus >= 1) {
     if (itemType === 'weapon') {
-      modifiedValue += 300;
-      console.log("Added masterwork weapon value:", 300);
+      additionalValue += 300;
     } else if (itemType === 'armor') {
-      modifiedValue += 150;
-      console.log("Added masterwork armor value:", 150);
+      additionalValue += 150;
     }
   }
 
@@ -40,20 +37,20 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
     armor: { 1: 1000, 2: 4000, 3: 9000, 4: 16000, 5: 25000, 6: 36000, 7: 49000, 8: 64000, 9: 81000, 10: 100000 }
   };
 
-  let additionalValue = 0;
   if (itemType === 'weapon' || itemType === 'armor') {
-    additionalValue = plusValueTables[itemType][totalPlus] || 0;
+    additionalValue += plusValueTables[itemType][totalPlus] || 0;
   }
 
-  console.log("Additional value based on total plus:", additionalValue);
+  console.log("Additional value before ammunition adjustment:", additionalValue);
 
   // Adjust additional value for ammunition
   if (itemSubtype === 'ammunition') {
     additionalValue /= 50;
-    console.log("Adjusted additional value for ammunition:", additionalValue);
   }
 
-  const finalValue = modifiedValue + additionalValue;
+  console.log("Additional value after ammunition adjustment:", additionalValue);
+
+  const finalValue = baseValue + additionalValue;
   console.log("Final calculated value:", finalValue);
   return finalValue;
 };

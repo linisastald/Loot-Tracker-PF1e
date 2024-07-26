@@ -10,7 +10,7 @@ exports.createLoot = async (req, res) => {
 
     const createdEntries = [];
     for (const entry of entries) {
-      const { itemid, modids, masterwork } = entry;
+      const { itemid, mods: modNames, masterwork } = entry;
       let value = entry.value || 0;
 
       if (itemid) {
@@ -23,27 +23,14 @@ exports.createLoot = async (req, res) => {
       }
 
       let applicableMods = [];
-      if (modids && modids.length > 0) {
-        const modsResult = await pool.query('SELECT id, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1::int[])', [modids]);
+      if (modNames && modNames.length > 0) {
+        const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE name = ANY($1)', [modNames]);
         const mods = modsResult.rows;
 
-        // Filter and sort mods based on target and subtarget
-        applicableMods = mods.filter(mod => {
-          if (mod.target.toLowerCase() !== entry.type) return false;
-
-          if (entry.subtype) {
-            if (mod.subtarget && mod.subtarget.toLowerCase() === entry.subtype) return true;
-            if (mod.subtarget === null) return true;
-            return false;
-          } else {
-            return mod.subtarget === null;
-          }
-        }).sort((a, b) => {
-          // Prioritize mods with matching subtarget
-          if (a.subtarget && a.subtarget.toLowerCase() === entry.subtype && (!b.subtarget || b.subtarget.toLowerCase() !== entry.subtype)) return -1;
-          if (b.subtarget && b.subtarget.toLowerCase() === entry.subtype && (!a.subtarget || a.subtarget.toLowerCase() !== entry.subtype)) return 1;
-          return 0;
-        });
+        applicableMods = mods.filter(mod =>
+          mod.target.toLowerCase() === entry.type &&
+          (!entry.subtype || !mod.subtarget || mod.subtarget.toLowerCase() === entry.subtype)
+        );
       }
 
       console.log("Applicable mods:", applicableMods);
