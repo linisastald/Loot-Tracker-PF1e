@@ -13,7 +13,7 @@ const port = process.env.PORT || 5000;
 // Detect host IP
 let hostIp;
 try {
-  hostIp = execSync("getent hosts host.docker.internal | awk '{ print $1 }' || hostname -I | awk '{print $1}'").toString().trim();
+  hostIp = execSync("getent hosts host.docker.internal && awk '{ print $1 }' || hostname -I | awk '{print $1}'").toString().trim();
   console.log(`Detected HOST_IP: ${hostIp}`);
 } catch (err) {
   console.error('Failed to detect host IP:', err);
