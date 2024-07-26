@@ -437,6 +437,7 @@ exports.parseItemDescription = async (req, res) => {
       ORDER BY SIMILARITY(name, $1) DESC
       LIMIT 1
     `, [parsedData.item]);
+    console.log(itemResult)
 
     if (itemResult.rows.length > 0) {
       const item = itemResult.rows[0];
@@ -467,6 +468,7 @@ exports.parseItemDescription = async (req, res) => {
       `, [mod, parsedData.itemType, parsedData.itemSubtype]);
       return result.rows[0] ? result.rows[0].id : null;
     }));
+    console.log(modIds)
 
     parsedData.modIds = modIds.filter(id => id !== null);
 
