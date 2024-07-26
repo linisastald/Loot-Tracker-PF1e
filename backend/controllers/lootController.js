@@ -9,7 +9,7 @@ exports.createLoot = async (req, res) => {
     const { entries } = req.body;
     const createdEntries = [];
     for (const entry of entries) {
-      const { itemid, name, quantity, notes, parsedData } = entry;
+      const { itemid, name, quantity, notes, session_date, parsedData } = entry;
       let item, mods, isMasterwork;
 
       if (itemid) {
@@ -31,9 +31,7 @@ exports.createLoot = async (req, res) => {
         isMasterwork = entry.masterwork || false;
       } else if (parsedData) {
         // Item manually entered and parsed
-        item = parsedData.item;
-        mods = parsedData.mods;
-        isMasterwork = parsedData.isMasterwork;
+        console.log("Parsed Data:", parsedData);
 
         // Find the best matching item in the database
         const itemResult = await pool.query(`
@@ -42,14 +40,16 @@ exports.createLoot = async (req, res) => {
           WHERE SIMILARITY(name, $1) > 0.3
           ORDER BY SIMILARITY(name, $1) DESC
           LIMIT 1
-        `, [item.name]);
+        `, [parsedData.item]);
 
         if (itemResult.rows.length > 0) {
-          item = { ...item, ...itemResult.rows[0] };
+          item = { ...itemResult.rows[0], name: parsedData.item };
+        } else {
+          item = { name: parsedData.item, type: 'weapon', subtype: 'ammunition', value: 0.05 }; // Default values for arrow
         }
 
         // Find matching mods
-        mods = await Promise.all(mods.map(async (mod) => {
+        mods = await Promise.all(parsedData.mods.map(async (modName) => {
           const result = await pool.query(`
             SELECT id, name, plus, valuecalc, target, subtarget
             FROM mod 
@@ -65,12 +65,12 @@ exports.createLoot = async (req, res) => {
               END,
               SIMILARITY(name, $1) DESC
             LIMIT 1
-          `, [mod.name, item.type, item.subtype]);
+          `, [modName, item.type, item.subtype]);
           return result.rows[0] || null;
         }));
         mods = mods.filter(mod => mod !== null);
+        isMasterwork = parsedData.mods.some(mod => mod.toLowerCase().includes('masterwork'));
       } else {
-        // Neither itemid nor parsed data available
         console.log(`Invalid entry: no item id or parsed data for "${name}"`);
         continue;
       }
@@ -94,7 +94,7 @@ exports.createLoot = async (req, res) => {
         value,
         notes,
         modids: mods.map(mod => mod.id),
-        session_date: entry.session_date // Add this line
+        session_date
       });
 
       createdEntries.push(createdEntry);
