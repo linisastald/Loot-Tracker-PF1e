@@ -22,7 +22,8 @@ CREATE TABLE item (
     id SERIAL PRIMARY KEY,
     name VARCHAR(127) NOT NULL,
     type VARCHAR(15) NOT NULL,
-    value NUMERIC
+    value NUMERIC,
+    subtype VARCHAR(31)
 );
 
 CREATE TABLE mod (

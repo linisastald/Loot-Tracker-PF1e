@@ -3,17 +3,34 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const pool = require('./db');
 const dotenv = require('dotenv');
+const { execSync } = require('child_process');
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;
 
+// Detect host IP
+let hostIp;
+try {
+  hostIp = execSync("getent hosts host.docker.internal | awk '{ print $1 }' || hostname -I | awk '{print $1}'").toString().trim();
+} catch (err) {
+  console.error('Failed to detect host IP:', err);
+}
+
+process.env.HOST_IP = hostIp;
+
 app.use(cors());
 app.use(bodyParser.json());
 
 app.get('/', (req, res) => {
   res.send('Welcome to the Pathfinder Loot Tracker API');
+});
+
+// Log the detected HOST_IP
+app.use((req, res, next) => {
+  console.log(`Detected HOST_IP: ${process.env.HOST_IP}`);
+  next();
 });
 
 const authRoutes = require('./routes/auth');
