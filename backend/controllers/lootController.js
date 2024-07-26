@@ -406,7 +406,6 @@ exports.appraiseLoot = async (req, res) => {
         appraisal.modids === lootModIds &&
         appraisal.name.toLowerCase() === lootName.toLowerCase()
       );
-      console.log(previousAppraisal)
 
       let believedValue = null;
       let appraisalRoll = null;
@@ -414,6 +413,7 @@ exports.appraiseLoot = async (req, res) => {
         believedValue = previousAppraisal.believedvalue;
       } else {
         const appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus;
+        console.log(appraisalRoll)
 
         if (lootValue !== null) {
           if (appraisalRoll >= 20) {
@@ -427,6 +427,7 @@ exports.appraiseLoot = async (req, res) => {
           believedValue = customRounding(believedValue);
         }
       }
+      console.log(appraisalRoll)
 
       const appraisalEntry = {
         characterid: characterId,
