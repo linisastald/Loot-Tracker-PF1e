@@ -8,6 +8,7 @@ exports.createLoot = async (req, res) => {
   try {
     const { entries } = req.body;
     console.log("createLoot")
+    console.log({entries})
     const createdEntries = [];
     for (const entry of entries) {
       const { itemid, name, quantity, notes, session_date, parsedData } = entry;
