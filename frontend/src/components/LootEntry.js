@@ -24,7 +24,7 @@ const initialItemEntry = {
   sessionDate: new Date(),
   quantity: '',
   name: '',
-  itemid: null,
+  itemId: null,
   type: '',
   value: null,
   unidentified: null,
@@ -77,7 +77,7 @@ const LootEntry = () => {
             data: {
               ...entry.data,
               name: selectedItem.name,
-              itemid: selectedItem.id || null,
+              itemId: selectedItem.id || null,
               type: selectedItem.type || '',
               value: selectedItem.value || null
             }
@@ -97,7 +97,7 @@ const LootEntry = () => {
     );
     setEntries(prevEntries =>
       prevEntries.map((entry, i) =>
-        i === index ? { ...entry, data: { ...entry.data, name: value, itemid: null, type: '', value: null } } : entry
+        i === index ? { ...entry, data: { ...entry.data, name: value, itemId: null, type: '', value: null } } : entry
       )
     );
   };
@@ -162,7 +162,7 @@ const handleSubmit = async (e) => {
           );
 
         } else {
-        data.itemid = data.itemid || null;
+        data.itemId = data.itemId || null;
         data.value = data.value || null;
         data.modids = data.modids || []; // Ensure modids is always an array
 

@@ -14,7 +14,7 @@ exports.create = async (entry) => {
     entry.masterwork,
     entry.type,
     entry.size,
-    entry.itemid || null, // Ensure null if empty
+    entry.itemId || null, // Ensure null if empty
     entry.modids || null, // Ensure null if empty
     entry.value || null,  // Ensure null if empty
     entry.whoupdated,
@@ -242,7 +242,7 @@ exports.updateEntry = async (id, updatedEntry) => {
       mergedEntry.masterwork,
       mergedEntry.type,
       mergedEntry.size,
-      mergedEntry.itemid,
+      mergedEntry.itemId,
       mergedEntry.modids,
       mergedEntry.value,
       mergedEntry.whoupdated,

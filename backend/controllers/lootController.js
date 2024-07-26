@@ -11,14 +11,14 @@ exports.createLoot = async (req, res) => {
     console.log({entries})
     const createdEntries = [];
     for (const entry of entries) {
-      const { itemid, name, quantity, notes, session_date, parsedData } = entry;
+      const { itemId, name, quantity, notes, session_date, parsedData } = entry;
       let item, mods, isMasterwork;
 
-      if (itemid) {
+      if (itemId) {
         // Item selected from autofill
-        const itemResult = await pool.query('SELECT id, name, type, subtype, value FROM item WHERE id = $1', [itemid]);
+        const itemResult = await pool.query('SELECT id, name, type, subtype, value FROM item WHERE id = $1', [itemId]);
         if (itemResult.rows.length === 0) {
-          console.log(`Item not found: id ${itemid}`);
+          console.log(`Item not found: id ${itemId}`);
           continue;
         }
         item = itemResult.rows[0];
@@ -86,7 +86,7 @@ exports.createLoot = async (req, res) => {
       );
 
       const createdEntry = await Loot.create({
-        itemid: item.id,
+        itemId: item.id,
         quantity,
         name: item.name,
         unidentified: entry.unidentified || false,
@@ -263,7 +263,7 @@ exports.confirmSale = async (req, res) => {
 
 exports.updateItem = async (req, res) => {
   const { id } = req.params;
-  const { session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, modids, charges, value, whohas, notes } = req.body;
+  const { session_date, quantity, name, unidentified, masterwork, type, size, status, itemId, modids, charges, value, whohas, notes } = req.body;
 
   if (!id) {
     return res.status(400).json({ error: 'ID is required' });
@@ -290,7 +290,7 @@ exports.updateItem = async (req, res) => {
         lastupdate = CURRENT_TIMESTAMP
       WHERE id = $15
       RETURNING *
-    `, [session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, modids, charges, value, whohas, notes, id]);
+    `, [session_date, quantity, name, unidentified, masterwork, type, size, status, itemId, modids, charges, value, whohas, notes, id]);
 
     res.status(200).json(result.rows[0]);
   } catch (error) {
@@ -381,11 +381,11 @@ exports.appraiseLoot = async (req, res) => {
     // Appraise each item
     const createdAppraisals = [];
     for (const lootItem of lootToAppraise) {
-      const { id: lootId, value: lootValue, itemid: lootItemId, modids: lootModIds, name: lootName } = lootItem;
+      const { id: lootId, value: lootValue, itemId: lootItemId, modids: lootModIds, name: lootName } = lootItem;
 
       // Check for previous appraisals
       let previousAppraisal = previousAppraisals.find(appraisal =>
-        appraisal.itemid === lootItemId &&
+        appraisal.itemId === lootItemId &&
         appraisal.modids === lootModIds &&
         appraisal.name.toLowerCase() === lootName.toLowerCase()
       );
