@@ -58,7 +58,6 @@ const UnprocessedLoot = () => {
         headers: { Authorization: `Bearer ${token}` },
         params: { activeCharacterId }
       });
-      console.log('Raw loot data:', response.data);
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);
@@ -85,7 +84,6 @@ const UnprocessedLoot = () => {
       const response = await axios.post(`${API_URL}/loot/appraise`, { userId: activeUser.id }, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      console.log('Appraisal results:', response.data);
       fetchLoot(activeUser.activeCharacterId); // Refresh loot after appraisal
     } catch (error) {
       console.error('Error appraising loot:', error);
@@ -107,7 +105,6 @@ const UnprocessedLoot = () => {
   };
 
   const filteredLoot = applyFilters(loot, filters);
-  console.log('Filtered loot data:', filteredLoot);
 
   return (
     <Container component="main">

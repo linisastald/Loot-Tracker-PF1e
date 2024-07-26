@@ -164,7 +164,10 @@ export const applyFilters = (loot, filters) => {
   let filteredLoot = { ...loot };
 
   if (filters.unidentified) {
-    filteredLoot.individual = filteredLoot.individual.filter(item => item.unidentified === (filters.unidentified === 'true'));
+    filteredLoot.individual = filteredLoot.individual.filter(item =>
+      filters.unidentified === 'all' || item.unidentified === null ||
+      item.unidentified === (filters.unidentified === 'true')
+    );
   }
 
   if (filters.type) {
