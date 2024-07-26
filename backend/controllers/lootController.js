@@ -16,6 +16,7 @@ exports.createLoot = async (req, res) => {
 
       if (itemId) {
         // Item selected from autofill
+        console.log("if itemId")
         const itemResult = await pool.query('SELECT id, name, type, subtype, value FROM item WHERE id = $1', [itemId]);
         if (itemResult.rows.length === 0) {
           console.log(`Item not found: id ${itemId}`);
@@ -25,6 +26,7 @@ exports.createLoot = async (req, res) => {
 
         // Fetch mods if any
         if (entry.modids && entry.modids.length > 0) {
+          console.log("if modsids")
           const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [entry.modids]);
           mods = modsResult.rows;
         } else {
@@ -32,6 +34,7 @@ exports.createLoot = async (req, res) => {
         }
         isMasterwork = entry.masterwork || false;
       } else if (parsedData) {
+        console.log("if parsed")
         // Item manually entered and parsed
         console.log("Parsed Data:", parsedData);
 

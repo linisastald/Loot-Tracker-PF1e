@@ -2,6 +2,10 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
   let modifiedValue = Number(itemValue);
   let totalPlus = 0;
 
+  console.log("")
+  console.log("")
+  console.log("")
+  console.log("")
   console.log("Initial item value:", modifiedValue);
   console.log("Item type:", itemType);
   console.log("Item subtype:", itemSubtype);
