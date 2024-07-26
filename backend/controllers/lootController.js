@@ -14,16 +14,27 @@ exports.createLoot = async (req, res) => {
       let value = entry.value || 0;
 
       if (itemid) {
-        const itemResult = await pool.query('SELECT value FROM item WHERE id = $1', [itemid]);
+        const itemResult = await pool.query('SELECT value, type, subtype FROM item WHERE id = $1', [itemid]);
         if (itemResult.rows.length > 0) {
           value = itemResult.rows[0].value;
+          entry.type = itemResult.rows[0].type;
+          entry.subtype = itemResult.rows[0].subtype;
         }
       }
 
       if (modids && modids.length > 0) {
-        const modsResult = await pool.query('SELECT plus, valuecalc FROM mod WHERE id = ANY($1::int[])', [modids]);
+        const modsResult = await pool.query('SELECT id, plus, valuecalc, target FROM mod WHERE id = ANY($1::int[])', [modids]);
         const mods = modsResult.rows;
-        value = calculateFinalValue(value, type, mods, masterwork);
+
+        // Filter mods based on target and subtype
+        const applicableMods = mods.filter(mod => {
+          if (mod.target === 'Any') return true;
+          if (mod.target === entry.type) return true;
+          if (mod.target === entry.subtype) return true;
+          return false;
+        });
+
+        value = calculateFinalValue(value, entry.type, entry.subtype, applicableMods, masterwork);
       }
 
       entry.value = value;

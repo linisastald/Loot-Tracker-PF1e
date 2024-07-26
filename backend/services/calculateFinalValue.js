@@ -1,9 +1,10 @@
-const calculateFinalValue = (itemValue, itemType, mods, isMasterwork) => {
+const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwork) => {
   let modifiedValue = itemValue;
   let totalPlus = 0;
 
   console.log("Initial item value:", modifiedValue);
   console.log("Item type:", itemType);
+  console.log("Item subtype:", itemSubtype);
   console.log("Mods:", mods);
   console.log("Is masterwork:", isMasterwork);
 
@@ -49,6 +50,12 @@ const calculateFinalValue = (itemValue, itemType, mods, isMasterwork) => {
   }
 
   console.log("Additional value based on total plus:", additionalValue);
+
+  // Adjust additional value for ammunition
+  if (itemSubtype && itemSubtype.toLowerCase() === 'ammunition') {
+    additionalValue /= 50;
+    console.log("Adjusted additional value for ammunition:", additionalValue);
+  }
 
   const finalValue = modifiedValue + additionalValue;
   console.log("Final calculated value:", finalValue);
