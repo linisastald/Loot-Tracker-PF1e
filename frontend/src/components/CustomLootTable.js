@@ -170,15 +170,19 @@ const CustomLootTable = ({
   };
 
   const filteredLoot = loot.filter((item) => {
-    const whoHasChecked = whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
-    return (
-      (showPendingSales || item.status !== 'Pending Sale') &&
-      (typeFilters[item.type] || (typeFilters['Other'] && !item.type)) &&
-      (sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size)) &&
-      (whoHasFilters.every((filter) => !filter.checked) || whoHasChecked)
-    );
-  });
+    console.log('Filtering item:', item);
 
+    const whoHasChecked = whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
+    const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
+    const passesTypeFilter = typeFilters[item.type] || (typeFilters['Other'] && !item.type);
+    const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size);
+    const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) || whoHasChecked;
+    const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
+    const passes = passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter && passesWhoHasFilter && passesPendingSaleFilter;
+
+    console.log('Item passes filter:', passes, 'Unidentified:', item.unidentified);
+    return passes;
+  });
   // Add sorting logic
   const sortedLoot = [...filteredLoot].sort((a, b) => {
     if (a[sortConfig.key] < b[sortConfig.key]) {
@@ -209,6 +213,7 @@ const CustomLootTable = ({
   };
   console.log('Loot prop in CustomLootTable:', loot);
   console.log('IndividualLoot prop in CustomLootTable:', individualLoot);
+  console.log('Filtered loot:', filteredLoot);
 
   return (
     <Paper sx={{ p: 2 }}>
