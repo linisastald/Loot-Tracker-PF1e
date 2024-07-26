@@ -1,24 +1,23 @@
 # Loot and Gold Management System
 
-## Features to be Added
+## Bugs
 
+- appraisalRoll broken in lootController. 
+- Unidentified loot not show in unprocessed loot page
+
+
+## Features to be Added
 ### Campaign Settings
 - This page will set things like 
   - whose appraisals count for average appraisal
   - Track individual takings from party loot?
   - Number of players
 
-### User Settings
-- Theme settings
-- Identification setting 
-
-### Wand Tracking
-- Easy tracking of wand usage
-- if charges = 0, auto move to trash
-
-### DM Pages
-- Allow setting what an unidentified item is without revealing to the players
-- Sell pending items(maybe better on unprocessed loot page as DM only option?)
+### Identify
+- Identify items with a button
+- need system to only allow once per character per game day
+- need item naming system to create a name based on the itemid and/or modids
+- need a way for the DM to set the item 
 
 ## Additional Features (Less Important)
 - **Session Tracking**: Who showed on what day.
@@ -31,19 +30,18 @@
 ## Feature Tracking
 MVP - Required features for release
 
-| Feature                  | Priority | Status             | Notes                                                  | 
-|--------------------------|----------|--------------------|--------------------------------------------------------|
-| Campaign Settings        | High     | In Progress        |                                                        |
-| DM Pages                 | High     | In Progress        |                                                        |
-| Session Tracking         | Low      | Pending            |                                                        |
-| Spell Book Page          | Low      | Pending            |                                                        |
-| Google Sheets            | Low      | Pending            |                                                        |
-| Attendance Tracker       | V. Low   | Pending            | Include tracking of chores?                            |
-| Search Items             | V. Low   | Pending            | Search page that allows finding of items the party had |
-| Identify Item Action     | Low      | Pending            |                                                        |
-| Stats page               | Low      | Pending            |                                                        |
-| Wand Tracking            | V. Low   | Pending            |                                                        |
-| Calendar                 | Low      | In Progress        | May save for next major version                        |
+| Feature            | Priority | Status             | Notes                                                  | 
+|--------------------|----------|--------------------|--------------------------------------------------------|
+| Campaign Settings  | High     | In Progress        |                                                        |
+| Session Tracking   | Low      | Pending            |                                                        |
+| Spell Book Page    | Low      | Pending            |                                                        |
+| Google Sheets      | Low      | Pending            | Maybe a cron job that runs daily?                      |
+| Attendance Tracker | V. Low   | Pending            | Include tracking of chores?                            |
+| Search Items       | V. Low   | Pending            | Search page that allows finding of items the party had |
+| Identify           | Med      | Pending            |                                                        |
+| Stats page         | Low      | Pending            |                                                        |
+| Wand Tracking      | V. Low   | Pending            |                                                        |
+| Calendar           | Low      | In Progress        | May save for next major version                        |
 
 ## Feature Tracking - Completed Features
 

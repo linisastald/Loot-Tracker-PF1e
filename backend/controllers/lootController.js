@@ -406,8 +406,10 @@ exports.appraiseLoot = async (req, res) => {
         appraisal.modids === lootModIds &&
         appraisal.name.toLowerCase() === lootName.toLowerCase()
       );
+      console.log(previousAppraisal)
 
       let believedValue = null;
+      let appraisalRoll = null;
       if (previousAppraisal) {
         believedValue = previousAppraisal.believedvalue;
       } else {
