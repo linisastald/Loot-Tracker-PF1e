@@ -464,7 +464,7 @@ const CustomLootTable = ({
                           {item.unidentified === true
                               ? <strong>Unidentified</strong>
                               : item.unidentified === false
-                                  ? 'Identified'
+                                  ? ''
                                   : ''}
                         </TableCell>
                     )}
