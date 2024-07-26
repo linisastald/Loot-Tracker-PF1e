@@ -402,18 +402,19 @@ exports.appraiseLoot = async (req, res) => {
 
       // Check for previous appraisals
       let previousAppraisal = previousAppraisals.find(appraisal =>
-        appraisal.itemId === lootItemId &&
-        appraisal.modids === lootModIds &&
-        appraisal.name.toLowerCase() === lootName.toLowerCase()
+          appraisal.itemId === lootItemId &&
+          appraisal.modids === lootModIds &&
+          appraisal.name.toLowerCase() === lootName.toLowerCase()
       );
 
       let believedValue = null;
       let appraisalRoll = null;
+
       if (previousAppraisal) {
         believedValue = previousAppraisal.believedvalue;
       } else {
-        const appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus;
-        console.log(appraisalRoll)
+        appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus; // Remove 'const' here
+        console.log(appraisalRoll);
 
         if (lootValue !== null) {
           if (appraisalRoll >= 20) {
@@ -427,14 +428,16 @@ exports.appraiseLoot = async (req, res) => {
           believedValue = customRounding(believedValue);
         }
       }
-      console.log(appraisalRoll)
+
+      console.log(appraisalRoll);
 
       const appraisalEntry = {
         characterid: characterId,
         lootid: lootId,
-        appraisalroll: previousAppraisal ? null : appraisalRoll, // Appraisal roll is null if using a previous appraisal
+        appraisalroll: previousAppraisal ? null : appraisalRoll,
         believedvalue: believedValue,
       };
+
       const createdAppraisal = await Appraisal.create(appraisalEntry);
       createdAppraisals.push(createdAppraisal);
     }
