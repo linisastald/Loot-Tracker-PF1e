@@ -173,7 +173,6 @@ const CustomLootTable = ({
     const whoHasChecked = whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
     return (
       (showPendingSales || item.status !== 'Pending Sale') &&
-      (!showOnlyUnidentified || item.unidentified === true) &&
       (typeFilters[item.type] || (typeFilters['Other'] && !item.type)) &&
       (sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size)) &&
       (whoHasFilters.every((filter) => !filter.checked) || whoHasChecked)
