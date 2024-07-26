@@ -398,7 +398,7 @@ exports.parseItemDescription = async (req, res) => {
     // Function to find the best match using ILIKE and additional logic
     const findBestMatch = async (table, column, value) => {
       const result = await pool.query(`
-        SELECT id, ${column}, type, subtype, value, SIMILARITY(${column}, $1) AS similarity
+        SELECT id, ${column}, type, ${table === 'mod' ? 'subtarget' : 'subtype'}, value, SIMILARITY(${column}, $1) AS similarity
         FROM ${table}
         WHERE ${column} ILIKE $1 OR SIMILARITY(${column}, $1) > 0.3
         ORDER BY SIMILARITY(${column}, $1) DESC
