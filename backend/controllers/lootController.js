@@ -10,7 +10,7 @@ exports.createLoot = async (req, res) => {
 
     const createdEntries = [];
     for (const entry of entries) {
-      const { itemid, modids, type, masterwork } = entry;
+      const { itemid, modids, masterwork } = entry;
       let value = entry.value || 0;
 
       if (itemid) {
@@ -23,15 +23,25 @@ exports.createLoot = async (req, res) => {
       }
 
       if (modids && modids.length > 0) {
-        const modsResult = await pool.query('SELECT id, plus, valuecalc, target FROM mod WHERE id = ANY($1::int[])', [modids]);
+        const modsResult = await pool.query('SELECT id, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1::int[])', [modids]);
         const mods = modsResult.rows;
 
-        // Filter mods based on target and subtype
+        // Filter and sort mods based on target and subtarget
         const applicableMods = mods.filter(mod => {
-          if (mod.target === 'Any') return true;
-          if (mod.target === entry.type) return true;
-          if (mod.target === entry.subtype) return true;
-          return false;
+          if (mod.target !== entry.type) return false;
+
+          if (entry.subtype) {
+            if (mod.subtarget === entry.subtype) return true;
+            if (mod.subtarget === null) return true;
+            return false;
+          } else {
+            return mod.subtarget === null;
+          }
+        }).sort((a, b) => {
+          // Prioritize mods with matching subtarget
+          if (a.subtarget === entry.subtype && b.subtarget !== entry.subtype) return -1;
+          if (b.subtarget === entry.subtype && a.subtarget !== entry.subtype) return 1;
+          return 0;
         });
 
         value = calculateFinalValue(value, entry.type, entry.subtype, applicableMods, masterwork);
