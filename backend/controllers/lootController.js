@@ -22,12 +22,13 @@ exports.createLoot = async (req, res) => {
         }
       }
 
+      let applicableMods = [];
       if (modids && modids.length > 0) {
         const modsResult = await pool.query('SELECT id, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1::int[])', [modids]);
         const mods = modsResult.rows;
 
         // Filter and sort mods based on target and subtarget
-        const applicableMods = mods.filter(mod => {
+        applicableMods = mods.filter(mod => {
           if (mod.target !== entry.type) return false;
 
           if (entry.subtype) {
@@ -43,9 +44,11 @@ exports.createLoot = async (req, res) => {
           if (b.subtarget === entry.subtype && a.subtarget !== entry.subtype) return 1;
           return 0;
         });
-
-        value = calculateFinalValue(value, entry.type, entry.subtype, applicableMods, masterwork);
       }
+
+      console.log("Applicable mods:", applicableMods);
+
+      value = calculateFinalValue(value, entry.type, entry.subtype, applicableMods, masterwork);
 
       entry.value = value;
 
