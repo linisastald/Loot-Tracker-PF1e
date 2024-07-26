@@ -429,7 +429,6 @@ exports.appraiseLoot = async (req, res) => {
 exports.parseItemDescription = async (req, res) => {
   try {
     const { description } = req.body;
-    console.log("parseItem")
     const parsedData = await parseItemDescriptionWithGPT(description);
 
     // Fetch item from the database based on item name (using similarity)
@@ -472,7 +471,6 @@ exports.parseItemDescription = async (req, res) => {
     }));
 
     parsedData.modIds = modIds.filter(id => id !== null);
-    console.log(parsedData)
 
     res.status(200).json(parsedData);
   } catch (error) {
