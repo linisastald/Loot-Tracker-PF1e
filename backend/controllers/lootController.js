@@ -11,12 +11,52 @@ exports.createLoot = async (req, res) => {
     console.log({entries})
     const createdEntries = [];
     for (const entry of entries) {
-      const { itemId, name, quantity, notes, session_date, parsedData } = entry;
+      const {itemId, name, quantity, notes, session_date, parsedData} = entry;
       let item, mods, isMasterwork;
 
-      if (itemId) {
+      if (parsedData) {
+        console.log("if parsed");
+        // Item manually entered and parsed
+        console.log("Parsed Data:", parsedData);
+
+        // Find the best matching item in the database
+        const itemResult = await pool.query(`
+          SELECT id, name, type, subtype, value
+          FROM item
+          WHERE SIMILARITY(name, $1) > 0.3
+          ORDER BY SIMILARITY(name, $1) DESC LIMIT 1
+        `, [parsedData.item]);
+
+        if (itemResult.rows.length > 0) {
+          item = {...itemResult.rows[0], name: parsedData.item};
+        } else {
+          item = {name: parsedData.item, type: 'weapon', subtype: 'ammunition', value: 0.05}; // Default values for arrow
+        }
+
+        // Find matching mods
+        mods = await Promise.all(parsedData.mods.map(async (modName) => {
+          const result = await pool.query(`
+            SELECT id, name, plus, valuecalc, target, subtarget
+            FROM mod
+            WHERE SIMILARITY(name, $1) > 0.3
+              AND (target = $2 OR target IS NULL)
+              AND (subtarget = $3 OR subtarget IS NULL)
+            ORDER BY CASE
+                       WHEN target = $2 AND subtarget = $3 THEN 1
+                       WHEN target = $2 AND subtarget IS NULL THEN 2
+                       WHEN target = $2 THEN 3
+                       ELSE 4
+                       END,
+                     SIMILARITY(name, $1) DESC LIMIT 1
+          `, [modName, item.type, item.subtype]);
+          console.log(result);
+          return result.rows[0] || null;
+        }));
+        mods = mods.filter(mod => mod !== null);
+        isMasterwork = parsedData.mods.some(mod => mod.toLowerCase().includes('masterwork'));
+      } else if (itemId) {
+        console.log("if itemId");
         // Item selected from autofill
-        console.log("if itemId")
         const itemResult = await pool.query('SELECT id, name, type, subtype, value FROM item WHERE id = $1', [itemId]);
         if (itemResult.rows.length === 0) {
           console.log(`Item not found: id ${itemId}`);
@@ -26,56 +66,13 @@ exports.createLoot = async (req, res) => {
 
         // Fetch mods if any
         if (entry.modids && entry.modids.length > 0) {
-          console.log("if modsids")
+          console.log("if modids");
           const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [entry.modids]);
           mods = modsResult.rows;
         } else {
           mods = [];
         }
         isMasterwork = entry.masterwork || false;
-      } else if (parsedData) {
-        console.log("if parsed")
-        // Item manually entered and parsed
-        console.log("Parsed Data:", parsedData);
-
-        // Find the best matching item in the database
-        const itemResult = await pool.query(`
-          SELECT id, name, type, subtype, value 
-          FROM item 
-          WHERE SIMILARITY(name, $1) > 0.3
-          ORDER BY SIMILARITY(name, $1) DESC
-          LIMIT 1
-        `, [parsedData.item]);
-
-        if (itemResult.rows.length > 0) {
-          item = { ...itemResult.rows[0], name: parsedData.item };
-        } else {
-          item = { name: parsedData.item, type: 'weapon', subtype: 'ammunition', value: 0.05 }; // Default values for arrow
-        }
-
-        // Find matching mods
-        mods = await Promise.all(parsedData.mods.map(async (modName) => {
-          const result = await pool.query(`
-            SELECT id, name, plus, valuecalc, target, subtarget
-            FROM mod 
-            WHERE SIMILARITY(name, $1) > 0.3
-            AND (target = $2 OR target IS NULL)
-            AND (subtarget = $3 OR subtarget IS NULL)
-            ORDER BY 
-              CASE 
-                WHEN target = $2 AND subtarget = $3 THEN 1
-                WHEN target = $2 AND subtarget IS NULL THEN 2
-                WHEN target = $2 THEN 3
-                ELSE 4
-              END,
-              SIMILARITY(name, $1) DESC
-            LIMIT 1
-          `, [modName, item.type, item.subtype]);
-          console.log(result)
-          return result.rows[0] || null;
-        }));
-        mods = mods.filter(mod => mod !== null);
-        isMasterwork = parsedData.mods.some(mod => mod.toLowerCase().includes('masterwork'));
       } else {
         console.log(`Invalid entry: no item id or parsed data for "${name}"`);
         continue;
