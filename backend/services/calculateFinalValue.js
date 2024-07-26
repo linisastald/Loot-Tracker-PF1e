@@ -10,7 +10,6 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
 
   mods.forEach(mod => {
     if (mod.valuecalc) {
-      // Apply value calculation
       const valuecalc = mod.valuecalc.replace('item.wgt', '1'); // Default item weight to 1
       console.log("Before applying valuecalc:", modifiedValue);
       console.log("Valuecalc to apply:", valuecalc);
@@ -25,11 +24,9 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
 
   // Add masterwork value if applicable
   if (isMasterwork || totalPlus >= 1) {
-    if (itemType.toLowerCase() === 'weapon') {
     if (itemType === 'weapon') {
       modifiedValue += 300;
       console.log("Added masterwork weapon value:", 300);
-    } else if (itemType.toLowerCase() === 'armor') {
     } else if (itemType === 'armor') {
       modifiedValue += 150;
       console.log("Added masterwork armor value:", 150);
@@ -42,13 +39,6 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
     armor: { 1: 1000, 2: 4000, 3: 9000, 4: 16000, 5: 25000, 6: 36000, 7: 49000, 8: 64000, 9: 81000, 10: 100000 }
   };
 
-  let additionalValue;
-  if (itemType.toLowerCase() === 'weapon') {
-    additionalValue = plusValueTables.weapon[totalPlus] || 0;
-  } else if (itemType.toLowerCase() === 'armor') {
-    additionalValue = plusValueTables.armor[totalPlus] || 0;
-  } else {
-    additionalValue = 0;
   let additionalValue = 0;
   if (itemType === 'weapon' || itemType === 'armor') {
     additionalValue = plusValueTables[itemType][totalPlus] || 0;
@@ -57,7 +47,6 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
   console.log("Additional value based on total plus:", additionalValue);
 
   // Adjust additional value for ammunition
-  if (itemSubtype && itemSubtype.toLowerCase() === 'ammunition') {
   if (itemSubtype === 'ammunition') {
     additionalValue /= 50;
     console.log("Adjusted additional value for ammunition:", additionalValue);
