@@ -170,19 +170,32 @@ const CustomLootTable = ({
   };
 
   const filteredLoot = loot.filter((item) => {
-    console.log('Filtering item:', item);
+  console.log('Filtering item:', item);
 
-    const whoHasChecked = whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
-    const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
-    const passesTypeFilter = typeFilters[item.type] || (typeFilters['Other'] && !item.type);
-    const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size);
-    const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) || whoHasChecked;
-    const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
-    const passes = passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter && passesWhoHasFilter && passesPendingSaleFilter;
+  const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
+  const passesTypeFilter = typeFilters[item.type] || (typeFilters['Other'] && !item.type);
+  const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && !item.size);
+  const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) ||
+    whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
+  const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
 
-    console.log('Item passes filter:', passes, 'Unidentified:', item.unidentified);
-    return passes;
+  console.log('Filter results:', {
+    unidentified: passesUnidentifiedFilter,
+    type: passesTypeFilter,
+    size: passesSizeFilter,
+    whoHas: passesWhoHasFilter,
+    pendingSale: passesPendingSaleFilter,
+    showOnlyUnidentified,
+    itemUnidentified: item.unidentified
   });
+
+  const passes = passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
+                 passesWhoHasFilter && passesPendingSaleFilter;
+
+  console.log('Item passes all filters:', passes);
+
+  return passes;
+});
   // Add sorting logic
   const sortedLoot = [...filteredLoot].sort((a, b) => {
     if (a[sortConfig.key] < b[sortConfig.key]) {
