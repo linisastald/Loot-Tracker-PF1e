@@ -2,7 +2,7 @@
 
 ## Bugs
 
-- appraisalRoll broken in lootController. 
+- Not all appraisals showing
 - Unidentified loot not show in unprocessed loot page
 
 
