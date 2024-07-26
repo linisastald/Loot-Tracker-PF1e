@@ -1,5 +1,5 @@
 const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwork) => {
-  let modifiedValue = itemValue;
+  let modifiedValue = Number(itemValue);
   let totalPlus = 0;
 
   console.log("Initial item value:", modifiedValue);
@@ -13,11 +13,11 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
       const valuecalc = mod.valuecalc.replace('item.wgt', '1'); // Default item weight to 1
       console.log("Before applying valuecalc:", modifiedValue);
       console.log("Valuecalc to apply:", valuecalc);
-      modifiedValue = eval(`${modifiedValue}${valuecalc}`);
+      modifiedValue = Number(eval(`${modifiedValue}${valuecalc}`));
       console.log("After applying valuecalc:", modifiedValue);
     }
     if (mod.plus) {
-      totalPlus += mod.plus;
+      totalPlus += Number(mod.plus);
       console.log("Total plus after adding mod:", totalPlus);
     }
   });
@@ -56,5 +56,3 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
   console.log("Final calculated value:", finalValue);
   return finalValue;
 };
-
-module.exports = { calculateFinalValue };

@@ -125,27 +125,27 @@ const LootEntry = () => {
     setSelectedItems([]);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const token = localStorage.getItem('token');
-    const decodedToken = jwt_decode(token);
-    const userId = decodedToken.id;
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  const token = localStorage.getItem('token');
+  const decodedToken = jwt_decode(token);
+  const userId = decodedToken.id;
 
-    try {
-      for (const entry of entries) {
-        let data = {...entry.data, whoupdated: userId};
+  try {
+    for (const entry of entries) {
+      let data = {...entry.data, whoupdated: userId, session_date: entry.data.sessionDate};
 
-        if (entry.type === 'gold') {
-          const {transactionType, platinum, gold, silver, copper} = data;
-          if (['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType)) {
-            data = {
-              ...data,
-              platinum: platinum ? -Math.abs(platinum) : 0,
-              gold: gold ? -Math.abs(gold) : 0,
-              silver: silver ? -Math.abs(silver) : 0,
-              copper: copper ? -Math.abs(copper) : 0
-            };
-          }
+      if (entry.type === 'gold') {
+        const {transactionType, platinum, gold, silver, copper} = data;
+        if (['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType)) {
+          data = {
+            ...data,
+            platinum: platinum ? -Math.abs(platinum) : 0,
+            gold: gold ? -Math.abs(gold) : 0,
+            silver: silver ? -Math.abs(silver) : 0,
+            copper: copper ? -Math.abs(copper) : 0
+          };
+        }
 
           const goldData = {
             ...data,
@@ -162,40 +162,36 @@ const LootEntry = () => {
           );
 
         } else {
-          data.itemid = data.itemid || null;
-          data.value = data.value || null;
-          data.modids = data.modids || []; // Ensure modids is always an array
+        data.itemid = data.itemid || null;
+        data.value = data.value || null;
+        data.modids = data.modids || []; // Ensure modids is always an array
 
-          if (!selectedItems[entries.indexOf(entry)]) {
-            // Send the item description to the backend for parsing
-            const response = await axios.post(
-                `${API_URL}/loot/parse-item`,
-                {description: data.name},
-                {headers: {Authorization: `Bearer ${token}`}}
-            );
-
-            if (response.data) {
-              data.itemid = response.data.itemId || null;
-              data.modids = response.data.modIds || []; // Ensure modids is always an array
-              data.type = response.data.itemType || '';
-              data.value = response.data.itemValue || null;
-            }
-          }
-
-          await axios.post(
-              `${API_URL}/loot`,
-              {entries: [data]},
+        if (!selectedItems[entries.indexOf(entry)]) {
+          // Send the item description to the backend for parsing
+          const parseResponse = await axios.post(
+              `${API_URL}/loot/parse-item`,
+              {description: data.name},
               {headers: {Authorization: `Bearer ${token}`}}
           );
+
+          if (parseResponse.data) {
+            data = {...data, ...parseResponse.data};
+          }
         }
+
+        await axios.post(
+            `${API_URL}/loot`,
+            {entries: [data]},
+            {headers: {Authorization: `Bearer ${token}`}}
+        );
       }
-
-      handleRemoveAllEntries(); // Remove all entries after submission
-
-    } catch (error) {
-      console.error('Error submitting entry', error);
     }
-  };
+
+    handleRemoveAllEntries(); // Remove all entries after submission
+  } catch (error) {
+    console.error('Error submitting entry', error);
+  }
+};
 
   return (
     <Container component="main">
