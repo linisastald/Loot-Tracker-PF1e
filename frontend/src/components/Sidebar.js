@@ -9,7 +9,6 @@ import {
   Collapse,
   Box,
   ListItemIcon,
-  useTheme,
 } from '@mui/material';
 import {
   ExpandLess,
@@ -31,7 +30,6 @@ const Sidebar = () => {
   const [openDMSettings, setOpenDMSettings] = useState(false);
   const [isDM, setIsDM] = useState(false);
   const location = useLocation();
-  const theme = useTheme();
 
   const groupName = window.env?.REACT_APP_GROUP_NAME || 'Loot Tracker';
   const menuTitle = `${groupName} Loot Menu`;
@@ -46,7 +44,11 @@ const Sidebar = () => {
     }
   }, []);
 
-  const isActiveRoute = (route) => location.pathname === route;
+  const isActiveRoute = (route) => {
+    const active = location.pathname === route;
+    console.log(`Route: ${route}, Current path: ${location.pathname}, Active: ${active}`);
+    return active;
+  };
 
   const MenuItem = ({ to, primary, icon, onClick, open, children }) => {
     const active = to ? isActiveRoute(to) : false;
@@ -56,12 +58,9 @@ const Sidebar = () => {
           component={to ? Link : 'div'}
           to={to}
           onClick={onClick}
-          sx={{
-            pl: children ? 2 : 3,
-            backgroundColor: active ? theme.palette.action.selected : 'inherit',
-            '&:hover': {
-              backgroundColor: active ? theme.palette.action.selected : theme.palette.action.hover,
-            },
+          style={{
+            paddingLeft: children ? 32 : 16,
+            backgroundColor: active ? '#e0e0e0' : 'inherit',
           }}
         >
           <ListItemIcon>{icon}</ListItemIcon>
