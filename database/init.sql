@@ -1,3 +1,29 @@
+-- Create database (this will fail if the database already exists, which is fine)
+CREATE DATABASE loot_tracking;
+
+-- Connect to the new database
+\c loot_tracking
+
+-- Create user and grant privileges
+DO
+$do$
+BEGIN
+   IF NOT EXISTS (
+      SELECT FROM pg_catalog.pg_roles
+      WHERE  rolname = 'loot_user') THEN
+
+      CREATE ROLE loot_user LOGIN PASSWORD 'g5Zr7!cXw@2sP9Lk';
+   END IF;
+END
+$do$;
+
+GRANT ALL PRIVILEGES ON DATABASE loot_tracking TO loot_user;
+
+-- Grant privileges on all tables to the user
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO loot_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO loot_user;
+
+
 -- Create tables
 
 CREATE TABLE users (
