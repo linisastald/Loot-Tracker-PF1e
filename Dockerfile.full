@@ -1,30 +1,24 @@
 # Build frontend
 FROM node:18 as frontend-build
-
 WORKDIR /app/frontend
-
 COPY frontend/package*.json ./
-
 RUN npm install
-
 COPY frontend/ .
-
 ARG REACT_APP_API_URL
 ARG REACT_APP_GROUP_NAME
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 ENV REACT_APP_GROUP_NAME=$REACT_APP_GROUP_NAME
 
+# Create env.js file
+RUN echo "window.env = { REACT_APP_GROUP_NAME: '${REACT_APP_GROUP_NAME}' };" > public/env.js
+
 RUN npm run build
 
 # Build backend
 FROM node:18 as backend-build
-
 WORKDIR /app/backend
-
 COPY backend/package*.json ./
-
 RUN npm install
-
 COPY backend/ .
 
 # Final stage
@@ -38,6 +32,10 @@ COPY --from=backend-build /app/backend /app/backend
 
 # Copy frontend build
 COPY --from=frontend-build /app/frontend/build /usr/share/nginx/html
+
+# Copy and process env.js
+COPY --from=frontend-build /app/frontend/public/env.js /usr/share/nginx/html/env.js
+RUN sed -i "s|\${REACT_APP_GROUP_NAME}|$REACT_APP_GROUP_NAME|g" /usr/share/nginx/html/env.js
 
 # Copy database initialization scripts
 COPY database/*.sql /app/database/
