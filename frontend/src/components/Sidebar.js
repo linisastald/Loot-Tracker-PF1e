@@ -3,14 +3,25 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Drawer,
   List,
-  ListItem,
+  ListItemButton,
   ListItemText,
   Typography,
   Collapse,
   Box,
+  ListItemIcon,
 } from '@mui/material';
-import { ExpandLess, ExpandMore } from '@mui/icons-material';
-import './Sidebar.css'; // Ensure this import is correct
+import {
+  ExpandLess,
+  ExpandMore,
+  AddBox,
+  ViewList,
+  AttachMoney,
+  Settings,
+  SupervisorAccount,
+  Inventory,
+  DateRange,
+} from '@mui/icons-material';
+import './Sidebar.css';
 
 const Sidebar = () => {
   const [openLootViews, setOpenLootViews] = useState(false);
@@ -20,34 +31,40 @@ const Sidebar = () => {
   const [isDM, setIsDM] = useState(false);
   const location = useLocation();
 
-  const handleToggleLootViews = () => {
-    setOpenLootViews(!openLootViews);
-  };
-
-  const handleToggleGold = () => {
-    setOpenGold(!openGold);
-  };
-
-  const handleToggleSettings = () => {
-    setOpenSettings(!openSettings);
-  };
-
-  const handleToggleDMSettings = () => {
-    setOpenDMSettings(!openDMSettings);
-  };
+  const handleToggle = (setter) => () => setter(prev => !prev);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      // Decode the token to get the user role
       const payload = JSON.parse(atob(token.split('.')[1]));
       setIsDM(payload.role === 'DM');
     }
   }, []);
 
-  const isActiveRoute = (route) => {
-    return location.pathname === route ? 'active' : '';
-  };
+  const isActiveRoute = (route) => location.pathname === route ? 'active' : '';
+
+  const MenuItem = ({ to, primary, icon, onClick, open, children }) => (
+    <>
+      <ListItemButton
+        component={to ? Link : 'div'}
+        to={to}
+        onClick={onClick}
+        className={isActiveRoute(to)}
+        sx={{ pl: children ? 2 : 3 }}
+      >
+        <ListItemIcon>{icon}</ListItemIcon>
+        <ListItemText primary={primary} />
+        {children && (open ? <ExpandLess /> : <ExpandMore />)}
+      </ListItemButton>
+      {children && (
+        <Collapse in={open} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {children}
+          </List>
+        </Collapse>
+      )}
+    </>
+  );
 
   return (
     <Drawer
@@ -62,74 +79,46 @@ const Sidebar = () => {
         Menu
       </Typography>
       <List>
-        <ListItem button component={Link} to="/loot-entry" className={isActiveRoute('/loot-entry')}>
-          <ListItemText primary="Loot Entry" />
-        </ListItem>
-        <ListItem button onClick={handleToggleLootViews}>
-          <ListItemText primary="Loot Views" />
-          {openLootViews ? <ExpandLess /> : <ExpandMore />}
-        </ListItem>
-        <Collapse in={openLootViews} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            <ListItem button component={Link} to="/unprocessed-loot" className={isActiveRoute('/unprocessed-loot')} sx={{ pl: 4 }}>
-              <ListItemText primary="Unprocessed Loot" />
-            </ListItem>
-            <ListItem button component={Link} to="/kept-party" className={isActiveRoute('/kept-party')} sx={{ pl: 4 }}>
-              <ListItemText primary="Kept - Party" />
-            </ListItem>
-            <ListItem button component={Link} to="/kept-character" className={isActiveRoute('/kept-character')} sx={{ pl: 4 }}>
-              <ListItemText primary="Kept - Character" />
-            </ListItem>
-            <ListItem button component={Link} to="/sold-loot" className={isActiveRoute('/sold-loot')} sx={{ pl: 4 }}>
-              <ListItemText primary="Sold Loot" />
-            </ListItem>
-            <ListItem button component={Link} to="/given-away-or-trashed" className={isActiveRoute('/given-away-or-trashed')} sx={{ pl: 4 }}>
-              <ListItemText primary="Given Away or Trashed" />
-            </ListItem>
-          </List>
-        </Collapse>
-        <ListItem button onClick={handleToggleGold}>
-          <ListItemText primary="Gold" />
-          {openGold ? <ExpandLess /> : <ExpandMore />}
-        </ListItem>
-        <Collapse in={openGold} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            <ListItem button component={Link} to="/gold-transactions" className={isActiveRoute('/gold-transactions')} sx={{ pl: 4 }}>
-              <ListItemText primary="Gold Transactions" />
-            </ListItem>
-          </List>
-        </Collapse>
-        <ListItem button onClick={handleToggleSettings}>
-          <ListItemText primary="Settings" />
-          {openSettings ? <ExpandLess /> : <ExpandMore />}
-        </ListItem>
-        <Collapse in={openSettings} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            <ListItem button component={Link} to="/user-settings" className={isActiveRoute('/user-settings')} sx={{ pl: 4 }}>
-              <ListItemText primary="User Settings" />
-            </ListItem>
-          </List>
-        </Collapse>
+        <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
+        <MenuItem
+          primary="Loot Views"
+          icon={<ViewList />}
+          onClick={handleToggle(setOpenLootViews)}
+          open={openLootViews}
+        >
+          <MenuItem to="/unprocessed-loot" primary="Unprocessed Loot" />
+          <MenuItem to="/kept-party" primary="Kept - Party" />
+          <MenuItem to="/kept-character" primary="Kept - Character" />
+          <MenuItem to="/sold-loot" primary="Sold Loot" />
+          <MenuItem to="/given-away-or-trashed" primary="Given Away or Trashed" />
+        </MenuItem>
+        <MenuItem
+          primary="Gold"
+          icon={<AttachMoney />}
+          onClick={handleToggle(setOpenGold)}
+          open={openGold}
+        >
+          <MenuItem to="/gold-transactions" primary="Gold Transactions" />
+        </MenuItem>
+        <MenuItem
+          primary="Settings"
+          icon={<Settings />}
+          onClick={handleToggle(setOpenSettings)}
+          open={openSettings}
+        >
+          <MenuItem to="/user-settings" primary="User Settings" />
+        </MenuItem>
         {isDM && (
-          <div>
-            <ListItem button onClick={handleToggleDMSettings}>
-              <ListItemText primary="DM Settings" />
-              {openDMSettings ? <ExpandLess /> : <ExpandMore />}
-            </ListItem>
-            <Collapse in={openDMSettings} timeout="auto" unmountOnExit>
-              <List component="div" disablePadding>
-                <ListItem button component={Link} to="/character-user-management" className={isActiveRoute('/character-user-management')} sx={{ pl: 4 }}>
-                  <ListItemText primary="Character and User Management" />
-                </ListItem>
-                <ListItem button component={Link} to="/item-management" className={isActiveRoute('/item-management')} sx={{ pl: 4 }}>
-                  <ListItemText primary="Item Management" />
-                </ListItem>
-                <ListItem button component={Link} to="/golarion-calendar" className={isActiveRoute('/golarion-calendar')} sx={{ pl: 4 }}>
-                  <ListItemText primary="Golarion Calendar" />
-                </ListItem>
-              </List>
-            </Collapse>
-          </div>
+          <MenuItem
+            primary="DM Settings"
+            icon={<SupervisorAccount />}
+            onClick={handleToggle(setOpenDMSettings)}
+            open={openDMSettings}
+          >
+            <MenuItem to="/character-user-management" primary="Character and User Management" />
+            <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
+            <MenuItem to="/golarion-calendar" primary="Golarion Calendar" icon={<DateRange />} />
+          </MenuItem>
         )}
       </List>
       <Box sx={{ position: 'absolute', bottom: 0, width: '100%', textAlign: 'center', py: 1 }}>
