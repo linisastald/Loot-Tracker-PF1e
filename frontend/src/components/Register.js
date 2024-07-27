@@ -41,7 +41,7 @@ const Register = () => {
     try {
       const response = await axios.post(`${API_URL}/auth/register`, { username, password, role });
       localStorage.setItem('token', response.data.token);
-      navigate('/loot-entry');
+      navigate('/user-settings');
     } catch (err) {
       setError(err.response.data.error || 'Registration failed');
     }

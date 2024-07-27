@@ -31,6 +31,10 @@ const Sidebar = () => {
   const [isDM, setIsDM] = useState(false);
   const location = useLocation();
 
+  // Get the group name from the environment variable, or use default
+  const groupName = process.env.REACT_APP_GROUP_NAME || 'General';
+  const menuTitle = `${groupName} Loot Menu`;
+
   const handleToggle = (setter) => () => setter(prev => !prev);
 
   useEffect(() => {
@@ -44,27 +48,27 @@ const Sidebar = () => {
   const isActiveRoute = (route) => location.pathname === route ? 'active' : '';
 
   const MenuItem = ({ to, primary, icon, onClick, open, children }) => (
-  <>
-    <ListItemButton
-      component={to ? Link : 'div'}
-      to={to}
-      onClick={onClick}
-      className={to ? isActiveRoute(to) : ''}
-      sx={{ pl: children ? 2 : 3 }}
-    >
-      <ListItemIcon>{icon}</ListItemIcon>
-      <ListItemText primary={primary} />
-      {children && (open ? <ExpandLess /> : <ExpandMore />)}
-    </ListItemButton>
-    {children && (
-      <Collapse in={open} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding>
-          {children}
-        </List>
-      </Collapse>
-    )}
-  </>
-);
+    <>
+      <ListItemButton
+        component={to ? Link : 'div'}
+        to={to}
+        onClick={onClick}
+        className={to ? isActiveRoute(to) : ''}
+        sx={{ pl: children ? 2 : 3 }}
+      >
+        <ListItemIcon>{icon}</ListItemIcon>
+        <ListItemText primary={primary} />
+        {children && (open ? <ExpandLess /> : <ExpandMore />)}
+      </ListItemButton>
+      {children && (
+        <Collapse in={open} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {children}
+          </List>
+        </Collapse>
+      )}
+    </>
+  );
 
   return (
     <Drawer
@@ -76,7 +80,7 @@ const Sidebar = () => {
       }}
     >
       <Typography variant="h6" align="center" sx={{ my: 2 }}>
-        Menu
+        {menuTitle}
       </Typography>
       <List>
         <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
