@@ -51,32 +51,42 @@ const Sidebar = () => {
   };
 
   const MenuItem = ({ to, primary, icon, onClick, open, children }) => {
-    const active = to ? isActiveRoute(to) : false;
-    return (
-      <>
-        <ListItemButton
-          component={to ? Link : 'div'}
-          to={to}
-          onClick={onClick}
-          style={{
-            paddingLeft: children ? 32 : 16,
-            backgroundColor: active ? '#e0e0e0' : 'inherit',
-          }}
-        >
-          <ListItemIcon>{icon}</ListItemIcon>
-          <ListItemText primary={primary} />
-          {children && (open ? <ExpandLess /> : <ExpandMore />)}
-        </ListItemButton>
-        {children && (
-          <Collapse in={open} timeout="auto" unmountOnExit>
-            <List component="div" disablePadding>
-              {children}
-            </List>
-          </Collapse>
-        )}
-      </>
-    );
-  };
+  const active = to ? isActiveRoute(to) : false;
+  return (
+    <>
+      <ListItemButton
+        component={to ? Link : 'div'}
+        to={to}
+        onClick={onClick}
+        sx={{
+          pl: children ? 2 : 3,
+          bgcolor: active ? 'rgba(0, 0, 0, 0.08)' : 'inherit',
+          '&:hover': {
+            bgcolor: active ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
+          },
+          '& .MuiListItemIcon-root': {
+            color: active ? '#1976d2' : 'inherit',
+          },
+          '& .MuiListItemText-primary': {
+            color: active ? '#1976d2' : 'inherit',
+            fontWeight: active ? 'bold' : 'normal',
+          },
+        }}
+      >
+        <ListItemIcon>{icon}</ListItemIcon>
+        <ListItemText primary={primary} />
+        {children && (open ? <ExpandLess /> : <ExpandMore />)}
+      </ListItemButton>
+      {children && (
+        <Collapse in={open} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {children}
+          </List>
+        </Collapse>
+      )}
+    </>
+  );
+};
 
   return (
     <Drawer
