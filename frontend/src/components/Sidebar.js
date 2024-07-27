@@ -9,6 +9,7 @@ import {
   Collapse,
   Box,
   ListItemIcon,
+  useTheme,
 } from '@mui/material';
 import {
   ExpandLess,
@@ -30,6 +31,7 @@ const Sidebar = () => {
   const [openDMSettings, setOpenDMSettings] = useState(false);
   const [isDM, setIsDM] = useState(false);
   const location = useLocation();
+  const theme = useTheme();
 
   const groupName = window.env?.REACT_APP_GROUP_NAME || 'Loot Tracker';
   const menuTitle = `${groupName} Loot Menu`;
@@ -46,28 +48,36 @@ const Sidebar = () => {
 
   const isActiveRoute = (route) => location.pathname === route;
 
-  const MenuItem = ({ to, primary, icon, onClick, open, children }) => (
-    <>
-      <ListItemButton
-        component={to ? Link : 'div'}
-        to={to}
-        onClick={onClick}
-        selected={to ? isActiveRoute(to) : false}
-        sx={{ pl: children ? 2 : 3 }}
-      >
-        <ListItemIcon>{icon}</ListItemIcon>
-        <ListItemText primary={primary} />
-        {children && (open ? <ExpandLess /> : <ExpandMore />)}
-      </ListItemButton>
-      {children && (
-        <Collapse in={open} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            {children}
-          </List>
-        </Collapse>
-      )}
-    </>
-  );
+  const MenuItem = ({ to, primary, icon, onClick, open, children }) => {
+    const active = to ? isActiveRoute(to) : false;
+    return (
+      <>
+        <ListItemButton
+          component={to ? Link : 'div'}
+          to={to}
+          onClick={onClick}
+          sx={{
+            pl: children ? 2 : 3,
+            backgroundColor: active ? theme.palette.action.selected : 'inherit',
+            '&:hover': {
+              backgroundColor: active ? theme.palette.action.selected : theme.palette.action.hover,
+            },
+          }}
+        >
+          <ListItemIcon>{icon}</ListItemIcon>
+          <ListItemText primary={primary} />
+          {children && (open ? <ExpandLess /> : <ExpandMore />)}
+        </ListItemButton>
+        {children && (
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <List component="div" disablePadding>
+              {children}
+            </List>
+          </Collapse>
+        )}
+      </>
+    );
+  };
 
   return (
     <Drawer
