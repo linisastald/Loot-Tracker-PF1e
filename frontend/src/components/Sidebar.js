@@ -44,27 +44,27 @@ const Sidebar = () => {
   const isActiveRoute = (route) => location.pathname === route ? 'active' : '';
 
   const MenuItem = ({ to, primary, icon, onClick, open, children }) => (
-    <>
-      <ListItemButton
-        component={to ? Link : 'div'}
-        to={to}
-        onClick={onClick}
-        className={isActiveRoute(to)}
-        sx={{ pl: children ? 2 : 3 }}
-      >
-        <ListItemIcon>{icon}</ListItemIcon>
-        <ListItemText primary={primary} />
-        {children && (open ? <ExpandLess /> : <ExpandMore />)}
-      </ListItemButton>
-      {children && (
-        <Collapse in={open} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            {children}
-          </List>
-        </Collapse>
-      )}
-    </>
-  );
+  <>
+    <ListItemButton
+      component={to ? Link : 'div'}
+      to={to}
+      onClick={onClick}
+      className={to ? isActiveRoute(to) : ''}
+      sx={{ pl: children ? 2 : 3 }}
+    >
+      <ListItemIcon>{icon}</ListItemIcon>
+      <ListItemText primary={primary} />
+      {children && (open ? <ExpandLess /> : <ExpandMore />)}
+    </ListItemButton>
+    {children && (
+      <Collapse in={open} timeout="auto" unmountOnExit>
+        <List component="div" disablePadding>
+          {children}
+        </List>
+      </Collapse>
+    )}
+  </>
+);
 
   return (
     <Drawer
