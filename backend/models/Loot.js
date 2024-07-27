@@ -1,7 +1,6 @@
 const pool = require('../db');
 
 exports.create = async (entry) => {
-  console.log(entry)
   const query = `
     INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, itemid, modids, value, whoupdated, notes)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)

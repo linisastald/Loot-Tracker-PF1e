@@ -7,8 +7,6 @@ const { calculateFinalValue } = require('../services/calculateFinalValue');
 exports.createLoot = async (req, res) => {
   try {
     const { entries } = req.body;
-    console.log("createLoot");
-    console.log({entries});
     const createdEntries = [];
     for (const entry of entries) {
       const {
@@ -19,7 +17,6 @@ exports.createLoot = async (req, res) => {
       let itemData, modsData, isMasterwork;
 
       if (parsedItem) {
-        console.log("Using parsed data");
         // Use parsed data
         const itemResult = await pool.query(`
           SELECT id, name, type, subtype, value 
@@ -69,18 +66,12 @@ exports.createLoot = async (req, res) => {
         modsData = modsData.filter(mod => mod !== null);
         isMasterwork = parsedMods.some(mod => mod.toLowerCase().includes('masterwork'));
       } else if (itemId) {
-        console.log("Using itemId");
         // Item selected from autofill
         const itemResult = await pool.query('SELECT id, name, type, subtype, value FROM item WHERE id = $1', [itemId]);
-        if (itemResult.rows.length === 0) {
-          console.log(`Item not found: id ${itemId}`);
-          continue;
-        }
         itemData = itemResult.rows[0];
 
         // Fetch mods if any
         if (entry.modids && entry.modids.length > 0) {
-          console.log("Fetching mods");
           const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [entry.modids]);
           modsData = modsResult.rows;
         } else {
@@ -115,7 +106,6 @@ exports.createLoot = async (req, res) => {
         notes: notes || ''
       });
 
-      console.log(createdEntry);
       createdEntries.push(createdEntry);
     }
 
@@ -414,7 +404,6 @@ exports.appraiseLoot = async (req, res) => {
         believedValue = previousAppraisal.believedvalue;
       } else {
         appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus; // Remove 'const' here
-        console.log(appraisalRoll);
 
         if (lootValue !== null) {
           if (appraisalRoll >= 20) {
@@ -429,7 +418,6 @@ exports.appraiseLoot = async (req, res) => {
         }
       }
 
-      console.log(appraisalRoll);
 
       const appraisalEntry = {
         characterid: characterId,
@@ -505,7 +493,6 @@ exports.parseItemDescription = async (req, res) => {
 exports.calculateValue = async (req, res) => {
   try {
     const { itemId, itemType, itemSubtype, isMasterwork, itemValue, mods } = req.body;
-    console.log("calculateValue")
 
     const modDetails = await Promise.all(mods.map(async (mod) => {
       const result = await pool.query('SELECT id, plus, valuecalc FROM mod WHERE id = $1', [mod.id]);

@@ -27,7 +27,6 @@ import {
 } from '../utils/utils';
 
 const API_URL = process.env.REACT_APP_API_URL;
-console.log(API_URL)
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);

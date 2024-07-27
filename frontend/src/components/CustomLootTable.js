@@ -170,7 +170,6 @@ const CustomLootTable = ({
   };
 
   const filteredLoot = loot.filter((item) => {
-  console.log('Filtering item:', item);
 
   const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
   const passesTypeFilter = Object.keys(typeFilters).some(type => {
@@ -186,21 +185,10 @@ const CustomLootTable = ({
     whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
   const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
 
-  console.log('Filter results:', {
-    unidentified: passesUnidentifiedFilter,
-    type: passesTypeFilter,
-    size: passesSizeFilter,
-    whoHas: passesWhoHasFilter,
-    pendingSale: passesPendingSaleFilter,
-    showOnlyUnidentified,
-    itemUnidentified: item.unidentified,
-    itemType: item.type
-  });
 
   const passes = passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
                  passesWhoHasFilter && passesPendingSaleFilter;
 
-  console.log('Item passes all filters:', passes);
 
   return passes;
 });
@@ -232,9 +220,6 @@ const CustomLootTable = ({
     if (Number.isInteger(numValue)) return numValue.toString();
     return numValue.toFixed(2).replace(/\.?0+$/, '');
   };
-  console.log('Loot prop in CustomLootTable:', loot);
-  console.log('IndividualLoot prop in CustomLootTable:', individualLoot);
-  console.log('Filtered loot:', filteredLoot);
 
   return (
     <Paper sx={{ p: 2 }}>

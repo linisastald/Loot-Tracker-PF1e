@@ -55,12 +55,10 @@ const ItemManagement = () => {
       const response = await axios.get(`${API_URL}/loot/pending-sale`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      console.log('API Response:', response.data);
       const itemsData = response.data || [];
       setItems(itemsData);
       calculatePendingSaleSummary(itemsData);
     } catch (error) {
-      console.error('Error fetching items', error);
       setItems([]);
     }
   };
@@ -83,11 +81,9 @@ const ItemManagement = () => {
   const handleItemUpdateSubmit = async () => {
     try {
       const token = localStorage.getItem('token');
-      console.log('Updated Item Payload:', updatedItem);
       const response = await axios.put(`${API_URL}/loot/${updatedItem.id}`, updatedItem, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      console.log('Update Response:', response);
       setUpdateDialogOpen(false);
       fetchItems();
     } catch (error) {
@@ -141,7 +137,6 @@ const ItemManagement = () => {
       const response = await axios.get(`${API_URL}/loot/search?query=${searchTerm}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      console.log('Search Response:', response.data);
       setFilteredItems(response.data);
     } catch (error) {
       console.error('Error searching items', error);
