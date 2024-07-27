@@ -46,7 +46,6 @@ const Sidebar = () => {
 
   const isActiveRoute = (route) => {
     const active = location.pathname === route;
-    console.log(`Route: ${route}, Current path: ${location.pathname}, Active: ${active}`);
     return active;
   };
 
