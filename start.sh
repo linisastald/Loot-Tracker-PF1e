@@ -1,8 +1,5 @@
 #!/bin/sh
 
-# Start PostgreSQL
-/usr/local/bin/docker-entrypoint.sh postgres &
-
 # Wait for PostgreSQL
 until PGPASSWORD=$DB_PASSWORD psql -h db -U $DB_USER -d $DB_NAME -c '\q'; do
   >&2 echo "Postgres is unavailable - sleeping"
