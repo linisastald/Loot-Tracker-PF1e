@@ -1,25 +1,15 @@
 #!/bin/sh
 
-# Start PostgreSQL
-/usr/local/bin/docker-entrypoint.sh postgres &
-
-# Wait for PostgreSQL to start
-until pg_isready -h localhost -p 5432 -U postgres
-do
-  echo "Waiting for postgres..."
-  sleep 2
+# Wait for PostgreSQL
+until PGPASSWORD=$DB_PASSWORD psql -h db -U $DB_USER -d $DB_NAME -c '\q'; do
+  >&2 echo "Postgres is unavailable - sleeping"
+  sleep 1
 done
 
-# Initialize the database
-psql -U postgres -f /app/database/init.sql
+>&2 echo "Postgres is up - executing command"
 
-# Run the other SQL scripts
-psql -U your_db_user -d your_db_name -f /app/database/item_data.sql
-psql -U your_db_user -d your_db_name -f /app/database/mod_data.sql
-
-# Start the backend
-cd /app/backend
-node index.js &
+# Start the Node.js backend
+cd /app/backend && npm start &
 
 # Start nginx
 nginx -g 'daemon off;'
