@@ -31,9 +31,14 @@ const Sidebar = () => {
   const [isDM, setIsDM] = useState(false);
   const location = useLocation();
 
+  console.log('Environment Variables:', process.env);
+
   // Get the group name from the environment variable, or use default
   const groupName = process.env.REACT_APP_GROUP_NAME || 'General';
   const menuTitle = `${groupName} Loot Menu`;
+
+  console.log('Group Name:', groupName);
+  console.log('Menu Title:', menuTitle);
 
   const handleToggle = (setter) => () => setter(prev => !prev);
 
