@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.full
+      args:
+        - REACT_APP_API_URL=/api
+    ports:
+      - "80:80"
+    environment:
+      - DB_USER=your_db_user
+      - DB_HOST=localhost
+      - DB_NAME=your_db_name
+      - DB_PASSWORD=your_db_password
+      - DB_PORT=5432
+      - PORT=5000
+      - JWT_SECRET=your_jwt_secret
+      - OPENAI_API_KEY=your_openai_api_key
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

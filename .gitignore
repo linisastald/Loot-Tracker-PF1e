@@ -6,3 +6,4 @@
 backend/.env
 /.idea/dataSources.xml
 /.idea/sqldialects.xml
+docker-compose.yml
