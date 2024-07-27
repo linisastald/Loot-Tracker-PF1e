@@ -1,22 +1,17 @@
 #!/bin/sh
 
 # Wait for PostgreSQL
-until PGPASSWORD=$DB_PASSWORD psql -h db -U $DB_USER -d $DB_NAME -c '\q'; do
-  >&2 echo "Postgres is unavailable - sleeping"
+for i in {1..30}; do
+  if PGPASSWORD=$DB_PASSWORD psql -h db -U $DB_USER -d $DB_NAME -c '\q' 2>/dev/null; then
+    echo "PostgreSQL is up - executing command"
+    break
+  fi
+  echo "Waiting for PostgreSQL... $i"
   sleep 1
 done
 
-# Initialize the database
-psql -U postgres -f /app/database/init.sql
-
-# Run the other SQL scripts
-psql -U $DB_USER -d $DB_NAME -f /app/database/item_data.sql
-psql -U $DB_USER -d $DB_NAME -f /app/database/mod_data.sql
-
-# Start the backend
-cd /app/backend
-node index.js &
+# Start the Node.js backend
+cd /app/backend && npm start &
 
 # Start nginx
 nginx -g 'daemon off;'
-
