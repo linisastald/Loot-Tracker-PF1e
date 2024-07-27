@@ -31,14 +31,8 @@ const Sidebar = () => {
   const [isDM, setIsDM] = useState(false);
   const location = useLocation();
 
-  console.log('Environment Variables:', process.env);
-
-  // Get the group name from the environment variable, or use default
-  const groupName = window.env?.REACT_APP_GROUP_NAME || process.env.REACT_APP_GROUP_NAME || 'General';
+  const groupName = window.env?.REACT_APP_GROUP_NAME || 'Loot Tracker';
   const menuTitle = `${groupName} Loot Menu`;
-
-  console.log('Group Name:', groupName);
-  console.log('Menu Title:', menuTitle);
 
   const handleToggle = (setter) => () => setter(prev => !prev);
 
@@ -50,7 +44,7 @@ const Sidebar = () => {
     }
   }, []);
 
-  const isActiveRoute = (route) => location.pathname === route ? 'active' : '';
+  const isActiveRoute = (route) => location.pathname === route;
 
   const MenuItem = ({ to, primary, icon, onClick, open, children }) => (
     <>
@@ -58,7 +52,7 @@ const Sidebar = () => {
         component={to ? Link : 'div'}
         to={to}
         onClick={onClick}
-        className={to ? isActiveRoute(to) : ''}
+        selected={to ? isActiveRoute(to) : false}
         sx={{ pl: children ? 2 : 3 }}
       >
         <ListItemIcon>{icon}</ListItemIcon>
