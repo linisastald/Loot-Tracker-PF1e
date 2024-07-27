@@ -1,5 +1,3 @@
-// Sidebar.js
-
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -9,7 +7,7 @@ import {
   ListItemText,
   Typography,
   Collapse,
-  ListItemIcon,
+  Box,
 } from '@mui/material';
 import { ExpandLess, ExpandMore } from '@mui/icons-material';
 import './Sidebar.css'; // Ensure this import is correct
@@ -134,6 +132,9 @@ const Sidebar = () => {
           </div>
         )}
       </List>
+      <Box sx={{ position: 'absolute', bottom: 0, width: '100%', textAlign: 'center', py: 1 }}>
+        <Typography variant="caption">v0.1.0</Typography>
+      </Box>
     </Drawer>
   );
 };

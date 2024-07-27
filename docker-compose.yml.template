@@ -22,6 +22,7 @@ services:
       - OPENAI_API_KEY=
     depends_on:
       - db
+    container_name: group1_app
 
   db:
     image: postgres:16
@@ -30,12 +31,15 @@ services:
       - POSTGRES_PASSWORD=
       - POSTGRES_DB=loot_tracking
     volumes:
+      - ./database/00-extensions.sql:/docker-entrypoint-initdb.d/00-extensions.sql
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/item_data.sql:/docker-entrypoint-initdb.d/02-item_data.sql
       - ./database/mod_data.sql:/docker-entrypoint-initdb.d/03-mod_data.sql
-      - postgres_data:/var/lib/postgresql/data
+      - ./group1_postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    container_name: group1_db
 
 volumes:
-  postgres_data:
+  group1_postgres_data:
+    name: group1_postgres_data
