@@ -34,7 +34,7 @@ const Sidebar = () => {
   console.log('Environment Variables:', process.env);
 
   // Get the group name from the environment variable, or use default
-  const groupName = process.env.REACT_APP_GROUP_NAME || 'General';
+  const groupName = window.env?.REACT_APP_GROUP_NAME || process.env.REACT_APP_GROUP_NAME || 'General';
   const menuTitle = `${groupName} Loot Menu`;
 
   console.log('Group Name:', groupName);
