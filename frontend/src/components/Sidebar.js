@@ -89,12 +89,15 @@ const Sidebar = () => {
 
   return (
     <Drawer
-      variant="permanent"
-      sx={{
-        width: 240,
-        flexShrink: 0,
-        [`& .MuiDrawer-paper`]: { width: 240, boxSizing: 'border-box' },
-      }}
+        variant="permanent"
+        sx={{
+          width: 240, // Make sure this matches the value in MainLayout.css
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+          width: 240,
+          boxSizing: 'border-box',
+          },
+        }}
     >
       <Typography variant="h6" align="center" sx={{ my: 2 }}>
         {menuTitle}

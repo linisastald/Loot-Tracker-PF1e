@@ -1,7 +1,14 @@
-/* Target any Container component with component="main" */
-.MuiContainer-root[component="main"] {
-  max-width: none !important; /* Override max-width constraint */
-  padding-left: 240px; /* Adjust this value to match the sidebar width */
-  padding-top: 20px; /* Add top padding */
-  box-sizing: border-box; /* Ensure padding is included in the width calculation */
+/* Remove or comment out this rule if it exists */
+/* .MuiContainer-root[component="main"] {
+  max-width: none !important;
+  padding-left: 240px;
+  padding-top: 20px;
+  box-sizing: border-box;
+} */
+
+/* Add this new rule */
+.MuiContainer-root {
+  max-width: none !important;
+  padding: 20px;
+  box-sizing: border-box;
 }
