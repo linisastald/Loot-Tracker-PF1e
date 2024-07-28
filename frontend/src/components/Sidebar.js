@@ -91,11 +91,11 @@ const Sidebar = () => {
     <Drawer
         variant="permanent"
         sx={{
-          width: 240, // Make sure this matches the value in MainLayout.css
+          width: 240,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-          width: 240,
-          boxSizing: 'border-box',
+            width: 240,
+            boxSizing: 'border-box',
           },
         }}
     >

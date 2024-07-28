@@ -6,8 +6,8 @@
 .main-content {
   flex-grow: 1;
   padding: 20px;
-  margin-left: 240px; /* Adjust this to match your sidebar width */
+  margin-left: 0x; /* This should match your sidebar width */
   width: calc(100% - 240px); /* Adjust 240px to match your sidebar width */
   box-sizing: border-box;
-  overflow-x: auto; /* Allow horizontal scrolling if content is too wide */
+  overflow-x: auto;
 }
