@@ -263,11 +263,6 @@ const handleSubmit = async (e) => {
                         freeSolo
                         options={itemNames}
                         getOptionLabel={(option) => option.name}
-                        renderOption={(props, option) => (
-                            <li {...props}>
-                              {option.name} - {capitalizeWords(option.type)}
-                            </li>
-                        )}
                         onChange={(e, value) => handleItemSelect(index, e, value)}
                         onInputChange={(e, value) => handleItemNameChange(index, e, value)}
                         renderInput={(params) => (
@@ -288,12 +283,17 @@ const handleSubmit = async (e) => {
                       <InputLabel>Type</InputLabel>
                       <Select
                           name="type"
-                          value={entry.data.type || ''}
-                          onChange={(e) => handleEntryChange(index, e)}
+                          value={capitalizeWords(entry.data.type || '')}
+                          onChange={(e) => handleEntryChange(index, {
+                            target: {
+                              name: 'type',
+                              value: e.target.value.toLowerCase()
+                            }
+                          })}
                           disabled={selectedItems[index]}
                       >
                         {['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'].map(type => (
-                            <MenuItem key={type} value={type}>{capitalizeWords(type)}</MenuItem>
+                            <MenuItem key={type} value={capitalizeWords(type)}>{capitalizeWords(type)}</MenuItem>
                         ))}
                       </Select>
                     </FormControl>
