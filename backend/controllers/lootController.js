@@ -97,7 +97,7 @@ exports.createLoot = async (req, res) => {
         name: name || itemData.name,
         unidentified: unidentified || false,
         masterwork: isMasterwork,
-        type: itemData.type || type,
+        type: itemData.type || itemType || '',
         size: size || '',
         itemid: itemData.id,
         modids: modsData.map(mod => mod.id),
