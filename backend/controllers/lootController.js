@@ -7,53 +7,101 @@ const { calculateFinalValue } = require('../services/calculateFinalValue');
 exports.createLoot = async (req, res) => {
   try {
     const { entries } = req.body;
-
     const createdEntries = [];
     for (const entry of entries) {
       const {
-        sessionDate,
-        quantity,
-        name,
-        unidentified,
-        masterwork,
-        type: entryType,
-        size,
-        itemid,
-        modids,
-        value: entryValue,
-        whoupdated,
-        notes
+        itemId, name, quantity, notes, session_date, sessionDate,
+        item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
+        unidentified, masterwork, size, whoupdated
       } = entry;
+      let itemData, modsData, isMasterwork;
 
-      let value = entryValue || 0;
-      let itemData = { type: entryType, name };
+      if (parsedItem) {
+        // Use parsed data
+        const itemResult = await pool.query(`
+          SELECT id, name, type, subtype, value 
+          FROM item 
+          WHERE SIMILARITY(name, $1) > 0.3
+          ORDER BY SIMILARITY(name, $1) DESC 
+          LIMIT 1
+        `, [parsedItem]);
 
-      if (itemid) {
-        const itemResult = await pool.query('SELECT value, type, name FROM item WHERE id = $1', [itemid]);
         if (itemResult.rows.length > 0) {
-          value = itemResult.rows[0].value;
-          itemData = { ...itemData, ...itemResult.rows[0] };
+          itemData = { ...itemResult.rows[0], name: parsedItem };
+        } else {
+          itemData = {
+            id: itemId, // Use provided itemId if available
+            name: parsedItem,
+            type: itemType,
+            subtype: itemSubtype,
+            value: itemValue
+          };
         }
+
+        // Use modIds if available, otherwise find matching mods
+        if (modIds && modIds.length > 0) {
+          const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [modIds]);
+          modsData = modsResult.rows;
+        } else {
+          modsData = await Promise.all(parsedMods.map(async (modName) => {
+            const result = await pool.query(`
+              SELECT id, name, plus, valuecalc, target, subtarget
+              FROM mod 
+              WHERE SIMILARITY(name, $1) > 0.3
+              AND (target = $2 OR target IS NULL)
+              AND (subtarget = $3 OR subtarget IS NULL)
+              ORDER BY 
+                CASE 
+                  WHEN target = $2 AND subtarget = $3 THEN 1
+                  WHEN target = $2 AND subtarget IS NULL THEN 2
+                  WHEN target = $2 THEN 3
+                  ELSE 4
+                END,
+                SIMILARITY(name, $1) DESC
+              LIMIT 1
+            `, [modName, itemData.type, itemData.subtype]);
+            return result.rows[0] || null;
+          }));
+        }
+        modsData = modsData.filter(mod => mod !== null);
+        isMasterwork = parsedMods.some(mod => mod.toLowerCase().includes('masterwork'));
+      } else if (itemId) {
+        // Item selected from autofill
+        const itemResult = await pool.query('SELECT id, name, type, subtype, value FROM item WHERE id = $1', [itemId]);
+        itemData = itemResult.rows[0];
+
+        // Fetch mods if any
+        if (entry.modids && entry.modids.length > 0) {
+          const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [entry.modids]);
+          modsData = modsResult.rows;
+        } else {
+          modsData = [];
+        }
+        isMasterwork = masterwork || false;
+      } else {
+        console.log(`Invalid entry: no item id or parsed data for "${name}"`);
+        continue;
       }
 
-      let modsData = [];
-      if (modids && modids.length > 0) {
-        const modsResult = await pool.query('SELECT id, plus, valuecalc FROM mod WHERE id = ANY($1::int[])', [modids]);
-        modsData = modsResult.rows;
-        value = calculateFinalValue(value, itemData.type, itemData.subtype, modsData, masterwork);
-      }
+      const calculatedValue = calculateFinalValue(
+        parseFloat(itemData.value),
+        itemData.type,
+        itemData.subtype,
+        modsData,
+        isMasterwork
+      );
 
       const createdEntry = await Loot.create({
-        sessionDate: sessionDate,
+        sessionDate: session_date || sessionDate,
         quantity,
         name: name || itemData.name,
         unidentified: unidentified || false,
-        masterwork: masterwork || false,
-        type: itemData.type || entryType,
+        masterwork: isMasterwork,
+        type: itemData.type || type,
         size: size || '',
-        itemid: itemid,
-        modids: modids,
-        value: value,
+        itemid: itemData.id,
+        modids: modsData.map(mod => mod.id),
+        value: calculatedValue,
         whoupdated,
         notes: notes || ''
       });
