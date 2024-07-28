@@ -118,8 +118,14 @@ exports.createLoot = async (req, res) => {
 
 exports.getAllLoot = async (req, res) => {
   try {
-    const userId = req.query.activeCharacterId;
-    const loot = await Loot.findAll(userId);
+    const isDM = req.query.isDM === 'true';
+    const activeCharacterId = isDM ? null : req.query.activeCharacterId;
+
+    if (!isDM && !activeCharacterId) {
+      return res.status(400).json({ error: 'Active character ID is required for non-DM users' });
+    }
+
+    const loot = await Loot.findAll(activeCharacterId);
     res.status(200).json(loot);
   } catch (error) {
     console.error('Error fetching loot', error);

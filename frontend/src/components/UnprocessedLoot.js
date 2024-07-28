@@ -9,6 +9,7 @@ import {
 import CustomLootTable from './CustomLootTable';
 import CustomSplitStackDialog from './dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from './dialogs/CustomUpdateDialog';
+import { isDM } from '../utils/auth';
 import {
   fetchActiveUser,
   handleSelectItem,
@@ -41,22 +42,32 @@ const UnprocessedLoot = () => {
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
   useEffect(() => {
-    fetchActiveUserDetails();
+    const initializeComponent = async () => {
+      if (!isDM()) {
+        await fetchActiveUserDetails();
+      }
+      fetchLoot();
+    };
+
+    initializeComponent();
   }, []);
 
-  useEffect(() => {
-    if (activeUser) {
-      fetchLoot(activeUser.activeCharacterId);
-    }
-  }, [activeUser]);
-
-  const fetchLoot = async (activeCharacterId) => {
+  const fetchLoot = async () => {
     try {
       const token = localStorage.getItem('token');
+      const isDMUser = isDM();
+
+      let params = { isDM: isDMUser };
+
+      if (!isDMUser && activeUser && activeUser.activeCharacterId) {
+        params.activeCharacterId = activeUser.activeCharacterId;
+      }
+
       const response = await axios.get(`${API_URL}/loot`, {
         headers: { Authorization: `Bearer ${token}` },
-        params: { activeCharacterId }
+        params: params
       });
+
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);

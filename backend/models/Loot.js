@@ -24,8 +24,10 @@ exports.create = async (entry) => {
   return result.rows[0];
 };
 
-exports.findAll = async (activeCharacterId) => {
+exports.findAll = async (activeCharacterId = null) => {
   try {
+    const isDM = activeCharacterId === null;
+
     const summaryQuery = `
       SELECT
         l.name,
@@ -35,8 +37,8 @@ exports.findAll = async (activeCharacterId) => {
         l.type,
         l.size,
         COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal,
-        MAX(CASE WHEN a.characterid = $1 THEN a.believedvalue END) AS believedvalue,
-        MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
+        ${isDM ? 'NULL' : 'MAX(CASE WHEN a.characterid = $1 THEN a.believedvalue END)'} AS believedvalue,
+        MIN(l.session_date) AS session_date,
         MAX(l.lastupdate) AS lastupdate,
         CASE 
           WHEN COUNT(CASE WHEN l.status = 'Pending Sale' THEN 1 END) > 0 THEN 'Pending Sale'
@@ -51,7 +53,6 @@ exports.findAll = async (activeCharacterId) => {
       GROUP BY
         l.name, l.unidentified, l.masterwork, l.type, l.size;
     `;
-    const summaryResult = await pool.query(summaryQuery, [activeCharacterId]);
 
     const individualQuery = `
       SELECT
@@ -64,16 +65,17 @@ exports.findAll = async (activeCharacterId) => {
         l.type,
         l.size,
         l.status,
-        a.believedvalue,
+        ${isDM ? 'NULL' : 'a.believedvalue'} AS believedvalue,
         (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal
       FROM
         loot l
-      LEFT JOIN
-        appraisal a ON l.id = a.lootid AND a.characterid = $1
+      ${isDM ? '' : 'LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1'}
       WHERE
         l.status IS NULL OR l.status = 'Pending Sale';
     `;
-    const individualResult = await pool.query(individualQuery, [activeCharacterId]);
+
+    const summaryResult = await pool.query(summaryQuery, isDM ? [] : [activeCharacterId]);
+    const individualResult = await pool.query(individualQuery, isDM ? [] : [activeCharacterId]);
 
     return {
       summary: summaryResult.rows,
