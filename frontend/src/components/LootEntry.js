@@ -20,6 +20,10 @@ import { fetchItemNames } from '../utils/utils';
 
 const API_URL = process.env.REACT_APP_API_URL;
 
+  const capitalizeWords = (str) => {
+    return str.replace(/\b\w/g, l => l.toUpperCase());
+  };
+
 const initialItemEntry = {
   sessionDate: new Date(),
   quantity: '',
@@ -56,44 +60,47 @@ const LootEntry = () => {
     loadItemNames();
   }, []);
 
-  const capitalizeWords = (str) => {
-    return str.replace(/\b\w/g, l => l.toUpperCase());
-  };
 
   const handleEntryChange = (index, e) => {
-    const {name, value} = e.target;
+    const { name, value } = e.target;
     setEntries(prevEntries =>
         prevEntries.map((entry, i) =>
-            i === index ? {...entry, data: {...entry.data, [name]: value === '' ? null : value}} : entry
+            i === index ? {
+          ...entry,
+              data: {
+            ...entry.data,
+                [name]: name === 'type' ? value.toLowerCase() : (value === '' ? null : value)
+          }
+        } : entry
         )
     );
   };
 
   const handleItemSelect = (index, _, selectedItem) => {
-    if (selectedItem) {
-      setSelectedItems(prevSelectedItems =>
-          prevSelectedItems.map((item, i) => (i === index ? true : item))
-      );
-      setEntries(prevEntries =>
-          prevEntries.map((entry, i) =>
-              i === index ? {
-                ...entry,
-                data: {
-                  ...entry.data,
-                  name: selectedItem.name,
-                  itemId: selectedItem.id || null,
-                  type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
-                  value: selectedItem.value || null
-                }
-              } : entry
-          )
-      );
-    } else {
-      setSelectedItems(prevSelectedItems =>
-          prevSelectedItems.map((item, i) => (i === index ? false : item))
-      );
-    }
-  };
+  if (selectedItem) {
+    setSelectedItems(prevSelectedItems =>
+      prevSelectedItems.map((item, i) => (i === index ? true : item))
+    );
+    setEntries(prevEntries =>
+      prevEntries.map((entry, i) =>
+        i === index ? {
+          ...entry,
+          data: {
+            ...entry.data,
+            name: selectedItem.name,
+            itemId: selectedItem.id || null,
+            type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
+            value: selectedItem.value || null
+          }
+        } : entry
+      )
+    );
+  } else {
+    setSelectedItems(prevSelectedItems =>
+      prevSelectedItems.map((item, i) => (i === index ? false : item))
+    );
+  }
+};
 
   const handleItemNameChange = (index, e, value) => {
     setSelectedItems(prevSelectedItems =>
@@ -253,22 +260,27 @@ const handleSubmit = async (e) => {
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <Autocomplete
-                      freeSolo
-                      options={itemNames}
-                      getOptionLabel={(option) => option.name}
-                      onChange={(e, value) => handleItemSelect(index, e, value)}
-                      onInputChange={(e, value) => handleItemNameChange(index, e, value)}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Item Name"
-                          name="name"
-                          value={entry.data.name || ''}
-                          onChange={(e) => handleEntryChange(index, e)}
-                          fullWidth
-                          required
-                        />
-                      )}
+                        freeSolo
+                        options={itemNames}
+                        getOptionLabel={(option) => option.name}
+                        renderOption={(props, option) => (
+                            <li {...props}>
+                              {option.name} - {capitalizeWords(option.type)}
+                            </li>
+                        )}
+                        onChange={(e, value) => handleItemSelect(index, e, value)}
+                        onInputChange={(e, value) => handleItemNameChange(index, e, value)}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Item Name"
+                                name="name"
+                                value={entry.data.name || ''}
+                                onChange={(e) => handleEntryChange(index, e)}
+                                fullWidth
+                                required
+                            />
+                        )}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -281,7 +293,7 @@ const handleSubmit = async (e) => {
                           disabled={selectedItems[index]}
                       >
                         {['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'].map(type => (
-                            <MenuItem key={type} value={capitalizeWords(type)}>{capitalizeWords(type)}</MenuItem>
+                            <MenuItem key={type} value={type}>{capitalizeWords(type)}</MenuItem>
                         ))}
                       </Select>
                     </FormControl>
