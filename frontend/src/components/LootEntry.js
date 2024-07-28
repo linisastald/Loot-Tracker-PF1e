@@ -56,37 +56,41 @@ const LootEntry = () => {
     loadItemNames();
   }, []);
 
+  const capitalizeWords = (str) => {
+    return str.replace(/\b\w/g, l => l.toUpperCase());
+  };
+
   const handleEntryChange = (index, e) => {
-    const { name, value } = e.target;
+    const {name, value} = e.target;
     setEntries(prevEntries =>
-      prevEntries.map((entry, i) =>
-        i === index ? { ...entry, data: { ...entry.data, [name]: value === '' ? null : value } } : entry
-      )
+        prevEntries.map((entry, i) =>
+            i === index ? {...entry, data: {...entry.data, [name]: value === '' ? null : value}} : entry
+        )
     );
   };
 
   const handleItemSelect = (index, _, selectedItem) => {
     if (selectedItem) {
       setSelectedItems(prevSelectedItems =>
-        prevSelectedItems.map((item, i) => (i === index ? true : item))
+          prevSelectedItems.map((item, i) => (i === index ? true : item))
       );
       setEntries(prevEntries =>
-        prevEntries.map((entry, i) =>
-          i === index ? {
-            ...entry,
-            data: {
-              ...entry.data,
-              name: selectedItem.name,
-              itemId: selectedItem.id || null,
-              type: selectedItem.type || '',
-              value: selectedItem.value || null
-            }
-          } : entry
-        )
+          prevEntries.map((entry, i) =>
+              i === index ? {
+                ...entry,
+                data: {
+                  ...entry.data,
+                  name: selectedItem.name,
+                  itemId: selectedItem.id || null,
+                  type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
+                  value: selectedItem.value || null
+                }
+              } : entry
+          )
       );
     } else {
       setSelectedItems(prevSelectedItems =>
-        prevSelectedItems.map((item, i) => (i === index ? false : item))
+          prevSelectedItems.map((item, i) => (i === index ? false : item))
       );
     }
   };
@@ -147,21 +151,23 @@ const handleSubmit = async (e) => {
           };
         }
 
-          const goldData = {
-            ...data,
-            platinum: data.platinum || null,
-            gold: data.gold || null,
-            silver: data.silver || null,
-            copper: data.copper || null
-          };
+        const goldData = {
+          ...data,
+          platinum: data.platinum || null,
+          gold: data.gold || null,
+          silver: data.silver || null,
+          copper: data.copper || null
+        };
 
-          await axios.post(
-              `${API_URL}/gold`,
-              {goldEntries: [goldData]},
-              {headers: {Authorization: `Bearer ${token}`}}
-          );
+        await axios.post(
+            `${API_URL}/gold`,
+            {goldEntries: [goldData]},
+            {headers: {Authorization: `Bearer ${token}`}}
+        );
+      } else {
+        // Convert type to lowercase before submission
+        data.type = data.type ? data.type.toLowerCase() : null;
 
-        } else {
         data.itemId = data.itemId || null;
         data.value = data.value || null;
         data.modids = data.modids || []; // Ensure modids is always an array
@@ -176,6 +182,10 @@ const handleSubmit = async (e) => {
 
           if (parseResponse.data) {
             data = {...data, ...parseResponse.data};
+            // Ensure the type is lowercase if it was set by the parsing
+            if (data.type) {
+              data.type = data.type.toLowerCase();
+            }
           }
         }
 
@@ -265,17 +275,14 @@ const handleSubmit = async (e) => {
                     <FormControl fullWidth>
                       <InputLabel>Type</InputLabel>
                       <Select
-                        name="type"
-                        value={entry.data.type || ''}
-                        onChange={(e) => handleEntryChange(index, e)}
-                        disabled={selectedItems[index]}
+                          name="type"
+                          value={entry.data.type || ''}
+                          onChange={(e) => handleEntryChange(index, e)}
+                          disabled={selectedItems[index]}
                       >
-                        <MenuItem value="Weapon">Weapon</MenuItem>
-                        <MenuItem value="Armor">Armor</MenuItem>
-                        <MenuItem value="Magic">Magic</MenuItem>
-                        <MenuItem value="Gear">Gear</MenuItem>
-                        <MenuItem value="Trade Good">Trade Good</MenuItem>
-                        <MenuItem value="Other">Other</MenuItem>
+                        {['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'].map(type => (
+                            <MenuItem key={type} value={capitalizeWords(type)}>{capitalizeWords(type)}</MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   </Grid>

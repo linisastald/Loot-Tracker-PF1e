@@ -273,7 +273,10 @@ export const fetchItemNames = async () => {
     const response = await axios.get(`${API_URL}/loot/items`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    return response.data;
+    return response.data.map(item => ({
+      ...item,
+      type: item.type ? capitalizeWords(item.type) : ''
+    }));
   } catch (error) {
     console.error('Error fetching item names:', error);
     return [];
