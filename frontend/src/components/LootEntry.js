@@ -64,14 +64,14 @@ const LootEntry = () => {
 
 
   const handleEntryChange = (index, e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value } = e.target;
     setEntries(prevEntries =>
         prevEntries.map((entry, i) =>
             i === index ? {
           ...entry,
               data: {
             ...entry.data,
-                [name]: type === 'checkbox' ? checked : (name === 'type' ? value.toLowerCase() : (value === '' ? null : value))
+                [name]: name === 'type' ? value.toLowerCase() : (value === '' ? null : value)
           }
         } : entry
         )
@@ -92,8 +92,7 @@ const LootEntry = () => {
             name: selectedItem.name,
             itemId: selectedItem.id || null,
             type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
-            value: selectedItem.value || null,
-            parseItem: false  // Disable parsing when an item is selected
+            value: selectedItem.value || null
           }
         } : entry
       )
@@ -182,7 +181,7 @@ const handleSubmit = async (e) => {
         data.value = data.value || null;
         data.modids = data.modids || []; // Ensure modids is always an array
 
-        if (!selectedItems[entries.indexOf(entry)] && entry.data.parseItem) {
+        if (!selectedItems[entries.indexOf(entry)]) {
           // Send the item description to the backend for parsing
           const parseResponse = await axios.post(
               `${API_URL}/loot/parse-item`,
