@@ -53,6 +53,7 @@ const LootEntry = () => {
   const [entries, setEntries] = useState([{ type: 'item', data: { ...initialItemEntry } }]);
   const [itemNames, setItemNames] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
+  const [autocompletedItems, setAutocompletedItems] = useState([]);
 
   useEffect(() => {
     const loadItemNames = async () => {
@@ -80,39 +81,45 @@ const LootEntry = () => {
 
   const handleItemSelect = (index, _, selectedItem) => {
   if (selectedItem) {
-    setSelectedItems(prevSelectedItems =>
-      prevSelectedItems.map((item, i) => (i === index ? true : item))
-    );
+    setAutocompletedItems(prev => {
+      const newAutocompleted = [...prev];
+      newAutocompleted[index] = true;
+      return newAutocompleted;
+    });
     setEntries(prevEntries =>
-      prevEntries.map((entry, i) =>
-        i === index ? {
-          ...entry,
-          data: {
-            ...entry.data,
-            name: selectedItem.name,
-            itemId: selectedItem.id || null,
-            type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
-            value: selectedItem.value || null,
-            parseItem: false // Set parseItem to false when an item is selected
+        prevEntries.map((entry, i) =>
+            i === index ? {
+              ...entry,
+              data: {
+                ...entry.data,
+                name: selectedItem.name,
+                itemId: selectedItem.id || null,
+                type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
+                value: selectedItem.value || null,
+                parseItem: false
           }
         } : entry
       )
     );
   } else {
-    setSelectedItems(prevSelectedItems =>
-      prevSelectedItems.map((item, i) => (i === index ? false : item))
-    );
+    setAutocompletedItems(prev => {
+      const newAutocompleted = [...prev];
+      newAutocompleted[index] = false;
+      return newAutocompleted;
+    });
   }
 };
 
   const handleItemNameChange = (index, e, value) => {
-    setSelectedItems(prevSelectedItems =>
-      prevSelectedItems.map((item, i) => (i === index ? false : item))
-    );
+    setAutocompletedItems(prev => {
+      const newAutocompleted = [...prev];
+      newAutocompleted[index] = false;
+      return newAutocompleted;
+    });
     setEntries(prevEntries =>
-      prevEntries.map((entry, i) =>
-        i === index ? { ...entry, data: { ...entry.data, name: value, itemId: null, type: '', value: null } } : entry
-      )
+        prevEntries.map((entry, i) =>
+            i === index ? {...entry, data: {...entry.data, name: value, itemId: null, type: '', value: null}} : entry
+        )
     );
   };
 
@@ -126,12 +133,12 @@ const LootEntry = () => {
 
   const handleAddEntry = (type) => {
     setEntries([...entries, { type, data: type === 'item' ? { ...initialItemEntry } : { ...initialGoldEntry } }]);
-    setSelectedItems([...selectedItems, false]);
+    setAutocompletedItems([...autocompletedItems, false]);
   };
 
   const handleRemoveEntry = (index) => {
     setEntries(entries.filter((_, i) => i !== index));
-    setSelectedItems(selectedItems.filter((_, i) => i !== index));
+    setAutocompletedItems(autocompletedItems.filter((_, i) => i !== index));
   };
 
   const handleRemoveAllEntries = () => {
@@ -288,7 +295,7 @@ const handleSubmit = async (e) => {
                           name="parseItem"
                           checked={entry.data.parseItem || false}
                           onChange={(e) => handleEntryChange(index, e)}
-                          disabled={selectedItems[index]}
+                          disabled={autocompletedItems[index]}
                       />
                     }
                         label="Parse Item"
@@ -306,7 +313,7 @@ const handleSubmit = async (e) => {
                               value: e.target.value.toLowerCase()
                             }
                           })}
-                          disabled={selectedItems[index]}
+                          disabled={autocompletedItems[index]}
                       >
                         {['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'].map(type => (
                             <MenuItem key={type} value={capitalizeWords(type)}>{capitalizeWords(type)}</MenuItem>
