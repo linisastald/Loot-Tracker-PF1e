@@ -139,15 +139,7 @@ const Sidebar = () => {
         >
           <MenuItem to="/gold-transactions" primary="Gold Transactions"/>
         </MenuItem>
-        <MenuItem
-            component={Link}
-            to="/consumables"
-            className={isActiveRoute('/consumables')}
-        >
-          <ListItemIcon>
-            <InventoryIcon/>
-          </ListItemIcon>
-          <ListItemText primary="Consumables"/>
+        <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
         </MenuItem>
         <MenuItem
             primary="Settings"
