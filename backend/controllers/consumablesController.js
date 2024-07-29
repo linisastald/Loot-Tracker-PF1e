@@ -11,19 +11,19 @@ exports.getConsumables = async (req, res) => {
     `;
 
     const potionsQuery = `
-      SELECT l.itemid, SUM(l.quantity) as quantity, l.name
+      SELECT l.id, SUM(l.quantity) as quantity, l.name
       FROM loot l
       JOIN item i ON l.itemid = i.id
       WHERE i.name ILIKE '%potion of%' AND l.status = 'Kept Party'
-      GROUP BY l.itemid, l.name
+      GROUP BY l.id, l.name
     `;
 
     const scrollsQuery = `
-      SELECT l.itemid, SUM(l.quantity) as quantity, l.name
+      SELECT l.id, SUM(l.quantity) as quantity, l.name
       FROM loot l
       JOIN item i ON l.itemid = i.id
       WHERE i.name ILIKE '%scroll of%' AND l.status = 'Kept Party'
-      GROUP BY l.itemid, l.name
+      GROUP BY l.id, l.name
     `;
 
     const [wandsResult, potionsResult, scrollsResult] = await Promise.all([

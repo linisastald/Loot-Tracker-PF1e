@@ -164,7 +164,7 @@ const Consumables = () => {
               </TableHead>
               <TableBody>
                 {potions.map((potion) => (
-                    <TableRow key={potion.itemid}>
+                    <TableRow key={potion.id}>
                       <TableCell>{potion.quantity}</TableCell>
                       <TableCell>{potion.name}</TableCell>
                       <TableCell>
@@ -200,7 +200,7 @@ const Consumables = () => {
               </TableHead>
               <TableBody>
                 {scrolls.map((scroll) => (
-                    <TableRow key={scroll.itemid}>
+                    <TableRow key={scroll.id}>
                       <TableCell>{scroll.quantity}</TableCell>
                       <TableCell>{scroll.name}</TableCell>
                       <TableCell>
