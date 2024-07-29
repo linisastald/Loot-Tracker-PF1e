@@ -50,54 +50,54 @@ const Sidebar = () => {
   };
 
   const MenuItem = ({ to, primary, icon, onClick, open, children }) => {
-  const active = to ? isActiveRoute(to) : false;
-  return (
-    <>
-      <ListItemButton
-        component={to ? Link : 'div'}
-        to={to}
-        onClick={onClick}
-        sx={{
-          pl: children ? 2 : 3,
-          bgcolor: active ? 'rgba(0, 0, 0, 0.08)' : 'inherit',
-          '&:hover': {
-            bgcolor: active ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
-          },
-          '& .MuiListItemIcon-root': {
-            color: active ? '#1976d2' : 'inherit',
-          },
-          '& .MuiListItemText-primary': {
-            color: active ? '#1976d2' : 'inherit',
-            fontWeight: active ? 'bold' : 'normal',
-          },
-        }}
-      >
-        <ListItemIcon>{icon}</ListItemIcon>
-        <ListItemText primary={primary} />
-        {children && (open ? <ExpandLess /> : <ExpandMore />)}
-      </ListItemButton>
-      {children && (
-        <Collapse in={open} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            {children}
-          </List>
-        </Collapse>
-      )}
-    </>
-  );
-};
+    const active = to ? isActiveRoute(to) : false;
+    return (
+      <>
+        <ListItemButton
+          component={to ? Link : 'div'}
+          to={to}
+          onClick={onClick}
+          sx={{
+            pl: children ? 2 : 3,
+            bgcolor: active ? 'rgba(0, 0, 0, 0.08)' : 'inherit',
+            '&:hover': {
+              bgcolor: active ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
+            },
+            '& .MuiListItemIcon-root': {
+              color: active ? '#1976d2' : 'inherit',
+            },
+            '& .MuiListItemText-primary': {
+              color: active ? '#1976d2' : 'inherit',
+              fontWeight: active ? 'bold' : 'normal',
+            },
+          }}
+        >
+          <ListItemIcon>{icon}</ListItemIcon>
+          <ListItemText primary={primary} />
+          {children && (open ? <ExpandLess /> : <ExpandMore />)}
+        </ListItemButton>
+        {children && (
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <List component="div" disablePadding>
+              {children}
+            </List>
+          </Collapse>
+        )}
+      </>
+    );
+  };
 
   return (
     <Drawer
-        variant="permanent"
-        sx={{
+      variant="permanent"
+      sx={{
+        width: 240,
+        flexShrink: 0,
+        '& .MuiDrawer-paper': {
           width: 240,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': {
-            width: 240,
-            boxSizing: 'border-box',
-          },
-        }}
+          boxSizing: 'border-box',
+        },
+      }}
     >
       <Typography variant="h6" align="center" sx={{ my: 2 }}>
         {menuTitle}
