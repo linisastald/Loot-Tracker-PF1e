@@ -1,14 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import { Box } from '@mui/material';
 import { Outlet } from 'react-router-dom';
-import './MainLayout.css';
 
 const MainLayout = () => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   return (
-    <Box className="main-layout">
-      <Sidebar />
-      <Box className="main-content">
+    <Box sx={{ display: 'flex' }}>
+      <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: 3,
+          marginLeft: isCollapsed ? '60px' : '240px',
+          transition: 'margin-left 0.2s',
+        }}
+      >
         <Outlet />
       </Box>
     </Box>
