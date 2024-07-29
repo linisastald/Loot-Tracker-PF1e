@@ -482,6 +482,8 @@ const CustomLootTable = ({
                                 {showColumns.select && <TableCell style={subCellStyle}>Select</TableCell>}
                                 <TableCell style={subCellStyle}>Quantity</TableCell>
                                 {showColumns.size && <TableCell style={subCellStyle}>Size</TableCell>}
+                                {showColumns.whoHasIt && <TableCell style={subCellStyle}>Who Has It?</TableCell>}
+                                <TableCell style={subCellStyle}>Notes</TableCell>
                                 {showColumns.sessionDate && <TableCell style={subCellStyle}>Session Date</TableCell>}
                                 {showColumns.lastUpdate && <TableCell style={subCellStyle}>Last Update</TableCell>}
                               </TableRow>
@@ -499,6 +501,14 @@ const CustomLootTable = ({
                                   )}
                                   <TableCell style={subCellStyle}>{subItem.quantity}</TableCell>
                                   {showColumns.size && <TableCell style={subCellStyle}>{subItem.size}</TableCell>}
+                                  {showColumns.whoHasIt && <TableCell style={subCellStyle}>{subItem.character_name}</TableCell>}
+                                  <TableCell style={subCellStyle}>
+                                    {subItem.notes ? (
+                                      <Tooltip title={subItem.notes} arrow>
+                                        <span>Hover for Notes</span>
+                                      </Tooltip>
+                                    ) : ''}
+                                  </TableCell>
                                   {showColumns.sessionDate && <TableCell style={subCellStyle}>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>}
                                   {showColumns.lastUpdate && <TableCell style={subCellStyle}>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>}
                                 </SubItemTableRow>
