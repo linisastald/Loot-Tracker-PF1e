@@ -116,7 +116,7 @@ const Sidebar = () => {
       <IconButton onClick={toggleSidebar}>
           {isCollapsed ? <MenuIcon /> : <ChevronLeft />}
         </IconButton>
-      <List>
+      <List sx={{ alignItems: 'left' }}>
         <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
         <MenuItem
           primary="Loot Views"
