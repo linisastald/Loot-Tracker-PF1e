@@ -111,10 +111,11 @@ const Sidebar = () => {
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1 }}>
         {!isCollapsed && <Typography variant="h6">{menuTitle}</Typography>}
-        <IconButton onClick={toggleSidebar}>
+
+      </Box>
+      <IconButton onClick={toggleSidebar}>
           {isCollapsed ? <MenuIcon /> : <ChevronLeft />}
         </IconButton>
-      </Box>
       <List>
         <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
         <MenuItem
