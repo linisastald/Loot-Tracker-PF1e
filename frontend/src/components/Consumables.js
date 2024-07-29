@@ -79,7 +79,7 @@ const Consumables = () => {
   const handleUpdateCharges = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`${API_URL}/consumables/wand/charges`, {
+      await axios.put(`${API_URL}//consumables/wand-charges`, {
         id: selectedWand.id,
         charges: parseInt(newCharges),
       }, {
