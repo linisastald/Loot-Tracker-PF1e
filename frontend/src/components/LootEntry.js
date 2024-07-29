@@ -34,7 +34,9 @@ const initialItemEntry = {
   unidentified: null,
   masterwork: null,
   size: '',
-  notes: ''
+  notes: '',
+  parseItem: false,
+  charges: ''
 };
 
 const initialGoldEntry = {
@@ -46,7 +48,7 @@ const initialGoldEntry = {
   copper: '',
   notes: ''
 };
-
+const shouldShowCharges = (name) => name.toLowerCase().includes('wand of');
 const LootEntry = () => {
   const [entries, setEntries] = useState([{ type: 'item', data: { ...initialItemEntry } }]);
   const [itemNames, setItemNames] = useState([]);
@@ -179,7 +181,7 @@ const handleSubmit = async (e) => {
         data.value = data.value || null;
         data.modids = data.modids || []; // Ensure modids is always an array
 
-        if (!selectedItems[entries.indexOf(entry)]) {
+        if (!selectedItems[entries.indexOf(entry)] && entry.data.parseItem) {
           // Send the item description to the backend for parsing
           const parseResponse = await axios.post(
               `${API_URL}/loot/parse-item`,
@@ -279,6 +281,19 @@ const handleSubmit = async (e) => {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
+                    <FormControlLabel
+                        control={
+                      <Checkbox
+                          name="parseItem"
+                          checked={entry.data.parseItem || false}
+                          onChange={(e) => handleEntryChange(index, e)}
+                          disabled={selectedItems[index]}
+                      />
+                    }
+                        label="Parse Item"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
                       <InputLabel>Type</InputLabel>
                       <Select
@@ -345,6 +360,19 @@ const handleSubmit = async (e) => {
                       </Select>
                     </FormControl>
                   </Grid>
+                  {shouldShowCharges(entry.data.name) && (
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                            label="Charges"
+                            type="number"
+                            name="charges"
+                            value={entry.data.charges || ''}
+                            onChange={(e) => handleEntryChange(index, e)}
+                            fullWidth
+                            inputProps={{ min: 0, step: 1 }}
+                        />
+                      </Grid>
+                  )}
                   <Grid item xs={12}>
                     <TextField
                       label="Notes"
@@ -378,13 +406,16 @@ const handleSubmit = async (e) => {
                   </Grid>
                   <Grid item xs={12} sm={3}>
                     <TextField
-                      label="Platinum"
-                      type="number"
-                      name="platinum"
-                      value={entry.data.platinum || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
-                      fullWidth
-                      inputProps={{ min: 0 }}
+                        label="Platinum"
+                        type="number"
+                        name="platinum"
+                        value={entry.data.platinum || ''}
+                        onChange={(e) => {
+                          const value = Math.max(0, parseInt(e.target.value) || 0);
+                          handleEntryChange(index, { target: { name: 'platinum', value } });
+                        }}
+                        fullWidth
+                        inputProps={{ min: 0, step: 1 }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={3}>
@@ -393,7 +424,10 @@ const handleSubmit = async (e) => {
                       type="number"
                       name="gold"
                       value={entry.data.gold || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
+                      onChange={(e) => {
+                          const value = Math.max(0, parseInt(e.target.value) || 0);
+                          handleEntryChange(index, { target: { name: 'gold', value } });
+                        }}
                       fullWidth
                       inputProps={{ min: 0 }}
                     />
@@ -404,7 +438,10 @@ const handleSubmit = async (e) => {
                       type="number"
                       name="silver"
                       value={entry.data.silver || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
+                      onChange={(e) => {
+                          const value = Math.max(0, parseInt(e.target.value) || 0);
+                          handleEntryChange(index, { target: { name: 'silver', value } });
+                        }}
                       fullWidth
                       inputProps={{ min: 0 }}
                     />
@@ -415,7 +452,10 @@ const handleSubmit = async (e) => {
                       type="number"
                       name="copper"
                       value={entry.data.copper || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
+                      onChange={(e) => {
+                          const value = Math.max(0, parseInt(e.target.value) || 0);
+                          handleEntryChange(index, { target: { name: 'copper', value } });
+                        }}
                       fullWidth
                       inputProps={{ min: 0 }}
                     />
