@@ -102,42 +102,17 @@ const LootEntry = () => {
     setSelectedItems(prevSelectedItems =>
       prevSelectedItems.map((item, i) => (i === index ? false : item))
     );
-    setEntries(prevEntries =>
-      prevEntries.map((entry, i) =>
-        i === index ? {
-          ...entry,
-          data: {
-            ...entry.data,
-            name: '',
-            itemId: null,
-            type: '',
-            value: null,
-            parseItem: false  // Reset parseItem when selection is cleared
-          }
-        } : entry
-      )
-    );
   }
 };
 
   const handleItemNameChange = (index, e, value) => {
     setSelectedItems(prevSelectedItems =>
-        prevSelectedItems.map((item, i) => i === index ? false : item)
+      prevSelectedItems.map((item, i) => (i === index ? false : item))
     );
     setEntries(prevEntries =>
-        prevEntries.map((entry, i) =>
-            i === index ? {
-              ...entry,
-              data: {
-                ...entry.data,
-                name: value,
-                itemId: null,
-                type: '',
-                value: null,
-                parseItem: false  // Reset parseItem when the input is cleared
-              }
-            } : entry
-        )
+      prevEntries.map((entry, i) =>
+        i === index ? { ...entry, data: { ...entry.data, name: value, itemId: null, type: '', value: null } } : entry
+      )
     );
   };
 
@@ -317,8 +292,8 @@ const handleSubmit = async (e) => {
                       />
                     }
                         label="Parse Item"
-                    />
-                  </Grid>
+  />
+</Grid>
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
                       <InputLabel>Type</InputLabel>
