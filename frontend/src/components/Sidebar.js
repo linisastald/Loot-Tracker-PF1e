@@ -58,43 +58,45 @@ const Sidebar = () => {
   };
 
   const MenuItem = ({ to, primary, icon, onClick, open, children }) => {
-    const active = to ? isActiveRoute(to) : false;
-    return (
-      <>
-        <ListItemButton
-          component={to ? Link : 'div'}
-          to={to}
-          onClick={onClick}
-          sx={{
-            pl: children ? 2 : 3,
-            bgcolor: active ? 'rgba(0, 0, 0, 0.08)' : 'inherit',
-            '&:hover': {
-              bgcolor: active ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
-            },
-            '& .MuiListItemIcon-root': {
-              color: active ? '#1976d2' : 'inherit',
-              minWidth: isCollapsed ? 'auto' : 56,
-            },
-            '& .MuiListItemText-primary': {
-              color: active ? '#1976d2' : 'inherit',
-              fontWeight: active ? 'bold' : 'normal',
-            },
-          }}
-        >
-          <ListItemIcon>{icon}</ListItemIcon>
-          {!isCollapsed && <ListItemText primary={primary} />}
-          {!isCollapsed && children && (open ? <ExpandLess /> : <ExpandMore />)}
-        </ListItemButton>
-        {children && !isCollapsed && (
-          <Collapse in={open} timeout="auto" unmountOnExit>
-            <List component="div" disablePadding>
-              {children}
-            </List>
-          </Collapse>
-        )}
-      </>
-    );
-  };
+  const active = to ? isActiveRoute(to) : false;
+  const ComponentToUse = to ? Link : 'div';
+
+  return (
+    <>
+      <ListItemButton
+        component={ComponentToUse}
+        to={to}
+        onClick={onClick}
+        sx={{
+          pl: 2,
+          bgcolor: active ? 'rgba(0, 0, 0, 0.08)' : 'inherit',
+          '&:hover': {
+            bgcolor: active ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
+          },
+          '& .MuiListItemIcon-root': {
+            color: active ? '#1976d2' : 'inherit',
+            minWidth: isCollapsed ? 'auto' : 56,
+          },
+          '& .MuiListItemText-primary': {
+            color: active ? '#1976d2' : 'inherit',
+            fontWeight: active ? 'bold' : 'normal',
+          },
+        }}
+      >
+        <ListItemIcon>{icon}</ListItemIcon>
+        {!isCollapsed && <ListItemText primary={primary} />}
+        {!isCollapsed && children && (open ? <ExpandLess /> : <ExpandMore />)}
+      </ListItemButton>
+      {children && !isCollapsed && (
+        <Collapse in={open} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {children}
+          </List>
+        </Collapse>
+      )}
+    </>
+  );
+};
 
   return (
     <Drawer
@@ -116,7 +118,7 @@ const Sidebar = () => {
       <IconButton onClick={toggleSidebar}>
           {isCollapsed ? <MenuIcon /> : <ChevronLeft />}
         </IconButton>
-      <List sx={{ alignItems: 'left' }}>
+      <List>
         <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
         <MenuItem
           primary="Loot Views"
