@@ -1,5 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+
+
 import Login from './components/Login';
 import Register from './components/Register';
 import LootEntry from './components/LootEntry';
@@ -15,9 +17,12 @@ import ProtectedRoute from './components/ProtectedRoute';
 import CharacterAndUserManagement from './components/CharacterAndUserManagement';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import theme from './theme';
+import Consumables from "./components/Consumables";
 import ItemManagement from "./components/ItemManagement";
 import GolarionCalendar from "./components/GolarionCalendar";
+
+
+import theme from './theme';
 
 function App() {
   return (
