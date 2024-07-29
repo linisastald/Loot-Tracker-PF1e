@@ -140,7 +140,6 @@ const Sidebar = () => {
           <MenuItem to="/gold-transactions" primary="Gold Transactions"/>
         </MenuItem>
         <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
-        </MenuItem>
         <MenuItem
             primary="Settings"
             icon={<Settings/>}
