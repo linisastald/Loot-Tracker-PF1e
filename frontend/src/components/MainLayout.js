@@ -14,7 +14,7 @@ const MainLayout = () => {
         sx={{
           flexGrow: 1,
           p: 3,
-          marginLeft: isCollapsed ? '60px' : '240px',
+          marginLeft: isCollapsed ? '10px' : '60px',
           transition: 'margin-left 0.2s',
         }}
       >
