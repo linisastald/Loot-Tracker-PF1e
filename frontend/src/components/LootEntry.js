@@ -291,8 +291,8 @@ const handleSubmit = async (e) => {
                       />
                     }
                         label="Parse Item"
-  />
-</Grid>
+                    />
+                  </Grid>
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
                       <InputLabel>Type</InputLabel>
