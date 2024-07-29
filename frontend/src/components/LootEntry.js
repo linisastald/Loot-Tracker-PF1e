@@ -122,12 +122,22 @@ const LootEntry = () => {
 
   const handleItemNameChange = (index, e, value) => {
     setSelectedItems(prevSelectedItems =>
-      prevSelectedItems.map((item, i) => (i === index ? false : item))
+        prevSelectedItems.map((item, i) => i === index ? false : item)
     );
     setEntries(prevEntries =>
-      prevEntries.map((entry, i) =>
-        i === index ? { ...entry, data: { ...entry.data, name: value, itemId: null, type: '', value: null } } : entry
-      )
+        prevEntries.map((entry, i) =>
+            i === index ? {
+              ...entry,
+              data: {
+                ...entry.data,
+                name: value,
+                itemId: null,
+                type: '',
+                value: null,
+                parseItem: false  // Reset parseItem when the input is cleared
+              }
+            } : entry
+        )
     );
   };
 
