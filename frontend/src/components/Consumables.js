@@ -46,6 +46,7 @@ const Consumables = () => {
       setWands(response.data.wands);
       setPotions(response.data.potions);
       setScrolls(response.data.scrolls);
+      console.log(response.data)
     } catch (error) {
       console.error('Error fetching consumables:', error);
     }
@@ -53,10 +54,10 @@ const Consumables = () => {
 
   const handleUseConsumable = async (id, type) => {
     try {
-      console.log(id, type)
+      console.log('Using consumable:', id, type);
       const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}/consumables/use`, { id, type }, {
-        headers: { Authorization: `Bearer ${token}` },
+      await axios.post(`${API_URL}/consumables/use`, {id, type}, {
+        headers: {Authorization: `Bearer ${token}`},
       });
       fetchConsumables();
     } catch (error) {
@@ -122,18 +123,20 @@ const Consumables = () => {
               </TableHead>
               <TableBody>
                 {wands.map((wand) => (
-                  <TableRow key={wand.id}>
-                    <TableCell>{wand.quantity}</TableCell>
-                    <TableCell>{wand.name}</TableCell>
-                    <TableCell>
-                      {wand.charges !== null ? wand.charges : (
-                        <Button onClick={() => handleOpenChargesDialog(wand)}>Enter Charges</Button>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button onClick={() => handleUseConsumable(wand.id, 'wand')}>Use</Button>
-                    </TableCell>
-                  </TableRow>
+                    <TableRow key={wand.id}>
+                      <TableCell>{wand.quantity}</TableCell>
+                      <TableCell>{wand.name}</TableCell>
+                      <TableCell>
+                        {wand.charges !== null ? wand.charges : (
+                            <Button onClick={() => handleOpenChargesDialog(wand)}>Enter Charges</Button>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button onClick={() => handleUseConsumable(wand.id, 'wand')} variant="contained" color="primary">
+                          Use
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                 ))}
               </TableBody>
             </Table>
@@ -161,13 +164,15 @@ const Consumables = () => {
               </TableHead>
               <TableBody>
                 {potions.map((potion) => (
-                  <TableRow key={potion.id}>
-                    <TableCell>{potion.quantity}</TableCell>
-                    <TableCell>{potion.name}</TableCell>
-                    <TableCell>
-                      <Button onClick={() => handleUseConsumable(potion.id, 'potion')}>Use</Button>
-                    </TableCell>
-                  </TableRow>
+                    <TableRow key={potion.itemid}>
+                      <TableCell>{potion.quantity}</TableCell>
+                      <TableCell>{potion.name}</TableCell>
+                      <TableCell>
+                        <Button onClick={() => handleUseConsumable(potion.itemid, 'potion')} variant="contained" color="primary">
+                          Use
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                 ))}
               </TableBody>
             </Table>
@@ -195,13 +200,15 @@ const Consumables = () => {
               </TableHead>
               <TableBody>
                 {scrolls.map((scroll) => (
-                  <TableRow key={scroll.id}>
-                    <TableCell>{scroll.quantity}</TableCell>
-                    <TableCell>{scroll.name}</TableCell>
-                    <TableCell>
-                      <Button onClick={() => handleUseConsumable(scroll.id, 'scroll')}>Use</Button>
-                    </TableCell>
-                  </TableRow>
+                    <TableRow key={scroll.itemid}>
+                      <TableCell>{scroll.quantity}</TableCell>
+                      <TableCell>{scroll.name}</TableCell>
+                      <TableCell>
+                        <Button onClick={() => handleUseConsumable(scroll.itemid, 'scroll')} variant="contained" color="primary">
+                          Use
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                 ))}
               </TableBody>
             </Table>
