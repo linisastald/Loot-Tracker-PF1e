@@ -92,7 +92,8 @@ const LootEntry = () => {
             name: selectedItem.name,
             itemId: selectedItem.id || null,
             type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
-            value: selectedItem.value || null
+            value: selectedItem.value || null,
+            parseItem: false // Set parseItem to false when an item is selected
           }
         } : entry
       )
