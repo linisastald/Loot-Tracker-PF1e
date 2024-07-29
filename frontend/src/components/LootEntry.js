@@ -64,14 +64,14 @@ const LootEntry = () => {
 
 
   const handleEntryChange = (index, e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     setEntries(prevEntries =>
         prevEntries.map((entry, i) =>
             i === index ? {
           ...entry,
               data: {
             ...entry.data,
-                [name]: name === 'type' ? value.toLowerCase() : (value === '' ? null : value)
+                [name]: type === 'checkbox' ? checked : (name === 'type' ? value.toLowerCase() : (value === '' ? null : value))
           }
         } : entry
         )
@@ -92,7 +92,8 @@ const LootEntry = () => {
             name: selectedItem.name,
             itemId: selectedItem.id || null,
             type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
-            value: selectedItem.value || null
+            value: selectedItem.value || null,
+            parseItem: false  // Disable parsing when an item is selected
           }
         } : entry
       )
@@ -100,6 +101,21 @@ const LootEntry = () => {
   } else {
     setSelectedItems(prevSelectedItems =>
       prevSelectedItems.map((item, i) => (i === index ? false : item))
+    );
+    setEntries(prevEntries =>
+      prevEntries.map((entry, i) =>
+        i === index ? {
+          ...entry,
+          data: {
+            ...entry.data,
+            name: '',
+            itemId: null,
+            type: '',
+            value: null,
+            parseItem: false  // Reset parseItem when selection is cleared
+          }
+        } : entry
+      )
     );
   }
 };
