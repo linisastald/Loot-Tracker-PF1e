@@ -53,6 +53,7 @@ const Consumables = () => {
 
   const handleUseConsumable = async (id, type) => {
     try {
+      console.log(id, type)
       const token = localStorage.getItem('token');
       await axios.post(`${API_URL}/consumables/use`, { id, type }, {
         headers: { Authorization: `Bearer ${token}` },
