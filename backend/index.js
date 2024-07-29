@@ -33,12 +33,14 @@ const lootRoutes = require('./routes/loot');
 const goldRoutes = require('./routes/gold');
 const userRoutes = require('./routes/user');
 const soldRoutes = require('./routes/sold');
+const consumablesRoutes = require('./routes/consumables');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/loot', lootRoutes);
 app.use('/api/gold', goldRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/sold', soldRoutes);
+app.use('/api/consumables', consumablesRoutes);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

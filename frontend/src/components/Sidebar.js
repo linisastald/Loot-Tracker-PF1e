@@ -132,28 +132,38 @@ const Sidebar = () => {
           <MenuItem to="/given-away-or-trashed" primary="Given Away or Trashed" />
         </MenuItem>
         <MenuItem
-          primary="Gold"
-          icon={<AttachMoney />}
-          onClick={handleToggle(setOpenGold)}
-          open={openGold}
+            primary="Gold"
+            icon={<AttachMoney/>}
+            onClick={handleToggle(setOpenGold)}
+            open={openGold}
         >
-          <MenuItem to="/gold-transactions" primary="Gold Transactions" />
+          <MenuItem to="/gold-transactions" primary="Gold Transactions"/>
         </MenuItem>
         <MenuItem
-          primary="Settings"
-          icon={<Settings />}
-          onClick={handleToggle(setOpenSettings)}
-          open={openSettings}
+            component={Link}
+            to="/consumables"
+            className={isActiveRoute('/consumables')}
         >
-          <MenuItem to="/user-settings" primary="User Settings" />
+          <ListItemIcon>
+            <InventoryIcon/>
+          </ListItemIcon>
+          <ListItemText primary="Consumables"/>
+        </MenuItem>
+        <MenuItem
+            primary="Settings"
+            icon={<Settings/>}
+            onClick={handleToggle(setOpenSettings)}
+            open={openSettings}
+        >
+          <MenuItem to="/user-settings" primary="User Settings"/>
         </MenuItem>
         {isDM && (
-          <MenuItem
-            primary="DM Settings"
-            icon={<SupervisorAccount />}
-            onClick={handleToggle(setOpenDMSettings)}
-            open={openDMSettings}
-          >
+            <MenuItem
+                primary="DM Settings"
+                icon={<SupervisorAccount/>}
+                onClick={handleToggle(setOpenDMSettings)}
+                open={openDMSettings}
+            >
             <MenuItem to="/character-user-management" primary="Character and User Management" />
             <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
             <MenuItem to="/golarion-calendar" primary="Golarion Calendar" icon={<DateRange />} />
