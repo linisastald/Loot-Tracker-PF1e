@@ -99,7 +99,7 @@ const Sidebar = () => {
           },
         }}
     >
-      <Typography variant="h6" align="left" sx={{ my: 2 }}>
+      <Typography variant="h6" align="center" sx={{ my: 2 }}>
         {menuTitle}
       </Typography>
       <List>
