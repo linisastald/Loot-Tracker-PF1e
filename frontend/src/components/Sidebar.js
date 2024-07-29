@@ -113,7 +113,6 @@ const Sidebar = () => {
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1 }}>
         {!isCollapsed && <Typography variant="h6">{menuTitle}</Typography>}
-
       </Box>
       <IconButton onClick={toggleSidebar}>
           {isCollapsed ? <MenuIcon /> : <ChevronLeft />}
