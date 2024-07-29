@@ -12,7 +12,7 @@ exports.createLoot = async (req, res) => {
       const {
         itemId, name, quantity, notes, session_date, sessionDate,
         item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
-        unidentified, masterwork, size, whoupdated
+        unidentified, masterwork, size, whoupdated, charges // Add charges here
       } = entry;
       let itemData, modsData, isMasterwork;
 
@@ -103,7 +103,8 @@ exports.createLoot = async (req, res) => {
         modids: modsData.map(mod => mod.id),
         value: calculatedValue,
         whoupdated,
-        notes: notes || ''
+        notes: notes || '',
+        charges: charges || null // Add this line to include charges
       });
 
       createdEntries.push(createdEntry);
