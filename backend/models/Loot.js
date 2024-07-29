@@ -27,15 +27,14 @@ exports.create = async (entry) => {
 exports.findAll = async (activeCharacterId = null) => {
   try {
     const isDM = activeCharacterId === null;
-
     const summaryQuery = `
-      SELECT
-        l.name,
-        SUM(l.quantity) AS quantity,
-        l.unidentified,
-        l.masterwork,
-        l.type,
-        l.size,
+      SELECT 
+        l.name, 
+        SUM(l.quantity) AS quantity, 
+        l.unidentified, 
+        l.masterwork, 
+        l.type, 
+        l.size, 
         COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal,
         ${isDM ? 'NULL' : 'MAX(CASE WHEN a.characterid = $1 THEN a.believedvalue END)'} AS believedvalue,
         MIN(l.session_date) AS session_date,
@@ -43,34 +42,36 @@ exports.findAll = async (activeCharacterId = null) => {
         CASE 
           WHEN COUNT(CASE WHEN l.status = 'Pending Sale' THEN 1 END) > 0 THEN 'Pending Sale'
           ELSE NULL
-        END AS status
-      FROM
+        END AS status,
+        STRING_AGG(DISTINCT l.notes, ' | ') AS notes
+      FROM 
         loot l
-      LEFT JOIN
+      LEFT JOIN 
         appraisal a ON l.id = a.lootid
-      WHERE
+      WHERE 
         l.status IS NULL OR l.status = 'Pending Sale'
-      GROUP BY
+      GROUP BY 
         l.name, l.unidentified, l.masterwork, l.type, l.size;
     `;
 
     const individualQuery = `
-      SELECT
-        l.id,
-        l.session_date,
-        l.quantity,
-        l.name,
-        l.unidentified,
-        l.masterwork,
-        l.type,
-        l.size,
-        l.status,
+      SELECT 
+        l.id, 
+        l.session_date, 
+        l.quantity, 
+        l.name, 
+        l.unidentified, 
+        l.masterwork, 
+        l.type, 
+        l.size, 
+        l.status, 
         ${isDM ? 'NULL' : 'a.believedvalue'} AS believedvalue,
-        (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal
-      FROM
+        (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal,
+        l.notes
+      FROM 
         loot l
       ${isDM ? '' : 'LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1'}
-      WHERE
+      WHERE 
         l.status IS NULL OR l.status = 'Pending Sale';
     `;
 
@@ -90,50 +91,54 @@ exports.findAll = async (activeCharacterId = null) => {
 exports.findByStatus = async (status, activeCharacterId) => {
   try {
     const summaryQuery = `
-      SELECT
-        l.name,
-        SUM(l.quantity) AS quantity,
-        l.unidentified,
-        l.masterwork,
-        l.type,
-        l.size,
-        COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal,
+      SELECT 
+        l.name, 
+        SUM(l.quantity) AS quantity, 
+        l.unidentified, 
+        l.masterwork, 
+        l.type, 
+        l.size, 
+        COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal, 
         MAX(CASE WHEN a.characterid = $2 THEN a.believedvalue END) AS believedvalue,
-        MIN(l.session_date) AS session_date,  -- Capture the earliest session_date
+        MIN(l.session_date) AS session_date,
         MAX(l.lastupdate) AS lastupdate,
-        CASE 
-          WHEN COUNT(CASE WHEN l.status = 'Pending Sale' THEN 1 END) > 0 THEN 'Pending Sale'
-          ELSE NULL
-        END AS status
-      FROM
+        STRING_AGG(DISTINCT c.name, ', ') AS character_names,
+        STRING_AGG(DISTINCT l.notes, ' | ') AS notes
+      FROM 
         loot l
-      LEFT JOIN
+      LEFT JOIN 
         appraisal a ON l.id = a.lootid
-      WHERE
+      LEFT JOIN 
+        characters c ON l.whohas = c.id
+      WHERE 
         l.status = $1
-      GROUP BY
+      GROUP BY 
         l.name, l.unidentified, l.masterwork, l.type, l.size;
     `;
     const summaryResult = await pool.query(summaryQuery, [status, activeCharacterId]);
 
     const individualQuery = `
-      SELECT
-        l.id,
-        l.session_date,
-        l.quantity,
-        l.name,
-        l.unidentified,
-        l.masterwork,
-        l.type,
-        l.size,
-        l.status,
+      SELECT 
+        l.id, 
+        l.session_date, 
+        l.quantity, 
+        l.name, 
+        l.unidentified, 
+        l.masterwork, 
+        l.type, 
+        l.size, 
+        l.status, 
         a.believedvalue,
-        (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal
-      FROM
+        (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal,
+        c.name AS character_name,
+        l.notes
+      FROM 
         loot l
-      LEFT JOIN
+      LEFT JOIN 
         appraisal a ON l.id = a.lootid AND a.characterid = $2
-      WHERE
+      LEFT JOIN 
+        characters c ON l.whohas = c.id
+      WHERE 
         l.status = $1;
     `;
     const individualResult = await pool.query(individualQuery, [status, activeCharacterId]);
