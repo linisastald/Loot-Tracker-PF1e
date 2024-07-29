@@ -12,7 +12,7 @@ import {
   MenuItem,
   Select,
   InputLabel,
-  Autocomplete, FormControlLabel, Checkbox
+  Autocomplete, FormControlLabel, Checkbox, Tooltip
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -289,17 +289,19 @@ const handleSubmit = async (e) => {
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
-                    <FormControlLabel
-                        control={
-                      <Checkbox
-                          name="parseItem"
-                          checked={entry.data.parseItem || false}
-                          onChange={(e) => handleEntryChange(index, e)}
-                          disabled={autocompletedItems[index]}
+                    <Tooltip title="Automatically analyze item to break out special abilities and item name">
+                      <FormControlLabel
+                          control={
+                        <Checkbox
+                            name="parseItem"
+                            checked={entry.data.parseItem || false}
+                            onChange={(e) => handleEntryChange(index, e)}
+                            disabled={autocompletedItems[index]}
+                        />
+                      }
+                          label="Smart Item Detection"
                       />
-                    }
-                        label="Parse Item"
-                    />
+                    </Tooltip>
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
