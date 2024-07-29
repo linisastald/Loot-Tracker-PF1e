@@ -12,7 +12,7 @@ import {
   MenuItem,
   Select,
   InputLabel,
-  Autocomplete, FormControlLabel
+  Autocomplete, FormControlLabel, Checkbox
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
