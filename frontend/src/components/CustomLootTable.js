@@ -455,7 +455,7 @@ const CustomLootTable = ({
                     )}
                     {showColumns.type && <TableCell style={mainCellStyle}>{item.type}</TableCell>}
                     {showColumns.size && <TableCell style={mainCellStyle}>{item.size}</TableCell>}
-                    {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{item.character_name}</TableCell>}
+                    {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{item.character_names}</TableCell>}
                     {showColumns.believedValue && <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
                     {showColumns.averageAppraisal && (
                       <TableCell style={mainCellStyle}>
