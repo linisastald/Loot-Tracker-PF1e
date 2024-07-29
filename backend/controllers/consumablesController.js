@@ -7,14 +7,14 @@ exports.getConsumables = async (req, res) => {
       SELECT l.id, l.quantity, l.name, l.charges
       FROM loot l
       JOIN item i ON l.itemid = i.id
-      WHERE i.name ILIKE '%wand of%' AND l.status = 'kept party'
+      WHERE i.name ILIKE '%wand of%' AND l.status = 'Kept Party'
     `;
 
     const potionsQuery = `
       SELECT l.itemid, SUM(l.quantity) as quantity, l.name
       FROM loot l
       JOIN item i ON l.itemid = i.id
-      WHERE i.name ILIKE '%potion of%' AND l.status = 'kept party'
+      WHERE i.name ILIKE '%potion of%' AND l.status = 'Kept Party'
       GROUP BY l.itemid, l.name
     `;
 
@@ -22,7 +22,7 @@ exports.getConsumables = async (req, res) => {
       SELECT l.itemid, SUM(l.quantity) as quantity, l.name
       FROM loot l
       JOIN item i ON l.itemid = i.id
-      WHERE i.name ILIKE '%scroll of%' AND l.status = 'kept party'
+      WHERE i.name ILIKE '%scroll of%' AND l.status = 'Kept Party'
       GROUP BY l.itemid, l.name
     `;
 
