@@ -108,7 +108,7 @@ exports.updateWandCharges = async (req, res) => {
     const updateQuery = `
       UPDATE loot
       SET charges = $1
-      WHERE id = $2 AND status = 'kept party'
+      WHERE id = $2 AND status = 'Kept Party'
       RETURNING *
     `;
     const result = await pool.query(updateQuery, [charges, id]);
