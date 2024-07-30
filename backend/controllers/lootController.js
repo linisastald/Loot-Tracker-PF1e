@@ -12,7 +12,7 @@ exports.createLoot = async (req, res) => {
       const {
         itemId, name, quantity, notes, session_date, sessionDate,
         item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
-        unidentified, masterwork, size, whoupdated, charges // Add charges here
+        unidentified, masterwork, size, whoupdated, charges
       } = entry;
       let itemData, modsData, isMasterwork;
 
@@ -30,7 +30,7 @@ exports.createLoot = async (req, res) => {
           itemData = { ...itemResult.rows[0], name: parsedItem };
         } else {
           itemData = {
-            id: itemId, // Use provided itemId if available
+            id: itemId,
             name: parsedItem,
             type: itemType,
             subtype: itemSubtype,
@@ -88,7 +88,9 @@ exports.createLoot = async (req, res) => {
         itemData.type,
         itemData.subtype,
         modsData,
-        isMasterwork
+        isMasterwork,
+        itemData.name,
+        charges
       );
 
       const createdEntry = await Loot.create({
@@ -104,7 +106,7 @@ exports.createLoot = async (req, res) => {
         value: calculatedValue,
         whoupdated,
         notes: notes || '',
-        charges: charges || null // Add this line to include charges
+        charges: charges || null
       });
 
       createdEntries.push(createdEntry);

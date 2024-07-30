@@ -1,7 +1,11 @@
-const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwork) => {
+const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwork, itemName, charges) => {
   let modifiedValue = Number(itemValue);
   let totalPlus = 0;
 
+  // Special case for wands
+  if (itemName && itemName.toLowerCase().startsWith('wand of') && charges) {
+    modifiedValue *= charges;
+  }
 
   mods.forEach(mod => {
     if (mod.valuecalc) {
