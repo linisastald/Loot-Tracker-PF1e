@@ -41,16 +41,18 @@ const UnprocessedLoot = () => {
   const [openItems, setOpenItems] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
-  useEffect(() => {
-    const initializeComponent = async () => {
-      if (!isDM()) {
-        await fetchActiveUserDetails();
-      }
+useEffect(() => {
+  const initializeComponent = async () => {
+    if (!isDM()) {
+      await fetchActiveUserDetails();
       fetchLoot();
-    };
+    } else {
+      fetchLoot();
+    }
+  };
 
-    initializeComponent();
-  }, []);
+  initializeComponent();
+}, []);
 
   const fetchActiveUserDetails = async () => {
     const user = await fetchActiveUser();
@@ -62,25 +64,33 @@ const UnprocessedLoot = () => {
   };
 
   const fetchLoot = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const isDMUser = isDM();
+      try {
+          const token = localStorage.getItem('token');
+          const isDMUser = isDM();
 
-      let params = { isDM: isDMUser };
+          let params = { isDM: isDMUser };
 
-      if (!isDMUser && activeUser && activeUser.activeCharacterId) {
-        params.activeCharacterId = activeUser.activeCharacterId;
+          if (!isDMUser) {
+              const currentActiveUser = await fetchActiveUser(); // Fetch the latest user data
+              if (currentActiveUser && currentActiveUser.activeCharacterId) {
+                  params.activeCharacterId = currentActiveUser.activeCharacterId;
+              } else {
+                  console.error('No active character ID available');
+                  return; // Exit early if no active character ID is available
+                  }
+          }
+
+          console.log("Fetching loot with params:", params); // Add this log
+
+          const response = await axios.get(`${API_URL}/loot`, {
+              headers: { Authorization: `Bearer ${token}` },
+              params: params
+          });
+
+          setLoot(response.data);
+      } catch (error) {
+          console.error('Error fetching loot:', error);
       }
-
-      const response = await axios.get(`${API_URL}/loot`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: params
-      });
-
-      setLoot(response.data);
-    } catch (error) {
-      console.error('Error fetching loot:', error);
-    }
   };
 
   const handleAction = async (actionFunc) => {
