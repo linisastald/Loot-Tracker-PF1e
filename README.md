@@ -25,18 +25,17 @@
 ## Feature Tracking
 MVP - Required features for release
 
-| Feature                     | Priority | Status      | Notes                                                  | 
-|-----------------------------|----------|-------------|--------------------------------------------------------|
-| Campaign Settings           | High     | In Progress |                                                        |
-| Improved Value Calculations | High     | In Progress |                                                        |
-| Session Tracking            | Low      | Considering |                                                        |
-| Spell Book Page             | Low      | Considering |                                                        |
-| Google Sheets               | Low      | Considering | Maybe a cron job that runs daily?                      |
-| Attendance Tracker          | V. Low   | Considering | Include tracking of chores?                            |
-| Search Items                | V. Low   | Considering | Search page that allows finding of items the party had |
-| Identify                    | Med      | Considering |                                                        |
-| Stats page                  | Low      | Considering |                                                        |
-| Calendar                    | Low      | In Progress | May save for next major version                        |
+| Feature                     | Priority | Status             | Notes                                                  | 
+|-----------------------------|----------|--------------------|--------------------------------------------------------|
+| Campaign Settings           | High     | In Progress        |                                                        |
+| Improved Value Calculations | High     | In Progress        |                                                        |
+| Session Tracking            | Low      | Considering        |                                                        |
+| Spell Book Page             | Low      | Considering        |                                                        |
+| Attendance Tracker          | V. Low   | Considering        | Include tracking of chores?                            |
+| Search Items                | V. Low   | Considering        | Search page that allows finding of items the party had |
+| Identify                    | Med      | Considering        |                                                        |
+| Stats page                  | Low      | Considering        |                                                        |
+| Calendar                    | Low      | In Progress        | May save for next major version                        |
 
 ## Feature Tracking - Completed Features
 
@@ -61,7 +60,8 @@ MVP - Required features for release
 
 ## Feature Tracking - Will Not Implement Features
 
-| Feature                  | Priority | Status              | Notes                                     | 
-|--------------------------|----------|---------------------|-------------------------------------------|
-| Wealth by Level Check    | V. Low   | Will Not Implement  |                                           |
-| Google Login             | V. Low   | Will Not Implement  | Requires some stuff I dont have setup atm |
+| Feature                  | Priority | Status               | Notes                                     | 
+|--------------------------|----------|----------------------|-------------------------------------------|
+| Wealth by Level Check    | V. Low   | Will Not Implement   |                                           |
+| Google Login             | V. Low   | Will Not Implement   | Requires some stuff I dont have setup atm |
+| Google Sheets            | Low      | Will not implement   | Maybe a cron job that runs daily?         |
