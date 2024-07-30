@@ -90,7 +90,8 @@ exports.createLoot = async (req, res) => {
         modsData,
         isMasterwork,
         itemData.name,
-        charges
+        charges,
+        size
       );
 
       const createdEntry = await Loot.create({

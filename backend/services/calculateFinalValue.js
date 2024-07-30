@@ -1,6 +1,39 @@
-const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwork, itemName, charges) => {
+const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwork, itemName, charges, size) => {
   let modifiedValue = Number(itemValue);
   let totalPlus = 0;
+
+  // Size multipliers for weapons
+  const weaponSizeMultipliers = {
+    'Fine': 0.5,
+    'Diminutive': 0.5,
+    'Tiny': 0.5,
+    'Small': 1,
+    'Medium': 1,
+    'Large': 2,
+    'Huge': 4,
+    'Gargantuan': 8,
+    'Colossal': 16
+  };
+
+  // Size multipliers for armor
+  const armorSizeMultipliers = {
+    'Fine': 0.5,
+    'Diminutive': 0.5,
+    'Tiny': 0.5,
+    'Small': 1,
+    'Medium': 1,
+    'Large': 2,
+    'Huge': 4,
+    'Gargantuan': 8,
+    'Colossal': 16
+  };
+
+  // Apply size multiplier for weapons and armor
+  if (itemType === 'weapon' && size in weaponSizeMultipliers) {
+    modifiedValue *= weaponSizeMultipliers[size];
+  } else if (itemType === 'armor' && size in armorSizeMultipliers) {
+    modifiedValue *= armorSizeMultipliers[size];
+  }
 
   // Special case for wands
   if (itemName && itemName.toLowerCase().startsWith('wand of') && charges) {
