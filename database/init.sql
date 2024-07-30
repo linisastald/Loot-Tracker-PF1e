@@ -91,5 +91,17 @@ CREATE TABLE sold (
     soldon DATE
 );
 
+CREATE TABLE consumableuse (
+    id SERIAL PRIMARY KEY,
+    lootid INTEGER REFERENCES loot(id),
+    who INTEGER REFERENCES characters(id),
+    time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes
+CREATE INDEX idx_consumableuse_lootid ON consumableuse(lootid);
+CREATE INDEX idx_consumableuse_who ON consumableuse(who);
+CREATE INDEX idx_consumableuse_time ON consumableuse(time);
+
 -- Insert initial data for settings
 INSERT INTO settings (name, value) VALUES ('registrations open', 1);
