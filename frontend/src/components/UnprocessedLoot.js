@@ -52,6 +52,15 @@ const UnprocessedLoot = () => {
     initializeComponent();
   }, []);
 
+  const fetchActiveUserDetails = async () => {
+    const user = await fetchActiveUser();
+    if (user && user.activeCharacterId) {
+      setActiveUser(user);
+    } else {
+      console.error('Active character ID is not available or user could not be fetched');
+    }
+  };
+
   const fetchLoot = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -71,15 +80,6 @@ const UnprocessedLoot = () => {
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);
-    }
-  };
-
-  const fetchActiveUserDetails = async () => {
-    const user = await fetchActiveUser();
-    if (user && user.activeCharacterId) {
-      setActiveUser(user);
-    } else {
-      console.error('Active character ID is not available or user could not be fetched');
     }
   };
 
