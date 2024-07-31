@@ -48,9 +48,14 @@ const initialGoldEntry = {
   copper: '',
   notes: ''
 };
-const shouldShowCharges = (name) => name.toLowerCase().includes('wand of');
+const shouldShowCharges = (name) => {
+  if (!name || typeof name !== 'string') {
+    return false;
+  }
+  return name.toLowerCase().includes('wand of');
+};
 const LootEntry = () => {
-  const [entries, setEntries] = useState([{ type: 'item', data: { ...initialItemEntry } }]);
+  const [entries, setEntries] = useState([{type: 'item', data: {...initialItemEntry}}]);
   const [itemNames, setItemNames] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
   const [autocompletedItems, setAutocompletedItems] = useState([]);
@@ -387,7 +392,7 @@ const handleSubmit = async (e) => {
                       </Select>
                     </FormControl>
                   </Grid>
-                  {shouldShowCharges(entry.data.name) && (
+                  {entry.type === 'item' && shouldShowCharges(entry.data.name) && (
                       <Grid item xs={12} sm={6}>
                         <TextField
                             label="Charges"
@@ -396,18 +401,18 @@ const handleSubmit = async (e) => {
                             value={entry.data.charges || ''}
                             onChange={(e) => handleEntryChange(index, e)}
                             fullWidth
-                            inputProps={{ min: 0, step: 1 }}
+                            inputProps={{min: 0, step: 1}}
                         />
                       </Grid>
                   )}
                   <Grid item xs={12}>
                     <TextField
-                      label="Notes"
-                      name="notes"
-                      value={entry.data.notes || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
-                      fullWidth
-                      inputProps={{ maxLength: 511 }}
+                        label="Notes"
+                        name="notes"
+                        value={entry.data.notes || ''}
+                        onChange={(e) => handleEntryChange(index, e)}
+                        fullWidth
+                        inputProps={{maxLength: 511}}
                     />
                   </Grid>
                 </>
