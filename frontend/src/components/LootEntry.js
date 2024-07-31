@@ -59,6 +59,8 @@ const LootEntry = () => {
   const [itemNames, setItemNames] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
   const [autocompletedItems, setAutocompletedItems] = useState([]);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     const loadItemNames = async () => {
@@ -166,13 +168,11 @@ const handleSubmit = async (e) => {
   const decodedToken = jwt_decode(token);
   const userId = decodedToken.id;
 
+  const skippedEntries = [];
+  const processedEntries = [];
+
   try {
     for (const [index, entry] of entries.entries()) {
-      if (!entry.data.name || entry.data.name.trim() === '') {
-        console.warn('Skipping entry with empty name');
-        continue; // Skip entries with empty names
-      }
-
       let data = {...entry.data, whoupdated: userId, session_date: entry.data.sessionDate};
 
       if (entry.type === 'gold') {
@@ -196,11 +196,18 @@ const handleSubmit = async (e) => {
         };
 
         await axios.post(
-            `${API_URL}/gold`,
-            {goldEntries: [goldData]},
-            {headers: {Authorization: `Bearer ${token}`}}
+          `${API_URL}/gold`,
+          {goldEntries: [goldData]},
+          {headers: {Authorization: `Bearer ${token}`}}
         );
-       } else {
+        processedEntries.push(entry);
+      } else {
+        if (!data.name || data.name.trim() === '') {
+          console.warn(`Skipping item entry at index ${index} with empty name`);
+          skippedEntries.push(index);
+          continue;
+        }
+
         // Convert type to lowercase before submission
         data.type = data.type ? data.type.toLowerCase() : null;
         data.itemId = data.itemId || null;
@@ -233,12 +240,22 @@ const handleSubmit = async (e) => {
           {entries: [data]},
           {headers: {Authorization: `Bearer ${token}`}}
         );
+        processedEntries.push(entry);
       }
     }
+
+    // Inform the user about skipped entries
+    if (skippedEntries.length > 0) {
+      setError(`Skipped ${skippedEntries.length} item entries due to empty names. Indices: ${skippedEntries.join(', ')}`);
+    }
+
+    // Inform the user about successful submissions
+    setSuccess(`Successfully processed ${processedEntries.length} entries.`);
 
     handleRemoveAllEntries(); // Remove all entries after submission
   } catch (error) {
     console.error('Error submitting entry', error);
+    setError('An error occurred while submitting entries. Please try again.');
   }
 };
 
@@ -253,6 +270,8 @@ const handleSubmit = async (e) => {
           Add Gold Entry
         </Button>
       </Paper>
+      {error && <Typography color="error" sx={{ mt: 2, mb: 2 }}>{error}</Typography>}
+      {success && <Typography color="success" sx={{ mt: 2, mb: 2 }}>{success}</Typography>}
 
       <form onSubmit={handleSubmit}>
         {entries.map((entry, index) => (
