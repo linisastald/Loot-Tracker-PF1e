@@ -150,6 +150,8 @@ const LootEntry = () => {
   const handleAddEntry = (type) => {
     setEntries([...entries, { type, data: type === 'item' ? { ...initialItemEntry } : { ...initialGoldEntry } }]);
     setAutocompletedItems([...autocompletedItems, false]);
+    setSuccess('');
+    setError('');
   };
 
   const handleRemoveEntry = (index) => {
