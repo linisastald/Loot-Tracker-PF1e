@@ -25,17 +25,18 @@
 ## Feature Tracking
 MVP - Required features for release
 
-| Feature                     | Priority | Status             | Notes                                                  | 
-|-----------------------------|----------|--------------------|--------------------------------------------------------|
-| Campaign Settings           | High     | In Progress        |                                                        |
-| Improved Value Calculations | High     | In Progress        |                                                        |
-| Session Tracking            | Low      | Considering        |                                                        |
-| Spell Book Page             | Low      | Considering        |                                                        |
-| Attendance Tracker          | V. Low   | Considering        | Include tracking of chores?                            |
-| Search Items                | V. Low   | Considering        | Search page that allows finding of items the party had |
-| Identify                    | Med      | Considering        |                                                        |
-| Stats page                  | Low      | Considering        |                                                        |
-| Calendar                    | Low      | In Progress        | May save for next major version                        |
+| Feature                     | Priority | Status      | Notes                                                          | 
+|-----------------------------|----------|-------------|----------------------------------------------------------------|
+| Campaign Settings           | High     | In Progress |                                                                |
+| Improved Value Calculations | High     | In Progress |                                                                |
+| Session Tracking            | Low      | Considering |                                                                |
+| Spell Book Page             | Low      | Considering |                                                                |
+| Attendance Tracker          | V. Low   | Considering | Include tracking of chores?                                    |
+| Search Items                | V. Low   | Considering | Search page that allows finding of items the party had         |
+| Identify                    | Med      | Considering |                                                                |
+| Stats page                  | Low      | Considering |                                                                |
+| Calendar                    | Low      | In Progress | May save for next major version                                |
+| Spellbook generation        | Low      | Considering | Would be nice to be able to generate spell books automatically |
 
 ## Feature Tracking - Completed Features
 

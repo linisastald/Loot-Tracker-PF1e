@@ -162,7 +162,7 @@ const Sidebar = () => {
         )}
       </List>
       <Box sx={{ position: 'absolute', bottom: 0, width: '100%', textAlign: 'center', py: 1 }}>
-        <Typography variant="caption">v0.1.1</Typography>
+        <Typography variant="caption">v0.2.0</Typography>
       </Box>
     </Drawer>
   );
