@@ -195,15 +195,15 @@ const handleSubmit = async (e) => {
             {goldEntries: [goldData]},
             {headers: {Authorization: `Bearer ${token}`}}
         );
-      } else {
+       } else {
         // Convert type to lowercase before submission
         data.type = data.type ? data.type.toLowerCase() : null;
         data.itemId = data.itemId || null;
         data.value = data.value || null;
         data.modids = data.modids || []; // Ensure modids is always an array
 
-        // Only parse the item if it wasn't autocompleted and "Smart Item Detection" is checked
-        if (!autocompletedItems[index] && data.parseItem) {
+        // Only parse if "Smart Item Detection" is checked and it's not autocompleted
+        if (data.parseItem && !autocompletedItems[index]) {
           try {
             const parseResponse = await axios.post(
               `${API_URL}/loot/parse-item`,
@@ -222,6 +222,7 @@ const handleSubmit = async (e) => {
           }
         }
 
+        // Always send the data, even if it wasn't parsed or doesn't have an itemId
         await axios.post(
           `${API_URL}/loot`,
           {entries: [data]},

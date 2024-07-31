@@ -12,7 +12,7 @@ exports.createLoot = async (req, res) => {
       const {
         itemId, name, quantity, notes, session_date, sessionDate,
         item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
-        unidentified, masterwork, size, whoupdated, charges
+        unidentified, masterwork, size, whoupdated, charges, type
       } = entry;
       let itemData, modsData, isMasterwork;
 
@@ -79,11 +79,19 @@ exports.createLoot = async (req, res) => {
         }
         isMasterwork = masterwork || false;
       } else {
-        console.log(`Invalid entry: no item id or parsed data for "${name}"`);
-        continue;
+        // Manual entry without parsing or autofill
+        itemData = {
+          id: null,
+          name: name,
+          type: type || '',
+          subtype: '',
+          value: null  // Default value, can be adjusted if needed
+        };
+        modsData = [];
+        isMasterwork = masterwork || false;
       }
 
-      const calculatedValue = calculateFinalValue(
+      const calculatedValue = itemData.value ? calculateFinalValue(
         parseFloat(itemData.value),
         itemData.type,
         itemData.subtype,
@@ -92,7 +100,7 @@ exports.createLoot = async (req, res) => {
         itemData.name,
         charges,
         size
-      );
+      ) : 0;
 
       const createdEntry = await Loot.create({
         sessionDate: session_date || sessionDate,
@@ -100,7 +108,7 @@ exports.createLoot = async (req, res) => {
         name: name || itemData.name,
         unidentified: unidentified || false,
         masterwork: isMasterwork,
-        type: itemData.type || itemType || '',
+        type: itemData.type || itemType || type || '',
         size: size || '',
         itemid: itemData.id,
         modids: modsData.map(mod => mod.id),
