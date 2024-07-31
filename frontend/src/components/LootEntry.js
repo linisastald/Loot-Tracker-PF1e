@@ -118,7 +118,16 @@ const LootEntry = () => {
     });
     setEntries(prevEntries =>
         prevEntries.map((entry, i) =>
-            i === index ? {...entry, data: {...entry.data, name: value, itemId: null, type: '', value: null}} : entry
+            i === index ? {
+              ...entry,
+              data: {
+                ...entry.data,
+                name: value || '', // Ensure name is never null
+                itemId: null,
+                type: '',
+                value: null
+              }
+            } : entry
         )
     );
   };
@@ -153,7 +162,12 @@ const handleSubmit = async (e) => {
   const userId = decodedToken.id;
 
   try {
-    for (const entry of entries) {
+    for (const [index, entry] of entries.entries()) {
+      if (!entry.data.name || entry.data.name.trim() === '') {
+        console.warn('Skipping entry with empty name');
+        continue; // Skip entries with empty names
+      }
+
       let data = {...entry.data, whoupdated: userId, session_date: entry.data.sessionDate};
 
       if (entry.type === 'gold') {
@@ -184,32 +198,34 @@ const handleSubmit = async (e) => {
       } else {
         // Convert type to lowercase before submission
         data.type = data.type ? data.type.toLowerCase() : null;
-
         data.itemId = data.itemId || null;
         data.value = data.value || null;
         data.modids = data.modids || []; // Ensure modids is always an array
 
-        if (!selectedItems[entries.indexOf(entry)]) {
-          // Send the item description to the backend for parsing
-          const parseResponse = await axios.post(
+        // Only parse the item if it wasn't autocompleted and "Smart Item Detection" is checked
+        if (!autocompletedItems[index] && data.parseItem) {
+          try {
+            const parseResponse = await axios.post(
               `${API_URL}/loot/parse-item`,
               {description: data.name},
               {headers: {Authorization: `Bearer ${token}`}}
-          );
-
-          if (parseResponse.data) {
-            data = {...data, ...parseResponse.data};
-            // Ensure the type is lowercase if it was set by the parsing
-            if (data.type) {
-              data.type = data.type.toLowerCase();
+            );
+            if (parseResponse.data) {
+              data = {...data, ...parseResponse.data};
+              // Ensure the type is lowercase if it was set by the parsing
+              if (data.type) {
+                data.type = data.type.toLowerCase();
+              }
             }
+          } catch (parseError) {
+            console.error('Error parsing item:', parseError);
           }
         }
 
         await axios.post(
-            `${API_URL}/loot`,
-            {entries: [data]},
-            {headers: {Authorization: `Bearer ${token}`}}
+          `${API_URL}/loot`,
+          {entries: [data]},
+          {headers: {Authorization: `Bearer ${token}`}}
         );
       }
     }
