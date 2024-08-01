@@ -21,6 +21,7 @@ router.put('/confirm-sale', verifyToken, checkRole('DM'), lootController.confirm
 router.put('/update-entry/:id', verifyToken, lootController.updateItem);
 router.post('/appraise', lootController.appraiseLoot);
 router.get('/mods', verifyToken, checkRole('DM'), lootController.getMods);
+router.put('/dm-update/:id', verifyToken, checkRole(['DM']), lootController.dmUpdateItem);
 
 router.put('/:id', verifyToken, lootController.updateSingleLootStatus);
 

@@ -114,18 +114,18 @@ const ItemManagement = () => {
     setPendingSaleCount(pendingItems.length);
   };
 
-  const handleItemUpdateSubmit = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.put(`${API_URL}/loot/update-entry/${updatedItem.id}`, updatedItem, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setUpdateDialogOpen(false);
-      fetchPendingItems();
-    } catch (error) {
-      console.error('Error updating item', error);
-    }
-  };
+const handleItemUpdateSubmit = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await axios.put(`${API_URL}/loot/dm-update/${updatedItem.id}`, updatedItem, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    setUpdateDialogOpen(false);
+    fetchPendingItems();
+  } catch (error) {
+    console.error('Error updating item', error);
+  }
+};
 
   const handleConfirmSale = async () => {
     try {

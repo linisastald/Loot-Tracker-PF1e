@@ -288,7 +288,7 @@ exports.confirmSale = async (req, res) => {
 
 exports.updateItem = async (req, res) => {
   const { id } = req.params;
-  const { session_date, quantity, name, modids, ...otherFields } = req.body;
+  const { session_date, quantity, name, ...otherFields } = req.body;
 
   if (!id || !session_date || !quantity || !name) {
     return res.status(400).json({ error: 'ID, Session Date, Quantity, and Name are required' });
@@ -299,40 +299,18 @@ exports.updateItem = async (req, res) => {
       session_date,
       quantity,
       name,
-      ...otherFields,
-      lastupdate: 'CURRENT_TIMESTAMP'
+      ...otherFields
     };
-
-    // Handle modids separately
-    if (modids !== undefined) {
-      updateFields.modids = modids;
-    }
 
     const query = `
       UPDATE loot
-      SET ${Object.keys(updateFields).map((key, index) => {
-        if (key === 'lastupdate') {
-          return `${key} = ${updateFields[key]}`;
-        } else if (key === 'modids') {
-          return `${key} = $${index + 1}::integer[]`;
-        } else {
-          return `${key} = $${index + 1}`;
-        }
-      }).join(', ')}
+      SET ${Object.keys(updateFields).map((key, index) => `${key} = $${index + 1}`).join(', ')},
+          lastupdate = CURRENT_TIMESTAMP
       WHERE id = $${Object.keys(updateFields).length + 1}
       RETURNING *
     `;
 
-    const values = Object.values(updateFields)
-      .filter(value => value !== 'CURRENT_TIMESTAMP')
-      .map(value => {
-        if (Array.isArray(value)) {
-          return value.length > 0 ? value : null;
-        }
-        return value;
-      });
-
-    values.push(id);
+    const values = [...Object.values(updateFields), id];
 
     const result = await pool.query(query, values);
 
@@ -555,6 +533,54 @@ exports.getMods = async (req, res) => {
     res.status(200).json(result.rows);
   } catch (error) {
     console.error('Error fetching mods', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.dmUpdateItem = async (req, res) => {
+  const { id } = req.params;
+  const updateData = req.body;
+
+  if (!id) {
+    return res.status(400).json({ error: 'Item ID is required' });
+  }
+
+  try {
+    const allowedFields = [
+      'session_date', 'quantity', 'name', 'unidentified', 'masterwork',
+      'type', 'size', 'status', 'itemid', 'modids', 'charges', 'value',
+      'whohas', 'notes'
+    ];
+
+    const filteredUpdateData = Object.fromEntries(
+      Object.entries(updateData).filter(([key, value]) =>
+        allowedFields.includes(key) && value !== undefined
+      )
+    );
+
+    const updateFields = Object.keys(filteredUpdateData)
+      .map((key, index) => `${key} = $${index + 1}`);
+
+    updateFields.push(`lastupdate = CURRENT_TIMESTAMP`);
+
+    const query = `
+      UPDATE loot
+      SET ${updateFields.join(', ')}
+      WHERE id = $${updateFields.length + 1}
+      RETURNING *
+    `;
+
+    const values = [...Object.values(filteredUpdateData), id];
+
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating item', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
