@@ -114,7 +114,7 @@ const ItemManagement = () => {
   const handleItemUpdateSubmit = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.put(`${API_URL}/loot/${updatedItem.id}`, updatedItem, {
+      const response = await axios.put(`${API_URL}/loot/update-entry/${updatedItem.id}`, updatedItem, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUpdateDialogOpen(false);
