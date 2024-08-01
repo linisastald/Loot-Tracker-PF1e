@@ -299,18 +299,20 @@ exports.updateItem = async (req, res) => {
       session_date,
       quantity,
       name,
-      ...otherFields
+      ...otherFields,
+      lastupdate: 'CURRENT_TIMESTAMP' // Add lastupdate to updateFields
     };
 
     const query = `
       UPDATE loot
-      SET ${Object.keys(updateFields).map((key, index) => `${key} = $${index + 1}`).join(', ')},
-          lastupdate = CURRENT_TIMESTAMP
-      WHERE id = $${Object.keys(updateFields).length + 1}
+      SET ${Object.keys(updateFields).map((key, index) => 
+        key === 'lastupdate' ? `${key} = ${updateFields[key]}` : `${key} = $${index + 1}`
+      ).join(', ')}
+      WHERE id = $${Object.keys(updateFields).length}
       RETURNING *
     `;
 
-    const values = [...Object.values(updateFields), id];
+    const values = [...Object.values(updateFields).filter(value => value !== 'CURRENT_TIMESTAMP'), id];
 
     const result = await pool.query(query, values);
 
