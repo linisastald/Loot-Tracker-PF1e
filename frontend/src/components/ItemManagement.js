@@ -132,9 +132,12 @@ const handleItemUpdateSubmit = async () => {
       })
     );
 
-    console.log('Prepared data:', preparedData);
+    // Remove the 'id' field from preparedData
+    const { id, ...dataToSend } = preparedData;
 
-    const response = await axios.put(`${API_URL}/loot/dm-update/${updatedItem.id}`, preparedData, {
+    console.log('Prepared data:', dataToSend);
+
+    const response = await axios.put(`${API_URL}/loot/dm-update/${id}`, dataToSend, {
       headers: { Authorization: `Bearer ${token}` }
     });
 

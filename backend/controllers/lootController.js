@@ -584,7 +584,7 @@ exports.dmUpdateItem = async (req, res) => {
     const query = `
       UPDATE loot
       SET ${updateFields.join(', ')}
-      WHERE id = $${updateFields.length + 1}::integer
+      WHERE id = $${Object.keys(filteredUpdateData).length + 1}::integer
       RETURNING *
     `;
 
