@@ -560,10 +560,23 @@ exports.dmUpdateItem = async (req, res) => {
 
     const updateFields = Object.keys(filteredUpdateData)
       .map((key, index) => {
-        if (key === 'modids') {
-          return `${key} = $${index + 1}::integer[]`;
+        switch(key) {
+          case 'session_date':
+            return `${key} = $${index + 1}::timestamp`;
+          case 'quantity':
+          case 'itemid':
+          case 'charges':
+          case 'value':
+          case 'whohas':
+            return `${key} = $${index + 1}::integer`;
+          case 'unidentified':
+          case 'masterwork':
+            return `${key} = $${index + 1}::boolean`;
+          case 'modids':
+            return `${key} = $${index + 1}::integer[]`;
+          default:
+            return `${key} = $${index + 1}::text`;
         }
-        return `${key} = $${index + 1}`;
       });
 
     updateFields.push(`lastupdate = CURRENT_TIMESTAMP`);
@@ -571,7 +584,7 @@ exports.dmUpdateItem = async (req, res) => {
     const query = `
       UPDATE loot
       SET ${updateFields.join(', ')}
-      WHERE id = $${updateFields.length + 1}
+      WHERE id = $${updateFields.length + 1}::integer
       RETURNING *
     `;
 
@@ -581,6 +594,9 @@ exports.dmUpdateItem = async (req, res) => {
     const processedValues = values.map(value =>
       Array.isArray(value) && value.length === 0 ? null : value
     );
+
+    console.log('Query:', query);
+    console.log('Values:', processedValues);
 
     const result = await pool.query(query, processedValues);
 

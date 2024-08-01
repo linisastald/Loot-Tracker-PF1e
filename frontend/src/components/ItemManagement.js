@@ -118,10 +118,21 @@ const handleItemUpdateSubmit = async () => {
   try {
     const token = localStorage.getItem('token');
 
-    // Prepare the data, converting empty strings to null
+    // Prepare the data, converting empty strings to null and ensuring correct types
     const preparedData = Object.fromEntries(
-      Object.entries(updatedItem).map(([key, value]) => [key, value === '' ? null : value])
+      Object.entries(updatedItem).map(([key, value]) => {
+        if (value === '') return [key, null];
+        if (['quantity', 'itemid', 'charges', 'value', 'whohas'].includes(key)) {
+          return [key, value === null ? null : parseInt(value, 10)];
+        }
+        if (['unidentified', 'masterwork'].includes(key)) {
+          return [key, value === null ? null : Boolean(value)];
+        }
+        return [key, value];
+      })
     );
+
+    console.log('Prepared data:', preparedData);
 
     const response = await axios.put(`${API_URL}/loot/dm-update/${updatedItem.id}`, preparedData, {
       headers: { Authorization: `Bearer ${token}` }
