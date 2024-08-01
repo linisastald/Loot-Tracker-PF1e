@@ -128,7 +128,7 @@ const UserSettings = () => {
   const sortedCharacters = [...characters].sort((a, b) => b.active - a.active);
 
   return (
-    <Container component="main">
+    <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Change Password</Typography>
         <form onSubmit={handlePasswordChange}>

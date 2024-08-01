@@ -138,7 +138,7 @@ const GoldTransactions = () => {
   };
 
   return (
-    <Container component="main">
+    <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Gold Transactions</Typography>
       </Paper>

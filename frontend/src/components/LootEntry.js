@@ -262,7 +262,7 @@ const handleSubmit = async (e) => {
 };
 
   return (
-    <Container component="main">
+    <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Loot Entry</Typography>
         <Button variant="contained" color="primary" onClick={() => handleAddEntry('item')} sx={{ mr: 2 }}>

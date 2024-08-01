@@ -60,7 +60,7 @@ const SoldLoot = () => {
   const totalSold = soldSummary.reduce((total, item) => total + parseFloat(item.total), 0);
 
   return (
-    <Container component="main" sx={{ maxWidth: '100vw', overflowX: 'auto' }}>
+    <Container component="main" sx={{ maxWidth={false}, overflowX: 'auto' }}>
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Sold Loot</Typography>
         <Typography variant="subtitle1">Total Sold: {totalSold.toFixed(2)}</Typography>

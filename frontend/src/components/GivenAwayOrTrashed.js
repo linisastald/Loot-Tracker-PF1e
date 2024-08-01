@@ -52,7 +52,7 @@ const UnprocessedLoot = () => {
   const filteredLoot = applyFilters(loot, filters);
 
   return (
-    <Container component="main">
+    <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Trashed or Given Away Loot</Typography>
       </Paper>
