@@ -539,13 +539,17 @@ exports.getMods = async (req, res) => {
 
 exports.dmUpdateItem = async (req, res) => {
   const { id } = req.params;
-  const updateData = req.body;
+  let updateData = req.body;
 
   if (!id) {
     return res.status(400).json({ error: 'Item ID is required' });
   }
 
+  const client = await pool.connect();
+
   try {
+    await client.query('BEGIN');
+
     const allowedFields = [
       'session_date', 'quantity', 'name', 'unidentified', 'masterwork',
       'type', 'size', 'status', 'itemid', 'modids', 'charges', 'value',
@@ -581,32 +585,81 @@ exports.dmUpdateItem = async (req, res) => {
 
     updateFields.push(`lastupdate = CURRENT_TIMESTAMP`);
 
-    const query = `
+    const updateQuery = `
       UPDATE loot
       SET ${updateFields.join(', ')}
       WHERE id = $${Object.keys(filteredUpdateData).length + 1}::integer
       RETURNING *
     `;
 
-    const values = [...Object.values(filteredUpdateData), id];
+    const updateValues = [...Object.values(filteredUpdateData), id];
 
     // Convert empty arrays to null for modids
-    const processedValues = values.map(value =>
+    const processedUpdateValues = updateValues.map(value =>
       Array.isArray(value) && value.length === 0 ? null : value
     );
 
-    console.log('Query:', query);
-    console.log('Values:', processedValues);
+    console.log('Update Query:', updateQuery);
+    console.log('Update Values:', processedUpdateValues);
 
-    const result = await pool.query(query, processedValues);
+    const updateResult = await client.query(updateQuery, processedUpdateValues);
 
-    if (result.rows.length === 0) {
+    if (updateResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Item not found' });
     }
 
-    res.status(200).json(result.rows[0]);
+    let updatedItem = updateResult.rows[0];
+
+    // If value is null or undefined, calculate it
+    if (updatedItem.value === null || updatedItem.value === undefined) {
+      // Fetch item details if itemid is provided
+      let itemDetails = {};
+      if (updatedItem.itemid) {
+        const itemResult = await client.query('SELECT * FROM item WHERE id = $1', [updatedItem.itemid]);
+        if (itemResult.rows.length > 0) {
+          itemDetails = itemResult.rows[0];
+        }
+      }
+
+      // Fetch mod details if modids are provided
+      let modDetails = [];
+      if (updatedItem.modids && updatedItem.modids.length > 0) {
+        const modResult = await client.query('SELECT * FROM mod WHERE id = ANY($1)', [updatedItem.modids]);
+        modDetails = modResult.rows;
+      }
+
+      // Calculate the value
+      const calculatedValue = calculateFinalValue(
+        itemDetails.value || 0,
+        updatedItem.type,
+        itemDetails.subtype,
+        modDetails,
+        updatedItem.masterwork,
+        updatedItem.name,
+        updatedItem.charges,
+        updatedItem.size
+      );
+
+      // Update the item with the calculated value
+      const valueUpdateQuery = `
+        UPDATE loot
+        SET value = $1, lastupdate = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *
+      `;
+
+      const valueUpdateResult = await client.query(valueUpdateQuery, [calculatedValue, id]);
+      updatedItem = valueUpdateResult.rows[0];
+    }
+
+    await client.query('COMMIT');
+    res.status(200).json(updatedItem);
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error updating item', error);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 };
