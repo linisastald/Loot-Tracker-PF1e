@@ -288,7 +288,7 @@ exports.confirmSale = async (req, res) => {
 
 exports.updateItem = async (req, res) => {
   const { id } = req.params;
-  const { session_date, quantity, name, ...otherFields } = req.body;
+  const { session_date, quantity, name, modids, ...otherFields } = req.body;
 
   if (!id || !session_date || !quantity || !name) {
     return res.status(400).json({ error: 'ID, Session Date, Quantity, and Name are required' });
@@ -300,19 +300,39 @@ exports.updateItem = async (req, res) => {
       quantity,
       name,
       ...otherFields,
-      lastupdate: 'CURRENT_TIMESTAMP' // Add lastupdate to updateFields
+      lastupdate: 'CURRENT_TIMESTAMP'
     };
+
+    // Handle modids separately
+    if (modids !== undefined) {
+      updateFields.modids = modids;
+    }
 
     const query = `
       UPDATE loot
-      SET ${Object.keys(updateFields).map((key, index) => 
-        key === 'lastupdate' ? `${key} = ${updateFields[key]}` : `${key} = $${index + 1}`
-      ).join(', ')}
-      WHERE id = $${Object.keys(updateFields).length}
+      SET ${Object.keys(updateFields).map((key, index) => {
+        if (key === 'lastupdate') {
+          return `${key} = ${updateFields[key]}`;
+        } else if (key === 'modids') {
+          return `${key} = $${index + 1}::integer[]`;
+        } else {
+          return `${key} = $${index + 1}`;
+        }
+      }).join(', ')}
+      WHERE id = $${Object.keys(updateFields).length + 1}
       RETURNING *
     `;
 
-    const values = [...Object.values(updateFields).filter(value => value !== 'CURRENT_TIMESTAMP'), id];
+    const values = Object.values(updateFields)
+      .filter(value => value !== 'CURRENT_TIMESTAMP')
+      .map(value => {
+        if (Array.isArray(value)) {
+          return value.length > 0 ? value : null;
+        }
+        return value;
+      });
+
+    values.push(id);
 
     const result = await pool.query(query, values);
 
