@@ -77,9 +77,12 @@ const ItemManagement = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(`${API_URL}/loot/mods`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {Authorization: `Bearer ${token}`}
       });
-      setMods(response.data);
+      setMods(response.data.map(mod => ({
+        ...mod,
+        displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
+      })));
     } catch (error) {
       console.error('Error fetching mods:', error);
     }
@@ -158,10 +161,12 @@ const ItemManagement = () => {
   };
 
   const handleItemUpdateChange = (field, value) => {
-    setUpdatedItem(prevItem => ({
-      ...prevItem,
-      [field]: value
-    }));
+    setUpdatedItem(prevItem => {
+      if (field === 'modids') {
+        return {...prevItem, [field]: value};
+      }
+      return {...prevItem, [field]: value};
+    });
   };
 
   const handleSearch = async () => {
@@ -376,8 +381,8 @@ const ItemManagement = () => {
             <FormControl fullWidth margin="normal">
               <InputLabel>Status</InputLabel>
               <Select
-                value={updatedItem.status || ''}
-                onChange={(e) => handleItemUpdateChange('status', e.target.value)}
+                  value={updatedItem.status || ''}
+                  onChange={(e) => handleItemUpdateChange('status', e.target.value)}
               >
                 <MenuItem value="">None</MenuItem>
                 <MenuItem value="Pending Sale">Pending Sale</MenuItem>
@@ -387,28 +392,38 @@ const ItemManagement = () => {
               </Select>
             </FormControl>
             <Autocomplete
-              options={items}
-              getOptionLabel={(option) => option.name}
-              value={items.find(item => item.id === updatedItem.itemid) || null}
-              onChange={(_, newValue) => handleItemUpdateChange('itemid', newValue ? newValue.id : null)}
-              renderInput={(params) => <TextField {...params} label="Item" fullWidth margin="normal" />}
+                options={items}
+                getOptionLabel={(option) => option.name}
+                value={items.find(item => item.id === updatedItem.itemid) || null}
+                onChange={(_, newValue) => handleItemUpdateChange('itemid', newValue ? newValue.id : null)}
+                renderInput={(params) => <TextField {...params} label="Item" fullWidth margin="normal"/>}
             />
-			 <Autocomplete
-              multiple
-              options={mods}
-              getOptionLabel={(option) => option.name}
-              value={mods.filter(mod => updatedItem.modids && updatedItem.modids.includes(mod.id))}
-              onChange={(_, newValue) => handleItemUpdateChange('modids', newValue.map(v => v.id))}
-              renderInput={(params) => <TextField {...params} label="Mods" fullWidth margin="normal" />}
+            <Autocomplete
+                multiple
+                options={mods}
+                getOptionLabel={(option) => option.displayName}
+                value={updatedItem.modids ? mods.filter(mod => updatedItem.modids.includes(mod.id)) : []}
+                onChange={(_, newValue) => handleItemUpdateChange('modids', newValue.map(v => v.id))}
+                renderInput={(params) => <TextField {...params} label="Mods" fullWidth margin="normal"/>}
+                renderOption={(props, option) => (
+                    <li {...props}>
+                      <Typography variant="body1">{option.name}</Typography>
+                      {option.target && (
+                          <Typography variant="body2" color="textSecondary">
+                            {` (${option.target}${option.subtarget ? `: ${option.subtarget}` : ''})`}
+                          </Typography>
+                      )}
+                    </li>
+                )}
             />
             <FormControl fullWidth margin="normal">
               <InputLabel>Who Has</InputLabel>
               <Select
-                value={updatedItem.whohas || ''}
-                onChange={(e) => handleItemUpdateChange('whohas', e.target.value)}
+                  value={updatedItem.whohas || ''}
+                  onChange={(e) => handleItemUpdateChange('whohas', e.target.value)}
               >
                 {activeCharacters.map(char => (
-                  <MenuItem key={char.id} value={char.id}>{char.name}</MenuItem>
+                    <MenuItem key={char.id} value={char.id}>{char.name}</MenuItem>
                 ))}
               </Select>
             </FormControl>
