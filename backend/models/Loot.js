@@ -35,7 +35,11 @@ exports.findAll = async (activeCharacterId = null) => {
     const isDM = activeCharacterId === null;
     const summaryQuery = `
       SELECT 
-        l.name, 
+        CASE
+          WHEN l.masterwork = true AND (l.modids IS NULL OR l.modids = '{}')
+          THEN 'Well Made ' || l.name
+          ELSE l.name
+        END AS name,
         SUM(l.quantity) AS quantity, 
         l.unidentified, 
         l.masterwork, 
@@ -57,7 +61,7 @@ exports.findAll = async (activeCharacterId = null) => {
       WHERE 
         l.status IS NULL OR l.status = 'Pending Sale'
       GROUP BY 
-        l.name, l.unidentified, l.masterwork, l.type, l.size;
+        l.name, l.unidentified, l.masterwork, l.type, l.size, l.modids;
     `;
 
     const individualQuery = `
@@ -65,7 +69,11 @@ exports.findAll = async (activeCharacterId = null) => {
         l.id, 
         l.session_date, 
         l.quantity, 
-        l.name, 
+        CASE
+          WHEN l.masterwork = true AND (l.modids IS NULL OR l.modids = '{}')
+          THEN 'Well Made ' || l.name
+          ELSE l.name
+        END AS name,
         l.unidentified, 
         l.masterwork, 
         l.type, 
@@ -98,7 +106,11 @@ exports.findByStatus = async (status, activeCharacterId) => {
   try {
     const summaryQuery = `
       SELECT 
-        l.name, 
+        CASE
+          WHEN l.masterwork = true AND (l.modids IS NULL OR l.modids = '{}')
+          THEN 'Well Made ' || l.name
+          ELSE l.name
+        END AS name,
         SUM(l.quantity) AS quantity, 
         l.unidentified, 
         l.masterwork, 
@@ -119,16 +131,19 @@ exports.findByStatus = async (status, activeCharacterId) => {
       WHERE 
         l.status = $1
       GROUP BY 
-        l.name, l.unidentified, l.masterwork, l.type, l.size;
+        l.name, l.unidentified, l.masterwork, l.type, l.size, l.modids;
     `;
-    const summaryResult = await pool.query(summaryQuery, [status, activeCharacterId]);
 
     const individualQuery = `
       SELECT 
         l.id, 
         l.session_date, 
         l.quantity, 
-        l.name, 
+        CASE
+          WHEN l.masterwork = true AND (l.modids IS NULL OR l.modids = '{}')
+          THEN 'Well Made ' || l.name
+          ELSE l.name
+        END AS name,
         l.unidentified, 
         l.masterwork, 
         l.type, 
