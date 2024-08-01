@@ -288,34 +288,35 @@ exports.confirmSale = async (req, res) => {
 
 exports.updateItem = async (req, res) => {
   const { id } = req.params;
-  const { session_date, quantity, name, unidentified, masterwork, type, size, status, itemId, modids, charges, value, whohas, notes } = req.body;
+  const { session_date, quantity, name, ...otherFields } = req.body;
 
-  if (!id) {
-    return res.status(400).json({ error: 'ID is required' });
+  if (!id || !session_date || !quantity || !name) {
+    return res.status(400).json({ error: 'ID, Session Date, Quantity, and Name are required' });
   }
 
   try {
-    const result = await pool.query(`
+    const updateFields = {
+      session_date,
+      quantity,
+      name,
+      ...otherFields
+    };
+
+    const query = `
       UPDATE loot
-      SET 
-        session_date = COALESCE($1, session_date),
-        quantity = COALESCE($2, quantity),
-        name = COALESCE($3, name),
-        unidentified = COALESCE($4, unidentified),
-        masterwork = COALESCE($5, masterwork),
-        type = COALESCE($6, type),
-        size = COALESCE($7, size),
-        status = COALESCE($8, status),
-        itemid = COALESCE($9, itemid),
-        modids = COALESCE($10, modids),
-        charges = COALESCE($11, charges),
-        value = COALESCE($12, value),
-        whohas = COALESCE($13, whohas),
-        notes = COALESCE($14, notes),
-        lastupdate = CURRENT_TIMESTAMP
-      WHERE id = $15
+      SET ${Object.keys(updateFields).map((key, index) => `${key} = $${index + 1}`).join(', ')},
+          lastupdate = CURRENT_TIMESTAMP
+      WHERE id = $${Object.keys(updateFields).length + 1}
       RETURNING *
-    `, [session_date, quantity, name, unidentified, masterwork, type, size, status, itemId, modids, charges, value, whohas, notes, id]);
+    `;
+
+    const values = [...Object.values(updateFields), id];
+
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
 
     res.status(200).json(result.rows[0]);
   } catch (error) {
@@ -522,6 +523,16 @@ exports.calculateValue = async (req, res) => {
     res.status(200).json({ value: finalValue });
   } catch (error) {
     console.error('Error calculating value:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.getMods = async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM mod');
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching mods', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

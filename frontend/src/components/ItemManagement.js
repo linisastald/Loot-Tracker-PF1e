@@ -1,5 +1,3 @@
-// ItemManagement.js
-
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { format } from 'date-fns';
@@ -24,42 +22,78 @@ import {
   Select,
   InputLabel,
   FormControl,
+  Autocomplete
 } from '@mui/material';
 
 const API_URL = process.env.REACT_APP_API_URL;
 
-const formatDate = (date) => {
-  const d = new Date(date);
-  const month = `0${d.getMonth() + 1}`.slice(-2);
-  const day = `0${d.getDate()}`.slice(-2);
-  return `${d.getFullYear()}-${month}-${day}`;
-};
-
 const ItemManagement = () => {
-  const [items, setItems] = useState([]);
+  const [pendingItems, setPendingItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
   const [pendingSaleTotal, setPendingSaleTotal] = useState(0);
   const [pendingSaleCount, setPendingSaleCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredItems, setFilteredItems] = useState([]);
-  const [pendingSaleItems, setPendingSaleItems] = useState([]);
+  const [items, setItems] = useState([]);
+  const [mods, setMods] = useState([]);
+  const [activeCharacters, setActiveCharacters] = useState([]);
 
   useEffect(() => {
-    fetchItems();
+    fetchPendingItems();
+    fetchAllItems();
+    fetchMods();
+    fetchActiveCharacters();
   }, []);
 
-  const fetchItems = async () => {
+  const fetchPendingItems = async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(`${API_URL}/loot/pending-sale`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const itemsData = response.data || [];
-      setItems(itemsData);
+      setPendingItems(itemsData);
       calculatePendingSaleSummary(itemsData);
     } catch (error) {
-      setItems([]);
+      console.error('Error fetching pending items:', error);
+      setPendingItems([]);
+    }
+  };
+
+  const fetchAllItems = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/loot/items`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setItems(response.data);
+    } catch (error) {
+      console.error('Error fetching all items:', error);
+    }
+  };
+
+  const fetchMods = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/loot/mods`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setMods(response.data);
+    } catch (error) {
+      console.error('Error fetching mods:', error);
+    }
+  };
+
+  const fetchActiveCharacters = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/user/active-characters`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setActiveCharacters(response.data);
+    } catch (error) {
+      console.error('Error fetching active characters:', error);
     }
   };
 
@@ -75,7 +109,6 @@ const ItemManagement = () => {
     const roundedTotal = Math.ceil(total * 100) / 100; // Round up to the nearest hundredth
     setPendingSaleTotal(roundedTotal);
     setPendingSaleCount(pendingItems.length);
-    setPendingSaleItems(pendingItems);
   };
 
   const handleItemUpdateSubmit = async () => {
@@ -85,7 +118,7 @@ const ItemManagement = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUpdateDialogOpen(false);
-      fetchItems();
+      fetchPendingItems();
     } catch (error) {
       console.error('Error updating item', error);
     }
@@ -118,7 +151,7 @@ const ItemManagement = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      fetchItems();
+      fetchPendingItems();
     } catch (error) {
       console.error('Error confirming sale', error);
     }
@@ -147,6 +180,11 @@ const ItemManagement = () => {
   const handleClearSearch = () => {
     setFilteredItems([]);
     setSearchTerm('');
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return format(date, 'yyyy-MM-dd');
   };
 
   return (
@@ -196,7 +234,7 @@ const ItemManagement = () => {
               <TableBody>
                 {filteredItems.map((item) => (
                   <TableRow key={item.id} onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
-                    <TableCell>{format(new Date(item.session_date), 'MMMM dd, yyyy')}</TableCell>
+                    <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
@@ -205,7 +243,7 @@ const ItemManagement = () => {
                     <TableCell>{item.size}</TableCell>
                     <TableCell>{item.status}</TableCell>
                     <TableCell>{item.itemid}</TableCell>
-                    <TableCell>{item.modids}</TableCell>
+                    <TableCell>{item.modids?.join(', ')}</TableCell>
                     <TableCell>{item.charges}</TableCell>
                     <TableCell>{item.value}</TableCell>
                     <TableCell>{item.whohas}</TableCell>
@@ -251,9 +289,9 @@ const ItemManagement = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {pendingSaleItems.map((item) => (
+                {pendingItems.map((item) => (
                   <TableRow key={item.id} onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
-                    <TableCell>{format(new Date(item.session_date), 'MMMM dd, yyyy')}</TableCell>
+                    <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
@@ -262,7 +300,7 @@ const ItemManagement = () => {
                     <TableCell>{item.size}</TableCell>
                     <TableCell>{item.status}</TableCell>
                     <TableCell>{item.itemid}</TableCell>
-                    <TableCell>{item.modids}</TableCell>
+                    <TableCell>{item.modids?.join(', ')}</TableCell>
                     <TableCell>{item.charges}</TableCell>
                     <TableCell>{item.value}</TableCell>
                     <TableCell>{item.whohas}</TableCell>
@@ -285,6 +323,7 @@ const ItemManagement = () => {
               value={updatedItem.session_date ? formatDate(updatedItem.session_date) : ''}
               onChange={(e) => handleItemUpdateChange('session_date', e.target.value)}
               margin="normal"
+              required
             />
             <TextField
               label="Quantity"
@@ -293,6 +332,7 @@ const ItemManagement = () => {
               value={updatedItem.quantity || ''}
               onChange={(e) => handleItemUpdateChange('quantity', e.target.value)}
               margin="normal"
+              required
             />
             <TextField
               label="Name"
@@ -300,63 +340,78 @@ const ItemManagement = () => {
               value={updatedItem.name || ''}
               onChange={(e) => handleItemUpdateChange('name', e.target.value)}
               margin="normal"
+              required
             />
             <FormControl fullWidth margin="normal">
-              <InputLabel>Unidentified</InputLabel>
+              <InputLabel>Type</InputLabel>
               <Select
-                value={updatedItem.unidentified || ''}
-                onChange={(e) => handleItemUpdateChange('unidentified', e.target.value)}
+                value={updatedItem.type || ''}
+                onChange={(e) => handleItemUpdateChange('type', e.target.value)}
               >
-                <MenuItem value={true}>Yes</MenuItem>
-                <MenuItem value={false}>No</MenuItem>
+                <MenuItem value="weapon">Weapon</MenuItem>
+                <MenuItem value="armor">Armor</MenuItem>
+                <MenuItem value="magic">Magic</MenuItem>
+                <MenuItem value="gear">Gear</MenuItem>
+                <MenuItem value="trade good">Trade Good</MenuItem>
+                <MenuItem value="other">Other</MenuItem>
               </Select>
             </FormControl>
             <FormControl fullWidth margin="normal">
-              <InputLabel>Masterwork</InputLabel>
+              <InputLabel>Size</InputLabel>
               <Select
-                value={updatedItem.masterwork || ''}
-                onChange={(e) => handleItemUpdateChange('masterwork', e.target.value)}
+                value={updatedItem.size || ''}
+                onChange={(e) => handleItemUpdateChange('size', e.target.value)}
               >
-                <MenuItem value={true}>Yes</MenuItem>
-                <MenuItem value={false}>No</MenuItem>
+                <MenuItem value="Fine">Fine</MenuItem>
+                <MenuItem value="Diminutive">Diminutive</MenuItem>
+                <MenuItem value="Tiny">Tiny</MenuItem>
+                <MenuItem value="Small">Small</MenuItem>
+                <MenuItem value="Medium">Medium</MenuItem>
+                <MenuItem value="Large">Large</MenuItem>
+                <MenuItem value="Huge">Huge</MenuItem>
+                <MenuItem value="Gargantuan">Gargantuan</MenuItem>
+                <MenuItem value="Colossal">Colossal</MenuItem>
               </Select>
             </FormControl>
-            <TextField
-              label="Type"
-              fullWidth
-              value={updatedItem.type || ''}
-              onChange={(e) => handleItemUpdateChange('type', e.target.value)}
-              margin="normal"
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={updatedItem.status || ''}
+                onChange={(e) => handleItemUpdateChange('status', e.target.value)}
+              >
+                <MenuItem value="">None</MenuItem>
+                <MenuItem value="Pending Sale">Pending Sale</MenuItem>
+                <MenuItem value="Kept Character">Kept Character</MenuItem>
+                <MenuItem value="Kept Party">Kept Party</MenuItem>
+                <MenuItem value="Trashed">Trashed</MenuItem>
+              </Select>
+            </FormControl>
+            <Autocomplete
+              options={items}
+              getOptionLabel={(option) => option.name}
+              value={items.find(item => item.id === updatedItem.itemid) || null}
+              onChange={(_, newValue) => handleItemUpdateChange('itemid', newValue ? newValue.id : null)}
+              renderInput={(params) => <TextField {...params} label="Item" fullWidth margin="normal" />}
             />
-            <TextField
-              label="Size"
-              fullWidth
-              value={updatedItem.size || ''}
-              onChange={(e) => handleItemUpdateChange('size', e.target.value)}
-              margin="normal"
+			 <Autocomplete
+              multiple
+              options={mods}
+              getOptionLabel={(option) => option.name}
+              value={mods.filter(mod => updatedItem.modids && updatedItem.modids.includes(mod.id))}
+              onChange={(_, newValue) => handleItemUpdateChange('modids', newValue.map(v => v.id))}
+              renderInput={(params) => <TextField {...params} label="Mods" fullWidth margin="normal" />}
             />
-            <TextField
-              label="Status"
-              fullWidth
-              value={updatedItem.status || ''}
-              onChange={(e) => handleItemUpdateChange('status', e.target.value)}
-              margin="normal"
-            />
-            <TextField
-              label="Item ID"
-              type="number"
-              fullWidth
-              value={updatedItem.itemid || ''}
-              onChange={(e) => handleItemUpdateChange('itemid', e.target.value)}
-              margin="normal"
-            />
-            <TextField
-              label="Mod IDs"
-              fullWidth
-              value={updatedItem.modids || ''}
-              onChange={(e) => handleItemUpdateChange('modids', e.target.value)}
-              margin="normal"
-            />
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Who Has</InputLabel>
+              <Select
+                value={updatedItem.whohas || ''}
+                onChange={(e) => handleItemUpdateChange('whohas', e.target.value)}
+              >
+                {activeCharacters.map(char => (
+                  <MenuItem key={char.id} value={char.id}>{char.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
             <TextField
               label="Charges"
               type="number"
@@ -371,13 +426,6 @@ const ItemManagement = () => {
               fullWidth
               value={updatedItem.value || ''}
               onChange={(e) => handleItemUpdateChange('value', e.target.value)}
-              margin="normal"
-            />
-            <TextField
-              label="Who Has"
-              fullWidth
-              value={updatedItem.whohas || ''}
-              onChange={(e) => handleItemUpdateChange('whohas', e.target.value)}
               margin="normal"
             />
             <TextField

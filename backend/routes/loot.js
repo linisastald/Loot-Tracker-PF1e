@@ -20,6 +20,7 @@ router.get('/search', verifyToken, checkRole('DM'), lootController.searchItems);
 router.put('/confirm-sale', verifyToken, checkRole('DM'), lootController.confirmSale);
 router.put('/update-entry/:id', verifyToken, lootController.updateEntry);
 router.post('/appraise', lootController.appraiseLoot);
+router.get('/mods', verifyToken, checkRole('DM'), lootController.getMods);
 
 router.put('/:id', verifyToken, lootController.updateSingleLootStatus);
 
