@@ -117,9 +117,16 @@ const ItemManagement = () => {
 const handleItemUpdateSubmit = async () => {
   try {
     const token = localStorage.getItem('token');
-    const response = await axios.put(`${API_URL}/loot/dm-update/${updatedItem.id}`, updatedItem, {
+
+    // Prepare the data, converting empty strings to null
+    const preparedData = Object.fromEntries(
+      Object.entries(updatedItem).map(([key, value]) => [key, value === '' ? null : value])
+    );
+
+    const response = await axios.put(`${API_URL}/loot/dm-update/${updatedItem.id}`, preparedData, {
       headers: { Authorization: `Bearer ${token}` }
     });
+
     setUpdateDialogOpen(false);
     fetchPendingItems();
   } catch (error) {

@@ -554,12 +554,17 @@ exports.dmUpdateItem = async (req, res) => {
 
     const filteredUpdateData = Object.fromEntries(
       Object.entries(updateData).filter(([key, value]) =>
-        allowedFields.includes(key) && value !== undefined
+        allowedFields.includes(key) && value !== undefined && value !== null
       )
     );
 
     const updateFields = Object.keys(filteredUpdateData)
-      .map((key, index) => `${key} = $${index + 1}`);
+      .map((key, index) => {
+        if (key === 'modids') {
+          return `${key} = $${index + 1}::integer[]`;
+        }
+        return `${key} = $${index + 1}`;
+      });
 
     updateFields.push(`lastupdate = CURRENT_TIMESTAMP`);
 
@@ -572,7 +577,12 @@ exports.dmUpdateItem = async (req, res) => {
 
     const values = [...Object.values(filteredUpdateData), id];
 
-    const result = await pool.query(query, values);
+    // Convert empty arrays to null for modids
+    const processedValues = values.map(value =>
+      Array.isArray(value) && value.length === 0 ? null : value
+    );
+
+    const result = await pool.query(query, processedValues);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' });
