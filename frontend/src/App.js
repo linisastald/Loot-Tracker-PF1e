@@ -2,24 +2,24 @@ import React from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 
 
-import Login from './components/Login';
-import Register from './components/Register';
-import LootEntry from './components/LootEntry';
-import UnprocessedLoot from './components/UnprocessedLoot';
-import GoldTransactions from './components/GoldTransactions';
-import UserSettings from './components/UserSettings';
-import KeptParty from './components/KeptParty';
-import GivenAwayOrTrashed from './components/GivenAwayOrTrashed';
-import KeptCharacter from './components/KeptCharacter';
-import SoldLoot from './components/SoldLoot'; // Import SoldLoot
-import MainLayout from './components/MainLayout';
-import ProtectedRoute from './components/ProtectedRoute';
-import CharacterAndUserManagement from './components/CharacterAndUserManagement';
+import Login from './components/pages/Login';
+import Register from './components/pages/Register';
+import LootEntry from './components/pages/LootEntry';
+import UnprocessedLoot from './components/pages/UnprocessedLoot';
+import GoldTransactions from './components/pages/GoldTransactions';
+import UserSettings from './components/pages/UserSettings';
+import KeptParty from './components/pages/KeptParty';
+import GivenAwayOrTrashed from './components/pages/GivenAwayOrTrashed';
+import KeptCharacter from './components/pages/KeptCharacter';
+import SoldLoot from './components/pages/SoldLoot'; // Import SoldLoot
+import MainLayout from './components/layout/MainLayout';
+import ProtectedRoute from './components/hoc/ProtectedRoute';
+import CharacterAndUserManagement from './components/pages/CharacterAndUserManagement';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import Consumables from "./components/Consumables";
-import ItemManagement from "./components/ItemManagement";
-import GolarionCalendar from "./components/GolarionCalendar";
+import Consumables from "./components/pages/Consumables";
+import ItemManagement from "./components/pages/ItemManagement";
+import GolarionCalendar from "./components/pages/GolarionCalendar";
 
 
 import theme from './theme';

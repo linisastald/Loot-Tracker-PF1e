@@ -1,7 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const pool = require('./db');
+const pool = require('./src/config/db');
 const dotenv = require('dotenv');
 const { execSync } = require('child_process');
 
@@ -28,12 +28,12 @@ app.get('/', (req, res) => {
   res.send('Welcome to the Pathfinder Loot Tracker API');
 });
 
-const authRoutes = require('./routes/auth');
-const lootRoutes = require('./routes/loot');
-const goldRoutes = require('./routes/gold');
-const userRoutes = require('./routes/user');
-const soldRoutes = require('./routes/sold');
-const consumablesRoutes = require('./routes/consumables');
+const authRoutes = require('./src/api/routes/auth');
+const lootRoutes = require('./src/api/routes/loot');
+const goldRoutes = require('./src/api/routes/gold');
+const userRoutes = require('./src/api/routes/user');
+const soldRoutes = require('./src/api/routes/sold');
+const consumablesRoutes = require('./src/api/routes/consumables');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/loot', lootRoutes);
