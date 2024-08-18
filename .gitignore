@@ -7,3 +7,4 @@ backend/.env
 /.idea/dataSources.xml
 /.idea/sqldialects.xml
 docker/docker-compose.yml
+/backend/package-lock.json
