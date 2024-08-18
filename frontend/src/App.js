@@ -29,11 +29,26 @@ function App() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    const storedUser = JSON.parse(localStorage.getItem('user'));
-    if (token && storedUser) {
+    const storedUser = localStorage.getItem('user');
+
+    if (token) {
       setIsAuthenticated(true);
-      setUser(storedUser);
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      if (storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          setUser(parsedUser);
+        } catch (error) {
+          console.error('Failed to parse user data:', error);
+          // If parsing fails, we should probably log out the user
+          handleLogout();
+        }
+      } else {
+        // If we have a token but no user data, we might want to fetch user data here
+        // or consider this an invalid state and log out
+        handleLogout();
+      }
     }
   }, []);
 

@@ -14,10 +14,21 @@ const Login = ({ onLogin }) => {
     setError('');
     try {
       const response = await api.post('/auth/login', { username, password });
-      onLogin(response.data.token, response.data.user);
-      navigate('/loot-entry');
+      const { token, user } = response.data;
+      if (token && user) {
+        onLogin(token, user);
+        navigate('/loot-entry');
+      } else {
+        setError('Invalid response from server');
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'An error occurred during login');
+      if (err.response && err.response.data && err.response.data.error) {
+        setError(err.response.data.error);
+      } else if (err.message) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred');
+      }
     }
   };
 
