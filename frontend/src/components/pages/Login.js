@@ -1,22 +1,23 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate instead of useHistory
-import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { Button, TextField, Typography, Container, Paper } from '@mui/material';
-const API_URL = process.env.REACT_APP_API_URL;
-const Login = () => {
+import api from '../../utils/api';
+
+const Login = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const navigate = useNavigate(); // Use useNavigate instead of useHistory
+  const navigate = useNavigate();
 
-  const handleLogin = async () => {
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, { username, password });
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user)); // Store user details including role
-      navigate('/loot-entry'); // Use navigate instead of history.push
+      const response = await api.post('/auth/login', { username, password });
+      onLogin(response.data.token, response.data.user);
+      navigate('/loot-entry');
     } catch (err) {
-      setError('Invalid username or password');
+      setError(err.response?.data?.error || 'An error occurred during login');
     }
   };
 
@@ -26,36 +27,38 @@ const Login = () => {
         <Typography component="h1" variant="h5">
           Sign in
         </Typography>
-        <TextField
-          variant="outlined"
-          margin="normal"
-          required
-          fullWidth
-          label="Username"
-          autoFocus
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <TextField
-          variant="outlined"
-          margin="normal"
-          required
-          fullWidth
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        {error && <Typography color="error">{error}</Typography>}
-        <Button
-          fullWidth
-          variant="contained"
-          color="primary"
-          sx={{ mt: 3, mb: 2 }}
-          onClick={handleLogin}
-        >
-          Sign In
-        </Button>
+        <form onSubmit={handleLogin}>
+          <TextField
+            variant="outlined"
+            margin="normal"
+            required
+            fullWidth
+            label="Username"
+            autoFocus
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          <TextField
+            variant="outlined"
+            margin="normal"
+            required
+            fullWidth
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          {error && <Typography color="error">{error}</Typography>}
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            color="primary"
+            sx={{ mt: 3, mb: 2 }}
+          >
+            Sign In
+          </Button>
+        </form>
       </Paper>
     </Container>
   );

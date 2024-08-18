@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-
+import { ThemeProvider } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
 
 import Login from './components/pages/Login';
 import Register from './components/pages/Register';
@@ -11,29 +12,56 @@ import UserSettings from './components/pages/UserSettings';
 import KeptParty from './components/pages/KeptParty';
 import GivenAwayOrTrashed from './components/pages/GivenAwayOrTrashed';
 import KeptCharacter from './components/pages/KeptCharacter';
-import SoldLoot from './components/pages/SoldLoot'; // Import SoldLoot
+import SoldLoot from './components/pages/SoldLoot';
 import MainLayout from './components/layout/MainLayout';
 import ProtectedRoute from './components/hoc/ProtectedRoute';
 import CharacterAndUserManagement from './components/pages/CharacterAndUserManagement';
-import { ThemeProvider } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
 import Consumables from "./components/pages/Consumables";
 import ItemManagement from "./components/pages/ItemManagement";
 import GolarionCalendar from "./components/pages/GolarionCalendar";
 
-
 import theme from './theme';
+import api from './utils/api';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const storedUser = JSON.parse(localStorage.getItem('user'));
+    if (token && storedUser) {
+      setIsAuthenticated(true);
+      setUser(storedUser);
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    }
+  }, []);
+
+  const handleLogin = (token, user) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+    setIsAuthenticated(true);
+    setUser(user);
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setIsAuthenticated(false);
+    setUser(null);
+    delete api.defaults.headers.common['Authorization'];
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
         <Routes>
-          <Route path="/" element={<Navigate to="/login" />} />
-          <Route path="/login" element={<Login />} />
+          <Route path="/" element={isAuthenticated ? <Navigate to="/loot-entry" /> : <Navigate to="/login" />} />
+          <Route path="/login" element={<Login onLogin={handleLogin} />} />
           <Route path="/register" element={<Register />} />
-          <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+          <Route element={<ProtectedRoute isAuthenticated={isAuthenticated}><MainLayout onLogout={handleLogout} /></ProtectedRoute>}>
             <Route path="/loot-entry" element={<LootEntry />} />
             <Route path="/unprocessed-loot" element={<UnprocessedLoot />} />
             <Route path="/gold-transactions" element={<GoldTransactions />} />
