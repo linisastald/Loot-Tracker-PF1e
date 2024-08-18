@@ -48,6 +48,7 @@ useEffect(() => {
       fetchLoot();
     } else {
       fetchLoot();
+      await fetchActiveUserDetails();
     }
   };
 
