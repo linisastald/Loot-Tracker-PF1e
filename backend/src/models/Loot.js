@@ -162,6 +162,7 @@ exports.findByStatus = async (status, activeCharacterId) => {
       WHERE 
         l.status = $1;
     `;
+    const summaryResult = await pool.query(summaryQuery, [status, activeCharacterId]);
     const individualResult = await pool.query(individualQuery, [status, activeCharacterId]);
 
     return {
