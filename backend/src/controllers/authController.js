@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://192.168.0.64:3000').split(',');
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME = 15 * 60 * 1000; // 15 minutes in milliseconds
 
@@ -96,7 +97,14 @@ exports.loginUser = async (req, res) => {
       expiresIn: '365d',
     });
 
-    res.status(200).json({ token });
+    // Set CORS headers
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+    }
+    res.header('Access-Control-Allow-Credentials', 'true');
+
+    res.status(200).json({ token, user: { id: user.id, username: user.username, role: user.role } });
   } catch (error) {
     console.error('Error logging in user', error);
     res.status(500).json({ error: 'Internal server error' });
