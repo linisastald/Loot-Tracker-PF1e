@@ -11,6 +11,20 @@ const { execSync } = require('child_process');
 const logger = require('./src/utils/logger');
 
 dotenv.config();
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://192.168.0.64:3000').split(',');
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
+};
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -37,7 +51,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Existing middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(cookieParser());
 

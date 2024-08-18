@@ -23,6 +23,7 @@ services:
       - JWT_SECRET=
       - OPENAI_API_KEY=
       - REACT_APP_GROUP_NAME="Rise of the Runelords"
+      - ALLOWED_ORIGINS=http://192.168.0.64:4004
     depends_on:
       - rotr_db
     container_name: rotr_loot_app
@@ -66,6 +67,7 @@ services:
       - JWT_SECRET=
       - OPENAI_API_KEY=
       - REACT_APP_GROUP_NAME="Skulls & Shackles"
+      - ALLOWED_ORIGINS=http://192.168.0.64:4269
     depends_on:
       - sns_db
     container_name: sns_loot_app
