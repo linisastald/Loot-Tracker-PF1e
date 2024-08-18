@@ -8,7 +8,7 @@ const csrf = require('csurf');
 const pool = require('./src/config/db');
 const dotenv = require('dotenv');
 const { execSync } = require('child_process');
-const logger = require('./src/utils/logger'); // Assume we've created this logger file
+const logger = require('./src/utils/logger');
 
 dotenv.config();
 
@@ -42,10 +42,21 @@ app.use(bodyParser.json());
 app.use(cookieParser());
 
 // CSRF protection
-// Note: You may need to adjust this based on your frontend setup
-const csrfProtection = csrf({ cookie: true });
-// Apply CSRF protection to routes that need it
-app.use('/api', csrfProtection);
+const csrfProtection = csrf({
+  cookie: {
+    httpOnly: true,
+    sameSite: 'Strict',
+    // secure: false // Since we're not using HTTPS
+  }
+});
+
+// Apply CSRF protection to all routes except /api/auth/login and /api/auth/register
+app.use('/api', (req, res, next) => {
+  if (req.path === '/auth/login' || req.path === '/auth/register') {
+    return next();
+  }
+  csrfProtection(req, res, next);
+});
 
 app.get('/', (req, res) => {
   res.send('Welcome to the Pathfinder Loot Tracker API');
@@ -65,35 +76,19 @@ app.use('/api/user', userRoutes);
 app.use('/api/sold', soldRoutes);
 app.use('/api/consumables', consumablesRoutes);
 
+// CSRF Token route
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   logger.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
-if (process.env.NODE_ENV === 'production') {
-  const https = require('https');
-  const fs = require('fs');
-
-  const privateKey = fs.readFileSync('/path/to/privkey.pem', 'utf8');
-  const certificate = fs.readFileSync('/path/to/cert.pem', 'utf8');
-  const ca = fs.readFileSync('/path/to/chain.pem', 'utf8');
-
-  const credentials = {
-    key: privateKey,
-    cert: certificate,
-    ca: ca
-  };
-
-  const httpsServer = https.createServer(credentials, app);
-
-  httpsServer.listen(443, () => {
-    logger.info('HTTPS Server running on port 443');
-  });
-} else {
-  app.listen(port, () => {
-    logger.info(`Server running on port ${port}`);
-  });
-}
+app.listen(port, () => {
+  logger.info(`Server running on port ${port}`);
+});
 
 module.exports = app;
