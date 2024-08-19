@@ -1,8 +1,5 @@
-import axios from 'axios';
 import jwt_decode from 'jwt-decode';
 import api from './api';
-
-const API_URL = process.env.REACT_APP_API_URL;
 
 export const fetchActiveUser = async () => {
   try {
