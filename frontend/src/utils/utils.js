@@ -203,7 +203,6 @@ export const handleSort = (sortConfig, setSortConfig, key) => {
 export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems) => {
   try {
     const token = localStorage.getItem('token');
-    console.log(updatedEntry)
     await api.put(`/loot/update-entry/${updatedEntry.id}`, {
       session_date: updatedEntry.session_date,
       quantity: updatedEntry.quantity,
