@@ -201,8 +201,8 @@ exports.splitStack = async (req, res) => {
     await Loot.splitStack(id, splits, userId);
     res.status(200).send('Stack split successfully');
   } catch (error) {
-    console.error('Error splitting stack', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error splitting stack:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 };
 
