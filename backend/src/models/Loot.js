@@ -213,57 +213,40 @@ exports.splitStack = async (id, splits, userId) => {
     const originalItemResult = await client.query(originalItemQuery, [id]);
     const originalItem = originalItemResult.rows[0];
 
-    // Fetch associated appraisals
-    const appraisalsQuery = 'SELECT * FROM appraisal WHERE lootid = $1';
-    const appraisalsResult = await client.query(appraisalsQuery, [id]);
-    const appraisals = appraisalsResult.rows;
-
-    // Delete the original item
-    const deleteOriginalQuery = 'DELETE FROM loot WHERE id = $1';
-    await client.query(deleteOriginalQuery, [id]);
-
-    // Insert new split items
-    const insertSplitQuery = `
-      INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, status, whoupdated, lastupdate, whohas, notes, itemid, modids, value, charges)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, $10, $11, $12, $13, $14, $15)
-      RETURNING id
+    // Update the original item with the first split
+    const updateOriginalQuery = `
+      UPDATE loot 
+      SET quantity = $1, whoupdated = $2, lastupdate = CURRENT_TIMESTAMP
+      WHERE id = $3
     `;
+    await client.query(updateOriginalQuery, [splits[0].quantity, userId, id]);
 
-    for (const split of splits) {
-      const values = [
-        originalItem.session_date,
-        split.quantity,
-        originalItem.name,
-        originalItem.unidentified,
-        originalItem.masterwork,
-        originalItem.type,
-        originalItem.size,
-        originalItem.status,
-        userId,
-        originalItem.whohas,
-        originalItem.notes,
-        originalItem.itemid,
-        originalItem.modids,
-        originalItem.value,
-        originalItem.charges
-      ];
-      const newItemResult = await client.query(insertSplitQuery, values);
-      const newItemId = newItemResult.rows[0].id;
+    // Insert new split items for the remaining splits
+    if (splits.length > 1) {
+      const insertSplitQuery = `
+        INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, status, whoupdated, lastupdate, whohas, notes, itemid, modids, value, charges)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, $10, $11, $12, $13, $14, $15)
+      `;
 
-      // Create new appraisals for the split item
-      if (appraisals.length > 0) {
-        const insertAppraisalQuery = `
-          INSERT INTO appraisal (characterid, lootid, appraisalroll, believedvalue)
-          VALUES ($1, $2, $3, $4)
-        `;
-        for (const appraisal of appraisals) {
-          await client.query(insertAppraisalQuery, [
-            appraisal.characterid,
-            newItemId,
-            appraisal.appraisalroll,
-            appraisal.believedvalue
-          ]);
-        }
+      for (let i = 1; i < splits.length; i++) {
+        const values = [
+          originalItem.session_date,
+          splits[i].quantity,
+          originalItem.name,
+          originalItem.unidentified,
+          originalItem.masterwork,
+          originalItem.type,
+          originalItem.size,
+          originalItem.status,
+          userId,
+          originalItem.whohas,
+          originalItem.notes,
+          originalItem.itemid,
+          originalItem.modids,
+          originalItem.value,
+          originalItem.charges
+        ];
+        await client.query(insertSplitQuery, values);
       }
     }
 
