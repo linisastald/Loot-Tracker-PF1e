@@ -1,5 +1,6 @@
 import axios from 'axios';
 import jwt_decode from 'jwt-decode';
+import api from './api';
 
 const API_URL = process.env.REACT_APP_API_URL;
 
@@ -25,9 +26,7 @@ export const fetchActiveUser = async () => {
       throw new Error('Invalid token user ID');
     }
 
-    const response = await axios.get(`${API_URL}/user/${userId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await api.get(`/user/${userId}`);
 
     return response.data;
   } catch (error) {
@@ -50,12 +49,10 @@ export const handleSell = async (selectedItems, fetchLoot) => {
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
-    await axios.put(`${API_URL}/loot/update-status`, {
+    await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Pending Sale',
       userId,
-    }, {
-      headers: { Authorization: `Bearer ${token}` },
     });
     fetchLoot();
   } catch (error) {
@@ -69,12 +66,10 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
-    await axios.put(`${API_URL}/loot/update-status`, {
+    await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Trashed',
       userId,
-    }, {
-      headers: { Authorization: `Bearer ${token}` },
     });
     fetchLoot();
   } catch (error) {
@@ -88,13 +83,11 @@ export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
-    await axios.put(`${API_URL}/loot/update-status`, {
+    await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Kept Self',
       userId,
       whohas: activeUser.activeCharacterId,
-    }, {
-      headers: { Authorization: `Bearer ${token}` },
     });
     fetchLoot();
   } catch (error) {
@@ -108,12 +101,10 @@ export const handleKeepParty = async (selectedItems, fetchLoot) => {
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
-    await axios.put(`${API_URL}/loot/update-status`, {
+    await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Kept Party',
       userId,
-    }, {
-      headers: { Authorization: `Bearer ${token}` },
     });
     fetchLoot();
   } catch (error) {
@@ -145,9 +136,7 @@ export const handleUpdateChange = (e, setUpdatedEntry) => {
 
 export const handleUpdate = async (id, updatedEntry, fetchLoot) => {
   const token = localStorage.getItem('token');
-  await axios.put(`${API_URL}/loot/${id}`, { updatedEntry }, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  await api.put(`/loot/${id}`, { updatedEntry });
 
   fetchLoot();
 };
@@ -217,10 +206,8 @@ export const handleSort = (sortConfig, setSortConfig, key) => {
 export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems) => {
   try {
     const token = localStorage.getItem('token');
-    await axios.put(`${API_URL}/loot/update-entry/${updatedEntry.id}`, {
+    await api.put(`/loot/update-entry/${updatedEntry.id}`, {
       updatedEntry,
-    }, {
-      headers: { Authorization: `Bearer ${token}` },
     });
     fetchLoot();
     setOpenUpdateDialog(false);  // Close the dialog
@@ -243,17 +230,15 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
   try {
     const token = localStorage.getItem('token');
     const itemId = selectedItems[0];
-    const response = await axios.post(`${API_URL}/loot/split-stack`, {
+    const response = await api.post(`/loot/split-stack`, {
       id: itemId,
       splits: splitQuantities,
       userId,
-    }, {
-      headers: { Authorization: `Bearer ${token}` },
     });
     if (response.status === 200) {
       await fetchLoot();
-      setOpenSplitDialog(false);  // Close the dialog
-      setSelectedItems([]);       // Reset selected items
+      setOpenSplitDialog(false);
+      setSelectedItems([]);
     } else {
       console.error('Error splitting loot item:', response.data);
     }
@@ -270,9 +255,7 @@ export const fetchItemNames = async () => {
       throw new Error('No token found');
     }
 
-    const response = await axios.get(`${API_URL}/loot/items`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await api.get(`/loot/items`);
     return response.data;  // Return the original data without modification
   } catch (error) {
     console.error('Error fetching item names:', error);

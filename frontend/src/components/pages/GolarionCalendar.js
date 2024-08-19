@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import { 
   Container, Paper, Typography, Grid, Box, Button, 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField
 } from '@mui/material';
-
-const API_URL = process.env.REACT_APP_API_URL;
 
 const GolarionCalendar = () => {
   const [currentDate, setCurrentDate] = useState({ year: 4720, month: 0, day: 1 });
@@ -39,7 +37,7 @@ const GolarionCalendar = () => {
 
   const fetchCurrentDate = async () => {
     try {
-      const response = await axios.get(`${API_URL}/calendar/current-date`);
+      const response = await api.get(`/calendar/current-date`);
       setCurrentDate(response.data);
     } catch (error) {
       console.error('Error fetching current date:', error);
@@ -48,7 +46,7 @@ const GolarionCalendar = () => {
 
   const fetchNotes = async () => {
     try {
-      const response = await axios.get(`${API_URL}/calendar/notes`);
+      const response = await api.get(`/calendar/notes`);
       setNotes(response.data);
     } catch (error) {
       console.error('Error fetching notes:', error);
@@ -57,7 +55,7 @@ const GolarionCalendar = () => {
 
   const handleNextDay = async () => {
     try {
-      const response = await axios.post(`${API_URL}/calendar/next-day`);
+      const response = await api.post(`/calendar/next-day`);
       setCurrentDate(response.data);
     } catch (error) {
       console.error('Error advancing day:', error);
@@ -78,7 +76,7 @@ const GolarionCalendar = () => {
 
   const handleSaveNote = async () => {
     try {
-      await axios.post(`${API_URL}/calendar/notes`, {
+      await api.post(`/calendar/notes`, {
         date: selectedDate,
         note: noteText
       });

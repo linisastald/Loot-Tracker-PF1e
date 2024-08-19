@@ -22,9 +22,7 @@ import {
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
 import { formatDate } from '../../utils/utils'; // Adjust the path as necessary
 import { styled } from '@mui/system';
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL;
+import api from '../../utils/api';
 
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   backgroundColor: theme.palette.action.hover,
@@ -88,9 +86,7 @@ const CustomLootTable = ({
     const fetchWhoHasFilters = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.get(`${API_URL}/user/active-characters`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await api.get(`/user/active-characters`);
         const characters = response.data;
         const filters = characters.map((character) => ({
           name: character.name,

@@ -1,10 +1,8 @@
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL
+import api from './api';
 
 export const login = async (email, password) => {
   try {
-    const response = await axios.post(`${API_URL}/auth/login`, { email, password });
+    const response = await api.post(`/auth/login`, { email, password });
     localStorage.setItem('token', response.data.token);
     return response.data;
   } catch (error) {
@@ -15,7 +13,7 @@ export const login = async (email, password) => {
 
 export const register = async (userData) => {
   try {
-    const response = await axios.post(`${API_URL}/auth/register`, userData);
+    const response = await api.post(`/auth/register`, userData);
     return response.data;
   } catch (error) {
     console.error('Error registering:', error.response ? error.response.data : error.message);

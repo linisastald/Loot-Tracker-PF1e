@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import {
   Container,
   Paper,
@@ -22,7 +22,6 @@ import {
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import jwt_decode from 'jwt-decode';
-const API_URL = process.env.REACT_APP_API_URL;
 
 const GoldTransactions = () => {
   const [goldEntries, setGoldEntries] = useState([]);
@@ -44,8 +43,7 @@ const GoldTransactions = () => {
   const fetchGoldEntries = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/gold`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await api.get(`/gold`, {
         params: { startDate, endDate }
       });
       setGoldEntries(response.data);
@@ -61,9 +59,7 @@ const GoldTransactions = () => {
       const token = localStorage.getItem('token');
       const decodedToken = jwt_decode(token);
       const userId = decodedToken.id;
-      const response = await axios.get(`${API_URL}/user/${userId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await api.get(`/user/${userId}`);
       setUserRole(response.data.role);
     } catch (error) {
       console.error('Error fetching user role:', error);
@@ -89,9 +85,7 @@ const GoldTransactions = () => {
   const handleDistributeAll = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}/gold/distribute-all`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.post(`/gold/distribute-all`, {});
       fetchGoldEntries(); // Refresh the gold entries after distribution
     } catch (error) {
       console.error('Error distributing gold:', error);
@@ -102,9 +96,7 @@ const GoldTransactions = () => {
   const handleDistributePlusPartyLoot = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}/gold/distribute-plus-party-loot`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.post(`/gold/distribute-plus-party-loot`, {});
       fetchGoldEntries(); // Refresh the gold entries after distribution
     } catch (error) {
       console.error('Error distributing gold plus party loot:', error);
@@ -115,9 +107,7 @@ const GoldTransactions = () => {
   const handleBalance = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}/gold/balance`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.post(`/gold/balance`, {});
       fetchGoldEntries(); // Refresh the gold entries after balancing
     } catch (error) {
       console.error('Error balancing gold:', error);

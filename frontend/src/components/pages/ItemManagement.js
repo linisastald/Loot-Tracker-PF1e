@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import { format } from 'date-fns';
 import {
   Container,
@@ -25,8 +25,6 @@ import {
   Autocomplete
 } from '@mui/material';
 
-const API_URL = process.env.REACT_APP_API_URL;
-
 const ItemManagement = () => {
   const [pendingItems, setPendingItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
@@ -49,9 +47,7 @@ const ItemManagement = () => {
   const fetchPendingItems = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/loot/pending-sale`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get(`/loot/pending-sale`);
       const itemsData = response.data || [];
       setPendingItems(itemsData);
       calculatePendingSaleSummary(itemsData);
@@ -64,9 +60,7 @@ const ItemManagement = () => {
   const fetchAllItems = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/loot/items`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get(`/loot/items`);
       setItems(response.data);
     } catch (error) {
       console.error('Error fetching all items:', error);
@@ -76,9 +70,7 @@ const ItemManagement = () => {
   const fetchMods = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/loot/mods`, {
-        headers: {Authorization: `Bearer ${token}`}
-      });
+      const response = await api.get(`/loot/mods`);
       setMods(response.data.map(mod => ({
         ...mod,
         displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
@@ -91,9 +83,7 @@ const ItemManagement = () => {
   const fetchActiveCharacters = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/user/active-characters`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get(`/user/active-characters`);
       setActiveCharacters(response.data);
     } catch (error) {
       console.error('Error fetching active characters:', error);
@@ -137,9 +127,7 @@ const handleItemUpdateSubmit = async () => {
 
     console.log('Prepared data:', dataToSend);
 
-    const response = await axios.put(`${API_URL}/loot/dm-update/${id}`, dataToSend, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const response = await api.put(`/loot/dm-update/${id}`, dataToSend);
 
     setUpdateDialogOpen(false);
     fetchPendingItems();
@@ -151,9 +139,7 @@ const handleItemUpdateSubmit = async () => {
   const handleConfirmSale = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`${API_URL}/loot/confirm-sale`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.put(`/loot/confirm-sale`, {});
 
       // Calculate gold, silver, and copper from pendingSaleTotal
       const totalValue = pendingSaleTotal;
@@ -171,9 +157,7 @@ const handleItemUpdateSubmit = async () => {
         notes: 'Sale of items',
       };
 
-      await axios.post(`${API_URL}/gold`, { goldEntries: [goldEntry] }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post(`/gold`, { goldEntries: [goldEntry] });
 
       fetchPendingItems();
     } catch (error) {
@@ -193,9 +177,7 @@ const handleItemUpdateSubmit = async () => {
   const handleSearch = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/loot/search?query=${searchTerm}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get(`/loot/search?query=${searchTerm}`);
       setFilteredItems(response.data);
     } catch (error) {
       console.error('Error searching items', error);

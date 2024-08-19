@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import {
   Container,
   Paper,
@@ -25,7 +25,7 @@ import {
   applyFilters,
   handleUpdateSubmit,
 } from '../../utils/utils';
-const API_URL = process.env.REACT_APP_API_URL;
+
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
@@ -47,9 +47,7 @@ const UnprocessedLoot = () => {
   const fetchLoot = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/loot/kept-party`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await api.get(`/loot/kept-party`);
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);

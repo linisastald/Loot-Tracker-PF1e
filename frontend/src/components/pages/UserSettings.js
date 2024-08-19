@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import {
   TextField,
   Button,
@@ -17,8 +17,6 @@ import {
   TableRow,
 } from '@mui/material';
 import { styled } from '@mui/system';
-
-const API_URL = process.env.REACT_APP_API_URL;
 
 const UserSettings = () => {
   const today = new Date().toISOString().split('T')[0];
@@ -39,9 +37,7 @@ const UserSettings = () => {
     const fetchCharacters = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.get(`${API_URL}/user/characters`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await api.get(`/user/characters`);
         setCharacters(response.data);
       } catch (error) {
         console.error('Error fetching characters', error);
@@ -55,10 +51,9 @@ const UserSettings = () => {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      await axios.put(
-        `${API_URL}/user/change-password`,
-        { oldPassword, newPassword },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await api.put(
+          `/user/change-password`,
+          {oldPassword, newPassword}
       );
       setOldPassword('');
       setNewPassword('');
@@ -71,9 +66,6 @@ const UserSettings = () => {
   const handleCharacterSubmit = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('token');
-      const url = character.id ? `${API_URL}/user/characters` : `${API_URL}/user/characters`;
-      const method = character.id ? 'put' : 'post';
       const payload = {
         ...character,
         birthday: character.birthday || null,
@@ -81,21 +73,14 @@ const UserSettings = () => {
       };
       if (character.active) {
         // Ensure only one character is active at a time
-        await axios.put(`${API_URL}/user/deactivate-all-characters`, {}, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await api.put('/user/deactivate-all-characters', {});
       }
-      await axios[method](
-        url,
-        payload,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setCharacter({ id: null, name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true });
+      const method = character.id ? 'put' : 'post';
+      await api[method]('/user/characters', payload);
+      setCharacter({id: null, name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true});
       alert(`Character ${character.id ? 'updated' : 'added'} successfully`);
       // Refresh the character list
-      const response = await axios.get(`${API_URL}/user/characters`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await api.get('/user/characters');
       setCharacters(response.data);
     } catch (error) {
       setError('Error saving character');

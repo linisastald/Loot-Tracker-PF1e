@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import {
   Container,
   Paper,
@@ -14,9 +14,7 @@ import {
   Collapse,
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import { formatDate } from '../../utils/utils'; // Adjust the path as necessary
-
-const API_URL = process.env.REACT_APP_API_URL;
+import { formatDate } from '../../utils/utils';
 
 const SoldLoot = () => {
   const [soldSummary, setSoldSummary] = useState([]);
@@ -26,9 +24,7 @@ const SoldLoot = () => {
   useEffect(() => {
     const fetchSoldSummary = async () => {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/sold`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await api.get(`/sold`);
       setSoldSummary(response.data);
     };
 
@@ -44,9 +40,7 @@ const SoldLoot = () => {
     if (!soldDetails[date]) {
       const fetchSoldDetails = async () => {
         const token = localStorage.getItem('token');
-        const response = await axios.get(`${API_URL}/sold/${date}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await api.get(`/sold/${date}`);
         setSoldDetails((prevDetails) => ({
           ...prevDetails,
           [date]: response.data,

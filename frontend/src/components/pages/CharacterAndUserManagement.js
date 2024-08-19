@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import {
   Container,
   Paper,
@@ -24,8 +24,6 @@ import {
   FormControl,
   InputLabel,
 } from '@mui/material';
-
-const API_URL = process.env.REACT_APP_API_URL;
 
 const CharacterAndUserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -54,15 +52,9 @@ const CharacterAndUserManagement = () => {
       try {
         const token = localStorage.getItem('token');
         const [usersResponse, charactersResponse, settingsResponse] = await Promise.all([
-          axios.get(`${API_URL}/user/all`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`${API_URL}/user/all-characters`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          axios.get(`${API_URL}/user/settings`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          api.get(`/user/all`),
+          api.get(`/user/all-characters`),
+          api.get(`/user/settings`),
         ]);
         setUsers(usersResponse.data);
         setCharacters(charactersResponse.data);
@@ -98,10 +90,9 @@ const CharacterAndUserManagement = () => {
     try {
       const token = localStorage.getItem('token');
       const newValue = registrationOpen ? 0 : 1;
-      await axios.put(
-        `${API_URL}/user/update-setting`,
-        { name: 'registrations open', value: newValue },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await api.put(
+        `/user/update-setting`,
+        { name: 'registrations open', value: newValue }
       );
       setRegistrationOpen(!registrationOpen);
     } catch (error) {
@@ -112,10 +103,9 @@ const CharacterAndUserManagement = () => {
   const handlePasswordReset = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(
-        `${API_URL}/user/reset-password`,
-        { userId: selectedUsers[0], newPassword },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await api.put(
+        `/user/reset-password`,
+        { userId: selectedUsers[0], newPassword }
       );
       setNewPassword('');
       setSelectedUsers([]);
@@ -133,10 +123,9 @@ const CharacterAndUserManagement = () => {
       const token = localStorage.getItem('token');
       await Promise.all(
         selectedUsers.map(userId =>
-          axios.put(
-            `${API_URL}/user/delete-user`,
-            { userId },
-            { headers: { Authorization: `Bearer ${token}` } }
+          api.put(
+            `/user/delete-user`,
+            { userId }
           )
         )
       );
@@ -184,10 +173,9 @@ const CharacterAndUserManagement = () => {
   const handleCharacterUpdateSubmit = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(
-        `${API_URL}/user/characters`,
-        { ...selectedCharacter, ...updateCharacter },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await api.put(
+        `/user/characters`,
+        { ...selectedCharacter, ...updateCharacter }
       );
       setUpdateCharacterDialogOpen(false);
       setSuccess('Character updated successfully');

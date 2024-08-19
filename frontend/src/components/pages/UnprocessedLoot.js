@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import {
   Container,
   Paper,
@@ -27,7 +27,6 @@ import {
   handleUpdateSubmit,
 } from '../../utils/utils';
 
-const API_URL = process.env.REACT_APP_API_URL;
 const UnprocessedLoot = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
@@ -83,8 +82,7 @@ useEffect(() => {
 
           console.log("Fetching loot with params:", params); // Add this log
 
-          const response = await axios.get(`${API_URL}/loot`, {
-              headers: { Authorization: `Bearer ${token}` },
+          const response = await api.get(`/loot`, {
               params: params
           });
 
@@ -102,10 +100,8 @@ useEffect(() => {
   const handleAppraise = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post(`${API_URL}/loot/appraise`, { userId: activeUser.id }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      fetchLoot(activeUser.activeCharacterId); // Refresh loot after appraisal
+      const response = await api.post(`/loot/appraise`, { userId: activeUser.id });
+      fetchLoot(activeUser.activeCharacterId);
     } catch (error) {
       console.error('Error appraising loot:', error);
     }

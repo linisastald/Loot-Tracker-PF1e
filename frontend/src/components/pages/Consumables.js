@@ -1,6 +1,6 @@
 // src/components/Consumables.js
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import {
   Container,
   Paper,
@@ -22,8 +22,6 @@ import {
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 
-const API_URL = process.env.REACT_APP_API_URL;
-
 const Consumables = () => {
   const [wands, setWands] = useState([]);
   const [potions, setPotions] = useState([]);
@@ -40,9 +38,7 @@ const Consumables = () => {
   const fetchConsumables = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/consumables`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await api.get(`/consumables`);
       setWands(response.data.wands);
       setPotions(response.data.potions);
       setScrolls(response.data.scrolls);
@@ -56,9 +52,7 @@ const Consumables = () => {
     try {
       console.log('Using consumable:', id, type);
       const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}/consumables/use`, {id, type}, {
-        headers: {Authorization: `Bearer ${token}`},
-      });
+      await api.post(`/consumables/use`, {id, type});
       fetchConsumables();
     } catch (error) {
       console.error('Error using consumable:', error);
@@ -79,11 +73,9 @@ const Consumables = () => {
   const handleUpdateCharges = async () => {
     try {
       const token = localStorage.getItem('token');
-      await axios.put(`${API_URL}/consumables/wandcharges`, {
+      await api.put(`/consumables/wandcharges`, {
         id: selectedWand.id,
         charges: parseInt(newCharges),
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
       });
       handleCloseChargesDialog();
       fetchConsumables();
