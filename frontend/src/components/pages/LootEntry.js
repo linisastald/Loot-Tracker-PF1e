@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import jwt_decode from 'jwt-decode';
 import {
   Container,
@@ -197,7 +197,7 @@ const handleSubmit = async (e) => {
           copper: data.copper || null
         };
 
-        await axios.post(
+        await api.post(
           `${API_URL}/gold`,
           {goldEntries: [goldData]},
           {headers: {Authorization: `Bearer ${token}`}}
@@ -219,7 +219,7 @@ const handleSubmit = async (e) => {
         // Only parse if "Smart Item Detection" is checked and it's not autocompleted
         if (data.parseItem && !autocompletedItems[index]) {
           try {
-            const parseResponse = await axios.post(
+            const parseResponse = await api.post(
               `${API_URL}/loot/parse-item`,
               {description: data.name},
               {headers: {Authorization: `Bearer ${token}`}}
@@ -237,7 +237,7 @@ const handleSubmit = async (e) => {
         }
 
         // Always send the data, even if it wasn't parsed or doesn't have an itemId
-        await axios.post(
+        await api.post(
           `${API_URL}/loot`,
           {entries: [data]},
           {headers: {Authorization: `Bearer ${token}`}}
