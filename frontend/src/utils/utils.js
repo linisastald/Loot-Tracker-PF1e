@@ -205,7 +205,17 @@ export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateD
     const token = localStorage.getItem('token');
     console.log(updatedEntry)
     await api.put(`/loot/update-entry/${updatedEntry.id}`, {
-      updatedEntry,
+      session_date: updatedEntry.session_date,
+      quantity: updatedEntry.quantity,
+      name: updatedEntry.name,
+      unidentified: updatedEntry.unidentified,
+      masterwork: updatedEntry.masterwork,
+      type: updatedEntry.type,
+      size: updatedEntry.size,
+      status: updatedEntry.status,
+      believedvalue: updatedEntry.believedvalue,
+      average_appraisal: updatedEntry.average_appraisal,
+      notes: updatedEntry.notes
     });
     fetchLoot();
     setOpenUpdateDialog(false);
