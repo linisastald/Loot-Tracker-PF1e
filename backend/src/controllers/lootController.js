@@ -289,9 +289,10 @@ exports.confirmSale = async (req, res) => {
 exports.updateItem = async (req, res) => {
   const { id } = req.params;
   const { session_date, quantity, name, ...otherFields } = req.body;
-
   if (!id || !session_date || !quantity || !name) {
-    return res.status(400).json({ error: 'ID, Session Date, Quantity, and Name are required' });
+    return res.status(400).json({
+      error: `ID ${id}, Session Date ${session_date}, Quantity ${quantity}, and Name ${name} are required`
+    });
   }
 
   try {

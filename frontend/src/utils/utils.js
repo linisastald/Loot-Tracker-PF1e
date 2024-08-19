@@ -207,7 +207,7 @@ export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateD
       updatedEntry,
     });
     fetchLoot();
-    setOpenUpdateDialog(false);  // Close the dialog
+    setOpenUpdateDialog(false);
     setSelectedItems([]);
   } catch (error) {
     console.error('Error updating item:', error);
