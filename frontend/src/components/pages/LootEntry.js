@@ -18,8 +18,6 @@ import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { fetchItemNames } from '../../utils/utils';
 
-const API_URL = process.env.REACT_APP_API_URL;
-
   const capitalizeWords = (str) => {
     return str.replace(/\b\w/g, l => l.toUpperCase());
   };

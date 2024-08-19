@@ -1,3 +1,4 @@
+// src/App.js
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
@@ -41,15 +42,23 @@ function App() {
           setUser(parsedUser);
         } catch (error) {
           console.error('Failed to parse user data:', error);
-          // If parsing fails, we should probably log out the user
           handleLogout();
         }
       } else {
-        // If we have a token but no user data, we might want to fetch user data here
-        // or consider this an invalid state and log out
         handleLogout();
       }
     }
+
+    const fetchCsrfToken = async () => {
+      try {
+        const response = await api.get('/csrf-token');
+        localStorage.setItem('csrfToken', response.data.csrfToken);
+      } catch (error) {
+        console.error('Error fetching CSRF token:', error);
+      }
+    };
+
+    fetchCsrfToken();
   }, []);
 
   const handleLogin = (token, user) => {
