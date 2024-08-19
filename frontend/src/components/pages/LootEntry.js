@@ -199,8 +199,7 @@ const handleSubmit = async (e) => {
 
         await api.post(
           `${API_URL}/gold`,
-          {goldEntries: [goldData]},
-          {headers: {Authorization: `Bearer ${token}`}}
+          {goldEntries: [goldData]}
         );
         processedEntries.push(entry);
       } else {
@@ -221,8 +220,7 @@ const handleSubmit = async (e) => {
           try {
             const parseResponse = await api.post(
               `${API_URL}/loot/parse-item`,
-              {description: data.name},
-              {headers: {Authorization: `Bearer ${token}`}}
+              {description: data.name}
             );
             if (parseResponse.data) {
               data = {...data, ...parseResponse.data};
@@ -239,8 +237,7 @@ const handleSubmit = async (e) => {
         // Always send the data, even if it wasn't parsed or doesn't have an itemId
         await api.post(
           `${API_URL}/loot`,
-          {entries: [data]},
-          {headers: {Authorization: `Bearer ${token}`}}
+          {entries: [data]}
         );
         processedEntries.push(entry);
       }
