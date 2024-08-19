@@ -212,9 +212,6 @@ export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateD
       masterwork: updatedEntry.masterwork,
       type: updatedEntry.type,
       size: updatedEntry.size,
-      status: updatedEntry.status,
-      believedvalue: updatedEntry.believedvalue,
-      average_appraisal: updatedEntry.average_appraisal,
       notes: updatedEntry.notes
     });
     fetchLoot();
