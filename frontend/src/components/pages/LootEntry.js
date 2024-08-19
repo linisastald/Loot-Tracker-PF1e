@@ -198,7 +198,7 @@ const handleSubmit = async (e) => {
         };
 
         await api.post(
-          `${API_URL}/gold`,
+          `/gold`,
           {goldEntries: [goldData]}
         );
         processedEntries.push(entry);
@@ -219,7 +219,7 @@ const handleSubmit = async (e) => {
         if (data.parseItem && !autocompletedItems[index]) {
           try {
             const parseResponse = await api.post(
-              `${API_URL}/loot/parse-item`,
+              `/loot/parse-item`,
               {description: data.name}
             );
             if (parseResponse.data) {
@@ -236,7 +236,7 @@ const handleSubmit = async (e) => {
 
         // Always send the data, even if it wasn't parsed or doesn't have an itemId
         await api.post(
-          `${API_URL}/loot`,
+          `/loot`,
           {entries: [data]}
         );
         processedEntries.push(entry);
