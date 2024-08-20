@@ -32,29 +32,6 @@ const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   },
 }));
 
-const StyledTableContainer = styled(TableContainer)(({ theme }) => ({
-  flexGrow: 1,
-  overflow: 'auto',
-  // Webkit browsers (Chrome, Safari, newer versions of Edge)
-  '&::-webkit-scrollbar': {
-    width: '8px',
-    height: '8px',
-  },
-  '&::-webkit-scrollbar-track': {
-    background: theme.palette.background.default,
-  },
-  '&::-webkit-scrollbar-thumb': {
-    background: theme.palette.grey[400],
-    borderRadius: '4px',
-    '&:hover': {
-      background: theme.palette.grey[500],
-    },
-  },
-  // Firefox
-  scrollbarWidth: 'thin',
-  scrollbarColor: `${theme.palette.grey[400]} ${theme.palette.background.default}`,
-}));
-
 const CustomLootTable = ({
   loot,
   individualLoot,
@@ -255,9 +232,9 @@ const CustomLootTable = ({
   };
 
   return (
-    <Paper sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ p: 2, backgroundColor: 'background.paper', zIndex: 2 }}>
-        <Grid container spacing={2}>
+    <Paper sx={{ p: 2 }}>
+      <Box sx={{ position: 'sticky', top: 0, backgroundColor: 'background.paper', zIndex: 1 }}>
+        <Grid container spacing={2} sx={{ mb: 2 }}>
           {showFilters.pendingSale && (
             <Grid item>
               <FormControlLabel
@@ -334,7 +311,7 @@ const CustomLootTable = ({
         </Grid>
       </Box>
 
-      <StyledTableContainer>
+      <TableContainer sx={{ maxHeight: 'calc(100vh - 300px)', overflow: 'auto' }}>
         <Table stickyHeader>
           <TableHead>
             <TableRow>
@@ -579,7 +556,7 @@ const CustomLootTable = ({
             })}
           </TableBody>
         </Table>
-      </StyledTableContainer>
+      </TableContainer>
     </Paper>
   );
 };
