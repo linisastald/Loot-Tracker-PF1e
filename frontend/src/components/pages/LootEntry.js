@@ -346,7 +346,7 @@ const handleSubmit = async (e) => {
                       size="small"
                     />
                   </Grid>
-                  <Grid item xs={12} sm={9}>
+                  <Grid item xs={12} sm={shouldShowCharges(entry.data.name) ? 9 : 11}>
                     <Autocomplete
                       freeSolo
                       options={itemNames}
