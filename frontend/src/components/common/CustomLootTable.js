@@ -12,22 +12,23 @@ import {
   Collapse,
   TableSortLabel,
   Tooltip,
-  Grid,
-  FormControlLabel,
-  Switch,
+  Box,
   Button,
   Menu,
   MenuItem,
+  FormControlLabel,
+  Switch,
+  Grid,
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import { formatDate } from '../../utils/utils'; // Adjust the path as necessary
+import { formatDate } from '../../utils/utils';
 import { styled } from '@mui/system';
 import api from '../../utils/api';
 
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   backgroundColor: theme.palette.action.hover,
   '& .MuiTableCell-root': {
-    padding: '4px', // Adjust padding to make the rows thinner
+    padding: '2px', // Adjust padding to make the rows thinner
   },
 }));
 
