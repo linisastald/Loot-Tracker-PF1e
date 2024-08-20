@@ -332,7 +332,7 @@ const handleSubmit = async (e) => {
                       />
                     </Tooltip>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
+                  <Grid item xs={6} sm={2}>
                     <TextField
                       label="Quantity"
                       type="number"
@@ -343,7 +343,7 @@ const handleSubmit = async (e) => {
                       required
                     />
                   </Grid>
-                  <Grid item xs={12} sm={6}>
+                  <Grid item xs={12} sm={8}>
                     <Autocomplete
                       freeSolo
                       options={itemNames}
@@ -364,7 +364,7 @@ const handleSubmit = async (e) => {
                     />
                   </Grid>
                   {shouldShowCharges(entry.data.name) && (
-                    <Grid item xs={12} sm={3}>
+                    <Grid item xs={6} sm={2}>
                       <TextField
                         label="Charges"
                         type="number"
@@ -376,8 +376,8 @@ const handleSubmit = async (e) => {
                       />
                     </Grid>
                   )}
-                  <Grid item xs={12} sm={3}>
-                    <FormControl fullWidth>
+                  <Grid item xs={6} sm={2.4}>
+                    <FormControl fullWidth size="small">
                       <InputLabel>Type</InputLabel>
                       <Select
                         name="type"
@@ -396,8 +396,8 @@ const handleSubmit = async (e) => {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
-                    <FormControl fullWidth>
+                  <Grid item xs={6} sm={2.4}>
+                    <FormControl fullWidth size="small">
                       <InputLabel>Magical?</InputLabel>
                       <Select
                         name="unidentified"
@@ -410,8 +410,8 @@ const handleSubmit = async (e) => {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
-                    <FormControl fullWidth>
+                  <Grid item xs={6} sm={2.4}>
+                    <FormControl fullWidth size="small">
                       <InputLabel>Masterwork</InputLabel>
                       <Select
                         name="masterwork"
@@ -423,8 +423,8 @@ const handleSubmit = async (e) => {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
-                    <FormControl fullWidth>
+                  <Grid item xs={6} sm={2.4}>
+                    <FormControl fullWidth size="small">
                       <InputLabel>Size</InputLabel>
                       <Select
                         name="size"
