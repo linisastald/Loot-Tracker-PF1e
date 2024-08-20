@@ -11,11 +11,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   TextField,
+  Box,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import axios from 'axios';
@@ -39,14 +36,17 @@ const months = [
 
 const daysOfWeek = ['Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'];
 
-const StyledDay = styled(Paper)(({ theme, isCurrentDay, hasNote }) => ({
+const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected, hasNote }) => ({
   height: '80px',
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'space-between',
   padding: theme.spacing(1),
   cursor: 'pointer',
-  backgroundColor: isCurrentDay ? theme.palette.primary.light : (hasNote ? theme.palette.secondary.light : theme.palette.background.paper),
+  backgroundColor: isCurrentDay ? theme.palette.primary.light :
+                  isSelected ? theme.palette.secondary.light :
+                  hasNote ? theme.palette.info.light :
+                  theme.palette.background.paper,
   '&:hover': {
     backgroundColor: theme.palette.action.hover,
   },
@@ -54,10 +54,10 @@ const StyledDay = styled(Paper)(({ theme, isCurrentDay, hasNote }) => ({
 
 const GolarionCalendar = () => {
   const [currentDate, setCurrentDate] = useState({ year: 4722, month: 0, day: 1 });
+  const [displayedDate, setDisplayedDate] = useState({ year: 4722, month: 0 });
   const [selectedDate, setSelectedDate] = useState(null);
   const [notes, setNotes] = useState({});
   const [noteText, setNoteText] = useState('');
-  const [openNoteDialog, setOpenNoteDialog] = useState(false);
 
   useEffect(() => {
     fetchCurrentDate();
@@ -68,6 +68,8 @@ const GolarionCalendar = () => {
     try {
       const response = await axios.get(`${API_URL}/calendar/current-date`);
       setCurrentDate(response.data);
+      setDisplayedDate({ year: response.data.year, month: response.data.month });
+      setSelectedDate(response.data);
     } catch (error) {
       console.error('Error fetching current date:', error);
     }
@@ -86,35 +88,41 @@ const GolarionCalendar = () => {
     try {
       const response = await axios.post(`${API_URL}/calendar/next-day`);
       setCurrentDate(response.data);
+      setDisplayedDate({ year: response.data.year, month: response.data.month });
+      setSelectedDate(response.data);
     } catch (error) {
       console.error('Error advancing day:', error);
     }
   };
 
   const handlePrevMonth = () => {
-    setCurrentDate(prev => ({
-      ...prev,
-      month: prev.month > 0 ? prev.month - 1 : 11,
-      year: prev.month > 0 ? prev.year : prev.year - 1
+    setDisplayedDate(prev => ({
+      year: prev.month > 0 ? prev.year : prev.year - 1,
+      month: prev.month > 0 ? prev.month - 1 : 11
     }));
   };
 
   const handleNextMonth = () => {
-    setCurrentDate(prev => ({
-      ...prev,
-      month: prev.month < 11 ? prev.month + 1 : 0,
-      year: prev.month < 11 ? prev.year : prev.year + 1
+    setDisplayedDate(prev => ({
+      year: prev.month < 11 ? prev.year : prev.year + 1,
+      month: prev.month < 11 ? prev.month + 1 : 0
     }));
   };
 
+  const handleGoToToday = () => {
+    setDisplayedDate({ year: currentDate.year, month: currentDate.month });
+    setSelectedDate(currentDate);
+  };
+
   const handleDayClick = (day) => {
-    const clickedDate = { ...currentDate, day };
+    const clickedDate = { ...displayedDate, day };
     setSelectedDate(clickedDate);
     setNoteText(notes[`${clickedDate.year}-${clickedDate.month}-${clickedDate.day}`] || '');
-    setOpenNoteDialog(true);
   };
 
   const handleSaveNote = async () => {
+    if (!selectedDate) return;
+
     try {
       await axios.post(`${API_URL}/calendar/notes`, {
         date: selectedDate,
@@ -124,15 +132,14 @@ const GolarionCalendar = () => {
         ...notes,
         [`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`]: noteText
       });
-      setOpenNoteDialog(false);
     } catch (error) {
       console.error('Error saving note:', error);
     }
   };
 
   const renderCalendar = () => {
-    const month = months[currentDate.month];
-    const firstDayOfMonth = new Date(currentDate.year, currentDate.month, 1).getDay();
+    const month = months[displayedDate.month];
+    const firstDayOfMonth = new Date(displayedDate.year, displayedDate.month, 1).getDay();
     const weeks = Math.ceil((month.days + firstDayOfMonth) / 7);
 
     return (
@@ -151,8 +158,14 @@ const GolarionCalendar = () => {
                 {[...Array(7)].map((_, dayIndex) => {
                   const day = weekIndex * 7 + dayIndex - firstDayOfMonth + 1;
                   const isValidDay = day > 0 && day <= month.days;
-                  const dateKey = `${currentDate.year}-${currentDate.month}-${day}`;
-                  const isCurrentDay = currentDate.day === day;
+                  const dateKey = `${displayedDate.year}-${displayedDate.month}-${day}`;
+                  const isCurrentDay = currentDate.year === displayedDate.year &&
+                                       currentDate.month === displayedDate.month &&
+                                       currentDate.day === day;
+                  const isSelected = selectedDate &&
+                                     selectedDate.year === displayedDate.year &&
+                                     selectedDate.month === displayedDate.month &&
+                                     selectedDate.day === day;
                   const hasNote = !!notes[dateKey];
 
                   return (
@@ -161,6 +174,7 @@ const GolarionCalendar = () => {
                         <StyledDay
                           onClick={() => handleDayClick(day)}
                           isCurrentDay={isCurrentDay}
+                          isSelected={isSelected}
                           hasNote={hasNote}
                         >
                           <Typography variant="body2">{day}</Typography>
@@ -188,7 +202,7 @@ const GolarionCalendar = () => {
           </Grid>
           <Grid item>
             <Typography variant="h5">
-              {months[currentDate.month].name} {currentDate.year}
+              {months[displayedDate.month].name} {displayedDate.year}
             </Typography>
           </Grid>
           <Grid item>
@@ -196,31 +210,35 @@ const GolarionCalendar = () => {
           </Grid>
         </Grid>
         {renderCalendar()}
-        <Button variant="contained" onClick={handleNextDay} sx={{ mt: 2 }}>Next Day</Button>
+        <Grid container spacing={2} sx={{ mt: 2 }}>
+          <Grid item>
+            <Button variant="contained" onClick={handleNextDay}>Next Day</Button>
+          </Grid>
+          <Grid item>
+            <Button variant="contained" onClick={handleGoToToday}>Go to Today</Button>
+          </Grid>
+        </Grid>
       </Paper>
 
-      <Dialog open={openNoteDialog} onClose={() => setOpenNoteDialog(false)}>
-        <DialogTitle>
-          {selectedDate && `Note for ${selectedDate.day} ${months[selectedDate.month].name} ${selectedDate.year}`}
-        </DialogTitle>
-        <DialogContent>
+      {selectedDate && (
+        <Paper sx={{ p: 2, mt: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            {`${selectedDate.day} ${months[selectedDate.month].name} ${selectedDate.year}`}
+          </Typography>
           <TextField
-            autoFocus
-            margin="dense"
-            label="Note"
-            type="text"
-            fullWidth
+            label="Notes"
             multiline
             rows={4}
+            fullWidth
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
+            sx={{ mb: 2 }}
           />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenNoteDialog(false)}>Cancel</Button>
-          <Button onClick={handleSaveNote}>Save</Button>
-        </DialogActions>
-      </Dialog>
+          <Box display="flex" justifyContent="flex-end">
+            <Button variant="contained" onClick={handleSaveNote}>Save Note</Button>
+          </Box>
+        </Paper>
+      )}
     </Container>
   );
 };
