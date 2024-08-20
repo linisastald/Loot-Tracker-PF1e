@@ -5,6 +5,7 @@ import {
   Paper,
   Typography,
   Button,
+  Box,
 } from '@mui/material';
 import CustomLootTable from '../common/CustomLootTable';
 import CustomSplitStackDialog from '../common/dialogs/CustomSplitStackDialog';
@@ -124,7 +125,7 @@ useEffect(() => {
   const filteredLoot = applyFilters(loot, filters);
 
   return (
-    <Container maxWidth={false} component="main">
+    <Container maxWidth={false} component="main" sx={{ pb: '80px' }}> {/* Add bottom padding to accommodate the floating buttons */}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Unprocessed Loot</Typography>
       </Paper>
@@ -160,31 +161,39 @@ useEffect(() => {
           whoHas: false,
         }}
       />
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleSell)}>
-        Sell
-      </Button>
-      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleTrash)}>
-        Trash
-      </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleKeepSelf)}>
-        Keep Self
-      </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleKeepParty)}>
-        Keep Party
-      </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={handleAppraise}>
-        Appraise
-      </Button>
-      {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
-          Split Stack
-        </Button>
-      )}
-      {selectedItems.length === 1 && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
-          Update
-        </Button>
-      )}
+
+      {/* Floating button container */}
+      <Box
+        sx={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          bgcolor: 'background.paper',
+          boxShadow: 3,
+          p: 2,
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 1,
+          zIndex: 1000,
+        }}
+      >
+        <Button variant="contained" color="primary" onClick={() => handleAction(handleSell)}>Sell</Button>
+        <Button variant="contained" color="secondary" onClick={() => handleAction(handleTrash)}>Trash</Button>
+        <Button variant="contained" color="primary" onClick={() => handleAction(handleKeepSelf)}>Keep Self</Button>
+        <Button variant="contained" color="primary" onClick={() => handleAction(handleKeepParty)}>Keep Party</Button>
+        <Button variant="contained" color="primary" onClick={handleAppraise}>Appraise</Button>
+        {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
+          <Button variant="contained" color="primary" onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
+            Split Stack
+          </Button>
+        )}
+        {selectedItems.length === 1 && (
+          <Button variant="contained" color="primary" onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
+            Update
+          </Button>
+        )}
+      </Box>
 
       <CustomSplitStackDialog
         open={openSplitDialog}
@@ -200,7 +209,7 @@ useEffect(() => {
         onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
         updatedEntry={updatedEntry}
         onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems)}
+        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog)}
       />
     </Container>
   );
