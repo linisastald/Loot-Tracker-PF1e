@@ -10,32 +10,23 @@ exports.getConsumables = async (req, res) => {
       WHERE i.name ILIKE '%wand of%' AND l.status = 'Kept Party'
     `;
 
-    const potionsQuery = `
-      SELECT l.id, SUM(l.quantity) as quantity, l.name
+    const potionsScrollsQuery = `
+      SELECT i.id as itemid, SUM(l.quantity) as quantity, i.name, 
+             CASE WHEN i.name ILIKE '%potion of%' THEN 'potion' ELSE 'scroll' END as type
       FROM loot l
       JOIN item i ON l.itemid = i.id
-      WHERE i.name ILIKE '%potion of%' AND l.status = 'Kept Party'
-      GROUP BY l.id, l.name
+      WHERE (i.name ILIKE '%potion of%' OR i.name ILIKE '%scroll of%') AND l.status = 'Kept Party'
+      GROUP BY i.id, i.name
     `;
 
-    const scrollsQuery = `
-      SELECT l.id, SUM(l.quantity) as quantity, l.name
-      FROM loot l
-      JOIN item i ON l.itemid = i.id
-      WHERE i.name ILIKE '%scroll of%' AND l.status = 'Kept Party'
-      GROUP BY l.id, l.name
-    `;
-
-    const [wandsResult, potionsResult, scrollsResult] = await Promise.all([
+    const [wandsResult, potionsScrollsResult] = await Promise.all([
       pool.query(wandsQuery),
-      pool.query(potionsQuery),
-      pool.query(scrollsQuery)
+      pool.query(potionsScrollsQuery)
     ]);
 
     res.json({
       wands: wandsResult.rows,
-      potions: potionsResult.rows,
-      scrolls: scrollsResult.rows
+      potionsScrolls: potionsScrollsResult.rows
     });
   } catch (error) {
     console.error('Error fetching consumables:', error);
@@ -44,11 +35,11 @@ exports.getConsumables = async (req, res) => {
 };
 
 exports.useConsumable = async (req, res) => {
-  const { id, type } = req.body;
+  const { itemid, type } = req.body;
   const client = await pool.connect();
 
   try {
-    if (!id || !type) {
+    if (!itemid || !type) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -65,15 +56,23 @@ exports.useConsumable = async (req, res) => {
       `;
     } else {
       updateQuery = `
+        WITH updated_row AS (
+          SELECT id
+          FROM loot
+          WHERE itemid = $1 AND quantity > 0
+          ORDER BY id
+          LIMIT 1
+          FOR UPDATE
+        )
         UPDATE loot
         SET quantity = quantity - 1,
-            status = CASE WHEN quantity = 1 THEN 'Trashed' ELSE status END
-        WHERE id = $1 AND quantity > 0
+            status = CASE WHEN quantity - 1 = 0 THEN 'Trashed' ELSE status END
+        WHERE id = (SELECT id FROM updated_row)
         RETURNING *
       `;
     }
 
-    const result = await client.query(updateQuery, [id]);
+    const result = await client.query(updateQuery, [itemid]);
 
     if (result.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -84,7 +83,7 @@ exports.useConsumable = async (req, res) => {
       INSERT INTO consumableuse (lootid, who, time)
       VALUES ($1, $2, CURRENT_TIMESTAMP)
     `;
-    await client.query(insertUseQuery, [id, req.user.id]);
+    await client.query(insertUseQuery, [result.rows[0].id, req.user.id]);
 
     await client.query('COMMIT');
     res.json({ message: 'Consumable used successfully' });

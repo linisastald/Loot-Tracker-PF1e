@@ -37,22 +37,25 @@ const Consumables = () => {
 
   const fetchConsumables = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await api.get(`/consumables`);
       setWands(response.data.wands);
-      setPotions(response.data.potions);
-      setScrolls(response.data.scrolls);
-      console.log(response.data)
+
+      // Separate potions and scrolls based on their names
+      const potions = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('potion of'));
+      const scrolls = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('scroll of'));
+
+      setPotions(potions);
+      setScrolls(scrolls);
     } catch (error) {
       console.error('Error fetching consumables:', error);
     }
   };
 
-  const handleUseConsumable = async (id, type) => {
+  const handleUseConsumable = async (itemid, name) => {
     try {
-      console.log('Using consumable:', id, type);
-      const token = localStorage.getItem('token');
-      await api.post(`/consumables/use`, {id, type});
+      const type = name.toLowerCase().includes('potion of') ? 'potion' :
+                   name.toLowerCase().includes('scroll of') ? 'scroll' : 'wand';
+      await api.post(`/consumables/use`, { itemid, type });
       fetchConsumables();
     } catch (error) {
       console.error('Error using consumable:', error);
@@ -72,7 +75,6 @@ const Consumables = () => {
 
   const handleUpdateCharges = async () => {
     try {
-      const token = localStorage.getItem('token');
       await api.put(`/consumables/wandcharges`, {
         id: selectedWand.id,
         charges: parseInt(newCharges),
@@ -115,20 +117,20 @@ const Consumables = () => {
               </TableHead>
               <TableBody>
                 {wands.map((wand) => (
-                    <TableRow key={wand.id}>
-                      <TableCell>{wand.quantity}</TableCell>
-                      <TableCell>{wand.name}</TableCell>
-                      <TableCell>
-                        {wand.charges !== null ? wand.charges : (
-                            <Button onClick={() => handleOpenChargesDialog(wand)}>Enter Charges</Button>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button onClick={() => handleUseConsumable(wand.id, 'wand')} variant="contained" color="primary">
-                          Use
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                  <TableRow key={wand.id}>
+                    <TableCell>{wand.quantity}</TableCell>
+                    <TableCell>{wand.name}</TableCell>
+                    <TableCell>
+                      {wand.charges !== null ? wand.charges : (
+                        <Button onClick={() => handleOpenChargesDialog(wand)}>Enter Charges</Button>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Button onClick={() => handleUseConsumable(wand.id, wand.name)} variant="contained" color="primary">
+                        Use
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>
@@ -156,15 +158,15 @@ const Consumables = () => {
               </TableHead>
               <TableBody>
                 {potions.map((potion) => (
-                    <TableRow key={potion.id}>
-                      <TableCell>{potion.quantity}</TableCell>
-                      <TableCell>{potion.name}</TableCell>
-                      <TableCell>
-                        <Button onClick={() => handleUseConsumable(potion.id, 'potion')} variant="contained" color="primary">
-                          Use
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                  <TableRow key={potion.itemid}>
+                    <TableCell>{potion.quantity}</TableCell>
+                    <TableCell>{potion.name}</TableCell>
+                    <TableCell>
+                      <Button onClick={() => handleUseConsumable(potion.itemid, potion.name)} variant="contained" color="primary">
+                        Use
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>
@@ -192,15 +194,15 @@ const Consumables = () => {
               </TableHead>
               <TableBody>
                 {scrolls.map((scroll) => (
-                    <TableRow key={scroll.id}>
-                      <TableCell>{scroll.quantity}</TableCell>
-                      <TableCell>{scroll.name}</TableCell>
-                      <TableCell>
-                        <Button onClick={() => handleUseConsumable(scroll.id, 'scroll')} variant="contained" color="primary">
-                          Use
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                  <TableRow key={scroll.itemid}>
+                    <TableCell>{scroll.quantity}</TableCell>
+                    <TableCell>{scroll.name}</TableCell>
+                    <TableCell>
+                      <Button onClick={() => handleUseConsumable(scroll.itemid, scroll.name)} variant="contained" color="primary">
+                        Use
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>
