@@ -308,7 +308,7 @@ const handleSubmit = async (e) => {
               </Grid>
               {entry.type === 'item' ? (
                 <>
-                  <Grid item xs={12} sm={6}>
+                  <Grid item xs={12} sm={3}>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
                       <DatePicker
                         label="Session Date"
@@ -317,22 +317,6 @@ const handleSubmit = async (e) => {
                         renderInput={(params) => <TextField {...params} fullWidth size="small" />}
                       />
                     </LocalizationProvider>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <Tooltip title="Automatically analyze item to break out special abilities and item name">
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            name="parseItem"
-                            checked={entry.data.parseItem || false}
-                            onChange={(e) => handleEntryChange(index, e)}
-                            disabled={autocompletedItems[index]}
-                            size="small"
-                          />
-                        }
-                        label="Smart Item Detection"
-                      />
-                    </Tooltip>
                   </Grid>
                   <Grid item xs={6} sm={1}>
                     <TextField
@@ -346,7 +330,7 @@ const handleSubmit = async (e) => {
                       size="small"
                     />
                   </Grid>
-                  <Grid item xs={12} sm={shouldShowCharges(entry.data.name) ? 9 : 11}>
+                  <Grid item xs={12} sm={shouldShowCharges(entry.data.name) ? 6 : 8}>
                     <Autocomplete
                       freeSolo
                       options={itemNames}
@@ -447,6 +431,22 @@ const handleSubmit = async (e) => {
                         <MenuItem value="Colossal">Colossal</MenuItem>
                       </Select>
                     </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Tooltip title="Automatically analyze item to break out special abilities and item name">
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            name="parseItem"
+                            checked={entry.data.parseItem || false}
+                            onChange={(e) => handleEntryChange(index, e)}
+                            disabled={autocompletedItems[index]}
+                            size="small"
+                          />
+                        }
+                        label="Smart Item Detection"
+                      />
+                    </Tooltip>
                   </Grid>
                   <Grid item xs={12}>
                     <TextField
