@@ -13,6 +13,10 @@ import {
   TableRow,
   TextField,
   Box,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
@@ -135,6 +139,16 @@ const GolarionCalendar = () => {
     }
   };
 
+  const getMoonPhase = (date) => {
+    // This is a simplified moon phase calculation
+    const totalDays = date.year * 365 + date.month * 30 + date.day;
+    const phase = totalDays % 28;
+    if (phase < 7) return 'New Moon';
+    if (phase < 14) return 'First Quarter';
+    if (phase < 21) return 'Full Moon';
+    return 'Last Quarter';
+  };
+
   const renderCalendar = () => {
     const month = months[displayedDate.month];
     const firstDayOfMonth = new Date(displayedDate.year, displayedDate.month, 1).getDay();
@@ -222,6 +236,31 @@ const GolarionCalendar = () => {
         <Paper sx={{ p: 2, mt: 2 }}>
           <Typography variant="h6" gutterBottom>
             {`${selectedDate.day} ${months[selectedDate.month].name} ${selectedDate.year}`}
+          </Typography>
+
+          <List>
+            <ListItem>
+              <ListItemText primary="Moon Phase" secondary={getMoonPhase(selectedDate)} />
+            </ListItem>
+            <Divider component="li" />
+            <ListItem>
+              <ListItemText primary="Weather" secondary="Weather information not available yet" />
+            </ListItem>
+            <Divider component="li" />
+            <ListItem>
+              <ListItemText primary="Holidays" secondary="Holiday information not available yet" />
+            </ListItem>
+            <Divider component="li" />
+            <ListItem>
+              <ListItemText
+                primary="Previous Notes"
+                secondary={notes[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`] || 'No previous notes'}
+              />
+            </ListItem>
+          </List>
+
+          <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+            Add/Edit Note
           </Typography>
           <TextField
             label="Notes"
