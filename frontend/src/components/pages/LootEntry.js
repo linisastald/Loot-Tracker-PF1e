@@ -12,7 +12,11 @@ import {
   MenuItem,
   Select,
   InputLabel,
-  Autocomplete, FormControlLabel, Checkbox, Tooltip
+  Autocomplete,
+  FormControlLabel,
+  Checkbox,
+  Tooltip,
+  Box
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -257,16 +261,34 @@ const handleSubmit = async (e) => {
 };
 
   return (
-    <Container maxWidth={false} component="main">
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Loot Entry</Typography>
-        <Button variant="contained" color="primary" onClick={() => handleAddEntry('item')} sx={{ mr: 2 }}>
-          Add Item Entry
-        </Button>
-        <Button variant="contained" color="secondary" onClick={() => handleAddEntry('gold')}>
-          Add Gold Entry
-        </Button>
-      </Paper>
+    <Container maxWidth={false} component="main" sx={{ pt: '100px' }}> {/* Add top padding to prevent content from being hidden */}
+      <Box
+        sx={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1100,
+          backgroundColor: 'background.paper',
+          boxShadow: 1,
+        }}
+      >
+        <Paper sx={{ p: 2, mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6">Loot Entry</Typography>
+          <Box>
+            <Button variant="contained" color="primary" onClick={() => handleAddEntry('item')} sx={{ mr: 2 }}>
+              Add Item Entry
+            </Button>
+            <Button variant="contained" color="secondary" onClick={() => handleAddEntry('gold')} sx={{ mr: 2 }}>
+              Add Gold Entry
+            </Button>
+            <Button type="submit" variant="contained" color="primary" onClick={handleSubmit}>
+              Submit
+            </Button>
+          </Box>
+        </Paper>
+      </Box>
+
       {error && <Typography color="error" sx={{ mt: 2, mb: 2 }}>{error}</Typography>}
       {success && <Typography color="success" sx={{ mt: 2, mb: 2 }}>{success}</Typography>}
 
@@ -523,9 +545,6 @@ const handleSubmit = async (e) => {
             </Grid>
           </Paper>
         ))}
-        <Button type="submit" variant="contained" color="primary" sx={{ mt: 2 }}>
-          Submit
-        </Button>
       </form>
     </Container>
   );
