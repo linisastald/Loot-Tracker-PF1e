@@ -1,34 +1,63 @@
 import React, { useState, useEffect } from 'react';
-import api from '../../utils/api';
-import { 
-  Container, Paper, Typography, Grid, Box, Button, 
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField
+import {
+  Container,
+  Paper,
+  Typography,
+  Grid,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material';
+import { styled } from '@mui/material/styles';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL;
+
+const months = [
+  { name: 'Abadius', days: 31 },
+  { name: 'Calistril', days: 28 },
+  { name: 'Pharast', days: 31 },
+  { name: 'Gozran', days: 30 },
+  { name: 'Desnus', days: 31 },
+  { name: 'Sarenith', days: 30 },
+  { name: 'Erastus', days: 31 },
+  { name: 'Arodus', days: 31 },
+  { name: 'Rova', days: 30 },
+  { name: 'Lamashan', days: 31 },
+  { name: 'Neth', days: 30 },
+  { name: 'Kuthona', days: 31 }
+];
+
+const daysOfWeek = ['Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'];
+
+const StyledDay = styled(Paper)(({ theme, isCurrentDay, hasNote }) => ({
+  height: '80px',
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'space-between',
+  padding: theme.spacing(1),
+  cursor: 'pointer',
+  backgroundColor: isCurrentDay ? theme.palette.primary.light : (hasNote ? theme.palette.secondary.light : theme.palette.background.paper),
+  '&:hover': {
+    backgroundColor: theme.palette.action.hover,
+  },
+}));
 
 const GolarionCalendar = () => {
-  const [currentDate, setCurrentDate] = useState({ year: 4720, month: 0, day: 1 });
-  const [notes, setNotes] = useState({});
-  const [openNoteDialog, setOpenNoteDialog] = useState(false);
+  const [currentDate, setCurrentDate] = useState({ year: 4722, month: 0, day: 1 });
   const [selectedDate, setSelectedDate] = useState(null);
+  const [notes, setNotes] = useState({});
   const [noteText, setNoteText] = useState('');
-
-  const months = [
-    { name: 'Abadius', commonName: 'Prima', days: 31, deity: 'Abadar' },
-    { name: 'Calistril', commonName: 'Snappe', days: 28, deity: 'Calistria' },
-    { name: 'Pharast', commonName: 'Anu', days: 31, deity: 'Pharasma' },
-    { name: 'Gozran', commonName: 'Rusanne', days: 30, deity: 'Gozreh' },
-    { name: 'Desnus', commonName: 'Farlong', days: 31, deity: 'Desna' },
-    { name: 'Sarenith', commonName: 'Sola', days: 30, deity: 'Sarenrae' },
-    { name: 'Erastus', commonName: 'Fletch', days: 31, deity: 'Erastil' },
-    { name: 'Arodus', commonName: 'Hazen', days: 31, deity: 'Aroden' },
-    { name: 'Rova', commonName: 'Nuvar', days: 30, deity: 'Rovagug' },
-    { name: 'Lamashan', commonName: 'Shaldo', days: 31, deity: 'Lamashtu' },
-    { name: 'Neth', commonName: 'Joya', days: 30, deity: 'Nethys' },
-    { name: 'Kuthona', commonName: 'Kai', days: 31, deity: 'Zon-Kuthon' }
-  ];
-
-  const daysOfWeek = ['Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'];
+  const [openNoteDialog, setOpenNoteDialog] = useState(false);
 
   useEffect(() => {
     fetchCurrentDate();
@@ -37,7 +66,7 @@ const GolarionCalendar = () => {
 
   const fetchCurrentDate = async () => {
     try {
-      const response = await api.get(`/calendar/current-date`);
+      const response = await axios.get(`${API_URL}/calendar/current-date`);
       setCurrentDate(response.data);
     } catch (error) {
       console.error('Error fetching current date:', error);
@@ -46,7 +75,7 @@ const GolarionCalendar = () => {
 
   const fetchNotes = async () => {
     try {
-      const response = await api.get(`/calendar/notes`);
+      const response = await axios.get(`${API_URL}/calendar/notes`);
       setNotes(response.data);
     } catch (error) {
       console.error('Error fetching notes:', error);
@@ -55,28 +84,39 @@ const GolarionCalendar = () => {
 
   const handleNextDay = async () => {
     try {
-      const response = await api.post(`/calendar/next-day`);
+      const response = await axios.post(`${API_URL}/calendar/next-day`);
       setCurrentDate(response.data);
     } catch (error) {
       console.error('Error advancing day:', error);
     }
   };
 
-  const handleOpenNoteDialog = (date) => {
-    setSelectedDate(date);
-    setNoteText(notes[`${date.year}-${date.month}-${date.day}`] || '');
-    setOpenNoteDialog(true);
+  const handlePrevMonth = () => {
+    setCurrentDate(prev => ({
+      ...prev,
+      month: prev.month > 0 ? prev.month - 1 : 11,
+      year: prev.month > 0 ? prev.year : prev.year - 1
+    }));
   };
 
-  const handleCloseNoteDialog = () => {
-    setOpenNoteDialog(false);
-    setSelectedDate(null);
-    setNoteText('');
+  const handleNextMonth = () => {
+    setCurrentDate(prev => ({
+      ...prev,
+      month: prev.month < 11 ? prev.month + 1 : 0,
+      year: prev.month < 11 ? prev.year : prev.year + 1
+    }));
+  };
+
+  const handleDayClick = (day) => {
+    const clickedDate = { ...currentDate, day };
+    setSelectedDate(clickedDate);
+    setNoteText(notes[`${clickedDate.year}-${clickedDate.month}-${clickedDate.day}`] || '');
+    setOpenNoteDialog(true);
   };
 
   const handleSaveNote = async () => {
     try {
-      await api.post(`/calendar/notes`, {
+      await axios.post(`${API_URL}/calendar/notes`, {
         date: selectedDate,
         note: noteText
       });
@@ -84,91 +124,84 @@ const GolarionCalendar = () => {
         ...notes,
         [`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`]: noteText
       });
-      handleCloseNoteDialog();
+      setOpenNoteDialog(false);
     } catch (error) {
       console.error('Error saving note:', error);
     }
   };
 
-  const getDayOfWeek = (date) => {
-    const totalDays = date.year * 365 + 
-                      months.slice(0, date.month).reduce((sum, month) => sum + month.days, 0) + 
-                      date.day;
-    return daysOfWeek[(totalDays - 1) % 7];
-  };
+  const renderCalendar = () => {
+    const month = months[currentDate.month];
+    const firstDayOfMonth = new Date(currentDate.year, currentDate.month, 1).getDay();
+    const weeks = Math.ceil((month.days + firstDayOfMonth) / 7);
 
-  const getMoonPhase = (date) => {
-    const firstFullMoonDay = 26;
-    const lunarCycle = 29.5;
-    const totalDays = (date.year - 1) * 365 + 
-                      months.slice(0, date.month).reduce((sum, month) => sum + month.days, 0) + 
-                      date.day;
-    const daysSinceFirstFullMoon = (totalDays - firstFullMoonDay) % lunarCycle;
-    
-    if (daysSinceFirstFullMoon < 3.7) return 'Full Moon';
-    if (daysSinceFirstFullMoon < 11.1) return 'Waning Gibbous';
-    if (daysSinceFirstFullMoon < 14.8) return 'Last Quarter';
-    if (daysSinceFirstFullMoon < 22.2) return 'Waning Crescent';
-    if (daysSinceFirstFullMoon < 25.9) return 'New Moon';
-    if (daysSinceFirstFullMoon < 29.5) return 'Waxing Crescent';
-    return 'First Quarter';
+    return (
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              {daysOfWeek.map(day => (
+                <TableCell key={day} align="center">{day}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {[...Array(weeks)].map((_, weekIndex) => (
+              <TableRow key={weekIndex}>
+                {[...Array(7)].map((_, dayIndex) => {
+                  const day = weekIndex * 7 + dayIndex - firstDayOfMonth + 1;
+                  const isValidDay = day > 0 && day <= month.days;
+                  const dateKey = `${currentDate.year}-${currentDate.month}-${day}`;
+                  const isCurrentDay = currentDate.day === day;
+                  const hasNote = !!notes[dateKey];
+
+                  return (
+                    <TableCell key={dayIndex} padding="none">
+                      {isValidDay && (
+                        <StyledDay
+                          onClick={() => handleDayClick(day)}
+                          isCurrentDay={isCurrentDay}
+                          hasNote={hasNote}
+                        >
+                          <Typography variant="body2">{day}</Typography>
+                          {hasNote && <Typography variant="caption">Note</Typography>}
+                        </StyledDay>
+                      )}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    );
   };
 
   return (
-    <Container maxWidth={false}>
+    <Container maxWidth="lg">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h4" gutterBottom>Golarion Calendar</Typography>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h5">
-            {`${currentDate.day} ${months[currentDate.month].name} ${currentDate.year} (${getDayOfWeek(currentDate)})`}
-          </Typography>
-          <Button variant="contained" onClick={handleNextDay}>Next Day</Button>
-        </Box>
-        <Typography variant="h6">Moon Phase: {getMoonPhase(currentDate)}</Typography>
-        <Button variant="outlined" onClick={() => handleOpenNoteDialog(currentDate)} sx={{ mt: 2 }}>
-          Add/Edit Note for Today
-        </Button>
+        <Grid container justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+          <Grid item>
+            <Button onClick={handlePrevMonth}>&lt; Prev</Button>
+          </Grid>
+          <Grid item>
+            <Typography variant="h5">
+              {months[currentDate.month].name} {currentDate.year}
+            </Typography>
+          </Grid>
+          <Grid item>
+            <Button onClick={handleNextMonth}>Next &gt;</Button>
+          </Grid>
+        </Grid>
+        {renderCalendar()}
+        <Button variant="contained" onClick={handleNextDay} sx={{ mt: 2 }}>Next Day</Button>
       </Paper>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6" gutterBottom>Month Overview</Typography>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Day</TableCell>
-                <TableCell>Day of Week</TableCell>
-                <TableCell>Moon Phase</TableCell>
-                <TableCell>Notes</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {Array.from({ length: months[currentDate.month].days }, (_, i) => i + 1).map((day) => {
-                const date = { ...currentDate, day };
-                const dateKey = `${date.year}-${date.month}-${date.day}`;
-                return (
-                  <TableRow key={day} selected={day === currentDate.day}>
-                    <TableCell>{day}</TableCell>
-                    <TableCell>{getDayOfWeek(date)}</TableCell>
-                    <TableCell>{getMoonPhase(date)}</TableCell>
-                    <TableCell>{notes[dateKey] ? notes[dateKey].substring(0, 20) + '...' : ''}</TableCell>
-                    <TableCell>
-                      <Button onClick={() => handleOpenNoteDialog(date)}>
-                        {notes[dateKey] ? 'Edit Note' : 'Add Note'}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
-
-      <Dialog open={openNoteDialog} onClose={handleCloseNoteDialog}>
+      <Dialog open={openNoteDialog} onClose={() => setOpenNoteDialog(false)}>
         <DialogTitle>
-          {selectedDate ? `Note for ${selectedDate.day} ${months[selectedDate.month].name} ${selectedDate.year}` : ''}
+          {selectedDate && `Note for ${selectedDate.day} ${months[selectedDate.month].name} ${selectedDate.year}`}
         </DialogTitle>
         <DialogContent>
           <TextField
@@ -184,7 +217,7 @@ const GolarionCalendar = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseNoteDialog}>Cancel</Button>
+          <Button onClick={() => setOpenNoteDialog(false)}>Cancel</Button>
           <Button onClick={handleSaveNote}>Save</Button>
         </DialogActions>
       </Dialog>
