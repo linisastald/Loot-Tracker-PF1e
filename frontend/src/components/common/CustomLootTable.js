@@ -177,7 +177,7 @@ const CustomLootTable = ({
     });
     const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && (!item.size || item.size === ''));
     const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) ||
-      whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
+      whoHasFilters.some((filter) => filter.checked && item.character_names && item.character_names.includes(filter.name));
     const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
 
     return passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
