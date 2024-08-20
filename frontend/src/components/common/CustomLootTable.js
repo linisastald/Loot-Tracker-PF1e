@@ -55,10 +55,10 @@ const CustomLootTable = ({
     whoHas: true,
   },
 }) => {
-  const [showPendingSales, setShowPendingSales] = useState(true); // New filter state
-  const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false); // New filter state
-  const [anchorElType, setAnchorElType] = useState(null); // State for the type filter menu
-  const [anchorElSize, setAnchorElSize] = useState(null); // State for the size filter menu
+  const [showPendingSales, setShowPendingSales] = useState(true);
+  const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false);
+  const [anchorElType, setAnchorElType] = useState(null);
+  const [anchorElSize, setAnchorElSize] = useState(null);
   const [typeFilters, setTypeFilters] = useState({
     Weapon: true,
     Armor: true,
@@ -80,12 +80,11 @@ const CustomLootTable = ({
     Unknown: true,
   });
   const [whoHasFilters, setWhoHasFilters] = useState([]);
-  const [anchorElWhoHas, setAnchorElWhoHas] = useState(null); // State for the who has filter menu
+  const [anchorElWhoHas, setAnchorElWhoHas] = useState(null);
 
   useEffect(() => {
     const fetchWhoHasFilters = async () => {
       try {
-        const token = localStorage.getItem('token');
         const response = await api.get(`/user/active-characters`);
         const characters = response.data;
         const filters = characters.map((character) => ({
@@ -166,37 +165,22 @@ const CustomLootTable = ({
   };
 
   const filteredLoot = loot.filter((item) => {
+    const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
+    const passesTypeFilter = Object.keys(typeFilters).some(type => {
+      const itemType = (item.type || '').toLowerCase();
+      const filterType = type.toLowerCase();
+      return (
+        (filterType === 'other' && (!itemType || itemType === '') && typeFilters[type]) ||
+        (itemType === filterType && typeFilters[type])
+      );
+    });
+    const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && (!item.size || item.size === ''));
+    const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) ||
+      whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
+    const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
 
-  const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
-  const passesTypeFilter = Object.keys(typeFilters).some(type => {
-    const itemType = (item.type || '').toLowerCase();
-    const filterType = type.toLowerCase();
-    return (
-      (filterType === 'other' && (!itemType || itemType === '') && typeFilters[type]) ||
-      (itemType === filterType && typeFilters[type])
-    );
-  });
-  const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && (!item.size || item.size === ''));
-  const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) ||
-    whoHasFilters.some((filter) => filter.checked && item.character_name === filter.name);
-  const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
-
-
-  const passes = passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
-                 passesWhoHasFilter && passesPendingSaleFilter;
-
-
-  return passes;
-});
-  // Add sorting logic
-  const sortedLoot = [...filteredLoot].sort((a, b) => {
-    if (a[sortConfig.key] < b[sortConfig.key]) {
-      return sortConfig.direction === 'asc' ? -1 : 1;
-    }
-    if (a[sortConfig.key] > b[sortConfig.key]) {
-      return sortConfig.direction === 'asc' ? 1 : -1;
-    }
-    return 0;
+    return passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
+           passesWhoHasFilter && passesPendingSaleFilter;
   });
 
   const handleSort = (key) => {
@@ -207,8 +191,37 @@ const CustomLootTable = ({
     setSortConfig({ key, direction });
   };
 
-  const mainCellStyle = { padding: '16px' }; // Default padding for main rows
-  const subCellStyle = { padding: '4px' }; // Smaller padding for sub-item rows
+  const sortedLoot = [...filteredLoot].sort((a, b) => {
+    if (a[sortConfig.key] === b[sortConfig.key]) {
+      return 0;
+    }
+
+    switch (sortConfig.key) {
+      case 'session_date':
+      case 'lastupdate':
+        return sortConfig.direction === 'asc'
+          ? new Date(a[sortConfig.key]) - new Date(b[sortConfig.key])
+          : new Date(b[sortConfig.key]) - new Date(a[sortConfig.key]);
+      case 'quantity':
+      case 'believedvalue':
+      case 'average_appraisal':
+        return sortConfig.direction === 'asc'
+          ? Number(a[sortConfig.key]) - Number(b[sortConfig.key])
+          : Number(b[sortConfig.key]) - Number(a[sortConfig.key]);
+      case 'unidentified':
+      case 'status':
+        return sortConfig.direction === 'asc'
+          ? (a[sortConfig.key] === b[sortConfig.key] ? 0 : a[sortConfig.key] ? -1 : 1)
+          : (a[sortConfig.key] === b[sortConfig.key] ? 0 : b[sortConfig.key] ? -1 : 1);
+      default:
+        return sortConfig.direction === 'asc'
+          ? String(a[sortConfig.key]).localeCompare(String(b[sortConfig.key]))
+          : String(b[sortConfig.key]).localeCompare(String(a[sortConfig.key]));
+    }
+  });
+
+  const mainCellStyle = { padding: '16px' };
+  const subCellStyle = { padding: '4px' };
 
   const formatAverageAppraisal = (value) => {
     if (value === null || value === undefined) return '';
@@ -375,14 +388,44 @@ const CustomLootTable = ({
                   </TableSortLabel>
                 </TableCell>
               )}
-              {showColumns.whoHasIt && <TableCell style={mainCellStyle}>Who Has It?</TableCell>}
-              {showColumns.believedValue && <TableCell style={mainCellStyle}>Believed Value</TableCell>}
-              {showColumns.averageAppraisal && <TableCell style={mainCellStyle}>Average Appraisal</TableCell>}
+              {showColumns.whoHasIt && (
+                <TableCell style={mainCellStyle}>
+                  <TableSortLabel
+                    active={sortConfig.key === 'character_names'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('character_names')}
+                  >
+                    Who Has It?
+                  </TableSortLabel>
+                </TableCell>
+              )}
+              {showColumns.believedValue && (
+                <TableCell style={mainCellStyle}>
+                  <TableSortLabel
+                    active={sortConfig.key === 'believedvalue'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('believedvalue')}
+                  >
+                    Believed Value
+                  </TableSortLabel>
+                </TableCell>
+              )}
+              {showColumns.averageAppraisal && (
+                <TableCell style={mainCellStyle}>
+                  <TableSortLabel
+                    active={sortConfig.key === 'average_appraisal'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('average_appraisal')}
+                  >
+                    Average Appraisal
+                  </TableSortLabel>
+                </TableCell>
+              )}
               {showColumns.pendingSale && (
                 <TableCell style={mainCellStyle}>
                   <TableSortLabel
                     active={sortConfig.key === 'status'}
-                    direction={sortConfig.direction}
+                  direction={sortConfig.direction}
                     onClick={() => handleSort('status')}
                   >
                     Pending Sale
@@ -400,7 +443,17 @@ const CustomLootTable = ({
                   </TableSortLabel>
                 </TableCell>
               )}
-              {showColumns.lastUpdate && <TableCell style={mainCellStyle}>Last Update</TableCell>}
+              {showColumns.lastUpdate && (
+                <TableCell style={mainCellStyle}>
+                  <TableSortLabel
+                    active={sortConfig.key === 'lastupdate'}
+                    direction={sortConfig.direction}
+                    onClick={() => handleSort('lastupdate')}
+                  >
+                    Last Update
+                  </TableSortLabel>
+                </TableCell>
+              )}
             </TableRow>
           </TableHead>
           <TableBody>
