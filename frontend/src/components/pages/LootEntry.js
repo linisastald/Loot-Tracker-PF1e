@@ -308,7 +308,7 @@ const handleSubmit = async (e) => {
               </Grid>
               {entry.type === 'item' ? (
                 <>
-                  <Grid item xs={12} sm={3}>
+                  <Grid item xs={6} sm={1}>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
                       <DatePicker
                         label="Session Date"
@@ -330,7 +330,7 @@ const handleSubmit = async (e) => {
                       size="small"
                     />
                   </Grid>
-                  <Grid item xs={12} sm={shouldShowCharges(entry.data.name) ? 6 : 8}>
+                  <Grid item xs={12} sm={shouldShowCharges(entry.data.name) ? 8 : 10}>
                     <Autocomplete
                       freeSolo
                       options={itemNames}
