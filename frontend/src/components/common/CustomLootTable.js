@@ -28,7 +28,7 @@ import api from '../../utils/api';
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   backgroundColor: theme.palette.action.hover,
   '& .MuiTableCell-root': {
-    padding: '2px', // Adjust padding to make the rows thinner
+    padding: '0px', // Adjust padding to make the rows thinner
   },
 }));
 
