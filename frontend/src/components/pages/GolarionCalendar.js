@@ -15,9 +15,7 @@ import {
   Box,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL;
+import api from '../../utils/api';
 
 const months = [
   { name: 'Abadius', days: 31 },
@@ -66,7 +64,7 @@ const GolarionCalendar = () => {
 
   const fetchCurrentDate = async () => {
     try {
-      const response = await axios.get(`${API_URL}/calendar/current-date`);
+      const response = await api.get(`/calendar/current-date`);
       setCurrentDate(response.data);
       setDisplayedDate({ year: response.data.year, month: response.data.month });
       setSelectedDate(response.data);
@@ -77,7 +75,7 @@ const GolarionCalendar = () => {
 
   const fetchNotes = async () => {
     try {
-      const response = await axios.get(`${API_URL}/calendar/notes`);
+      const response = await api.get(`/calendar/notes`);
       setNotes(response.data);
     } catch (error) {
       console.error('Error fetching notes:', error);
@@ -86,7 +84,7 @@ const GolarionCalendar = () => {
 
   const handleNextDay = async () => {
     try {
-      const response = await axios.post(`${API_URL}/calendar/next-day`);
+      const response = await api.post(`/calendar/next-day`);
       setCurrentDate(response.data);
       setDisplayedDate({ year: response.data.year, month: response.data.month });
       setSelectedDate(response.data);
@@ -124,7 +122,7 @@ const GolarionCalendar = () => {
     if (!selectedDate) return;
 
     try {
-      await axios.post(`${API_URL}/calendar/notes`, {
+      await api.post(`/calendar/notes`, {
         date: selectedDate,
         note: noteText
       });
