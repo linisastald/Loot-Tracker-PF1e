@@ -301,6 +301,7 @@ const handleSubmit = async (e) => {
                   variant="outlined"
                   color="error"
                   onClick={() => handleRemoveEntry(index)}
+                  size="small"
                 >
                   Remove Entry
                 </Button>
@@ -313,7 +314,7 @@ const handleSubmit = async (e) => {
                         label="Session Date"
                         value={entry.data.sessionDate}
                         onChange={(date) => handleDateChange(index, 'sessionDate', date)}
-                        renderInput={(params) => <TextField {...params} fullWidth />}
+                        renderInput={(params) => <TextField {...params} fullWidth size="small" />}
                       />
                     </LocalizationProvider>
                   </Grid>
@@ -326,13 +327,14 @@ const handleSubmit = async (e) => {
                             checked={entry.data.parseItem || false}
                             onChange={(e) => handleEntryChange(index, e)}
                             disabled={autocompletedItems[index]}
+                            size="small"
                           />
                         }
                         label="Smart Item Detection"
                       />
                     </Tooltip>
                   </Grid>
-                  <Grid item xs={6} sm={2}>
+                  <Grid item xs={6} sm={1}>
                     <TextField
                       label="Quantity"
                       type="number"
@@ -341,9 +343,10 @@ const handleSubmit = async (e) => {
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
                       required
+                      size="small"
                     />
                   </Grid>
-                  <Grid item xs={12} sm={8}>
+                  <Grid item xs={12} sm={9}>
                     <Autocomplete
                       freeSolo
                       options={itemNames}
@@ -359,6 +362,7 @@ const handleSubmit = async (e) => {
                           onChange={(e) => handleEntryChange(index, e)}
                           fullWidth
                           required
+                          size="small"
                         />
                       )}
                     />
@@ -373,10 +377,11 @@ const handleSubmit = async (e) => {
                         onChange={(e) => handleEntryChange(index, e)}
                         fullWidth
                         inputProps={{min: 0, step: 1}}
+                        size="small"
                       />
                     </Grid>
                   )}
-                  <Grid item xs={6} sm={2.4}>
+                  <Grid item xs={6} sm={2}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Type</InputLabel>
                       <Select
@@ -396,7 +401,7 @@ const handleSubmit = async (e) => {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={6} sm={2.4}>
+                  <Grid item xs={6} sm={2}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Magical?</InputLabel>
                       <Select
@@ -410,7 +415,7 @@ const handleSubmit = async (e) => {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={6} sm={2.4}>
+                  <Grid item xs={6} sm={2}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Masterwork</InputLabel>
                       <Select
@@ -423,7 +428,7 @@ const handleSubmit = async (e) => {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={6} sm={2.4}>
+                  <Grid item xs={6} sm={2}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Size</InputLabel>
                       <Select
@@ -451,13 +456,25 @@ const handleSubmit = async (e) => {
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
                       inputProps={{maxLength: 511}}
+                      size="small"
                     />
                   </Grid>
                 </>
               ) : (
                 <>
+                  {/* Gold entry layout */}
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth>
+                    <LocalizationProvider dateAdapter={AdapterDateFns}>
+                      <DatePicker
+                        label="Session Date"
+                        value={entry.data.sessionDate}
+                        onChange={(date) => handleDateChange(index, 'sessionDate', date)}
+                        renderInput={(params) => <TextField {...params} fullWidth size="small" />}
+                      />
+                    </LocalizationProvider>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small">
                       <InputLabel>Type</InputLabel>
                       <Select
                         name="transactionType"
@@ -474,60 +491,64 @@ const handleSubmit = async (e) => {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} sm={3}>
+                  <Grid item xs={6} sm={3}>
                     <TextField
-                        label="Platinum"
-                        type="number"
-                        name="platinum"
-                        value={entry.data.platinum || ''}
-                        onChange={(e) => {
-                          const value = Math.max(0, parseInt(e.target.value) || 0);
-                          handleEntryChange(index, { target: { name: 'platinum', value } });
-                        }}
-                        fullWidth
-                        inputProps={{ min: 0, step: 1 }}
+                      label="Platinum"
+                      type="number"
+                      name="platinum"
+                      value={entry.data.platinum || ''}
+                      onChange={(e) => {
+                        const value = Math.max(0, parseInt(e.target.value) || 0);
+                        handleEntryChange(index, { target: { name: 'platinum', value } });
+                      }}
+                      fullWidth
+                      inputProps={{ min: 0, step: 1 }}
+                      size="small"
                     />
                   </Grid>
-                  <Grid item xs={12} sm={3}>
+                  <Grid item xs={6} sm={3}>
                     <TextField
                       label="Gold"
                       type="number"
                       name="gold"
                       value={entry.data.gold || ''}
                       onChange={(e) => {
-                          const value = Math.max(0, parseInt(e.target.value) || 0);
-                          handleEntryChange(index, { target: { name: 'gold', value } });
-                        }}
+                        const value = Math.max(0, parseInt(e.target.value) || 0);
+                        handleEntryChange(index, { target: { name: 'gold', value } });
+                      }}
                       fullWidth
                       inputProps={{ min: 0 }}
+                      size="small"
                     />
                   </Grid>
-                  <Grid item xs={12} sm={3}>
+                  <Grid item xs={6} sm={3}>
                     <TextField
                       label="Silver"
                       type="number"
                       name="silver"
                       value={entry.data.silver || ''}
                       onChange={(e) => {
-                          const value = Math.max(0, parseInt(e.target.value) || 0);
-                          handleEntryChange(index, { target: { name: 'silver', value } });
-                        }}
+                        const value = Math.max(0, parseInt(e.target.value) || 0);
+                        handleEntryChange(index, { target: { name: 'silver', value } });
+                      }}
                       fullWidth
                       inputProps={{ min: 0 }}
+                      size="small"
                     />
                   </Grid>
-                  <Grid item xs={12} sm={3}>
+                  <Grid item xs={6} sm={3}>
                     <TextField
                       label="Copper"
                       type="number"
                       name="copper"
                       value={entry.data.copper || ''}
                       onChange={(e) => {
-                          const value = Math.max(0, parseInt(e.target.value) || 0);
-                          handleEntryChange(index, { target: { name: 'copper', value } });
-                        }}
+                        const value = Math.max(0, parseInt(e.target.value) || 0);
+                        handleEntryChange(index, { target: { name: 'copper', value } });
+                      }}
                       fullWidth
                       inputProps={{ min: 0 }}
+                      size="small"
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -538,6 +559,7 @@ const handleSubmit = async (e) => {
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
                       inputProps={{ maxLength: 120 }}
+                      size="small"
                     />
                   </Grid>
                 </>
