@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import {
-  Container,
-  Paper,
-  Typography,
-  Button,
+    Container,
+    Paper,
+    Typography,
+    Button, Box,
 } from '@mui/material';
 import CustomLootTable from '../common/CustomLootTable';
 import CustomSplitStackDialog from '../common/dialogs/CustomSplitStackDialog';
@@ -123,25 +123,36 @@ const KeptCharacter = () => {
         filters={filters}
         setFilters={setFilters} // Ensure filters can be updated
       />
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleSell)}>
-        Sell
-      </Button>
-      <Button variant="contained" color="secondary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleTrash)}>
-        Trash
-      </Button>
-      <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleAction(handleKeepParty)}>
-        Keep Party
-      </Button>
-      {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
-          Split Stack
-        </Button>
-      )}
-      {selectedItems.length === 1 && (
-        <Button variant="contained" color="primary" sx={{ mt: 2, mr: 1 }} onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
-          Update
-        </Button>
-      )}
+      {/* Floating button container */}
+      <Box
+        sx={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          bgcolor: 'background.paper',
+          boxShadow: 3,
+          p: 2,
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 1,
+          zIndex: 1000,
+        }}
+      >
+        <Button variant="contained" color="primary" onClick={() => handleAction(handleSell)}>Sell</Button>
+        <Button variant="contained" color="secondary" onClick={() => handleAction(handleTrash)}>Trash</Button>
+        <Button variant="contained" color="primary" onClick={() => handleAction(handleKeepParty)}>Keep Party</Button>
+        {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
+          <Button variant="contained" color="primary" onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
+            Split Stack
+          </Button>
+        )}
+        {selectedItems.length === 1 && (
+          <Button variant="contained" color="primary" onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
+            Update
+          </Button>
+        )}
+      </Box>
 
       <CustomSplitStackDialog
         open={openSplitDialog}
