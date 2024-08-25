@@ -81,7 +81,8 @@ exports.findAll = async (activeCharacterId = null) => {
         l.status, 
         ${isDM ? 'NULL' : 'a.believedvalue'} AS believedvalue,
         (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal,
-        l.notes
+        l.notes,
+        l.lastupdate
       FROM 
         loot l
       ${isDM ? '' : 'LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1'}
