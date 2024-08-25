@@ -22,6 +22,7 @@ import {
   Select,
   InputLabel,
   FormControl,
+  TableSortLabel,
   Autocomplete
 } from '@mui/material';
 
@@ -36,6 +37,7 @@ const ItemManagement = () => {
   const [items, setItems] = useState([]);
   const [mods, setMods] = useState([]);
   const [activeCharacters, setActiveCharacters] = useState([]);
+  const [sortConfig, setSortConfig] = useState({key: null, direction: 'ascending'});
 
   useEffect(() => {
     fetchPendingItems();
@@ -55,6 +57,30 @@ const ItemManagement = () => {
       console.error('Error fetching pending items:', error);
       setPendingItems([]);
     }
+  };
+
+  const sortedItems = React.useMemo(() => {
+    let sortableItems = [...filteredItems];
+    if (sortConfig.key !== null) {
+      sortableItems.sort((a, b) => {
+        if (a[sortConfig.key] < b[sortConfig.key]) {
+          return sortConfig.direction === 'ascending' ? -1 : 1;
+        }
+        if (a[sortConfig.key] > b[sortConfig.key]) {
+          return sortConfig.direction === 'ascending' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [filteredItems, sortConfig]);
+
+  const requestSort = (key) => {
+    let direction = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({key, direction});
   };
 
   const fetchAllItems = async () => {
@@ -219,48 +245,66 @@ const handleItemUpdateSubmit = async () => {
 
         {/* Items Table */}
         {filteredItems.length > 0 && (
-          <TableContainer component={Paper} sx={{ mt: 2 }}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Session Date</TableCell>
-                  <TableCell>Quantity</TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Unidentified</TableCell>
-                  <TableCell>Masterwork</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Size</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Item ID</TableCell>
-                  <TableCell>Mod IDs</TableCell>
-                  <TableCell>Charges</TableCell>
-                  <TableCell>Value</TableCell>
-                  <TableCell>Who Has</TableCell>
-                  <TableCell>Notes</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredItems.map((item) => (
-                  <TableRow key={item.id} onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
-                    <TableCell>{formatDate(item.session_date)}</TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell>{item.unidentified ? '✓' : ''}</TableCell>
-                    <TableCell>{item.masterwork ? '✓' : ''}</TableCell>
-                    <TableCell>{item.type}</TableCell>
-                    <TableCell>{item.size}</TableCell>
-                    <TableCell>{item.status}</TableCell>
-                    <TableCell>{item.itemid}</TableCell>
-                    <TableCell>{item.modids?.join(', ')}</TableCell>
-                    <TableCell>{item.charges}</TableCell>
-                    <TableCell>{item.value}</TableCell>
-                    <TableCell>{item.whohas}</TableCell>
-                    <TableCell>{item.notes}</TableCell>
+            <TableContainer component={Paper} sx={{mt: 2}}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    {[
+                      {key: 'session_date', label: 'Session Date'},
+                      {key: 'quantity', label: 'Quantity'},
+                      {key: 'name', label: 'Name'},
+                      {key: 'unidentified', label: 'Unidentified'},
+                      {key: 'masterwork', label: 'Masterwork'},
+                      {key: 'type', label: 'Type'},
+                      {key: 'size', label: 'Size'},
+                      {key: 'status', label: 'Status'},
+                      {key: 'itemid', label: 'Item ID'},
+                      {key: 'modids', label: 'Mod IDs'},
+                      {key: 'charges', label: 'Charges'},
+                      {key: 'value', label: 'Value'},
+                      {key: 'whohas', label: 'Who Has'},
+                      {key: 'notes', label: 'Notes'},
+                    ].map((column) => (
+                        <TableCell
+                            key={column.key}
+                            sortDirection={sortConfig.key === column.key ? sortConfig.direction : false}
+                        >
+                          <TableSortLabel
+                              active={sortConfig.key === column.key}
+                              direction={sortConfig.key === column.key ? sortConfig.direction : 'asc'}
+                              onClick={() => requestSort(column.key)}
+                          >
+                            {column.label}
+                          </TableSortLabel>
+                        </TableCell>
+                    ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {sortedItems.map((item) => (
+                      <TableRow key={item.id} onClick={() => {
+                        setUpdatedItem(item);
+                        setUpdateDialogOpen(true);
+                      }}>
+                        <TableCell>{formatDate(item.session_date)}</TableCell>
+                        <TableCell>{item.quantity}</TableCell>
+                        <TableCell>{item.name}</TableCell>
+                        <TableCell>{item.unidentified ? '✓' : ''}</TableCell>
+                        <TableCell>{item.masterwork ? '✓' : ''}</TableCell>
+                        <TableCell>{item.type}</TableCell>
+                        <TableCell>{item.size}</TableCell>
+                        <TableCell>{item.status}</TableCell>
+                        <TableCell>{item.itemid}</TableCell>
+                        <TableCell>{item.modids?.join(', ')}</TableCell>
+                        <TableCell>{item.charges}</TableCell>
+                        <TableCell>{item.value}</TableCell>
+                        <TableCell>{item.whohas}</TableCell>
+                        <TableCell>{item.notes}</TableCell>
+                      </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
         )}
 
         {/* Pending Sale Summary */}
