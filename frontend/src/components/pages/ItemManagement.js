@@ -321,40 +321,60 @@ const handleItemUpdateSubmit = async () => {
         </Box>
 
         {/* Update Item Dialog */}
-        <Dialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)}>
+        <Dialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle>Update Item</DialogTitle>
           <DialogContent>
             <TextField
-              label="Session Date"
-              type="date"
-              fullWidth
-              value={updatedItem.session_date ? formatDate(updatedItem.session_date) : ''}
-              onChange={(e) => handleItemUpdateChange('session_date', e.target.value)}
-              margin="normal"
-              required
+                label="Session Date"
+                type="date"
+                fullWidth
+                value={updatedItem.session_date ? formatDate(updatedItem.session_date) : ''}
+                onChange={(e) => handleItemUpdateChange('session_date', e.target.value)}
+                margin="normal"
+                InputLabelProps={{
+                  shrink: true,
+                }}
             />
             <TextField
-              label="Quantity"
-              type="number"
-              fullWidth
-              value={updatedItem.quantity || ''}
-              onChange={(e) => handleItemUpdateChange('quantity', e.target.value)}
-              margin="normal"
-              required
+                label="Quantity"
+                type="number"
+                fullWidth
+                value={updatedItem.quantity || ''}
+                onChange={(e) => handleItemUpdateChange('quantity', e.target.value)}
+                margin="normal"
             />
             <TextField
-              label="Name"
-              fullWidth
-              value={updatedItem.name || ''}
-              onChange={(e) => handleItemUpdateChange('name', e.target.value)}
-              margin="normal"
-              required
+                label="Name"
+                fullWidth
+                value={updatedItem.name || ''}
+                onChange={(e) => handleItemUpdateChange('name', e.target.value)}
+                margin="normal"
             />
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Unidentified</InputLabel>
+              <Select
+                  value={updatedItem.unidentified === null ? '' : updatedItem.unidentified}
+                  onChange={(e) => handleItemUpdateChange('unidentified', e.target.value)}
+              >
+                <MenuItem value={true}>Yes</MenuItem>
+                <MenuItem value={false}>No</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Masterwork</InputLabel>
+              <Select
+                  value={updatedItem.masterwork === null ? '' : updatedItem.masterwork}
+                  onChange={(e) => handleItemUpdateChange('masterwork', e.target.value)}
+              >
+                <MenuItem value={true}>Yes</MenuItem>
+                <MenuItem value={false}>No</MenuItem>
+              </Select>
+            </FormControl>
             <FormControl fullWidth margin="normal">
               <InputLabel>Type</InputLabel>
               <Select
-                value={updatedItem.type || ''}
-                onChange={(e) => handleItemUpdateChange('type', e.target.value)}
+                  value={updatedItem.type || ''}
+                  onChange={(e) => handleItemUpdateChange('type', e.target.value)}
               >
                 <MenuItem value="weapon">Weapon</MenuItem>
                 <MenuItem value="armor">Armor</MenuItem>
@@ -367,8 +387,8 @@ const handleItemUpdateSubmit = async () => {
             <FormControl fullWidth margin="normal">
               <InputLabel>Size</InputLabel>
               <Select
-                value={updatedItem.size || ''}
-                onChange={(e) => handleItemUpdateChange('size', e.target.value)}
+                  value={updatedItem.size || ''}
+                  onChange={(e) => handleItemUpdateChange('size', e.target.value)}
               >
                 <MenuItem value="Fine">Fine</MenuItem>
                 <MenuItem value="Diminutive">Diminutive</MenuItem>
@@ -419,6 +439,22 @@ const handleItemUpdateSubmit = async () => {
                     </li>
                 )}
             />
+            <TextField
+                label="Charges"
+                type="number"
+                fullWidth
+                value={updatedItem.charges || ''}
+                onChange={(e) => handleItemUpdateChange('charges', e.target.value)}
+                margin="normal"
+            />
+            <TextField
+                label="Value"
+                type="number"
+                fullWidth
+                value={updatedItem.value || ''}
+                onChange={(e) => handleItemUpdateChange('value', e.target.value)}
+                margin="normal"
+            />
             <FormControl fullWidth margin="normal">
               <InputLabel>Who Has</InputLabel>
               <Select
@@ -431,27 +467,13 @@ const handleItemUpdateSubmit = async () => {
               </Select>
             </FormControl>
             <TextField
-              label="Charges"
-              type="number"
-              fullWidth
-              value={updatedItem.charges || ''}
-              onChange={(e) => handleItemUpdateChange('charges', e.target.value)}
-              margin="normal"
-            />
-            <TextField
-              label="Value"
-              type="number"
-              fullWidth
-              value={updatedItem.value || ''}
-              onChange={(e) => handleItemUpdateChange('value', e.target.value)}
-              margin="normal"
-            />
-            <TextField
-              label="Notes"
-              fullWidth
-              value={updatedItem.notes || ''}
-              onChange={(e) => handleItemUpdateChange('notes', e.target.value)}
-              margin="normal"
+                label="Notes"
+                fullWidth
+                value={updatedItem.notes || ''}
+                onChange={(e) => handleItemUpdateChange('notes', e.target.value)}
+                margin="normal"
+                multiline
+                rows={4}
             />
           </DialogContent>
           <DialogActions>
