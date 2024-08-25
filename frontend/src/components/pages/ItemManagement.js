@@ -302,8 +302,8 @@ const handleItemUpdateSubmit = async () => {
                     <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>{item.name}</TableCell>
-                    <TableCell>{item.unidentified ? 'Yes' : 'No'}</TableCell>
-                    <TableCell>{item.masterwork ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>{item.unidentified ? '✓' : ''}</TableCell>
+                    <TableCell>{item.masterwork ? '✓' : ''}</TableCell>
                     <TableCell>{item.type}</TableCell>
                     <TableCell>{item.size}</TableCell>
                     <TableCell>{item.status}</TableCell>
