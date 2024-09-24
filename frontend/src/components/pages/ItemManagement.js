@@ -144,6 +144,10 @@ const handleItemUpdateSubmit = async () => {
         if (['unidentified', 'masterwork'].includes(key)) {
           return [key, value === null ? null : Boolean(value)];
         }
+        // Special handling for status field
+        if (key === 'status' && value === '') {
+          return [key, null]; // Set status to null when "None" is selected
+        }
         return [key, value];
       })
     );

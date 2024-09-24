@@ -424,7 +424,7 @@ exports.appraiseLoot = async (req, res) => {
       if (previousAppraisal) {
         believedValue = previousAppraisal.believedvalue;
       } else {
-        appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus; // Remove 'const' here
+        appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus;
 
         if (lootValue !== null) {
           if (appraisalRoll >= 20) {
@@ -432,13 +432,17 @@ exports.appraiseLoot = async (req, res) => {
           } else if (appraisalRoll >= 15) {
             believedValue = lootValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
           } else {
-            believedValue = lootValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
+            if (lootValue === 0) {
+              // Generate a random value between 1 and 100 for items with no value
+              believedValue = Math.floor(Math.random() * 100) + 1;
+            } else {
+              believedValue = lootValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
+            }
           }
 
           believedValue = customRounding(believedValue);
         }
       }
-
 
       const appraisalEntry = {
         characterid: characterId,
@@ -536,6 +540,40 @@ exports.getMods = async (req, res) => {
   } catch (error) {
     console.error('Error fetching mods', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.updateAppraisalsOnValueChange = async (itemId, newValue) => {
+  try {
+    // Get all appraisals for the item
+    const appraisalsResult = await pool.query(
+      'SELECT * FROM appraisal WHERE lootid = $1',
+      [itemId]
+    );
+    const appraisals = appraisalsResult.rows;
+
+    for (const appraisal of appraisals) {
+      let newBelievedValue;
+
+      if (appraisal.appraisalroll >= 20) {
+        newBelievedValue = newValue;
+      } else if (appraisal.appraisalroll >= 15) {
+        newBelievedValue = newValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
+      } else {
+        newBelievedValue = newValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
+      }
+
+      newBelievedValue = customRounding(newBelievedValue);
+
+      // Update the appraisal
+      await pool.query(
+        'UPDATE appraisal SET believedvalue = $1 WHERE id = $2',
+        [newBelievedValue, appraisal.id]
+      );
+    }
+  } catch (error) {
+    console.error('Error updating appraisals on value change:', error);
+    throw error;
   }
 };
 
@@ -655,6 +693,11 @@ exports.dmUpdateItem = async (req, res) => {
       updatedItem = valueUpdateResult.rows[0];
     }
 
+    // If value has changed, update appraisals
+    if (updateData.value !== undefined && updateData.value !== null) {
+      await exports.updateAppraisalsOnValueChange(id, updateData.value);
+    }
+
     await client.query('COMMIT');
     res.status(200).json(updatedItem);
   } catch (error) {
@@ -665,3 +708,5 @@ exports.dmUpdateItem = async (req, res) => {
     client.release();
   }
 };
+
+module.exports = exports;
