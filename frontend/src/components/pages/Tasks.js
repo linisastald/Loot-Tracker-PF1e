@@ -85,27 +85,22 @@ const Tasks = () => {
       const charCount = chars.length;
       let adjustedTasks = [...tasks];
 
-      if (tasks.length === charCount) {
-        adjustedTasks = shuffleArray(adjustedTasks);
-      } else if (tasks.length > charCount) {
-        while (adjustedTasks.length < charCount * 2) {
-          adjustedTasks.push('Free Space');
-        }
-        adjustedTasks = shuffleArray(adjustedTasks);
-      } else {
+      if (tasks.length < charCount) {
         while (adjustedTasks.length < charCount) {
           adjustedTasks.push('Free Space');
         }
-        adjustedTasks = shuffleArray(adjustedTasks);
       }
 
+      adjustedTasks = shuffleArray(adjustedTasks);
+
       const assigned = {};
-      chars.forEach((char, index) => {
-        if (tasks.length > charCount) {
-          assigned[char.name] = [adjustedTasks[index * 2], adjustedTasks[index * 2 + 1]];
-        } else {
-          assigned[char.name] = [adjustedTasks[index]];
-        }
+      chars.forEach(char => {
+        assigned[char.name] = [];
+      });
+
+      adjustedTasks.forEach((task, index) => {
+        const charName = chars[index % charCount].name;
+        assigned[charName].push(task);
       });
 
       return assigned;
