@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Paper, Typography, Switch, Button, List, ListItem, ListItemText, FormGroup, FormControlLabel } from '@mui/material';
+import { Container, Paper, Typography, Switch, Button, List, ListItem, ListItemText, FormGroup, FormControlLabel, Box } from '@mui/material';
+import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
+
+const CompactListItem = styled(ListItem)(({ theme }) => ({
+  padding: theme.spacing(0, 1),
+}));
+
+const CompactListItemText = styled(ListItemText)(({ theme }) => ({
+  margin: 0,
+  '& .MuiListItemText-primary': {
+    fontSize: '0.9rem',
+  },
+}));
 
 const Tasks = () => {
   const [activeCharacters, setActiveCharacters] = useState([]);
@@ -74,16 +86,13 @@ const Tasks = () => {
       let adjustedTasks = [...tasks];
 
       if (tasks.length === charCount) {
-        // Case 1: Equal number of tasks and characters
         adjustedTasks = shuffleArray(adjustedTasks);
       } else if (tasks.length > charCount) {
-        // Case 2: More tasks than characters
         while (adjustedTasks.length < charCount * 2) {
           adjustedTasks.push('Free Space');
         }
         adjustedTasks = shuffleArray(adjustedTasks);
       } else {
-        // Case 3: Fewer tasks than characters
         while (adjustedTasks.length < charCount) {
           adjustedTasks.push('Free Space');
         }
@@ -112,22 +121,24 @@ const Tasks = () => {
   };
 
   const renderTaskList = (tasks) => (
-    <List>
+    <List disablePadding>
       {Object.entries(tasks).map(([character, characterTasks]) => (
-        <ListItem key={character}>
-          <ListItemText
-            primary={character}
-            secondary={
-              <List>
-                {characterTasks.map((task, index) => (
-                  <ListItem key={index}>
-                    <ListItemText primary={`• ${task}`} />
-                  </ListItem>
-                ))}
-              </List>
+        <CompactListItem key={character}>
+          <CompactListItemText
+            primary={
+              <Box>
+                <Typography variant="subtitle1" component="div">{character}</Typography>
+                <List disablePadding>
+                  {characterTasks.map((task, index) => (
+                    <CompactListItem key={index}>
+                      <CompactListItemText primary={`• ${task}`} />
+                    </CompactListItem>
+                  ))}
+                </List>
+              </Box>
             }
           />
-        </ListItem>
+        </CompactListItem>
       ))}
     </List>
   );
