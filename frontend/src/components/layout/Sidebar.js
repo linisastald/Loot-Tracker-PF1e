@@ -25,6 +25,7 @@ import {
   Inventory,
   DateRange,
 } from '@mui/icons-material';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import '../../styles/Sidebar.css';
 
 const Sidebar = () => {
@@ -158,6 +159,7 @@ const Sidebar = () => {
             <MenuItem to="/character-user-management" primary="Character and User Management" />
             <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
             <MenuItem to="/golarion-calendar" primary="Golarion Calendar" icon={<DateRange />} />
+              <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
           </MenuItem>
         )}
       </List>

@@ -20,6 +20,7 @@ import CharacterAndUserManagement from './components/pages/CharacterAndUserManag
 import Consumables from "./components/pages/Consumables";
 import ItemManagement from "./components/pages/ItemManagement";
 import GolarionCalendar from "./components/pages/GolarionCalendar";
+import Tasks from "./components/pages/Tasks";
 
 import theme from './theme';
 import api from './utils/api';
@@ -98,6 +99,7 @@ function App() {
             <Route path="/item-management" element={<ItemManagement />} />
             <Route path="/golarion-calendar" element={<GolarionCalendar />} />
             <Route path="/consumables" element={<Consumables />} />
+            <Route path="/tasks" element={<Tasks />} />
           </Route>
         </Routes>
       </Router>
