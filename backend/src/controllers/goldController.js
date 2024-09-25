@@ -30,6 +30,7 @@ exports.getAllGoldEntries = async (req, res) => {
     const query = `
       SELECT * FROM gold
       WHERE session_date BETWEEN $1 AND $2
+      order by session_date desc
     `;
     const result = await pool.query(query, [startDate, endDate]);
     res.status(200).json(result.rows);
