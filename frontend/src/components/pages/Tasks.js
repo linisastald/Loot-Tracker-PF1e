@@ -29,6 +29,14 @@ const Tasks = () => {
     setSelectedCharacters(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const shuffleArray = (array) => {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  };
+
   const assignTasks = () => {
     const selectedChars = activeCharacters.filter(char => selectedCharacters[char.id]);
 
@@ -62,20 +70,33 @@ const Tasks = () => {
     ];
 
     const assignTasksToChars = (tasks, chars) => {
-      const assigned = {};
-      chars.forEach(char => {
-        assigned[char.name] = ['Free Space'];
-      });
+      const charCount = chars.length;
+      let adjustedTasks = [...tasks];
 
-      let charIndex = 0;
-      tasks.forEach(task => {
-        const charName = chars[charIndex % chars.length].name;
-        if (assigned[charName][0] === 'Free Space') {
-          assigned[charName][0] = task;
-        } else {
-          assigned[charName].push(task);
+      if (tasks.length === charCount) {
+        // Case 1: Equal number of tasks and characters
+        adjustedTasks = shuffleArray(adjustedTasks);
+      } else if (tasks.length > charCount) {
+        // Case 2: More tasks than characters
+        while (adjustedTasks.length < charCount * 2) {
+          adjustedTasks.push('Free Space');
         }
-        charIndex++;
+        adjustedTasks = shuffleArray(adjustedTasks);
+      } else {
+        // Case 3: Fewer tasks than characters
+        while (adjustedTasks.length < charCount) {
+          adjustedTasks.push('Free Space');
+        }
+        adjustedTasks = shuffleArray(adjustedTasks);
+      }
+
+      const assigned = {};
+      chars.forEach((char, index) => {
+        if (tasks.length > charCount) {
+          assigned[char.name] = [adjustedTasks[index * 2], adjustedTasks[index * 2 + 1]];
+        } else {
+          assigned[char.name] = [adjustedTasks[index]];
+        }
       });
 
       return assigned;
