@@ -63,18 +63,21 @@ const Tasks = () => {
 
     const assignTasksToChars = (tasks, chars) => {
       const assigned = {};
-      let taskIndex = 0;
       chars.forEach(char => {
-        assigned[char.name] = [];
-        for (let i = 0; i < 2; i++) {
-          if (taskIndex < tasks.length) {
-            assigned[char.name].push(tasks[taskIndex]);
-            taskIndex++;
-          } else if (i === 0) {
-            assigned[char.name].push('Free Space');
-          }
-        }
+        assigned[char.name] = ['Free Space'];
       });
+
+      let charIndex = 0;
+      tasks.forEach(task => {
+        const charName = chars[charIndex % chars.length].name;
+        if (assigned[charName][0] === 'Free Space') {
+          assigned[charName][0] = task;
+        } else {
+          assigned[charName].push(task);
+        }
+        charIndex++;
+      });
+
       return assigned;
     };
 
