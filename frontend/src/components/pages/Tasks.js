@@ -62,15 +62,19 @@ const Tasks = () => {
     ];
 
     const assignTasksToChars = (tasks, chars) => {
-      const assigned = [];
-      let charIndex = 0;
-      for (let i = 0; i < Math.max(tasks.length, chars.length); i++) {
-        assigned.push({
-          character: chars[charIndex % chars.length].name,
-          task: tasks[i] || 'Free Space'
-        });
-        charIndex++;
-      }
+      const assigned = {};
+      let taskIndex = 0;
+      chars.forEach(char => {
+        assigned[char.name] = [];
+        for (let i = 0; i < 2; i++) {
+          if (taskIndex < tasks.length) {
+            assigned[char.name].push(tasks[taskIndex]);
+            taskIndex++;
+          } else if (i === 0) {
+            assigned[char.name].push('Free Space');
+          }
+        }
+      });
       return assigned;
     };
 
@@ -82,6 +86,27 @@ const Tasks = () => {
       post: assignTasksToChars(postTasks, postChars)
     });
   };
+
+  const renderTaskList = (tasks) => (
+    <List>
+      {Object.entries(tasks).map(([character, characterTasks]) => (
+        <ListItem key={character}>
+          <ListItemText
+            primary={character}
+            secondary={
+              <List>
+                {characterTasks.map((task, index) => (
+                  <ListItem key={index}>
+                    <ListItemText primary={`• ${task}`} />
+                  </ListItem>
+                ))}
+              </List>
+            }
+          />
+        </ListItem>
+      ))}
+    </List>
+  );
 
   return (
     <Container maxWidth={false} component="main">
@@ -103,35 +128,17 @@ const Tasks = () => {
         <>
           <Paper sx={{ p: 2, mb: 2 }}>
             <Typography variant="h6">Pre-Session Tasks</Typography>
-            <List>
-              {assignedTasks.pre.map((item, index) => (
-                <ListItem key={index}>
-                  <ListItemText primary={`${item.character}: ${item.task}`} />
-                </ListItem>
-              ))}
-            </List>
+            {renderTaskList(assignedTasks.pre)}
           </Paper>
 
           <Paper sx={{ p: 2, mb: 2 }}>
             <Typography variant="h6">During Session Tasks</Typography>
-            <List>
-              {assignedTasks.during.map((item, index) => (
-                <ListItem key={index}>
-                  <ListItemText primary={`${item.character}: ${item.task}`} />
-                </ListItem>
-              ))}
-            </List>
+            {renderTaskList(assignedTasks.during)}
           </Paper>
 
           <Paper sx={{ p: 2, mb: 2 }}>
             <Typography variant="h6">Post-Session Tasks</Typography>
-            <List>
-              {assignedTasks.post.map((item, index) => (
-                <ListItem key={index}>
-                  <ListItemText primary={`${item.character}: ${item.task}`} />
-                </ListItem>
-              ))}
-            </List>
+            {renderTaskList(assignedTasks.post)}
           </Paper>
         </>
       )}
