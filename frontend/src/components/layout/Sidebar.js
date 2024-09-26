@@ -141,6 +141,7 @@ const Sidebar = () => {
           <MenuItem to="/gold-transactions" primary="Gold Transactions"/>
         </MenuItem>
         <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
+        <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
         <MenuItem
             primary="Settings"
             icon={<Settings/>}
@@ -159,7 +160,7 @@ const Sidebar = () => {
             <MenuItem to="/character-user-management" primary="Character and User Management" />
             <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
             <MenuItem to="/golarion-calendar" primary="Golarion Calendar" icon={<DateRange />} />
-              <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
+
           </MenuItem>
         )}
       </List>
