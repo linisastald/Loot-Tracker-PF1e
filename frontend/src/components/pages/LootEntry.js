@@ -291,81 +291,82 @@ const handleSubmit = async (e) => {
 
       {error && <Typography color="error" sx={{ mt: 2, mb: 2 }}>{error}</Typography>}
       {success && <Typography color="success" sx={{ mt: 2, mb: 2 }}>{success}</Typography>}
-
-      <form onSubmit={handleSubmit}>
+ <form onSubmit={handleSubmit}>
         {entries.map((entry, index) => (
           <Paper key={index} sx={{ p: 2, mb: 2 }}>
-            <Box sx={{ mb: 2 }}>
-              <Button
-                variant="outlined"
-                color="error"
-                onClick={() => handleRemoveEntry(index)}
-                size="small"
-              >
-                Remove Entry
-              </Button>
-            </Box>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
-              <Box sx={{ width: 200, flexShrink: 0 }}>
-                <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <DatePicker
-                    label="Session Date"
-                    value={entry.data.sessionDate}
-                    onChange={(date) => handleDateChange(index, 'sessionDate', date)}
-                    renderInput={(params) => <TextField {...params} fullWidth size="small" />}
-                  />
-                </LocalizationProvider>
-              </Box>
-              <Box sx={{ width: 100, flexShrink: 0 }}>
-                <TextField
-                  label="Quantity"
-                  type="number"
-                  name="quantity"
-                  value={entry.data.quantity || ''}
-                  onChange={(e) => handleEntryChange(index, e)}
-                  fullWidth
-                  required
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => handleRemoveEntry(index)}
                   size="small"
-                />
-              </Box>
+                >
+                  Remove Entry
+                </Button>
+              </Grid>
               {entry.type === 'item' ? (
                 <>
-                  <Box sx={{ flexGrow: 1, minWidth: 200 }}>
-                    <Autocomplete
-                      freeSolo
-                      options={itemNames}
-                      getOptionLabel={(option) => option.name}
-                      onChange={(e, value) => handleItemSelect(index, e, value)}
-                      onInputChange={(e, value) => handleItemNameChange(index, e, value)}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Item Name"
-                          name="name"
-                          value={entry.data.name || ''}
-                          onChange={(e) => handleEntryChange(index, e)}
-                          fullWidth
-                          required
-                          size="small"
+                  <Grid item xs={12} container spacing={2} alignItems="flex-start">
+                    <Grid item style={{ width: 200, flexShrink: 0 }}>
+                      <LocalizationProvider dateAdapter={AdapterDateFns}>
+                        <DatePicker
+                          label="Session Date"
+                          value={entry.data.sessionDate}
+                          onChange={(date) => handleDateChange(index, 'sessionDate', date)}
+                          renderInput={(params) => <TextField {...params} fullWidth size="small" />}
                         />
-                      )}
-                    />
-                  </Box>
-                  {shouldShowCharges(entry.data.name) && (
-                    <Box sx={{ minWidth: 100 }}>
+                      </LocalizationProvider>
+                    </Grid>
+                    <Grid item style={{ width: 100, flexShrink: 0 }}>
                       <TextField
-                        label="Charges"
+                        label="Quantity"
                         type="number"
-                        name="charges"
-                        value={entry.data.charges || ''}
+                        name="quantity"
+                        value={entry.data.quantity || ''}
                         onChange={(e) => handleEntryChange(index, e)}
                         fullWidth
-                        inputProps={{min: 0, step: 1}}
+                        required
                         size="small"
                       />
-                    </Box>
-                  )}
-                  <Box sx={{ minWidth: 120 }}>
+                    </Grid>
+                    <Grid item xs>
+                      <Autocomplete
+                        freeSolo
+                        options={itemNames}
+                        getOptionLabel={(option) => option.name}
+                        onChange={(e, value) => handleItemSelect(index, e, value)}
+                        onInputChange={(e, value) => handleItemNameChange(index, e, value)}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Item Name"
+                            name="name"
+                            value={entry.data.name || ''}
+                            onChange={(e) => handleEntryChange(index, e)}
+                            fullWidth
+                            required
+                            size="small"
+                          />
+                        )}
+                      />
+                    </Grid>
+                    {shouldShowCharges(entry.data.name) && (
+                      <Grid item xs={6} sm={2}>
+                        <TextField
+                          label="Charges"
+                          type="number"
+                          name="charges"
+                          value={entry.data.charges || ''}
+                          onChange={(e) => handleEntryChange(index, e)}
+                          fullWidth
+                          inputProps={{min: 0, step: 1}}
+                          size="small"
+                        />
+                      </Grid>
+                    )}
+                  </Grid>
+                  <Grid item xs={6} sm={2}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Type</InputLabel>
                       <Select
@@ -384,8 +385,8 @@ const handleSubmit = async (e) => {
                         ))}
                       </Select>
                     </FormControl>
-                  </Box>
-                  <Box sx={{ minWidth: 120 }}>
+                  </Grid>
+                  <Grid item xs={6} sm={2}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Magical?</InputLabel>
                       <Select
@@ -398,8 +399,8 @@ const handleSubmit = async (e) => {
                         <MenuItem value={true}>Unidentified</MenuItem>
                       </Select>
                     </FormControl>
-                  </Box>
-                  <Box sx={{ minWidth: 120 }}>
+                  </Grid>
+                  <Grid item xs={6} sm={2}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Masterwork</InputLabel>
                       <Select
@@ -411,8 +412,8 @@ const handleSubmit = async (e) => {
                         <MenuItem value={false}>No</MenuItem>
                       </Select>
                     </FormControl>
-                  </Box>
-                  <Box sx={{ minWidth: 120 }}>
+                  </Grid>
+                  <Grid item xs={6} sm={2}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Size</InputLabel>
                       <Select
@@ -431,8 +432,8 @@ const handleSubmit = async (e) => {
                         <MenuItem value="Colossal">Colossal</MenuItem>
                       </Select>
                     </FormControl>
-                  </Box>
-                  <Box sx={{ flexGrow: 1 }}>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
                     <Tooltip title="Automatically analyze item to break out special abilities and item name">
                       <FormControlLabel
                         control={
@@ -447,29 +448,41 @@ const handleSubmit = async (e) => {
                         label="Smart Item Detection"
                       />
                     </Tooltip>
-                  </Box>
+                  </Grid>
                 </>
               ) : (
                 <>
-                  <Box sx={{ flexGrow: 1, minWidth: 200 }}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Type</InputLabel>
-                      <Select
-                        name="transactionType"
-                        value={entry.data.transactionType || ''}
-                        onChange={(e) => handleEntryChange(index, e)}
-                        required
-                      >
-                        <MenuItem value="Withdrawal">Withdrawal</MenuItem>
-                        <MenuItem value="Deposit">Deposit</MenuItem>
-                        <MenuItem value="Purchase">Purchase</MenuItem>
-                        <MenuItem value="Sale">Sale</MenuItem>
-                        <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
-                        <MenuItem value="Other">Other</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                  <Box sx={{ minWidth: 100 }}>
+                  <Grid item xs={12} container spacing={2} alignItems="flex-start">
+                    <Grid item style={{ width: 200, flexShrink: 0 }}>
+                      <LocalizationProvider dateAdapter={AdapterDateFns}>
+                        <DatePicker
+                          label="Session Date"
+                          value={entry.data.sessionDate}
+                          onChange={(date) => handleDateChange(index, 'sessionDate', date)}
+                          renderInput={(params) => <TextField {...params} fullWidth size="small" />}
+                        />
+                      </LocalizationProvider>
+                    </Grid>
+                    <Grid item xs>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Type</InputLabel>
+                        <Select
+                          name="transactionType"
+                          value={entry.data.transactionType || ''}
+                          onChange={(e) => handleEntryChange(index, e)}
+                          required
+                        >
+                          <MenuItem value="Withdrawal">Withdrawal</MenuItem>
+                          <MenuItem value="Deposit">Deposit</MenuItem>
+                          <MenuItem value="Purchase">Purchase</MenuItem>
+                          <MenuItem value="Sale">Sale</MenuItem>
+                          <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
+                          <MenuItem value="Other">Other</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
                     <TextField
                       label="Platinum"
                       type="number"
@@ -483,8 +496,8 @@ const handleSubmit = async (e) => {
                       inputProps={{ min: 0, step: 1 }}
                       size="small"
                     />
-                  </Box>
-                  <Box sx={{ minWidth: 100 }}>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
                     <TextField
                       label="Gold"
                       type="number"
@@ -498,8 +511,8 @@ const handleSubmit = async (e) => {
                       inputProps={{ min: 0 }}
                       size="small"
                     />
-                  </Box>
-                  <Box sx={{ minWidth: 100 }}>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
                     <TextField
                       label="Silver"
                       type="number"
@@ -513,8 +526,8 @@ const handleSubmit = async (e) => {
                       inputProps={{ min: 0 }}
                       size="small"
                     />
-                  </Box>
-                  <Box sx={{ minWidth: 100 }}>
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
                     <TextField
                       label="Copper"
                       type="number"
@@ -528,23 +541,21 @@ const handleSubmit = async (e) => {
                       inputProps={{ min: 0 }}
                       size="small"
                     />
-                  </Box>
+                  </Grid>
                 </>
               )}
-            </Box>
-            <Box sx={{ mt: 2 }}>
-              <TextField
-                label="Notes"
-                name="notes"
-                value={entry.data.notes || ''}
-                onChange={(e) => handleEntryChange(index, e)}
-                fullWidth
-                multiline
-                rows={2}
-                inputProps={{maxLength: entry.type === 'item' ? 511 : 120}}
-                size="small"
-              />
-            </Box>
+              <Grid item xs={12}>
+                <TextField
+                  label="Notes"
+                  name="notes"
+                  value={entry.data.notes || ''}
+                  onChange={(e) => handleEntryChange(index, e)}
+                  fullWidth
+                  inputProps={{maxLength: entry.type === 'item' ? 511 : 120}}
+                  size="small"
+                />
+              </Grid>
+            </Grid>
           </Paper>
         ))}
       </form>
