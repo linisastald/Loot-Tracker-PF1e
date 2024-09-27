@@ -5,7 +5,7 @@ import {
   Container,
   Paper,
   Typography,
-  Grid,
+  Box,
   TextField,
   Button,
   FormControl,
@@ -15,16 +15,11 @@ import {
   Autocomplete,
   FormControlLabel,
   Checkbox,
-  Tooltip,
-  Box
+  Tooltip
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { fetchItemNames } from '../../utils/utils';
-
-  const capitalizeWords = (str) => {
-    return str.replace(/\b\w/g, l => l.toUpperCase());
-  };
 
 const initialItemEntry = {
   sessionDate: new Date(),
@@ -50,12 +45,18 @@ const initialGoldEntry = {
   copper: '',
   notes: ''
 };
+
+const capitalizeWords = (str) => {
+  return str.replace(/\b\w/g, l => l.toUpperCase());
+};
+
 const shouldShowCharges = (name) => {
   if (!name || typeof name !== 'string') {
     return false;
   }
   return name.toLowerCase().includes('wand of');
 };
+
 const LootEntry = () => {
   const [entries, setEntries] = useState([{type: 'item', data: {...initialItemEntry}}]);
   const [itemNames, setItemNames] = useState([]);
@@ -72,52 +73,51 @@ const LootEntry = () => {
     loadItemNames();
   }, []);
 
-
   const handleEntryChange = (index, e) => {
     const { name, value } = e.target;
     setEntries(prevEntries =>
-        prevEntries.map((entry, i) =>
-            i === index ? {
+      prevEntries.map((entry, i) =>
+        i === index ? {
           ...entry,
-              data: {
+          data: {
             ...entry.data,
-                [name]: name === 'type' ? value.toLowerCase() : (value === '' ? null : value)
-          }
-        } : entry
-        )
-    );
-  };
-
-  const handleItemSelect = (index, _, selectedItem) => {
-  if (selectedItem) {
-    setAutocompletedItems(prev => {
-      const newAutocompleted = [...prev];
-      newAutocompleted[index] = true;
-      return newAutocompleted;
-    });
-    setEntries(prevEntries =>
-        prevEntries.map((entry, i) =>
-            i === index ? {
-              ...entry,
-              data: {
-                ...entry.data,
-                name: selectedItem.name,
-                itemId: selectedItem.id || null,
-                type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
-                value: selectedItem.value || null,
-                parseItem: false
+            [name]: name === 'type' ? value.toLowerCase() : (value === '' ? null : value)
           }
         } : entry
       )
     );
-  } else {
-    setAutocompletedItems(prev => {
-      const newAutocompleted = [...prev];
-      newAutocompleted[index] = false;
-      return newAutocompleted;
-    });
-  }
-};
+  };
+
+  const handleItemSelect = (index, _, selectedItem) => {
+    if (selectedItem) {
+      setAutocompletedItems(prev => {
+        const newAutocompleted = [...prev];
+        newAutocompleted[index] = true;
+        return newAutocompleted;
+      });
+      setEntries(prevEntries =>
+        prevEntries.map((entry, i) =>
+          i === index ? {
+            ...entry,
+            data: {
+              ...entry.data,
+              name: selectedItem.name,
+              itemId: selectedItem.id || null,
+              type: selectedItem.type ? capitalizeWords(selectedItem.type) : '',
+              value: selectedItem.value || null,
+              parseItem: false
+            }
+          } : entry
+        )
+      );
+    } else {
+      setAutocompletedItems(prev => {
+        const newAutocompleted = [...prev];
+        newAutocompleted[index] = false;
+        return newAutocompleted;
+      });
+    }
+  };
 
   const handleItemNameChange = (index, e, value) => {
     setAutocompletedItems(prev => {
@@ -126,18 +126,18 @@ const LootEntry = () => {
       return newAutocompleted;
     });
     setEntries(prevEntries =>
-        prevEntries.map((entry, i) =>
-            i === index ? {
-              ...entry,
-              data: {
-                ...entry.data,
-                name: value || '', // Ensure name is never null
-                itemId: null,
-                type: '',
-                value: null
-              }
-            } : entry
-        )
+      prevEntries.map((entry, i) =>
+        i === index ? {
+          ...entry,
+          data: {
+            ...entry.data,
+            name: value || '',
+            itemId: null,
+            type: '',
+            value: null
+          }
+        } : entry
+      )
     );
   };
 
@@ -166,99 +166,83 @@ const LootEntry = () => {
     setSelectedItems([]);
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  const token = localStorage.getItem('token');
-  const decodedToken = jwt_decode(token);
-  const userId = decodedToken.id;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem('token');
+    const decodedToken = jwt_decode(token);
+    const userId = decodedToken.id;
 
-  const skippedEntries = [];
-  const processedEntries = [];
+    const skippedEntries = [];
+    const processedEntries = [];
 
-  try {
-    for (const [index, entry] of entries.entries()) {
-      let data = {...entry.data, whoupdated: userId, session_date: entry.data.sessionDate};
+    try {
+      for (const [index, entry] of entries.entries()) {
+        let data = {...entry.data, whoupdated: userId, session_date: entry.data.sessionDate};
 
-      if (entry.type === 'gold') {
-        const {transactionType, platinum, gold, silver, copper} = data;
-        if (['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType)) {
-          data = {
-            ...data,
-            platinum: platinum ? -Math.abs(platinum) : 0,
-            gold: gold ? -Math.abs(gold) : 0,
-            silver: silver ? -Math.abs(silver) : 0,
-            copper: copper ? -Math.abs(copper) : 0
-          };
-        }
-
-        const goldData = {
-          ...data,
-          platinum: data.platinum || null,
-          gold: data.gold || null,
-          silver: data.silver || null,
-          copper: data.copper || null
-        };
-
-        await api.post(
-          `/gold`,
-          {goldEntries: [goldData]}
-        );
-        processedEntries.push(entry);
-      } else {
-        if (!data.name || data.name.trim() === '') {
-          console.warn(`Skipping item entry at index ${index} with empty name`);
-          skippedEntries.push(index);
-          continue;
-        }
-
-        // Convert type to lowercase before submission
-        data.type = data.type ? data.type.toLowerCase() : null;
-        data.itemId = data.itemId || null;
-        data.value = data.value || null;
-        data.modids = data.modids || []; // Ensure modids is always an array
-
-        // Only parse if "Smart Item Detection" is checked and it's not autocompleted
-        if (data.parseItem && !autocompletedItems[index]) {
-          try {
-            const parseResponse = await api.post(
-              `/loot/parse-item`,
-              {description: data.name}
-            );
-            if (parseResponse.data) {
-              data = {...data, ...parseResponse.data};
-              // Ensure the type is lowercase if it was set by the parsing
-              if (data.type) {
-                data.type = data.type.toLowerCase();
-              }
-            }
-          } catch (parseError) {
-            console.error('Error parsing item:', parseError);
+        if (entry.type === 'gold') {
+          const {transactionType, platinum, gold, silver, copper} = data;
+          if (['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType)) {
+            data = {
+              ...data,
+              platinum: platinum ? -Math.abs(platinum) : 0,
+              gold: gold ? -Math.abs(gold) : 0,
+              silver: silver ? -Math.abs(silver) : 0,
+              copper: copper ? -Math.abs(copper) : 0
+            };
           }
+
+          const goldData = {
+            ...data,
+            platinum: data.platinum || null,
+            gold: data.gold || null,
+            silver: data.silver || null,
+            copper: data.copper || null
+          };
+
+          await api.post('/gold', {goldEntries: [goldData]});
+          processedEntries.push(entry);
+        } else {
+          if (!data.name || data.name.trim() === '') {
+            console.warn(`Skipping item entry at index ${index} with empty name`);
+            skippedEntries.push(index);
+            continue;
+          }
+
+          data.type = data.type ? data.type.toLowerCase() : null;
+          data.itemId = data.itemId || null;
+          data.value = data.value || null;
+          data.modids = data.modids || [];
+
+          if (data.parseItem && !autocompletedItems[index]) {
+            try {
+              const parseResponse = await api.post('/loot/parse-item', {description: data.name});
+              if (parseResponse.data) {
+                data = {...data, ...parseResponse.data};
+                if (data.type) {
+                  data.type = data.type.toLowerCase();
+                }
+              }
+            } catch (parseError) {
+              console.error('Error parsing item:', parseError);
+            }
+          }
+
+          await api.post('/loot', {entries: [data]});
+          processedEntries.push(entry);
         }
-
-        // Always send the data, even if it wasn't parsed or doesn't have an itemId
-        await api.post(
-          `/loot`,
-          {entries: [data]}
-        );
-        processedEntries.push(entry);
       }
+
+      if (skippedEntries.length > 0) {
+        setError(`Skipped ${skippedEntries.length} item entries due to empty names. Indices: ${skippedEntries.join(', ')}`);
+      }
+
+      setSuccess(`Successfully processed ${processedEntries.length} entries.`);
+      handleRemoveAllEntries();
+    } catch (error) {
+      console.error('Error submitting entry', error);
+      setError('An error occurred while submitting entries. Please try again.');
     }
-
-    // Inform the user about skipped entries
-    if (skippedEntries.length > 0) {
-      setError(`Skipped ${skippedEntries.length} item entries due to empty names. Indices: ${skippedEntries.join(', ')}`);
-    }
-
-    // Inform the user about successful submissions
-    setSuccess(`Successfully processed ${processedEntries.length} entries.`);
-
-    handleRemoveAllEntries(); // Remove all entries after submission
-  } catch (error) {
-    console.error('Error submitting entry', error);
-    setError('An error occurred while submitting entries. Please try again.');
-  }
-};
+  };
 
   return (
     <Container maxWidth={false} component="main" sx={{ pt: '100px' }}>
@@ -295,20 +279,20 @@ const handleSubmit = async (e) => {
       <form onSubmit={handleSubmit}>
         {entries.map((entry, index) => (
           <Paper key={index} sx={{ p: 2, mb: 2 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={() => handleRemoveEntry(index)}
-                  size="small"
-                >
-                  Remove Entry
-                </Button>
-              </Grid>
-              {entry.type === 'item' ? (
-                <>
-                  <Grid item xs={6} sm={1}>
+            <Box sx={{ mb: 2 }}>
+              <Button
+                variant="outlined"
+                color="error"
+                onClick={() => handleRemoveEntry(index)}
+                size="small"
+              >
+                Remove Entry
+              </Button>
+            </Box>
+            {entry.type === 'item' ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                  <Box sx={{ width: 200, flexShrink: 0 }}>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
                       <DatePicker
                         label="Session Date"
@@ -317,8 +301,8 @@ const handleSubmit = async (e) => {
                         renderInput={(params) => <TextField {...params} fullWidth size="small" />}
                       />
                     </LocalizationProvider>
-                  </Grid>
-                  <Grid item xs={6} sm={1}>
+                  </Box>
+                  <Box sx={{ width: 100, flexShrink: 0 }}>
                     <TextField
                       label="Quantity"
                       type="number"
@@ -329,8 +313,8 @@ const handleSubmit = async (e) => {
                       required
                       size="small"
                     />
-                  </Grid>
-                  <Grid item xs={12} sm={shouldShowCharges(entry.data.name) ? 8 : 10}>
+                  </Box>
+                  <Box sx={{ flexGrow: 1, minWidth: 200 }}>
                     <Autocomplete
                       freeSolo
                       options={itemNames}
@@ -350,120 +334,117 @@ const handleSubmit = async (e) => {
                         />
                       )}
                     />
-                  </Grid>
-                  {shouldShowCharges(entry.data.name) && (
-                    <Grid item xs={6} sm={2}>
-                      <TextField
-                        label="Charges"
-                        type="number"
-                        name="charges"
-                        value={entry.data.charges || ''}
-                        onChange={(e) => handleEntryChange(index, e)}
-                        fullWidth
-                        inputProps={{min: 0, step: 1}}
-                        size="small"
-                      />
-                    </Grid>
-                  )}
-                  <Grid item xs={6} sm={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Type</InputLabel>
-                      <Select
-                        name="type"
-                        value={capitalizeWords(entry.data.type || '')}
-                        onChange={(e) => handleEntryChange(index, {
-                          target: {
-                            name: 'type',
-                            value: e.target.value.toLowerCase()
-                          }
-                        })}
-                        disabled={autocompletedItems[index]}
-                      >
-                        {['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'].map(type => (
-                          <MenuItem key={type} value={capitalizeWords(type)}>{capitalizeWords(type)}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6} sm={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Magical?</InputLabel>
-                      <Select
-                        name="unidentified"
-                        value={entry.data.unidentified === null ? '' : entry.data.unidentified}
-                        onChange={(e) => handleEntryChange(index, e)}
-                      >
-                        <MenuItem value={null}>Not Magical</MenuItem>
-                        <MenuItem value={false}>Identified</MenuItem>
-                        <MenuItem value={true}>Unidentified</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6} sm={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Masterwork</InputLabel>
-                      <Select
-                        name="masterwork"
-                        value={entry.data.masterwork === null ? '' : entry.data.masterwork}
-                        onChange={(e) => handleEntryChange(index, e)}
-                      >
-                        <MenuItem value={true}>Yes</MenuItem>
-                        <MenuItem value={false}>No</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6} sm={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Size</InputLabel>
-                      <Select
-                        name="size"
-                        value={entry.data.size || ''}
-                        onChange={(e) => handleEntryChange(index, e)}
-                      >
-                        <MenuItem value="Fine">Fine</MenuItem>
-                        <MenuItem value="Diminutive">Diminutive</MenuItem>
-                        <MenuItem value="Tiny">Tiny</MenuItem>
-                        <MenuItem value="Small">Small</MenuItem>
-                        <MenuItem value="Medium">Medium</MenuItem>
-                        <MenuItem value="Large">Large</MenuItem>
-                        <MenuItem value="Huge">Huge</MenuItem>
-                        <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-                        <MenuItem value="Colossal">Colossal</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Tooltip title="Automatically analyze item to break out special abilities and item name">
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            name="parseItem"
-                            checked={entry.data.parseItem || false}
-                            onChange={(e) => handleEntryChange(index, e)}
-                            disabled={autocompletedItems[index]}
-                            size="small"
-                          />
-                        }
-                        label="Smart Item Detection"
-                      />
-                    </Tooltip>
-                  </Grid>
-                  <Grid item xs={12}>
+                  </Box>
+                </Box>
+                {shouldShowCharges(entry.data.name) && (
+                  <Box sx={{ width: 100 }}>
                     <TextField
-                      label="Notes"
-                      name="notes"
-                      value={entry.data.notes || ''}
+                      label="Charges"
+                      type="number"
+                      name="charges"
+                      value={entry.data.charges || ''}
                       onChange={(e) => handleEntryChange(index, e)}
                       fullWidth
-                      inputProps={{maxLength: 511}}
+                      inputProps={{min: 0, step: 1}}
                       size="small"
                     />
-                  </Grid>
-                </>
-              ) : (
-                <>
-                  {/* Gold entry layout */}
-                  <Grid item xs={12} sm={6}>
+                  </Box>
+                )}
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <FormControl sx={{ minWidth: 120 }} size="small">
+                    <InputLabel>Type</InputLabel>
+                    <Select
+                      name="type"
+                      value={capitalizeWords(entry.data.type || '')}
+                      onChange={(e) => handleEntryChange(index, {
+                        target: {
+                          name: 'type',
+                          value: e.target.value.toLowerCase()
+                        }
+                      })}
+                      disabled={autocompletedItems[index]}
+                    >
+                      {['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'].map(type => (
+                        <MenuItem key={type} value={capitalizeWords(type)}>{capitalizeWords(type)}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl sx={{ minWidth: 120 }} size="small">
+                    <InputLabel>Magical?</InputLabel>
+                    <Select
+                      name="unidentified"
+                      value={entry.data.unidentified === null ? '' : entry.data.unidentified}
+                      onChange={(e) => handleEntryChange(index, e)}
+                    >
+                      <MenuItem value={null}>Not Magical</MenuItem>
+                      <MenuItem value={false}>Identified</MenuItem>
+                      <MenuItem value={true}>Unidentified</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControl sx={{ minWidth: 120 }} size="small">
+                    <InputLabel>Masterwork</InputLabel>
+                    <Select
+                      name="masterwork"
+                      value={entry.data.masterwork === null ? '' : entry.data.masterwork}
+                      onChange={(e) => handleEntryChange(index, e)}
+                    >
+                      <MenuItem value={true}>Yes</MenuItem>
+                      <MenuItem value={false}>No</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControl sx={{ minWidth: 120 }} size="small">
+                    <InputLabel>Size</InputLabel>
+                    <Select
+                      name="size"
+                      value={entry.data.size || ''}
+                      onChange={(e) => handleEntryChange(index, e)}
+                    >
+                      <MenuItem value="Fine">Fine</MenuItem>
+                      <MenuItem value="Diminutive">Diminutive</MenuItem>
+                      <MenuItem value="Tiny">Tiny</MenuItem>
+                      <MenuItem value="Small">Small</MenuItem>
+                      <MenuItem value="Medium">Medium</MenuItem>
+                      <MenuItem value="Large">Large</MenuItem>
+                      <MenuItem value="Huge">Huge</MenuItem>
+                      <MenuItem value="Gargantuan">Gargantuan</MenuItem>
+                      <MenuItem value="Colossal">Colossal</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+				<Box sx={{ mt: 2 }}>
+                  <Tooltip title="Automatically analyze item to break out special abilities and item name">
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          name="parseItem"
+                          checked={entry.data.parseItem || false}
+                          onChange={(e) => handleEntryChange(index, e)}
+                          disabled={autocompletedItems[index]}
+                          size="small"
+                        />
+                      }
+                      label="Smart Item Detection"
+                    />
+                  </Tooltip>
+                </Box>
+                <Box sx={{ mt: 2 }}>
+                  <TextField
+                    label="Notes"
+                    name="notes"
+                    value={entry.data.notes || ''}
+                    onChange={(e) => handleEntryChange(index, e)}
+                    fullWidth
+                    multiline
+                    rows={2}
+                    inputProps={{maxLength: 511}}
+                    size="small"
+                  />
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                  <Box sx={{ width: 200, flexShrink: 0 }}>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
                       <DatePicker
                         label="Session Date"
@@ -472,99 +453,93 @@ const handleSubmit = async (e) => {
                         renderInput={(params) => <TextField {...params} fullWidth size="small" />}
                       />
                     </LocalizationProvider>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Type</InputLabel>
-                      <Select
-                        name="transactionType"
-                        value={entry.data.transactionType || ''}
-                        onChange={(e) => handleEntryChange(index, e)}
-                        required
-                      >
-                        <MenuItem value="Withdrawal">Withdrawal</MenuItem>
-                        <MenuItem value="Deposit">Deposit</MenuItem>
-                        <MenuItem value="Purchase">Purchase</MenuItem>
-                        <MenuItem value="Sale">Sale</MenuItem>
-                        <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
-                        <MenuItem value="Other">Other</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <TextField
-                      label="Platinum"
-                      type="number"
-                      name="platinum"
-                      value={entry.data.platinum || ''}
-                      onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleEntryChange(index, { target: { name: 'platinum', value } });
-                      }}
-                      fullWidth
-                      inputProps={{ min: 0, step: 1 }}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <TextField
-                      label="Gold"
-                      type="number"
-                      name="gold"
-                      value={entry.data.gold || ''}
-                      onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleEntryChange(index, { target: { name: 'gold', value } });
-                      }}
-                      fullWidth
-                      inputProps={{ min: 0 }}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <TextField
-                      label="Silver"
-                      type="number"
-                      name="silver"
-                      value={entry.data.silver || ''}
-                      onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleEntryChange(index, { target: { name: 'silver', value } });
-                      }}
-                      fullWidth
-                      inputProps={{ min: 0 }}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <TextField
-                      label="Copper"
-                      type="number"
-                      name="copper"
-                      value={entry.data.copper || ''}
-                      onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleEntryChange(index, { target: { name: 'copper', value } });
-                      }}
-                      fullWidth
-                      inputProps={{ min: 0 }}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Notes"
-                      name="notes"
-                      value={entry.data.notes || ''}
+                  </Box>
+                  <FormControl sx={{ minWidth: 200 }} size="small">
+                    <InputLabel>Type</InputLabel>
+                    <Select
+                      name="transactionType"
+                      value={entry.data.transactionType || ''}
                       onChange={(e) => handleEntryChange(index, e)}
-                      fullWidth
-                      inputProps={{ maxLength: 120 }}
-                      size="small"
-                    />
-                  </Grid>
-                </>
-              )}
-            </Grid>
+                      required
+                    >
+                      <MenuItem value="Withdrawal">Withdrawal</MenuItem>
+                      <MenuItem value="Deposit">Deposit</MenuItem>
+                      <MenuItem value="Purchase">Purchase</MenuItem>
+                      <MenuItem value="Sale">Sale</MenuItem>
+                      <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
+                      <MenuItem value="Other">Other</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <TextField
+                    label="Platinum"
+                    type="number"
+                    name="platinum"
+                    value={entry.data.platinum || ''}
+                    onChange={(e) => {
+                      const value = Math.max(0, parseInt(e.target.value) || 0);
+                      handleEntryChange(index, { target: { name: 'platinum', value } });
+                    }}
+                    sx={{ width: 100 }}
+                    inputProps={{ min: 0, step: 1 }}
+                    size="small"
+                  />
+                  <TextField
+                    label="Gold"
+                    type="number"
+                    name="gold"
+                    value={entry.data.gold || ''}
+                    onChange={(e) => {
+                      const value = Math.max(0, parseInt(e.target.value) || 0);
+                      handleEntryChange(index, { target: { name: 'gold', value } });
+                    }}
+                    sx={{ width: 100 }}
+                    inputProps={{ min: 0 }}
+                    size="small"
+                  />
+                  <TextField
+                    label="Silver"
+                    type="number"
+                    name="silver"
+                    value={entry.data.silver || ''}
+                    onChange={(e) => {
+                      const value = Math.max(0, parseInt(e.target.value) || 0);
+                      handleEntryChange(index, { target: { name: 'silver', value } });
+                    }}
+                    sx={{ width: 100 }}
+                    inputProps={{ min: 0 }}
+                    size="small"
+                  />
+                  <TextField
+                    label="Copper"
+                    type="number"
+                    name="copper"
+                    value={entry.data.copper || ''}
+                    onChange={(e) => {
+                      const value = Math.max(0, parseInt(e.target.value) || 0);
+                      handleEntryChange(index, { target: { name: 'copper', value } });
+                    }}
+                    sx={{ width: 100 }}
+                    inputProps={{ min: 0 }}
+                    size="small"
+                  />
+                </Box>
+                <Box sx={{ mt: 2 }}>
+                  <TextField
+                    label="Notes"
+                    name="notes"
+                    value={entry.data.notes || ''}
+                    onChange={(e) => handleEntryChange(index, e)}
+                    fullWidth
+                    multiline
+                    rows={2}
+                    inputProps={{ maxLength: 120 }}
+                    size="small"
+                  />
+                </Box>
+              </Box>
+            )}
           </Paper>
         ))}
       </form>
