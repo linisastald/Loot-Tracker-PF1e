@@ -291,7 +291,7 @@ const LootEntry = () => {
             </Box>
             {entry.type === 'item' ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
                   <Box sx={{ width: 200, flexShrink: 0 }}>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
                       <DatePicker
@@ -336,21 +336,19 @@ const LootEntry = () => {
                     />
                   </Box>
                 </Box>
-                {shouldShowCharges(entry.data.name) && (
-                  <Box sx={{ width: 100 }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                  {shouldShowCharges(entry.data.name) && (
                     <TextField
                       label="Charges"
                       type="number"
                       name="charges"
                       value={entry.data.charges || ''}
                       onChange={(e) => handleEntryChange(index, e)}
-                      fullWidth
+                      sx={{ minWidth: 100 }}
                       inputProps={{min: 0, step: 1}}
                       size="small"
                     />
-                  </Box>
-                )}
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  )}
                   <FormControl sx={{ minWidth: 120 }} size="small">
                     <InputLabel>Type</InputLabel>
                     <Select
@@ -411,7 +409,7 @@ const LootEntry = () => {
                     </Select>
                   </FormControl>
                 </Box>
-				<Box sx={{ mt: 2 }}>
+                <Box>
                   <Tooltip title="Automatically analyze item to break out special abilities and item name">
                     <FormControlLabel
                       control={
@@ -427,23 +425,21 @@ const LootEntry = () => {
                     />
                   </Tooltip>
                 </Box>
-                <Box sx={{ mt: 2 }}>
-                  <TextField
-                    label="Notes"
-                    name="notes"
-                    value={entry.data.notes || ''}
-                    onChange={(e) => handleEntryChange(index, e)}
-                    fullWidth
-                    multiline
-                    rows={2}
-                    inputProps={{maxLength: 511}}
-                    size="small"
-                  />
-                </Box>
+                <TextField
+                  label="Notes"
+                  name="notes"
+                  value={entry.data.notes || ''}
+                  onChange={(e) => handleEntryChange(index, e)}
+                  fullWidth
+                  multiline
+                  rows={2}
+                  inputProps={{maxLength: 511}}
+                  size="small"
+                />
               </Box>
             ) : (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start' }}>
                   <Box sx={{ width: 200, flexShrink: 0 }}>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
                       <DatePicker
@@ -454,7 +450,7 @@ const LootEntry = () => {
                       />
                     </LocalizationProvider>
                   </Box>
-                  <FormControl sx={{ minWidth: 200 }} size="small">
+                  <FormControl sx={{ minWidth: 200, flexGrow: 1 }} size="small">
                     <InputLabel>Type</InputLabel>
                     <Select
                       name="transactionType"
@@ -471,7 +467,7 @@ const LootEntry = () => {
                     </Select>
                   </FormControl>
                 </Box>
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                   <TextField
                     label="Platinum"
                     type="number"
@@ -481,7 +477,7 @@ const LootEntry = () => {
                       const value = Math.max(0, parseInt(e.target.value) || 0);
                       handleEntryChange(index, { target: { name: 'platinum', value } });
                     }}
-                    sx={{ width: 100 }}
+                    sx={{ minWidth: 100 }}
                     inputProps={{ min: 0, step: 1 }}
                     size="small"
                   />
@@ -494,7 +490,7 @@ const LootEntry = () => {
                       const value = Math.max(0, parseInt(e.target.value) || 0);
                       handleEntryChange(index, { target: { name: 'gold', value } });
                     }}
-                    sx={{ width: 100 }}
+                    sx={{ minWidth: 100 }}
                     inputProps={{ min: 0 }}
                     size="small"
                   />
@@ -507,7 +503,7 @@ const LootEntry = () => {
                       const value = Math.max(0, parseInt(e.target.value) || 0);
                       handleEntryChange(index, { target: { name: 'silver', value } });
                     }}
-                    sx={{ width: 100 }}
+                    sx={{ minWidth: 100 }}
                     inputProps={{ min: 0 }}
                     size="small"
                   />
@@ -520,24 +516,22 @@ const LootEntry = () => {
                       const value = Math.max(0, parseInt(e.target.value) || 0);
                       handleEntryChange(index, { target: { name: 'copper', value } });
                     }}
-                    sx={{ width: 100 }}
+                    sx={{ minWidth: 100 }}
                     inputProps={{ min: 0 }}
                     size="small"
                   />
                 </Box>
-                <Box sx={{ mt: 2 }}>
-                  <TextField
-                    label="Notes"
-                    name="notes"
-                    value={entry.data.notes || ''}
-                    onChange={(e) => handleEntryChange(index, e)}
-                    fullWidth
-                    multiline
-                    rows={2}
-                    inputProps={{ maxLength: 120 }}
-                    size="small"
-                  />
-                </Box>
+                <TextField
+                  label="Notes"
+                  name="notes"
+                  value={entry.data.notes || ''}
+                  onChange={(e) => handleEntryChange(index, e)}
+                  fullWidth
+                  multiline
+                  rows={2}
+                  inputProps={{ maxLength: 120 }}
+                  size="small"
+                />
               </Box>
             )}
           </Paper>
