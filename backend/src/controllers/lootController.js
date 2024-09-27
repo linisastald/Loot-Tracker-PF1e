@@ -709,4 +709,14 @@ exports.dmUpdateItem = async (req, res) => {
   }
 };
 
+exports.getUnprocessedCount = async (req, res) => {
+  try {
+    const result = await pool.query('SELECT COUNT(*) FROM loot WHERE status IS NULL');
+    res.json({ count: parseInt(result.rows[0].count) });
+  } catch (error) {
+    console.error('Error fetching unprocessed loot count:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 module.exports = exports;

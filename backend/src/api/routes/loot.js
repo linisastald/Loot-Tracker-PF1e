@@ -15,6 +15,7 @@ router.get('/trash', verifyToken, lootController.getTrashedLoot);
 router.get('/kept-party', verifyToken, lootController.getKeptPartyLoot);
 router.get('/kept-character', verifyToken, lootController.getKeptCharacterLoot);
 router.put('/update-status', verifyToken, lootController.updateLootStatus);
+router.get('/unprocessed-count', lootController.getUnprocessedCount);
 router.get('/pending-sale', verifyToken, checkRole('DM'), lootController.getPendingSaleItems);
 router.get('/search', verifyToken, checkRole('DM'), lootController.searchItems);
 router.put('/confirm-sale', verifyToken, checkRole('DM'), lootController.confirmSale);
