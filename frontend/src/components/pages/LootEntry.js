@@ -294,279 +294,278 @@ const handleSubmit = async (e) => {
 
       <form onSubmit={handleSubmit}>
         {entries.map((entry, index) => (
-          <Paper key={index} sx={{ p: 2, mb: 2 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
+            <Paper key={index} sx={{p: 2, mb: 2}}>
+              <Box sx={{mb: 2}}>
                 <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={() => handleRemoveEntry(index)}
-                  size="small"
+                    variant="outlined"
+                    color="error"
+                    onClick={() => handleRemoveEntry(index)}
+                    size="small"
                 >
                   Remove Entry
                 </Button>
-              </Grid>
+              </Box>
               {entry.type === 'item' ? (
-                <>
-                  <Grid item xs={6} sm={1}>
-                    <LocalizationProvider dateAdapter={AdapterDateFns}>
-                      <DatePicker
-                        label="Session Date"
-                        value={entry.data.sessionDate}
-                        onChange={(date) => handleDateChange(index, 'sessionDate', date)}
-                        renderInput={(params) => <TextField {...params} fullWidth size="small" />}
-                      />
-                    </LocalizationProvider>
-                  </Grid>
-                  <Grid item xs={6} sm={1}>
-                    <TextField
-                      label="Quantity"
-                      type="number"
-                      name="quantity"
-                      value={entry.data.quantity || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
-                      fullWidth
-                      required
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={shouldShowCharges(entry.data.name) ? 8 : 10}>
-                    <Autocomplete
-                      freeSolo
-                      options={itemNames}
-                      getOptionLabel={(option) => option.name}
-                      onChange={(e, value) => handleItemSelect(index, e, value)}
-                      onInputChange={(e, value) => handleItemNameChange(index, e, value)}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="Item Name"
-                          name="name"
-                          value={entry.data.name || ''}
+                  <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start'}}>
+                    <Box sx={{width: 200}}>
+                      <LocalizationProvider dateAdapter={AdapterDateFns}>
+                        <DatePicker
+                            label="Session Date"
+                            value={entry.data.sessionDate}
+                            onChange={(date) => handleDateChange(index, 'sessionDate', date)}
+                            renderInput={(params) => <TextField {...params} fullWidth size="small"/>}
+                        />
+                      </LocalizationProvider>
+                    </Box>
+                    <Box sx={{width: 100}}>
+                      <TextField
+                          label="Quantity"
+                          type="number"
+                          name="quantity"
+                          value={entry.data.quantity || ''}
                           onChange={(e) => handleEntryChange(index, e)}
                           fullWidth
                           required
                           size="small"
-                        />
-                      )}
-                    />
-                  </Grid>
-                  {shouldShowCharges(entry.data.name) && (
+                      />
+                    </Box>
+                    <Box sx={{flexGrow: 1, minWidth: 200}}>
+                      <Autocomplete
+                          freeSolo
+                          options={itemNames}
+                          getOptionLabel={(option) => option.name}
+                          onChange={(e, value) => handleItemSelect(index, e, value)}
+                          onInputChange={(e, value) => handleItemNameChange(index, e, value)}
+                          renderInput={(params) => (
+                              <TextField
+                                  {...params}
+                                  label="Item Name"
+                                  name="name"
+                                  value={entry.data.name || ''}
+                                  onChange={(e) => handleEntryChange(index, e)}
+                                  fullWidth
+                                  required
+                                  size="small"
+                              />
+                          )}
+                      />
+                    </Box>
+                    {shouldShowCharges(entry.data.name) && (
+                        <Box sx={{width: 100}}>
+                          <TextField
+                              label="Charges"
+                              type="number"
+                              name="charges"
+                              value={entry.data.charges || ''}
+                              onChange={(e) => handleEntryChange(index, e)}
+                              fullWidth
+                              inputProps={{min: 0, step: 1}}
+                              size="small"
+                          />
+                        </Box>
+                    )}
                     <Grid item xs={6} sm={2}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Type</InputLabel>
+                        <Select
+                            name="type"
+                            value={capitalizeWords(entry.data.type || '')}
+                            onChange={(e) => handleEntryChange(index, {
+                              target: {
+                                name: 'type',
+                                value: e.target.value.toLowerCase()
+                              }
+                            })}
+                            disabled={autocompletedItems[index]}
+                        >
+                          {['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'].map(type => (
+                              <MenuItem key={type} value={capitalizeWords(type)}>{capitalizeWords(type)}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={6} sm={2}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Magical?</InputLabel>
+                        <Select
+                            name="unidentified"
+                            value={entry.data.unidentified === null ? '' : entry.data.unidentified}
+                            onChange={(e) => handleEntryChange(index, e)}
+                        >
+                          <MenuItem value={null}>Not Magical</MenuItem>
+                          <MenuItem value={false}>Identified</MenuItem>
+                          <MenuItem value={true}>Unidentified</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={6} sm={2}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Masterwork</InputLabel>
+                        <Select
+                            name="masterwork"
+                            value={entry.data.masterwork === null ? '' : entry.data.masterwork}
+                            onChange={(e) => handleEntryChange(index, e)}
+                        >
+                          <MenuItem value={true}>Yes</MenuItem>
+                          <MenuItem value={false}>No</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={6} sm={2}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Size</InputLabel>
+                        <Select
+                            name="size"
+                            value={entry.data.size || ''}
+                            onChange={(e) => handleEntryChange(index, e)}
+                        >
+                          <MenuItem value="Fine">Fine</MenuItem>
+                          <MenuItem value="Diminutive">Diminutive</MenuItem>
+                          <MenuItem value="Tiny">Tiny</MenuItem>
+                          <MenuItem value="Small">Small</MenuItem>
+                          <MenuItem value="Medium">Medium</MenuItem>
+                          <MenuItem value="Large">Large</MenuItem>
+                          <MenuItem value="Huge">Huge</MenuItem>
+                          <MenuItem value="Gargantuan">Gargantuan</MenuItem>
+                          <MenuItem value="Colossal">Colossal</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Tooltip title="Automatically analyze item to break out special abilities and item name">
+                        <FormControlLabel
+                            control={
+                              <Checkbox
+                                  name="parseItem"
+                                  checked={entry.data.parseItem || false}
+                                  onChange={(e) => handleEntryChange(index, e)}
+                                  disabled={autocompletedItems[index]}
+                                  size="small"
+                              />
+                            }
+                            label="Smart Item Detection"
+                        />
+                      </Tooltip>
+                    </Grid>
+                    <Grid item xs={12}>
                       <TextField
-                        label="Charges"
-                        type="number"
-                        name="charges"
-                        value={entry.data.charges || ''}
-                        onChange={(e) => handleEntryChange(index, e)}
-                        fullWidth
-                        inputProps={{min: 0, step: 1}}
-                        size="small"
+                          label="Notes"
+                          name="notes"
+                          value={entry.data.notes || ''}
+                          onChange={(e) => handleEntryChange(index, e)}
+                          fullWidth
+                          inputProps={{maxLength: 511}}
+                          size="small"
                       />
                     </Grid>
-                  )}
-                  <Grid item xs={6} sm={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Type</InputLabel>
-                      <Select
-                        name="type"
-                        value={capitalizeWords(entry.data.type || '')}
-                        onChange={(e) => handleEntryChange(index, {
-                          target: {
-                            name: 'type',
-                            value: e.target.value.toLowerCase()
-                          }
-                        })}
-                        disabled={autocompletedItems[index]}
-                      >
-                        {['weapon', 'armor', 'magic', 'gear', 'trade good', 'other'].map(type => (
-                          <MenuItem key={type} value={capitalizeWords(type)}>{capitalizeWords(type)}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6} sm={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Magical?</InputLabel>
-                      <Select
-                        name="unidentified"
-                        value={entry.data.unidentified === null ? '' : entry.data.unidentified}
-                        onChange={(e) => handleEntryChange(index, e)}
-                      >
-                        <MenuItem value={null}>Not Magical</MenuItem>
-                        <MenuItem value={false}>Identified</MenuItem>
-                        <MenuItem value={true}>Unidentified</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6} sm={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Masterwork</InputLabel>
-                      <Select
-                        name="masterwork"
-                        value={entry.data.masterwork === null ? '' : entry.data.masterwork}
-                        onChange={(e) => handleEntryChange(index, e)}
-                      >
-                        <MenuItem value={true}>Yes</MenuItem>
-                        <MenuItem value={false}>No</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6} sm={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Size</InputLabel>
-                      <Select
-                        name="size"
-                        value={entry.data.size || ''}
-                        onChange={(e) => handleEntryChange(index, e)}
-                      >
-                        <MenuItem value="Fine">Fine</MenuItem>
-                        <MenuItem value="Diminutive">Diminutive</MenuItem>
-                        <MenuItem value="Tiny">Tiny</MenuItem>
-                        <MenuItem value="Small">Small</MenuItem>
-                        <MenuItem value="Medium">Medium</MenuItem>
-                        <MenuItem value="Large">Large</MenuItem>
-                        <MenuItem value="Huge">Huge</MenuItem>
-                        <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-                        <MenuItem value="Colossal">Colossal</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Tooltip title="Automatically analyze item to break out special abilities and item name">
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            name="parseItem"
-                            checked={entry.data.parseItem || false}
-                            onChange={(e) => handleEntryChange(index, e)}
-                            disabled={autocompletedItems[index]}
-                            size="small"
-                          />
-                        }
-                        label="Smart Item Detection"
-                      />
-                    </Tooltip>
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Notes"
-                      name="notes"
-                      value={entry.data.notes || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
-                      fullWidth
-                      inputProps={{maxLength: 511}}
-                      size="small"
-                    />
-                  </Grid>
-                </>
+                  </>
               ) : (
-                <>
-                  {/* Gold entry layout */}
-                  <Grid item xs={12} sm={6}>
-                    <LocalizationProvider dateAdapter={AdapterDateFns}>
-                      <DatePicker
-                        label="Session Date"
-                        value={entry.data.sessionDate}
-                        onChange={(date) => handleDateChange(index, 'sessionDate', date)}
-                        renderInput={(params) => <TextField {...params} fullWidth size="small" />}
+                  <>
+                    {/* Gold entry layout */}
+                    <Grid item xs={12} sm={6}>
+                      <LocalizationProvider dateAdapter={AdapterDateFns}>
+                        <DatePicker
+                            label="Session Date"
+                            value={entry.data.sessionDate}
+                            onChange={(date) => handleDateChange(index, 'sessionDate', date)}
+                            renderInput={(params) => <TextField {...params} fullWidth size="small"/>}
+                        />
+                      </LocalizationProvider>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Type</InputLabel>
+                        <Select
+                            name="transactionType"
+                            value={entry.data.transactionType || ''}
+                            onChange={(e) => handleEntryChange(index, e)}
+                            required
+                        >
+                          <MenuItem value="Withdrawal">Withdrawal</MenuItem>
+                          <MenuItem value="Deposit">Deposit</MenuItem>
+                          <MenuItem value="Purchase">Purchase</MenuItem>
+                          <MenuItem value="Sale">Sale</MenuItem>
+                          <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
+                          <MenuItem value="Other">Other</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <TextField
+                          label="Platinum"
+                          type="number"
+                          name="platinum"
+                          value={entry.data.platinum || ''}
+                          onChange={(e) => {
+                            const value = Math.max(0, parseInt(e.target.value) || 0);
+                            handleEntryChange(index, {target: {name: 'platinum', value}});
+                          }}
+                          fullWidth
+                          inputProps={{min: 0, step: 1}}
+                          size="small"
                       />
-                    </LocalizationProvider>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Type</InputLabel>
-                      <Select
-                        name="transactionType"
-                        value={entry.data.transactionType || ''}
-                        onChange={(e) => handleEntryChange(index, e)}
-                        required
-                      >
-                        <MenuItem value="Withdrawal">Withdrawal</MenuItem>
-                        <MenuItem value="Deposit">Deposit</MenuItem>
-                        <MenuItem value="Purchase">Purchase</MenuItem>
-                        <MenuItem value="Sale">Sale</MenuItem>
-                        <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
-                        <MenuItem value="Other">Other</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <TextField
-                      label="Platinum"
-                      type="number"
-                      name="platinum"
-                      value={entry.data.platinum || ''}
-                      onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleEntryChange(index, { target: { name: 'platinum', value } });
-                      }}
-                      fullWidth
-                      inputProps={{ min: 0, step: 1 }}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <TextField
-                      label="Gold"
-                      type="number"
-                      name="gold"
-                      value={entry.data.gold || ''}
-                      onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleEntryChange(index, { target: { name: 'gold', value } });
-                      }}
-                      fullWidth
-                      inputProps={{ min: 0 }}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <TextField
-                      label="Silver"
-                      type="number"
-                      name="silver"
-                      value={entry.data.silver || ''}
-                      onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleEntryChange(index, { target: { name: 'silver', value } });
-                      }}
-                      fullWidth
-                      inputProps={{ min: 0 }}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <TextField
-                      label="Copper"
-                      type="number"
-                      name="copper"
-                      value={entry.data.copper || ''}
-                      onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleEntryChange(index, { target: { name: 'copper', value } });
-                      }}
-                      fullWidth
-                      inputProps={{ min: 0 }}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Notes"
-                      name="notes"
-                      value={entry.data.notes || ''}
-                      onChange={(e) => handleEntryChange(index, e)}
-                      fullWidth
-                      inputProps={{ maxLength: 120 }}
-                      size="small"
-                    />
-                  </Grid>
-                </>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <TextField
+                          label="Gold"
+                          type="number"
+                          name="gold"
+                          value={entry.data.gold || ''}
+                          onChange={(e) => {
+                            const value = Math.max(0, parseInt(e.target.value) || 0);
+                            handleEntryChange(index, {target: {name: 'gold', value}});
+                          }}
+                          fullWidth
+                          inputProps={{min: 0}}
+                          size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <TextField
+                          label="Silver"
+                          type="number"
+                          name="silver"
+                          value={entry.data.silver || ''}
+                          onChange={(e) => {
+                            const value = Math.max(0, parseInt(e.target.value) || 0);
+                            handleEntryChange(index, {target: {name: 'silver', value}});
+                          }}
+                          fullWidth
+                          inputProps={{min: 0}}
+                          size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <TextField
+                          label="Copper"
+                          type="number"
+                          name="copper"
+                          value={entry.data.copper || ''}
+                          onChange={(e) => {
+                            const value = Math.max(0, parseInt(e.target.value) || 0);
+                            handleEntryChange(index, {target: {name: 'copper', value}});
+                          }}
+                          fullWidth
+                          inputProps={{min: 0}}
+                          size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField
+                          label="Notes"
+                          name="notes"
+                          value={entry.data.notes || ''}
+                          onChange={(e) => handleEntryChange(index, e)}
+                          fullWidth
+                          inputProps={{maxLength: 120}}
+                          size="small"
+                      />
+                    </Grid>
+                  </>
               )}
             </Grid>
           </Paper>
-        ))}
+          ))}
       </form>
     </Container>
   );
