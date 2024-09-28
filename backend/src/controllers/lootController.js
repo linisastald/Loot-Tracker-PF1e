@@ -4,6 +4,40 @@ const pool = require('../config/db');
 const { parseItemDescriptionWithGPT } = require('../services/parseItemDescriptionWithGPT');
 const { calculateFinalValue } = require('../services/calculateFinalValue');
 
+const customRounding = (value) => {
+  const randomValue = Math.random();
+  if (randomValue < 0.15) {
+    // Round to nearest hundredth
+    let roundedValue = Math.round(value * 100) / 100;
+    if (Math.random() < 0.99) {
+      const factor = 100;
+      const lastDigit = Math.round(roundedValue * factor) % 10;
+      const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+      roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
+    }
+    return roundedValue;
+  } else if (randomValue < 0.4) {
+    // Round to nearest tenth
+    let roundedValue = Math.round(value * 10) / 10;
+    if (Math.random() < 0.75) {
+      const factor = 10;
+      const lastDigit = Math.round(roundedValue * factor) % 10;
+      const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+      roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
+    }
+    return roundedValue;
+  } else {
+    // Round to nearest whole number
+    let roundedValue = Math.round(value);
+    if (Math.random() < 0.5) {
+      const lastDigit = roundedValue % 10;
+      const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+      roundedValue += adjust;
+    }
+    return roundedValue;
+  }
+};
+
 exports.createLoot = async (req, res) => {
   try {
     const { entries } = req.body;
@@ -372,39 +406,7 @@ exports.appraiseLoot = async (req, res) => {
     const previousAppraisals = previousAppraisalsResult.rows;
 
     // Helper function to round based on specified probabilities
-    const customRounding = (value) => {
-      const randomValue = Math.random();
-      if (randomValue < 0.15) {
-        // Round to nearest hundredth
-        let roundedValue = Math.round(value * 100) / 100;
-        if (Math.random() < 0.99) {
-          const factor = 100;
-          const lastDigit = Math.round(roundedValue * factor) % 10;
-          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
-        }
-        return roundedValue;
-      } else if (randomValue < 0.4) {
-        // Round to nearest tenth
-        let roundedValue = Math.round(value * 10) / 10;
-        if (Math.random() < 0.75) {
-          const factor = 10;
-          const lastDigit = Math.round(roundedValue * factor) % 10;
-          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
-        }
-        return roundedValue;
-      } else {
-        // Round to nearest whole number
-        let roundedValue = Math.round(value);
-        if (Math.random() < 0.5) {
-          const lastDigit = roundedValue % 10;
-          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-          roundedValue += adjust;
-        }
-        return roundedValue;
-      }
-    };
+
 
     // Appraise each item
     const createdAppraisals = [];
@@ -583,6 +585,14 @@ exports.dmUpdateItem = async (req, res) => {
 
   if (!id) {
     return res.status(400).json({ error: 'Item ID is required' });
+  }
+
+  // Check for required fields
+  const requiredFields = ['session_date', 'quantity', 'name', 'type'];
+  for (const field of requiredFields) {
+    if (!updateData[field] && updateData[field] !== 0) {
+      return res.status(400).json({error: `${field} is required`});
+    }
   }
 
   const client = await pool.connect();
