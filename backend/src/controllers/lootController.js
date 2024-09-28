@@ -587,72 +587,83 @@ exports.dmUpdateItem = async (req, res) => {
     return res.status(400).json({ error: 'Item ID is required' });
   }
 
-  // Check for required fields
-  const requiredFields = ['session_date', 'quantity', 'name', 'type'];
-  for (const field of requiredFields) {
-    if (!updateData[field] && updateData[field] !== 0) {
-      return res.status(400).json({error: `${field} is required`});
-    }
-  }
-
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
 
-    const allowedFields = [
-      'session_date', 'quantity', 'name', 'unidentified', 'masterwork',
-      'type', 'size', 'status', 'itemid', 'modids', 'charges', 'value',
-      'whohas', 'notes'
-    ];
+    // First, fetch the current item data
+    const currentItemResult = await client.query('SELECT * FROM loot WHERE id = $1', [id]);
+    if (currentItemResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    const currentItem = currentItemResult.rows[0];
 
-    const filteredUpdateData = Object.fromEntries(
-      Object.entries(updateData).filter(([key, value]) =>
-        allowedFields.includes(key) && value !== undefined && value !== null
-      )
-    );
-
-    const updateFields = Object.keys(filteredUpdateData)
-      .map((key, index) => {
-        switch(key) {
-          case 'session_date':
-            return `${key} = $${index + 1}::timestamp`;
-          case 'quantity':
-          case 'itemid':
-          case 'charges':
-          case 'value':
-          case 'whohas':
-            return `${key} = $${index + 1}::integer`;
-          case 'unidentified':
-          case 'masterwork':
-            return `${key} = $${index + 1}::boolean`;
-          case 'modids':
-            return `${key} = $${index + 1}::integer[]`;
-          default:
-            return `${key} = $${index + 1}::text`;
-        }
-      });
-
-    updateFields.push(`lastupdate = CURRENT_TIMESTAMP`);
+    // Merge current data with update data, ensuring all fields are present
+    const mergedData = {
+      ...currentItem,
+      ...updateData,
+      session_date: updateData.session_date || currentItem.session_date,
+      quantity: updateData.quantity || currentItem.quantity,
+      name: updateData.name || currentItem.name,
+      unidentified: updateData.unidentified !== undefined ? updateData.unidentified : currentItem.unidentified,
+      masterwork: updateData.masterwork !== undefined ? updateData.masterwork : currentItem.masterwork,
+      type: updateData.type || currentItem.type,
+      size: updateData.size || currentItem.size,
+      itemid: updateData.itemid || currentItem.itemid,
+      modids: updateData.modids || currentItem.modids,
+      charges: updateData.charges !== undefined ? updateData.charges : currentItem.charges,
+      value: updateData.value !== undefined ? updateData.value : currentItem.value,
+      whohas: updateData.whohas || currentItem.whohas,
+      notes: updateData.notes || currentItem.notes,
+      status: updateData.status || currentItem.status
+    };
 
     const updateQuery = `
       UPDATE loot
-      SET ${updateFields.join(', ')}
-      WHERE id = $${Object.keys(filteredUpdateData).length + 1}::integer
+      SET 
+        session_date = $1::timestamp,
+        quantity = $2::integer,
+        name = $3::text,
+        unidentified = $4::boolean,
+        masterwork = $5::boolean,
+        type = $6::text,
+        size = $7::text,
+        itemid = $8::integer,
+        modids = $9::integer[],
+        charges = $10::integer,
+        value = $11::integer,
+        whohas = $12::integer,
+        notes = $13::text,
+        status = $14::text,
+        lastupdate = CURRENT_TIMESTAMP
+      WHERE id = $15::integer
       RETURNING *
     `;
 
-    const updateValues = [...Object.values(filteredUpdateData), id];
-
-    // Convert empty arrays to null for modids
-    const processedUpdateValues = updateValues.map(value =>
-      Array.isArray(value) && value.length === 0 ? null : value
-    );
+    const updateValues = [
+      mergedData.session_date,
+      mergedData.quantity,
+      mergedData.name,
+      mergedData.unidentified,
+      mergedData.masterwork,
+      mergedData.type,
+      mergedData.size,
+      mergedData.itemid,
+      mergedData.modids,
+      mergedData.charges,
+      mergedData.value,
+      mergedData.whohas,
+      mergedData.notes,
+      mergedData.status,
+      id
+    ];
 
     console.log('Update Query:', updateQuery);
-    console.log('Update Values:', processedUpdateValues);
+    console.log('Update Values:', updateValues);
 
-    const updateResult = await client.query(updateQuery, processedUpdateValues);
+    const updateResult = await client.query(updateQuery, updateValues);
 
     if (updateResult.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -661,50 +672,8 @@ exports.dmUpdateItem = async (req, res) => {
 
     let updatedItem = updateResult.rows[0];
 
-    // If value is null or undefined, calculate it
-    if (updatedItem.value === null || updatedItem.value === undefined) {
-      // Fetch item details if itemid is provided
-      let itemDetails = {};
-      if (updatedItem.itemid) {
-        const itemResult = await client.query('SELECT * FROM item WHERE id = $1', [updatedItem.itemid]);
-        if (itemResult.rows.length > 0) {
-          itemDetails = itemResult.rows[0];
-        }
-      }
-
-      // Fetch mod details if modids are provided
-      let modDetails = [];
-      if (updatedItem.modids && updatedItem.modids.length > 0) {
-        const modResult = await client.query('SELECT * FROM mod WHERE id = ANY($1)', [updatedItem.modids]);
-        modDetails = modResult.rows;
-      }
-
-      // Calculate the value
-      const calculatedValue = calculateFinalValue(
-        itemDetails.value || 0,
-        updatedItem.type,
-        itemDetails.subtype,
-        modDetails,
-        updatedItem.masterwork,
-        updatedItem.name,
-        updatedItem.charges,
-        updatedItem.size
-      );
-
-      // Update the item with the calculated value
-      const valueUpdateQuery = `
-        UPDATE loot
-        SET value = $1, lastupdate = CURRENT_TIMESTAMP
-        WHERE id = $2
-        RETURNING *
-      `;
-
-      const valueUpdateResult = await client.query(valueUpdateQuery, [calculatedValue, id]);
-      updatedItem = valueUpdateResult.rows[0];
-    }
-
     // If value has changed, update appraisals
-    if (updateData.value !== undefined && updateData.value !== null) {
+    if (updateData.value !== undefined && updateData.value !== currentItem.value) {
       await exports.updateAppraisalsOnValueChange(id, updateData.value);
     }
 
