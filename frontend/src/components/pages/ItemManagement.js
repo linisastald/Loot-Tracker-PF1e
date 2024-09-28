@@ -130,41 +130,43 @@ const ItemManagement = () => {
     setPendingSaleCount(pendingItems.length);
   };
 
-const handleItemUpdateSubmit = async () => {
-  try {
-    const token = localStorage.getItem('token');
+  const handleItemUpdateSubmit = async () => {
+    try {
+      const token = localStorage.getItem('token');
 
-    // Prepare the data, converting empty strings to null and ensuring correct types
-    const preparedData = Object.fromEntries(
-      Object.entries(updatedItem).map(([key, value]) => {
-        if (value === '') return [key, null];
-        if (['quantity', 'itemid', 'charges', 'value', 'whohas'].includes(key)) {
-          return [key, value === null ? null : parseInt(value, 10)];
-        }
-        if (['unidentified', 'masterwork'].includes(key)) {
-          return [key, value === null ? null : Boolean(value)];
-        }
-        // Special handling for status field
-        if (key === 'status' && value === '') {
-          return [key, null]; // Set status to null when "None" is selected
-        }
-        return [key, value];
-      })
-    );
+      // Prepare the data, converting empty strings to null and ensuring correct types
+      const preparedData = {
+        session_date: updatedItem.session_date || null,
+        quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
+        name: updatedItem.name || null,
+        unidentified: updatedItem.unidentified === '' ? null : Boolean(updatedItem.unidentified),
+        masterwork: updatedItem.masterwork === '' ? null : Boolean(updatedItem.masterwork),
+        type: updatedItem.type || null,
+        size: updatedItem.size || null,
+        itemid: updatedItem.itemid !== '' ? parseInt(updatedItem.itemid, 10) : null,
+        modids: updatedItem.modids || [],
+        charges: updatedItem.charges !== '' ? parseInt(updatedItem.charges, 10) : null,
+        value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
+        whohas: updatedItem.whohas !== '' ? parseInt(updatedItem.whohas, 10) : null,
+        notes: updatedItem.notes || null,
+        status: updatedItem.status || null
+      };
 
-    // Remove the 'id' field from preparedData
-    const { id, ...dataToSend } = preparedData;
+      // Remove any undefined or null values
+      const dataToSend = Object.fromEntries(
+          Object.entries(preparedData).filter(([_, v]) => v != null)
+      );
 
-    console.log('Prepared data:', dataToSend);
+      console.log('Data being sent to update:', dataToSend);
 
-    const response = await api.put(`/loot/dm-update/${id}`, dataToSend);
+      const response = await api.put(`/loot/dm-update/${updatedItem.id}`, dataToSend);
 
-    setUpdateDialogOpen(false);
-    fetchPendingItems();
-  } catch (error) {
-    console.error('Error updating item', error);
-  }
-};
+      setUpdateDialogOpen(false);
+      fetchPendingItems();
+    } catch (error) {
+      console.error('Error updating item', error);
+    }
+  };
 
   const handleConfirmSale = async () => {
     try {
