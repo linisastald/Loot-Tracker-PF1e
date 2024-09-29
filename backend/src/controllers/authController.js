@@ -5,7 +5,7 @@ require('dotenv').config();
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://192.168.0.64:3000').split(',');
 const MAX_LOGIN_ATTEMPTS = 5;
-const LOCK_TIME = 15 * 60 * 1000; // 15 minutes in milliseconds
+const LOCK_TIME = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 exports.registerUser = async (req, res) => {
   const { username, password, inviteCode } = req.body;
