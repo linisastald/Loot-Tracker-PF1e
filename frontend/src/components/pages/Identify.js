@@ -7,17 +7,10 @@ import {
   Button,
   Box,
   TextField,
-  TableContainer,
-  Table,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-  Checkbox,
 } from '@mui/material';
-import { fetchActiveUser, formatDate } from '../../utils/utils';
+import { fetchActiveUser } from '../../utils/utils';
 import CustomLootTable from '../common/CustomLootTable';
-import {isDM} from "../../utils/auth";
+import { isDM } from "../../utils/auth";
 
 const Identify = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
@@ -26,10 +19,12 @@ const Identify = () => {
   const [activeUser, setActiveUser] = useState(null);
   const [openItems, setOpenItems] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [isDMUser, setIsDMUser] = useState(false);
 
   useEffect(() => {
     fetchActiveUserDetails();
     fetchLoot();
+    setIsDMUser(isDM());
   }, []);
 
   const fetchActiveUserDetails = async () => {
@@ -42,32 +37,27 @@ const Identify = () => {
   };
 
   const fetchLoot = async () => {
-      try {
-          const token = localStorage.getItem('token');
-          const isDMUser = isDM();
+    try {
+      const isDMUser = isDM();
+      let params = { isDM: isDMUser };
 
-          let params = { isDM: isDMUser };
-
-          if (!isDMUser) {
-              const currentActiveUser = await fetchActiveUser(); // Fetch the latest user data
-              if (currentActiveUser && currentActiveUser.activeCharacterId) {
-                  params.activeCharacterId = currentActiveUser.activeCharacterId;
-              } else {
-                  console.error('No active character ID available');
-                  return; // Exit early if no active character ID is available
-                  }
-          }
-
-          console.log("Fetching loot with params:", params); // Add this log
-
-          const response = await api.get(`/loot`, {
-              params: params
-          });
-
-          setLoot(response.data);
-      } catch (error) {
-          console.error('Error fetching loot:', error);
+      if (!isDMUser) {
+        const currentActiveUser = await fetchActiveUser();
+        if (currentActiveUser && currentActiveUser.activeCharacterId) {
+          params.activeCharacterId = currentActiveUser.activeCharacterId;
+        } else {
+          console.error('No active character ID available');
+          return;
+        }
       }
+
+      console.log("Fetching loot with params:", params);
+
+      const response = await api.get(`/loot`, { params: params });
+      setLoot(response.data);
+    } catch (error) {
+      console.error('Error fetching loot:', error);
+    }
   };
 
   const handleSelectItem = (id) => {
@@ -80,11 +70,32 @@ const Identify = () => {
 
   const handleIdentify = async (itemsToIdentify) => {
     try {
-      await api.post('/loot/identify', {
-        items: itemsToIdentify,
-        characterId: activeUser.activeCharacterId,
-        spellcraftValue: parseInt(spellcraftValue)
-      });
+      const identifyResults = await Promise.all(itemsToIdentify.map(async (itemId) => {
+        const item = loot.individual.find(i => i.id === itemId);
+        if (!item) return null;
+
+        if (isDMUser) {
+          return { itemId, success: true, spellcraftRoll: 99 }; // Use 99 for DM identifications
+        }
+
+        const diceRoll = Math.floor(Math.random() * 20) + 1;
+        const totalRoll = diceRoll + parseInt(spellcraftValue);
+        const casterLevel = Math.min(item.caster_level || 1, 20);
+        const success = totalRoll >= 15 + casterLevel;
+
+        return { itemId, success, spellcraftRoll: totalRoll };
+      }));
+
+      const successfulIdentifications = identifyResults.filter(result => result && result.success);
+
+      if (successfulIdentifications.length > 0) {
+        await api.post('/loot/identify', {
+          items: successfulIdentifications.map(result => result.itemId),
+          characterId: activeUser.activeCharacterId,
+          spellcraftRolls: successfulIdentifications.map(result => result.spellcraftRoll)
+        });
+      }
+
       fetchLoot();
       setSelectedItems([]);
     } catch (error) {
@@ -152,13 +163,15 @@ const Identify = () => {
           zIndex: 1000,
         }}
       >
-        <TextField
-          label="Spellcraft"
-          type="number"
-          value={spellcraftValue}
-          onChange={(e) => setSpellcraftValue(e.target.value)}
-          sx={{ width: '150px' }}
-        />
+        {!isDMUser && (
+          <TextField
+            label="Spellcraft"
+            type="number"
+            value={spellcraftValue}
+            onChange={(e) => setSpellcraftValue(e.target.value)}
+            sx={{ width: '150px' }}
+          />
+        )}
         <Button
           variant="contained"
           color="primary"

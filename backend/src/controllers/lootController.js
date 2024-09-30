@@ -3,6 +3,7 @@ const Appraisal = require('../models/Appraisal');
 const pool = require('../config/db');
 const { parseItemDescriptionWithGPT } = require('../services/parseItemDescriptionWithGPT');
 const { calculateFinalValue } = require('../services/calculateFinalValue');
+const { isDM } = require('../middleware/auth');
 
 const customRounding = (value) => {
   const randomValue = Math.random();
@@ -695,6 +696,61 @@ exports.getUnprocessedCount = async (req, res) => {
   } catch (error) {
     console.error('Error fetching unprocessed loot count:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.identifyItems = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { items, characterId, spellcraftRolls } = req.body;
+    const userIsDM = isDM(req.user);
+
+    for (let i = 0; i < items.length; i++) {
+      const itemId = items[i];
+      const spellcraftRoll = spellcraftRolls[i];
+
+      // Fetch the item details
+      const itemResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
+      const item = itemResult.rows[0];
+
+      if (!item) {
+        console.error(`Item with id ${itemId} not found`);
+        continue;
+      }
+
+      // Fetch the associated mods
+      const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [item.modids]);
+      const mods = modsResult.rows;
+
+      // Construct the new name
+      let newName = mods.map(mod => `[${mod.name}]`).join(' ') + ' ' + item.name;
+      newName = newName.trim();
+
+      // Update the item
+      await client.query(
+        'UPDATE loot SET name = $1, unidentified = false WHERE id = $2',
+        [newName, itemId]
+      );
+
+      // Record the identification in the identify table
+      // If spellcraftRoll is 99, it's a DM identification
+      const identifyCharacterId = spellcraftRoll === 99 ? null : characterId;
+      await client.query(
+        'INSERT INTO identify (lootid, characterid, spellcraft_roll) VALUES ($1, $2, $3)',
+        [itemId, identifyCharacterId, spellcraftRoll]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.status(200).json({ message: 'Items identified successfully' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error identifying items:', error);
+    res.status(500).json({ error: 'An error occurred while identifying items' });
+  } finally {
+    client.release();
   }
 };
 
