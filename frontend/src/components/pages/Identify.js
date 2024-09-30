@@ -15,18 +15,20 @@ import {
   TableCell,
   Checkbox,
 } from '@mui/material';
-import { fetchActiveUser } from '../../utils/utils';
-import { formatDate } from '../../utils/utils';
+import { fetchActiveUser, formatDate } from '../../utils/utils';
+import CustomLootTable from '../common/CustomLootTable';
 
 const Identify = () => {
-  const [unidentifiedItems, setUnidentifiedItems] = useState([]);
+  const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
   const [spellcraftValue, setSpellcraftValue] = useState('');
   const [activeUser, setActiveUser] = useState(null);
+  const [openItems, setOpenItems] = useState({});
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
   useEffect(() => {
     fetchActiveUserDetails();
-    fetchUnidentifiedItems();
+    fetchLoot();
   }, []);
 
   const fetchActiveUserDetails = async () => {
@@ -38,14 +40,14 @@ const Identify = () => {
     }
   };
 
-  const fetchUnidentifiedItems = async () => {
+  const fetchLoot = async () => {
     try {
-      const response = await api.get('/loot/unidentified', {
-        params: { activeCharacterId: activeUser?.activeCharacterId }
+      const response = await api.get('/loot', {
+        params: { isDM: false, activeCharacterId: activeUser?.activeCharacterId }
       });
-      setUnidentifiedItems(response.data);
+      setLoot(response.data);
     } catch (error) {
-      console.error('Error fetching unidentified items:', error);
+      console.error('Error fetching loot:', error);
     }
   };
 
@@ -64,11 +66,16 @@ const Identify = () => {
         characterId: activeUser.activeCharacterId,
         spellcraftValue: parseInt(spellcraftValue)
       });
-      fetchUnidentifiedItems();
+      fetchLoot();
       setSelectedItems([]);
     } catch (error) {
       console.error('Error identifying items:', error);
     }
+  };
+
+  const filteredLoot = {
+    summary: loot.summary.filter(item => item.unidentified === true && item.itemid !== null),
+    individual: loot.individual.filter(item => item.unidentified === true && item.itemid !== null)
   };
 
   return (
@@ -77,37 +84,38 @@ const Identify = () => {
         <Typography variant="h6">Identify Unidentified Items</Typography>
       </Paper>
 
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Select</TableCell>
-              <TableCell>Quantity</TableCell>
-              <TableCell>Name</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Session Date</TableCell>
-              <TableCell>Notes</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {unidentifiedItems.map((item) => (
-              <TableRow key={item.id}>
-                <TableCell>
-                  <Checkbox
-                    checked={selectedItems.includes(item.id)}
-                    onChange={() => handleSelectItem(item.id)}
-                  />
-                </TableCell>
-                <TableCell>{item.quantity}</TableCell>
-                <TableCell>{item.name}</TableCell>
-                <TableCell>{item.type}</TableCell>
-                <TableCell>{formatDate(item.session_date)}</TableCell>
-                <TableCell>{item.notes}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      <CustomLootTable
+        loot={filteredLoot.summary}
+        individualLoot={filteredLoot.individual}
+        selectedItems={selectedItems}
+        setSelectedItems={setSelectedItems}
+        openItems={openItems}
+        setOpenItems={setOpenItems}
+        handleSelectItem={handleSelectItem}
+        sortConfig={sortConfig}
+        setSortConfig={setSortConfig}
+        showColumns={{
+          select: true,
+          quantity: true,
+          name: true,
+          type: true,
+          sessionDate: true,
+          lastUpdate: false,
+          unidentified: false,
+          pendingSale: false,
+          whoHasIt: false,
+          believedValue: false,
+          averageAppraisal: false,
+          size: false,
+        }}
+        showFilters={{
+          pendingSale: false,
+          unidentified: false,
+          type: true,
+          size: false,
+          whoHas: false,
+        }}
+      />
 
       <Box
         sx={{
@@ -143,8 +151,8 @@ const Identify = () => {
         <Button
           variant="contained"
           color="secondary"
-          onClick={() => handleIdentify(unidentifiedItems.map(item => item.id))}
-          disabled={unidentifiedItems.length === 0}
+          onClick={() => handleIdentify(filteredLoot.individual.map(item => item.id))}
+          disabled={filteredLoot.individual.length === 0}
         >
           Identify All
         </Button>
