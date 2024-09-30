@@ -21,6 +21,7 @@ import Consumables from "./components/pages/Consumables";
 import ItemManagement from "./components/pages/ItemManagement";
 import GolarionCalendar from "./components/pages/GolarionCalendar";
 import Tasks from "./components/pages/Tasks";
+import Identify from './components/pages/Identify';
 
 import theme from './theme';
 import api from './utils/api';
