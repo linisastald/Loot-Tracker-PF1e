@@ -100,6 +100,7 @@ function App() {
             <Route path="/golarion-calendar" element={<GolarionCalendar />} />
             <Route path="/consumables" element={<Consumables />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/identify" element={<Identify />} />
           </Route>
         </Routes>
       </Router>
