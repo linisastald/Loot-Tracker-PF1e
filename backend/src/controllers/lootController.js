@@ -723,7 +723,7 @@ exports.identifyItems = async (req, res) => {
       const mods = modsResult.rows;
 
       // Construct the new name
-      let newName = mods.map(mod => `[${mod.name}]`).join(' ') + ' ' + item.name;
+      let newName = mods.map(mod => `${mod.name}`).join(' ') + ' ' + item.name;
       newName = newName.trim();
 
       // Update the item
