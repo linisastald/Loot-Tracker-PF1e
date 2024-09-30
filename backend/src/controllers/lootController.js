@@ -720,10 +720,17 @@ exports.identifyItems = async (req, res) => {
 
       // Fetch the associated mods
       const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [item.modids]);
-      const mods = modsResult.rows;
+      const mods = modsResult.rows.map(row => row.name);
+
+      // Sort mods, prioritizing those starting with '+'
+      mods.sort((a, b) => {
+        if (a.startsWith('+') && !b.startsWith('+')) return -1;
+        if (!a.startsWith('+') && b.startsWith('+')) return 1;
+        return 0;
+      });
 
       // Construct the new name
-      let newName = mods.map(mod => `${mod.name}`).join(' ') + ' ' + item.name;
+      let newName = mods.join(' ') + ' ' + item.name;
       newName = newName.trim();
 
       // Update the item
