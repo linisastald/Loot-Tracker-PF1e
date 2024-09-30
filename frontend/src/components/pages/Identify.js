@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { fetchActiveUser, formatDate } from '../../utils/utils';
 import CustomLootTable from '../common/CustomLootTable';
+import {isDM} from "../../utils/auth";
 
 const Identify = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });
@@ -41,14 +42,32 @@ const Identify = () => {
   };
 
   const fetchLoot = async () => {
-    try {
-      const response = await api.get('/loot', {
-        params: { isDM: false, activeCharacterId: activeUser?.activeCharacterId }
-      });
-      setLoot(response.data);
-    } catch (error) {
-      console.error('Error fetching loot:', error);
-    }
+      try {
+          const token = localStorage.getItem('token');
+          const isDMUser = isDM();
+
+          let params = { isDM: isDMUser };
+
+          if (!isDMUser) {
+              const currentActiveUser = await fetchActiveUser(); // Fetch the latest user data
+              if (currentActiveUser && currentActiveUser.activeCharacterId) {
+                  params.activeCharacterId = currentActiveUser.activeCharacterId;
+              } else {
+                  console.error('No active character ID available');
+                  return; // Exit early if no active character ID is available
+                  }
+          }
+
+          console.log("Fetching loot with params:", params); // Add this log
+
+          const response = await api.get(`/loot`, {
+              params: params
+          });
+
+          setLoot(response.data);
+      } catch (error) {
+          console.error('Error fetching loot:', error);
+      }
   };
 
   const handleSelectItem = (id) => {
