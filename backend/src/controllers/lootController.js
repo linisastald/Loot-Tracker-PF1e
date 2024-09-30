@@ -3,7 +3,6 @@ const Appraisal = require('../models/Appraisal');
 const pool = require('../config/db');
 const { parseItemDescriptionWithGPT } = require('../services/parseItemDescriptionWithGPT');
 const { calculateFinalValue } = require('../services/calculateFinalValue');
-const { isDM } = require('../middleware/auth');
 
 const customRounding = (value) => {
   const randomValue = Math.random();
@@ -705,7 +704,6 @@ exports.identifyItems = async (req, res) => {
     await client.query('BEGIN');
 
     const { items, characterId, spellcraftRolls } = req.body;
-    const userIsDM = isDM(req.user);
 
     for (let i = 0; i < items.length; i++) {
       const itemId = items[i];
