@@ -763,6 +763,7 @@ exports.getCharacterLedger = async (req, res) => {
     const ledgerQuery = `
       SELECT 
         c.name AS character,
+        c.active,
         COALESCE(SUM(l.value), 0) AS lootValue,
         COALESCE(SUM(
           CASE 
@@ -778,21 +779,15 @@ exports.getCharacterLedger = async (req, res) => {
       LEFT JOIN 
         gold g ON c.id = g.character_id AND g.transaction_type = 'Party Payment'
       GROUP BY 
-        c.id, c.name
+        c.id, c.name, c.active
     `;
 
     const result = await pool.query(ledgerQuery);
 
-    const ledgerData = result.rows.map(row => ({
-      ...row,
-      balance: parseFloat(row.lootvalue) - parseFloat(row.payments)
-    }));
-
-    res.status(200).json(ledgerData);
+    res.status(200).json(result.rows);
   } catch (error) {
     console.error('Error fetching character ledger:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
-
 module.exports = exports;

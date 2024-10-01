@@ -22,7 +22,9 @@ const CharacterLootLedger = () => {
   const fetchLedgerData = async () => {
     try {
       const response = await api.get('/loot/character-ledger');
-      setLedgerData(response.data);
+      // Filter to include only active characters
+      const activeCharacterData = response.data.filter(character => character.active);
+      setLedgerData(activeCharacterData);
     } catch (error) {
       console.error('Error fetching ledger data:', error);
     }
@@ -31,7 +33,7 @@ const CharacterLootLedger = () => {
   return (
     <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Character Loot Ledger</Typography>
+        <Typography variant="h6">Active Character Loot Ledger</Typography>
       </Paper>
       <TableContainer component={Paper}>
         <Table>
@@ -49,9 +51,9 @@ const CharacterLootLedger = () => {
                 <TableCell component="th" scope="row">
                   {row.character}
                 </TableCell>
-                <TableCell align="right">{parseFloat(row.lootvalue).toFixed(2)}</TableCell>
-                <TableCell align="right">{parseFloat(row.payments).toFixed(2)}</TableCell>
-                <TableCell align="right">{row.balance.toFixed(2)}</TableCell>
+                <TableCell align="right">{row.lootValue.toFixed(2)}</TableCell>
+                <TableCell align="right">{row.payments.toFixed(2)}</TableCell>
+                <TableCell align="right">{(row.lootValue - row.payments).toFixed(2)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
