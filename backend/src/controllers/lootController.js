@@ -763,7 +763,6 @@ exports.getCharacterLedger = async (req, res) => {
     const ledgerQuery = `
       SELECT 
         c.name AS character,
-        c.active,
         COALESCE(SUM(l.value), 0) AS lootValue,
         COALESCE(SUM(
           CASE 
