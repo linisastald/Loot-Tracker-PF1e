@@ -31,7 +31,7 @@ const CharacterLootLedger = () => {
         .filter(character => character.active)
         .map(character => ({
           ...character,
-          lootValue: Number(character.lootValue) || 0,
+          lootvalue: Number(character.lootvalue) || 0,
           payments: Number(character.payments) || 0,
         }));
       setLedgerData(activeCharacterData);
@@ -80,9 +80,9 @@ const CharacterLootLedger = () => {
                 <TableCell component="th" scope="row">
                   {row.character}
                 </TableCell>
-                <TableCell align="right">{row.lootValue.toFixed(2)}</TableCell>
+                <TableCell align="right">{row.lootvalue.toFixed(2)}</TableCell>
                 <TableCell align="right">{row.payments.toFixed(2)}</TableCell>
-                <TableCell align="right">{(row.lootValue - row.payments).toFixed(2)}</TableCell>
+                <TableCell align="right">{(row.lootvalue - row.payments).toFixed(2)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
