@@ -13,6 +13,12 @@ import {
   CircularProgress,
 } from '@mui/material';
 
+// Helper function to safely convert to number
+const safeNumber = (value) => {
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
+
 const CharacterLootLedger = () => {
   const [ledgerData, setLedgerData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,14 +32,15 @@ const CharacterLootLedger = () => {
     try {
       setLoading(true);
       const response = await api.get('/loot/character-ledger');
-      // Filter to include only active characters and ensure all required properties are numbers
+      console.log('API response:', response.data); // Log the raw API response
       const activeCharacterData = response.data
         .filter(character => character.active)
         .map(character => ({
           ...character,
-          lootvalue: Number(character.lootvalue) || 0,
-          payments: Number(character.payments) || 0,
+          lootvalue: safeNumber(character.lootvalue),
+          payments: safeNumber(character.payments),
         }));
+      console.log('Processed data:', activeCharacterData); // Log the processed data
       setLedgerData(activeCharacterData);
     } catch (error) {
       console.error('Error fetching ledger data:', error);
