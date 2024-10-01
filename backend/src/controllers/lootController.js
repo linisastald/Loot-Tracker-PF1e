@@ -758,5 +758,41 @@ exports.identifyItems = async (req, res) => {
     client.release();
   }
 };
+exports.getCharacterLedger = async (req, res) => {
+  try {
+    const ledgerQuery = `
+      SELECT 
+        c.name AS character,
+        COALESCE(SUM(l.value), 0) AS lootValue,
+        COALESCE(SUM(
+          CASE 
+            WHEN g.transaction_type = 'Party Payment' 
+            THEN (g.copper::decimal / 100 + g.silver::decimal / 10 + g.gold::decimal + g.platinum::decimal * 10)
+            ELSE 0 
+          END
+        ), 0) AS payments
+      FROM 
+        characters c
+      LEFT JOIN 
+        loot l ON c.id = l.whohas AND l.status = 'Kept Self'
+      LEFT JOIN 
+        gold g ON c.id = g.character_id AND g.transaction_type = 'Party Payment'
+      GROUP BY 
+        c.id, c.name
+    `;
+
+    const result = await pool.query(ledgerQuery);
+
+    const ledgerData = result.rows.map(row => ({
+      ...row,
+      balance: parseFloat(row.lootvalue) - parseFloat(row.payments)
+    }));
+
+    res.status(200).json(ledgerData);
+  } catch (error) {
+    console.error('Error fetching character ledger:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
 
 module.exports = exports;

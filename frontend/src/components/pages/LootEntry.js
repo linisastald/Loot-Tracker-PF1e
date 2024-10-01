@@ -63,6 +63,7 @@ const LootEntry = () => {
   const [autocompletedItems, setAutocompletedItems] = useState([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeCharacterId, setActiveCharacterId] = useState(null);
 
   useEffect(() => {
     const loadItemNames = async () => {
@@ -70,8 +71,19 @@ const LootEntry = () => {
       setItemNames(names);
     };
     loadItemNames();
+    fetchActiveCharacter();
   }, []);
 
+  const fetchActiveCharacter = async () => {
+    try {
+      const response = await api.get('/user/active-characters');
+      if (response.data.length > 0) {
+        setActiveCharacterId(response.data[0].id);
+      }
+    } catch (error) {
+      console.error('Error fetching active character:', error);
+    }
+  };
 
   const handleEntryChange = (index, e) => {
     const { name, value } = e.target;
@@ -196,12 +208,13 @@ const handleSubmit = async (e) => {
           platinum: data.platinum || null,
           gold: data.gold || null,
           silver: data.silver || null,
-          copper: data.copper || null
+          copper: data.copper || null,
+          character_id: transactionType === 'Party Payment' ? activeCharacterId : null
         };
 
         await api.post(
-          `/gold`,
-          {goldEntries: [goldData]}
+            `/gold`,
+            {goldEntries: [goldData]}
         );
         processedEntries.push(entry);
       } else {
@@ -475,7 +488,7 @@ const handleSubmit = async (e) => {
                           <MenuItem value="Withdrawal">Withdrawal</MenuItem>
                           <MenuItem value="Deposit">Deposit</MenuItem>
                           <MenuItem value="Purchase">Purchase</MenuItem>
-                          <MenuItem value="Sale">Sale</MenuItem>
+                          <MenuItem value="Party Payment">Party Payment</MenuItem>
                           <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
                           <MenuItem value="Other">Other</MenuItem>
                         </Select>

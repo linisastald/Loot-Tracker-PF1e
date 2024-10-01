@@ -22,6 +22,7 @@ import ItemManagement from "./components/pages/ItemManagement";
 import GolarionCalendar from "./components/pages/GolarionCalendar";
 import Tasks from "./components/pages/Tasks";
 import Identify from './components/pages/Identify';
+import CharacterLootLedger from "./components/pages/CharacterLootLedger";
 
 import theme from './theme';
 import api from './utils/api';
@@ -102,6 +103,7 @@ function App() {
             <Route path="/consumables" element={<Consumables />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/identify" element={<Identify />} />
+            <Route path="/character-loot-ledger" element={<CharacterLootLedger />} />
           </Route>
         </Routes>
       </Router>

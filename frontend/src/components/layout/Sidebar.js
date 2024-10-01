@@ -27,6 +27,7 @@ import {
   DateRange,
   Construction,
   PsychologyAlt,
+  AccountBalanceWallet,
 } from '@mui/icons-material';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import '../../styles/Sidebar.css';
@@ -175,6 +176,7 @@ const Sidebar = () => {
           <MenuItem to="/golarion-calendar" primary="Golarion Calendar" icon={<DateRange />} />
           <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
           <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
+          <MenuItem to="/character-loot-ledger" primary="Character Loot Ledger" icon={<AccountBalanceWallet />} />
         </MenuItem>
         <MenuItem
           primary="Settings"

@@ -24,6 +24,7 @@ router.post('/appraise', lootController.appraiseLoot);
 router.post('/identify', verifyToken, lootController.identifyItems);
 router.get('/mods', verifyToken, checkRole('DM'), lootController.getMods);
 router.put('/dm-update/:id', verifyToken, checkRole(['DM']), lootController.dmUpdateItem);
+router.get('/character-ledger', verifyToken, lootController.getCharacterLedger);
 
 router.put('/:id', verifyToken, lootController.updateSingleLootStatus);
 
