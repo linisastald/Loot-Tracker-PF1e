@@ -10,10 +10,13 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  CircularProgress,
 } from '@mui/material';
 
 const CharacterLootLedger = () => {
   const [ledgerData, setLedgerData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchLedgerData();
@@ -21,14 +24,40 @@ const CharacterLootLedger = () => {
 
   const fetchLedgerData = async () => {
     try {
+      setLoading(true);
       const response = await api.get('/loot/character-ledger');
-      // Filter to include only active characters
-      const activeCharacterData = response.data.filter(character => character.active);
+      // Filter to include only active characters and ensure all required properties exist
+      const activeCharacterData = response.data
+        .filter(character => character.active)
+        .map(character => ({
+          ...character,
+          lootValue: character.lootValue || 0,
+          payments: character.payments || 0,
+        }));
       setLedgerData(activeCharacterData);
     } catch (error) {
       console.error('Error fetching ledger data:', error);
+      setError('Failed to load ledger data. Please try again later.');
+    } finally {
+      setLoading(false);
     }
   };
+
+  if (loading) {
+    return (
+      <Container maxWidth={false} component="main">
+        <CircularProgress />
+      </Container>
+    );
+  }
+
+  if (error) {
+    return (
+      <Container maxWidth={false} component="main">
+        <Typography color="error">{error}</Typography>
+      </Container>
+    );
+  }
 
   return (
     <Container maxWidth={false} component="main">
