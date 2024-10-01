@@ -69,7 +69,7 @@ const CharacterLootLedger = () => {
   return (
     <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Active Character Loot Ledger</Typography>
+        <Typography variant="h6">Character Loot Ledger</Typography>
       </Paper>
       <TableContainer component={Paper}>
         <Table>
