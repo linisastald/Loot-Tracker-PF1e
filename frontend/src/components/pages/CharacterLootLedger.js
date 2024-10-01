@@ -26,13 +26,13 @@ const CharacterLootLedger = () => {
     try {
       setLoading(true);
       const response = await api.get('/loot/character-ledger');
-      // Filter to include only active characters and ensure all required properties exist
+      // Filter to include only active characters and ensure all required properties are numbers
       const activeCharacterData = response.data
         .filter(character => character.active)
         .map(character => ({
           ...character,
-          lootValue: character.lootValue || 0,
-          payments: character.payments || 0,
+          lootValue: Number(character.lootValue) || 0,
+          payments: Number(character.payments) || 0,
         }));
       setLedgerData(activeCharacterData);
     } catch (error) {
