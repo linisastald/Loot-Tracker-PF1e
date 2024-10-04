@@ -137,7 +137,7 @@ const ItemManagement = () => {
 
       // Remove any undefined or null values
       const dataToSend = Object.fromEntries(
-        Object.entries(preparedData).filter(([_, v]) => v != null)
+          Object.entries(preparedData).filter(([_, v]) => v != null)
       );
 
       console.log('Data being sent to update:', dataToSend);
