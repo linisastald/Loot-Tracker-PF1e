@@ -28,7 +28,6 @@ import {
 
 const ItemManagement = () => {
   const [pendingItems, setPendingItems] = useState([]);
-  const [unidentifiedItems, setUnidentifiedItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
   const [pendingSaleTotal, setPendingSaleTotal] = useState(0);
@@ -45,7 +44,6 @@ const ItemManagement = () => {
     fetchAllItems();
     fetchMods();
     fetchActiveCharacters();
-    fetchUnidentifiedItems();
   }, []);
 
   const fetchPendingItems = async () => {
@@ -57,15 +55,6 @@ const ItemManagement = () => {
     } catch (error) {
       console.error('Error fetching pending items:', error);
       setPendingItems([]);
-    }
-  };
-
-  const fetchUnidentifiedItems = async () => {
-    try {
-      const response = await api.get(`/loot/unidentified`);
-      setUnidentifiedItems(response.data);
-    } catch (error) {
-      console.error('Error fetching unidentified items:', error);
     }
   };
 
@@ -116,36 +105,28 @@ const ItemManagement = () => {
   const handleItemUpdateSubmit = async () => {
     try {
       // Prepare the data, converting empty strings to null and ensuring correct types
-      const preparedData = {
-        session_date: updatedItem.session_date || null,
-        quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
-        name: updatedItem.name || null,
-        unidentified: updatedItem.unidentified === '' ? null : Boolean(updatedItem.unidentified),
-        masterwork: updatedItem.masterwork === '' ? null : Boolean(updatedItem.masterwork),
-        type: updatedItem.type || null,
-        size: updatedItem.size || null,
-        itemid: updatedItem.itemid !== '' ? parseInt(updatedItem.itemid, 10) : null,
-        modids: updatedItem.modids || [],
-        charges: updatedItem.charges !== '' ? parseInt(updatedItem.charges, 10) : null,
-        value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
-        whohas: updatedItem.whohas !== '' ? parseInt(updatedItem.whohas, 10) : null,
-        notes: updatedItem.notes || null,
-        status: updatedItem.status || null,
-        spellcraft_dc: updatedItem.spellcraft_dc !== '' ? parseInt(updatedItem.spellcraft_dc, 10) : null,
-      };
-
-      // Remove any undefined or null values
-      const dataToSend = Object.fromEntries(
-        Object.entries(preparedData).filter(([_, v]) => v != null)
+      const preparedData = Object.fromEntries(
+        Object.entries(updatedItem).map(([key, value]) => {
+          if (value === '') return [key, null];
+          if (['quantity', 'itemid', 'charges', 'value', 'whohas'].includes(key)) {
+            return [key, value === null ? null : parseInt(value, 10)];
+          }
+          if (['unidentified', 'masterwork'].includes(key)) {
+            return [key, value === null ? null : Boolean(value)];
+          }
+          return [key, value];
+        })
       );
 
-      console.log('Data being sent to update:', dataToSend);
+      // Remove the 'id' field from preparedData
+      const { id, ...dataToSend } = preparedData;
 
-      const response = await api.put(`/loot/dm-update/${updatedItem.id}`, dataToSend);
+      console.log('Prepared data:', dataToSend);
+
+      const response = await api.put(`/loot/dm-update/${id}`, dataToSend);
 
       setUpdateDialogOpen(false);
       fetchPendingItems();
-      fetchUnidentifiedItems();
     } catch (error) {
       console.error('Error updating item', error);
     }
@@ -208,6 +189,14 @@ const ItemManagement = () => {
     return format(date, 'yyyy-MM-dd');
   };
 
+  const requestSort = (key) => {
+    let direction = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
+
   const sortedItems = React.useMemo(() => {
     let sortableItems = [...filteredItems];
     if (sortConfig.key !== null) {
@@ -223,14 +212,6 @@ const ItemManagement = () => {
     }
     return sortableItems;
   }, [filteredItems, sortConfig]);
-
-  const requestSort = (key) => {
-    let direction = 'ascending';
-    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
-      direction = 'descending';
-    }
-    setSortConfig({key, direction});
-  };
 
   return (
     <Container maxWidth={false} component="main">
@@ -275,12 +256,9 @@ const ItemManagement = () => {
                     {key: 'value', label: 'Value'},
                     {key: 'whohas', label: 'Who Has'},
                     {key: 'notes', label: 'Notes'},
-                    {key: 'spellcraft_dc', label: 'Spellcraft DC'},
+                    {key: 'dm_notes', label: 'DM Notes'},
                   ].map((column) => (
-                    <TableCell
-                      key={column.key}
-                      sortDirection={sortConfig.key === column.key ? sortConfig.direction : false}
-                    >
+                    <TableCell key={column.key}>
                       <TableSortLabel
                         active={sortConfig.key === column.key}
                         direction={sortConfig.key === column.key ? sortConfig.direction : 'asc'}
@@ -312,7 +290,7 @@ const ItemManagement = () => {
                     <TableCell>{item.value}</TableCell>
                     <TableCell>{item.whohas}</TableCell>
                     <TableCell>{item.notes}</TableCell>
-                    <TableCell>{item.spellcraft_dc}</TableCell>
+                    <TableCell>{item.dm_notes ? 'Has notes' : ''}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -351,7 +329,7 @@ const ItemManagement = () => {
                   <TableCell>Value</TableCell>
                   <TableCell>Who Has</TableCell>
                   <TableCell>Notes</TableCell>
-                  <TableCell>Spellcraft DC</TableCell>
+                  <TableCell>DM Notes</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -371,44 +349,7 @@ const ItemManagement = () => {
                     <TableCell>{item.value}</TableCell>
                     <TableCell>{item.whohas}</TableCell>
                     <TableCell>{item.notes}</TableCell>
-					<TableCell>{item.spellcraft_dc}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-
-        {/* Unidentified Items Table */}
-        <Box mt={4}>
-          <Typography variant="h6">Unidentified Items</Typography>
-          <TableContainer component={Paper} sx={{ mt: 2 }}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Session Date</TableCell>
-                  <TableCell>Quantity</TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Real Item</TableCell>
-                  <TableCell>Spellcraft DC</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {unidentifiedItems.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{formatDate(item.session_date)}</TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell>{item.type}</TableCell>
-                    <TableCell>{items.find(i => i.id === item.itemid)?.name || 'Unknown'}</TableCell>
-                    <TableCell>{item.spellcraft_dc}</TableCell>
-                    <TableCell>
-                      <Button onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
-                        Edit
-                      </Button>
-                    </TableCell>
+                    <TableCell>{item.dm_notes ? 'Has notes' : ''}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -572,12 +513,13 @@ const ItemManagement = () => {
               rows={4}
             />
             <TextField
-              label="Spellcraft DC"
-              type="number"
+              label="DM Notes"
               fullWidth
-              value={updatedItem.spellcraft_dc || ''}
-              onChange={(e) => handleItemUpdateChange('spellcraft_dc', e.target.value)}
+              value={updatedItem.dm_notes || ''}
+              onChange={(e) => handleItemUpdateChange('dm_notes', e.target.value)}
               margin="normal"
+              multiline
+              rows={4}
             />
           </DialogContent>
           <DialogActions>
