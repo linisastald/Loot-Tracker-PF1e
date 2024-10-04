@@ -183,6 +183,10 @@ const ItemManagement = () => {
       if (field === 'modids') {
         return {...prevItem, [field]: value};
       }
+      // For select fields, explicitly set to null if value is an empty string
+      if (['unidentified', 'masterwork', 'type', 'size', 'status', 'whohas'].includes(field)) {
+        return {...prevItem, [field]: value === '' ? null : value};
+      }
       return {...prevItem, [field]: value};
     });
   };
@@ -455,8 +459,9 @@ const ItemManagement = () => {
               <InputLabel>Unidentified</InputLabel>
               <Select
                 value={updatedItem.unidentified === null ? '' : updatedItem.unidentified}
-                onChange={(e) => handleItemUpdateChange('unidentified', e.target.value)}
+                onChange={(e) => handleItemUpdateChange('unidentified', e.target.value === '' ? null : e.target.value)}
               >
+                <MenuItem value="">None</MenuItem>
                 <MenuItem value={true}>Yes</MenuItem>
                 <MenuItem value={false}>No</MenuItem>
               </Select>
@@ -465,8 +470,9 @@ const ItemManagement = () => {
               <InputLabel>Masterwork</InputLabel>
               <Select
                 value={updatedItem.masterwork === null ? '' : updatedItem.masterwork}
-                onChange={(e) => handleItemUpdateChange('masterwork', e.target.value)}
+                onChange={(e) => handleItemUpdateChange('masterwork', e.target.value === '' ? null : e.target.value)}
               >
+                <MenuItem value="">None</MenuItem>
                 <MenuItem value={true}>Yes</MenuItem>
                 <MenuItem value={false}>No</MenuItem>
               </Select>
@@ -475,8 +481,9 @@ const ItemManagement = () => {
               <InputLabel>Type</InputLabel>
               <Select
                 value={updatedItem.type || ''}
-                onChange={(e) => handleItemUpdateChange('type', e.target.value)}
+                onChange={(e) => handleItemUpdateChange('type', e.target.value === '' ? null : e.target.value)}
               >
+                <MenuItem value="">None</MenuItem>
                 <MenuItem value="weapon">Weapon</MenuItem>
                 <MenuItem value="armor">Armor</MenuItem>
                 <MenuItem value="magic">Magic</MenuItem>
@@ -489,8 +496,9 @@ const ItemManagement = () => {
               <InputLabel>Size</InputLabel>
               <Select
                 value={updatedItem.size || ''}
-                onChange={(e) => handleItemUpdateChange('size', e.target.value)}
+                onChange={(e) => handleItemUpdateChange('size', e.target.value === '' ? null : e.target.value)}
               >
+                <MenuItem value="">None</MenuItem>
                 <MenuItem value="Fine">Fine</MenuItem>
                 <MenuItem value="Diminutive">Diminutive</MenuItem>
                 <MenuItem value="Tiny">Tiny</MenuItem>
@@ -506,7 +514,7 @@ const ItemManagement = () => {
               <InputLabel>Status</InputLabel>
               <Select
                 value={updatedItem.status || ''}
-                onChange={(e) => handleItemUpdateChange('status', e.target.value)}
+                onChange={(e) => handleItemUpdateChange('status', e.target.value === '' ? null : e.target.value)}
               >
                 <MenuItem value="">None</MenuItem>
                 <MenuItem value="Pending Sale">Pending Sale</MenuItem>
@@ -560,8 +568,9 @@ const ItemManagement = () => {
               <InputLabel>Who Has</InputLabel>
               <Select
                 value={updatedItem.whohas || ''}
-                onChange={(e) => handleItemUpdateChange('whohas', e.target.value)}
+                onChange={(e) => handleItemUpdateChange('whohas', e.target.value === '' ? null : e.target.value)}
               >
+                <MenuItem value="">None</MenuItem>
                 {activeCharacters.map(char => (
                   <MenuItem key={char.id} value={char.id}>{char.name}</MenuItem>
                 ))}
