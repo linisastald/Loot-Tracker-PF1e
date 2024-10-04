@@ -595,12 +595,12 @@ exports.dmUpdateItem = async (req, res) => {
     const allowedFields = [
       'session_date', 'quantity', 'name', 'unidentified', 'masterwork',
       'type', 'size', 'status', 'itemid', 'modids', 'charges', 'value',
-      'whohas', 'notes', 'dm_notes'
+      'whohas', 'notes', 'spellcraft_dc', 'dm_notes' // Ensure dm_notes is included here
     ];
 
     const filteredUpdateData = Object.fromEntries(
       Object.entries(updateData).filter(([key, value]) =>
-        allowedFields.includes(key) && value !== undefined && value !== null
+        allowedFields.includes(key) && value !== undefined
       )
     );
 
@@ -614,6 +614,7 @@ exports.dmUpdateItem = async (req, res) => {
           case 'charges':
           case 'value':
           case 'whohas':
+          case 'spellcraft_dc':
             return `${key} = $${index + 1}::integer`;
           case 'unidentified':
           case 'masterwork':
@@ -636,15 +637,10 @@ exports.dmUpdateItem = async (req, res) => {
 
     const updateValues = [...Object.values(filteredUpdateData), id];
 
-    // Convert empty arrays to null for modids
-    const processedUpdateValues = updateValues.map(value =>
-      Array.isArray(value) && value.length === 0 ? null : value
-    );
-
     console.log('Update Query:', updateQuery);
-    console.log('Update Values:', processedUpdateValues);
+    console.log('Update Values:', updateValues);
 
-    const updateResult = await client.query(updateQuery, processedUpdateValues);
+    const updateResult = await client.query(updateQuery, updateValues);
 
     if (updateResult.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -652,11 +648,6 @@ exports.dmUpdateItem = async (req, res) => {
     }
 
     let updatedItem = updateResult.rows[0];
-
-    // If value is null or undefined, calculate it
-    if (updatedItem.value === null || updatedItem.value === undefined) {
-      await exports.updateAppraisalsOnValueChange(id, updateData.value);
-    }
 
     await client.query('COMMIT');
     res.status(200).json(updatedItem);
