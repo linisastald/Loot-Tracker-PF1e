@@ -487,8 +487,7 @@ const handleSubmit = async (e) => {
                         >
                           <MenuItem value="Withdrawal">Withdrawal</MenuItem>
                           <MenuItem value="Deposit">Deposit</MenuItem>
-                          <MenuItem value="Purchase">Purchase</MenuItem>
-                          <MenuItem value="Party Payment">Party Payment</MenuItem>
+                          <MenuItem value="Party Payment">Party Payback</MenuItem>
                           <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
                           <MenuItem value="Other">Other</MenuItem>
                         </Select>

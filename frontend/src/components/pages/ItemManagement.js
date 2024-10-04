@@ -28,6 +28,7 @@ import {
 
 const ItemManagement = () => {
   const [pendingItems, setPendingItems] = useState([]);
+  const [unidentifiedItems, setUnidentifiedItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
   const [pendingSaleTotal, setPendingSaleTotal] = useState(0);
@@ -44,11 +45,11 @@ const ItemManagement = () => {
     fetchAllItems();
     fetchMods();
     fetchActiveCharacters();
+    fetchUnidentifiedItems();
   }, []);
 
   const fetchPendingItems = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await api.get(`/loot/pending-sale`);
       const itemsData = response.data || [];
       setPendingItems(itemsData);
@@ -59,33 +60,17 @@ const ItemManagement = () => {
     }
   };
 
-  const sortedItems = React.useMemo(() => {
-    let sortableItems = [...filteredItems];
-    if (sortConfig.key !== null) {
-      sortableItems.sort((a, b) => {
-        if (a[sortConfig.key] < b[sortConfig.key]) {
-          return sortConfig.direction === 'ascending' ? -1 : 1;
-        }
-        if (a[sortConfig.key] > b[sortConfig.key]) {
-          return sortConfig.direction === 'ascending' ? 1 : -1;
-        }
-        return 0;
-      });
+  const fetchUnidentifiedItems = async () => {
+    try {
+      const response = await api.get(`/loot/unidentified`);
+      setUnidentifiedItems(response.data);
+    } catch (error) {
+      console.error('Error fetching unidentified items:', error);
     }
-    return sortableItems;
-  }, [filteredItems, sortConfig]);
-
-  const requestSort = (key) => {
-    let direction = 'ascending';
-    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
-      direction = 'descending';
-    }
-    setSortConfig({key, direction});
   };
 
   const fetchAllItems = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await api.get(`/loot/items`);
       setItems(response.data);
     } catch (error) {
@@ -95,7 +80,6 @@ const ItemManagement = () => {
 
   const fetchMods = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await api.get(`/loot/mods`);
       setMods(response.data.map(mod => ({
         ...mod,
@@ -108,7 +92,6 @@ const ItemManagement = () => {
 
   const fetchActiveCharacters = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await api.get(`/user/active-characters`);
       setActiveCharacters(response.data);
     } catch (error) {
@@ -132,8 +115,6 @@ const ItemManagement = () => {
 
   const handleItemUpdateSubmit = async () => {
     try {
-      const token = localStorage.getItem('token');
-
       // Prepare the data, converting empty strings to null and ensuring correct types
       const preparedData = {
         session_date: updatedItem.session_date || null,
@@ -149,12 +130,13 @@ const ItemManagement = () => {
         value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
         whohas: updatedItem.whohas !== '' ? parseInt(updatedItem.whohas, 10) : null,
         notes: updatedItem.notes || null,
-        status: updatedItem.status || null
+        status: updatedItem.status || null,
+        spellcraft_dc: updatedItem.spellcraft_dc !== '' ? parseInt(updatedItem.spellcraft_dc, 10) : null,
       };
 
       // Remove any undefined or null values
       const dataToSend = Object.fromEntries(
-          Object.entries(preparedData).filter(([_, v]) => v != null)
+        Object.entries(preparedData).filter(([_, v]) => v != null)
       );
 
       console.log('Data being sent to update:', dataToSend);
@@ -163,6 +145,7 @@ const ItemManagement = () => {
 
       setUpdateDialogOpen(false);
       fetchPendingItems();
+      fetchUnidentifiedItems();
     } catch (error) {
       console.error('Error updating item', error);
     }
@@ -170,7 +153,6 @@ const ItemManagement = () => {
 
   const handleConfirmSale = async () => {
     try {
-      const token = localStorage.getItem('token');
       await api.put(`/loot/confirm-sale`, {});
 
       // Calculate gold, silver, and copper from pendingSaleTotal
@@ -208,7 +190,6 @@ const ItemManagement = () => {
 
   const handleSearch = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await api.get(`/loot/search?query=${searchTerm}`);
       setFilteredItems(response.data);
     } catch (error) {
@@ -225,6 +206,30 @@ const ItemManagement = () => {
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return format(date, 'yyyy-MM-dd');
+  };
+
+  const sortedItems = React.useMemo(() => {
+    let sortableItems = [...filteredItems];
+    if (sortConfig.key !== null) {
+      sortableItems.sort((a, b) => {
+        if (a[sortConfig.key] < b[sortConfig.key]) {
+          return sortConfig.direction === 'ascending' ? -1 : 1;
+        }
+        if (a[sortConfig.key] > b[sortConfig.key]) {
+          return sortConfig.direction === 'ascending' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [filteredItems, sortConfig]);
+
+  const requestSort = (key) => {
+    let direction = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({key, direction});
   };
 
   return (
@@ -251,66 +256,68 @@ const ItemManagement = () => {
 
         {/* Items Table */}
         {filteredItems.length > 0 && (
-            <TableContainer component={Paper} sx={{mt: 2}}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    {[
-                      {key: 'session_date', label: 'Session Date'},
-                      {key: 'quantity', label: 'Quantity'},
-                      {key: 'name', label: 'Name'},
-                      {key: 'unidentified', label: 'Unidentified'},
-                      {key: 'masterwork', label: 'Masterwork'},
-                      {key: 'type', label: 'Type'},
-                      {key: 'size', label: 'Size'},
-                      {key: 'status', label: 'Status'},
-                      {key: 'itemid', label: 'Item ID'},
-                      {key: 'modids', label: 'Mod IDs'},
-                      {key: 'charges', label: 'Charges'},
-                      {key: 'value', label: 'Value'},
-                      {key: 'whohas', label: 'Who Has'},
-                      {key: 'notes', label: 'Notes'},
-                    ].map((column) => (
-                        <TableCell
-                            key={column.key}
-                            sortDirection={sortConfig.key === column.key ? sortConfig.direction : false}
-                        >
-                          <TableSortLabel
-                              active={sortConfig.key === column.key}
-                              direction={sortConfig.key === column.key ? sortConfig.direction : 'asc'}
-                              onClick={() => requestSort(column.key)}
-                          >
-                            {column.label}
-                          </TableSortLabel>
-                        </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {sortedItems.map((item) => (
-                      <TableRow key={item.id} onClick={() => {
-                        setUpdatedItem(item);
-                        setUpdateDialogOpen(true);
-                      }}>
-                        <TableCell>{formatDate(item.session_date)}</TableCell>
-                        <TableCell>{item.quantity}</TableCell>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell>{item.unidentified ? '✓' : ''}</TableCell>
-                        <TableCell>{item.masterwork ? '✓' : ''}</TableCell>
-                        <TableCell>{item.type}</TableCell>
-                        <TableCell>{item.size}</TableCell>
-                        <TableCell>{item.status}</TableCell>
-                        <TableCell>{item.itemid}</TableCell>
-                        <TableCell>{item.modids?.join(', ')}</TableCell>
-                        <TableCell>{item.charges}</TableCell>
-                        <TableCell>{item.value}</TableCell>
-                        <TableCell>{item.whohas}</TableCell>
-                        <TableCell>{item.notes}</TableCell>
-                      </TableRow>
+          <TableContainer component={Paper} sx={{mt: 2}}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  {[
+                    {key: 'session_date', label: 'Session Date'},
+                    {key: 'quantity', label: 'Quantity'},
+                    {key: 'name', label: 'Name'},
+                    {key: 'unidentified', label: 'Unidentified'},
+                    {key: 'masterwork', label: 'Masterwork'},
+                    {key: 'type', label: 'Type'},
+                    {key: 'size', label: 'Size'},
+                    {key: 'status', label: 'Status'},
+                    {key: 'itemid', label: 'Item ID'},
+                    {key: 'modids', label: 'Mod IDs'},
+                    {key: 'charges', label: 'Charges'},
+                    {key: 'value', label: 'Value'},
+                    {key: 'whohas', label: 'Who Has'},
+                    {key: 'notes', label: 'Notes'},
+                    {key: 'spellcraft_dc', label: 'Spellcraft DC'},
+                  ].map((column) => (
+                    <TableCell
+                      key={column.key}
+                      sortDirection={sortConfig.key === column.key ? sortConfig.direction : false}
+                    >
+                      <TableSortLabel
+                        active={sortConfig.key === column.key}
+                        direction={sortConfig.key === column.key ? sortConfig.direction : 'asc'}
+                        onClick={() => requestSort(column.key)}
+                      >
+                        {column.label}
+                      </TableSortLabel>
+                    </TableCell>
                   ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {sortedItems.map((item) => (
+                  <TableRow key={item.id} onClick={() => {
+                    setUpdatedItem(item);
+                    setUpdateDialogOpen(true);
+                  }}>
+                    <TableCell>{formatDate(item.session_date)}</TableCell>
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.unidentified ? '✓' : ''}</TableCell>
+                    <TableCell>{item.masterwork ? '✓' : ''}</TableCell>
+                    <TableCell>{item.type}</TableCell>
+                    <TableCell>{item.size}</TableCell>
+                    <TableCell>{item.status}</TableCell>
+                    <TableCell>{item.itemid}</TableCell>
+                    <TableCell>{item.modids?.join(', ')}</TableCell>
+                    <TableCell>{item.charges}</TableCell>
+                    <TableCell>{item.value}</TableCell>
+                    <TableCell>{item.whohas}</TableCell>
+                    <TableCell>{item.notes}</TableCell>
+                    <TableCell>{item.spellcraft_dc}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         )}
 
         {/* Pending Sale Summary */}
@@ -344,6 +351,7 @@ const ItemManagement = () => {
                   <TableCell>Value</TableCell>
                   <TableCell>Who Has</TableCell>
                   <TableCell>Notes</TableCell>
+                  <TableCell>Spellcraft DC</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -363,6 +371,44 @@ const ItemManagement = () => {
                     <TableCell>{item.value}</TableCell>
                     <TableCell>{item.whohas}</TableCell>
                     <TableCell>{item.notes}</TableCell>
+					<TableCell>{item.spellcraft_dc}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+
+        {/* Unidentified Items Table */}
+        <Box mt={4}>
+          <Typography variant="h6">Unidentified Items</Typography>
+          <TableContainer component={Paper} sx={{ mt: 2 }}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Session Date</TableCell>
+                  <TableCell>Quantity</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Real Item</TableCell>
+                  <TableCell>Spellcraft DC</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {unidentifiedItems.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>{formatDate(item.session_date)}</TableCell>
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.type}</TableCell>
+                    <TableCell>{items.find(i => i.id === item.itemid)?.name || 'Unknown'}</TableCell>
+                    <TableCell>{item.spellcraft_dc}</TableCell>
+                    <TableCell>
+                      <Button onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
+                        Edit
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -375,36 +421,36 @@ const ItemManagement = () => {
           <DialogTitle>Update Item</DialogTitle>
           <DialogContent>
             <TextField
-                label="Session Date"
-                type="date"
-                fullWidth
-                value={updatedItem.session_date ? formatDate(updatedItem.session_date) : ''}
-                onChange={(e) => handleItemUpdateChange('session_date', e.target.value)}
-                margin="normal"
-                InputLabelProps={{
-                  shrink: true,
-                }}
+              label="Session Date"
+              type="date"
+              fullWidth
+              value={updatedItem.session_date ? formatDate(updatedItem.session_date) : ''}
+              onChange={(e) => handleItemUpdateChange('session_date', e.target.value)}
+              margin="normal"
+              InputLabelProps={{
+                shrink: true,
+              }}
             />
             <TextField
-                label="Quantity"
-                type="number"
-                fullWidth
-                value={updatedItem.quantity || ''}
-                onChange={(e) => handleItemUpdateChange('quantity', e.target.value)}
-                margin="normal"
+              label="Quantity"
+              type="number"
+              fullWidth
+              value={updatedItem.quantity || ''}
+              onChange={(e) => handleItemUpdateChange('quantity', e.target.value)}
+              margin="normal"
             />
             <TextField
-                label="Name"
-                fullWidth
-                value={updatedItem.name || ''}
-                onChange={(e) => handleItemUpdateChange('name', e.target.value)}
-                margin="normal"
+              label="Name"
+              fullWidth
+              value={updatedItem.name || ''}
+              onChange={(e) => handleItemUpdateChange('name', e.target.value)}
+              margin="normal"
             />
             <FormControl fullWidth margin="normal">
               <InputLabel>Unidentified</InputLabel>
               <Select
-                  value={updatedItem.unidentified === null ? '' : updatedItem.unidentified}
-                  onChange={(e) => handleItemUpdateChange('unidentified', e.target.value)}
+                value={updatedItem.unidentified === null ? '' : updatedItem.unidentified}
+                onChange={(e) => handleItemUpdateChange('unidentified', e.target.value)}
               >
                 <MenuItem value={true}>Yes</MenuItem>
                 <MenuItem value={false}>No</MenuItem>
@@ -413,8 +459,8 @@ const ItemManagement = () => {
             <FormControl fullWidth margin="normal">
               <InputLabel>Masterwork</InputLabel>
               <Select
-                  value={updatedItem.masterwork === null ? '' : updatedItem.masterwork}
-                  onChange={(e) => handleItemUpdateChange('masterwork', e.target.value)}
+                value={updatedItem.masterwork === null ? '' : updatedItem.masterwork}
+                onChange={(e) => handleItemUpdateChange('masterwork', e.target.value)}
               >
                 <MenuItem value={true}>Yes</MenuItem>
                 <MenuItem value={false}>No</MenuItem>
@@ -423,8 +469,8 @@ const ItemManagement = () => {
             <FormControl fullWidth margin="normal">
               <InputLabel>Type</InputLabel>
               <Select
-                  value={updatedItem.type || ''}
-                  onChange={(e) => handleItemUpdateChange('type', e.target.value)}
+                value={updatedItem.type || ''}
+                onChange={(e) => handleItemUpdateChange('type', e.target.value)}
               >
                 <MenuItem value="weapon">Weapon</MenuItem>
                 <MenuItem value="armor">Armor</MenuItem>
@@ -437,8 +483,8 @@ const ItemManagement = () => {
             <FormControl fullWidth margin="normal">
               <InputLabel>Size</InputLabel>
               <Select
-                  value={updatedItem.size || ''}
-                  onChange={(e) => handleItemUpdateChange('size', e.target.value)}
+                value={updatedItem.size || ''}
+                onChange={(e) => handleItemUpdateChange('size', e.target.value)}
               >
                 <MenuItem value="Fine">Fine</MenuItem>
                 <MenuItem value="Diminutive">Diminutive</MenuItem>
@@ -454,8 +500,8 @@ const ItemManagement = () => {
             <FormControl fullWidth margin="normal">
               <InputLabel>Status</InputLabel>
               <Select
-                  value={updatedItem.status || ''}
-                  onChange={(e) => handleItemUpdateChange('status', e.target.value)}
+                value={updatedItem.status || ''}
+                onChange={(e) => handleItemUpdateChange('status', e.target.value)}
               >
                 <MenuItem value="">None</MenuItem>
                 <MenuItem value="Pending Sale">Pending Sale</MenuItem>
@@ -465,65 +511,73 @@ const ItemManagement = () => {
               </Select>
             </FormControl>
             <Autocomplete
-                options={items}
-                getOptionLabel={(option) => option.name}
-                value={items.find(item => item.id === updatedItem.itemid) || null}
-                onChange={(_, newValue) => handleItemUpdateChange('itemid', newValue ? newValue.id : null)}
-                renderInput={(params) => <TextField {...params} label="Item" fullWidth margin="normal"/>}
+              options={items}
+              getOptionLabel={(option) => option.name}
+              value={items.find(item => item.id === updatedItem.itemid) || null}
+              onChange={(_, newValue) => handleItemUpdateChange('itemid', newValue ? newValue.id : null)}
+              renderInput={(params) => <TextField {...params} label="Item" fullWidth margin="normal"/>}
             />
             <Autocomplete
-                multiple
-                options={mods}
-                getOptionLabel={(option) => option.displayName}
-                value={updatedItem.modids ? mods.filter(mod => updatedItem.modids.includes(mod.id)) : []}
-                onChange={(_, newValue) => handleItemUpdateChange('modids', newValue.map(v => v.id))}
-                renderInput={(params) => <TextField {...params} label="Mods" fullWidth margin="normal"/>}
-                renderOption={(props, option) => (
-                    <li {...props}>
-                      <Typography variant="body1">{option.name}</Typography>
-                      {option.target && (
-                          <Typography variant="body2" color="textSecondary">
-                            {` (${option.target}${option.subtarget ? `: ${option.subtarget}` : ''})`}
-                          </Typography>
-                      )}
-                    </li>
-                )}
+              multiple
+              options={mods}
+              getOptionLabel={(option) => option.displayName}
+              value={updatedItem.modids ? mods.filter(mod => updatedItem.modids.includes(mod.id)) : []}
+              onChange={(_, newValue) => handleItemUpdateChange('modids', newValue.map(v => v.id))}
+              renderInput={(params) => <TextField {...params} label="Mods" fullWidth margin="normal"/>}
+              renderOption={(props, option) => (
+                <li {...props}>
+                  <Typography variant="body1">{option.name}</Typography>
+                  {option.target && (
+                    <Typography variant="body2" color="textSecondary">
+                      {` (${option.target}${option.subtarget ? `: ${option.subtarget}` : ''})`}
+                    </Typography>
+                  )}
+                </li>
+              )}
             />
             <TextField
-                label="Charges"
-                type="number"
-                fullWidth
-                value={updatedItem.charges || ''}
-                onChange={(e) => handleItemUpdateChange('charges', e.target.value)}
-                margin="normal"
+              label="Charges"
+              type="number"
+              fullWidth
+              value={updatedItem.charges || ''}
+              onChange={(e) => handleItemUpdateChange('charges', e.target.value)}
+              margin="normal"
             />
             <TextField
-                label="Value"
-                type="number"
-                fullWidth
-                value={updatedItem.value || ''}
-                onChange={(e) => handleItemUpdateChange('value', e.target.value)}
-                margin="normal"
+              label="Value"
+              type="number"
+              fullWidth
+              value={updatedItem.value || ''}
+              onChange={(e) => handleItemUpdateChange('value', e.target.value)}
+              margin="normal"
             />
             <FormControl fullWidth margin="normal">
               <InputLabel>Who Has</InputLabel>
               <Select
-                  value={updatedItem.whohas || ''}
-                  onChange={(e) => handleItemUpdateChange('whohas', e.target.value)}
+                value={updatedItem.whohas || ''}
+                onChange={(e) => handleItemUpdateChange('whohas', e.target.value)}
               >
                 {activeCharacters.map(char => (
-                    <MenuItem key={char.id} value={char.id}>{char.name}</MenuItem>
+                  <MenuItem key={char.id} value={char.id}>{char.name}</MenuItem>
                 ))}
               </Select>
             </FormControl>
             <TextField
-                label="Notes"
-                fullWidth
-                value={updatedItem.notes || ''}
-                onChange={(e) => handleItemUpdateChange('notes', e.target.value)}
-                margin="normal"
-                multiline
-                rows={4}
+              label="Notes"
+              fullWidth
+              value={updatedItem.notes || ''}
+              onChange={(e) => handleItemUpdateChange('notes', e.target.value)}
+              margin="normal"
+              multiline
+              rows={4}
+            />
+            <TextField
+              label="Spellcraft DC"
+              type="number"
+              fullWidth
+              value={updatedItem.spellcraft_dc || ''}
+              onChange={(e) => handleItemUpdateChange('spellcraft_dc', e.target.value)}
+              margin="normal"
             />
           </DialogContent>
           <DialogActions>

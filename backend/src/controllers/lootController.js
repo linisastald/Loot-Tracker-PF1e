@@ -617,7 +617,8 @@ exports.dmUpdateItem = async (req, res) => {
       value: updateData.value !== undefined ? updateData.value : currentItem.value,
       whohas: updateData.whohas || currentItem.whohas,
       notes: updateData.notes || currentItem.notes,
-      status: updateData.status || currentItem.status
+      status: updateData.status || currentItem.status,
+      spellcraft_dc: updateData.spellcraft_dc !== undefined ? updateData.spellcraft_dc : currentItem.spellcraft_dc
     };
 
     const updateQuery = `
@@ -637,8 +638,9 @@ exports.dmUpdateItem = async (req, res) => {
         whohas = $12::integer,
         notes = $13::text,
         status = $14::text,
+        spellcraft_dc = $15::integer,
         lastupdate = CURRENT_TIMESTAMP
-      WHERE id = $15::integer
+      WHERE id = $16::integer
       RETURNING *
     `;
 
@@ -657,6 +659,7 @@ exports.dmUpdateItem = async (req, res) => {
       mergedData.whohas,
       mergedData.notes,
       mergedData.status,
+      mergedData.spellcraft_dc,
       id
     ];
 
@@ -790,4 +793,22 @@ exports.getCharacterLedger = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+exports.getUnidentifiedItems = async (req, res) => {
+  try {
+    const query = `
+      SELECT l.*, i.name as real_item_name
+      FROM loot l
+      LEFT JOIN item i ON l.itemid = i.id
+      WHERE l.unidentified = true
+    `;
+    const result = await pool.query(query);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching unidentified items:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+
 module.exports = exports;
