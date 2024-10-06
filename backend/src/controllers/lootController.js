@@ -390,34 +390,69 @@ exports.appraiseLoot = async (req, res) => {
 
     // Get loot items to be appraised
     const lootToAppraiseResult = await pool.query(`
-      SELECT l.id, l.value, l.itemid, l.modids, l.name
+      SELECT l.id, l.value, l.itemid, l.modids, l.name, l.masterwork, l.charges
       FROM loot l
       LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1
       WHERE (l.status IS NULL OR l.status = 'Pending Sale') AND (l.unidentified = false or l.unidentified is null) AND a.id IS NULL
     `, [characterId]);
     const lootToAppraise = lootToAppraiseResult.rows;
 
-    // Get all previous appraisals for comparison
+    // Get all previous appraisals for the active character
     const previousAppraisalsResult = await pool.query(`
-      SELECT l.itemid, l.modids, l.name, a.believedvalue
+      SELECT l.itemid, l.modids, l.name, l.masterwork, l.charges, l.value, a.believedvalue
       FROM appraisal a
       JOIN loot l ON a.lootid = l.id
-    `);
+      WHERE a.characterid = $1
+    `, [characterId]);
     const previousAppraisals = previousAppraisalsResult.rows;
 
     // Helper function to round based on specified probabilities
-
+    const customRounding = (value) => {
+      const randomValue = Math.random();
+      if (randomValue < 0.15) {
+        // Round to nearest hundredth
+        let roundedValue = Math.round(value * 100) / 100;
+        if (Math.random() < 0.99) {
+          const factor = 100;
+          const lastDigit = Math.round(roundedValue * factor) % 10;
+          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
+        }
+        return roundedValue;
+      } else if (randomValue < 0.4) {
+        // Round to nearest tenth
+        let roundedValue = Math.round(value * 10) / 10;
+        if (Math.random() < 0.75) {
+          const factor = 10;
+          const lastDigit = Math.round(roundedValue * factor) % 10;
+          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
+        }
+        return roundedValue;
+      } else {
+        // Round to nearest whole number
+        let roundedValue = Math.round(value);
+        if (Math.random() < 0.5) {
+          const lastDigit = roundedValue % 10;
+          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+          roundedValue += adjust;
+        }
+        return roundedValue;
+      }
+    };
 
     // Appraise each item
     const createdAppraisals = [];
     for (const lootItem of lootToAppraise) {
-      const { id: lootId, value: lootValue, itemId: lootItemId, modids: lootModIds, name: lootName } = lootItem;
+      const { id: lootId, value: lootValue, itemid: lootItemId, modids: lootModIds, name: lootName, masterwork: lootMasterwork, charges: lootCharges } = lootItem;
 
       // Check for previous appraisals
       let previousAppraisal = previousAppraisals.find(appraisal =>
-          appraisal.itemId === lootItemId &&
-          appraisal.modids === lootModIds &&
-          appraisal.name.toLowerCase() === lootName.toLowerCase()
+        (appraisal.itemid === lootItemId || (lootItemId === null && appraisal.name.toLowerCase() === lootName.toLowerCase())) &&
+        appraisal.modids === lootModIds &&
+        appraisal.masterwork === lootMasterwork &&
+        appraisal.charges === lootCharges &&
+        appraisal.value === lootValue
       );
 
       let believedValue = null;
