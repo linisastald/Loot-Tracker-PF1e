@@ -4,6 +4,19 @@ import psycopg2
 from psycopg2 import sql
 
 
+def get_priority(lstsource):
+    priorities = {
+        'roleplaying_game': 0,
+        'adventure_path': 1,
+        'campaign_setting': 2,
+        'player_companion': 3
+    }
+    for path, priority in priorities.items():
+        if path in lstsource:
+            return priority
+    return 4  # Lower priority for any other path
+
+
 def deduplicate_items(cursor):
     # Remove exact duplicates (keep this part as it is)
     cursor.execute("""
@@ -22,49 +35,11 @@ def deduplicate_items(cursor):
     exact_duplicates_removed = cursor.rowcount
     print(f"Removed {exact_duplicates_removed} exact duplicates.")
 
-    # Find conflicts and remove items from 'profs' sources
+    # Find conflicts and remove items based on priority
     cursor.execute("""
-        WITH conflicts AS (
-            SELECT t1.id as id1, t2.id as id2, t1.name, 
-                   t1.type as type1, t1.subtype as subtype1, t1.value as value1, t1.weight as weight1, t1.casterlevel as casterlevel1, t1.lstsource as lstsource1,
-                   t2.type as type2, t2.subtype as subtype2, t2.value as value2, t2.weight as weight2, t2.casterlevel as casterlevel2, t2.lstsource as lstsource2
-            FROM itemtesting t1
-            JOIN itemtesting t2 ON t1.name = t2.name AND t1.id < t2.id
-            WHERE t1.type != t2.type 
-               OR t1.subtype != t2.subtype 
-               OR t1.value != t2.value 
-               OR t1.weight != t2.weight 
-               OR t1.casterlevel != t2.casterlevel
-        )
-        SELECT * FROM conflicts
-        WHERE lstsource1 LIKE '%profs%' OR lstsource2 LIKE '%profs%'
-    """)
-
-    conflicts = cursor.fetchall()
-    items_to_remove = set()
-
-    for conflict in conflicts:
-        if 'profs' in conflict[8].lower():  # lstsource1
-            items_to_remove.add(conflict[0])  # id1
-        elif 'profs' in conflict[14].lower():  # lstsource2
-            items_to_remove.add(conflict[1])  # id2
-
-    if items_to_remove:
-        items_to_remove = list(items_to_remove)
-        cursor.execute("""
-            DELETE FROM itemtesting
-            WHERE id = ANY(%s)
-        """, (items_to_remove,))
-        profs_removed = cursor.rowcount
-        print(f"Removed {profs_removed} items from 'profs' sources due to conflicts.")
-    else:
-        profs_removed = 0
-
-    # Find and report remaining conflicts
-    cursor.execute("""
-        SELECT t1.id, t2.id, t1.name, 
-               t1.type, t1.subtype, t1.value, t1.weight, t1.casterlevel, t1.lstsource,
-               t2.type, t2.subtype, t2.value, t2.weight, t2.casterlevel, t2.lstsource
+        SELECT t1.id as id1, t2.id as id2, t1.name, 
+               t1.type as type1, t1.subtype as subtype1, t1.value as value1, t1.weight as weight1, t1.casterlevel as casterlevel1, t1.lstsource as lstsource1,
+               t2.type as type2, t2.subtype as subtype2, t2.value as value2, t2.weight as weight2, t2.casterlevel as casterlevel2, t2.lstsource as lstsource2
         FROM itemtesting t1
         JOIN itemtesting t2 ON t1.name = t2.name AND t1.id < t2.id
         WHERE t1.type != t2.type 
@@ -74,7 +49,33 @@ def deduplicate_items(cursor):
            OR t1.casterlevel != t2.casterlevel
     """)
 
-    remaining_conflicts = cursor.fetchall()
+    conflicts = cursor.fetchall()
+    items_to_remove = set()
+    remaining_conflicts = []
+
+    for conflict in conflicts:
+        priority1 = get_priority(conflict[8])  # lstsource1
+        priority2 = get_priority(conflict[14])  # lstsource2
+
+        if priority1 < priority2:
+            items_to_remove.add(conflict[1])  # Remove id2
+        elif priority1 > priority2:
+            items_to_remove.add(conflict[0])  # Remove id1
+        else:
+            # Same priority, keep as conflict
+            remaining_conflicts.append(conflict)
+
+    if items_to_remove:
+        items_to_remove = list(items_to_remove)
+        cursor.execute("""
+            DELETE FROM itemtesting
+            WHERE id = ANY(%s)
+        """, (items_to_remove,))
+        priority_removed = cursor.rowcount
+        print(f"Removed {priority_removed} items based on source priority.")
+    else:
+        priority_removed = 0
+
     if remaining_conflicts:
         print("\nRemaining conflicts:")
         for conflict in remaining_conflicts:
@@ -85,11 +86,12 @@ def deduplicate_items(cursor):
                 f"  ID {conflict[1]}: Type: {conflict[9]}, Subtype: {conflict[10]}, Value: {conflict[11]}, Weight: {conflict[12]}, CasterLevel: {conflict[13]}, Source: {conflict[14]}")
             print()
 
-    total_removed = exact_duplicates_removed + profs_removed
+    total_removed = exact_duplicates_removed + priority_removed
     print(f"\nTotal entries removed: {total_removed}")
     print(f"Total remaining conflicts: {len(remaining_conflicts)}")
 
     return total_removed
+
 
 def is_relevant_file(filename):
     relevant_keywords = ['equip', 'armor', 'weapon', 'item']
