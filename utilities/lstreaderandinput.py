@@ -5,63 +5,79 @@ from psycopg2 import sql
 
 
 def deduplicate_items(cursor):
-    # Remove exact duplicates
+    # First, identify duplicate groups
     cursor.execute("""
-        DELETE FROM itemtesting
-        WHERE id NOT IN (
-            SELECT MIN(id)
+        SELECT name, COUNT(*) as count
+        FROM itemtesting
+        GROUP BY name
+        HAVING COUNT(*) > 1
+    """)
+    duplicate_groups = cursor.fetchall()
+
+    total_removed = 0
+
+    for name, count in duplicate_groups:
+        # For each group of duplicates
+        cursor.execute("""
+            SELECT id, type, subtype, value, weight, casterlevel
             FROM itemtesting
-            GROUP BY name, type, subtype, value, weight, casterlevel
-        )
-    """)
+            WHERE name = %s
+            ORDER BY 
+                CASE WHEN type IS NOT NULL THEN 0 ELSE 1 END,
+                CASE WHEN subtype IS NOT NULL THEN 0 ELSE 1 END,
+                CASE WHEN value IS NOT NULL THEN 0 ELSE 1 END,
+                CASE WHEN weight IS NOT NULL THEN 0 ELSE 1 END,
+                CASE WHEN casterlevel IS NOT NULL THEN 0 ELSE 1 END,
+                id
+        """, (name,))
+        items = cursor.fetchall()
 
-    # Keep rows with non-null values over null values
-    cursor.execute("""
-        DELETE FROM itemtesting
-        WHERE id IN (
-            SELECT t1.id
-            FROM itemtesting t1
-            JOIN itemtesting t2 ON t1.name = t2.name AND t1.type = t2.type AND t1.subtype = t2.subtype
-            WHERE t1.id != t2.id
-            AND (
-                (t1.value IS NULL AND t2.value IS NOT NULL) OR
-                (t1.weight IS NULL AND t2.weight IS NOT NULL) OR
-                (t1.casterlevel IS NULL AND t2.casterlevel IS NOT NULL)
-            )
-            AND (
-                t1.value IS NULL OR t2.value IS NOT NULL OR
-                t1.weight IS NULL OR t2.weight IS NOT NULL OR
-                t1.casterlevel IS NULL OR t2.casterlevel IS NOT NULL
-            )
-        )
-    """)
+        # Keep the first item (most complete) and remove others
+        keep_id = items[0][0]
+        remove_ids = [item[0] for item in items[1:]]
 
-    # Find remaining conflicting rows
+        if remove_ids:
+            cursor.execute("""
+                DELETE FROM itemtesting
+                WHERE id = ANY(%s)
+            """, (remove_ids,))
+            total_removed += len(remove_ids)
+
+        # Log the removed duplicates
+        print(f"Removed {len(remove_ids)} duplicates for item '{name}'")
+        for item in items:
+            status = "Kept" if item[0] == keep_id else "Removed"
+            print(
+                f"  {status}: ID {item[0]}, Type: {item[1]}, Subtype: {item[2]}, Value: {item[3]}, Weight: {item[4]}, CasterLevel: {item[5]}")
+
+    print(f"\nTotal duplicates removed: {total_removed}")
+
+    # Find and report any remaining conflicts
     cursor.execute("""
-        SELECT t1.id, t2.id, t1.name, t1.type, t1.subtype, 
-               t1.value, t1.weight, t1.casterlevel,
-               t2.value, t2.weight, t2.casterlevel
+        SELECT t1.id, t2.id, t1.name, 
+               t1.type, t1.subtype, t1.value, t1.weight, t1.casterlevel,
+               t2.type, t2.subtype, t2.value, t2.weight, t2.casterlevel
         FROM itemtesting t1
-        JOIN itemtesting t2 ON t1.name = t2.name AND t1.type = t2.type AND t1.subtype = t2.subtype
-        WHERE t1.id < t2.id
-        AND (
-            (t1.value != t2.value AND t1.value IS NOT NULL AND t2.value IS NOT NULL) OR
-            (t1.weight != t2.weight AND t1.weight IS NOT NULL AND t2.weight IS NOT NULL) OR
-            (t1.casterlevel != t2.casterlevel AND t1.casterlevel IS NOT NULL AND t2.casterlevel IS NOT NULL)
-        )
+        JOIN itemtesting t2 ON t1.name = t2.name AND t1.id < t2.id
+        WHERE t1.type != t2.type 
+           OR t1.subtype != t2.subtype 
+           OR t1.value != t2.value 
+           OR t1.weight != t2.weight 
+           OR t1.casterlevel != t2.casterlevel
     """)
 
     conflicts = cursor.fetchall()
     if conflicts:
-        print("\nConflicting rows found:")
-        for row in conflicts:
+        print("\nRemaining conflicts:")
+        for conflict in conflicts:
+            print(f"Conflict for item '{conflict[2]}':")
             print(
-                f"Conflict between ID {row[0]} and ID {row[1]} for item '{row[2]}' (Type: {row[3]}, Subtype: {row[4]}):")
-            print(f"  ID {row[0]}: Value: {row[5]}, Weight: {row[6]}, CasterLevel: {row[7]}")
-            print(f"  ID {row[1]}: Value: {row[8]}, Weight: {row[9]}, CasterLevel: {row[10]}")
+                f"  ID {conflict[0]}: Type: {conflict[3]}, Subtype: {conflict[4]}, Value: {conflict[5]}, Weight: {conflict[6]}, CasterLevel: {conflict[7]}")
+            print(
+                f"  ID {conflict[1]}: Type: {conflict[8]}, Subtype: {conflict[9]}, Value: {conflict[10]}, Weight: {conflict[11]}, CasterLevel: {conflict[12]}")
             print()
 
-    return cursor.rowcount
+    return total_removed
 
 def is_relevant_file(filename):
     relevant_keywords = ['equip', 'armor', 'weapon', 'item']
