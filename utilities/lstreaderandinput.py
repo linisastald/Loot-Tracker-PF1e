@@ -282,7 +282,7 @@ def insert_item(cursor, item_info):
 def process_lst_file(file_path, cursor):
     items_with_cl = 0
     total_items = 0
-    lstsource = os.path.basename(file_path)  # Extract filename without path
+    lstsource = file_path  # Extract filename without path
 
     with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
         for line in file:
