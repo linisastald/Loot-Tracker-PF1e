@@ -3,7 +3,6 @@ import re
 import psycopg2
 from psycopg2 import sql
 
-
 def is_relevant_file(filename):
     relevant_keywords = ['equip', 'armor', 'weapon', 'item']
     return any(keyword in filename.lower() for keyword in relevant_keywords) and 'equipmod' not in filename.lower()
