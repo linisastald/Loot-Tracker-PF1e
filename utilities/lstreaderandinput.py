@@ -5,54 +5,49 @@ from psycopg2 import sql
 
 
 def deduplicate_items(cursor):
-    # First, identify duplicate groups
+    # Remove exact duplicates
     cursor.execute("""
-        SELECT name, COUNT(*) as count
-        FROM itemtesting
-        GROUP BY name
-        HAVING COUNT(*) > 1
+        DELETE FROM itemtesting
+        WHERE id IN (
+            SELECT id
+            FROM (
+                SELECT id,
+                       ROW_NUMBER() OVER (PARTITION BY name, type, subtype, value, weight, casterlevel
+                                          ORDER BY id) as row_num
+                FROM itemtesting
+            ) t
+            WHERE t.row_num > 1
+        )
     """)
-    duplicate_groups = cursor.fetchall()
+    exact_duplicates_removed = cursor.rowcount
+    print(f"Removed {exact_duplicates_removed} exact duplicates.")
 
-    total_removed = 0
+    # Remove entries with null values when there's a matching non-null entry
+    cursor.execute("""
+        DELETE FROM itemtesting
+        WHERE id IN (
+            SELECT t1.id
+            FROM itemtesting t1
+            JOIN itemtesting t2 ON t1.name = t2.name 
+                                AND COALESCE(t1.type, '') = COALESCE(t2.type, '')
+                                AND COALESCE(t1.subtype, '') = COALESCE(t2.subtype, '')
+            WHERE t1.id != t2.id
+                AND (
+                    (t1.value IS NULL AND t2.value IS NOT NULL) OR
+                    (t1.weight IS NULL AND t2.weight IS NOT NULL) OR
+                    (t1.casterlevel IS NULL AND t2.casterlevel IS NOT NULL)
+                )
+                AND NOT (
+                    (t2.value IS NULL AND t1.value IS NOT NULL) OR
+                    (t2.weight IS NULL AND t1.weight IS NOT NULL) OR
+                    (t2.casterlevel IS NULL AND t1.casterlevel IS NOT NULL)
+                )
+        )
+    """)
+    null_entries_removed = cursor.rowcount
+    print(f"Removed {null_entries_removed} entries with null values where a non-null entry exists.")
 
-    for name, count in duplicate_groups:
-        # For each group of duplicates
-        cursor.execute("""
-            SELECT id, type, subtype, value, weight, casterlevel
-            FROM itemtesting
-            WHERE name = %s
-            ORDER BY 
-                CASE WHEN type IS NOT NULL THEN 0 ELSE 1 END,
-                CASE WHEN subtype IS NOT NULL THEN 0 ELSE 1 END,
-                CASE WHEN value IS NOT NULL THEN 0 ELSE 1 END,
-                CASE WHEN weight IS NOT NULL THEN 0 ELSE 1 END,
-                CASE WHEN casterlevel IS NOT NULL THEN 0 ELSE 1 END,
-                id
-        """, (name,))
-        items = cursor.fetchall()
-
-        # Keep the first item (most complete) and remove others
-        keep_id = items[0][0]
-        remove_ids = [item[0] for item in items[1:]]
-
-        if remove_ids:
-            cursor.execute("""
-                DELETE FROM itemtesting
-                WHERE id = ANY(%s)
-            """, (remove_ids,))
-            total_removed += len(remove_ids)
-
-        # Log the removed duplicates
-        print(f"Removed {len(remove_ids)} duplicates for item '{name}'")
-        for item in items:
-            status = "Kept" if item[0] == keep_id else "Removed"
-            print(
-                f"  {status}: ID {item[0]}, Type: {item[1]}, Subtype: {item[2]}, Value: {item[3]}, Weight: {item[4]}, CasterLevel: {item[5]}")
-
-    print(f"\nTotal duplicates removed: {total_removed}")
-
-    # Find and report any remaining conflicts
+    # Find and report conflicts
     cursor.execute("""
         SELECT t1.id, t2.id, t1.name, 
                t1.type, t1.subtype, t1.value, t1.weight, t1.casterlevel,
@@ -68,7 +63,7 @@ def deduplicate_items(cursor):
 
     conflicts = cursor.fetchall()
     if conflicts:
-        print("\nRemaining conflicts:")
+        print("\nConflicts found (not removed):")
         for conflict in conflicts:
             print(f"Conflict for item '{conflict[2]}':")
             print(
@@ -76,6 +71,10 @@ def deduplicate_items(cursor):
             print(
                 f"  ID {conflict[1]}: Type: {conflict[8]}, Subtype: {conflict[9]}, Value: {conflict[10]}, Weight: {conflict[11]}, CasterLevel: {conflict[12]}")
             print()
+
+    total_removed = exact_duplicates_removed + null_entries_removed
+    print(f"\nTotal entries removed: {total_removed}")
+    print(f"Total conflicts found (not removed): {len(conflicts)}")
 
     return total_removed
 
