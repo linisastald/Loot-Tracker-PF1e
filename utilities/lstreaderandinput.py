@@ -204,14 +204,14 @@ def map_item_type(type_str):
 
     if 'shield' in type_str:
         return 'armor'
-    elif any('armor' in t for t in types) or \
-            any(t in ['light', 'medium', 'heavy'] for t in types):
-        return 'armor'
     elif any('weapon' in t for t in types) or \
             any(t in ['melee', 'ranged', 'ammunition'] for t in types) or \
             'simple' in type_str or 'martial' in type_str or \
             'gladiatormelee' in type_str or 'weaponry' in type_str:
         return 'weapon'
+    elif any('armor' in t for t in types) or \
+            any(t in ['light', 'medium', 'heavy'] for t in types):
+        return 'armor'
     elif 'artifact' in type_str or \
             any(t in ['magic', 'potion', 'scroll', 'wand', 'rod', 'staff', 'ring', 'amulet'] for t in types):
         return 'magic'
