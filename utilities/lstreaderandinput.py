@@ -152,16 +152,26 @@ def map_item_subtype(main_type, type_str):
     types = type_str.split('.')
 
     if main_type == 'weapon':
-        if any(t in ['light', 'onehanded', 'one-handed', 'onehand', 'one hand'] for t in types):
+        # Prioritize specific weapon types
+
+        if 'ammunition' in type_str or 'ammo' in type_str:
+            return 'ammunition'
+        elif any(t in ['onehanded', 'one-handed', 'onehand', 'one hand'] for t in types):
             return 'one handed'
         elif any(t in ['twohanded', 'two-handed', 'twohand', 'two hand'] for t in types):
             return 'two handed'
+        elif 'light' in type_str:
+            return 'light'
+        elif 'heavy' in type_str or 'heavy weaponry' in type_str:
+            return 'heavy'
+        elif 'melee' in type_str:
+            return 'melee'
         elif any(t in ['ranged', 'thrown', 'projectile'] for t in types):
             return 'ranged'
-        elif 'ammunition' in type_str or 'ammo' in type_str:
-            return 'ammunition'
+        elif 'firearm' in type_str:
+            return 'firearm'
         else:
-            return 'light'  # Default to light if no other subtype is found
+            return None
 
     elif main_type == 'armor':
         if 'light' in type_str:
@@ -173,7 +183,7 @@ def map_item_subtype(main_type, type_str):
         elif 'shield' in type_str:
             return 'shield'
         else:
-            return None  # No specific subtype found for armor
+            return None
 
     elif main_type == 'magic':
         if 'artifact' in type_str:
@@ -185,9 +195,9 @@ def map_item_subtype(main_type, type_str):
         elif 'scroll' in type_str:
             return 'scroll'
         else:
-            return None  # No specific subtype found for magic item
+            return None
 
-    return None  # Return None for other main types
+    return None
 
 
 def extract_item_info(line, lstsource):
