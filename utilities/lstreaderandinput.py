@@ -22,16 +22,21 @@ def deduplicate_items(cursor):
             SELECT t1.id
             FROM itemtesting t1
             JOIN itemtesting t2 ON t1.name = t2.name AND t1.type = t2.type AND t1.subtype = t2.subtype
-            WHERE t1.id > t2.id
+            WHERE t1.id != t2.id
             AND (
                 (t1.value IS NULL AND t2.value IS NOT NULL) OR
                 (t1.weight IS NULL AND t2.weight IS NOT NULL) OR
                 (t1.casterlevel IS NULL AND t2.casterlevel IS NOT NULL)
             )
+            AND (
+                t1.value IS NULL OR t2.value IS NOT NULL OR
+                t1.weight IS NULL OR t2.weight IS NOT NULL OR
+                t1.casterlevel IS NULL OR t2.casterlevel IS NOT NULL
+            )
         )
     """)
 
-    # Find conflicting rows
+    # Find remaining conflicting rows
     cursor.execute("""
         SELECT t1.id, t2.id, t1.name, t1.type, t1.subtype, 
                t1.value, t1.weight, t1.casterlevel,
@@ -40,9 +45,9 @@ def deduplicate_items(cursor):
         JOIN itemtesting t2 ON t1.name = t2.name AND t1.type = t2.type AND t1.subtype = t2.subtype
         WHERE t1.id < t2.id
         AND (
-            (t1.value != t2.value OR (t1.value IS NULL) != (t2.value IS NULL)) OR
-            (t1.weight != t2.weight OR (t1.weight IS NULL) != (t2.weight IS NULL)) OR
-            (t1.casterlevel != t2.casterlevel OR (t1.casterlevel IS NULL) != (t2.casterlevel IS NULL))
+            (t1.value != t2.value AND t1.value IS NOT NULL AND t2.value IS NOT NULL) OR
+            (t1.weight != t2.weight AND t1.weight IS NOT NULL AND t2.weight IS NOT NULL) OR
+            (t1.casterlevel != t2.casterlevel AND t1.casterlevel IS NOT NULL AND t2.casterlevel IS NOT NULL)
         )
     """)
 
