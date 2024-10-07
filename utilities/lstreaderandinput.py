@@ -25,7 +25,7 @@ def is_item_line(line, filename):
     ability_indicators = ['CATEGORY:Special Ability', 'TYPE:SkillSpecialization', 'ABILITY:']
     has_item_indicator = any(indicator in line for indicator in item_indicators)
     has_spell_indicator = any(indicator in line for indicator in spell_indicators)
-    has_ability_indicator = any(indicator in line for item in ability_indicators)
+    has_ability_indicator = any(indicator in line for indicator in ability_indicators)
     if has_ability_indicator:
         return False
     is_weapon_or_armor = 'TYPE:Weapon' in line or 'TYPE:Armor' in line
