@@ -191,7 +191,7 @@ def process_lst_file(file_path, cursor):
 
 
 if __name__ == "__main__":
-    lst_directory = "./itemsnew"  # Replace with your actual directory path
+    lst_directory = "../../itemsnew"  # Replace with your actual directory path
 
     # Database connection parameters
     db_params = {
