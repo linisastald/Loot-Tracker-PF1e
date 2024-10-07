@@ -195,11 +195,10 @@ if __name__ == "__main__":
 
     # Database connection parameters
     db_params = {
-        'dbname': 'your_database_name',
-        'user': 'your_username',
-        'password': 'your_password',
-        'host': 'your_host',
-        'port': 'your_port'
+        'dbname': 'loot_tracking',
+        'user': 'loot_user',
+        'password': 'g5Zr7!cXw@2sP9Lk',
+        'host': 'localhost'
     }
 
     # Establish database connection
