@@ -5,7 +5,7 @@ from psycopg2 import sql
 
 
 def deduplicate_items(cursor):
-    # Remove exact duplicates
+    # Remove exact duplicates (keep this part as it is)
     cursor.execute("""
         DELETE FROM itemtesting
         WHERE id IN (
@@ -22,36 +22,49 @@ def deduplicate_items(cursor):
     exact_duplicates_removed = cursor.rowcount
     print(f"Removed {exact_duplicates_removed} exact duplicates.")
 
-    # Remove entries with null values when there's a matching non-null entry
+    # Find conflicts and remove items from 'profs' sources
     cursor.execute("""
-        DELETE FROM itemtesting
-        WHERE id IN (
-            SELECT t1.id
+        WITH conflicts AS (
+            SELECT t1.id as id1, t2.id as id2, t1.name, 
+                   t1.type as type1, t1.subtype as subtype1, t1.value as value1, t1.weight as weight1, t1.casterlevel as casterlevel1, t1.lstsource as lstsource1,
+                   t2.type as type2, t2.subtype as subtype2, t2.value as value2, t2.weight as weight2, t2.casterlevel as casterlevel2, t2.lstsource as lstsource2
             FROM itemtesting t1
-            JOIN itemtesting t2 ON t1.name = t2.name 
-                                AND COALESCE(t1.type, '') = COALESCE(t2.type, '')
-                                AND COALESCE(t1.subtype, '') = COALESCE(t2.subtype, '')
-            WHERE t1.id != t2.id
-                AND (
-                    (t1.value IS NULL AND t2.value IS NOT NULL) OR
-                    (t1.weight IS NULL AND t2.weight IS NOT NULL) OR
-                    (t1.casterlevel IS NULL AND t2.casterlevel IS NOT NULL)
-                )
-                AND NOT (
-                    (t2.value IS NULL AND t1.value IS NOT NULL) OR
-                    (t2.weight IS NULL AND t1.weight IS NOT NULL) OR
-                    (t2.casterlevel IS NULL AND t1.casterlevel IS NOT NULL)
-                )
+            JOIN itemtesting t2 ON t1.name = t2.name AND t1.id < t2.id
+            WHERE t1.type != t2.type 
+               OR t1.subtype != t2.subtype 
+               OR t1.value != t2.value 
+               OR t1.weight != t2.weight 
+               OR t1.casterlevel != t2.casterlevel
         )
+        SELECT * FROM conflicts
+        WHERE lstsource1 LIKE '%profs%' OR lstsource2 LIKE '%profs%'
     """)
-    null_entries_removed = cursor.rowcount
-    print(f"Removed {null_entries_removed} entries with null values where a non-null entry exists.")
 
-    # Find and report conflicts
+    conflicts = cursor.fetchall()
+    items_to_remove = set()
+
+    for conflict in conflicts:
+        if 'profs' in conflict[8].lower():  # lstsource1
+            items_to_remove.add(conflict[0])  # id1
+        elif 'profs' in conflict[14].lower():  # lstsource2
+            items_to_remove.add(conflict[1])  # id2
+
+    if items_to_remove:
+        items_to_remove = list(items_to_remove)
+        cursor.execute("""
+            DELETE FROM itemtesting
+            WHERE id = ANY(%s)
+        """, (items_to_remove,))
+        profs_removed = cursor.rowcount
+        print(f"Removed {profs_removed} items from 'profs' sources due to conflicts.")
+    else:
+        profs_removed = 0
+
+    # Find and report remaining conflicts
     cursor.execute("""
         SELECT t1.id, t2.id, t1.name, 
-               t1.type, t1.subtype, t1.value, t1.weight, t1.casterlevel,
-               t2.type, t2.subtype, t2.value, t2.weight, t2.casterlevel
+               t1.type, t1.subtype, t1.value, t1.weight, t1.casterlevel, t1.lstsource,
+               t2.type, t2.subtype, t2.value, t2.weight, t2.casterlevel, t2.lstsource
         FROM itemtesting t1
         JOIN itemtesting t2 ON t1.name = t2.name AND t1.id < t2.id
         WHERE t1.type != t2.type 
@@ -61,20 +74,20 @@ def deduplicate_items(cursor):
            OR t1.casterlevel != t2.casterlevel
     """)
 
-    conflicts = cursor.fetchall()
-    if conflicts:
-        print("\nConflicts found (not removed):")
-        for conflict in conflicts:
+    remaining_conflicts = cursor.fetchall()
+    if remaining_conflicts:
+        print("\nRemaining conflicts:")
+        for conflict in remaining_conflicts:
             print(f"Conflict for item '{conflict[2]}':")
             print(
-                f"  ID {conflict[0]}: Type: {conflict[3]}, Subtype: {conflict[4]}, Value: {conflict[5]}, Weight: {conflict[6]}, CasterLevel: {conflict[7]}")
+                f"  ID {conflict[0]}: Type: {conflict[3]}, Subtype: {conflict[4]}, Value: {conflict[5]}, Weight: {conflict[6]}, CasterLevel: {conflict[7]}, Source: {conflict[8]}")
             print(
-                f"  ID {conflict[1]}: Type: {conflict[8]}, Subtype: {conflict[9]}, Value: {conflict[10]}, Weight: {conflict[11]}, CasterLevel: {conflict[12]}")
+                f"  ID {conflict[1]}: Type: {conflict[9]}, Subtype: {conflict[10]}, Value: {conflict[11]}, Weight: {conflict[12]}, CasterLevel: {conflict[13]}, Source: {conflict[14]}")
             print()
 
-    total_removed = exact_duplicates_removed + null_entries_removed
+    total_removed = exact_duplicates_removed + profs_removed
     print(f"\nTotal entries removed: {total_removed}")
-    print(f"Total conflicts found (not removed): {len(conflicts)}")
+    print(f"Total remaining conflicts: {len(remaining_conflicts)}")
 
     return total_removed
 
