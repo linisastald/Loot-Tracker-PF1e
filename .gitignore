@@ -9,3 +9,4 @@ backend/.env
 docker/docker-compose.yml
 /backend/package-lock.json
 /.idea/misc.xml
+/.idea/deployment.xml
