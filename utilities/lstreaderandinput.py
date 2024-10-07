@@ -190,9 +190,8 @@ def map_item_subtype(main_type, type_str):
     return None  # Return None for other main types
 
 
-def extract_item_info(line):
+def extract_item_info(line, lstsource):
     name = get_item_name(line)
-
     type_match = re.search(r'TYPE:([^\t]+)', line)
     type_str = type_match.group(1) if type_match else ''
     type_parts = type_str.split('.')
@@ -208,7 +207,6 @@ def extract_item_info(line):
     weight_match = re.search(r'WT:(\d+(?:\.\d+)?)', line)
     weight = weight_match.group(1) if weight_match else None
 
-    # Expanded caster level detection
     caster_level = None
     cl_patterns = [
         r'SPROP:[^|]*\|CL(\d+)',
@@ -224,18 +222,13 @@ def extract_item_info(line):
             caster_level = cl_match.group(1)
             break
 
-    # Debugging output
-    if 'CL' in line or 'CASTER LEVEL' in line:
-        print(f"Debug - Name: {name}, Line: {line}")
-        print(f"Debug - Extracted Caster Level: {caster_level}")
-
-    return (name, mapped_type, item_type, mapped_subtype, og_subtype, value, weight, caster_level)
+    return (name, mapped_type, item_type, mapped_subtype, og_subtype, value, weight, caster_level, lstsource)
 
 
 def insert_item(cursor, item_info):
     insert_query = sql.SQL("""
-        INSERT INTO itemtesting (name, type, ogtype, subtype, ogsubtype, value, weight, casterlevel)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO itemtesting (name, type, ogtype, subtype, ogsubtype, value, weight, casterlevel, lstsource)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """)
     cursor.execute(insert_query, item_info)
 
@@ -243,6 +236,7 @@ def insert_item(cursor, item_info):
 def process_lst_file(file_path, cursor):
     items_with_cl = 0
     total_items = 0
+    lstsource = os.path.basename(file_path)  # Extract filename without path
 
     with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
         for line in file:
@@ -250,7 +244,7 @@ def process_lst_file(file_path, cursor):
             if line and not line.startswith('#'):
                 if is_item_line(line, file_path):
                     total_items += 1
-                    item_info = extract_item_info(line)
+                    item_info = extract_item_info(line, lstsource)
                     if item_info[0] and '.MOD' not in item_info[0]:
                         if item_info[7]:  # Check if caster level is not None
                             items_with_cl += 1
@@ -262,7 +256,6 @@ def process_lst_file(file_path, cursor):
     print("--------------------")
 
     return total_items, items_with_cl
-
 
 if __name__ == "__main__":
     lst_directory = "../../itemsnew"  # Replace with your actual directory path
