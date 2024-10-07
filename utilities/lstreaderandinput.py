@@ -110,7 +110,7 @@ def deduplicate_items(cursor):
         removed_count = cursor.rowcount
         print(f"Removed {removed_count} items based on prioritization rules.")
 
-    # Find and report remaining conflicts
+    # Find remaining conflicts
     cursor.execute("""
         SELECT t1.id, t2.id, t1.name, 
                t1.type, t1.subtype, t1.value, t1.weight, t1.casterlevel, t1.lstsource,
@@ -125,19 +125,37 @@ def deduplicate_items(cursor):
     """)
 
     remaining_conflicts = cursor.fetchall()
-    if remaining_conflicts:
-        print("\nRemaining conflicts:")
-        for conflict in remaining_conflicts:
-            print(f"Conflict for item '{conflict[2]}':")
-            print(
-                f"  ID {conflict[0]}: Type: {conflict[3]}, Subtype: {conflict[4]}, Value: {conflict[5]}, Weight: {conflict[6]}, CasterLevel: {conflict[7]}, Source: {conflict[8]}")
-            print(
-                f"  ID {conflict[1]}: Type: {conflict[9]}, Subtype: {conflict[10]}, Value: {conflict[11]}, Weight: {conflict[12]}, CasterLevel: {conflict[13]}, Source: {conflict[14]}")
-            print()
+    manual_removed = 0
 
-    total_removed = exact_duplicates_removed + removed_count
-    print(f"\nTotal entries removed: {total_removed}")
-    print(f"Total remaining conflicts: {len(remaining_conflicts)}")
+    if remaining_conflicts:
+        print("\nManual conflict resolution:")
+        for conflict in remaining_conflicts:
+            print(f"\nConflict for item '{conflict[2]}':")
+            print(
+                f"1. ID {conflict[0]}: Type: {conflict[3]}, Subtype: {conflict[4]}, Value: {conflict[5]}, Weight: {conflict[6]}, CasterLevel: {conflict[7]}, Source: {conflict[8]}")
+            print(
+                f"2. ID {conflict[1]}: Type: {conflict[9]}, Subtype: {conflict[10]}, Value: {conflict[11]}, Weight: {conflict[12]}, CasterLevel: {conflict[13]}, Source: {conflict[14]}")
+            print("3. Remove both")
+
+            while True:
+                choice = input("Enter your choice (1, 2, or 3): ")
+                if choice in ['1', '2', '3']:
+                    break
+                print("Invalid choice. Please enter 1, 2, or 3.")
+
+            if choice == '1':
+                cursor.execute("DELETE FROM itemtesting WHERE id = %s", (conflict[1],))
+                manual_removed += 1
+            elif choice == '2':
+                cursor.execute("DELETE FROM itemtesting WHERE id = %s", (conflict[0],))
+                manual_removed += 1
+            elif choice == '3':
+                cursor.execute("DELETE FROM itemtesting WHERE id IN (%s, %s)", (conflict[0], conflict[1]))
+                manual_removed += 2
+
+    print(f"\nManually removed {manual_removed} items.")
+    total_removed = exact_duplicates_removed + removed_count + manual_removed
+    print(f"Total entries removed: {total_removed}")
 
     return total_removed
 
