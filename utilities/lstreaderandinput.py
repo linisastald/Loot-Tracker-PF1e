@@ -3,6 +3,61 @@ import re
 import psycopg2
 from psycopg2 import sql
 
+
+def deduplicate_items(cursor):
+    # Remove exact duplicates
+    cursor.execute("""
+        DELETE FROM itemtesting
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM itemtesting
+            GROUP BY name, type, subtype, value, weight, casterlevel
+        )
+    """)
+
+    # Keep rows with non-null values over null values
+    cursor.execute("""
+        DELETE FROM itemtesting
+        WHERE id IN (
+            SELECT t1.id
+            FROM itemtesting t1
+            JOIN itemtesting t2 ON t1.name = t2.name AND t1.type = t2.type AND t1.subtype = t2.subtype
+            WHERE t1.id > t2.id
+            AND (
+                (t1.value IS NULL AND t2.value IS NOT NULL) OR
+                (t1.weight IS NULL AND t2.weight IS NOT NULL) OR
+                (t1.casterlevel IS NULL AND t2.casterlevel IS NOT NULL)
+            )
+        )
+    """)
+
+    # Find conflicting rows
+    cursor.execute("""
+        SELECT t1.id, t2.id, t1.name, t1.type, t1.subtype, 
+               t1.value, t1.weight, t1.casterlevel,
+               t2.value, t2.weight, t2.casterlevel
+        FROM itemtesting t1
+        JOIN itemtesting t2 ON t1.name = t2.name AND t1.type = t2.type AND t1.subtype = t2.subtype
+        WHERE t1.id < t2.id
+        AND (
+            (t1.value != t2.value OR (t1.value IS NULL) != (t2.value IS NULL)) OR
+            (t1.weight != t2.weight OR (t1.weight IS NULL) != (t2.weight IS NULL)) OR
+            (t1.casterlevel != t2.casterlevel OR (t1.casterlevel IS NULL) != (t2.casterlevel IS NULL))
+        )
+    """)
+
+    conflicts = cursor.fetchall()
+    if conflicts:
+        print("\nConflicting rows found:")
+        for row in conflicts:
+            print(
+                f"Conflict between ID {row[0]} and ID {row[1]} for item '{row[2]}' (Type: {row[3]}, Subtype: {row[4]}):")
+            print(f"  ID {row[0]}: Value: {row[5]}, Weight: {row[6]}, CasterLevel: {row[7]}")
+            print(f"  ID {row[1]}: Value: {row[8]}, Weight: {row[9]}, CasterLevel: {row[10]}")
+            print()
+
+    return cursor.rowcount
+
 def is_relevant_file(filename):
     relevant_keywords = ['equip', 'armor', 'weapon', 'item']
     return any(keyword in filename.lower() for keyword in relevant_keywords) and 'equipmod' not in filename.lower()
@@ -218,14 +273,19 @@ if __name__ == "__main__":
                     total_items_processed += items_processed
                     total_items_with_cl += items_with_cl
 
-        connection.commit()
-        cursor.close()
-
         print("\nProcessing Summary:")
         print(f"Total items processed: {total_items_processed}")
         print(f"Total items with caster level: {total_items_with_cl}")
 
-        print("Data processing and insertion completed.")
+        # Perform deduplication
+        print("\nPerforming deduplication...")
+        deduplicated_count = deduplicate_items(cursor)
+        print(f"Deduplication complete. {deduplicated_count} duplicate rows removed.")
+
+        connection.commit()
+        cursor.close()
+
+        print("Data processing, insertion, and deduplication completed.")
     except psycopg2.Error as e:
         print(f"Unable to connect to the database: {e}")
     finally:
