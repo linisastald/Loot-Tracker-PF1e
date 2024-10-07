@@ -181,6 +181,11 @@ def get_item_name(line):
     output_name_match = re.search(r'OUTPUTNAME:([^\t]+)', line)
     if output_name_match:
         output_name = output_name_match.group(1).strip()
+
+        # Check for [NAME] in OUTPUTNAME
+        if '[NAME]' in output_name:
+            return original_name
+
         if output_name.startswith('('):
             # Remove any existing suffix in parentheses from the original name
             original_name_without_suffix = re.sub(r'\s*\([^)]*\)\s*$', '', original_name)
