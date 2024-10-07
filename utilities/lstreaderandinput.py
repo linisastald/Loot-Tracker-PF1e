@@ -18,7 +18,7 @@ def get_priority(lstsource):
 
 
 def deduplicate_items(cursor):
-    # Remove exact duplicates (keep this part as it is)
+    # Remove exact duplicates
     cursor.execute("""
         DELETE FROM itemtesting
         WHERE id IN (
@@ -35,7 +35,7 @@ def deduplicate_items(cursor):
     exact_duplicates_removed = cursor.rowcount
     print(f"Removed {exact_duplicates_removed} exact duplicates.")
 
-    # Find conflicts and remove items based on priority
+    # Find all conflicts
     cursor.execute("""
         SELECT t1.id as id1, t2.id as id2, t1.name, 
                t1.type as type1, t1.subtype as subtype1, t1.value as value1, t1.weight as weight1, t1.casterlevel as casterlevel1, t1.lstsource as lstsource1,
@@ -51,26 +51,47 @@ def deduplicate_items(cursor):
 
     conflicts = cursor.fetchall()
     items_to_remove = set()
-    remaining_conflicts = []
 
+    # First, handle 'profs' conflicts
     for conflict in conflicts:
-        priority1 = get_priority(conflict[8])  # lstsource1
-        priority2 = get_priority(conflict[14])  # lstsource2
+        if 'profs' in conflict[8].lower():  # lstsource1
+            items_to_remove.add(conflict[0])  # id1
+        elif 'profs' in conflict[14].lower():  # lstsource2
+            items_to_remove.add(conflict[1])  # id2
 
-        if priority1 < priority2:
-            items_to_remove.add(conflict[1])  # Remove id2
-        elif priority1 > priority2:
-            items_to_remove.add(conflict[0])  # Remove id1
-        else:
-            # Same priority, keep as conflict
-            remaining_conflicts.append(conflict)
-
+    # Remove 'profs' items
     if items_to_remove:
-        items_to_remove = list(items_to_remove)
         cursor.execute("""
             DELETE FROM itemtesting
             WHERE id = ANY(%s)
-        """, (items_to_remove,))
+        """, (list(items_to_remove),))
+        profs_removed = cursor.rowcount
+        print(f"Removed {profs_removed} items from 'profs' sources due to conflicts.")
+    else:
+        profs_removed = 0
+
+    # Handle remaining conflicts based on priority
+    remaining_conflicts = []
+    for conflict in conflicts:
+        if conflict[0] not in items_to_remove and conflict[1] not in items_to_remove:
+            priority1 = get_priority(conflict[8])  # lstsource1
+            priority2 = get_priority(conflict[14])  # lstsource2
+
+            if priority1 < priority2:
+                items_to_remove.add(conflict[1])  # Remove id2
+            elif priority1 > priority2:
+                items_to_remove.add(conflict[0])  # Remove id1
+            else:
+                # Same priority, keep as conflict
+                remaining_conflicts.append(conflict)
+
+    # Remove items based on priority
+    items_to_remove = items_to_remove - set(range(1, profs_removed + 1))  # Exclude already removed items
+    if items_to_remove:
+        cursor.execute("""
+            DELETE FROM itemtesting
+            WHERE id = ANY(%s)
+        """, (list(items_to_remove),))
         priority_removed = cursor.rowcount
         print(f"Removed {priority_removed} items based on source priority.")
     else:
@@ -86,7 +107,7 @@ def deduplicate_items(cursor):
                 f"  ID {conflict[1]}: Type: {conflict[9]}, Subtype: {conflict[10]}, Value: {conflict[11]}, Weight: {conflict[12]}, CasterLevel: {conflict[13]}, Source: {conflict[14]}")
             print()
 
-    total_removed = exact_duplicates_removed + priority_removed
+    total_removed = exact_duplicates_removed + profs_removed + priority_removed
     print(f"\nTotal entries removed: {total_removed}")
     print(f"Total remaining conflicts: {len(remaining_conflicts)}")
 
