@@ -55,13 +55,13 @@ def search_lst_files(item_name, lst_directory):
                         if re.search(search_pattern, line, re.IGNORECASE):
                             value, weight, caster_level = extract_item_info(line)
                             if value or weight or caster_level:
-                                return value, weight, caster_level
-    return None, None, None
+                                return value, weight, caster_level, os.path.basename(file_path)
+    return None, None, None, None
 
 
-def confirm_update(attribute, current_value, new_value):
+def confirm_update(attribute, current_value, new_value, source_file):
     print(f"Current {attribute}: {current_value}")
-    print(f"New {attribute}: {new_value}")
+    print(f"New {attribute}: {new_value} (Source: {source_file})")
     return input(f"Do you want to update {attribute}? (y/n): ").lower() == 'y'
 
 
@@ -86,39 +86,49 @@ def update_item_data(cursor, connection, lst_directory):
 
     for item in items:
         item_id, name, current_value, current_weight, current_caster_level = item
-        print(f"\nProcessing item: {name}")
-        print(f"Current data - Value: {current_value}, Weight: {current_weight}, Caster Level: {current_caster_level}")
-
-        new_value, new_weight, new_caster_level = search_lst_files(name, lst_directory)
+        new_value, new_weight, new_caster_level, source_file = search_lst_files(name, lst_directory)
 
         update_query = "UPDATE item SET "
         update_params = []
+        updates_needed = False
 
         if new_value is not None and not values_are_equal(current_value, new_value):
-            if confirm_update("Value", current_value, new_value):
-                update_query += "value = %s, "
-                update_params.append(new_value)
-
+            updates_needed = True
         if new_weight is not None and not values_are_equal(current_weight, new_weight):
-            if confirm_update("Weight", current_weight, new_weight):
-                update_query += "weight = %s, "
-                update_params.append(new_weight)
-
+            updates_needed = True
         if new_caster_level is not None and not values_are_equal(current_caster_level, new_caster_level):
-            if confirm_update("Caster Level", current_caster_level, new_caster_level):
-                update_query += "casterlevel = %s, "
-                update_params.append(new_caster_level)
+            updates_needed = True
 
-        if update_params:
-            update_query = update_query.rstrip(', ')
-            update_query += " WHERE id = %s"
-            update_params.append(item_id)
+        if updates_needed:
+            print(f"\nProcessing item: {name}")
+            print(
+                f"Current data - Value: {current_value}, Weight: {current_weight}, Caster Level: {current_caster_level}")
 
-            cursor.execute(update_query, tuple(update_params))
-            connection.commit()
-            print("Item updated successfully.")
-        else:
-            print("No updates needed for this item.")
+            if new_value is not None and not values_are_equal(current_value, new_value):
+                if confirm_update("Value", current_value, new_value, source_file):
+                    update_query += "value = %s, "
+                    update_params.append(new_value)
+
+            if new_weight is not None and not values_are_equal(current_weight, new_weight):
+                if confirm_update("Weight", current_weight, new_weight, source_file):
+                    update_query += "weight = %s, "
+                    update_params.append(new_weight)
+
+            if new_caster_level is not None and not values_are_equal(current_caster_level, new_caster_level):
+                if confirm_update("Caster Level", current_caster_level, new_caster_level, source_file):
+                    update_query += "casterlevel = %s, "
+                    update_params.append(new_caster_level)
+
+            if update_params:
+                update_query = update_query.rstrip(', ')
+                update_query += " WHERE id = %s"
+                update_params.append(item_id)
+
+                cursor.execute(update_query, tuple(update_params))
+                connection.commit()
+                print("Item updated successfully.")
+            else:
+                print("No updates made for this item.")
 
 
 if __name__ == "__main__":
