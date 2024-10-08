@@ -5,6 +5,7 @@ import re
 import time
 import random
 from urllib.parse import quote
+import math
 
 # Database connection parameters
 db_params = {
@@ -36,6 +37,22 @@ urls = [
 ]
 
 
+def clean_weight(weight_str):
+    if weight_str is None:
+        return None
+    weight_str = weight_str.strip()
+    if weight_str in ['—', '-', '–', '']:
+        return None
+    # Extract just the numeric part (if any) from the beginning of the string
+    match = re.match(r'^(-?\d+(?:\.\d+)?)', weight_str)
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
 def get_item_info(item_name):
     print(f"\nSearching for information on: {item_name}")
     for url in urls:
@@ -55,13 +72,7 @@ def get_item_info(item_name):
                 if price_match or cl_match or weight_match:
                     price = price_match.group(1).strip() if price_match else None
                     cl = cl_match.group(1).strip() if cl_match else None
-                    weight = weight_match.group(1).strip() if weight_match else None
-
-                    # Clean up the weight
-                    if weight:
-                        weight = weight.split()[0]  # Take only the first word
-                        if weight in ['—', '-', '–']:
-                            weight = None  # Set weight to None if it's a dash
+                    weight = clean_weight(weight_match.group(1) if weight_match else None)
 
                     # Clean up the CL
                     if cl:
@@ -89,6 +100,14 @@ def get_item_info(item_name):
 
     print("Item not found on any page.")
     return None
+
+
+def float_eq(a, b, epsilon=1e-9):
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    return math.isclose(float(a), float(b), rel_tol=epsilon)
 
 
 def confirm_update(attribute, current_value, new_value, item_name):
@@ -129,7 +148,7 @@ def update_item_data(cursor, connection):
                 update_params.append(info['price'])
                 updates_needed = True
 
-        if info['weight'] != current_weight:
+        if not float_eq(info['weight'], current_weight):
             if confirm_update("Weight", current_weight, info['weight'], name):
                 update_query += "weight = %s, "
                 update_params.append(info['weight'])
