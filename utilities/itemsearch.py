@@ -38,26 +38,44 @@ def extract_item_info(line):
     return item_name, value, weight, caster_level
 
 
-def create_flexible_search_pattern(item_name):
-    cleaned_name = re.sub(r'[^\w\s]', '', item_name.lower())
-    words = cleaned_name.split()
-    pattern = r'.*'.join(re.escape(word) for word in words)
-    return rf'\b{pattern}\b|\({pattern}\)|\b{pattern}\s*\([^)]*\)'
+def create_search_pattern(item_name):
+    return rf"^{re.escape(item_name)}($|\t)"
 
 
 def search_lst_files(item_name, lst_directory):
-    search_pattern = create_flexible_search_pattern(item_name)
+    search_pattern = create_search_pattern(item_name)
+    matches = []
     for root, _, files in os.walk(lst_directory):
         for file in files:
             if file.endswith('.lst') and is_relevant_file(file):
                 file_path = os.path.join(root, file)
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     for line in f:
-                        if re.search(search_pattern, line, re.IGNORECASE):
+                        if re.match(search_pattern, line, re.IGNORECASE):
                             lst_item_name, value, weight, caster_level = extract_item_info(line)
                             if value or weight or caster_level:
-                                return lst_item_name, value, weight, caster_level, os.path.basename(file_path)
-    return None, None, None, None, None
+                                matches.append(
+                                    (lst_item_name, value, weight, caster_level, os.path.basename(file_path)))
+    return matches
+
+
+def select_match(matches):
+    if len(matches) == 1:
+        return matches[0]
+
+    print("\nMultiple matches found. Please select one:")
+    for i, match in enumerate(matches, 1):
+        print(f"{i}. {match[0]} (File: {match[4]}, Value: {match[1]}, Weight: {match[2]}, CL: {match[3]})")
+
+    while True:
+        try:
+            choice = int(input("Enter the number of your choice: "))
+            if 1 <= choice <= len(matches):
+                return matches[choice - 1]
+            else:
+                print("Invalid choice. Please try again.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
 
 
 def confirm_update(attribute, current_value, new_value, source_item, source_file):
@@ -87,11 +105,12 @@ def update_item_data(cursor, connection, lst_directory):
 
     for item in items:
         item_id, name, current_value, current_weight, current_caster_level = item
-        lst_item_name, new_value, new_weight, new_caster_level, source_file = search_lst_files(name, lst_directory)
+        matches = search_lst_files(name, lst_directory)
 
-        if lst_item_name is None:
-            print(f"\nNo matching item found for: {name}")
+        if not matches:
             continue
+
+        lst_item_name, new_value, new_weight, new_caster_level, source_file = select_match(matches)
 
         update_query = "UPDATE item SET "
         update_params = []
@@ -135,8 +154,6 @@ def update_item_data(cursor, connection, lst_directory):
                 print("Item updated successfully.")
             else:
                 print("No updates made for this item.")
-        else:
-            print(f"\nNo updates needed for: {name}")
 
 
 if __name__ == "__main__":
