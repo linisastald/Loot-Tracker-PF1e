@@ -122,7 +122,6 @@ def update_item_data(cursor, connection):
         FROM item
         WHERE (value IS NULL OR weight IS NULL OR casterlevel IS NULL) and type = 'magic'
         ORDER BY casterlevel DESC
-        LIMIT 5
     """)
     items = cursor.fetchall()
     not_found = []
