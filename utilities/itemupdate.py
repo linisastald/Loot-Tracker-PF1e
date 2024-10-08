@@ -5,20 +5,12 @@ from psycopg2 import sql
 import argparse
 import subprocess
 import sys
-from termcolor import colored
 
 # Common variables
 DB_HOST = 'localhost'
 DB_NAME = 'loot_tracking'
 DB_USER = 'loot_user'
 DB_PASSWORD = 'g5Zr7!cXw@2sP9Lk'  # Replace this with the actual password
-
-# Tables to not replicate rows
-NON_REPLICATED_TABLES = [
-    'appraisal', 'characters', 'consumableuse', 'gold', 'identify',
-    'invites', 'loot', 'settings', 'sold', 'users'
-]
-
 
 def get_docker_container_ids():
     try:
@@ -39,7 +31,6 @@ def get_docker_container_ids():
         print(f"Unexpected error: {e}")
         return []
 
-
 def get_container_port(container_id):
     try:
         result = subprocess.run(['docker', 'port', container_id, '5432'],
@@ -53,7 +44,6 @@ def get_container_port(container_id):
         print(f"Unexpected error: {e}")
     return None
 
-
 def connect_to_db(port):
     try:
         return psycopg2.connect(
@@ -66,7 +56,6 @@ def connect_to_db(port):
     except psycopg2.Error as e:
         print(f"Unable to connect to database: {e}")
         return None
-
 
 def get_db_structure(conn):
     structure = {'tables': {}, 'indexes': {}}
@@ -99,7 +88,6 @@ def get_db_structure(conn):
         print(f"Error fetching database structure: {e}")
 
     return structure
-
 
 def compare_structures(master, copy):
     differences = {
@@ -135,7 +123,6 @@ def compare_structures(master, copy):
 
     return differences
 
-
 def generate_update_sql(differences, master_structure):
     sql_statements = []
 
@@ -154,39 +141,69 @@ def generate_update_sql(differences, master_structure):
 
     return "\n".join(sql_statements)
 
+def backup_itemtesting_table(conn):
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM itemtesting")
+            rows = cur.fetchall()
+            with open('itemtesting_backup.sql', 'w') as f:
+                for row in rows:
+                    f.write(f"INSERT INTO itemtesting VALUES {row};\n")
+        print("Backup of itemtesting table created.")
+    except psycopg2.Error as e:
+        print(f"Error creating backup: {e}")
 
-def get_table_data(conn, table):
-    with conn.cursor() as cur:
-        cur.execute(f"SELECT * FROM {table}")
-        return cur.fetchall()
+def drop_tables(conn):
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS itemtest, itemtest1, itemtesting, itemtestingbak;")
+        conn.commit()
+        print("Tables dropped successfully.")
+    except psycopg2.Error as e:
+        print(f"Error dropping tables: {e}")
 
+def remove_loot_itemid(conn):
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE loot SET itemid = NULL;")
+        conn.commit()
+        print("loot.itemid removed from all rows.")
+    except psycopg2.Error as e:
+        print(f"Error removing loot.itemid: {e}")
 
-def compare_table_data(master_data, copy_data):
-    master_set = set(map(tuple, master_data))
-    copy_set = set(map(tuple, copy_data))
+def empty_item_table(conn):
+    try:
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE item RESTART IDENTITY;")
+        conn.commit()
+        print("item table emptied and ID sequence reset.")
+    except psycopg2.Error as e:
+        print(f"Error emptying item table: {e}")
 
-    missing_in_copy = master_set - copy_set
-    missing_in_master = copy_set - master_set
+def insert_items_from_master(master_conn, copy_conn):
+    try:
+        with master_conn.cursor() as master_cur, copy_conn.cursor() as copy_cur:
+            master_cur.execute("SELECT * FROM item")
+            copy_cur.executemany("INSERT INTO item VALUES (%s, %s, %s, %s, %s, %s)", master_cur)
+        copy_conn.commit()
+        print("Items inserted from master to copy.")
+    except psycopg2.Error as e:
+        print(f"Error inserting items: {e}")
 
-    return list(missing_in_copy), list(missing_in_master)
-
-
-def generate_insert_sql(table, columns, rows):
-    if not rows:
-        return ""
-
-    column_names = ", ".join(columns)
-    values = []
-    for row in rows:
-        value_str = ", ".join(["%s" if val is not None else "NULL" for val in row])
-        values.append(f"({value_str})")
-
-    values_str = ", ".join(values)
-    return f"INSERT INTO {table} ({column_names}) VALUES {values_str};"
-
+def verify_item_data(conn):
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*), MAX(id) FROM item")
+            count, max_id = cur.fetchone()
+            cur.execute("SELECT id, name FROM item ORDER BY id LIMIT 10")
+            sample = cur.fetchall()
+        return count, max_id, sample
+    except psycopg2.Error as e:
+        print(f"Error verifying item data: {e}")
+        return None, None, None
 
 def main():
-    parser = argparse.ArgumentParser(description="Compare PostgreSQL database structures and data")
+    parser = argparse.ArgumentParser(description="Update and compare PostgreSQL database structures")
     parser.add_argument("--master-port", type=int, default=5432, help="Master DB port")
     args = parser.parse_args()
 
@@ -194,7 +211,9 @@ def main():
     if not master_conn:
         sys.exit(1)
 
-    master_structure = get_db_structure(master_conn)
+    # Step 1: Backup itemtesting table and drop tables on master
+    backup_itemtesting_table(master_conn)
+    drop_tables(master_conn)
 
     containers = get_docker_container_ids()
 
@@ -209,9 +228,27 @@ def main():
         if not copy_conn:
             continue
 
-        copy_structure = get_db_structure(copy_conn)
+        # Step 2: Remove loot.itemid
+        remove_loot_itemid(copy_conn)
 
-        # Compare structures
+        # Step 3: Empty item table
+        empty_item_table(copy_conn)
+
+        # Step 4: Insert items from master to copy
+        insert_items_from_master(master_conn, copy_conn)
+
+        # Step 5: Verify item data
+        count, max_id, sample = verify_item_data(copy_conn)
+        print(f"Verification for {container_name}:")
+        print(f"  Item count: {count}")
+        print(f"  Max ID: {max_id}")
+        print("  Sample data:")
+        for row in sample:
+            print(f"    {row}")
+
+        # Perform structure comparison
+        master_structure = get_db_structure(master_conn)
+        copy_structure = get_db_structure(copy_conn)
         differences = compare_structures(master_structure, copy_structure)
 
         if not any(differences.values()):
@@ -224,8 +261,7 @@ def main():
             print("\nGenerated SQL to update the copy database structure:")
             print(update_sql)
 
-            confirm = input(
-                f"\nDo you want to apply these structural changes to the copy database ({container_name})? (y/n): ")
+            confirm = input(f"\nDo you want to apply these structural changes to the copy database ({container_name})? (y/n): ")
             if confirm.lower() == 'y':
                 try:
                     with copy_conn.cursor() as cur:
@@ -238,60 +274,9 @@ def main():
             else:
                 print("Structural changes not applied.")
 
-        # Compare data
-        for table in master_structure['tables']:
-            if table not in NON_REPLICATED_TABLES:
-                master_data = get_table_data(master_conn, table)
-                copy_data = get_table_data(copy_conn, table)
-
-                missing_in_copy, missing_in_master = compare_table_data(master_data, copy_data)
-
-                if missing_in_copy:
-                    print(f"\nRows missing in copy database for table {table}:")
-                    print(missing_in_copy)
-
-                    columns = [col[0] for col in master_structure['tables'][table]]
-                    insert_sql = generate_insert_sql(table, columns, missing_in_copy)
-
-                    confirm = input(
-                        f"Do you want to add these missing rows to the copy database ({container_name})? (y/n): ")
-                    if confirm.lower() == 'y':
-                        try:
-                            with copy_conn.cursor() as cur:
-                                cur.execute(insert_sql)
-                            copy_conn.commit()
-                            print(f"Missing rows added to {table} in copy database.")
-                        except psycopg2.Error as e:
-                            print(f"Error adding missing rows: {e}")
-                            copy_conn.rollback()
-                    else:
-                        print("Missing rows not added.")
-
-                if missing_in_master:
-                    print(colored(f"\nWARNING: Rows found in copy database but missing in master for table {table}:",
-                                  "red"))
-                    print(colored(str(missing_in_master), "red"))
-
-                    columns = [col[0] for col in master_structure['tables'][table]]
-                    insert_sql = generate_insert_sql(table, columns, missing_in_master)
-
-                    confirm = input(colored(f"Do you want to add these rows to the master database? (y/n): ", "red"))
-                    if confirm.lower() == 'y':
-                        try:
-                            with master_conn.cursor() as cur:
-                                cur.execute(insert_sql)
-                            master_conn.commit()
-                            print(f"Rows added to {table} in master database.")
-                        except psycopg2.Error as e:
-                            print(f"Error adding rows to master: {e}")
-                            master_conn.rollback()
-                    else:
-                        print("Rows not added to master database.")
-
         copy_conn.close()
 
     master_conn.close()
-
 
 if __name__ == "__main__":
     main()
