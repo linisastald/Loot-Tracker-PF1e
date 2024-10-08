@@ -178,7 +178,12 @@ def generate_insert_sql(table, columns, rows):
     column_names = ", ".join(columns)
     values = []
     for row in rows:
-        value_str = ", ".join(["%s" if val is not None else "NULL" for val in row])
+        value_str = ", ".join([
+            "NULL" if val is None
+            else f"'{str(val).replace("'", "''")}'" if isinstance(val, str)
+            else str(val)
+            for val in row
+        ])
         values.append(f"({value_str})")
 
     values_str = ", ".join(values)
@@ -263,6 +268,7 @@ def main():
                             print(f"Missing rows added to {table} in copy database.")
                         except psycopg2.Error as e:
                             print(f"Error adding missing rows: {e}")
+                            print(f"SQL that caused the error: {insert_sql}")
                             copy_conn.rollback()
                     else:
                         print("Missing rows not added.")
@@ -284,6 +290,7 @@ def main():
                             print(f"Rows added to {table} in master database.")
                         except psycopg2.Error as e:
                             print(f"Error adding rows to master: {e}")
+                            print(f"SQL that caused the error: {insert_sql}")
                             master_conn.rollback()
                     else:
                         print("Rows not added to master database.")
