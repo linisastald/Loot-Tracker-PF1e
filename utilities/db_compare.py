@@ -177,13 +177,17 @@ def generate_insert_sql(table, columns, rows):
 
     column_names = ", ".join(columns)
     values = []
+
+    def format_value(val):
+        if val is None:
+            return "NULL"
+        elif isinstance(val, str):
+            return f"'{val.replace('', '')}'"
+        else:
+            return str(val)
+
     for row in rows:
-        value_str = ", ".join([
-            "NULL" if val is None
-            else f"'{str(val).replace("'", "''")}'" if isinstance(val, str)
-            else str(val)
-            for val in row
-        ])
+        value_str = ", ".join(map(format_value, row))
         values.append(f"({value_str})")
 
     values_str = ", ".join(values)
