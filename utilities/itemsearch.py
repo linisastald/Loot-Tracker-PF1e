@@ -68,7 +68,7 @@ def confirm_update(attribute, current_value, new_value):
 def update_item_data(cursor, connection, lst_directory):
     cursor.execute("""
         SELECT id, name, value, weight, casterlevel
-        FROM itemtesting
+        FROM item
         WHERE value IS NULL OR weight IS NULL OR casterlevel IS NULL
     """)
     items = cursor.fetchall()
@@ -87,7 +87,7 @@ def update_item_data(cursor, connection, lst_directory):
             print("No new information found. Skipping this item.")
             continue
 
-        update_query = "UPDATE itemtesting SET "
+        update_query = "UPDATE item SET "
         update_params = []
 
         if new_value and new_value != current_value:
