@@ -11,6 +11,7 @@ def is_relevant_file(filename):
 
 def extract_item_info(line):
     value = weight = caster_level = None
+    item_name = line.split('\t')[0].strip()
 
     cost_match = re.search(r'COST:(\d+(?:\.\d+)?)', line)
     if cost_match:
@@ -34,7 +35,7 @@ def extract_item_info(line):
             caster_level = cl_match.group(1)
             break
 
-    return value, weight, caster_level
+    return item_name, value, weight, caster_level
 
 
 def create_flexible_search_pattern(item_name):
@@ -53,15 +54,15 @@ def search_lst_files(item_name, lst_directory):
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     for line in f:
                         if re.search(search_pattern, line, re.IGNORECASE):
-                            value, weight, caster_level = extract_item_info(line)
+                            lst_item_name, value, weight, caster_level = extract_item_info(line)
                             if value or weight or caster_level:
-                                return value, weight, caster_level, os.path.basename(file_path)
-    return None, None, None, None
+                                return lst_item_name, value, weight, caster_level, os.path.basename(file_path)
+    return None, None, None, None, None
 
 
-def confirm_update(attribute, current_value, new_value, source_file):
+def confirm_update(attribute, current_value, new_value, source_item, source_file):
     print(f"Current {attribute}: {current_value}")
-    print(f"New {attribute}: {new_value} (Source: {source_file})")
+    print(f"New {attribute}: {new_value} (Source: {source_item} in {source_file})")
     return input(f"Do you want to update {attribute}? (y/n): ").lower() == 'y'
 
 
@@ -86,7 +87,11 @@ def update_item_data(cursor, connection, lst_directory):
 
     for item in items:
         item_id, name, current_value, current_weight, current_caster_level = item
-        new_value, new_weight, new_caster_level, source_file = search_lst_files(name, lst_directory)
+        lst_item_name, new_value, new_weight, new_caster_level, source_file = search_lst_files(name, lst_directory)
+
+        if lst_item_name is None:
+            print(f"\nNo matching item found for: {name}")
+            continue
 
         update_query = "UPDATE item SET "
         update_params = []
@@ -101,21 +106,22 @@ def update_item_data(cursor, connection, lst_directory):
 
         if updates_needed:
             print(f"\nProcessing item: {name}")
+            print(f"Matched LST item: {lst_item_name}")
             print(
                 f"Current data - Value: {current_value}, Weight: {current_weight}, Caster Level: {current_caster_level}")
 
             if new_value is not None and not values_are_equal(current_value, new_value):
-                if confirm_update("Value", current_value, new_value, source_file):
+                if confirm_update("Value", current_value, new_value, lst_item_name, source_file):
                     update_query += "value = %s, "
                     update_params.append(new_value)
 
             if new_weight is not None and not values_are_equal(current_weight, new_weight):
-                if confirm_update("Weight", current_weight, new_weight, source_file):
+                if confirm_update("Weight", current_weight, new_weight, lst_item_name, source_file):
                     update_query += "weight = %s, "
                     update_params.append(new_weight)
 
             if new_caster_level is not None and not values_are_equal(current_caster_level, new_caster_level):
-                if confirm_update("Caster Level", current_caster_level, new_caster_level, source_file):
+                if confirm_update("Caster Level", current_caster_level, new_caster_level, lst_item_name, source_file):
                     update_query += "casterlevel = %s, "
                     update_params.append(new_caster_level)
 
@@ -129,6 +135,8 @@ def update_item_data(cursor, connection, lst_directory):
                 print("Item updated successfully.")
             else:
                 print("No updates made for this item.")
+        else:
+            print(f"\nNo updates needed for: {name}")
 
 
 if __name__ == "__main__":
