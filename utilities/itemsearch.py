@@ -59,8 +59,31 @@ def search_lst_files(item_name, lst_directory):
     return matches
 
 
+def values_are_equal(val1, val2):
+    if val1 is None and val2 is None:
+        return True
+    if val1 is None or val2 is None:
+        return False
+    try:
+        return float(val1) == float(val2)
+    except ValueError:
+        return str(val1) == str(val2)
+
+
 def select_match(matches, original_item):
     if not matches:
+        return None
+
+    # Check if all matches have the same values as the original item
+    all_match = all(
+        values_are_equal(match[1], original_item[2]) and
+        values_are_equal(match[2], original_item[3]) and
+        values_are_equal(match[3], original_item[4])
+        for match in matches
+    )
+
+    if all_match:
+        print(f"All matches for '{original_item[1]}' have the same values as the database. Skipping.")
         return None
 
     if len(matches) == 1:
@@ -87,17 +110,6 @@ def select_match(matches, original_item):
             print("Invalid input. Please enter a number.")
 
 
-def values_are_equal(val1, val2):
-    if val1 is None and val2 is None:
-        return True
-    if val1 is None or val2 is None:
-        return False
-    try:
-        return float(val1) == float(val2)
-    except ValueError:
-        return str(val1) == str(val2)
-
-
 def confirm_update(attribute, current_value, new_value, source_item, source_file):
     print(f"Current {attribute}: {current_value}")
     print(f"New {attribute}: {new_value} (Source: {source_item} in {source_file})")
@@ -121,7 +133,6 @@ def update_item_data(cursor, connection, lst_directory):
 
         selected_match = select_match(matches, item)
         if selected_match is None:
-            print(f"Skipping item: {name}")
             continue
 
         lst_item_name, new_value, new_weight, new_caster_level, source_file = selected_match
