@@ -25,6 +25,7 @@ urls = [
     "https://aonprd.com/MagicIntelligentDisplay.aspx?ItemName=",
     "https://aonprd.com/MagicRodsDisplay.aspx?FinalName=",
     "https://aonprd.com/MagicStavesDisplay.aspx?ItemName=",
+    "https://aonprd.com/MagicPlantsDisplay.aspx?FinalName=",
     "https://aonprd.com/EquipmentMiscDisplay.aspx?ItemName=",
     "https://aonprd.com/EquipmentWeaponsDisplay.aspx?ItemName=",
     "https://aonprd.com/EquipmentArmorDisplay.aspx?ItemName=",
@@ -45,16 +46,28 @@ def get_item_info(item_name):
                 soup = BeautifulSoup(response.text, 'html.parser')
                 content = soup.get_text()
 
-                price = re.search(r'Price[:\s]+([^;]+)', content)
-                cl = re.search(r'CL\s+(\d+)', content)
-                weight = re.search(r'Weight[:\s]+([^;]+)', content)
+                price_match = re.search(r'Price[:\s]+([^;]+)', content)
+                cl_match = re.search(r'CL\s+(\d+)', content)
+                weight_match = re.search(r'Weight[:\s]+([^;\n]+)', content)
 
-                if price or cl or weight:
-                    print("Information found!")
+                if price_match or cl_match or weight_match:
+                    price = price_match.group(1).strip() if price_match else None
+                    cl = cl_match.group(1) if cl_match else None
+                    weight = weight_match.group(1).strip() if weight_match else None
+
+                    # Handle cases where weight is "—" or similar
+                    if weight in ['—', '-', '–']:
+                        weight = '0'
+
+                    print("Information found:")
+                    print(f"Price: {price}")
+                    print(f"CL: {cl}")
+                    print(f"Weight: {weight}")
+
                     return {
-                        'price': price.group(1).strip() if price else None,
-                        'cl': cl.group(1) if cl else None,
-                        'weight': weight.group(1).strip() if weight else None
+                        'price': price,
+                        'cl': cl,
+                        'weight': weight
                     }
                 else:
                     print("No relevant information found on this page.")
@@ -63,8 +76,8 @@ def get_item_info(item_name):
         except requests.RequestException as e:
             print(f"Error fetching {full_url}: {e}")
 
-        # Add a delay to be respectful to the server
-        time.sleep(random.uniform(1, 3))
+        # Add a delay between URL checks
+        time.sleep(1)
 
     print("Item not found on any page.")
     return None
@@ -74,8 +87,7 @@ def update_item_data(cursor, connection):
     cursor.execute("""
         SELECT id, name, value, weight, casterlevel
         FROM item
-        WHERE (value IS NULL OR weight IS NULL OR casterlevel IS NULL) and type = 'magic'
-        order by casterlevel desc
+        WHERE value IS NULL OR weight IS NULL OR casterlevel IS NULL
         LIMIT 5
     """)
     items = cursor.fetchall()
@@ -83,7 +95,7 @@ def update_item_data(cursor, connection):
 
     for item in items:
         item_id, name, current_value, current_weight, current_caster_level = item
-        print(f"\n{'=' * 50}\nProcessing item: {name}")
+        print(f"\n{'='*50}\nProcessing item: {name}")
         print(f"Current data - Value: {current_value}, Weight: {current_weight}, Caster Level: {current_caster_level}")
 
         info = get_item_info(name)
@@ -102,7 +114,7 @@ def update_item_data(cursor, connection):
                 update_params.append(info['price'])
                 updates_needed = True
 
-        if info['weight'] and not current_weight:
+        if info['weight'] and (current_weight is None or current_weight == ''):
             if confirm_update("Weight", current_weight, info['weight'], name):
                 update_query += "weight = %s, "
                 update_params.append(info['weight'])
