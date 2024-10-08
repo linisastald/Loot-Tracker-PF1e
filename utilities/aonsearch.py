@@ -57,7 +57,7 @@ def get_item_info(item_name):
     print(f"\nSearching for information on: {item_name}")
     for url in urls:
         full_url = url + quote(item_name)
-        # print(f"Checking URL: {full_url}")
+        print(f"Checking URL: {full_url}")
         try:
             response = requests.get(full_url)
             if response.status_code == 200:
@@ -88,8 +88,6 @@ def get_item_info(item_name):
                         'cl': cl,
                         'weight': weight
                     }
-                else:
-                    print("No relevant information ", end = '')
             else:
                 print(f"Received status code {response.status_code}")
         except requests.RequestException as e:
