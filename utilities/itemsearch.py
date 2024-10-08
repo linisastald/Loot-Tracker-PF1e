@@ -12,7 +12,7 @@ def is_relevant_file(filename):
 def extract_item_info(line):
     value = weight = caster_level = None
 
-    cost_match = re.search(r'COST:(\d+)', line)
+    cost_match = re.search(r'COST:(\d+(?:\.\d+)?)', line)
     if cost_match:
         value = cost_match.group(1)
 
@@ -65,6 +65,17 @@ def confirm_update(attribute, current_value, new_value):
     return input(f"Do you want to update {attribute}? (y/n): ").lower() == 'y'
 
 
+def values_are_equal(val1, val2):
+    if val1 is None and val2 is None:
+        return True
+    if val1 is None or val2 is None:
+        return False
+    try:
+        return float(val1) == float(val2)
+    except ValueError:
+        return str(val1) == str(val2)
+
+
 def update_item_data(cursor, connection, lst_directory):
     cursor.execute("""
         SELECT id, name, value, weight, casterlevel
@@ -80,27 +91,20 @@ def update_item_data(cursor, connection, lst_directory):
 
         new_value, new_weight, new_caster_level = search_lst_files(name, lst_directory)
 
-        # Check if all new values are the same as current values
-        if (new_value == current_value or new_value is None) and \
-                (new_weight == current_weight or new_weight is None) and \
-                (new_caster_level == current_caster_level or new_caster_level is None):
-            print("No new information found. Skipping this item.")
-            continue
-
         update_query = "UPDATE item SET "
         update_params = []
 
-        if new_value and new_value != current_value:
+        if new_value is not None and not values_are_equal(current_value, new_value):
             if confirm_update("Value", current_value, new_value):
                 update_query += "value = %s, "
                 update_params.append(new_value)
 
-        if new_weight and new_weight != current_weight:
+        if new_weight is not None and not values_are_equal(current_weight, new_weight):
             if confirm_update("Weight", current_weight, new_weight):
                 update_query += "weight = %s, "
                 update_params.append(new_weight)
 
-        if new_caster_level and new_caster_level != current_caster_level:
+        if new_caster_level is not None and not values_are_equal(current_caster_level, new_caster_level):
             if confirm_update("Caster Level", current_caster_level, new_caster_level):
                 update_query += "casterlevel = %s, "
                 update_params.append(new_caster_level)
@@ -114,7 +118,7 @@ def update_item_data(cursor, connection, lst_directory):
             connection.commit()
             print("Item updated successfully.")
         else:
-            print("No updates made for this item.")
+            print("No updates needed for this item.")
 
 
 if __name__ == "__main__":
