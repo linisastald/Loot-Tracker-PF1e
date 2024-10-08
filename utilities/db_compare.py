@@ -182,7 +182,9 @@ def generate_insert_sql(table, columns, rows):
         if val is None:
             return "NULL"
         elif isinstance(val, str):
-            return f"'{val.replace('', '')}'"
+            # Escape single quotes by doubling them
+            escaped_val = val.replace("'", "''")
+            return f"'{escaped_val}'"
         else:
             return str(val)
 
@@ -273,6 +275,9 @@ def main():
                         except psycopg2.Error as e:
                             print(f"Error adding missing rows: {e}")
                             print(f"SQL that caused the error: {insert_sql}")
+                            print("Detailed error information:")
+                            print(f"pgerror: {e.pgerror}")
+                            print(f"pgcode: {e.pgcode}")
                             copy_conn.rollback()
                     else:
                         print("Missing rows not added.")
@@ -295,6 +300,9 @@ def main():
                         except psycopg2.Error as e:
                             print(f"Error adding rows to master: {e}")
                             print(f"SQL that caused the error: {insert_sql}")
+                            print("Detailed error information:")
+                            print(f"pgerror: {e.pgerror}")
+                            print(f"pgcode: {e.pgcode}")
                             master_conn.rollback()
                     else:
                         print("Rows not added to master database.")
