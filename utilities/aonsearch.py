@@ -15,21 +15,21 @@ db_params = {
 
 # List of URLs to search
 urls = [
+    "https://aonprd.com/MagicWondrousDisplay.aspx?FinalName=",
+    "https://aonprd.com/MagicArtifactsDisplay.aspx?ItemName=",
+    "https://aonprd.com/MagicWeaponsDisplay.aspx?ItemName=",
+    "https://aonprd.com/MagicArmorDisplay.aspx?ItemName=",
+    "https://aonprd.com/MagicRingsDisplay.aspx?FinalName=",
+    "https://aonprd.com/MagicPotionsDisplay.aspx?ItemName=",
+    "https://aonprd.com/MagicCursedDisplay.aspx?ItemName=",
+    "https://aonprd.com/MagicIntelligentDisplay.aspx?ItemName=",
+    "https://aonprd.com/MagicRodsDisplay.aspx?FinalName=",
+    "https://aonprd.com/MagicStavesDisplay.aspx?ItemName=",
     "https://aonprd.com/EquipmentMiscDisplay.aspx?ItemName=",
     "https://aonprd.com/EquipmentWeaponsDisplay.aspx?ItemName=",
     "https://aonprd.com/EquipmentArmorDisplay.aspx?ItemName=",
     "https://aonprd.com/SpellbookDisplay.aspx?ItemName=",
     "https://aonprd.com/Vehicles.aspx?ItemName=",
-    "https://aonprd.com/MagicArmorDisplay.aspx?ItemName=",
-    "https://aonprd.com/MagicArtifactsDisplay.aspx?ItemName=",
-    "https://aonprd.com/MagicCursedDisplay.aspx?ItemName=",
-    "https://aonprd.com/MagicIntelligentDisplay.aspx?ItemName=",
-    "https://aonprd.com/MagicPotionsDisplay.aspx?ItemName=",
-    "https://aonprd.com/MagicRingsDisplay.aspx?FinalName=",
-    "https://aonprd.com/MagicRodsDisplay.aspx?FinalName=",
-    "https://aonprd.com/MagicStavesDisplay.aspx?ItemName=",
-    "https://aonprd.com/MagicWeaponsDisplay.aspx?ItemName=",
-    "https://aonprd.com/MagicWondrousDisplay.aspx?FinalName=",
     "https://aonprd.com/Relics.aspx?ItemName="
 ]
 
@@ -75,6 +75,7 @@ def update_item_data(cursor, connection):
         SELECT id, name, value, weight, casterlevel
         FROM item
         WHERE value IS NULL OR weight IS NULL OR casterlevel IS NULL
+        order by casterlevel desc
         LIMIT 5
     """)
     items = cursor.fetchall()
