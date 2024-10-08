@@ -161,6 +161,7 @@ def drop_tables(conn):
         print("Tables dropped successfully.")
     except psycopg2.Error as e:
         print(f"Error dropping tables: {e}")
+        print("Continuing with the script...")
 
 def remove_loot_itemid(conn):
     try:
@@ -170,15 +171,22 @@ def remove_loot_itemid(conn):
         print("loot.itemid removed from all rows.")
     except psycopg2.Error as e:
         print(f"Error removing loot.itemid: {e}")
+        conn.rollback()
 
 def empty_item_table(conn):
     try:
         with conn.cursor() as cur:
-            cur.execute("TRUNCATE TABLE item RESTART IDENTITY;")
+            cur.execute("""
+                ALTER TABLE loot DROP CONSTRAINT IF EXISTS loot_itemid_fkey;
+                TRUNCATE TABLE item RESTART IDENTITY CASCADE;
+                ALTER TABLE loot ADD CONSTRAINT loot_itemid_fkey 
+                    FOREIGN KEY (itemid) REFERENCES item(id) ON DELETE SET NULL;
+            """)
         conn.commit()
         print("item table emptied and ID sequence reset.")
     except psycopg2.Error as e:
         print(f"Error emptying item table: {e}")
+        conn.rollback()
 
 def insert_items_from_master(master_conn, copy_conn):
     try:
@@ -189,6 +197,7 @@ def insert_items_from_master(master_conn, copy_conn):
         print("Items inserted from master to copy.")
     except psycopg2.Error as e:
         print(f"Error inserting items: {e}")
+        copy_conn.rollback()
 
 def verify_item_data(conn):
     try:
@@ -240,11 +249,14 @@ def main():
         # Step 5: Verify item data
         count, max_id, sample = verify_item_data(copy_conn)
         print(f"Verification for {container_name}:")
-        print(f"  Item count: {count}")
-        print(f"  Max ID: {max_id}")
+        print(f"  Item count: {count if count is not None else 'Unable to retrieve'}")
+        print(f"  Max ID: {max_id if max_id is not None else 'Unable to retrieve'}")
         print("  Sample data:")
-        for row in sample:
-            print(f"    {row}")
+        if sample:
+            for row in sample:
+                print(f"    {row}")
+        else:
+            print("    Unable to retrieve sample data")
 
         # Perform structure comparison
         master_structure = get_db_structure(master_conn)
