@@ -46,18 +46,25 @@ def get_item_info(item_name):
                 soup = BeautifulSoup(response.text, 'html.parser')
                 content = soup.get_text()
 
-                price_match = re.search(r'Price[:\s]+([^;]+)', content)
+                # Use more specific regex patterns
+                price_match = re.search(r'Price[:\s]+([^;\n]+)', content)
                 cl_match = re.search(r'CL\s+(\d+)', content)
                 weight_match = re.search(r'Weight[:\s]+([^;\n]+)', content)
 
                 if price_match or cl_match or weight_match:
                     price = price_match.group(1).strip() if price_match else None
-                    cl = cl_match.group(1) if cl_match else None
+                    cl = cl_match.group(1).strip() if cl_match else None
                     weight = weight_match.group(1).strip() if weight_match else None
 
-                    # Handle cases where weight is "—" or similar
-                    if weight in ['—', '-', '–']:
-                        weight = '0'
+                    # Clean up the weight
+                    if weight:
+                        weight = weight.split()[0]  # Take only the first word
+                        if weight in ['—', '-', '–']:
+                            weight = '0'
+
+                    # Clean up the CL
+                    if cl:
+                        cl = cl.split()[0]  # Take only the first word
 
                     print("Information found:")
                     print(f"Price: {price}")
@@ -83,12 +90,18 @@ def get_item_info(item_name):
     return None
 
 
+def confirm_update(attribute, current_value, new_value, item_name):
+    print(f"Current {attribute}: {current_value}")
+    print(f"New {attribute}: {new_value}")
+    return input(f"Do you want to update {attribute} for {item_name}? (y/n): ").lower() == 'y'
+
+
 def update_item_data(cursor, connection):
     cursor.execute("""
         SELECT id, name, value, weight, casterlevel
         FROM item
         WHERE (value IS NULL OR weight IS NULL OR casterlevel IS NULL) and type = 'magic'
-        order by casterlevel desc
+        ORDER BY casterlevel DESC
         LIMIT 5
     """)
     items = cursor.fetchall()
@@ -96,7 +109,7 @@ def update_item_data(cursor, connection):
 
     for item in items:
         item_id, name, current_value, current_weight, current_caster_level = item
-        print(f"\n{'='*50}\nProcessing item: {name}")
+        print(f"\n{'=' * 50}\nProcessing item: {name}")
         print(f"Current data - Value: {current_value}, Weight: {current_weight}, Caster Level: {current_caster_level}")
 
         info = get_item_info(name)
@@ -115,7 +128,7 @@ def update_item_data(cursor, connection):
                 update_params.append(info['price'])
                 updates_needed = True
 
-        if info['weight'] and (current_weight is None or current_weight == ''):
+        if info['weight'] is not None and current_weight is None:
             if confirm_update("Weight", current_weight, info['weight'], name):
                 update_query += "weight = %s, "
                 update_params.append(info['weight'])
@@ -139,12 +152,6 @@ def update_item_data(cursor, connection):
             print("No updates made for this item.")
 
     return not_found
-
-
-def confirm_update(attribute, current_value, new_value, item_name):
-    print(f"Current {attribute}: {current_value}")
-    print(f"New {attribute}: {new_value} (Source: Web)")
-    return input(f"Do you want to update {attribute} for {item_name}? (y/n): ").lower() == 'y'
 
 
 if __name__ == "__main__":
