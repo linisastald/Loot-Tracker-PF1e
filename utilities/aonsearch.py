@@ -87,7 +87,8 @@ def update_item_data(cursor, connection):
     cursor.execute("""
         SELECT id, name, value, weight, casterlevel
         FROM item
-        WHERE value IS NULL OR weight IS NULL OR casterlevel IS NULL
+        WHERE (value IS NULL OR weight IS NULL OR casterlevel IS NULL) and type = 'magic'
+        order by casterlevel desc
         LIMIT 5
     """)
     items = cursor.fetchall()
