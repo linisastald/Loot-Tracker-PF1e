@@ -66,7 +66,10 @@ def select_match(matches, original_item):
     if len(matches) == 1:
         return matches[0]
 
-    print(f"\nMultiple matches found for '{original_item[1]}'. Please select one:")
+    print(f"\nMultiple matches found for '{original_item[1]}'.")
+    print(
+        f"Current database values - Value: {original_item[2]}, Weight: {original_item[3]}, Caster Level: {original_item[4]}")
+    print("Please select one:")
     for i, match in enumerate(matches, 1):
         print(f"{i}. {match[0]} (File: {match[4]}, Value: {match[1]}, Weight: {match[2]}, CL: {match[3]})")
     print(f"{len(matches) + 1}. Skip this item")
