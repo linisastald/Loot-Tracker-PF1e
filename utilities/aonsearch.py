@@ -35,8 +35,10 @@ urls = [
 
 
 def get_item_info(item_name):
+    print(f"\nSearching for information on: {item_name}")
     for url in urls:
         full_url = url + item_name.replace(' ', '%20')
+        print(f"Checking URL: {full_url}")
         try:
             response = requests.get(full_url)
             if response.status_code == 200:
@@ -48,17 +50,23 @@ def get_item_info(item_name):
                 weight = re.search(r'Weight[:\s]+([^;]+)', content)
 
                 if price or cl or weight:
+                    print("Information found!")
                     return {
                         'price': price.group(1).strip() if price else None,
                         'cl': cl.group(1) if cl else None,
                         'weight': weight.group(1).strip() if weight else None
                     }
-        except requests.RequestException:
-            print(f"Error fetching {full_url}")
+                else:
+                    print("No relevant information found on this page.")
+            else:
+                print(f"Received status code {response.status_code}")
+        except requests.RequestException as e:
+            print(f"Error fetching {full_url}: {e}")
 
         # Add a delay to be respectful to the server
         time.sleep(random.uniform(1, 3))
 
+    print("Item not found on any page.")
     return None
 
 
@@ -67,13 +75,15 @@ def update_item_data(cursor, connection):
         SELECT id, name, value, weight, casterlevel
         FROM item
         WHERE value IS NULL OR weight IS NULL OR casterlevel IS NULL
+        LIMIT 5
     """)
     items = cursor.fetchall()
     not_found = []
 
     for item in items:
         item_id, name, current_value, current_weight, current_caster_level = item
-        print(f"\nProcessing item: {name}")
+        print(f"\n{'=' * 50}\nProcessing item: {name}")
+        print(f"Current data - Value: {current_value}, Weight: {current_weight}, Caster Level: {current_caster_level}")
 
         info = get_item_info(name)
         if info is None:
