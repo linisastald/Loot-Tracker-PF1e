@@ -4,6 +4,7 @@ import psycopg2
 import re
 import time
 import random
+from urllib.parse import quote
 
 # Database connection parameters
 db_params = {
@@ -38,7 +39,7 @@ urls = [
 def get_item_info(item_name):
     print(f"\nSearching for information on: {item_name}")
     for url in urls:
-        full_url = url + item_name.replace(' ', '%20')
+        full_url = url + quote(item_name)
         print(f"Checking URL: {full_url}")
         try:
             response = requests.get(full_url)
@@ -60,7 +61,7 @@ def get_item_info(item_name):
                     if weight:
                         weight = weight.split()[0]  # Take only the first word
                         if weight in ['—', '-', '–']:
-                            weight = '0'
+                            weight = None  # Set weight to None if it's a dash
 
                     # Clean up the CL
                     if cl:
@@ -128,7 +129,7 @@ def update_item_data(cursor, connection):
                 update_params.append(info['price'])
                 updates_needed = True
 
-        if info['weight'] is not None and current_weight is None:
+        if info['weight'] != current_weight:
             if confirm_update("Weight", current_weight, info['weight'], name):
                 update_query += "weight = %s, "
                 update_params.append(info['weight'])
