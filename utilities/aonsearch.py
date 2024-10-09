@@ -201,14 +201,21 @@ def process_items():
 
             if updates:
                 logging.info(f"Updates found for item {name}: {updates}")
-                current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info)
+                current_update_item = create_update_item(name, current_value, current_weight, current_caster_level,
+                                                         info)
                 logging.info(f"Current update item set to: {current_update_item}")
-                update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
-                logging.info(f"Added item to update queue: {name}")
                 update_ui()  # Call update_ui immediately after setting current_update_item
+
+                # Wait for user input
+                user_choice = get_user_input("Enter your choice for updates")
+                if user_choice in ['v', 'w', 'c', 'a']:
+                    update_queue.put(
+                        (item_id, name, updates, current_value, current_weight, current_caster_level, info))
+                    logging.info(f"Added item to update queue: {name}")
+
+                current_update_item = None  # Reset current_update_item after processing
             else:
                 logging.info(f"No updates needed for item {name}")
-                current_update_item = None
 
             processed_items += 1
             update_ui()
