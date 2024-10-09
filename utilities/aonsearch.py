@@ -260,9 +260,10 @@ def update_ui():
         return []
 
 
-def get_user_input(prompt, valid_inputs):
+def get_user_input(prompt):
+    valid_inputs = ['v', 'w', 'c', 'a', 'f']
     with term.cbreak(), term.hidden_cursor():
-        print(term.move_y(term.height - 1) + prompt)
+        print(term.move_y(term.height - 2) + term.center(prompt + " (V/W/C/A/F): "))
         while True:
             key = term.inkey().lower()
             logging.debug(f"Key pressed: {repr(key)}")
@@ -271,8 +272,7 @@ def get_user_input(prompt, valid_inputs):
                 return key
             else:
                 logging.debug(f"Invalid key pressed: {key}")
-                print(term.move_y(
-                    term.height - 1) + f"Invalid input. Please enter one of: {', '.join(valid_inputs.upper())}")
+                print(term.move_y(term.height - 1) + term.center(f"Invalid input. Please enter V, W, C, A, or F."))
 
 
 def update_item_data(cursor, connection):
@@ -282,6 +282,7 @@ def update_item_data(cursor, connection):
         SELECT id, name, value, weight, casterlevel
         FROM item
         WHERE (value IS NULL OR weight IS NULL OR (casterlevel IS NULL and type = 'magic')) and type = 'magic'
+        and subtype not in ('wand','potion','scroll')
         ORDER BY random()
     """)
     items = cursor.fetchall()
@@ -321,27 +322,21 @@ def update_item_data(cursor, connection):
         update_params = []
 
         while True:
-            updates_available = update_ui()
-            valid_inputs = updates_available + ['a', 'f']
-            logging.debug(f"Valid inputs for item {name}: {valid_inputs}")
-            user_choice = get_user_input("Enter your choice (V/W/C/A/F): ", valid_inputs)
+            update_ui()
+            user_choice = get_user_input("Enter your choice")
             logging.debug(f"User choice for item {name}: {user_choice}")
 
             if user_choice == 'a':
-                for attribute in updates_available:
-                    column = 'value' if attribute == 'v' else 'weight' if attribute == 'w' else 'casterlevel'
-                    new_value = current_update_item['found_data'][
-                        'Value' if attribute == 'v' else 'Weight' if attribute == 'w' else 'CL']
-                    update_query += f"{column} = %s, "
-                    update_params.append(new_value)
-                    updates_needed = True
+                # Update all fields
+                update_query += "value = %s, weight = %s, casterlevel = %s, "
+                update_params.extend([info.get('price'), info.get('weight'), info.get('cl')])
+                updates_needed = True
                 break
             elif user_choice == 'f':
                 break
-            elif user_choice in updates_available:
+            elif user_choice in ['v', 'w', 'c']:
                 column = 'value' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'casterlevel'
-                new_value = current_update_item['found_data'][
-                    'Value' if user_choice == 'v' else 'Weight' if user_choice == 'w' else 'CL']
+                new_value = info.get('price' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'cl')
                 update_query += f"{column} = %s, "
                 update_params.append(new_value)
                 updates_needed = True
@@ -359,7 +354,6 @@ def update_item_data(cursor, connection):
         update_ui()
 
     processing_thread.join()
-
 
 if __name__ == "__main__":
     try:
