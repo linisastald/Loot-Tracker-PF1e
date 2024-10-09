@@ -242,7 +242,7 @@ def update_ui():
 
             # Update Item section
             if current_update_item:
-                logging.debug(f"Current update item: {current_update_item['name']}")
+                logging.debug(f"Current update item: {current_update_item}")
                 print(f"Update Item: {current_update_item['name']}")
 
                 # Add the link to the page where the data was found
@@ -354,6 +354,10 @@ def process_update_queue(cursor, connection):
 
     try:
         item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(timeout=1)
+        logging.info(f"Processing update for item: {name}")
+        logging.info(f"Updates: {updates}")
+        logging.info(f"Current values: value={current_value}, weight={current_weight}, CL={current_caster_level}")
+        logging.info(f"New info: {info}")
     except queue.Empty:
         return False
 
@@ -361,13 +365,19 @@ def process_update_queue(cursor, connection):
 
     logging.info(f"Current update item set to: {current_update_item}")
 
-    updates_needed, update_fields, update_params = get_user_updates(info)
+    updates_needed, update_fields, update_params = get_user_updates(current_update_item)
+
+    logging.info(f"Updates needed: {updates_needed}")
+    logging.info(f"Update fields: {update_fields}")
+    logging.info(f"Update params: {update_params}")
 
     if updates_needed:
         apply_updates(cursor, connection, item_id, name, update_fields, update_params)
+    else:
+        logging.info(f"No updates needed for {name}")
 
-    current_update_item = None
     update_ui()
+    current_update_item = None
     return True
 
 
@@ -388,33 +398,37 @@ def create_update_item(name, current_value, current_weight, current_caster_level
     }
 
 
-def get_user_updates(info):
+def get_user_updates(current_update_item):
     updates_needed = False
     update_fields = []
     update_params = []
 
-    while True:
-        try:
-            update_ui()
-            user_choice = get_user_input("Enter your choice")
-            logging.debug(f"User choice: {user_choice}")
+    logging.info(f"Checking for updates in get_user_updates for {current_update_item['name']}")
 
-            if user_choice == 'a':
-                updates_needed, update_fields, update_params = handle_update_all(info)
-                break
-            elif user_choice == 'f':
-                break
-            elif user_choice in ['v', 'w', 'c']:
-                field_updated, field, param = handle_single_update(user_choice, info)
-                if field_updated:
-                    update_fields.append(field)
-                    update_params.append(param)
-                    updates_needed = True
-            else:
-                logging.warning(f"Unexpected user choice: {user_choice}")
+    if (current_update_item['found_data']['Value'] is not None and
+        current_update_item['found_data']['Value'] != current_update_item['current_data']['Value']):
+        updates_needed = True
+        update_fields.append("value = %s")
+        update_params.append(current_update_item['found_data']['Value'])
+        logging.info(f"Value update needed: {current_update_item['current_data']['Value']} -> {current_update_item['found_data']['Value']}")
 
-        except Exception as e:
-            handle_input_error(e)
+    if (current_update_item['found_data']['Weight'] is not None and
+        current_update_item['found_data']['Weight'] != current_update_item['current_data']['Weight']):
+        updates_needed = True
+        update_fields.append("weight = %s")
+        update_params.append(current_update_item['found_data']['Weight'])
+        logging.info(f"Weight update needed: {current_update_item['current_data']['Weight']} -> {current_update_item['found_data']['Weight']}")
+
+    if (current_update_item['found_data']['CL'] is not None and
+        current_update_item['found_data']['CL'] != current_update_item['current_data']['CL']):
+        updates_needed = True
+        update_fields.append("casterlevel = %s")
+        update_params.append(current_update_item['found_data']['CL'])
+        logging.info(f"CL update needed: {current_update_item['current_data']['CL']} -> {current_update_item['found_data']['CL']}")
+
+    logging.info(f"Updates needed: {updates_needed}")
+    logging.info(f"Update fields: {update_fields}")
+    logging.info(f"Update params: {update_params}")
 
     return updates_needed, update_fields, update_params
 
