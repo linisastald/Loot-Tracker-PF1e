@@ -244,10 +244,11 @@ def update_ui():
                 if 'source_url' in current_update_item:
                     print(f"Source: {current_update_item['source_url']}")
 
+                print("\nCurrent Data:")
                 for key, value in current_update_item['current_data'].items():
                     print(f"{key:<8} {value}")
 
-                print("\nFound Data")
+                print("\nFound Data:")
                 for key, value in current_update_item['found_data'].items():
                     print(f"{key:<8} {value}")
 
@@ -255,15 +256,18 @@ def update_ui():
                 if (current_update_item['found_data']['Value'] is not None and
                         current_update_item['found_data']['Value'] != current_update_item['current_data']['Value']):
                     updates_available.append('v')
-                    print("Update Value (V)")
+                    print(
+                        f"Update Value (V): {current_update_item['current_data']['Value']} -> {current_update_item['found_data']['Value']}")
                 if (current_update_item['found_data']['Weight'] is not None and
                         current_update_item['found_data']['Weight'] != current_update_item['current_data']['Weight']):
                     updates_available.append('w')
-                    print("Update Weight (W)")
+                    print(
+                        f"Update Weight (W): {current_update_item['current_data']['Weight']} -> {current_update_item['found_data']['Weight']}")
                 if (current_update_item['found_data']['CL'] is not None and
                         current_update_item['found_data']['CL'] != current_update_item['current_data']['CL']):
                     updates_available.append('c')
-                    print("Update CL (C)")
+                    print(
+                        f"Update CL (C): {current_update_item['current_data']['CL']} -> {current_update_item['found_data']['CL']}")
 
                 if updates_available:
                     print("Update all (A)")
@@ -349,6 +353,8 @@ def process_update_queue(cursor, connection):
         return False
 
     current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info, source_url)
+
+    logging.debug(f"Current update item set to: {current_update_item}")
 
     updates_needed, update_fields, update_params = get_user_updates(info)
 
