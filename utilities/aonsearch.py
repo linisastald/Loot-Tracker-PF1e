@@ -264,9 +264,20 @@ def get_user_input(prompt, valid_inputs):
     with term.cbreak(), term.hidden_cursor():
         print(term.move_y(term.height - 1) + prompt)
         while True:
-            key = term.inkey().lower()
+            key = term.inkey()
+            logging.debug(f"Key pressed: {repr(key)}")
+            if key.is_sequence:
+                logging.debug(f"Key is a sequence: {key.name}")
+                continue
+            key = key.lower()
+            logging.debug(f"Lowercased key: {repr(key)}")
+            logging.debug(f"Valid inputs: {valid_inputs}")
             if key in valid_inputs:
+                logging.debug(f"Valid key pressed: {key}")
                 return key
+            else:
+                logging.debug(f"Invalid key pressed: {key}")
+                print(term.move_y(term.height - 1) + f"Invalid input. Please enter one of: {', '.join(valid_inputs)}")
 
 def update_item_data(cursor, connection):
     global current_update_item, total_items, processed_items, current_search_item
@@ -279,6 +290,7 @@ def update_item_data(cursor, connection):
     """)
     items = cursor.fetchall()
     total_items = len(items)
+    logging.info(f"Total items to update: {total_items}")
 
     for item in items:
         item_queue.put(item)
@@ -314,7 +326,9 @@ def update_item_data(cursor, connection):
         while True:
             updates_available = update_ui()
             valid_inputs = updates_available + ['a', 'f']
+            logging.debug(f"Valid inputs for item {name}: {valid_inputs}")
             user_choice = get_user_input("Enter your choice: ", valid_inputs)
+            logging.debug(f"User choice for item {name}: {user_choice}")
 
             if user_choice == 'a':
                 for attribute in updates_available:
@@ -326,7 +340,7 @@ def update_item_data(cursor, connection):
                 break
             elif user_choice == 'f':
                 break
-            else:
+            elif user_choice in updates_available:
                 column = 'value' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'casterlevel'
                 new_value = current_update_item['found_data']['Value' if user_choice == 'v' else 'Weight' if user_choice == 'w' else 'CL']
                 update_query += f"{column} = %s, "
@@ -340,6 +354,7 @@ def update_item_data(cursor, connection):
 
             cursor.execute(update_query, tuple(update_params))
             connection.commit()
+            logging.info(f"Updated item {name} with query: {update_query}")
 
         current_update_item = None
         update_ui()
