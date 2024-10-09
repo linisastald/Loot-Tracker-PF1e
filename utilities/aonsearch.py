@@ -78,18 +78,14 @@ def get_item_info(item_name):
                 content = soup.get_text()
 
                 # Use more specific regex patterns
-                price_match = re.search(r'Price[:\s]+([^;\n]+)', content)
-                cl_match = re.search(r'CL\s+(\d+)', content)
-                weight_match = re.search(r'Weight[:\s]+([^;\n]+)', content)
+                price_match = re.search(r'Price[:\s]+([\d,]+ gp)', content)
+                cl_match = re.search(r'CL\s+(\d+)th', content)
+                weight_match = re.search(r'Weight[:\s]+([\d,]+ lbs\.)', content)
 
                 if price_match or cl_match or weight_match:
-                    price = clean_value(price_match.group(1) if price_match else None)
-                    cl = cl_match.group(1).strip() if cl_match else None
-                    weight = clean_weight(weight_match.group(1) if weight_match else None)
-
-                    # Clean up the CL
-                    if cl:
-                        cl = cl.split()[0]  # Take only the first word
+                    price = clean_number(price_match.group(1) if price_match else None)
+                    cl = cl_match.group(1) if cl_match else None
+                    weight = clean_number(weight_match.group(1) if weight_match else None)
 
                     print("Information found:")
                     print(f"Price: {price}")
