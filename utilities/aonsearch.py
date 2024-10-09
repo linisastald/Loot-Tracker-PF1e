@@ -333,7 +333,7 @@ def update_item_data(cursor, connection):
             }
 
             updates_needed = False
-            update_query = "UPDATE item SET "
+            update_fields = []
             update_params = []
 
             while True:
@@ -345,8 +345,15 @@ def update_item_data(cursor, connection):
 
                     if user_choice == 'a':
                         logging.debug("User chose 'a'")
-                        update_query += "value = %s, weight = %s, casterlevel = %s, "
-                        update_params.extend([info.get('price'), info.get('weight'), info.get('cl')])
+                        if info.get('price') is not None:
+                            update_fields.append("value = %s")
+                            update_params.append(info['price'])
+                        if info.get('weight') is not None:
+                            update_fields.append("weight = %s")
+                            update_params.append(info['weight'])
+                        if info.get('cl') is not None:
+                            update_fields.append("casterlevel = %s")
+                            update_params.append(info['cl'])
                         updates_needed = True
                         break
                     elif user_choice == 'f':
@@ -356,9 +363,10 @@ def update_item_data(cursor, connection):
                         logging.debug(f"User chose '{user_choice}'")
                         column = 'value' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'casterlevel'
                         new_value = info.get('price' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'cl')
-                        update_query += f"{column} = %s, "
-                        update_params.append(new_value)
-                        updates_needed = True
+                        if new_value is not None:
+                            update_fields.append(f"{column} = %s")
+                            update_params.append(new_value)
+                            updates_needed = True
                     else:
                         logging.warning(f"Unexpected user choice: {user_choice}")
                 except Exception as e:
@@ -370,9 +378,11 @@ def update_item_data(cursor, connection):
 
             if updates_needed:
                 try:
-                    update_query = update_query.rstrip(', ')
-                    update_query += " WHERE id = %s"
+                    update_query = f"UPDATE item SET {', '.join(update_fields)} WHERE id = %s"
                     update_params.append(item_id)
+
+                    logging.debug(f"Executing query: {update_query}")
+                    logging.debug(f"With parameters: {update_params}")
 
                     cursor.execute(update_query, tuple(update_params))
                     connection.commit()
