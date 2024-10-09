@@ -144,6 +144,8 @@ def get_item_info(item_name):
                         'source_url': full_url
                     }
 
+                    logging.info(f"Item info found for {item_name}: {result}")
+
                     checked_urls[urls[i]] = 'Found'
                     update_ui()
                     return result
@@ -157,6 +159,7 @@ def get_item_info(item_name):
         update_ui()
         time.sleep(1)
 
+    logging.warning(f"No information found for item: {item_name}")
     return None
 
 
@@ -191,12 +194,14 @@ def process_items():
                     updates.append(('Weight', current_weight, info['weight'], 'weight'))
 
             if 'cl' in info and info['cl'] is not None:
-                if current_caster_level is None:
+                if current_caster_level is None or not float_eq(info['cl'], current_caster_level):
                     updates.append(('Caster Level', current_caster_level, info['cl'], 'casterlevel'))
 
             if updates:
-                update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
                 logging.info(f"Updates found for item {name}: {updates}")
+                update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
+            else:
+                logging.info(f"No updates needed for item {name}")
 
             processed_items += 1
             update_ui()
@@ -348,13 +353,13 @@ def process_update_queue(cursor, connection):
     global current_update_item
 
     try:
-        item_id, name, updates, current_value, current_weight, current_caster_level, info, source_url = update_queue.get(timeout=1)
+        item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(timeout=1)
     except queue.Empty:
         return False
 
-    current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info, source_url)
+    current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info)
 
-    logging.debug(f"Current update item set to: {current_update_item}")
+    logging.info(f"Current update item set to: {current_update_item}")
 
     updates_needed, update_fields, update_params = get_user_updates(info)
 
