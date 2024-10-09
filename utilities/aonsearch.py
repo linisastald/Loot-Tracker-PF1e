@@ -3,9 +3,10 @@ from bs4 import BeautifulSoup
 import psycopg2
 import re
 import time
-import random
 from urllib.parse import quote
 import math
+import threading
+import queue
 
 # Database connection parameters
 db_params = {
@@ -37,6 +38,10 @@ urls = [
     "https://www.aonprd.com/MagicAltarsDisplay.aspx?ItemName="
 ]
 
+# Global queues for managing items
+item_queue = queue.Queue()
+update_queue = queue.Queue()
+
 
 def clean_number(number_str):
     if number_str is None:
@@ -45,13 +50,8 @@ def clean_number(number_str):
     if number_str in ['—', '-', '–', '']:
         return None
 
-    # Remove 'gp' or 'lbs.' suffix if present
     number_str = re.sub(r'\s*(gp|lbs\.)\s*$', '', number_str, flags=re.IGNORECASE)
-
-    # Remove any remaining non-numeric characters except . and ,
     cleaned = re.sub(r'[^\d.,]', '', number_str)
-
-    # Replace , with nothing (as it's used as a thousands separator)
     cleaned = cleaned.replace(',', '')
 
     try:
@@ -69,17 +69,14 @@ def clean_value(value_str):
 
 
 def get_item_info(item_name):
-    print(f"\nSearching for information on: {item_name}")
     for url in urls:
         full_url = url + quote(item_name)
-        print(f"Checking URL: {full_url}")
         try:
             response = requests.get(full_url)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 content = soup.get_text()
 
-                # Use more specific regex patterns
                 price_match = re.search(r'Price[:\s]+([^;]+)', content)
                 cl_match = re.search(r'CL\s+(\d+)th', content)
                 weight_match = re.search(r'Weight[:\s]+([\d,.]+ lbs\.)', content)
@@ -88,11 +85,6 @@ def get_item_info(item_name):
                     price = clean_number(price_match.group(1) if price_match else None)
                     cl = cl_match.group(1) if cl_match else None
                     weight = clean_number(weight_match.group(1) if weight_match else None)
-
-                    print("Information found:")
-                    print(f"Price: {price}")
-                    print(f"CL: {cl}")
-                    print(f"Weight: {weight}")
 
                     result = {}
                     if price is not None:
@@ -103,17 +95,11 @@ def get_item_info(item_name):
                         result['weight'] = weight
 
                     return result if result else None
-                else:
-                    print("No relevant information found on this page.")
-            else:
-                print(f"Received status code {response.status_code}")
-        except requests.RequestException as e:
-            print(f"Error fetching {full_url}: {e}")
+        except requests.RequestException:
+            pass
 
-        # Add a delay between URL checks
         time.sleep(1)
 
-    print("Item not found on any page.")
     return None
 
 
@@ -125,13 +111,34 @@ def float_eq(a, b, epsilon=1e-9):
     return math.isclose(float(a), float(b), rel_tol=epsilon)
 
 
-def confirm_update(attribute, current_value, new_value, item_name):
-    if new_value is None:
-        print(f"New {attribute} is None. Skipping update.")
-        return False
-    print(f"Current {attribute}: {current_value}")
-    print(f"New {attribute}: {new_value}")
-    return input(f"Do you want to update {attribute} for {item_name}? (y/n): ").lower() == 'y'
+def process_items():
+    while True:
+        try:
+            item = item_queue.get(timeout=1)
+        except queue.Empty:
+            break
+
+        item_id, name, current_value, current_weight, current_caster_level = item
+
+        info = get_item_info(name)
+        if not info:
+            continue
+
+        updates = []
+        if 'price' in info and info['price'] is not None:
+            if current_value is None or not float_eq(info['price'], current_value):
+                updates.append(('Value', current_value, info['price'], 'value'))
+
+        if 'weight' in info and info['weight'] is not None:
+            if current_weight is None or not float_eq(info['weight'], current_weight):
+                updates.append(('Weight', current_weight, info['weight'], 'weight'))
+
+        if 'cl' in info and info['cl'] is not None:
+            if current_caster_level is None:
+                updates.append(('Caster Level', current_caster_level, info['cl'], 'casterlevel'))
+
+        if updates:
+            update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
 
 
 def update_item_data(cursor, connection):
@@ -142,43 +149,39 @@ def update_item_data(cursor, connection):
         ORDER BY casterlevel DESC
     """)
     items = cursor.fetchall()
-    not_found = []
 
     for item in items:
-        item_id, name, current_value, current_weight, current_caster_level = item
-        print(f"\n{'='*50}\nProcessing item: {name}")
-        print(f"Current data - Value: {current_value}, Weight: {current_weight}, Caster Level: {current_caster_level}")
+        item_queue.put(item)
 
-        info = get_item_info(name)
-        if not info:
-            print(f"No information found for: {name}")
-            not_found.append(name)
+    processing_thread = threading.Thread(target=process_items)
+    processing_thread.start()
+
+    while processing_thread.is_alive() or not update_queue.empty():
+        try:
+            item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(
+                timeout=1)
+        except queue.Empty:
             continue
+
+        print(f"\nPotential Update item: {name}")
+        print("=" * 50)
+        print(f"Current data - Value: {current_value}, Weight: {current_weight}, Caster Level: {current_caster_level}")
+        print("-" * 40)
+        print(f"Information found: Price: {info.get('price')}, Weight: {info.get('weight')}, CL: {info.get('cl')}")
+        print("=" * 50)
 
         updates_needed = False
         update_query = "UPDATE item SET "
         update_params = []
 
-        if 'price' in info and info['price'] is not None:
-            if current_value is None or not float_eq(info['price'], current_value):
-                if confirm_update("Value", current_value, info['price'], name):
-                    update_query += "value = %s, "
-                    update_params.append(info['price'])
-                    updates_needed = True
-
-        if 'weight' in info and info['weight'] is not None:
-            if current_weight is None or not float_eq(info['weight'], current_weight):
-                if confirm_update("Weight", current_weight, info['weight'], name):
-                    update_query += "weight = %s, "
-                    update_params.append(info['weight'])
-                    updates_needed = True
-
-        if 'cl' in info and info['cl'] is not None:
-            if current_caster_level is None:
-                if confirm_update("Caster Level", current_caster_level, info['cl'], name):
-                    update_query += "casterlevel = %s, "
-                    update_params.append(info['cl'])
-                    updates_needed = True
+        for attribute, current_value, new_value, column in updates:
+            print(f"Current {attribute}: {current_value}")
+            print(f"New {attribute}: {new_value}")
+            if input(f"Do you want to update {attribute} for {name}? (y/n): ").lower() == 'y':
+                update_query += f"{column} = %s, "
+                update_params.append(new_value)
+                updates_needed = True
+            print("-" * 40)
 
         if updates_needed:
             update_query = update_query.rstrip(', ')
@@ -191,7 +194,8 @@ def update_item_data(cursor, connection):
         else:
             print("No updates made for this item.")
 
-    return not_found
+    processing_thread.join()
+
 
 if __name__ == "__main__":
     try:
@@ -200,16 +204,9 @@ if __name__ == "__main__":
 
         cursor = connection.cursor()
 
-        not_found_items = update_item_data(cursor, connection)
+        update_item_data(cursor, connection)
 
         print("\nData update process completed.")
-
-        if not_found_items:
-            print("\nItems not found:")
-            for item in not_found_items:
-                print(item)
-        else:
-            print("\nAll items were found and processed.")
 
     except psycopg2.Error as e:
         print(f"Unable to connect to the database: {e}")
