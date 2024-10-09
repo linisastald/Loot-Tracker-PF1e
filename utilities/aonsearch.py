@@ -227,42 +227,47 @@ def update_ui():
             print()
             print(f"{'Current Data:':<{left_width}}{'URL Status:':<{right_width}}")
 
+            data_lines = []
             for key, value in current_update_item['current_data'].items():
-                print(f"{key:>10}: {str(value):<{left_width - 12}}", end='')
-                if checked_urls:
-                    url, status = next(iter(checked_urls.items()))
+                data_lines.append(f"{key:>10}: {str(value):<{left_width - 12}}")
+
+            data_lines.append('')
+            data_lines.append(f"{'Found Data:':<{left_width}}")
+
+            for key, value in current_update_item['found_data'].items():
+                data_lines.append(f"{key:>10}: {str(value):<{left_width - 12}}")
+
+            data_lines.append('')
+
+            for attribute, _, _, _ in current_update_item['updates']:
+                data_lines.append(f"Update {attribute:<6}? (Y/N)")
+
+            data_lines.append('')
+            data_lines.append("Skip Item? (S)")
+
+            # Print left column and URL statuses side by side
+            url_status_iter = iter(checked_urls.items())
+            for i, line in enumerate(data_lines):
+                print(line, end='')
+                if i < len(checked_urls):
+                    url, status = next(url_status_iter)
                     status_str = "Not checked" if status is None else status
                     status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
                     print(f"{url[:20]:<20} {status_color(status_str):<10}")
-                    checked_urls.pop(url)
                 else:
-                    print()
+                    print()  # New line if no more URL statuses
 
-            print()
-            print(f"{'Found Data:':<{left_width}}")
-
-            for key, value in current_update_item['found_data'].items():
-                print(f"{key:>10}: {str(value):<{left_width - 12}}")
-
-            print()
-
-            for attribute, _, _, _ in current_update_item['updates']:
-                print(f"Update {attribute:<6}? (Y/N)")
-
-            print()
-            print("Skip Item? (S)")
         else:
             print(f"{'Update Item:':<{left_width}}{'Checking Item:':<{right_width}}")
             print(f"{'':<{left_width}}{current_search_item:<{right_width}}")
             print()
             print(f"{'':<{left_width}}{'URL Status:':<{right_width}}")
 
-        # Right column (URL Status) - always display, even when updating
-        print(term.move_y(5) + term.move_x(left_width))
-        for url, status in checked_urls.items():
-            status_str = "Not checked" if status is None else status
-            status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
-            print(term.move_x(left_width) + f"{url[:20]:<20} {status_color(status_str):<10}")
+            # Print URL statuses when no update is in progress
+            for url, status in checked_urls.items():
+                status_str = "Not checked" if status is None else status
+                status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
+                print(f"{'':<{left_width}}{url[:20]:<20} {status_color(status_str):<10}")
 
         # Bottom section
         if not item_queue.empty():
@@ -288,7 +293,7 @@ def update_item_data(cursor, connection):
     cursor.execute("""
         SELECT id, name, value, weight, casterlevel
         FROM item
-        WHERE (value IS NULL OR weight IS NULL OR casterlevel IS NULL) and type = 'magic'
+        WHERE (value IS NULL OR weight IS NULL OR (casterlevel IS NULL and type = 'magic')) and type = 'magic' and subtype not in ('wand','potion','scroll')
         ORDER BY random()
     """)
     items = cursor.fetchall()
