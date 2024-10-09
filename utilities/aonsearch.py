@@ -210,55 +210,65 @@ def process_items():
 def update_ui():
     global term, processed_items, total_items, current_search_item, current_update_item, checked_urls
 
-    with term.location(0, 0):
-        print(term.clear())
+    updates_available = []
 
-        # Top progress bar
-        progress = int((processed_items / total_items) * 80) if total_items > 0 else 0
-        print(f"Checking #{processed_items:<5d} [{'#' * progress}{' ' * (80 - progress)}] Total {total_items:<5d}")
-        print(f"Checking Item: {current_search_item}")
+    logging.debug("Entering update_ui function")
 
-        # URL Status
-        for url, status in checked_urls.items():
-            status_str = "Not checked" if status is None else status
-            status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
-            print(f"{url[:20]:<20} {status_color(status_str):<10}")
+    try:
+        with term.location(0, 0):
+            print(term.clear())
 
-        # Next Item
-        if not item_queue.empty():
-            next_item = item_queue.queue[0][1]  # Get the name of the next item
-            print(f"Next Item: {next_item}")
+            # Top progress bar
+            progress = int((processed_items / total_items) * 80) if total_items > 0 else 0
+            print(f"Checking #{processed_items:<5d} [{'#' * progress}{' ' * (80 - progress)}] Total {total_items:<5d}")
+            print(f"Checking Item: {current_search_item}")
 
-        print("-" * term.width)
+            # URL Status
+            for url, status in checked_urls.items():
+                status_str = "Not checked" if status is None else status
+                status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
+                print(f"{url[:20]:<20} {status_color(status_str):<10}")
 
-        # Update Item section
-        if current_update_item:
-            print(f"Update Item: {current_update_item['name']}")
-            for key, value in current_update_item['current_data'].items():
-                print(f"{key:<8} {value}")
+            # Next Item
+            if not item_queue.empty():
+                next_item = item_queue.queue[0][1]  # Get the name of the next item
+                print(f"Next Item: {next_item}")
 
-            print("\nFound Data")
-            for key, value in current_update_item['found_data'].items():
-                print(f"{key:<8} {value}")
+            print("-" * term.width)
 
-            print("\nAvailable updates:")
-            updates_available = []
-            if current_update_item['current_data']['Value'] != current_update_item['found_data']['Value']:
-                updates_available.append('v')
-                print("Update Value (V)")
-            if current_update_item['current_data']['Weight'] != current_update_item['found_data']['Weight']:
-                updates_available.append('w')
-                print("Update Weight (W)")
-            if current_update_item['current_data']['CL'] != current_update_item['found_data']['CL']:
-                updates_available.append('c')
-                print("Update CL (C)")
+            # Update Item section
+            if current_update_item:
+                logging.debug(f"Current update item: {current_update_item['name']}")
+                print(f"Update Item: {current_update_item['name']}")
+                for key, value in current_update_item['current_data'].items():
+                    print(f"{key:<8} {value}")
 
-            if updates_available:
-                print("Update all (A)")
-            print("Finish Item (F)")
+                print("\nFound Data")
+                for key, value in current_update_item['found_data'].items():
+                    print(f"{key:<8} {value}")
 
-        # Leave space for input prompt
-        print("\n" * 3)  # Increased to 3 blank lines
+                print("\nAvailable updates:")
+                if current_update_item['current_data']['Value'] != current_update_item['found_data']['Value']:
+                    updates_available.append('v')
+                    print("Update Value (V)")
+                if current_update_item['current_data']['Weight'] != current_update_item['found_data']['Weight']:
+                    updates_available.append('w')
+                    print("Update Weight (W)")
+                if current_update_item['current_data']['CL'] != current_update_item['found_data']['CL']:
+                    updates_available.append('c')
+                    print("Update CL (C)")
+
+                if updates_available:
+                    print("Update all (A)")
+                print("Finish Item (F)")
+
+            # Leave space for input prompt
+            print("\n" * 3)
+
+        logging.debug(f"Updates available: {updates_available}")
+    except Exception as e:
+        logging.error(f"Error in update_ui: {str(e)}")
+        logging.error(traceback.format_exc())
 
     return updates_available
 
@@ -292,13 +302,7 @@ def update_item_data(cursor, connection):
     global current_update_item, total_items, processed_items, current_search_item
 
     try:
-        cursor.execute("""
-            SELECT id, name, value, weight, casterlevel
-            FROM item
-            WHERE (value IS NULL OR weight IS NULL OR (casterlevel IS NULL and type = 'magic')) and type = 'magic'
-            ORDER BY random()
-        """)
-        items = cursor.fetchall()
+        items = fetch_items_to_update(cursor)
         total_items = len(items)
         logging.info(f"Total items to update: {total_items}")
 
@@ -309,101 +313,150 @@ def update_item_data(cursor, connection):
         processing_thread.start()
 
         while processing_thread.is_alive() or not update_queue.empty():
-            try:
-                item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(
-                    timeout=1)
-            except queue.Empty:
+            if not process_update_queue(cursor, connection):
                 time.sleep(0.1)
-                continue
-
-            current_update_item = {
-                'name': name,
-                'current_data': {
-                    'Value': current_value,
-                    'Weight': current_weight,
-                    'CL': current_caster_level
-                },
-                'found_data': {
-                    'Value': info.get('price'),
-                    'Weight': info.get('weight'),
-                    'CL': info.get('cl')
-                }
-            }
-
-            updates_needed = False
-            update_fields = []
-            update_params = []
-
-            while True:
-                try:
-                    update_ui()
-                    logging.debug("Before get_user_input")
-                    user_choice = get_user_input("Enter your choice")
-                    logging.debug(f"After get_user_input. User choice for item {name}: {user_choice}")
-
-                    if user_choice == 'a':
-                        logging.debug("User chose 'a'")
-                        if info.get('price') is not None:
-                            update_fields.append("value = %s")
-                            update_params.append(info['price'])
-                        if info.get('weight') is not None:
-                            update_fields.append("weight = %s")
-                            update_params.append(info['weight'])
-                        if info.get('cl') is not None:
-                            update_fields.append("casterlevel = %s")
-                            update_params.append(info['cl'])
-                        updates_needed = True
-                        break
-                    elif user_choice == 'f':
-                        logging.debug("User chose 'f'")
-                        break
-                    elif user_choice in ['v', 'w', 'c']:
-                        logging.debug(f"User chose '{user_choice}'")
-                        column = 'value' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'casterlevel'
-                        new_value = info.get('price' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'cl')
-                        if new_value is not None:
-                            update_fields.append(f"{column} = %s")
-                            update_params.append(new_value)
-                            updates_needed = True
-                    else:
-                        logging.warning(f"Unexpected user choice: {user_choice}")
-                except Exception as e:
-                    logging.error(f"Error in user input loop: {str(e)}")
-                    logging.error(traceback.format_exc())
-                    print(f"An error occurred: {str(e)}")
-                    print("Press any key to continue...")
-                    term.inkey()
-
-            if updates_needed:
-                try:
-                    update_query = f"UPDATE item SET {', '.join(update_fields)} WHERE id = %s"
-                    update_params.append(item_id)
-
-                    logging.debug(f"Executing query: {update_query}")
-                    logging.debug(f"With parameters: {update_params}")
-
-                    cursor.execute(update_query, tuple(update_params))
-                    connection.commit()
-                    logging.info(f"Updated item {name} with query: {update_query}")
-                except Exception as e:
-                    logging.error(f"Error updating database: {str(e)}")
-                    logging.error(traceback.format_exc())
-                    print(f"An error occurred while updating the database: {str(e)}")
-                    print("Press any key to continue...")
-                    term.inkey()
-
-            current_update_item = None
-            update_ui()
 
         processing_thread.join()
 
     except Exception as e:
-        logging.error(f"Error in update_item_data: {str(e)}")
-        logging.error(traceback.format_exc())
-        print(f"An error occurred in update_item_data: {str(e)}")
-        print("Press any key to exit...")
-        term.inkey()
-        sys.exit(1)
+        handle_critical_error("Error in update_item_data", e)
+
+
+def fetch_items_to_update(cursor):
+    cursor.execute("""
+        SELECT id, name, value, weight, casterlevel
+        FROM item
+        WHERE (value IS NULL OR weight IS NULL OR (casterlevel IS NULL and type = 'magic')) and type = 'magic'
+        ORDER BY random()
+    """)
+    return cursor.fetchall()
+
+
+def process_update_queue(cursor, connection):
+    global current_update_item
+
+    try:
+        item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(timeout=1)
+    except queue.Empty:
+        return False
+
+    current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info)
+
+    updates_needed, update_fields, update_params = get_user_updates(info)
+
+    if updates_needed:
+        apply_updates(cursor, connection, item_id, name, update_fields, update_params)
+
+    current_update_item = None
+    update_ui()
+    return True
+
+
+def create_update_item(name, current_value, current_weight, current_caster_level, info):
+    return {
+        'name': name,
+        'current_data': {
+            'Value': current_value,
+            'Weight': current_weight,
+            'CL': current_caster_level
+        },
+        'found_data': {
+            'Value': info.get('price'),
+            'Weight': info.get('weight'),
+            'CL': info.get('cl')
+        }
+    }
+
+
+def get_user_updates(info):
+    updates_needed = False
+    update_fields = []
+    update_params = []
+
+    while True:
+        try:
+            update_ui()
+            user_choice = get_user_input("Enter your choice")
+            logging.debug(f"User choice: {user_choice}")
+
+            if user_choice == 'a':
+                updates_needed, update_fields, update_params = handle_update_all(info)
+                break
+            elif user_choice == 'f':
+                break
+            elif user_choice in ['v', 'w', 'c']:
+                field_updated, field, param = handle_single_update(user_choice, info)
+                if field_updated:
+                    update_fields.append(field)
+                    update_params.append(param)
+                    updates_needed = True
+            else:
+                logging.warning(f"Unexpected user choice: {user_choice}")
+
+        except Exception as e:
+            handle_input_error(e)
+
+    return updates_needed, update_fields, update_params
+
+
+def handle_update_all(info):
+    update_fields = []
+    update_params = []
+    for key, value in [('price', 'value'), ('weight', 'weight'), ('cl', 'casterlevel')]:
+        if info.get(key) is not None:
+            update_fields.append(f"{value} = %s")
+            update_params.append(info[key])
+    return bool(update_fields), update_fields, update_params
+
+
+def handle_single_update(choice, info):
+    column = 'value' if choice == 'v' else 'weight' if choice == 'w' else 'casterlevel'
+    key = 'price' if choice == 'v' else 'weight' if choice == 'w' else 'cl'
+    new_value = info.get(key)
+    if new_value is not None:
+        return True, f"{column} = %s", new_value
+    return False, None, None
+
+
+def apply_updates(cursor, connection, item_id, name, update_fields, update_params):
+    try:
+        update_query = f"UPDATE item SET {', '.join(update_fields)} WHERE id = %s"
+        update_params.append(item_id)
+
+        logging.debug(f"Executing query: {update_query}")
+        logging.debug(f"With parameters: {update_params}")
+
+        cursor.execute(update_query, tuple(update_params))
+        connection.commit()
+        logging.info(f"Updated item {name} with query: {update_query}")
+    except Exception as e:
+        handle_database_error(e)
+
+
+def handle_input_error(e):
+    logging.error(f"Error in user input loop: {str(e)}")
+    logging.error(traceback.format_exc())
+    print(f"An error occurred: {str(e)}")
+    print("Press any key to continue...")
+    term.inkey()
+
+
+def handle_database_error(e):
+    logging.error(f"Error updating database: {str(e)}")
+    logging.error(traceback.format_exc())
+    print(f"An error occurred while updating the database: {str(e)}")
+    print("Press any key to continue...")
+    term.inkey()
+
+
+def handle_critical_error(message, e):
+    logging.error(f"{message}: {str(e)}")
+    logging.error(traceback.format_exc())
+    print(f"A critical error occurred: {str(e)}")
+    print("Press any key to exit...")
+    term.inkey()
+    sys.exit(1)
+
 
 if __name__ == "__main__":
     try:
