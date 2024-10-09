@@ -274,8 +274,8 @@ def update_item_data(cursor, connection):
     cursor.execute("""
         SELECT id, name, value, weight, casterlevel
         FROM item
-        WHERE (value IS NULL OR weight IS NULL OR casterlevel IS NULL) and type = 'magic'
-        ORDER BY casterlevel DESC
+        WHERE (value IS NULL OR weight IS NULL OR (casterlevel IS NULL and type = 'magic')) and type = 'magic'
+        ORDER BY random()
     """)
     items = cursor.fetchall()
     total_items = len(items)
