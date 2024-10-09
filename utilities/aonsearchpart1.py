@@ -43,10 +43,7 @@ urls = [
 
 
 def clean_number(number_str):
-    if number_str is None:
-        return None
-    number_str = number_str.strip()
-    if number_str in ['—', '-', '–', '']:
+    if number_str is None or number_str.strip() in ['—', '-', '–', '']:
         return None
     number_str = re.sub(r'\s*(gp|lbs\.)\s*$', '', number_str, flags=re.IGNORECASE)
     cleaned = re.sub(r'[^\d.,]', '', number_str)
@@ -66,15 +63,21 @@ def get_item_info(item_name):
                 soup = BeautifulSoup(response.text, 'html.parser')
                 content = soup.get_text()
 
+                # Price
                 price_match = re.search(r'Price[:\s]+([^;]+)', content)
-                cl_match = re.search(r'CL\s+(\d+)th', content)
-                weight_match = re.search(r'Weight[:\s]+([\d,.]+ lbs\.)', content)
+                price = clean_number(price_match.group(1) if price_match else None)
 
-                if price_match or cl_match or weight_match:
-                    price = clean_number(price_match.group(1) if price_match else None)
-                    cl = int(cl_match.group(1)) if cl_match else None
-                    weight = clean_number(weight_match.group(1) if weight_match else None)
+                # Weight
+                weight_match = re.search(r'Weight[:\s]+([\d,.]+ lbs\.|—)', content)
+                weight = clean_number(weight_match.group(1) if weight_match and weight_match.group(1) != '—' else None)
 
+                # Caster Level
+                cl_match = re.search(r'CL\s+(\d+)(?:st|nd|rd|th)', content)
+                if not cl_match:
+                    cl_match = re.search(r'Caster Level[:\s]+(\d+)', content, re.IGNORECASE)
+                cl = int(cl_match.group(1)) if cl_match else None
+
+                if price is not None or weight is not None or cl is not None:
                     return {'price': price, 'cl': cl, 'weight': weight, 'source_url': full_url}
 
         except requests.RequestException as e:
@@ -89,7 +92,14 @@ def insert_item_update(cursor, item_id, name, info):
     INSERT INTO itemupdate (itemid, name, value, weight, casterlevel, source)
     VALUES (%s, %s, %s, %s, %s, %s)
     """
-    cursor.execute(query, (item_id, name, info['price'], info['weight'], info['cl'], info['source_url']))
+    cursor.execute(query, (
+        item_id,
+        name,
+        info.get('price'),
+        info.get('weight'),
+        info.get('cl'),
+        info.get('source_url')
+    ))
 
 
 def main():
