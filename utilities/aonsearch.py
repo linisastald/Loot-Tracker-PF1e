@@ -137,17 +137,16 @@ def get_item_info(item_name):
                     cl = cl_match.group(1) if cl_match else None
                     weight = clean_number(weight_match.group(1) if weight_match else None)
 
-                    result = {}
-                    if price is not None:
-                        result['price'] = price
-                    if cl is not None:
-                        result['cl'] = cl
-                    if weight is not None:
-                        result['weight'] = weight
+                    result = {
+                        'price': price,
+                        'cl': cl,
+                        'weight': weight,
+                        'source_url': full_url
+                    }
 
                     checked_urls[urls[i]] = 'Found'
                     update_ui()
-                    return result if result else None
+                    return result
 
                 checked_urls[urls[i]] = 'Not Found'
             else:
@@ -240,6 +239,11 @@ def update_ui():
             if current_update_item:
                 logging.debug(f"Current update item: {current_update_item['name']}")
                 print(f"Update Item: {current_update_item['name']}")
+
+                # Add the link to the page where the data was found
+                if 'source_url' in current_update_item:
+                    print(f"Source: {current_update_item['source_url']}")
+
                 for key, value in current_update_item['current_data'].items():
                     print(f"{key:<8} {value}")
 
@@ -248,13 +252,16 @@ def update_ui():
                     print(f"{key:<8} {value}")
 
                 print("\nAvailable updates:")
-                if current_update_item['current_data']['Value'] != current_update_item['found_data']['Value']:
+                if (current_update_item['found_data']['Value'] is not None and
+                        current_update_item['found_data']['Value'] != current_update_item['current_data']['Value']):
                     updates_available.append('v')
                     print("Update Value (V)")
-                if current_update_item['current_data']['Weight'] != current_update_item['found_data']['Weight']:
+                if (current_update_item['found_data']['Weight'] is not None and
+                        current_update_item['found_data']['Weight'] != current_update_item['current_data']['Weight']):
                     updates_available.append('w')
                     print("Update Weight (W)")
-                if current_update_item['current_data']['CL'] != current_update_item['found_data']['CL']:
+                if (current_update_item['found_data']['CL'] is not None and
+                        current_update_item['found_data']['CL'] != current_update_item['current_data']['CL']):
                     updates_available.append('c')
                     print("Update CL (C)")
 
@@ -327,7 +334,7 @@ def fetch_items_to_update(cursor):
         SELECT id, name, value, weight, casterlevel
         FROM item
         WHERE (value IS NULL OR weight IS NULL OR (casterlevel IS NULL and type = 'magic')) and type = 'magic'
-        and subtype not in ('wand','scroll','potion')
+        and (subtype not in ('wand','scroll','potion') or subtype is null)
         ORDER BY random()
     """)
     return cursor.fetchall()
@@ -337,11 +344,11 @@ def process_update_queue(cursor, connection):
     global current_update_item
 
     try:
-        item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(timeout=1)
+        item_id, name, updates, current_value, current_weight, current_caster_level, info, source_url = update_queue.get(timeout=1)
     except queue.Empty:
         return False
 
-    current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info)
+    current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info, source_url)
 
     updates_needed, update_fields, update_params = get_user_updates(info)
 
@@ -353,7 +360,7 @@ def process_update_queue(cursor, connection):
     return True
 
 
-def create_update_item(name, current_value, current_weight, current_caster_level, info):
+def create_update_item(name, current_value, current_weight, current_caster_level, info, source_url):
     return {
         'name': name,
         'current_data': {
@@ -365,7 +372,8 @@ def create_update_item(name, current_value, current_weight, current_caster_level
             'Value': info.get('price'),
             'Weight': info.get('weight'),
             'CL': info.get('cl')
-        }
+        },
+        'source_url': source_url
     }
 
 
