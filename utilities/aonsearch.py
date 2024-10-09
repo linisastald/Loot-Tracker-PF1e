@@ -138,34 +138,40 @@ def process_items():
         except queue.Empty:
             break
 
-        item_id, name, current_value, current_weight, current_caster_level = item
-        current_search_item = name
-        update_ui()
+        try:
+            item_id, name, current_value, current_weight, current_caster_level = item
+            current_search_item = name
+            update_ui()
 
-        info = get_item_info(name)
-        if not info:
+            info = get_item_info(name)
+            if not info:
+                processed_items += 1
+                update_ui()
+                continue
+
+            updates = []
+            if 'price' in info and info['price'] is not None:
+                if current_value is None or not float_eq(info['price'], current_value):
+                    updates.append(('Value', current_value, info['price'], 'value'))
+
+            if 'weight' in info and info['weight'] is not None:
+                if current_weight is None or not float_eq(info['weight'], current_weight):
+                    updates.append(('Weight', current_weight, info['weight'], 'weight'))
+
+            if 'cl' in info and info['cl'] is not None:
+                if current_caster_level is None:
+                    updates.append(('Caster Level', current_caster_level, info['cl'], 'casterlevel'))
+
+            if updates:
+                update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
+
             processed_items += 1
             update_ui()
-            continue
-
-        updates = []
-        if 'price' in info and info['price'] is not None:
-            if current_value is None or not float_eq(info['price'], current_value):
-                updates.append(('Value', current_value, info['price'], 'value'))
-
-        if 'weight' in info and info['weight'] is not None:
-            if current_weight is None or not float_eq(info['weight'], current_weight):
-                updates.append(('Weight', current_weight, info['weight'], 'weight'))
-
-        if 'cl' in info and info['cl'] is not None:
-            if current_caster_level is None:
-                updates.append(('Caster Level', current_caster_level, info['cl'], 'casterlevel'))
-
-        if updates:
-            update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
-
-        processed_items += 1
-        update_ui()
+        except Exception as e:
+            with open("process_error_log.txt", "a") as f:
+                f.write(f"Error processing item {current_search_item}: {str(e)}\n")
+            processed_items += 1
+            update_ui()
 
 
 def update_item_data(cursor, connection):
@@ -261,43 +267,48 @@ def create_windows(stdscr):
 
 def update_ui():
     global stdscr, progress_win, update_win, search_win
-    progress_win.clear()
-    update_win.clear()
-    search_win.clear()
+    try:
+        progress_win.clear()
+        update_win.clear()
+        search_win.clear()
 
-    # Update progress bar
-    progress = int((processed_items / total_items) * (curses.COLS - 20))
-    progress_win.addstr(1, 0,
-                        f"Checking #{processed_items:5d} [{'#' * progress}{' ' * (curses.COLS - 20 - progress)}] Total {total_items:5d}")
-    progress_win.refresh()
+        # Update progress bar
+        progress = int((processed_items / total_items) * (curses.COLS - 20)) if total_items > 0 else 0
+        progress_win.addstr(1, 0, f"Checking #{processed_items:5d} [{'#' * progress}{' ' * (curses.COLS - 20 - progress)}] Total {total_items:5d}")
+        progress_win.refresh()
 
-    # Update current item being updated
-    if current_update_item:
-        update_win.addstr(1, 2, f"Update Item: {current_update_item['name']}")
-        update_win.addstr(3, 2, "Current Data")
-        for i, (key, value) in enumerate(current_update_item['current_data'].items()):
-            update_win.addstr(4 + i, 2, f"{key:10}: {value}")
-        update_win.addstr(8, 2, "Found Data")
-        for i, (key, value) in enumerate(current_update_item['found_data'].items()):
-            update_win.addstr(9 + i, 2, f"{key:10}: {value}")
-        for i, (attribute, _, _, _) in enumerate(current_update_item['updates']):
-            update_win.addstr(13 + i, 2, f"Update {attribute}? (Y/N)")
+        # Update current item being updated
+        if current_update_item:
+            update_win.addstr(1, 2, f"Update Item: {current_update_item['name']}")
+            update_win.addstr(3, 2, "Current Data")
+            for i, (key, value) in enumerate(current_update_item['current_data'].items()):
+                update_win.addstr(4 + i, 2, f"{key:10}: {value if value is not None else 'None'}")
+            update_win.addstr(8, 2, "Found Data")
+            for i, (key, value) in enumerate(current_update_item['found_data'].items()):
+                update_win.addstr(9 + i, 2, f"{key:10}: {value if value is not None else 'None'}")
+            for i, (attribute, _, _, _) in enumerate(current_update_item['updates']):
+                update_win.addstr(13 + i, 2, f"Update {attribute}? (Y/N)")
 
-    # Update current item being searched
-    if current_search_item:
-        search_win.addstr(1, 2, f"Checking Item: {current_search_item}")
-        search_win.addstr(3, 2, "URL Status")
-        for i, (url, status) in enumerate(checked_urls.items()):
-            status_color = curses.color_pair(1) if status == 'Found' else curses.color_pair(2)
-            search_win.addstr(4 + i, 2, f"{url[:20]:20} : {status:10}", status_color)
+        # Update current item being searched
+        if current_search_item:
+            search_win.addstr(1, 2, f"Checking Item: {current_search_item}")
+            search_win.addstr(3, 2, "URL Status")
+            for i, (url, status) in enumerate(checked_urls.items()):
+                status_str = str(status) if status is not None else 'None'
+                status_color = curses.color_pair(1) if status == 'Found' else curses.color_pair(2)
+                search_win.addstr(4 + i, 2, f"{url[:20]:20} : {status_str:10}", status_color)
 
-    # Update next item to be checked
-    if not item_queue.empty():
-        next_item = item_queue.queue[0]
-        search_win.addstr(height - 4, 2, f"Next Item: {next_item[1]}")
+        # Update next item to be checked
+        if not item_queue.empty():
+            next_item = item_queue.queue[0]
+            search_win.addstr(height - 4, 2, f"Next Item: {next_item[1]}")
 
-    update_win.refresh()
-    search_win.refresh()
+        update_win.refresh()
+        search_win.refresh()
+    except Exception as e:
+        # Log the error or print it to a separate file
+        with open("ui_error_log.txt", "a") as f:
+            f.write(f"Error in update_ui: {str(e)}\n")
 
 
 def get_user_input(prompt):
