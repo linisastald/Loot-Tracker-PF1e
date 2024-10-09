@@ -184,6 +184,8 @@ def process_items():
                 update_ui()
                 continue
 
+            logging.info(f"Information found for {name}: {info}")
+
             updates = []
             if 'price' in info and info['price'] is not None:
                 if current_value is None or not float_eq(info['price'], current_value):
@@ -194,23 +196,26 @@ def process_items():
                     updates.append(('Weight', current_weight, info['weight'], 'weight'))
 
             if 'cl' in info and info['cl'] is not None:
-                if current_caster_level is None or not float_eq(info['cl'], current_caster_level):
+                if current_caster_level is None or info['cl'] != current_caster_level:
                     updates.append(('Caster Level', current_caster_level, info['cl'], 'casterlevel'))
 
             if updates:
                 logging.info(f"Updates found for item {name}: {updates}")
                 current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info)
                 logging.info(f"Current update item set to: {current_update_item}")
-                update_ui()  # Call update_ui immediately after setting current_update_item
                 update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
+                logging.info(f"Added item to update queue: {name}")
+                update_ui()  # Call update_ui immediately after setting current_update_item
             else:
                 logging.info(f"No updates needed for item {name}")
+                current_update_item = None
 
             processed_items += 1
             update_ui()
         except Exception as e:
             logging.error(f"Error processing item {current_search_item}: {str(e)}", exc_info=True)
             processed_items += 1
+            current_update_item = None
             update_ui()
 
 
@@ -387,7 +392,7 @@ def process_update_queue(cursor, connection):
     return True
 
 
-def create_update_item(name, current_value, current_weight, current_caster_level, info, source_url):
+def create_update_item(name, current_value, current_weight, current_caster_level, info):
     return {
         'name': name,
         'current_data': {
@@ -400,7 +405,7 @@ def create_update_item(name, current_value, current_weight, current_caster_level
             'Weight': info.get('weight'),
             'CL': info.get('cl')
         },
-        'source_url': source_url
+        'source_url': info.get('source_url')
     }
 
 
