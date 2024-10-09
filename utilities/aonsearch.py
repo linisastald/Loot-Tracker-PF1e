@@ -11,7 +11,7 @@ from blessed import Terminal
 import logging
 
 # Set up logging
-logging.basicConfig(filename='loot_tracker.log', level=logging.DEBUG,
+logging.basicConfig(filename='loot_tracker_debug.log', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Database connection parameters
@@ -66,7 +66,7 @@ real_urls = [
     "https://www.aonprd.com/MagicAltarsDisplay.aspx?ItemName="
 ]
 
-# Global queues and variables for managing items and UI updates
+# Global queues and variables
 item_queue = queue.Queue()
 update_queue = queue.Queue()
 current_search_item = None
@@ -242,13 +242,13 @@ def update_ui():
             print()
             updates_available = []
             if current_update_item['current_data']['Value'] != current_update_item['found_data']['Value']:
-                updates_available.append('V')
+                updates_available.append('v')
                 print("Update Value? (V)")
             if current_update_item['current_data']['Weight'] != current_update_item['found_data']['Weight']:
-                updates_available.append('W')
+                updates_available.append('w')
                 print("Update Weight? (W)")
             if current_update_item['current_data']['CL'] != current_update_item['found_data']['CL']:
-                updates_available.append('C')
+                updates_available.append('c')
                 print("Update CL? (C)")
 
             if updates_available:
@@ -264,20 +264,16 @@ def get_user_input(prompt, valid_inputs):
     with term.cbreak(), term.hidden_cursor():
         print(term.move_y(term.height - 1) + prompt)
         while True:
-            key = term.inkey()
+            key = term.inkey().lower()
             logging.debug(f"Key pressed: {repr(key)}")
-            if key.is_sequence:
-                logging.debug(f"Key is a sequence: {key.name}")
-                continue
-            key = key.lower()
-            logging.debug(f"Lowercased key: {repr(key)}")
-            logging.debug(f"Valid inputs: {valid_inputs}")
             if key in valid_inputs:
                 logging.debug(f"Valid key pressed: {key}")
                 return key
             else:
                 logging.debug(f"Invalid key pressed: {key}")
-                print(term.move_y(term.height - 1) + f"Invalid input. Please enter one of: {', '.join(valid_inputs)}")
+                print(term.move_y(
+                    term.height - 1) + f"Invalid input. Please enter one of: {', '.join(valid_inputs.upper())}")
+
 
 def update_item_data(cursor, connection):
     global current_update_item, total_items, processed_items, current_search_item
@@ -300,7 +296,8 @@ def update_item_data(cursor, connection):
 
     while processing_thread.is_alive() or not update_queue.empty():
         try:
-            item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(timeout=1)
+            item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(
+                timeout=1)
         except queue.Empty:
             time.sleep(0.1)
             continue
@@ -327,13 +324,14 @@ def update_item_data(cursor, connection):
             updates_available = update_ui()
             valid_inputs = updates_available + ['a', 'f']
             logging.debug(f"Valid inputs for item {name}: {valid_inputs}")
-            user_choice = get_user_input("Enter your choice: ", valid_inputs)
+            user_choice = get_user_input("Enter your choice (V/W/C/A/F): ", valid_inputs)
             logging.debug(f"User choice for item {name}: {user_choice}")
 
             if user_choice == 'a':
                 for attribute in updates_available:
                     column = 'value' if attribute == 'v' else 'weight' if attribute == 'w' else 'casterlevel'
-                    new_value = current_update_item['found_data']['Value' if attribute == 'v' else 'Weight' if attribute == 'w' else 'CL']
+                    new_value = current_update_item['found_data'][
+                        'Value' if attribute == 'v' else 'Weight' if attribute == 'w' else 'CL']
                     update_query += f"{column} = %s, "
                     update_params.append(new_value)
                     updates_needed = True
@@ -342,7 +340,8 @@ def update_item_data(cursor, connection):
                 break
             elif user_choice in updates_available:
                 column = 'value' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'casterlevel'
-                new_value = current_update_item['found_data']['Value' if user_choice == 'v' else 'Weight' if user_choice == 'w' else 'CL']
+                new_value = current_update_item['found_data'][
+                    'Value' if user_choice == 'v' else 'Weight' if user_choice == 'w' else 'CL']
                 update_query += f"{column} = %s, "
                 update_params.append(new_value)
                 updates_needed = True
@@ -382,3 +381,4 @@ if __name__ == "__main__":
         if 'connection' in locals():
             cursor.close()
             connection.close()
+        print("Script execution finished.")
