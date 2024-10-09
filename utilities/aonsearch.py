@@ -213,9 +213,8 @@ def update_ui():
 
         # Top progress bar
         progress = int((processed_items / total_items) * 80) if total_items > 0 else 0
-        print("=" * term.width)
-        print(f"| Checking #{processed_items:<5d} {'|' * progress}{' ' * (80 - progress)} Total {total_items:<5d} |")
-        print("=" * term.width)
+        print(f"Checking #{processed_items:<5d} [{'#' * progress}{' ' * (80 - progress)}] Total {total_items:<5d}")
+        print()
 
         # Split screen into two columns
         left_width = term.width // 2 - 1
@@ -223,68 +222,66 @@ def update_ui():
 
         # Left column (Update Item)
         if current_update_item:
-            print(f"| {'Update Item:':^{left_width}} | {'Checking Item:':^{right_width}} |")
-            print(f"| {current_update_item['name']:^{left_width}} | {current_search_item:^{right_width}} |")
-            print(f"| {' ' * left_width} | {' ' * right_width} |")
-            print(f"| {'Current Data':^{left_width}} | {'URL Status':^{right_width}} |")
-            print(f"| {'-' * (left_width - 2):^{left_width}} | {'-' * (right_width - 2):^{right_width}} |")
+            print(f"{'Update Item:':<{left_width}}{'Checking Item:':<{right_width}}")
+            print(f"{current_update_item['name']:<{left_width}}{current_search_item:<{right_width}}")
+            print()
+            print(f"{'Current Data:':<{left_width}}{'URL Status:':<{right_width}}")
 
             for key, value in current_update_item['current_data'].items():
-                print(f"| {key:>10} | {str(value):<{left_width - 14}} | {' ' * right_width} |")
+                print(f"{key:>10}: {str(value):<{left_width - 12}}", end='')
+                if checked_urls:
+                    url, status = next(iter(checked_urls.items()))
+                    status_str = "Not checked" if status is None else status
+                    status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
+                    print(f"{url[:20]:<20} {status_color(status_str):<10}")
+                    checked_urls.pop(url)
+                else:
+                    print()
 
-            print(f"| {' ' * left_width} | {' ' * right_width} |")
-            print(f"| {'Found Data':^{left_width}} | {' ' * right_width} |")
-            print(f"| {'-' * (left_width - 2):^{left_width}} | {' ' * right_width} |")
+            print()
+            print(f"{'Found Data:':<{left_width}}")
 
             for key, value in current_update_item['found_data'].items():
-                print(f"| {key:>10} | {str(value):<{left_width - 14}} | {' ' * right_width} |")
+                print(f"{key:>10}: {str(value):<{left_width - 12}}")
 
-            print(f"| {' ' * left_width} | {' ' * right_width} |")
+            print()
 
             for attribute, _, _, _ in current_update_item['updates']:
-                print(f"| Update {attribute:<6}? (Y/N) {' ' * (left_width - 22)} | {' ' * right_width} |")
+                print(f"Update {attribute:<6}? (Y/N)")
 
-            print(f"| {' ' * left_width} | {' ' * right_width} |")
-            print(f"| Skip Item? (Y/N) {' ' * (left_width - 18)} | {' ' * right_width} |")
+            print()
+            print("Skip Item? (S)")
         else:
-            print(f"| {' ' * left_width} | {'Checking Item:':^{right_width}} |")
-            print(f"| {' ' * left_width} | {current_search_item:^{right_width}} |")
-            print(f"| {' ' * left_width} | {' ' * right_width} |")
+            print(f"{'Checking Item:':<{left_width}}")
+            print(f"{current_search_item:<{left_width}}")
+            print()
 
-        # Right column (URL Status)
+        # Right column (URL Status) - only if not displayed in left column
         if checked_urls:
-            status_lines = [f"| {' ' * left_width} | {'URL':^20} | {'Status':^10} |"]
-            status_lines.append(f"| {' ' * left_width} | {'-' * 20} | {'-' * 10} |")
+            print(term.move_y(3) + term.move_x(left_width))
+            print(f"{'URL Status:':<{right_width}}")
             for url, status in checked_urls.items():
                 status_str = "Not checked" if status is None else status
                 status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
-                status_lines.append(f"| {' ' * left_width} | {url[:20]:<20} | {status_color(status_str):^10} |")
-
-            # Pad with empty lines to match left column height
-            while len(status_lines) < 20:
-                status_lines.append(f"| {' ' * left_width} | {' ' * right_width} |")
-
-            # Print status lines
-            for line in status_lines:
-                print(line)
+                print(term.move_x(left_width) + f"{url[:20]:<20} {status_color(status_str):<10}")
 
         # Bottom section
         if not item_queue.empty():
             next_item = item_queue.queue[0][1]  # Get the name of the next item
-            print(f"| {' ' * left_width} | Next Item: {next_item:<{right_width - 12}} |")
-
-        print("=" * term.width)
+            print(term.move_y(term.height - 2) + f"Next Item: {next_item}")
 
 
 def get_user_input(prompt):
     with term.cbreak(), term.hidden_cursor():
-        print(term.move_y(term.height - 1) + term.center(prompt + " (Y/N): "))
+        print(term.move_y(term.height - 1) + prompt + " (Y/N/S): ")
         while True:
             key = term.inkey()
             if key.lower() == 'y':
                 return True
             elif key.lower() == 'n':
                 return False
+            elif key.lower() == 's':
+                return 'skip'
 
 
 def update_item_data(cursor, connection):
