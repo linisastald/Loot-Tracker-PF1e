@@ -260,13 +260,23 @@ def get_user_input(prompt):
     update_win.refresh()
     curses.echo()  # Enable echo
     while True:
-        key = update_win.getch()
-        if key in [ord('y'), ord('Y')]:
-            curses.noecho()  # Disable echo
-            return True
-        elif key in [ord('n'), ord('N')]:
-            curses.noecho()  # Disable echo
-            return False
+        try:
+            key = update_win.getch()
+            if key in [ord('y'), ord('Y')]:
+                update_win.addstr(curses.LINES - 3, len(prompt) + 6, "Y")
+                update_win.refresh()
+                curses.noecho()  # Disable echo
+                return True
+            elif key in [ord('n'), ord('N')]:
+                update_win.addstr(curses.LINES - 3, len(prompt) + 6, "N")
+                update_win.refresh()
+                curses.noecho()  # Disable echo
+                return False
+            else:
+                update_win.addstr(curses.LINES - 3, len(prompt) + 6, " ")
+                update_win.refresh()
+        except curses.error:
+            pass  # Ignore curses errors
 
 
 def update_item_data(cursor, connection):
