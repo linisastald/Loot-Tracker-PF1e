@@ -210,40 +210,75 @@ def update_ui():
 
     with term.location(0, 0):
         print(term.clear())
-        print(term.black_on_white(f"Processed: {processed_items}/{total_items}"))
-        print(term.move_y(term.height // 2 - 10) + term.center(f"Current Item: {current_search_item}"))
 
+        # Top progress bar
+        progress = int((processed_items / total_items) * 80) if total_items > 0 else 0
+        print("=" * term.width)
+        print(f"| Checking #{processed_items:<5d} {'|' * progress}{' ' * (80 - progress)} Total {total_items:<5d} |")
+        print("=" * term.width)
+
+        # Split screen into two columns
+        left_width = term.width // 2 - 1
+        right_width = term.width - left_width - 1
+
+        # Left column (Update Item)
         if current_update_item:
-            print(term.move_y(term.height // 2 - 8) + term.center("Current Data:"))
+            print(f"| {'Update Item:':^{left_width}} | {'Checking Item:':^{right_width}} |")
+            print(f"| {current_update_item['name']:^{left_width}} | {current_search_item:^{right_width}} |")
+            print(f"| {' ' * left_width} | {' ' * right_width} |")
+            print(f"| {'Current Data':^{left_width}} | {'URL Status':^{right_width}} |")
+            print(f"| {'-' * (left_width - 2):^{left_width}} | {'-' * (right_width - 2):^{right_width}} |")
+
             for key, value in current_update_item['current_data'].items():
-                print(term.center(f"{key}: {value}"))
+                print(f"| {key:>10} | {str(value):<{left_width - 14}} | {' ' * right_width} |")
 
-            print(term.move_y(term.height // 2 - 3) + term.center("Found Data:"))
+            print(f"| {' ' * left_width} | {' ' * right_width} |")
+            print(f"| {'Found Data':^{left_width}} | {' ' * right_width} |")
+            print(f"| {'-' * (left_width - 2):^{left_width}} | {' ' * right_width} |")
+
             for key, value in current_update_item['found_data'].items():
-                print(term.center(f"{key}: {value}"))
+                print(f"| {key:>10} | {str(value):<{left_width - 14}} | {' ' * right_width} |")
 
-            print(term.move_y(term.height // 2 + 2) + term.center("Updates:"))
-            for i, (attribute, _, _, _) in enumerate(current_update_item['updates']):
-                print(term.center(f"Update {attribute}? (Y/N)"))
+            print(f"| {' ' * left_width} | {' ' * right_width} |")
 
+            for attribute, _, _, _ in current_update_item['updates']:
+                print(f"| Update {attribute:<6}? (Y/N) {' ' * (left_width - 22)} | {' ' * right_width} |")
+
+            print(f"| {' ' * left_width} | {' ' * right_width} |")
+            print(f"| Skip Item? (Y/N) {' ' * (left_width - 18)} | {' ' * right_width} |")
+        else:
+            print(f"| {' ' * left_width} | {'Checking Item:':^{right_width}} |")
+            print(f"| {' ' * left_width} | {current_search_item:^{right_width}} |")
+            print(f"| {' ' * left_width} | {' ' * right_width} |")
+
+        # Right column (URL Status)
         if checked_urls:
-            print(term.move_y(term.height - 10) + term.center("URL Status:"))
+            status_lines = [f"| {' ' * left_width} | {'URL':^20} | {'Status':^10} |"]
+            status_lines.append(f"| {' ' * left_width} | {'-' * 20} | {'-' * 10} |")
             for url, status in checked_urls.items():
-                if status is None:
-                    status_str = "Not checked"
-                    status_color = term.yellow
-                elif status == 'Found':
-                    status_str = status
-                    status_color = term.green
-                else:
-                    status_str = status
-                    status_color = term.red
-                print(term.center(f"{url[:20]}: {status_color(status_str)}"))
+                status_str = "Not checked" if status is None else status
+                status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
+                status_lines.append(f"| {' ' * left_width} | {url[:20]:<20} | {status_color(status_str):^10} |")
+
+            # Pad with empty lines to match left column height
+            while len(status_lines) < 20:
+                status_lines.append(f"| {' ' * left_width} | {' ' * right_width} |")
+
+            # Print status lines
+            for line in status_lines:
+                print(line)
+
+        # Bottom section
+        if not item_queue.empty():
+            next_item = item_queue.queue[0][1]  # Get the name of the next item
+            print(f"| {' ' * left_width} | Next Item: {next_item:<{right_width - 12}} |")
+
+        print("=" * term.width)
 
 
 def get_user_input(prompt):
     with term.cbreak(), term.hidden_cursor():
-        print(term.move_y(term.height - 2) + term.center(prompt + " (Y/N): "))
+        print(term.move_y(term.height - 1) + term.center(prompt + " (Y/N): "))
         while True:
             key = term.inkey()
             if key.lower() == 'y':
