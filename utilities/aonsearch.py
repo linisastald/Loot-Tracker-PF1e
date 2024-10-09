@@ -8,6 +8,11 @@ import math
 import threading
 import queue
 from blessed import Terminal
+import logging
+
+# Set up logging
+logging.basicConfig(filename='loot_tracker.log', level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Database connection parameters
 db_params = {
@@ -165,10 +170,12 @@ def process_items():
         try:
             item_id, name, current_value, current_weight, current_caster_level = item
             current_search_item = name
+            logging.info(f"Processing item: {name}")
             update_ui()
 
             info = get_item_info(name)
             if not info:
+                logging.warning(f"No information found for item: {name}")
                 processed_items += 1
                 update_ui()
                 continue
@@ -188,12 +195,12 @@ def process_items():
 
             if updates:
                 update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
+                logging.info(f"Updates found for item {name}: {updates}")
 
             processed_items += 1
             update_ui()
         except Exception as e:
-            with open("process_error_log.txt", "a") as f:
-                f.write(f"Error processing item {current_search_item}: {str(e)}\n")
+            logging.error(f"Error processing item {current_search_item}: {str(e)}", exc_info=True)
             processed_items += 1
             update_ui()
 
@@ -222,8 +229,16 @@ def update_ui():
         if checked_urls:
             print(term.move_y(term.height - 10) + term.center("URL Status:"))
             for url, status in checked_urls.items():
-                status_color = term.green if status == 'Found' else term.red
-                print(term.center(f"{url[:20]}: {status_color(status)}"))
+                if status is None:
+                    status_str = "Not checked"
+                    status_color = term.yellow
+                elif status == 'Found':
+                    status_str = status
+                    status_color = term.green
+                else:
+                    status_str = status
+                    status_color = term.red
+                print(term.center(f"{url[:20]}: {status_color(status_str)}"))
 
 
 def get_user_input(prompt):
@@ -317,6 +332,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print(term.normal + term.clear + "Script interrupted by user.")
     except Exception as e:
+        logging.error(f"An error occurred: {str(e)}", exc_info=True)
         print(term.normal + term.clear + f"An error occurred: {e}")
     finally:
         if 'connection' in locals():
