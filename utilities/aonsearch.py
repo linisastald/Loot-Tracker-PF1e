@@ -146,11 +146,11 @@ def update_item_data(cursor, connection):
 
     for item in items:
         item_id, name, current_value, current_weight, current_caster_level = item
-        print(f"\n{'=' * 50}\nProcessing item: {name}")
+        print(f"\n{'='*50}\nProcessing item: {name}")
         print(f"Current data - Value: {current_value}, Weight: {current_weight}, Caster Level: {current_caster_level}")
 
         info = get_item_info(name)
-        if info is None:
+        if not info:
             print(f"No information found for: {name}")
             not_found.append(name)
             continue
@@ -159,23 +159,26 @@ def update_item_data(cursor, connection):
         update_query = "UPDATE item SET "
         update_params = []
 
-        if info['price'] is not None and not float_eq(info['price'], current_value):
-            if confirm_update("Value", current_value, info['price'], name):
-                update_query += "value = %s, "
-                update_params.append(info['price'])
-                updates_needed = True
+        if 'price' in info and info['price'] is not None:
+            if current_value is None or not float_eq(info['price'], current_value):
+                if confirm_update("Value", current_value, info['price'], name):
+                    update_query += "value = %s, "
+                    update_params.append(info['price'])
+                    updates_needed = True
 
-        if info['weight'] is not None and not float_eq(info['weight'], current_weight):
-            if confirm_update("Weight", current_weight, info['weight'], name):
-                update_query += "weight = %s, "
-                update_params.append(info['weight'])
-                updates_needed = True
+        if 'weight' in info and info['weight'] is not None:
+            if current_weight is None or not float_eq(info['weight'], current_weight):
+                if confirm_update("Weight", current_weight, info['weight'], name):
+                    update_query += "weight = %s, "
+                    update_params.append(info['weight'])
+                    updates_needed = True
 
-        if info['cl'] and not current_caster_level:
-            if confirm_update("Caster Level", current_caster_level, info['cl'], name):
-                update_query += "casterlevel = %s, "
-                update_params.append(info['cl'])
-                updates_needed = True
+        if 'cl' in info and info['cl'] is not None:
+            if current_caster_level is None:
+                if confirm_update("Caster Level", current_caster_level, info['cl'], name):
+                    update_query += "casterlevel = %s, "
+                    update_params.append(info['cl'])
+                    updates_needed = True
 
         if updates_needed:
             update_query = update_query.rstrip(', ')
@@ -189,7 +192,6 @@ def update_item_data(cursor, connection):
             print("No updates made for this item.")
 
     return not_found
-
 
 if __name__ == "__main__":
     try:
