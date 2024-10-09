@@ -209,11 +209,11 @@ def process_items():
                 user_choice = None
                 while user_choice not in ['v', 'w', 'c', 'a', 'f']:
                     update_ui()
-                    user_choice = get_user_input("Enter your choice for updates", timeout=0.1)
+                    user_choice = get_user_input("Enter your choice for updates")
                     if user_choice is None:
                         # Process the next item in the queue while waiting for input
                         try:
-                            next_item = item_queue.get(timeout=0.1)
+                            next_item = item_queue.get_nowait()
                             process_next_item(next_item)
                         except queue.Empty:
                             pass
@@ -335,31 +335,30 @@ def update_ui():
     return updates_available
 
 
-def get_user_input(prompt, timeout=None):
+def get_user_input(prompt, timeout=0.1):
     valid_inputs = ['v', 'w', 'c', 'a', 'f']
+    print(term.move_y(term.height - 1) + term.center(prompt + " (V/W/C/A/F): "))
     with term.cbreak(), term.hidden_cursor():
-        print(term.move_y(term.height - 1) + term.center(prompt + " (V/W/C/A/F): "))
-        try:
-            key = term.inkey(timeout=timeout)
-            if not key:
+        start_time = time.time()
+        while True:
+            if term.inkey(timeout=0.1):
+                key = term.inkey()
+                if key:
+                    logging.debug(f"Raw key pressed: {repr(key)}")
+                    key = key.lower()
+                    if key in valid_inputs:
+                        logging.debug(f"Valid key pressed: {key}")
+                        return key
+                    else:
+                        logging.debug(f"Invalid key pressed: {key}")
+                        print(term.move_y(term.height - 1) + term.center(
+                            f"Invalid input. Please enter V, W, C, A, or F."))
+                        time.sleep(1)  # Show the message for 1 second
+                        print(term.move_y(term.height - 1) + term.center(prompt + " (V/W/C/A/F): "))
+
+            if time.time() - start_time > timeout:
                 return None
-            logging.debug(f"Raw key pressed: {repr(key)}")
-            key = key.lower()
-            if key in valid_inputs:
-                logging.debug(f"Valid key pressed: {key}")
-                return key
-            else:
-                logging.debug(f"Invalid key pressed: {key}")
-                print(term.move_y(term.height - 1) + term.center(f"Invalid input. Please enter V, W, C, A, or F."))
-                time.sleep(1)  # Show the message for 1 second
-                print(term.move_y(term.height - 1) + term.center(prompt + " (V/W/C/A/F): "))
-                return None
-        except Exception as e:
-            logging.error(f"Error in get_user_input: {str(e)}")
-            logging.error(traceback.format_exc())
-            print(term.move_y(term.height - 1) + term.center(f"An error occurred: {str(e)}"))
-            time.sleep(2)
-            return None
+    return None
 
 
 def update_item_data(cursor, connection):
