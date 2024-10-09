@@ -9,6 +9,8 @@ import threading
 import queue
 from blessed import Terminal
 import logging
+import traceback
+import sys
 
 # Set up logging
 logging.basicConfig(filename='loot_tracker_debug.log', level=logging.DEBUG,
@@ -264,96 +266,136 @@ def get_user_input(prompt):
     valid_inputs = ['v', 'w', 'c', 'a', 'f']
     with term.cbreak(), term.hidden_cursor():
         print(term.move_y(term.height - 2) + term.center(prompt + " (V/W/C/A/F): "))
+        print(term.move_y(term.height - 1) + term.center("Waiting for input..."))
         while True:
-            key = term.inkey().lower()
-            logging.debug(f"Key pressed: {repr(key)}")
-            if key in valid_inputs:
-                logging.debug(f"Valid key pressed: {key}")
-                return key
-            else:
-                logging.debug(f"Invalid key pressed: {key}")
-                print(term.move_y(term.height - 1) + term.center(f"Invalid input. Please enter V, W, C, A, or F."))
+            try:
+                key = term.inkey(timeout=1)
+                if key:
+                    logging.debug(f"Raw key pressed: {repr(key)}")
+                    key = key.lower()
+                    if key in valid_inputs:
+                        logging.debug(f"Valid key pressed: {key}")
+                        return key
+                    else:
+                        logging.debug(f"Invalid key pressed: {key}")
+                        print(term.move_y(term.height - 1) + term.center(f"Invalid input. Please enter V, W, C, A, or F."))
+                else:
+                    print(term.move_y(term.height - 1) + term.center("No input received, still waiting..."))
+            except Exception as e:
+                logging.error(f"Error in get_user_input: {str(e)}")
+                logging.error(traceback.format_exc())
+                print(f"An error occurred while getting input: {str(e)}")
+                print("Press any key to continue...")
+                term.inkey()
+                return None
 
 
 def update_item_data(cursor, connection):
     global current_update_item, total_items, processed_items, current_search_item
 
-    cursor.execute("""
-        SELECT id, name, value, weight, casterlevel
-        FROM item
-        WHERE (value IS NULL OR weight IS NULL OR (casterlevel IS NULL and type = 'magic')) and type = 'magic'
-        and subtype not in ('wand','potion','scroll')
-        ORDER BY random()
-    """)
-    items = cursor.fetchall()
-    total_items = len(items)
-    logging.info(f"Total items to update: {total_items}")
+    try:
+        cursor.execute("""
+            SELECT id, name, value, weight, casterlevel
+            FROM item
+            WHERE (value IS NULL OR weight IS NULL OR (casterlevel IS NULL and type = 'magic')) and type = 'magic'
+            ORDER BY random()
+        """)
+        items = cursor.fetchall()
+        total_items = len(items)
+        logging.info(f"Total items to update: {total_items}")
 
-    for item in items:
-        item_queue.put(item)
+        for item in items:
+            item_queue.put(item)
 
-    processing_thread = threading.Thread(target=process_items)
-    processing_thread.start()
+        processing_thread = threading.Thread(target=process_items)
+        processing_thread.start()
 
-    while processing_thread.is_alive() or not update_queue.empty():
-        try:
-            item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(
-                timeout=1)
-        except queue.Empty:
-            time.sleep(0.1)
-            continue
+        while processing_thread.is_alive() or not update_queue.empty():
+            try:
+                item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(
+                    timeout=1)
+            except queue.Empty:
+                time.sleep(0.1)
+                continue
 
-        current_update_item = {
-            'name': name,
-            'current_data': {
-                'Value': current_value,
-                'Weight': current_weight,
-                'CL': current_caster_level
-            },
-            'found_data': {
-                'Value': info.get('price'),
-                'Weight': info.get('weight'),
-                'CL': info.get('cl')
+            current_update_item = {
+                'name': name,
+                'current_data': {
+                    'Value': current_value,
+                    'Weight': current_weight,
+                    'CL': current_caster_level
+                },
+                'found_data': {
+                    'Value': info.get('price'),
+                    'Weight': info.get('weight'),
+                    'CL': info.get('cl')
+                }
             }
-        }
 
-        updates_needed = False
-        update_query = "UPDATE item SET "
-        update_params = []
+            updates_needed = False
+            update_query = "UPDATE item SET "
+            update_params = []
 
-        while True:
+            while True:
+                try:
+                    update_ui()
+                    logging.debug("Before get_user_input")
+                    user_choice = get_user_input("Enter your choice")
+                    logging.debug(f"After get_user_input. User choice for item {name}: {user_choice}")
+
+                    if user_choice == 'a':
+                        logging.debug("User chose 'a'")
+                        update_query += "value = %s, weight = %s, casterlevel = %s, "
+                        update_params.extend([info.get('price'), info.get('weight'), info.get('cl')])
+                        updates_needed = True
+                        break
+                    elif user_choice == 'f':
+                        logging.debug("User chose 'f'")
+                        break
+                    elif user_choice in ['v', 'w', 'c']:
+                        logging.debug(f"User chose '{user_choice}'")
+                        column = 'value' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'casterlevel'
+                        new_value = info.get('price' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'cl')
+                        update_query += f"{column} = %s, "
+                        update_params.append(new_value)
+                        updates_needed = True
+                    else:
+                        logging.warning(f"Unexpected user choice: {user_choice}")
+                except Exception as e:
+                    logging.error(f"Error in user input loop: {str(e)}")
+                    logging.error(traceback.format_exc())
+                    print(f"An error occurred: {str(e)}")
+                    print("Press any key to continue...")
+                    term.inkey()
+
+            if updates_needed:
+                try:
+                    update_query = update_query.rstrip(', ')
+                    update_query += " WHERE id = %s"
+                    update_params.append(item_id)
+
+                    cursor.execute(update_query, tuple(update_params))
+                    connection.commit()
+                    logging.info(f"Updated item {name} with query: {update_query}")
+                except Exception as e:
+                    logging.error(f"Error updating database: {str(e)}")
+                    logging.error(traceback.format_exc())
+                    print(f"An error occurred while updating the database: {str(e)}")
+                    print("Press any key to continue...")
+                    term.inkey()
+
+            current_update_item = None
             update_ui()
-            user_choice = get_user_input("Enter your choice")
-            logging.debug(f"User choice for item {name}: {user_choice}")
 
-            if user_choice == 'a':
-                # Update all fields
-                update_query += "value = %s, weight = %s, casterlevel = %s, "
-                update_params.extend([info.get('price'), info.get('weight'), info.get('cl')])
-                updates_needed = True
-                break
-            elif user_choice == 'f':
-                break
-            elif user_choice in ['v', 'w', 'c']:
-                column = 'value' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'casterlevel'
-                new_value = info.get('price' if user_choice == 'v' else 'weight' if user_choice == 'w' else 'cl')
-                update_query += f"{column} = %s, "
-                update_params.append(new_value)
-                updates_needed = True
+        processing_thread.join()
 
-        if updates_needed:
-            update_query = update_query.rstrip(', ')
-            update_query += " WHERE id = %s"
-            update_params.append(item_id)
-
-            cursor.execute(update_query, tuple(update_params))
-            connection.commit()
-            logging.info(f"Updated item {name} with query: {update_query}")
-
-        current_update_item = None
-        update_ui()
-
-    processing_thread.join()
+    except Exception as e:
+        logging.error(f"Error in update_item_data: {str(e)}")
+        logging.error(traceback.format_exc())
+        print(f"An error occurred in update_item_data: {str(e)}")
+        print("Press any key to exit...")
+        term.inkey()
+        sys.exit(1)
 
 if __name__ == "__main__":
     try:
