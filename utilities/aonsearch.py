@@ -164,7 +164,7 @@ def get_item_info(item_name):
 
 
 def process_items():
-    global processed_items, current_search_item
+    global processed_items, current_search_item, current_update_item
     while True:
         try:
             item = item_queue.get(timeout=1)
@@ -201,19 +201,66 @@ def process_items():
 
             if updates:
                 logging.info(f"Updates found for item {name}: {updates}")
-                update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
-                logging.info(f"Added item to update queue: {name}")
+                current_update_item = create_update_item(name, current_value, current_weight, current_caster_level,
+                                                         info)
+                logging.info(f"Current update item set to: {current_update_item}")
+
+                # Wait for user input while continuing to update UI
+                user_choice = None
+                while user_choice not in ['v', 'w', 'c', 'a', 'f']:
+                    update_ui()
+                    user_choice = get_user_input("Enter your choice for updates", timeout=0.1)
+                    if user_choice is None:
+                        # Process the next item in the queue while waiting for input
+                        try:
+                            next_item = item_queue.get(timeout=0.1)
+                            process_next_item(next_item)
+                        except queue.Empty:
+                            pass
+                        continue
+
+                if user_choice in ['v', 'w', 'c', 'a']:
+                    update_queue.put(
+                        (item_id, name, updates, current_value, current_weight, current_caster_level, info))
+                    logging.info(f"Added item to update queue: {name}")
+
+                current_update_item = None  # Reset current_update_item after processing
+            else:
+                logging.info(f"No updates needed for item {name}")
 
             processed_items += 1
             update_ui()
         except Exception as e:
             logging.error(f"Error processing item {current_search_item}: {str(e)}", exc_info=True)
             processed_items += 1
+            current_update_item = None
             update_ui()
+
+
+def process_next_item(item):
+    global current_search_item, processed_items
+    item_id, name, current_value, current_weight, current_caster_level = item
+    current_search_item = name
+    logging.info(f"Processing next item: {name}")
+    update_ui()
+
+    info = get_item_info(name)
+    if info:
+        logging.info(f"Information found for {name}: {info}")
+    else:
+        logging.warning(f"No information found for item: {name}")
+
+    processed_items += 1
+    update_ui()
 
 
 def update_ui():
     global term, processed_items, total_items, current_search_item, current_update_item, checked_urls
+
+    updates_available = []
+
+    logging.debug("Entering update_ui function")
+    logging.debug(f"Current update item at start of update_ui: {current_update_item}")
 
     try:
         with term.location(0, 0):
@@ -239,7 +286,10 @@ def update_ui():
 
             # Update Item section
             if current_update_item:
+                logging.debug(f"Displaying update for item: {current_update_item['name']}")
                 print(f"Update Item: {current_update_item['name']}")
+
+                # Add the link to the page where the data was found
                 if 'source_url' in current_update_item:
                     print(f"Source: {current_update_item['source_url']}")
 
@@ -252,7 +302,6 @@ def update_ui():
                     print(f"{key:<8} {value}")
 
                 print("\nAvailable updates:")
-                updates_available = []
                 if (current_update_item['found_data']['Value'] is not None and
                         current_update_item['found_data']['Value'] != current_update_item['current_data']['Value']):
                     updates_available.append('v')
@@ -272,13 +321,18 @@ def update_ui():
                 if updates_available:
                     print("Update all (A)")
                 print("Finish Item (F)")
+            else:
+                logging.debug("No current update item to display")
 
             # Leave space for input prompt
             print("\n" * 3)
 
+        logging.debug(f"Updates available: {updates_available}")
     except Exception as e:
         logging.error(f"Error in update_ui: {str(e)}")
         logging.error(traceback.format_exc())
+
+    return updates_available
 
 
 def get_user_input(prompt, timeout=None):
@@ -486,51 +540,13 @@ def handle_critical_error(message, e):
     sys.exit(1)
 
 
-def update_process(cursor, connection):
-    global current_update_item
-    while True:
-        try:
-            item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(
-                timeout=1)
-        except queue.Empty:
-            continue
-
-        current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info)
-        logging.info(f"Current update item set to: {current_update_item}")
-
-        user_choice = None
-        while user_choice not in ['v', 'w', 'c', 'a', 'f']:
-            user_choice = get_user_input("Enter your choice for updates", timeout=0.5)
-            if user_choice is None:
-                continue
-
-        if user_choice in ['v', 'w', 'c', 'a']:
-            apply_updates(cursor, connection, item_id, name, updates, current_value, current_weight,
-                          current_caster_level, info)
-            logging.info(f"Updated item: {name}")
-
-        current_update_item = None
-        update_ui()
-
-
 if __name__ == "__main__":
     try:
         connection = psycopg2.connect(**db_params)
         cursor = connection.cursor()
 
         with term.fullscreen(), term.hidden_cursor():
-            # Start the item processing thread
-            processing_thread = threading.Thread(target=process_items)
-            processing_thread.start()
-
-            # Start the update processing thread
-            update_thread = threading.Thread(target=update_process, args=(cursor, connection))
-            update_thread.start()
-
-            # Main UI update loop
-            while processing_thread.is_alive() or update_thread.is_alive():
-                update_ui()
-                time.sleep(0.1)  # Small delay to prevent excessive CPU usage
+            update_item_data(cursor, connection)
 
         print(term.normal + term.clear + "Data update process completed. Press any key to exit.")
         term.inkey()
