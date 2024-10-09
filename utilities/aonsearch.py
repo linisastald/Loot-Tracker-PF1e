@@ -82,7 +82,7 @@ def get_item_info(item_name):
                 # Use more specific regex patterns
                 price_match = re.search(r'Price[:\s]+([^;]+)', content)
                 cl_match = re.search(r'CL\s+(\d+)th', content)
-                weight_match = re.search(r'Weight[:\s]+([^;]+)', content)
+                weight_match = re.search(r'Weight[:\s]+([\d,.]+ lbs\.)', content)
 
                 if price_match or cl_match or weight_match:
                     price = clean_number(price_match.group(1) if price_match else None)
@@ -94,11 +94,15 @@ def get_item_info(item_name):
                     print(f"CL: {cl}")
                     print(f"Weight: {weight}")
 
-                    return {
-                        'price': price,
-                        'cl': cl,
-                        'weight': weight
-                    }
+                    result = {}
+                    if price is not None:
+                        result['price'] = price
+                    if cl is not None:
+                        result['cl'] = cl
+                    if weight is not None:
+                        result['weight'] = weight
+
+                    return result if result else None
                 else:
                     print("No relevant information found on this page.")
             else:
