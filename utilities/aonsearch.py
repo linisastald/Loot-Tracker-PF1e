@@ -1,4 +1,3 @@
-import curses
 import requests
 from bs4 import BeautifulSoup
 import psycopg2
@@ -8,7 +7,7 @@ from urllib.parse import quote
 import math
 import threading
 import queue
-import atexit
+from blessed import Terminal
 
 # Database connection parameters
 db_params = {
@@ -71,16 +70,7 @@ checked_urls = {}
 total_items = 0
 processed_items = 0
 
-
-def cleanup():
-    if 'stdscr' in globals():
-        curses.nocbreak()
-        stdscr.keypad(False)
-        curses.echo()
-        curses.endwin()
-
-
-atexit.register(cleanup)
+term = Terminal()
 
 
 def clean_number(number_str):
@@ -209,78 +199,46 @@ def process_items():
 
 
 def update_ui():
-    global stdscr, progress_win, update_win, search_win
-    try:
-        progress_win.clear()
-        update_win.clear()
-        search_win.clear()
+    global term, processed_items, total_items, current_search_item, current_update_item, checked_urls
 
-        # Update progress bar (adjusted for 1080p screen)
-        max_progress_width = 100  # Adjust this value as needed
-        progress = int((processed_items / total_items) * max_progress_width) if total_items > 0 else 0
-        progress_win.addstr(1, 0,
-                            f"Checking #{processed_items:5d} [{'#' * progress}{' ' * (max_progress_width - progress)}] Total {total_items:5d}")
-        progress_win.refresh()
+    with term.location(0, 0):
+        print(term.clear())
+        print(term.black_on_white(f"Processed: {processed_items}/{total_items}"))
+        print(term.move_y(term.height // 2 - 10) + term.center(f"Current Item: {current_search_item}"))
 
-        # Update current item being updated
         if current_update_item:
-            update_win.addstr(1, 2, f"Update Item: {current_update_item['name']}")
-            update_win.addstr(3, 2, "Current Data")
-            for i, (key, value) in enumerate(current_update_item['current_data'].items()):
-                update_win.addstr(4 + i, 2, f"{key:10}: {value if value is not None else 'None'}")
-            update_win.addstr(8, 2, "Found Data")
-            for i, (key, value) in enumerate(current_update_item['found_data'].items()):
-                update_win.addstr(9 + i, 2, f"{key:10}: {value if value is not None else 'None'}")
+            print(term.move_y(term.height // 2 - 8) + term.center("Current Data:"))
+            for key, value in current_update_item['current_data'].items():
+                print(term.center(f"{key}: {value}"))
+
+            print(term.move_y(term.height // 2 - 3) + term.center("Found Data:"))
+            for key, value in current_update_item['found_data'].items():
+                print(term.center(f"{key}: {value}"))
+
+            print(term.move_y(term.height // 2 + 2) + term.center("Updates:"))
             for i, (attribute, _, _, _) in enumerate(current_update_item['updates']):
-                update_win.addstr(13 + i, 2, f"Update {attribute}? (Y/N)")
+                print(term.center(f"Update {attribute}? (Y/N)"))
 
-        # Update current item being searched
-        if current_search_item:
-            search_win.addstr(1, 2, f"Checking Item: {current_search_item}")
-            search_win.addstr(3, 2, "URL Status")
-            for i, (url, status) in enumerate(checked_urls.items()):
-                status_str = str(status) if status is not None else 'None'
-                status_color = curses.color_pair(1) if status == 'Found' else curses.color_pair(2)
-                search_win.addstr(4 + i, 2, f"{url:20} : {status_str:10}", status_color)
-
-        # Update next item to be checked
-        if not item_queue.empty():
-            next_item = item_queue.queue[0]
-            search_win.addstr(curses.LINES - 4, 2, f"Next Item: {next_item[1]}")
-
-        update_win.refresh()
-        search_win.refresh()
-    except Exception as e:
-        with open("ui_error_log.txt", "a") as f:
-            f.write(f"Error in update_ui: {str(e)}\n")
+        if checked_urls:
+            print(term.move_y(term.height - 10) + term.center("URL Status:"))
+            for url, status in checked_urls.items():
+                status_color = term.green if status == 'Found' else term.red
+                print(term.center(f"{url[:20]}: {status_color(status)}"))
 
 
 def get_user_input(prompt):
-    update_win.addstr(curses.LINES - 3, 2, prompt + " (Y/N): ")
-    update_win.refresh()
-    curses.echo()  # Enable echo
-    while True:
-        try:
-            key = update_win.getch()
-            if key in [ord('y'), ord('Y')]:
-                update_win.addstr(curses.LINES - 3, len(prompt) + 6, "Y")
-                update_win.refresh()
-                curses.noecho()  # Disable echo
+    with term.cbreak(), term.hidden_cursor():
+        print(term.move_y(term.height - 2) + term.center(prompt + " (Y/N): "))
+        while True:
+            key = term.inkey()
+            if key.lower() == 'y':
                 return True
-            elif key in [ord('n'), ord('N')]:
-                update_win.addstr(curses.LINES - 3, len(prompt) + 6, "N")
-                update_win.refresh()
-                curses.noecho()  # Disable echo
+            elif key.lower() == 'n':
                 return False
-            else:
-                update_win.addstr(curses.LINES - 3, len(prompt) + 6, " ")
-                update_win.refresh()
-        except curses.error:
-            pass  # Ignore curses errors
 
 
 def update_item_data(cursor, connection):
-    global current_update_item, total_items, processed_items
+    global current_update_item, total_items, processed_items, current_search_item
 
     cursor.execute("""
         SELECT id, name, value, weight, casterlevel
@@ -302,6 +260,7 @@ def update_item_data(cursor, connection):
             item_id, name, updates, current_value, current_weight, current_caster_level, info = update_queue.get(
                 timeout=1)
         except queue.Empty:
+            time.sleep(0.1)
             continue
 
         current_update_item = {
@@ -344,42 +303,22 @@ def update_item_data(cursor, connection):
     processing_thread.join()
 
 
-def create_windows(stdscr):
-    height, width = stdscr.getmaxyx()
-    progress_win = curses.newwin(3, width, 0, 0)
-    update_win = curses.newwin(height - 3, width // 2, 3, 0)
-    search_win = curses.newwin(height - 3, width // 2, 3, width // 2)
-    return progress_win, update_win, search_win
-
-
 if __name__ == "__main__":
     try:
-        stdscr = curses.initscr()
-        curses.noecho()
-        curses.cbreak()
-        stdscr.keypad(True)
-        curses.start_color()
-        curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
-        curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
-
-        height, width = stdscr.getmaxyx()
-        progress_win, update_win, search_win = create_windows(stdscr)
-
         connection = psycopg2.connect(**db_params)
         cursor = connection.cursor()
 
-        update_item_data(cursor, connection)
+        with term.fullscreen(), term.hidden_cursor():
+            update_item_data(cursor, connection)
 
-        stdscr.addstr(curses.LINES - 1, 0, "Data update process completed. Press any key to exit.")
-        stdscr.refresh()
-        stdscr.getch()
+        print(term.normal + term.clear + "Data update process completed. Press any key to exit.")
+        term.inkey()
 
     except KeyboardInterrupt:
-        print("Script interrupted by user.")
+        print(term.normal + term.clear + "Script interrupted by user.")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(term.normal + term.clear + f"An error occurred: {e}")
     finally:
-        cleanup()
         if 'connection' in locals():
             cursor.close()
             connection.close()
