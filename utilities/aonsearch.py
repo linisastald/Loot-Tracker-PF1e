@@ -44,14 +44,16 @@ def clean_number(number_str):
     number_str = number_str.strip()
     if number_str in ['—', '-', '–', '']:
         return None
-    # Remove any non-numeric characters except . and ,
+
+    # Remove 'gp' or 'lbs.' suffix if present
+    number_str = re.sub(r'\s*(gp|lbs\.)\s*$', '', number_str, flags=re.IGNORECASE)
+
+    # Remove any remaining non-numeric characters except . and ,
     cleaned = re.sub(r'[^\d.,]', '', number_str)
-    # Replace , with . if there's no . in the string (European format)
-    if '.' not in cleaned and ',' in cleaned:
-        cleaned = cleaned.replace(',', '.')
-    else:
-        # Otherwise, remove all commas
-        cleaned = cleaned.replace(',', '')
+
+    # Replace , with nothing (as it's used as a thousands separator)
+    cleaned = cleaned.replace(',', '')
+
     try:
         return float(cleaned)
     except ValueError:
@@ -78,9 +80,9 @@ def get_item_info(item_name):
                 content = soup.get_text()
 
                 # Use more specific regex patterns
-                price_match = re.search(r'Price[:\s]+([\d,]+ gp)', content)
+                price_match = re.search(r'Price[:\s]+([^;]+)', content)
                 cl_match = re.search(r'CL\s+(\d+)th', content)
-                weight_match = re.search(r'Weight[:\s]+([\d,]+ lbs\.)', content)
+                weight_match = re.search(r'Weight[:\s]+([^;]+)', content)
 
                 if price_match or cl_match or weight_match:
                     price = clean_number(price_match.group(1) if price_match else None)
