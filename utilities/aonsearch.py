@@ -252,18 +252,17 @@ def update_ui():
             print()
             print("Skip Item? (S)")
         else:
-            print(f"{'Checking Item:':<{left_width}}")
-            print(f"{current_search_item:<{left_width}}")
+            print(f"{'Update Item:':<{left_width}}{'Checking Item:':<{right_width}}")
+            print(f"{'':<{left_width}}{current_search_item:<{right_width}}")
             print()
+            print(f"{'':<{left_width}}{'URL Status:':<{right_width}}")
 
-        # Right column (URL Status) - only if not displayed in left column
-        if checked_urls:
-            print(term.move_y(3) + term.move_x(left_width))
-            print(f"{'URL Status:':<{right_width}}")
-            for url, status in checked_urls.items():
-                status_str = "Not checked" if status is None else status
-                status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
-                print(term.move_x(left_width) + f"{url[:20]:<20} {status_color(status_str):<10}")
+        # Right column (URL Status) - always display, even when updating
+        print(term.move_y(5) + term.move_x(left_width))
+        for url, status in checked_urls.items():
+            status_str = "Not checked" if status is None else status
+            status_color = term.yellow if status is None else (term.green if status == 'Found' else term.red)
+            print(term.move_x(left_width) + f"{url[:20]:<20} {status_color(status_str):<10}")
 
         # Bottom section
         if not item_queue.empty():
@@ -282,7 +281,6 @@ def get_user_input(prompt):
                 return False
             elif key.lower() == 's':
                 return 'skip'
-
 
 def update_item_data(cursor, connection):
     global current_update_item, total_items, processed_items, current_search_item
