@@ -37,20 +37,32 @@ urls = [
 ]
 
 
+def clean_number(number_str):
+    if number_str is None:
+        return None
+    number_str = number_str.strip()
+    if number_str in ['—', '-', '–', '']:
+        return None
+    # Remove any non-numeric characters except . and ,
+    cleaned = re.sub(r'[^\d.,]', '', number_str)
+    # Replace , with . if there's no . in the string (European format)
+    if '.' not in cleaned and ',' in cleaned:
+        cleaned = cleaned.replace(',', '.')
+    else:
+        # Otherwise, remove all commas
+        cleaned = cleaned.replace(',', '')
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
 def clean_weight(weight_str):
-    if weight_str is None:
-        return None
-    weight_str = weight_str.strip()
-    if weight_str in ['—', '-', '–', '']:
-        return None
-    # Extract just the numeric part (if any) from the beginning of the string
-    match = re.match(r'^(-?\d+(?:\.\d+)?)', weight_str)
-    if match:
-        try:
-            return float(match.group(1))
-        except ValueError:
-            return None
-    return None
+    return clean_number(weight_str)
+
+
+def clean_value(value_str):
+    return clean_number(value_str)
 
 
 def get_item_info(item_name):
@@ -70,7 +82,7 @@ def get_item_info(item_name):
                 weight_match = re.search(r'Weight[:\s]+([^;\n]+)', content)
 
                 if price_match or cl_match or weight_match:
-                    price = price_match.group(1).strip() if price_match else None
+                    price = clean_value(price_match.group(1) if price_match else None)
                     cl = cl_match.group(1).strip() if cl_match else None
                     weight = clean_weight(weight_match.group(1) if weight_match else None)
 
@@ -88,6 +100,8 @@ def get_item_info(item_name):
                         'cl': cl,
                         'weight': weight
                     }
+                else:
+                    print("No relevant information found on this page.")
             else:
                 print(f"Received status code {response.status_code}")
         except requests.RequestException as e:
@@ -109,6 +123,9 @@ def float_eq(a, b, epsilon=1e-9):
 
 
 def confirm_update(attribute, current_value, new_value, item_name):
+    if new_value is None:
+        print(f"New {attribute} is None. Skipping update.")
+        return False
     print(f"Current {attribute}: {current_value}")
     print(f"New {attribute}: {new_value}")
     return input(f"Do you want to update {attribute} for {item_name}? (y/n): ").lower() == 'y'
@@ -120,6 +137,7 @@ def update_item_data(cursor, connection):
         FROM item
         WHERE (value IS NULL OR weight IS NULL OR casterlevel IS NULL) and type = 'magic'
         ORDER BY casterlevel DESC
+        LIMIT 5
     """)
     items = cursor.fetchall()
     not_found = []
@@ -139,13 +157,13 @@ def update_item_data(cursor, connection):
         update_query = "UPDATE item SET "
         update_params = []
 
-        if info['price'] and not current_value:
+        if info['price'] is not None and not float_eq(info['price'], current_value):
             if confirm_update("Value", current_value, info['price'], name):
                 update_query += "value = %s, "
                 update_params.append(info['price'])
                 updates_needed = True
 
-        if not float_eq(info['weight'], current_weight):
+        if info['weight'] is not None and not float_eq(info['weight'], current_weight):
             if confirm_update("Weight", current_weight, info['weight'], name):
                 update_query += "weight = %s, "
                 update_params.append(info['weight'])
