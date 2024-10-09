@@ -327,6 +327,7 @@ def fetch_items_to_update(cursor):
         SELECT id, name, value, weight, casterlevel
         FROM item
         WHERE (value IS NULL OR weight IS NULL OR (casterlevel IS NULL and type = 'magic')) and type = 'magic'
+        and subtype not in ('wand','scroll','potion')
         ORDER BY random()
     """)
     return cursor.fetchall()
