@@ -62,7 +62,7 @@ def process_lst_file(file_path, cursor):
     return total_spells
 
 if __name__ == "__main__":
-    lst_directory = "../../spellsnew"  # Replace with your actual directory path
+    lst_directory = "../../itemsnew"  # Replace with your actual directory path
 
     # Database connection parameters
     db_params = {
