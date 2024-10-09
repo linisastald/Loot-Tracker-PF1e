@@ -164,7 +164,7 @@ def get_item_info(item_name):
 
 
 def process_items():
-    global processed_items, current_search_item
+    global processed_items, current_search_item, current_update_item
     while True:
         try:
             item = item_queue.get(timeout=1)
@@ -199,6 +199,9 @@ def process_items():
 
             if updates:
                 logging.info(f"Updates found for item {name}: {updates}")
+                current_update_item = create_update_item(name, current_value, current_weight, current_caster_level, info)
+                logging.info(f"Current update item set to: {current_update_item}")
+                update_ui()  # Call update_ui immediately after setting current_update_item
                 update_queue.put((item_id, name, updates, current_value, current_weight, current_caster_level, info))
             else:
                 logging.info(f"No updates needed for item {name}")
@@ -217,6 +220,7 @@ def update_ui():
     updates_available = []
 
     logging.debug("Entering update_ui function")
+    logging.debug(f"Current update item at start of update_ui: {current_update_item}")
 
     try:
         with term.location(0, 0):
@@ -242,7 +246,7 @@ def update_ui():
 
             # Update Item section
             if current_update_item:
-                logging.debug(f"Current update item: {current_update_item}")
+                logging.debug(f"Displaying update for item: {current_update_item['name']}")
                 print(f"Update Item: {current_update_item['name']}")
 
                 # Add the link to the page where the data was found
@@ -277,6 +281,8 @@ def update_ui():
                 if updates_available:
                     print("Update all (A)")
                 print("Finish Item (F)")
+            else:
+                logging.debug("No current update item to display")
 
             # Leave space for input prompt
             print("\n" * 3)
