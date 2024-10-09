@@ -241,52 +241,50 @@ def update_ui():
             for key, value in current_update_item['found_data'].items():
                 print(f"{key:<8} {value}")
 
-            print()
+            print("\nAvailable updates:")
             updates_available = []
             if current_update_item['current_data']['Value'] != current_update_item['found_data']['Value']:
                 updates_available.append('v')
-                print("Update Value? (V)")
+                print("Update Value (V)")
             if current_update_item['current_data']['Weight'] != current_update_item['found_data']['Weight']:
                 updates_available.append('w')
-                print("Update Weight? (W)")
+                print("Update Weight (W)")
             if current_update_item['current_data']['CL'] != current_update_item['found_data']['CL']:
                 updates_available.append('c')
-                print("Update CL? (C)")
+                print("Update CL (C)")
 
             if updates_available:
-                print("Update all? (A)")
-            print("Finish Item? (F)")
+                print("Update all (A)")
+            print("Finish Item (F)")
 
-            return updates_available
+        # Leave space for input prompt
+        print("\n" * 3)  # Increased to 3 blank lines
 
-        return []
+    return updates_available
 
 
 def get_user_input(prompt):
     valid_inputs = ['v', 'w', 'c', 'a', 'f']
     with term.cbreak(), term.hidden_cursor():
-        print(term.move_y(term.height - 2) + term.center(prompt + " (V/W/C/A/F): "))
-        print(term.move_y(term.height - 1) + term.center("Waiting for input..."))
+        print(term.move_y(term.height - 1) + term.center(prompt + " (V/W/C/A/F): "))
         while True:
             try:
-                key = term.inkey(timeout=1)
-                if key:
-                    logging.debug(f"Raw key pressed: {repr(key)}")
-                    key = key.lower()
-                    if key in valid_inputs:
-                        logging.debug(f"Valid key pressed: {key}")
-                        return key
-                    else:
-                        logging.debug(f"Invalid key pressed: {key}")
-                        print(term.move_y(term.height - 1) + term.center(f"Invalid input. Please enter V, W, C, A, or F."))
+                key = term.inkey(timeout=None)  # Wait indefinitely for input
+                logging.debug(f"Raw key pressed: {repr(key)}")
+                key = key.lower()
+                if key in valid_inputs:
+                    logging.debug(f"Valid key pressed: {key}")
+                    return key
                 else:
-                    print(term.move_y(term.height - 1) + term.center("No input received, still waiting..."))
+                    logging.debug(f"Invalid key pressed: {key}")
+                    print(term.move_y(term.height - 1) + term.center(f"Invalid input. Please enter V, W, C, A, or F."))
+                    time.sleep(1)  # Show the message for 1 second
+                    print(term.move_y(term.height - 1) + term.center(prompt + " (V/W/C/A/F): "))
             except Exception as e:
                 logging.error(f"Error in get_user_input: {str(e)}")
                 logging.error(traceback.format_exc())
-                print(f"An error occurred while getting input: {str(e)}")
-                print("Press any key to continue...")
-                term.inkey()
+                print(term.move_y(term.height - 1) + term.center(f"An error occurred: {str(e)}"))
+                time.sleep(2)
                 return None
 
 
