@@ -36,6 +36,9 @@ def format_value(value):
     if value is None:
         return "None"
     if isinstance(value, float):
+        # Convert to int if it's a whole number
+        if value.is_integer():
+            return str(int(value))
         return f"{value:.2f}".rstrip('0').rstrip('.')
     return str(value)
 
@@ -56,7 +59,7 @@ def display_item(item):
     for attr, old, new in attributes:
         old_formatted = format_value(old)
         new_formatted = format_value(new)
-        if old != new:
+        if old != new and new is not None:
             new_formatted = term.bold_red(new_formatted)
         print("{:<15} {:<15} {:<5} {:<15}".format(attr, old_formatted, "->", new_formatted))
 
@@ -75,14 +78,17 @@ def update_item(cursor, item, choice):
     params = []
 
     if 'v' in choice or 'a' in choice:
-        updates.append(sql.SQL("value = %s"))
-        params.append(new_value)
+        if new_value is not None:
+            updates.append(sql.SQL("value = %s"))
+            params.append(new_value)
     if 'w' in choice or 'a' in choice:
-        updates.append(sql.SQL("weight = %s"))
-        params.append(new_weight)
+        if new_weight is not None:
+            updates.append(sql.SQL("weight = %s"))
+            params.append(new_weight)
     if 'c' in choice or 'a' in choice:
-        updates.append(sql.SQL("casterlevel = %s"))
-        params.append(new_cl)
+        if new_cl is not None:
+            updates.append(sql.SQL("casterlevel = %s"))
+            params.append(new_cl)
 
     if updates:
         query = sql.SQL("UPDATE item SET {} WHERE id = %s").format(sql.SQL(", ").join(updates))
@@ -103,7 +109,11 @@ def update_itemupdate_name(cursor, item_id, prefix):
 
 def is_item_unchanged(item):
     _, _, _, old_value, new_value, old_weight, new_weight, old_cl, new_cl, _ = item
-    return (old_value == new_value and old_weight == new_weight and old_cl == new_cl)
+    return all([
+        old_value == new_value or new_value is None,
+        old_weight == new_weight or new_weight is None,
+        old_cl == new_cl or new_cl is None
+    ])
 
 
 def main():
@@ -121,7 +131,7 @@ def main():
                 display_item(item)
 
                 if is_item_unchanged(item):
-                    print("\nThis item has no changes. Skipping automatically.")
+                    print("\nThis item has no valid changes. Skipping automatically.")
                     update_itemupdate_name(cursor, item[0], "SKIP")
                     connection.commit()
                     continue
