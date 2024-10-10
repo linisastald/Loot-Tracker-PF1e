@@ -36,14 +36,11 @@ def display_item(item):
     id, itemid, name, old_value, new_value, old_weight, new_weight, old_cl, new_cl, source = item
     print(f"\nItem: {name} (ID: {itemid})")
     print(f"Source: {source}")
-    print("\nCurrent Data:")
-    print(f"Value:        {old_value}")
-    print(f"Weight:       {old_weight}")
-    print(f"Caster Level: {old_cl}")
-    print("\nNew Data:")
-    print(f"Value:        {new_value}")
-    print(f"Weight:       {new_weight}")
-    print(f"Caster Level: {new_cl}")
+    print("\n{:<15} {:<15} {:<5} {:<15}".format("Attribute", "Current Data", "", "New Data"))
+    print("-" * 55)
+    print("{:<15} {:<15} {:<5} {:<15}".format("Value:", str(old_value), "->", str(new_value)))
+    print("{:<15} {:<15} {:<5} {:<15}".format("Weight:", str(old_weight), "->", str(new_weight)))
+    print("{:<15} {:<15} {:<5} {:<15}".format("Caster Level:", str(old_cl), "->", str(new_cl)))
 
 
 def get_user_choice():
@@ -84,10 +81,6 @@ def update_itemupdate_name(cursor, item_id, prefix):
         "UPDATE itemupdate SET name = %s || ' ' || name WHERE id = %s",
         (prefix, item_id)
     )
-
-
-def remove_from_itemupdate(cursor, item_id):
-    cursor.execute("DELETE FROM itemupdate WHERE id = %s", (item_id,))
 
 
 def is_item_unchanged(item):
