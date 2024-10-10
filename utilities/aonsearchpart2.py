@@ -73,12 +73,26 @@ def update_item(cursor, item, choice):
         query = sql.SQL("UPDATE item SET {} WHERE id = %s").format(sql.SQL(", ").join(updates))
         cursor.execute(query, params + [itemid])
         print(f"Updated item: {name}")
+        return True
     else:
         print(f"No updates applied for item: {name}")
+        return False
+
+
+def update_itemupdate_name(cursor, item_id, prefix):
+    cursor.execute(
+        "UPDATE itemupdate SET name = %s || ' ' || name WHERE id = %s",
+        (prefix, item_id)
+    )
 
 
 def remove_from_itemupdate(cursor, item_id):
     cursor.execute("DELETE FROM itemupdate WHERE id = %s", (item_id,))
+
+
+def is_item_unchanged(item):
+    _, _, _, old_value, new_value, old_weight, new_weight, old_cl, new_cl, _ = item
+    return (old_value == new_value and old_weight == new_weight and old_cl == new_cl)
 
 
 def main():
@@ -94,6 +108,13 @@ def main():
                 print(term.clear)
                 print(f"Item {index} of {total_items}")
                 display_item(item)
+
+                if is_item_unchanged(item):
+                    print("\nThis item has no changes. Skipping automatically.")
+                    update_itemupdate_name(cursor, item[0], "SKIP")
+                    connection.commit()
+                    continue
+
                 print("\nChoices:")
                 print("v - Update Value")
                 print("w - Update Weight")
@@ -106,10 +127,14 @@ def main():
 
                 if 'q' in choice:
                     break
-                elif 's' not in choice:
-                    update_item(cursor, item, choice)
+                elif 's' in choice:
+                    update_itemupdate_name(cursor, item[0], "SKIP")
+                else:
+                    if update_item(cursor, item, choice):
+                        update_itemupdate_name(cursor, item[0], "UPDATE")
+                    else:
+                        update_itemupdate_name(cursor, item[0], "SKIP")
 
-                remove_from_itemupdate(cursor, item[0])
                 connection.commit()
 
         print("Update process completed.")
