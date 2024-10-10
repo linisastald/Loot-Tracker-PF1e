@@ -32,15 +32,33 @@ def fetch_updates(cursor):
     return cursor.fetchall()
 
 
+def format_value(value):
+    if value is None:
+        return "None"
+    if isinstance(value, float):
+        return f"{value:.2f}".rstrip('0').rstrip('.')
+    return str(value)
+
+
 def display_item(item):
     id, itemid, name, old_value, new_value, old_weight, new_weight, old_cl, new_cl, source = item
     print(f"\nItem: {name} (ID: {itemid})")
     print(f"Source: {source}")
     print("\n{:<15} {:<15} {:<5} {:<15}".format("Attribute", "Current Data", "", "New Data"))
     print("-" * 55)
-    print("{:<15} {:<15} {:<5} {:<15}".format("Value:", str(old_value), "->", str(new_value)))
-    print("{:<15} {:<15} {:<5} {:<15}".format("Weight:", str(old_weight), "->", str(new_weight)))
-    print("{:<15} {:<15} {:<5} {:<15}".format("Caster Level:", str(old_cl), "->", str(new_cl)))
+
+    attributes = [
+        ("Value:", old_value, new_value),
+        ("Weight:", old_weight, new_weight),
+        ("Caster Level:", old_cl, new_cl)
+    ]
+
+    for attr, old, new in attributes:
+        old_formatted = format_value(old)
+        new_formatted = format_value(new)
+        if old != new:
+            new_formatted = term.bold_red(new_formatted)
+        print("{:<15} {:<15} {:<5} {:<15}".format(attr, old_formatted, "->", new_formatted))
 
 
 def get_user_choice():
