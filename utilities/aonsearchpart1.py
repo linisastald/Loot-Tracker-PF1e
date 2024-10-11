@@ -45,7 +45,19 @@ urls = [
 def clean_number(number_str):
     if number_str is None or number_str.strip() in ['—', '-', '–', '']:
         return None
-    number_str = re.sub(r'\s*(gp|lbs\.)\s*$', '', number_str, flags=re.IGNORECASE)
+
+    # Handle different currency types
+    currency_multipliers = {'cp': 0.01, 'sp': 0.1, 'gp': 1}
+    for currency, multiplier in currency_multipliers.items():
+        if currency in number_str.lower():
+            cleaned = re.sub(r'[^\d.,]', '', number_str)
+            cleaned = cleaned.replace(',', '')
+            try:
+                return float(cleaned) * multiplier
+            except ValueError:
+                return None
+
+    # If no currency specified, assume gp
     cleaned = re.sub(r'[^\d.,]', '', number_str)
     cleaned = cleaned.replace(',', '')
     try:
@@ -54,9 +66,31 @@ def clean_number(number_str):
         return None
 
 
+def clean_item_name(name):
+    # Remove everything after the first parenthesis or comma
+    name = re.split(r'[\(,]', name)[0].strip()
+
+    # Handle reversed names
+    if ',' in name:
+        parts = name.split(',')
+        name = ' '.join(parts[::-1]).strip()
+
+    # Remove +X from the end of the name
+    name = re.sub(r'\s*\+\d+$', '', name)
+
+    return name
+
+
 def get_item_info(item_name):
+    cleaned_name, original_name = clean_item_name(item_name)
+    print(f"Original name: {original_name}")
+    print(f"Cleaned name: {cleaned_name}")
+
     for url_name, url in urls:
-        full_url = url + quote(item_name)
+        # Properly URL-encode the entire cleaned name
+        encoded_name = quote(cleaned_name)
+        full_url = url + encoded_name
+        print(f"Checking URL: {full_url}")
         try:
             response = requests.get(full_url, timeout=10)
             if response.status_code == 200:
@@ -65,7 +99,17 @@ def get_item_info(item_name):
 
                 # Price
                 price_match = re.search(r'Price[:\s]+([^;]+)', content)
-                price = clean_number(price_match.group(1) if price_match else None)
+                if price_match:
+                    price_str = price_match.group(1)
+                    # Check for multiple price points
+                    price_points = re.findall(r'([\d,]+\s*(?:cp|sp|gp))', price_str)
+                    if price_points:
+                        # Use the first price point
+                        price = clean_number(price_points[0])
+                    else:
+                        price = clean_number(price_str)
+                else:
+                    price = None
 
                 # Weight
                 weight_match = re.search(r'Weight[:\s]+([\d,.]+ lbs\.|—)', content)
@@ -78,12 +122,23 @@ def get_item_info(item_name):
                 cl = int(cl_match.group(1)) if cl_match else None
 
                 if price is not None or weight is not None or cl is not None:
+                    print(f"Found information at: {full_url}")
                     return {'price': price, 'cl': cl, 'weight': weight, 'source_url': full_url}
+            else:
+                print(f"No results found at: {full_url}")
 
         except requests.RequestException as e:
             logging.error(f"Error fetching {full_url}: {e}")
 
         time.sleep(1)  # Be nice to the server
+
+    # If no results found, try again with everything in parentheses removed
+    if '(' in original_name:
+        simplified_name = original_name.split('(')[0].strip()
+        print(f"No results found. Trying again with simplified name: {simplified_name}")
+        return get_item_info(simplified_name)  # Recursive call with simplified name
+
+    print("No information found for this item.")
     return None
 
 
