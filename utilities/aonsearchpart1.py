@@ -3,9 +3,11 @@ from bs4 import BeautifulSoup
 import psycopg2
 import re
 import time
-from urllib.parse import quote
+import random
 import logging
-import sys
+from urllib.parse import quote
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # Set up logging
 logging.basicConfig(filename='item_search.log', level=logging.INFO,
@@ -42,6 +44,21 @@ urls = [
 ]
 
 
+def requests_retry_session(retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 504)):
+    session = requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+
 def clean_number(number_str):
     if number_str is None or number_str.strip() in ['—', '-', '–', '']:
         return None
@@ -67,10 +84,9 @@ def clean_number(number_str):
 
 
 def clean_item_name(name):
-    # Remove everything after the first parenthesis or comma
-    name = re.split(r'[\(,]', name)[0].strip()
+    original_name = name
 
-    # Handle reversed names
+    # Handle reversed names first
     if ',' in name:
         parts = name.split(',')
         name = ' '.join(parts[::-1]).strip()
@@ -78,7 +94,19 @@ def clean_item_name(name):
     # Remove +X from the end of the name
     name = re.sub(r'\s*\+\d+$', '', name)
 
-    return name
+    # Handle special cases for parentheses
+    if '(' in name:
+        base_name, extra = name.split('(', 1)
+        extra = extra.rstrip(')')
+
+        # Remove everything after '/' if it exists
+        if '/' in extra:
+            extra = extra.split('/', 1)[0]
+
+        # Combine base_name and extra
+        name = f"{base_name.strip()} {extra.strip()}"
+
+    return name, original_name
 
 
 def get_item_info(item_name):
@@ -86,13 +114,16 @@ def get_item_info(item_name):
     print(f"Original name: {original_name}")
     print(f"Cleaned name: {cleaned_name}")
 
+    session = requests_retry_session()
+
     for url_name, url in urls:
-        # Properly URL-encode the entire cleaned name
-        encoded_name = quote(cleaned_name)
-        full_url = url + encoded_name
-        print(f"Checking URL: {full_url}")
         try:
-            response = requests.get(full_url, timeout=10)
+            # Properly URL-encode the entire cleaned name
+            encoded_name = quote(cleaned_name)
+            full_url = url + encoded_name
+            print(f"Checking URL: {full_url}")
+
+            response = session.get(full_url, timeout=30)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 content = soup.get_text()
@@ -128,9 +159,12 @@ def get_item_info(item_name):
                 print(f"No results found at: {full_url}")
 
         except requests.RequestException as e:
-            logging.error(f"Error fetching {full_url}: {e}")
+            print(f"Error fetching {full_url}: {str(e)}")
+            logging.error(f"Error fetching {full_url}: {str(e)}", exc_info=True)
 
-        time.sleep(1)  # Be nice to the server
+        # Random delay between 1 and 3 seconds before the next request
+        delay = random.uniform(1, 3)
+        time.sleep(delay)
 
     # If no results found, try again with everything in parentheses removed
     if '(' in original_name:
@@ -174,20 +208,27 @@ def main():
         items = cursor.fetchall()
 
         total_items = len(items)
-        for index, (item_id, item_name) in enumerate(items, 1):
-            print(f"Processing item {index}/{total_items}: {item_name}")
-            info = get_item_info(item_name)
-            if info:
-                insert_item_update(cursor, item_id, item_name, info)
-                connection.commit()
-                print(f"Updated information for {item_name}")
-            else:
-                print(f"No information found for {item_name}")
+        for index, item in enumerate(items, 1):
+            try:
+                item_id, item_name = item
+                print(f"Processing item {index}/{total_items}: {item_name}")
+                info = get_item_info(item_name)
+                if info:
+                    insert_item_update(cursor, item_id, item_name, info)
+                    connection.commit()
+                    print(f"Updated information for {item_name}")
+                else:
+                    print(f"No information found for {item_name}")
+            except Exception as e:
+                print(f"Error processing item: {str(e)}")
+                logging.error(f"Error processing item: {str(e)}", exc_info=True)
+                connection.rollback()  # Rollback the transaction in case of error
+            print("-------------------------")  # Add a separator between items
 
         print("Search completed.")
 
     except (Exception, psycopg2.Error) as error:
-        logging.error(f"Error: {error}")
+        logging.error(f"Error: {error}", exc_info=True)
     finally:
         if connection:
             cursor.close()
