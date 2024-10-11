@@ -211,6 +211,7 @@ def main():
             WHERE (i.value IS NULL OR i.weight IS NULL OR (i.casterlevel IS NULL AND i.type = 'magic'))         
             AND (i.subtype NOT IN ('wand','scroll','potion') OR i.subtype IS NULL)
             AND NOT EXISTS (SELECT 1 FROM itemupdate u WHERE u.itemid = i.id)
+            and (name like '%(%)%' or name like '%+%')
             ORDER BY random()
         """)
         items = cursor.fetchall()
