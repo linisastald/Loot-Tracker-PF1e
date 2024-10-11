@@ -94,7 +94,7 @@ def clean_item_name(name):
         name = ' '.join(parts[::-1]).strip()
 
     # Handle +X at the end of the name
-    name = re.sub(r'\s*\+(\d+)$', r' \1', name)
+    name = re.sub(r'\s*\+(\d+)$', r'\1', name)
 
     # Handle special cases for parentheses
     if '(' in name:
@@ -212,6 +212,7 @@ def main():
             AND (i.subtype NOT IN ('wand','scroll','potion') OR i.subtype IS NULL)
             AND NOT EXISTS (SELECT 1 FROM itemupdate u WHERE u.itemid = i.id)
             and (name like '%(%)%' or name like '%+%')
+            and name not ilike 'poison%' and name not ilike 'rod%' and name not ilike 'drug%'
             ORDER BY random()
         """)
         items = cursor.fetchall()
