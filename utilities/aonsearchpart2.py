@@ -28,7 +28,7 @@ def fetch_updates(cursor):
         FROM itemupdate iu
         JOIN item i ON iu.itemid = i.id
         WHERE iu.value IS NOT NULL OR iu.weight IS NOT NULL OR iu.casterlevel IS NOT NULL
-        and (iu.name not ilike 'update%')
+        and (iu.name not ilike 'update%' and iu.name not ilike 'skip%')
     """)
     return cursor.fetchall()
 
