@@ -91,8 +91,8 @@ def clean_item_name(name):
         parts = name.split(',')
         name = ' '.join(parts[::-1]).strip()
 
-    # Remove +X from the end of the name
-    name = re.sub(r'\s*\+\d+$', '', name)
+    # Handle +X at the end of the name
+    name = re.sub(r'\s*\+(\d+)$', r' \1', name)
 
     # Handle special cases for parentheses
     if '(' in name:
@@ -109,7 +109,7 @@ def clean_item_name(name):
     return name, original_name
 
 
-def get_item_info(item_name):
+def get_item_info(item_name, try_simplified=True):
     cleaned_name, original_name = clean_item_name(item_name)
     print(f"Original name: {original_name}")
     print(f"Cleaned name: {cleaned_name}")
@@ -166,11 +166,17 @@ def get_item_info(item_name):
         delay = random.uniform(1, 3)
         time.sleep(delay)
 
-    # If no results found, try again with everything in parentheses removed
-    if '(' in original_name:
+    # If no results found and we haven't tried the simplified name yet, try again with the number removed
+    if try_simplified and re.search(r'\d+$', cleaned_name):
+        simplified_name = re.sub(r'\s*\d+$', '', cleaned_name)
+        print(f"No results found. Trying again with simplified name: {simplified_name}")
+        return get_item_info(simplified_name, try_simplified=False)  # Recursive call with simplified name
+
+    # If no results found and we've already tried the simplified name, try removing everything in parentheses
+    elif try_simplified and '(' in original_name:
         simplified_name = original_name.split('(')[0].strip()
         print(f"No results found. Trying again with simplified name: {simplified_name}")
-        return get_item_info(simplified_name)  # Recursive call with simplified name
+        return get_item_info(simplified_name, try_simplified=False)  # Recursive call with simplified name
 
     print("No information found for this item.")
     return None
