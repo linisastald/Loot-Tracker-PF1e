@@ -29,7 +29,7 @@ urls = [
     ("Spellbook", "https://aonprd.com/SpellbookDisplay.aspx?ItemName="),
     ("Vehicles", "https://aonprd.com/Vehicles.aspx?ItemName="),
     ("Relics", "https://aonprd.com/Relics.aspx?ItemName="),
-    ("Magic - Altars", "https://www.aonprd.com/MagicAltarsDisplay.aspx?ItemName="),
+    ("Magic - Altars", "https://aonprd.com/MagicAltarsDisplay.aspx?ItemName="),
     ("Magic - Wondrous", "https://aonprd.com/MagicWondrousDisplay.aspx?FinalName="),
     ("Magic - Artifacts", "https://aonprd.com/MagicArtifactsDisplay.aspx?ItemName="),
     ("Magic - Weapons", "https://aonprd.com/MagicWeaponsDisplay.aspx?ItemName="),
@@ -40,7 +40,9 @@ urls = [
     ("Magic - Intelligent", "https://aonprd.com/MagicIntelligentDisplay.aspx?ItemName="),
     ("Magic - Rods", "https://aonprd.com/MagicRodsDisplay.aspx?FinalName="),
     ("Magic - Staves", "https://aonprd.com/MagicStavesDisplay.aspx?ItemName="),
-    ("Magic - Plants", "https://aonprd.com/MagicPlantsDisplay.aspx?FinalName=")
+    ("Magic - Plants", "https://aonprd.com/MagicPlantsDisplay.aspx?FinalName="),
+    ("Magic - Favors", "https://aonprd.com/MagicFavorsDisplay.aspx?ItemName=")
+
 ]
 
 
