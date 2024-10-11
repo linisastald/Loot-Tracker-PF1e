@@ -106,7 +106,7 @@ def clean_item_name(name):
             extra = extra.split('/', 1)[0]
 
         # Combine base_name and extra
-        name = f"{base_name.strip()} {extra.strip()}"
+        name = f"{base_name.strip()}{extra.strip()}"
 
     return name, original_name
 
