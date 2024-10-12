@@ -1,5 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Paper, Typography, Switch, Button, List, ListItem, ListItemText, FormGroup, FormControlLabel, Box } from '@mui/material';
+import {
+  Container,
+  Paper,
+  Typography,
+  Switch,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  FormGroup,
+  FormControlLabel,
+  Box,
+  Snackbar
+} from '@mui/material';
 import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
 
@@ -18,6 +31,8 @@ const Tasks = () => {
   const [activeCharacters, setActiveCharacters] = useState([]);
   const [selectedCharacters, setSelectedCharacters] = useState({});
   const [assignedTasks, setAssignedTasks] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   useEffect(() => {
     fetchActiveCharacters();
@@ -34,6 +49,7 @@ const Tasks = () => {
       setSelectedCharacters(initialSelectedState);
     } catch (error) {
       console.error('Error fetching active characters:', error);
+      showSnackbar('Error fetching active characters');
     }
   };
 
@@ -86,16 +102,13 @@ const Tasks = () => {
       let adjustedTasks = [...tasks];
 
       if (tasks.length === charCount) {
-        // Case 1: Equal number of tasks and characters
         adjustedTasks = shuffleArray(adjustedTasks);
       } else if (tasks.length > charCount) {
-        // Case 2: More tasks than characters
         while (adjustedTasks.length < charCount * 2) {
           adjustedTasks.push('Free Space');
         }
         adjustedTasks = shuffleArray(adjustedTasks);
       } else {
-        // Case 3: Fewer tasks than characters
         while (adjustedTasks.length < charCount) {
           adjustedTasks.push('Free Space');
         }
@@ -147,6 +160,52 @@ const Tasks = () => {
     </List>
   );
 
+  const formatTasksForDiscord = () => {
+    let message = '**Task Assignments**\n\n';
+
+    if (assignedTasks) {
+      message += '**Pre-Session Tasks:**\n';
+      message += formatTaskSection(assignedTasks.pre);
+
+      message += '\n**During Session Tasks:**\n';
+      message += formatTaskSection(assignedTasks.during);
+
+      message += '\n**Post-Session Tasks:**\n';
+      message += formatTaskSection(assignedTasks.post);
+    }
+
+    return message;
+  };
+
+  const formatTaskSection = (tasks) => {
+    return Object.entries(tasks).map(([character, characterTasks]) => {
+      return `${character}:\n${characterTasks.map(task => `• ${task}`).join('\n')}\n`;
+    }).join('\n');
+  };
+
+  const sendToDiscord = async () => {
+    try {
+      const message = formatTasksForDiscord();
+      await api.post('/discord/send-message', {message});
+      showSnackbar('Tasks sent to Discord successfully!');
+    } catch (error) {
+      console.error('Error sending tasks to Discord:', error);
+      showSnackbar('Failed to send tasks to Discord. Please try again.');
+    }
+  };
+
+  const showSnackbar = (message) => {
+    setSnackbarMessage(message);
+    setSnackbarOpen(true);
+  };
+
+  const handleSnackbarClose = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setSnackbarOpen(false);
+  };
+
   return (
     <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
@@ -179,8 +238,23 @@ const Tasks = () => {
             <Typography variant="h6">Post-Session Tasks</Typography>
             {renderTaskList(assignedTasks.post)}
           </Paper>
+
+          <Button variant="contained" onClick={sendToDiscord} sx={{mt: 2}}>
+            Send to Discord
+          </Button>
         </>
       )}
+
+      <Snackbar
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'left',
+          }}
+          open={snackbarOpen}
+          autoHideDuration={6000}
+          onClose={handleSnackbarClose}
+          message={snackbarMessage}
+      />
     </Container>
   );
 };

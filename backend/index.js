@@ -82,6 +82,8 @@ const goldRoutes = require('./src/api/routes/gold');
 const userRoutes = require('./src/api/routes/user');
 const soldRoutes = require('./src/api/routes/sold');
 const consumablesRoutes = require('./src/api/routes/consumables');
+const discordRoutes = require('./src/api/routes/discord');
+const settingsRoutes = require('./src/api/routes/settings');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/loot', lootRoutes);
@@ -89,6 +91,8 @@ app.use('/api/gold', goldRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/sold', soldRoutes);
 app.use('/api/consumables', consumablesRoutes);
+app.use('/api/discord', discordRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // CSRF Token route
 app.get('/api/csrf-token', csrfProtection, (req, res) => {
