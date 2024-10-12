@@ -62,6 +62,7 @@ const Tasks = () => {
   const handleToggle = (id) => {
     setSelectedCharacters(prev => ({ ...prev, [id]: !prev[id] }));
   };
+
   const createEmbed = (title, description, fields, color) => ({
     embeds: [{
       title,
@@ -73,6 +74,7 @@ const Tasks = () => {
       }
     }]
   });
+
   const formatTasksForEmbed = (tasks) => {
     return Object.entries(tasks).map(([character, characterTasks]) => ({
       name: character,
@@ -89,7 +91,7 @@ const Tasks = () => {
     return array;
   };
 
-  const assignTasks = () => {
+  const assignTasks = async () => {
     const selectedChars = activeCharacters.filter(char => selectedCharacters[char.id]);
 
     const preTasks = [
@@ -154,11 +156,45 @@ const Tasks = () => {
 
     const postChars = [...selectedChars, { id: 'DM', name: 'DM' }];
 
-    setAssignedTasks({
+    const newAssignedTasks = {
       pre: assignTasksToChars(preTasks, selectedChars),
       during: assignTasksToChars(duringTasks, selectedChars),
       post: assignTasksToChars(postTasks, postChars)
-    });
+    };
+
+    setAssignedTasks(newAssignedTasks);
+
+    // Send tasks to Discord
+    try {
+      const preSessionEmbed = createEmbed(
+        "Pre-Session Tasks:",
+        "",
+        formatTasksForEmbed(newAssignedTasks.pre),
+        COLORS.PRE_SESSION
+      );
+
+      const duringSessionEmbed = createEmbed(
+        "During Session Tasks:",
+        "",
+        formatTasksForEmbed(newAssignedTasks.during),
+        COLORS.DURING_SESSION
+      );
+
+      const postSessionEmbed = createEmbed(
+        "Post-Session Tasks:",
+        "",
+        formatTasksForEmbed(newAssignedTasks.post),
+        COLORS.POST_SESSION
+      );
+
+      const embeds = [preSessionEmbed, duringSessionEmbed, postSessionEmbed];
+
+      await api.post('/discord/send-message', { embeds });
+      showSnackbar('Tasks assigned and sent to Discord successfully!');
+    } catch (error) {
+      console.error('Error sending tasks to Discord:', error);
+      showSnackbar('Tasks assigned, but failed to send to Discord. Please try again.');
+    }
   };
 
   const renderTaskList = (tasks) => (
@@ -183,51 +219,6 @@ const Tasks = () => {
       ))}
     </List>
   );
-
-
-  const formatTaskSection = (tasks) => {
-    return Object.entries(tasks).map(([character, characterTasks]) => {
-      return `${character}:\n${characterTasks.map(task => `• ${task}`).join('\n')}\n`;
-    }).join('\n');
-  };
-
-  const sendToDiscord = async () => {
-    try {
-      if (!assignedTasks) {
-        showSnackbar('No tasks assigned yet. Please assign tasks first.');
-        return;
-      }
-
-      const preSessionEmbed = createEmbed(
-          "Pre-Session Tasks:",
-          "",
-          formatTasksForEmbed(assignedTasks.pre),
-          COLORS.PRE_SESSION
-      );
-
-      const duringSessionEmbed = createEmbed(
-          "During Session Tasks:",
-          "",
-          formatTasksForEmbed(assignedTasks.during),
-          COLORS.DURING_SESSION
-      );
-
-      const postSessionEmbed = createEmbed(
-          "Post-Session Tasks:",
-          "",
-          formatTasksForEmbed(assignedTasks.post),
-          COLORS.POST_SESSION
-      );
-
-      const embeds = [preSessionEmbed, duringSessionEmbed, postSessionEmbed];
-
-      await api.post('/discord/send-message', {embeds});
-      showSnackbar('Tasks sent to Discord successfully!');
-    } catch (error) {
-      console.error('Error sending tasks to Discord:', error);
-      showSnackbar('Failed to send tasks to Discord. Please try again.');
-    }
-  };
 
   const showSnackbar = (message) => {
     setSnackbarMessage(message);
@@ -254,7 +245,7 @@ const Tasks = () => {
             />
           ))}
         </FormGroup>
-        <Button variant="contained" onClick={assignTasks} sx={{ mt: 2 }}>Assign Tasks</Button>
+        <Button variant="contained" onClick={assignTasks} sx={{ mt: 2 }}>Assign Tasks and Send to Discord</Button>
       </Paper>
 
       {assignedTasks && (
@@ -273,22 +264,18 @@ const Tasks = () => {
             <Typography variant="h6">Post-Session Tasks</Typography>
             {renderTaskList(assignedTasks.post)}
           </Paper>
-
-          <Button variant="contained" onClick={sendToDiscord} sx={{mt: 2}}>
-            Send to Discord
-          </Button>
         </>
       )}
 
       <Snackbar
-          anchorOrigin={{
-            vertical: 'bottom',
-            horizontal: 'left',
-          }}
-          open={snackbarOpen}
-          autoHideDuration={6000}
-          onClose={handleSnackbarClose}
-          message={snackbarMessage}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        message={snackbarMessage}
       />
     </Container>
   );
