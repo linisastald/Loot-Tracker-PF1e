@@ -216,18 +216,21 @@ const Tasks = () => {
 
       const preSessionEmbed = createEmbed(
           "Pre-Session Tasks:",
+          "",
           formatTasksForEmbed(assignedTasks.pre),
           COLORS.PRE_SESSION
       );
 
       const duringSessionEmbed = createEmbed(
           "During Session Tasks:",
+          "",
           formatTasksForEmbed(assignedTasks.during),
           COLORS.DURING_SESSION
       );
 
       const postSessionEmbed = createEmbed(
           "Post-Session Tasks:",
+          "",
           formatTasksForEmbed(assignedTasks.post),
           COLORS.POST_SESSION
       );
