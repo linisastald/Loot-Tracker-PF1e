@@ -16,6 +16,12 @@ import {
 import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
 
+const COLORS = {
+  PRE_SESSION: 8311585,  // Purple
+  DURING_SESSION: 16776960,  // Yellow
+  POST_SESSION: 16711680  // Red
+};
+
 const CompactListItem = styled(ListItem)(({ theme }) => ({
   padding: theme.spacing(0, 1),
 }));
@@ -55,6 +61,24 @@ const Tasks = () => {
 
   const handleToggle = (id) => {
     setSelectedCharacters(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+  const createEmbed = (title, description, fields, color) => ({
+    embeds: [{
+      title,
+      description,
+      fields,
+      color,
+      author: {
+        name: "Task Assignments"
+      }
+    }]
+  });
+  const formatTasksForEmbed = (tasks) => {
+    return Object.entries(tasks).map(([character, characterTasks]) => ({
+      name: character,
+      value: characterTasks.map(task => `• ${task}`).join('\n'),
+      inline: false
+    }));
   };
 
   const shuffleArray = (array) => {
@@ -185,8 +209,35 @@ const Tasks = () => {
 
   const sendToDiscord = async () => {
     try {
-      const message = formatTasksForDiscord();
-      await api.post('/discord/send-message', {message});
+      if (!assignedTasks) {
+        showSnackbar('No tasks assigned yet. Please assign tasks first.');
+        return;
+      }
+
+      const preSessionEmbed = createEmbed(
+          "Pre-Session Tasks:",
+          "Tasks for before we start session",
+          formatTasksForEmbed(assignedTasks.pre),
+          COLORS.PRE_SESSION
+      );
+
+      const duringSessionEmbed = createEmbed(
+          "During Session Tasks:",
+          "Tasks to be done during the session",
+          formatTasksForEmbed(assignedTasks.during),
+          COLORS.DURING_SESSION
+      );
+
+      const postSessionEmbed = createEmbed(
+          "Post-Session Tasks:",
+          "Tasks to be completed after the session",
+          formatTasksForEmbed(assignedTasks.post),
+          COLORS.POST_SESSION
+      );
+
+      const embeds = [preSessionEmbed, duringSessionEmbed, postSessionEmbed];
+
+      await api.post('/discord/send-message', {embeds});
       showSnackbar('Tasks sent to Discord successfully!');
     } catch (error) {
       console.error('Error sending tasks to Discord:', error);
