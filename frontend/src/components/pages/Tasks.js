@@ -73,15 +73,10 @@ const Tasks = () => {
       }
     }]
   });
-
   const formatTasksForEmbed = (tasks) => {
     return Object.entries(tasks).map(([character, characterTasks]) => ({
       name: character,
-      value: "```ansi\n" + characterTasks.map(task =>
-        task === 'Free Space'
-          ? `\u001b[0;30m• ${task}\u001b[0m`  // Grey color for Free Space
-          : `• ${task}`
-      ).join('\n') + "\n```",
+      value: characterTasks.map(task => `• ${task}`).join('\n'),
       inline: false
     }));
   };
@@ -204,29 +199,29 @@ const Tasks = () => {
       }
 
       const preSessionEmbed = createEmbed(
-        "Pre-Session Tasks:",
-        "Tasks for before we start session",
-        formatTasksForEmbed(assignedTasks.pre),
-        COLORS.PRE_SESSION
+          "Pre-Session Tasks:",
+          "",
+          formatTasksForEmbed(assignedTasks.pre),
+          COLORS.PRE_SESSION
       );
 
       const duringSessionEmbed = createEmbed(
-        "During Session Tasks:",
-        "Tasks to be done during the session",
-        formatTasksForEmbed(assignedTasks.during),
-        COLORS.DURING_SESSION
+          "During Session Tasks:",
+          "",
+          formatTasksForEmbed(assignedTasks.during),
+          COLORS.DURING_SESSION
       );
 
       const postSessionEmbed = createEmbed(
-        "Post-Session Tasks:",
-        "Tasks to be completed after the session",
-        formatTasksForEmbed(assignedTasks.post),
-        COLORS.POST_SESSION
+          "Post-Session Tasks:",
+          "",
+          formatTasksForEmbed(assignedTasks.post),
+          COLORS.POST_SESSION
       );
 
       const embeds = [preSessionEmbed, duringSessionEmbed, postSessionEmbed];
 
-      await api.post('/discord/send-message', { embeds });
+      await api.post('/discord/send-message', {embeds});
       showSnackbar('Tasks sent to Discord successfully!');
     } catch (error) {
       console.error('Error sending tasks to Discord:', error);
