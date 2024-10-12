@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const discordController = require('../controllers/discordController');
+const discordController = require('../../controllers/discordController');
 
 router.post('/send-message', discordController.sendMessage);
 
