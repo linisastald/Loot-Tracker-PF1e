@@ -17,14 +17,42 @@ import {
   ListItem,
   ListItemText,
   Divider,
+  Alert,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
 
-// ... (keep the months and daysOfWeek arrays as they were)
+const months = [
+  { name: 'Abadius', days: 31 },
+  { name: 'Calistril', days: 28 },
+  { name: 'Pharast', days: 31 },
+  { name: 'Gozran', days: 30 },
+  { name: 'Desnus', days: 31 },
+  { name: 'Sarenith', days: 30 },
+  { name: 'Erastus', days: 31 },
+  { name: 'Arodus', days: 31 },
+  { name: 'Rova', days: 30 },
+  { name: 'Lamashan', days: 31 },
+  { name: 'Neth', days: 30 },
+  { name: 'Kuthona', days: 31 }
+];
+
+const daysOfWeek = ['Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'];
 
 const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected, hasNote }) => ({
-  // ... (keep the styling as it was)
+  height: '80px',
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'space-between',
+  padding: theme.spacing(1),
+  cursor: 'pointer',
+  backgroundColor: isCurrentDay ? theme.palette.primary.light :
+                  isSelected ? theme.palette.secondary.light :
+                  hasNote ? theme.palette.info.light :
+                  theme.palette.background.paper,
+  '&:hover': {
+    backgroundColor: theme.palette.action.hover,
+  },
 }));
 
 const GolarionCalendar = () => {
@@ -33,6 +61,7 @@ const GolarionCalendar = () => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [notes, setNotes] = useState({});
   const [noteText, setNoteText] = useState('');
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchCurrentDate();
@@ -42,21 +71,27 @@ const GolarionCalendar = () => {
   const fetchCurrentDate = async () => {
     try {
       const response = await api.get('/calendar/current-date');
+      console.log('Current date response:', response.data);
       const { year, month, day } = response.data;
       setCurrentDate({ year, month, day });
       setDisplayedDate({ year, month });
       setSelectedDate({ year, month, day });
+      setError(null);
     } catch (error) {
-      console.error('Error fetching current date:', error);
+      console.error('Error fetching current date:', error.response || error);
+      setError('Failed to fetch current date. Please try again later.');
     }
   };
 
   const fetchNotes = async () => {
     try {
       const response = await api.get('/calendar/notes');
+      console.log('Notes response:', response.data);
       setNotes(response.data);
+      setError(null);
     } catch (error) {
-      console.error('Error fetching notes:', error);
+      console.error('Error fetching notes:', error.response || error);
+      setError('Failed to fetch notes. Please try again later.');
     }
   };
 
@@ -67,12 +102,31 @@ const GolarionCalendar = () => {
       setCurrentDate({ year, month, day });
       setDisplayedDate({ year, month });
       setSelectedDate({ year, month, day });
+      setError(null);
     } catch (error) {
       console.error('Error advancing day:', error);
+      setError('Failed to advance day. Please try again later.');
     }
   };
 
-  // ... (keep handlePrevMonth, handleNextMonth, and handleGoToToday as they were)
+  const handlePrevMonth = () => {
+    setDisplayedDate(prev => ({
+      year: prev.month > 0 ? prev.year : prev.year - 1,
+      month: prev.month > 0 ? prev.month - 1 : 11
+    }));
+  };
+
+  const handleNextMonth = () => {
+    setDisplayedDate(prev => ({
+      year: prev.month < 11 ? prev.year : prev.year + 1,
+      month: prev.month < 11 ? prev.month + 1 : 0
+    }));
+  };
+
+  const handleGoToToday = () => {
+    setDisplayedDate({ year: currentDate.year, month: currentDate.month });
+    setSelectedDate(currentDate);
+  };
 
   const handleDayClick = (day) => {
     const clickedDate = { ...displayedDate, day };
@@ -92,15 +146,84 @@ const GolarionCalendar = () => {
         ...prevNotes,
         [`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`]: noteText
       }));
+      setError(null);
     } catch (error) {
       console.error('Error saving note:', error);
+      setError('Failed to save note. Please try again later.');
     }
   };
 
-  // ... (keep getMoonPhase and renderCalendar as they were)
+  const getMoonPhase = (date) => {
+    const totalDays = date.year * 365 + date.month * 30 + date.day;
+    const phase = totalDays % 28;
+    if (phase < 7) return 'New Moon';
+    if (phase < 14) return 'First Quarter';
+    if (phase < 21) return 'Full Moon';
+    return 'Last Quarter';
+  };
+
+  const renderCalendar = () => {
+    const month = months[displayedDate.month];
+    const firstDayOfMonth = new Date(displayedDate.year, displayedDate.month, 1).getDay();
+    const weeks = Math.ceil((month.days + firstDayOfMonth) / 7);
+
+    return (
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              {daysOfWeek.map(day => (
+                <TableCell key={day} align="center">{day}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {[...Array(weeks)].map((_, weekIndex) => (
+              <TableRow key={weekIndex}>
+                {[...Array(7)].map((_, dayIndex) => {
+                  const day = weekIndex * 7 + dayIndex - firstDayOfMonth + 1;
+                  const isValidDay = day > 0 && day <= month.days;
+                  const dateKey = `${displayedDate.year}-${displayedDate.month}-${day}`;
+                  const isCurrentDay = currentDate.year === displayedDate.year &&
+                                       currentDate.month === displayedDate.month &&
+                                       currentDate.day === day;
+                  const isSelected = selectedDate &&
+                                     selectedDate.year === displayedDate.year &&
+                                     selectedDate.month === displayedDate.month &&
+                                     selectedDate.day === day;
+                  const hasNote = !!notes[dateKey];
+
+                  return (
+                    <TableCell key={dayIndex} padding="none">
+                      {isValidDay && (
+                        <StyledDay
+                          onClick={() => handleDayClick(day)}
+                          isCurrentDay={isCurrentDay}
+                          isSelected={isSelected}
+                          hasNote={hasNote}
+                        >
+                          <Typography variant="body2">{day}</Typography>
+                          {hasNote && <Typography variant="caption">Note</Typography>}
+                        </StyledDay>
+                      )}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    );
+  };
 
   return (
     <Container maxWidth="lg">
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h4" gutterBottom>Golarion Calendar</Typography>
         <Grid container justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
