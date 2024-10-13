@@ -36,6 +36,7 @@ import api from '../../utils/api';
 const Sidebar = () => {
   const [openLootViews, setOpenLootViews] = useState(false);
   const [openGold, setOpenGold] = useState(false);
+  const [openBeta, setOpenBeta] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
   const [openDMSettings, setOpenDMSettings] = useState(false);
   const [isDM, setIsDM] = useState(false);
@@ -170,8 +171,8 @@ const Sidebar = () => {
         <MenuItem
           primary="Beta"
           icon={<Construction/>}
-          onClick={handleToggle(setOpenSettings)}
-          open={openSettings}
+          onClick={handleToggle(setOpenBeta)}
+          open={openBeta}
         >
           <MenuItem to="/golarion-calendar" primary="Golarion Calendar" icon={<DateRange />} />
           <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
