@@ -20,10 +20,12 @@ const Identify = () => {
   const [openItems, setOpenItems] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [isDMUser, setIsDMUser] = useState(false);
+  const [items, setItems] = useState([]); // New state to store all items
 
   useEffect(() => {
     fetchActiveUserDetails();
     fetchLoot();
+    fetchItems(); // New function to fetch all items
     setIsDMUser(isDM());
   }, []);
 
@@ -60,6 +62,15 @@ const Identify = () => {
     }
   };
 
+  const fetchItems = async () => {
+    try {
+      const response = await api.get('/loot/items');
+      setItems(response.data);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+    }
+  };
+
   const handleSelectItem = (id) => {
     setSelectedItems(prevSelectedItems =>
       prevSelectedItems.includes(id)
@@ -71,8 +82,11 @@ const Identify = () => {
   const handleIdentify = async (itemsToIdentify) => {
     try {
       const identifyResults = await Promise.all(itemsToIdentify.map(async (itemId) => {
-        const item = loot.individual.find(i => i.id === itemId);
-        if (!item) return null;
+        const lootItem = loot.individual.find(i => i.id === itemId);
+        if (!lootItem) return null;
+
+        const item = items.find(i => i.id === lootItem.itemid);
+        const casterLevel = lootItem.casterlevel || (item ? item.casterlevel : null) || 1;
 
         if (isDMUser) {
           return { itemId, success: true, spellcraftRoll: 99 }; // Use 99 for DM identifications
@@ -80,8 +94,7 @@ const Identify = () => {
 
         const diceRoll = Math.floor(Math.random() * 20) + 1;
         const totalRoll = diceRoll + parseInt(spellcraftValue);
-        const casterLevel = Math.min(item.caster_level || 1, 20);
-        const success = totalRoll >= 15 + casterLevel;
+        const success = totalRoll >= 15 + Math.min(casterLevel, 20);
 
         return { itemId, success, spellcraftRoll: totalRoll };
       }));
