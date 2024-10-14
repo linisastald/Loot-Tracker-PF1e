@@ -44,7 +44,6 @@ const Sidebar = () => {
   const [isDM, setIsDM] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
-  SessionTools
   const location = useLocation();
 
   const groupName = window.env?.REACT_APP_GROUP_NAME || 'Loot Tracker';
