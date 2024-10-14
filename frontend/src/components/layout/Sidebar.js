@@ -29,6 +29,7 @@ import {
   PsychologyAlt,
   AccountBalanceWallet,
 } from '@mui/icons-material';
+import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import '../../styles/Sidebar.css';
 import api from '../../utils/api';
@@ -39,9 +40,11 @@ const Sidebar = () => {
   const [openBeta, setOpenBeta] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
   const [openDMSettings, setOpenDMSettings] = useState(false);
+  const [openSessionTools, setOpenSessionTools] = useState(false);
   const [isDM, setIsDM] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
+  SessionTools
   const location = useLocation();
 
   const groupName = window.env?.REACT_APP_GROUP_NAME || 'Loot Tracker';
@@ -144,7 +147,7 @@ const Sidebar = () => {
       <List>
         <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
         <MenuItem
-          primary="Loot Views"
+          primary="Loot Stuff"
           icon={<ViewList />}
           onClick={handleToggle(setOpenLootViews)}
           open={openLootViews}
@@ -166,19 +169,19 @@ const Sidebar = () => {
           open={openGold}
         >
           <MenuItem to="/gold-transactions" primary="Gold Transactions"/>
+          <MenuItem to="/character-loot-ledger" primary="Character Loot Ledger" icon={<AccountBalanceWallet />} />
         </MenuItem>
-        <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
         <MenuItem
-          primary="Beta"
-          icon={<Construction/>}
-          onClick={handleToggle(setOpenBeta)}
-          open={openBeta}
+          primary="Session Tools"
+          icon={<AutoStoriesIcon/>}
+          onClick={handleToggle(setOpenSessionTools)}
+          open={openSessionTools}
         >
           <MenuItem to="/golarion-calendar" primary="Golarion Calendar" icon={<DateRange />} />
           <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
-          <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
-          <MenuItem to="/character-loot-ledger" primary="Character Loot Ledger" icon={<AccountBalanceWallet />} />
+          <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
         </MenuItem>
+
         <MenuItem
           primary="Settings"
           icon={<Settings/>}
@@ -186,6 +189,15 @@ const Sidebar = () => {
           open={openSettings}
         >
           <MenuItem to="/user-settings" primary="User Settings"/>
+        </MenuItem>
+        <MenuItem
+          primary="Beta"
+          icon={<Construction/>}
+          onClick={handleToggle(setOpenBeta)}
+          open={openBeta}
+        >
+          <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
+
         </MenuItem>
         {isDM && (
           <MenuItem
@@ -197,6 +209,7 @@ const Sidebar = () => {
             <MenuItem to="/character-user-management" primary="Character and User Management" />
             <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
           </MenuItem>
+
         )}
       </List>
       <Box sx={{ position: 'absolute', bottom: 0, width: '100%', textAlign: 'center', py: 1 }}>
