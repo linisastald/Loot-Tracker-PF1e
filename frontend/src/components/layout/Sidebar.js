@@ -156,7 +156,7 @@ const Sidebar = () => {
       <List>
         <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
         <MenuItem
-          primary="Loot Stuff"
+          primary="Loot"
           icon={<ViewList />}
           onClick={handleToggle(setOpenLootViews)}
           open={openLootViews}
@@ -164,12 +164,12 @@ const Sidebar = () => {
         >
           <MenuItem
             to="/unprocessed-loot"
-            primary="Unprocessed Loot"
+            primary="Unprocessed"
             badge={unprocessedLootCount > 0 ? unprocessedLootCount : null}
           />
-          <MenuItem to="/kept-party" primary="Kept - Party" />
-          <MenuItem to="/kept-character" primary="Kept - Character" />
-          <MenuItem to="/sold-loot" primary="Sold Loot" />
+          <MenuItem to="/kept-party" primary="Party" />
+          <MenuItem to="/kept-character" primary="Character" />
+          <MenuItem to="/sold-loot" primary="Sold" />
           <MenuItem to="/given-away-or-trashed" primary="Trashed" />
         </MenuItem>
         <MenuItem
@@ -179,7 +179,7 @@ const Sidebar = () => {
           open={openGold}
           isCategory
         >
-          <MenuItem to="/gold-transactions" primary="Gold Transactions"/>
+          <MenuItem to="/gold-transactions" primary="Transactions"/>
           <MenuItem to="/character-loot-ledger" primary="Loot Ledger" icon={<AccountBalanceWallet />} />
         </MenuItem>
         <MenuItem
