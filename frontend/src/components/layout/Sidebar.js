@@ -28,9 +28,19 @@ import {
   Construction,
   PsychologyAlt,
   AccountBalanceWallet,
+  Groups2,
+  Person4,
+  Sell,
+  Delete,
+  AccountBalance
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
+import Groups2Icon from '@mui/icons-material/';
+import Person4Icon from '@mui/icons-material/';
+import SellIcon from '@mui/icons-material/';
+import DeleteIcon from '@mui/icons-material/';
 import '../../styles/Sidebar.css';
 import api from '../../utils/api';
 
@@ -164,13 +174,13 @@ const Sidebar = () => {
         >
           <MenuItem
             to="/unprocessed-loot"
-            primary="Unprocessed"
+            primary="Unprocessed" icon={<AssignmentLateIcon />}
             badge={unprocessedLootCount > 0 ? unprocessedLootCount : null}
           />
-          <MenuItem to="/kept-party" primary="Party" />
-          <MenuItem to="/kept-character" primary="Character" />
-          <MenuItem to="/sold-loot" primary="Sold" />
-          <MenuItem to="/given-away-or-trashed" primary="Trashed" />
+          <MenuItem to="/kept-party" primary="Party" icon={<Groups2 />} />
+          <MenuItem to="/kept-character" primary="Character" icon={<Person4 />} />
+          <MenuItem to="/sold-loot" primary="Sold" icon={<Sell />} />
+          <MenuItem to="/given-away-or-trashed" primary="Trashed" icon={<Delete />} />
         </MenuItem>
         <MenuItem
           primary="Gold"
@@ -179,7 +189,7 @@ const Sidebar = () => {
           open={openGold}
           isCategory
         >
-          <MenuItem to="/gold-transactions" primary="Transactions"/>
+          <MenuItem to="/gold-transactions" primary="Transactions" icon={<AccountBalance />} />
           <MenuItem to="/character-loot-ledger" primary="Loot Ledger" icon={<AccountBalanceWallet />} />
         </MenuItem>
         <MenuItem
