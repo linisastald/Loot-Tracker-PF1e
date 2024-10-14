@@ -48,7 +48,7 @@ const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected }) => ({
   padding: theme.spacing(1),
   cursor: 'pointer',
   backgroundColor: isCurrentDay
-    ? theme.palette.grey[200]  // Slightly lighter gray for current day
+    ? theme.palette.grey[800]  // Slightly lighter gray for current day
     : theme.palette.background.paper,
   border: isSelected
     ? `2px solid ${theme.palette.error.dark}`  // Dark red outline for selected day
