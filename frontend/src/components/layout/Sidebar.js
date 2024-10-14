@@ -170,7 +170,7 @@ const Sidebar = () => {
           <MenuItem to="/kept-party" primary="Kept - Party" />
           <MenuItem to="/kept-character" primary="Kept - Character" />
           <MenuItem to="/sold-loot" primary="Sold Loot" />
-          <MenuItem to="/given-away-or-trashed" primary="Given Away or Trashed" />
+          <MenuItem to="/given-away-or-trashed" primary="Trashed" />
         </MenuItem>
         <MenuItem
           primary="Gold"
@@ -180,7 +180,7 @@ const Sidebar = () => {
           isCategory
         >
           <MenuItem to="/gold-transactions" primary="Gold Transactions"/>
-          <MenuItem to="/character-loot-ledger" primary="Character Loot Ledger" icon={<AccountBalanceWallet />} />
+          <MenuItem to="/character-loot-ledger" primary="Loot Ledger" icon={<AccountBalanceWallet />} />
         </MenuItem>
         <MenuItem
           primary="Session Tools"
@@ -189,7 +189,7 @@ const Sidebar = () => {
           open={openSessionTools}
           isCategory
         >
-          <MenuItem to="/golarion-calendar" primary="Golarion Calendar" icon={<DateRange />} />
+          <MenuItem to="/golarion-calendar" primary="Calendar" icon={<DateRange />} />
           <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
           <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
         </MenuItem>
@@ -219,7 +219,7 @@ const Sidebar = () => {
             open={openDMSettings}
             isCategory
           >
-            <MenuItem to="/character-user-management" primary="Character and User Management" />
+            <MenuItem to="/character-user-management" primary="Gen Management" />
             <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
           </MenuItem>
         )}
