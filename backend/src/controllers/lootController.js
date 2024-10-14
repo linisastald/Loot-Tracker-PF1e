@@ -53,7 +53,7 @@ exports.createLoot = async (req, res) => {
       if (parsedItem) {
         // Use parsed data
         const itemResult = await pool.query(`
-          SELECT id, name, type, subtype, value 
+          SELECT id, name, type, subtype, value, weight
           FROM item 
           WHERE SIMILARITY(name, $1) > 0.3
           ORDER BY SIMILARITY(name, $1) DESC 
@@ -68,7 +68,8 @@ exports.createLoot = async (req, res) => {
             name: parsedItem,
             type: itemType,
             subtype: itemSubtype,
-            value: itemValue
+            value: itemValue,
+            weight: null // Default weight to null if not found
           };
         }
 
@@ -101,7 +102,7 @@ exports.createLoot = async (req, res) => {
         isMasterwork = parsedMods.some(mod => mod.toLowerCase().includes('masterwork'));
       } else if (itemId) {
         // Item selected from autofill
-        const itemResult = await pool.query('SELECT id, name, type, subtype, value FROM item WHERE id = $1', [itemId]);
+        const itemResult = await pool.query('SELECT id, name, type, subtype, value, weight FROM item WHERE id = $1', [itemId]);
         itemData = itemResult.rows[0];
 
         // Fetch mods if any
@@ -119,7 +120,8 @@ exports.createLoot = async (req, res) => {
           name: name,
           type: type || '',
           subtype: '',
-          value: null  // Default value, can be adjusted if needed
+          value: null,
+          weight: null
         };
         modsData = [];
         isMasterwork = masterwork || false;
@@ -133,7 +135,8 @@ exports.createLoot = async (req, res) => {
         isMasterwork,
         itemData.name,
         charges,
-        size
+        size,
+        itemData.weight
       ) : 0;
 
       const createdEntry = await Loot.create({
@@ -554,14 +557,14 @@ exports.parseItemDescription = async (req, res) => {
 
 exports.calculateValue = async (req, res) => {
   try {
-    const { itemId, itemType, itemSubtype, isMasterwork, itemValue, mods } = req.body;
+    const { itemId, itemType, itemSubtype, isMasterwork, itemValue, mods, charges, size, weight } = req.body;
 
     const modDetails = await Promise.all(mods.map(async (mod) => {
       const result = await pool.query('SELECT id, plus, valuecalc FROM mod WHERE id = $1', [mod.id]);
       return result.rows[0];
     }));
 
-    const finalValue = calculateFinalValue(itemValue, itemType, itemSubtype, modDetails, isMasterwork);
+    const finalValue = calculateFinalValue(itemValue, itemType, itemSubtype, modDetails, isMasterwork, null, charges, size, weight);
 
     res.status(200).json({ value: finalValue });
   } catch (error) {
@@ -630,7 +633,7 @@ exports.dmUpdateItem = async (req, res) => {
     const allowedFields = [
       'session_date', 'quantity', 'name', 'unidentified', 'masterwork',
       'type', 'size', 'status', 'itemid', 'modids', 'charges', 'value',
-      'whohas', 'notes', 'spellcraft_dc', 'dm_notes' // Ensure dm_notes is included here
+      'whohas', 'notes', 'spellcraft_dc', 'dm_notes'
     ];
 
     const filteredUpdateData = Object.fromEntries(
@@ -683,6 +686,49 @@ exports.dmUpdateItem = async (req, res) => {
     }
 
     let updatedItem = updateResult.rows[0];
+
+    // If value is null or undefined, calculate it
+    if (updatedItem.value === null || updatedItem.value === undefined) {
+      // Fetch item details if itemid is provided
+      let itemDetails = {};
+      if (updatedItem.itemid) {
+        const itemResult = await client.query('SELECT * FROM item WHERE id = $1', [updatedItem.itemid]);
+        if (itemResult.rows.length > 0) {
+          itemDetails = itemResult.rows[0];
+        }
+      }
+
+      // Fetch mod details if modids are provided
+      let modDetails = [];
+      if (updatedItem.modids && updatedItem.modids.length > 0) {
+        const modResult = await client.query('SELECT * FROM mod WHERE id = ANY($1)', [updatedItem.modids]);
+        modDetails = modResult.rows;
+      }
+
+      // Calculate the value
+      const calculatedValue = calculateFinalValue(
+        itemDetails.value || 0,
+        updatedItem.type,
+        itemDetails.subtype,
+        modDetails,
+        updatedItem.masterwork,
+        updatedItem.name,
+        updatedItem.charges,
+        updatedItem.size,
+        itemDetails.weight || null
+      );
+
+      // Update the item with the calculated value
+      const valueUpdateQuery = `
+        UPDATE loot
+        SET value = $1, lastupdate = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *
+      `;
+
+      const valueUpdateResult = await client.query(valueUpdateQuery, [calculatedValue, id]);
+      updatedItem = valueUpdateResult.rows[0];
+    }
 
     await client.query('COMMIT');
     res.status(200).json(updatedItem);
@@ -765,6 +811,7 @@ exports.identifyItems = async (req, res) => {
     client.release();
   }
 };
+
 exports.getCharacterLedger = async (req, res) => {
   try {
     const ledgerQuery = `

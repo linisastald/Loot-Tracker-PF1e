@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, TextField, Typography, Container, Paper } from '@mui/material';
 import api from '../../utils/api';
@@ -8,6 +8,13 @@ const Login = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      navigate('/loot-entry');
+    }
+  }, [navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
