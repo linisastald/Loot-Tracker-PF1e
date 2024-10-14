@@ -758,21 +758,32 @@ exports.identifyItems = async (req, res) => {
 
     const { items, characterId, spellcraftRolls } = req.body;
 
+    const updatedItems = [];
+
     for (let i = 0; i < items.length; i++) {
       const itemId = items[i];
       const spellcraftRoll = spellcraftRolls[i];
 
-      // Fetch the item details
-      const itemResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
+      // Fetch the loot item details
+      const lootResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
+      const lootItem = lootResult.rows[0];
+
+      if (!lootItem) {
+        console.error(`Loot item with id ${itemId} not found`);
+        continue;
+      }
+
+      // Fetch the associated item details
+      const itemResult = await client.query('SELECT * FROM item WHERE id = $1', [lootItem.itemid]);
       const item = itemResult.rows[0];
 
       if (!item) {
-        console.error(`Item with id ${itemId} not found`);
+        console.error(`Item with id ${lootItem.itemid} not found`);
         continue;
       }
 
       // Fetch the associated mods
-      const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [item.modids]);
+      const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [lootItem.modids]);
       const mods = modsResult.rows.map(row => row.name);
 
       // Sort mods, prioritizing those starting with '+'
@@ -786,7 +797,7 @@ exports.identifyItems = async (req, res) => {
       let newName = mods.join(' ') + ' ' + item.name;
       newName = newName.trim();
 
-      // Update the item
+      // Update the loot item
       await client.query(
         'UPDATE loot SET name = $1, unidentified = false WHERE id = $2',
         [newName, itemId]
@@ -799,13 +810,16 @@ exports.identifyItems = async (req, res) => {
         'INSERT INTO identify (lootid, characterid, spellcraft_roll) VALUES ($1, $2, $3)',
         [itemId, identifyCharacterId, spellcraftRoll]
       );
+
+      // Add the updated item to the list
+      updatedItems.push({...lootItem, name: newName, unidentified: false});
     }
 
     await client.query('COMMIT');
-    res.status(200).json({ message: 'Items identified successfully' });
+    res.status(200).json({ message: 'Items identified successfully', updatedItems });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error identifying items:', error);
+    console.error('Error in identifyItems:', error);
     res.status(500).json({ error: 'An error occurred while identifying items' });
   } finally {
     client.release();
