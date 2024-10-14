@@ -44,9 +44,9 @@ const Sidebar = () => {
   const [isDM, setIsDM] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
+  const [groupName, setGroupName] = useState('Loot Tracker');
   const location = useLocation();
 
-  const groupName = window.env?.REACT_APP_GROUP_NAME || 'Loot Tracker';
   const menuTitle = `${groupName} Loot Menu`;
 
   const handleToggle = (setter) => () => setter(prev => !prev);
@@ -58,6 +58,7 @@ const Sidebar = () => {
       setIsDM(payload.role === 'DM');
     }
     fetchUnprocessedLootCount();
+    fetchGroupName();
   }, []);
 
   const fetchUnprocessedLootCount = async () => {
@@ -69,6 +70,15 @@ const Sidebar = () => {
     }
   };
 
+  const fetchGroupName = async () => {
+    try {
+      const response = await api.get('/settings/campaign-name');
+      setGroupName(response.data.value);
+    } catch (error) {
+      console.error('Error fetching campaign name:', error);
+    }
+  };
+
   const isActiveRoute = (route) => {
     return location.pathname === route ? 'active' : '';
   };
@@ -77,7 +87,7 @@ const Sidebar = () => {
     setIsCollapsed(!isCollapsed);
   };
 
-  const MenuItem = ({ to, primary, icon, onClick, open, children, badge }) => {
+  const MenuItem = ({ to, primary, icon, onClick, open, children, badge, isCategory }) => {
     const active = to ? isActiveRoute(to) : false;
     const ComponentToUse = to ? Link : 'div';
 
@@ -88,8 +98,8 @@ const Sidebar = () => {
           to={to}
           onClick={onClick}
           sx={{
-            pl: 2,
-            bgcolor: active ? 'rgba(0, 0, 0, 0.08)' : 'inherit',
+            pl: isCategory ? 2 : 4,
+            bgcolor: isCategory ? 'rgba(0, 0, 0, 0.04)' : (active ? 'rgba(0, 0, 0, 0.08)' : 'inherit'),
             '&:hover': {
               bgcolor: active ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
             },
@@ -150,6 +160,7 @@ const Sidebar = () => {
           icon={<ViewList />}
           onClick={handleToggle(setOpenLootViews)}
           open={openLootViews}
+          isCategory
         >
           <MenuItem
             to="/unprocessed-loot"
@@ -166,6 +177,7 @@ const Sidebar = () => {
           icon={<AttachMoney/>}
           onClick={handleToggle(setOpenGold)}
           open={openGold}
+          isCategory
         >
           <MenuItem to="/gold-transactions" primary="Gold Transactions"/>
           <MenuItem to="/character-loot-ledger" primary="Character Loot Ledger" icon={<AccountBalanceWallet />} />
@@ -175,17 +187,18 @@ const Sidebar = () => {
           icon={<AutoStoriesIcon/>}
           onClick={handleToggle(setOpenSessionTools)}
           open={openSessionTools}
+          isCategory
         >
           <MenuItem to="/golarion-calendar" primary="Golarion Calendar" icon={<DateRange />} />
           <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
           <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
         </MenuItem>
-
         <MenuItem
           primary="Settings"
           icon={<Settings/>}
           onClick={handleToggle(setOpenSettings)}
           open={openSettings}
+          isCategory
         >
           <MenuItem to="/user-settings" primary="User Settings"/>
         </MenuItem>
@@ -194,9 +207,9 @@ const Sidebar = () => {
           icon={<Construction/>}
           onClick={handleToggle(setOpenBeta)}
           open={openBeta}
+          isCategory
         >
           <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
-
         </MenuItem>
         {isDM && (
           <MenuItem
@@ -204,11 +217,11 @@ const Sidebar = () => {
             icon={<SupervisorAccount/>}
             onClick={handleToggle(setOpenDMSettings)}
             open={openDMSettings}
+            isCategory
           >
             <MenuItem to="/character-user-management" primary="Character and User Management" />
             <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
           </MenuItem>
-
         )}
       </List>
       <Box sx={{ position: 'absolute', bottom: 0, width: '100%', textAlign: 'center', py: 1 }}>
