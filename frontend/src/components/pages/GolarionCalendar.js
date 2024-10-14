@@ -44,19 +44,38 @@ const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected }) => ({
   height: '80px',
   display: 'flex',
   flexDirection: 'column',
-  justifyContent: 'space-between',
-  padding: theme.spacing(1),
+  justifyContent: 'flex-start',
+  padding: theme.spacing(0.5),
   cursor: 'pointer',
   backgroundColor: isCurrentDay
-    ? theme.palette.grey[800]  // Slightly lighter gray for current day
+    ? theme.palette.grey[800]
     : theme.palette.background.paper,
+  color: isCurrentDay
+    ? theme.palette.getContrastText(theme.palette.grey[800])
+    : theme.palette.text.primary,
   border: isSelected
-    ? `2px solid ${theme.palette.error.dark}`  // Dark red outline for selected day
+    ? `2px solid ${theme.palette.error.dark}`
     : 'none',
   '&:hover': {
     backgroundColor: theme.palette.action.hover,
   },
+  overflow: 'hidden',
 }));
+
+const DayNumber = styled(Typography)({
+  fontWeight: 'bold',
+  marginBottom: '2px',
+});
+
+const NotePreview = styled(Typography)({
+  fontSize: '0.7rem',
+  lineHeight: 1.2,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  display: '-webkit-box',
+  '-webkit-line-clamp': 3,
+  '-webkit-box-orient': 'vertical',
+});
 
 const GolarionCalendar = () => {
   const [currentDate, setCurrentDate] = useState({ year: 4722, month: 0, day: 1 });
@@ -199,17 +218,17 @@ const GolarionCalendar = () => {
                   return (
                     <TableCell key={dayIndex} padding="none">
                       {isValidDay && (
-                        <Tooltip title={note ? note.substring(0, 50) + (note.length > 50 ? '...' : '') : ''} arrow>
+                        <Tooltip title={note || ''} arrow>
                           <StyledDay
                             onClick={() => handleDayClick(day)}
                             isCurrentDay={isCurrentDay}
                             isSelected={isSelected}
                           >
-                            <Typography variant="body2">{day}</Typography>
+                            <DayNumber variant="body2">{day}</DayNumber>
                             {note && (
-                              <Typography variant="caption" noWrap>
-                                {note.substring(0, 50)}
-                              </Typography>
+                              <NotePreview>
+                                {note}
+                              </NotePreview>
                             )}
                           </StyledDay>
                         </Tooltip>
