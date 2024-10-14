@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Drawer,
   List,
-  ListItem,
   ListItemText,
   Typography,
   Collapse,
@@ -37,10 +36,6 @@ import {
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
-import Groups2Icon from '@mui/icons-material/';
-import Person4Icon from '@mui/icons-material/';
-import SellIcon from '@mui/icons-material/';
-import DeleteIcon from '@mui/icons-material/';
 import '../../styles/Sidebar.css';
 import api from '../../utils/api';
 
@@ -154,87 +149,94 @@ const Sidebar = () => {
           width: isCollapsed ? 60 : 240,
           boxSizing: 'border-box',
           transition: 'width 0.2s',
+          display: 'flex',
+          flexDirection: 'column',
         },
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1 }}>
+      <Box sx={{ p: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         {!isCollapsed && <Typography variant="h6">{menuTitle}</Typography>}
+        <IconButton onClick={toggleSidebar}>
+          {isCollapsed ? <MenuIcon /> : <ChevronLeft />}
+        </IconButton>
       </Box>
-      <IconButton onClick={toggleSidebar}>
-        {isCollapsed ? <MenuIcon /> : <ChevronLeft />}
-      </IconButton>
-      <List>
-        <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
-        <MenuItem
-          primary="Loot"
-          icon={<ViewList />}
-          onClick={handleToggle(setOpenLootViews)}
-          open={openLootViews}
-          isCategory
-        >
+
+      <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+        <List>
+          <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
           <MenuItem
-            to="/unprocessed-loot"
-            primary="Unprocessed" icon={<AssignmentLateIcon />}
-            badge={unprocessedLootCount > 0 ? unprocessedLootCount : null}
-          />
-          <MenuItem to="/kept-party" primary="Party" icon={<Groups2 />} />
-          <MenuItem to="/kept-character" primary="Character" icon={<Person4 />} />
-          <MenuItem to="/sold-loot" primary="Sold" icon={<Sell />} />
-          <MenuItem to="/given-away-or-trashed" primary="Trashed" icon={<Delete />} />
-        </MenuItem>
-        <MenuItem
-          primary="Gold"
-          icon={<AttachMoney/>}
-          onClick={handleToggle(setOpenGold)}
-          open={openGold}
-          isCategory
-        >
-          <MenuItem to="/gold-transactions" primary="Transactions" icon={<AccountBalance />} />
-          <MenuItem to="/character-loot-ledger" primary="Loot Ledger" icon={<AccountBalanceWallet />} />
-        </MenuItem>
-        <MenuItem
-          primary="Session Tools"
-          icon={<AutoStoriesIcon/>}
-          onClick={handleToggle(setOpenSessionTools)}
-          open={openSessionTools}
-          isCategory
-        >
-          <MenuItem to="/golarion-calendar" primary="Calendar" icon={<DateRange />} />
-          <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
-          <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
-        </MenuItem>
-        <MenuItem
-          primary="Settings"
-          icon={<Settings/>}
-          onClick={handleToggle(setOpenSettings)}
-          open={openSettings}
-          isCategory
-        >
-          <MenuItem to="/user-settings" primary="User Settings"/>
-        </MenuItem>
-        <MenuItem
-          primary="Beta"
-          icon={<Construction/>}
-          onClick={handleToggle(setOpenBeta)}
-          open={openBeta}
-          isCategory
-        >
-          <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
-        </MenuItem>
-        {isDM && (
-          <MenuItem
-            primary="DM Settings"
-            icon={<SupervisorAccount/>}
-            onClick={handleToggle(setOpenDMSettings)}
-            open={openDMSettings}
+            primary="Loot"
+            icon={<ViewList />}
+            onClick={handleToggle(setOpenLootViews)}
+            open={openLootViews}
             isCategory
           >
-            <MenuItem to="/character-user-management" primary="Gen Management" />
-            <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
+            <MenuItem
+              to="/unprocessed-loot"
+              primary="Unprocessed"
+              icon={<AssignmentLateIcon />}
+              badge={unprocessedLootCount > 0 ? unprocessedLootCount : null}
+            />
+            <MenuItem to="/kept-party" primary="Party" icon={<Groups2 />} />
+            <MenuItem to="/kept-character" primary="Character" icon={<Person4 />} />
+            <MenuItem to="/sold-loot" primary="Sold" icon={<Sell />} />
+            <MenuItem to="/given-away-or-trashed" primary="Trashed" icon={<Delete />} />
           </MenuItem>
-        )}
-      </List>
-      <Box sx={{ position: 'absolute', bottom: 0, width: '100%', textAlign: 'center', py: 1 }}>
+          <MenuItem
+            primary="Gold"
+            icon={<AttachMoney/>}
+            onClick={handleToggle(setOpenGold)}
+            open={openGold}
+            isCategory
+          >
+            <MenuItem to="/gold-transactions" primary="Transactions" icon={<AccountBalance />} />
+            <MenuItem to="/character-loot-ledger" primary="Loot Ledger" icon={<AccountBalanceWallet />} />
+          </MenuItem>
+          <MenuItem
+            primary="Session Tools"
+            icon={<AutoStoriesIcon/>}
+            onClick={handleToggle(setOpenSessionTools)}
+            open={openSessionTools}
+            isCategory
+          >
+            <MenuItem to="/golarion-calendar" primary="Calendar" icon={<DateRange />} />
+            <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
+            <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
+          </MenuItem>
+          <MenuItem
+            primary="Settings"
+            icon={<Settings/>}
+            onClick={handleToggle(setOpenSettings)}
+            open={openSettings}
+            isCategory
+          >
+            <MenuItem to="/user-settings" primary="User Settings"/>
+          </MenuItem>
+          <MenuItem
+            primary="Beta"
+            icon={<Construction/>}
+            onClick={handleToggle(setOpenBeta)}
+            open={openBeta}
+            isCategory
+          >
+            <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
+          </MenuItem>
+          {isDM && (
+            <MenuItem
+              primary="DM Settings"
+              icon={<SupervisorAccount/>}
+              onClick={handleToggle(setOpenDMSettings)}
+              open={openDMSettings}
+              isCategory
+            >
+              <MenuItem to="/character-user-management" primary="Gen Management" />
+              <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
+            </MenuItem>
+          )}
+        </List>
+      </Box>
+
+      <Box sx={{ p: 1, borderTop: 1, borderColor: 'divider' }}>
         <Typography variant="caption">v0.4.1</Typography>
       </Box>
     </Drawer>
