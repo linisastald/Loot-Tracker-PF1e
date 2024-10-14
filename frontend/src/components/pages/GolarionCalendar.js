@@ -18,6 +18,7 @@ import {
   ListItemText,
   Divider,
   Alert,
+  Tooltip,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
@@ -39,17 +40,19 @@ const months = [
 
 const daysOfWeek = ['Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'];
 
-const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected, hasNote }) => ({
+const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected }) => ({
   height: '80px',
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'space-between',
   padding: theme.spacing(1),
   cursor: 'pointer',
-  backgroundColor: isCurrentDay ? theme.palette.primary.light :
-                  isSelected ? theme.palette.secondary.light :
-                  hasNote ? theme.palette.info.light :
-                  theme.palette.background.paper,
+  backgroundColor: isCurrentDay
+    ? theme.palette.grey[200]  // Slightly lighter gray for current day
+    : theme.palette.background.paper,
+  border: isSelected
+    ? `2px solid ${theme.palette.error.dark}`  // Dark red outline for selected day
+    : 'none',
   '&:hover': {
     backgroundColor: theme.palette.action.hover,
   },
@@ -191,20 +194,25 @@ const GolarionCalendar = () => {
                                      selectedDate.year === displayedDate.year &&
                                      selectedDate.month === displayedDate.month &&
                                      selectedDate.day === day;
-                  const hasNote = !!notes[dateKey];
+                  const note = notes[dateKey];
 
                   return (
                     <TableCell key={dayIndex} padding="none">
                       {isValidDay && (
-                        <StyledDay
-                          onClick={() => handleDayClick(day)}
-                          isCurrentDay={isCurrentDay}
-                          isSelected={isSelected}
-                          hasNote={hasNote}
-                        >
-                          <Typography variant="body2">{day}</Typography>
-                          {hasNote && <Typography variant="caption">Note</Typography>}
-                        </StyledDay>
+                        <Tooltip title={note ? note.substring(0, 50) + (note.length > 50 ? '...' : '') : ''} arrow>
+                          <StyledDay
+                            onClick={() => handleDayClick(day)}
+                            isCurrentDay={isCurrentDay}
+                            isSelected={isSelected}
+                          >
+                            <Typography variant="body2">{day}</Typography>
+                            {note && (
+                              <Typography variant="caption" noWrap>
+                                {note.substring(0, 20)}...
+                              </Typography>
+                            )}
+                          </StyledDay>
+                        </Tooltip>
                       )}
                     </TableCell>
                   );
