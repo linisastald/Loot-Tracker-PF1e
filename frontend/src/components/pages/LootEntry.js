@@ -16,7 +16,8 @@ import {
   FormControlLabel,
   Checkbox,
   Tooltip,
-  Box
+  Box,
+  Alert
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -57,7 +58,7 @@ const shouldShowCharges = (name) => {
   return name.toLowerCase().includes('wand of');
 };
 const LootEntry = () => {
-  const [entries, setEntries] = useState([{type: 'item', data: {...initialItemEntry}}]);
+  const [entries, setEntries] = useState([{type: 'item', data: {...initialItemEntry}, error: null}]);
   const [itemNames, setItemNames] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
   const [autocompletedItems, setAutocompletedItems] = useState([]);
@@ -184,11 +185,58 @@ const handleSubmit = async (e) => {
   const decodedToken = jwt_decode(token);
   const userId = decodedToken.id;
 
-  const skippedEntries = [];
-  const processedEntries = [];
+  const validEntries = [];
+  const invalidEntries = [];
+  const newEntries = [...entries];
+
+  for (let index = 0; index < newEntries.length; index++) {
+    const entry = newEntries[index];
+    let isValid = true;
+    let entryError = null;
+
+    if (entry.type === 'item') {
+      if (!entry.data.name || entry.data.name.trim() === '') {
+        isValid = false;
+        entryError = 'Item name is required';
+      } else if (!entry.data.quantity || entry.data.quantity <= 0) {
+        isValid = false;
+        entryError = 'Quantity must be greater than 0';
+      }
+    } else if (entry.type === 'gold') {
+      if (!entry.data.transactionType) {
+        isValid = false;
+        entryError = 'Transaction type is required';
+      } else if (
+        !entry.data.platinum &&
+        !entry.data.gold &&
+        !entry.data.silver &&
+        !entry.data.copper
+      ) {
+        isValid = false;
+        entryError = 'At least one currency amount is required';
+      }
+    }
+
+    if (isValid) {
+      validEntries.push(entry);
+    } else {
+      invalidEntries.push({...entry, error: entryError});
+    }
+
+    newEntries[index] = {...entry, error: entryError};
+  }
+
+  setEntries(newEntries);
+
+  if (validEntries.length === 0) {
+    setError('No valid entries to submit');
+    return;
+  }
+
+  let processedEntries = 0;
 
   try {
-    for (const [index, entry] of entries.entries()) {
+    for (const entry of validEntries) {
       let data = {...entry.data, whoupdated: userId, session_date: entry.data.sessionDate};
 
       if (entry.type === 'gold') {
@@ -212,18 +260,9 @@ const handleSubmit = async (e) => {
           character_id: transactionType === 'Party Payment' ? activeCharacterId : null
         };
 
-        await api.post(
-            `/gold`,
-            {goldEntries: [goldData]}
-        );
-        processedEntries.push(entry);
+        await api.post('/gold', {goldEntries: [goldData]});
+        processedEntries++;
       } else {
-        if (!data.name || data.name.trim() === '') {
-          console.warn(`Skipping item entry at index ${index} with empty name`);
-          skippedEntries.push(index);
-          continue;
-        }
-
         // Convert type to lowercase before submission
         data.type = data.type ? data.type.toLowerCase() : null;
         data.itemId = data.itemId || null;
@@ -231,12 +270,9 @@ const handleSubmit = async (e) => {
         data.modids = data.modids || []; // Ensure modids is always an array
 
         // Only parse if "Smart Item Detection" is checked and it's not autocompleted
-        if (data.parseItem && !autocompletedItems[index]) {
+        if (data.parseItem && !autocompletedItems[validEntries.indexOf(entry)]) {
           try {
-            const parseResponse = await api.post(
-              `/loot/parse-item`,
-              {description: data.name}
-            );
+            const parseResponse = await api.post('/loot/parse-item', {description: data.name});
             if (parseResponse.data) {
               data = {...data, ...parseResponse.data};
               // Ensure the type is lowercase if it was set by the parsing
@@ -250,25 +286,27 @@ const handleSubmit = async (e) => {
         }
 
         // Always send the data, even if it wasn't parsed or doesn't have an itemId
-        await api.post(
-          `/loot`,
-          {entries: [data]}
-        );
-        processedEntries.push(entry);
+        await api.post('/loot', {entries: [data]});
+        processedEntries++;
       }
     }
 
-    // Inform the user about skipped entries
-    if (skippedEntries.length > 0) {
-      setError(`Skipped ${skippedEntries.length} item entries due to empty names. Indices: ${skippedEntries.join(', ')}`);
+    setSuccess(`Successfully processed ${processedEntries} entries.`);
+
+    // Remove valid entries and keep invalid ones
+    setEntries(invalidEntries);
+
+    if (invalidEntries.length > 0) {
+      setError(`${invalidEntries.length} entries were not submitted due to errors. Please correct and resubmit.`);
+    } else {
+      setError('');
     }
 
-    // Inform the user about successful submissions
-    setSuccess(`Successfully processed ${processedEntries.length} entries.`);
+    // Reset autocompletedItems for the remaining invalid entries
+    setAutocompletedItems(invalidEntries.map(() => false));
 
-    handleRemoveAllEntries(); // Remove all entries after submission
   } catch (error) {
-    console.error('Error submitting entry', error);
+    console.error('Error submitting entries', error);
     setError('An error occurred while submitting entries. Please try again.');
   }
 };
@@ -302,11 +340,15 @@ const handleSubmit = async (e) => {
         </Paper>
       </Box>
 
-      {error && <Typography color="error" sx={{ mt: 2, mb: 2 }}>{error}</Typography>}
-      {success && <Typography color="success" sx={{ mt: 2, mb: 2 }}>{success}</Typography>}
- <form onSubmit={handleSubmit}>
+      {error && <Alert severity="error" sx={{ mt: 2, mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mt: 2, mb: 2 }}>{success}</Alert>}
+
+      <form onSubmit={handleSubmit}>
         {entries.map((entry, index) => (
           <Paper key={index} sx={{ p: 2, mb: 2 }}>
+            {entry.error && (
+              <Alert severity="error" sx={{ mb: 2 }}>{entry.error}</Alert>
+            )}
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Button
