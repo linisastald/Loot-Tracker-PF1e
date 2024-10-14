@@ -224,11 +224,23 @@ const CustomLootTable = ({
   const mainCellStyle = { padding: '16px' };
   const subCellStyle = { padding: '4px' };
 
-  const formatAverageAppraisal = (value) => {
+  const formatAppraisalDetails = (appraisals) => {
+    if (!appraisals || appraisals.length === 0) return 'No appraisals available';
+    return appraisals.map(appraisal =>
+      `${appraisal.character_name}: ${appraisal.believedvalue}`
+    ).join('\n');
+  };
+
+  const formatAverageAppraisal = (value, appraisals) => {
     if (value === null || value === undefined) return '';
     const numValue = Number(value);
-    if (Number.isInteger(numValue)) return numValue.toString();
-    return numValue.toFixed(2).replace(/\.?0+$/, '');
+    const formattedValue = Number.isInteger(numValue) ? numValue.toString() : numValue.toFixed(2).replace(/\.?0+$/, '');
+
+    return (
+      <Tooltip title={formatAppraisalDetails(appraisals)} arrow>
+        <span>{formattedValue}</span>
+      </Tooltip>
+    );
   };
 
   return (
@@ -491,7 +503,7 @@ const CustomLootTable = ({
                     {showColumns.believedValue && <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
                     {showColumns.averageAppraisal && (
                       <TableCell style={mainCellStyle}>
-                        {formatAverageAppraisal(item.average_appraisal)}
+                        {formatAverageAppraisal(item.average_appraisal, item.appraisals)}
                       </TableCell>
                     )}
                     {showColumns.pendingSale && (
