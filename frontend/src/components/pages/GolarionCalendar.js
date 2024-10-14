@@ -60,6 +60,7 @@ const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected }) => ({
     backgroundColor: theme.palette.action.hover,
   },
   overflow: 'hidden',
+  width: '100%', // Ensure the day cell takes full width
 }));
 
 const DayNumber = styled(Typography)({
@@ -75,6 +76,7 @@ const NotePreview = styled(Typography)({
   display: '-webkit-box',
   '-webkit-line-clamp': 3,
   '-webkit-box-orient': 'vertical',
+  width: '100%', // Ensure the note preview takes full width
 });
 
 const GolarionCalendar = () => {
@@ -195,7 +197,7 @@ const GolarionCalendar = () => {
           <TableHead>
             <TableRow>
               {daysOfWeek.map(day => (
-                <TableCell key={day} align="center">{day}</TableCell>
+                <TableCell key={day} align="center" padding="none">{day}</TableCell>
               ))}
             </TableRow>
           </TableHead>
@@ -216,7 +218,7 @@ const GolarionCalendar = () => {
                   const note = notes[dateKey];
 
                   return (
-                    <TableCell key={dayIndex} padding="none">
+                    <TableCell key={dayIndex} padding="none" style={{ width: '14.28%', maxWidth: '14.28%' }}>
                       {isValidDay && (
                         <Tooltip title={note || ''} arrow>
                           <StyledDay
