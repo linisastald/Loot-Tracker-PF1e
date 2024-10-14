@@ -208,7 +208,7 @@ const GolarionCalendar = () => {
                             <Typography variant="body2">{day}</Typography>
                             {note && (
                               <Typography variant="caption" noWrap>
-                                {note.substring(0, 20)}...
+                                {note.substring(0, 50)}
                               </Typography>
                             )}
                           </StyledDay>
