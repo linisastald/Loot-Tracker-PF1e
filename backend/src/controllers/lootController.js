@@ -459,9 +459,9 @@ exports.appraiseLoot = async (req, res) => {
 
     // Get all previous appraisals for the active character
     const previousAppraisalsResult = await pool.query(`
-      SELECT l.itemid, l.modids, l.name, l.masterwork, l.charges, l.value, a.believedvalue
-      FROM appraisal a
-      JOIN loot l ON a.lootid = l.id
+      SELECT l.itemid, l.modids, l.masterwork, l.charges, l.value, a.believedvalue
+      FROM loot l
+      JOIN appraisal a ON a.lootid = l.id
       WHERE a.characterid = $1
     `, [characterId]);
     const previousAppraisals = previousAppraisalsResult.rows;
@@ -504,14 +504,14 @@ exports.appraiseLoot = async (req, res) => {
     // Appraise each item
     const createdAppraisals = [];
     for (const lootItem of lootToAppraise) {
-      const { id: lootId, value: lootValue, itemid: lootItemId, modids: lootModIds, name: lootName, masterwork: lootMasterwork, charges: lootCharges } = lootItem;
+      const { id: lootId, value: lootValue, itemid, modids, masterwork, charges } = lootItem;
 
       // Check for previous appraisals
       let previousAppraisal = previousAppraisals.find(appraisal =>
-        appraisal.itemid === lootItemId &&
-        appraisal.modids === lootModIds &&
-        appraisal.masterwork === lootMasterwork &&
-        appraisal.charges === lootCharges &&
+        appraisal.itemid === itemid &&
+        appraisal.modids === modids &&
+        appraisal.masterwork === masterwork &&
+        appraisal.charges === charges &&
         appraisal.value === lootValue
       );
 
@@ -541,17 +541,15 @@ exports.appraiseLoot = async (req, res) => {
         }
       }
 
-      if (!previousAppraisal) {
-        const appraisalEntry = {
-          characterid: characterId,
-          lootid: lootId,
-          appraisalroll: appraisalRoll,
-          believedvalue: believedValue,
-        };
+      const appraisalEntry = {
+        characterid: characterId,
+        lootid: lootId,
+        appraisalroll: appraisalRoll,
+        believedvalue: believedValue,
+      };
 
-        const createdAppraisal = await Appraisal.create(appraisalEntry);
-        createdAppraisals.push(createdAppraisal);
-      }
+      const createdAppraisal = await Appraisal.create(appraisalEntry);
+      createdAppraisals.push(createdAppraisal);
     }
 
     res.status(201).json(createdAppraisals);
