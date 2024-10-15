@@ -75,7 +75,11 @@ def get_db_structure(conn):
         with conn.cursor() as cur:
             # Get tables and columns
             cur.execute("""
-                SELECT table_name, column_name, data_type
+                SELECT table_name, column_name, 
+                       CASE WHEN data_type = 'ARRAY' 
+                            THEN 'ARRAY'
+                            ELSE data_type 
+                       END as data_type
                 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = ANY(%s)
                 ORDER BY table_name, ordinal_position
@@ -139,12 +143,21 @@ def generate_update_sql(differences, master_structure):
 
     for table in differences['missing_tables']:
         columns = master_structure['tables'].get(table, [])
-        column_definitions = ", ".join([f"{column} {data_type}" for column, data_type in columns])
-        sql_statements.append(f"CREATE TABLE {table} ({column_definitions});")
+        column_definitions = []
+        for column, data_type in columns:
+            if data_type.upper() == 'ARRAY':
+                column_definitions.append(f"{column} character varying[]")  # Assuming it's an array of strings
+            else:
+                column_definitions.append(f"{column} {data_type}")
+        column_definitions_str = ", ".join(column_definitions)
+        sql_statements.append(f"CREATE TABLE {table} ({column_definitions_str});")
 
     for table, columns in differences['missing_columns'].items():
         for column, data_type in columns:
-            sql_statements.append(f"ALTER TABLE {table} ADD COLUMN {column} {data_type};")
+            if data_type.upper() == 'ARRAY':
+                sql_statements.append(f"ALTER TABLE {table} ADD COLUMN {column} character varying[];")
+            else:
+                sql_statements.append(f"ALTER TABLE {table} ADD COLUMN {column} {data_type};")
 
     for table, indexes in differences['missing_indexes'].items():
         for _, indexdef in indexes:
@@ -180,6 +193,8 @@ def generate_insert_sql(table, columns, rows):
             # Escape single quotes by doubling them
             escaped_val = val.replace("'", "''")
             return f"'{escaped_val}'"
+        elif isinstance(val, list):  # Handle ARRAY type
+            return f"ARRAY[{','.join(map(format_value, val))}]"
         else:
             return str(val)
 
