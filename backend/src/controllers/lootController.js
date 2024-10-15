@@ -508,7 +508,7 @@ exports.appraiseLoot = async (req, res) => {
 
       // Check for previous appraisals
       let previousAppraisal = previousAppraisals.find(appraisal =>
-        (appraisal.itemid === lootItemId || (lootItemId === null && appraisal.name.toLowerCase() === lootName.toLowerCase())) &&
+        appraisal.itemid === lootItemId &&
         appraisal.modids === lootModIds &&
         appraisal.masterwork === lootMasterwork &&
         appraisal.charges === lootCharges &&
@@ -541,15 +541,17 @@ exports.appraiseLoot = async (req, res) => {
         }
       }
 
-      const appraisalEntry = {
-        characterid: characterId,
-        lootid: lootId,
-        appraisalroll: previousAppraisal ? null : appraisalRoll,
-        believedvalue: believedValue,
-      };
+      if (!previousAppraisal) {
+        const appraisalEntry = {
+          characterid: characterId,
+          lootid: lootId,
+          appraisalroll: appraisalRoll,
+          believedvalue: believedValue,
+        };
 
-      const createdAppraisal = await Appraisal.create(appraisalEntry);
-      createdAppraisals.push(createdAppraisal);
+        const createdAppraisal = await Appraisal.create(appraisalEntry);
+        createdAppraisals.push(createdAppraisal);
+      }
     }
 
     res.status(201).json(createdAppraisals);
