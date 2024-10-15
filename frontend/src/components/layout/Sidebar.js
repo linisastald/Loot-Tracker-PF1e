@@ -237,7 +237,7 @@ const Sidebar = () => {
       </Box>
 
       <Box sx={{ p: 1, borderTop: 1, borderColor: 'divider' }}>
-        <Typography variant="caption">v0.4.1</Typography>
+        <Typography variant="caption">v0.5.0</Typography>
       </Box>
     </Drawer>
   );
