@@ -187,13 +187,19 @@ def get_table_data(conn, table):
         return cur.fetchall()
 
 def compare_table_data(master_data, copy_data):
-    master_set = set(map(tuple, master_data))
-    copy_set = set(map(tuple, copy_data))
+    def hashable(item):
+        """Convert unhashable types (like lists) to hashable types."""
+        if isinstance(item, list):
+            return tuple(hashable(i) for i in item)
+        return item
 
-    missing_in_copy = master_set - copy_set
-    extra_in_copy = copy_set - master_set
+    master_set = set(tuple(hashable(item) for item in row) for row in master_data)
+    copy_set = set(tuple(hashable(item) for item in row) for row in copy_data)
 
-    return list(missing_in_copy), list(extra_in_copy)
+    missing_in_copy = [row for row in master_data if tuple(hashable(item) for item in row) not in copy_set]
+    extra_in_copy = [row for row in copy_data if tuple(hashable(item) for item in row) not in master_set]
+
+    return missing_in_copy, extra_in_copy
 
 def generate_insert_sql(table, columns, rows):
     if not rows:
@@ -258,16 +264,18 @@ def reconcile_table_data(master_conn, copy_conn, table, master_structure):
                     columns = [col[0] for col in master_structure['tables'][table]]
                     column_list = ', '.join(columns)
                     update_list = ', '.join(f"{col} = EXCLUDED.{col}" for col in columns if col != primary_key)
-                    values = [tuple(row) for row in missing_in_copy]
-                    args_str = ','.join(
-                        cur.mogrify("(" + ",".join(["%s"] * len(row)) + ")", row).decode('utf-8') for row in values)
 
-                    cur.execute(f"""
-                        INSERT INTO {table} ({column_list})
-                        VALUES {args_str}
-                        ON CONFLICT ({primary_key})
-                        DO UPDATE SET {update_list}
-                    """)
+                    args_str = ','.join(
+                        cur.mogrify("(" + ",".join(["%s"] * len(row)) + ")", row).decode('utf-8') for row in
+                        missing_in_copy)
+
+                    if args_str:  # Only execute if there are rows to insert/update
+                        cur.execute(f"""
+                            INSERT INTO {table} ({column_list})
+                            VALUES {args_str}
+                            ON CONFLICT ({primary_key})
+                            DO UPDATE SET {update_list}
+                        """)
 
                 copy_conn.commit()
                 print(f"Table {table} in copy database now matches the master.")
