@@ -251,14 +251,12 @@ const CustomLootTable = ({
   const formatAppraisalDetails = (item) => {
     console.log('Formatting appraisal details for item:', item);
 
-    const appraisals = getAppraisals(item);
-
-    if (!appraisals || appraisals.length === 0) {
+    if (!item.appraisals || item.appraisals.length === 0) {
       console.log('No appraisals found for item');
       return 'No appraisals available';
     }
 
-    return appraisals.map(appraisal => {
+    return item.appraisals.map(appraisal => {
       console.log('Appraisal:', appraisal);
       return `${appraisal.character_name}: ${appraisal.believedvalue}`;
     }).join('\n');
@@ -281,6 +279,7 @@ const CustomLootTable = ({
       </Tooltip>
     );
   };
+
 
 
   return (
