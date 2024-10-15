@@ -23,7 +23,50 @@ TABLES_TO_CHECK = [
 # Tables to replicate content exactly
 TABLES_TO_REPLICATE = ['item', 'mod', 'spells']
 
-# ... (keep the existing functions: get_docker_container_ids, get_container_port, connect_to_db)
+def get_docker_container_ids():
+    try:
+        result = subprocess.run(['docker', 'ps', '--format', '{{.ID}}\t{{.Names}}'],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                universal_newlines=True, check=True)
+        containers = []
+        for line in result.stdout.split('\n'):
+            if line:
+                container_id, name = line.split('\t')
+                if name.endswith('loot_db'):
+                    containers.append((container_id, name))
+        return containers
+    except subprocess.CalledProcessError as e:
+        print(f"Error running docker command: {e}")
+        return []
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return []
+
+def get_container_port(container_id):
+    try:
+        result = subprocess.run(['docker', 'port', container_id, '5432'],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                universal_newlines=True, check=True)
+        if result.stdout:
+            return result.stdout.split(':')[-1].strip()
+    except subprocess.CalledProcessError as e:
+        print(f"Error getting port for container {container_id}: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+    return None
+
+def connect_to_db(port):
+    try:
+        return psycopg2.connect(
+            host=DB_HOST,
+            port=port,
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+    except psycopg2.Error as e:
+        print(f"Unable to connect to database: {e}")
+        return None
 
 def get_db_structure(conn):
     structure = {'tables': {}, 'indexes': {}}
@@ -57,7 +100,95 @@ def get_db_structure(conn):
 
     return structure
 
-# ... (keep the existing functions: compare_structures, generate_update_sql, get_table_data, compare_table_data, generate_insert_sql)
+def compare_structures(master, copy):
+    differences = {
+        'missing_tables': [],
+        'missing_columns': {},
+        'missing_indexes': {}
+    }
+
+    # Check for missing tables
+    for table in master['tables']:
+        if table not in copy['tables']:
+            differences['missing_tables'].append(table)
+
+    # Check for missing columns
+    for table in master['tables']:
+        if table in copy['tables']:
+            master_columns = set(master['tables'][table])
+            copy_columns = set(copy['tables'][table])
+            missing_columns = master_columns - copy_columns
+            if missing_columns:
+                differences['missing_columns'][table] = list(missing_columns)
+
+    # Check for missing indexes
+    for table in master['indexes']:
+        if table in copy['indexes']:
+            master_indexes = set(master['indexes'][table])
+            copy_indexes = set(copy['indexes'][table])
+            missing_indexes = master_indexes - copy_indexes
+            if missing_indexes:
+                differences['missing_indexes'][table] = list(missing_indexes)
+        elif table not in differences['missing_tables']:
+            differences['missing_indexes'][table] = master['indexes'][table]
+
+    return differences
+
+def generate_update_sql(differences, master_structure):
+    sql_statements = []
+
+    for table in differences['missing_tables']:
+        columns = master_structure['tables'].get(table, [])
+        column_definitions = ", ".join([f"{column} {data_type}" for column, data_type in columns])
+        sql_statements.append(f"CREATE TABLE {table} ({column_definitions});")
+
+    for table, columns in differences['missing_columns'].items():
+        for column, data_type in columns:
+            sql_statements.append(f"ALTER TABLE {table} ADD COLUMN {column} {data_type};")
+
+    for table, indexes in differences['missing_indexes'].items():
+        for _, indexdef in indexes:
+            sql_statements.append(indexdef + ";")
+
+    return "\n".join(sql_statements)
+
+def get_table_data(conn, table):
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT * FROM {table}")
+        return cur.fetchall()
+
+def compare_table_data(master_data, copy_data):
+    master_set = set(map(tuple, master_data))
+    copy_set = set(map(tuple, copy_data))
+
+    missing_in_copy = master_set - copy_set
+    extra_in_copy = copy_set - master_set
+
+    return list(missing_in_copy), list(extra_in_copy)
+
+def generate_insert_sql(table, columns, rows):
+    if not rows:
+        return ""
+
+    column_names = ", ".join(columns)
+    values = []
+
+    def format_value(val):
+        if val is None:
+            return "NULL"
+        elif isinstance(val, str):
+            # Escape single quotes by doubling them
+            escaped_val = val.replace("'", "''")
+            return f"'{escaped_val}'"
+        else:
+            return str(val)
+
+    for row in rows:
+        value_str = ", ".join(map(format_value, row))
+        values.append(f"({value_str})")
+
+    values_str = ", ".join(values)
+    return f"INSERT INTO {table} ({column_names}) VALUES {values_str};"
 
 def main():
     parser = argparse.ArgumentParser(description="Compare PostgreSQL database structures and data")
