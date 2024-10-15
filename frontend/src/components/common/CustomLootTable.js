@@ -244,9 +244,29 @@ const CustomLootTable = ({
   }, [individualLoot]);
 
   const getAppraisals = (item) => {
-    const key = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
-    return aggregatedAppraisals.get(key) || [];
+    // Check if the item has appraisals directly
+    if (item.appraisals && Array.isArray(item.appraisals)) {
+      return item.appraisals;
+    }
+
+    // If not, try to find matching individual items and collect their appraisals
+    const matchingItems = individualLoot.filter(
+      indItem =>
+        indItem.name === item.name &&
+        indItem.unidentified === item.unidentified &&
+        indItem.masterwork === item.masterwork &&
+        indItem.type === item.type &&
+        indItem.size === item.size
+    );
+
+    // Collect all unique appraisals from matching items
+    const allAppraisals = matchingItems.flatMap(indItem => indItem.appraisals || []);
+    const uniqueAppraisals = Array.from(new Set(allAppraisals.map(JSON.stringify))).map(JSON.parse);
+
+    return uniqueAppraisals;
   };
+
+
 
   const formatAppraisalDetails = (item) => {
     console.log('Formatting appraisal details for item:', item);
@@ -267,13 +287,17 @@ const CustomLootTable = ({
   const formatAverageAppraisal = (item) => {
     console.log('Formatting average appraisal for item:', item);
 
-    if (!item.average_appraisal) {
-      console.log('No average appraisal found for item');
+    const appraisals = getAppraisals(item);
+
+    if (!appraisals || appraisals.length === 0) {
+      console.log('No appraisals found for item');
       return '';
     }
 
-    const numValue = Number(item.average_appraisal);
-    const formattedValue = Number.isInteger(numValue) ? numValue.toString() : numValue.toFixed(2).replace(/\.?0+$/, '');
+    const totalValue = appraisals.reduce((sum, appraisal) => sum + parseFloat(appraisal.believedvalue), 0);
+    const averageValue = totalValue / appraisals.length;
+
+    const formattedValue = Number.isInteger(averageValue) ? averageValue.toString() : averageValue.toFixed(2).replace(/\.?0+$/, '');
 
     return (
       <Tooltip title={formatAppraisalDetails(item)} arrow>
@@ -281,6 +305,7 @@ const CustomLootTable = ({
       </Tooltip>
     );
   };
+
 
 
   return (
