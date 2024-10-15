@@ -234,25 +234,48 @@ def reconcile_table_data(master_conn, copy_conn, table, master_structure):
         if extra_in_copy:
             print(f"Extra rows in copy database: {len(extra_in_copy)}")
 
-        confirm = input(f"Do you want to add missing rows to the {table} table in the copy database? (y/n): ")
+        confirm = input(f"Do you want to synchronize the {table} table in the copy database with the master? (y/n): ")
         if confirm.lower() == 'y':
             try:
                 with copy_conn.cursor() as cur:
+                    # Get the primary key column
+                    cur.execute(f"""
+                        SELECT a.attname
+                        FROM   pg_index i
+                        JOIN   pg_attribute a ON a.attrelid = i.indrelid
+                                             AND a.attnum = ANY(i.indkey)
+                        WHERE  i.indrelid = '{table}'::regclass
+                        AND    i.indisprimary;
+                    """)
+                    primary_key = cur.fetchone()[0]
+
+                    # Delete rows that are in copy but not in master
+                    extra_ids = [row[0] for row in extra_in_copy]
+                    if extra_ids:
+                        cur.execute(f"DELETE FROM {table} WHERE {primary_key} = ANY(%s)", (extra_ids,))
+
+                    # Upsert rows from master
                     columns = [col[0] for col in master_structure['tables'][table]]
-                    insert_sql = generate_insert_sql(table, columns, missing_in_copy)
-                    cur.execute(insert_sql)
+                    column_list = ', '.join(columns)
+                    update_list = ', '.join(f"{col} = EXCLUDED.{col}" for col in columns if col != primary_key)
+                    values = [tuple(row) for row in missing_in_copy]
+                    args_str = ','.join(
+                        cur.mogrify("(" + ",".join(["%s"] * len(row)) + ")", row).decode('utf-8') for row in values)
+
+                    cur.execute(f"""
+                        INSERT INTO {table} ({column_list})
+                        VALUES {args_str}
+                        ON CONFLICT ({primary_key})
+                        DO UPDATE SET {update_list}
+                    """)
+
                 copy_conn.commit()
-                print(f"Added missing rows to table {table} in copy database.")
+                print(f"Table {table} in copy database now matches the master.")
             except psycopg2.Error as e:
                 print(f"Error updating table {table}: {e}")
                 copy_conn.rollback()
         else:
             print(f"Table {table} not updated.")
-
-        if extra_in_copy:
-            print(f"\nWARNING: There are {len(extra_in_copy)} extra rows in the copy database for table {table}.")
-            print("These rows are not present in the master database.")
-            print("You may want to manually review these differences.")
     else:
         print(f"\nNo differences found in table {table}.")
 
