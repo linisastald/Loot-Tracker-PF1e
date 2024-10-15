@@ -38,6 +38,25 @@ const customRounding = (value) => {
   }
 };
 
+const fetchAndProcessAppraisals = async (lootId) => {
+  const appraisalsQuery = `
+    SELECT DISTINCT ON (c.id)
+      a.believedvalue,
+      c.name as character_name
+    FROM appraisal a
+    JOIN characters c ON a.characterid = c.id
+    WHERE a.lootid = $1
+    ORDER BY c.id, a.lastupdate DESC
+  `;
+  const appraisalsResult = await pool.query(appraisalsQuery, [lootId]);
+
+  const appraisals = appraisalsResult.rows;
+  const totalValue = appraisals.reduce((sum, appraisal) => sum + parseFloat(appraisal.believedvalue), 0);
+  const averageAppraisal = appraisals.length > 0 ? totalValue / appraisals.length : null;
+
+  return { appraisals, average_appraisal: averageAppraisal };
+};
+
 exports.createLoot = async (req, res) => {
   try {
     const { entries } = req.body;
@@ -176,19 +195,9 @@ exports.getAllLoot = async (req, res) => {
 
     const loot = await Loot.findAll(activeCharacterId);
 
-    // Fetch appraisals for each loot item
     const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
-      const appraisalsQuery = `
-        SELECT a.believedvalue, c.name as character_name
-        FROM appraisal a
-        JOIN characters c ON a.characterid = c.id
-        WHERE a.lootid = $1
-      `;
-      const appraisalsResult = await pool.query(appraisalsQuery, [item.id]);
-      return {
-        ...item,
-        appraisals: appraisalsResult.rows
-      };
+      const { appraisals, average_appraisal } = await fetchAndProcessAppraisals(item.id);
+      return { ...item, appraisals, average_appraisal };
     }));
 
     res.status(200).json({
@@ -222,19 +231,9 @@ exports.getKeptPartyLoot = async (req, res) => {
     const userId = req.user.id;
     const loot = await Loot.findByStatus('Kept Party', userId);
 
-    // Fetch appraisals for each loot item
     const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
-      const appraisalsQuery = `
-        SELECT a.believedvalue, c.name as character_name
-        FROM appraisal a
-        JOIN characters c ON a.characterid = c.id
-        WHERE a.lootid = $1
-      `;
-      const appraisalsResult = await pool.query(appraisalsQuery, [item.id]);
-      return {
-        ...item,
-        appraisals: appraisalsResult.rows
-      };
+      const { appraisals, average_appraisal } = await fetchAndProcessAppraisals(item.id);
+      return { ...item, appraisals, average_appraisal };
     }));
 
     res.status(200).json({
@@ -263,19 +262,9 @@ exports.getKeptCharacterLoot = async (req, res) => {
     const userId = req.user.id;
     const loot = await Loot.findByStatus('Kept Self', userId);
 
-    // Fetch appraisals for each loot item
     const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
-      const appraisalsQuery = `
-        SELECT a.believedvalue, c.name as character_name
-        FROM appraisal a
-        JOIN characters c ON a.characterid = c.id
-        WHERE a.lootid = $1
-      `;
-      const appraisalsResult = await pool.query(appraisalsQuery, [item.id]);
-      return {
-        ...item,
-        appraisals: appraisalsResult.rows
-      };
+      const { appraisals, average_appraisal } = await fetchAndProcessAppraisals(item.id);
+      return { ...item, appraisals, average_appraisal };
     }));
 
     res.status(200).json({
