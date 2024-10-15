@@ -468,37 +468,7 @@ exports.appraiseLoot = async (req, res) => {
 
     // Helper function to round based on specified probabilities
     const customRounding = (value) => {
-      const randomValue = Math.random();
-      if (randomValue < 0.15) {
-        // Round to nearest hundredth
-        let roundedValue = Math.round(value * 100) / 100;
-        if (Math.random() < 0.99) {
-          const factor = 100;
-          const lastDigit = Math.round(roundedValue * factor) % 10;
-          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
-        }
-        return roundedValue;
-      } else if (randomValue < 0.4) {
-        // Round to nearest tenth
-        let roundedValue = Math.round(value * 10) / 10;
-        if (Math.random() < 0.75) {
-          const factor = 10;
-          const lastDigit = Math.round(roundedValue * factor) % 10;
-          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
-        }
-        return roundedValue;
-      } else {
-        // Round to nearest whole number
-        let roundedValue = Math.round(value);
-        if (Math.random() < 0.5) {
-          const lastDigit = roundedValue % 10;
-          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-          roundedValue += adjust;
-        }
-        return roundedValue;
-      }
+      // ... (keep the existing customRounding function)
     };
 
     // Appraise each item
@@ -509,7 +479,7 @@ exports.appraiseLoot = async (req, res) => {
       // Check for previous appraisals
       let previousAppraisal = previousAppraisals.find(appraisal =>
         appraisal.itemid === itemid &&
-        appraisal.modids === modids &&
+        JSON.stringify(appraisal.modids) === JSON.stringify(modids) &&
         appraisal.masterwork === masterwork &&
         appraisal.charges === charges &&
         appraisal.value === lootValue
@@ -541,15 +511,17 @@ exports.appraiseLoot = async (req, res) => {
         }
       }
 
-      const appraisalEntry = {
-        characterid: characterId,
-        lootid: lootId,
-        appraisalroll: appraisalRoll,
-        believedvalue: believedValue,
-      };
+      if (believedValue !== null) {
+        const appraisalEntry = {
+          characterid: characterId,
+          lootid: lootId,
+          appraisalroll: appraisalRoll,
+          believedvalue: believedValue,
+        };
 
-      const createdAppraisal = await Appraisal.create(appraisalEntry);
-      createdAppraisals.push(createdAppraisal);
+        const createdAppraisal = await Appraisal.create(appraisalEntry);
+        createdAppraisals.push(createdAppraisal);
+      }
     }
 
     res.status(201).json(createdAppraisals);
