@@ -224,20 +224,36 @@ const CustomLootTable = ({
   const mainCellStyle = { padding: '16px' };
   const subCellStyle = { padding: '4px' };
 
-  const formatAppraisalDetails = (appraisals) => {
-    if (!appraisals || appraisals.length === 0) return 'No appraisals available';
-    return appraisals.map(appraisal =>
-      `${appraisal.character_name}: ${appraisal.believedvalue}`
-    ).join('\n');
+  console.log('Loot data:', loot);
+  console.log('Individual loot data:', individualLoot);
+
+  const formatAppraisalDetails = (item) => {
+    console.log('Formatting appraisal details for item:', item);
+
+    if (!item || !item.appraisals || item.appraisals.length === 0) {
+      console.log('No appraisals found for item');
+      return 'No appraisals available';
+    }
+
+    return item.appraisals.map(appraisal => {
+      console.log('Appraisal:', appraisal);
+      return `${appraisal.character_name}: ${appraisal.believedvalue}`;
+    }).join('\n');
   };
 
   const formatAverageAppraisal = (item) => {
-    if (!item.average_appraisal) return '';
+    console.log('Formatting average appraisal for item:', item);
+
+    if (!item.average_appraisal) {
+      console.log('No average appraisal found for item');
+      return '';
+    }
+
     const numValue = Number(item.average_appraisal);
     const formattedValue = Number.isInteger(numValue) ? numValue.toString() : numValue.toFixed(2).replace(/\.?0+$/, '');
 
     return (
-      <Tooltip title={formatAppraisalDetails(item.appraisals)} arrow>
+      <Tooltip title={formatAppraisalDetails(item)} arrow>
         <span>{formattedValue}</span>
       </Tooltip>
     );
