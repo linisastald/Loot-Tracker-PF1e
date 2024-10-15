@@ -934,9 +934,15 @@ exports.getUnidentifiedItems = async (req, res) => {
 
 exports.sellUpTo = async (req, res) => {
   const { amount } = req.body;
+  const client = await pool.connect();
 
   try {
-    const pendingItems = await Loot.findPendingSale();
+    await client.query('BEGIN');
+
+    const pendingItemsResult = await client.query(
+      "SELECT * FROM loot WHERE status = 'Pending Sale' ORDER BY value ASC"
+    );
+    const pendingItems = pendingItemsResult.rows;
 
     let totalSold = 0;
     let itemsSold = [];
@@ -953,14 +959,14 @@ exports.sellUpTo = async (req, res) => {
     }
 
     if (itemsSold.length > 0) {
-      await Loot.updateMany(
-        { _id: { $in: itemsSold } },
-        { $set: { status: 'Sold' } }
+      await client.query(
+        "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
+        [itemsSold]
       );
 
       const goldEntry = {
-        sessionDate: new Date(),
-        transactionType: 'Sale',
+        session_date: new Date(),
+        transaction_type: 'Sale',
         platinum: 0,
         gold: Math.floor(totalSold),
         silver: Math.floor((totalSold % 1) * 10),
@@ -968,21 +974,34 @@ exports.sellUpTo = async (req, res) => {
         notes: `Sale of ${itemsSold.length} items`
       };
 
-      await Gold.create(goldEntry);
+      await client.query(
+        'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
+      );
     }
 
+    await client.query('COMMIT');
     res.status(200).json({ message: `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold` });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error selling items up to amount:', error);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 };
 
 exports.sellAllExcept = async (req, res) => {
   const { itemsToKeep } = req.body;
+  const client = await pool.connect();
 
   try {
-    const pendingItems = await Loot.findPendingSale();
+    await client.query('BEGIN');
+
+    const pendingItemsResult = await client.query(
+      "SELECT * FROM loot WHERE status = 'Pending Sale'"
+    );
+    const pendingItems = pendingItemsResult.rows;
 
     let totalSold = 0;
     let itemsSold = [];
@@ -996,14 +1015,14 @@ exports.sellAllExcept = async (req, res) => {
     }
 
     if (itemsSold.length > 0) {
-      await Loot.updateMany(
-        { _id: { $in: itemsSold } },
-        { $set: { status: 'Sold' } }
+      await client.query(
+        "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
+        [itemsSold]
       );
 
       const goldEntry = {
-        sessionDate: new Date(),
-        transactionType: 'Sale',
+        session_date: new Date(),
+        transaction_type: 'Sale',
         platinum: 0,
         gold: Math.floor(totalSold),
         silver: Math.floor((totalSold % 1) * 10),
@@ -1011,13 +1030,20 @@ exports.sellAllExcept = async (req, res) => {
         notes: `Sale of ${itemsSold.length} items`
       };
 
-      await Gold.create(goldEntry);
+      await client.query(
+        'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
+      );
     }
 
+    await client.query('COMMIT');
     res.status(200).json({ message: `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold` });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error selling all items except selected:', error);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 };
 
