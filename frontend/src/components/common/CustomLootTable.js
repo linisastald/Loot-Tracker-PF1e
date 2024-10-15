@@ -227,15 +227,28 @@ const CustomLootTable = ({
   console.log('Loot data:', loot);
   console.log('Individual loot data:', individualLoot);
 
+  const getAppraisals = (item) => {
+    if (item.appraisals) {
+      return item.appraisals;
+    }
+    // If the item doesn't have appraisals, check if it has individualItems
+    if (item.individualItems && item.individualItems.length > 0) {
+      return item.individualItems[0].appraisals;
+    }
+    return null;
+  };
+
   const formatAppraisalDetails = (item) => {
     console.log('Formatting appraisal details for item:', item);
 
-    if (!item || !item.appraisals || item.appraisals.length === 0) {
+    const appraisals = getAppraisals(item);
+
+    if (!appraisals || appraisals.length === 0) {
       console.log('No appraisals found for item');
       return 'No appraisals available';
     }
 
-    return item.appraisals.map(appraisal => {
+    return appraisals.map(appraisal => {
       console.log('Appraisal:', appraisal);
       return `${appraisal.character_name}: ${appraisal.believedvalue}`;
     }).join('\n');
@@ -258,6 +271,7 @@ const CustomLootTable = ({
       </Tooltip>
     );
   };
+
 
   return (
     <Paper sx={{ p: 2 }}>
