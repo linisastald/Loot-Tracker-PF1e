@@ -175,7 +175,26 @@ exports.getAllLoot = async (req, res) => {
     }
 
     const loot = await Loot.findAll(activeCharacterId);
-    res.status(200).json(loot);
+
+    // Fetch appraisals for each loot item
+    const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
+      const appraisalsQuery = `
+        SELECT a.believedvalue, c.name as character_name
+        FROM appraisal a
+        JOIN characters c ON a.characterid = c.id
+        WHERE a.lootid = $1
+      `;
+      const appraisalsResult = await pool.query(appraisalsQuery, [item.id]);
+      return {
+        ...item,
+        appraisals: appraisalsResult.rows
+      };
+    }));
+
+    res.status(200).json({
+      summary: loot.summary,
+      individual: lootWithAppraisals
+    });
   } catch (error) {
     console.error('Error fetching loot', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -202,7 +221,26 @@ exports.getKeptPartyLoot = async (req, res) => {
   try {
     const userId = req.user.id;
     const loot = await Loot.findByStatus('Kept Party', userId);
-    res.status(200).json(loot);
+
+    // Fetch appraisals for each loot item
+    const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
+      const appraisalsQuery = `
+        SELECT a.believedvalue, c.name as character_name
+        FROM appraisal a
+        JOIN characters c ON a.characterid = c.id
+        WHERE a.lootid = $1
+      `;
+      const appraisalsResult = await pool.query(appraisalsQuery, [item.id]);
+      return {
+        ...item,
+        appraisals: appraisalsResult.rows
+      };
+    }));
+
+    res.status(200).json({
+      summary: loot.summary,
+      individual: lootWithAppraisals
+    });
   } catch (error) {
     console.error('Error fetching kept party loot', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -224,7 +262,26 @@ exports.getKeptCharacterLoot = async (req, res) => {
   try {
     const userId = req.user.id;
     const loot = await Loot.findByStatus('Kept Self', userId);
-    res.status(200).json(loot);
+
+    // Fetch appraisals for each loot item
+    const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
+      const appraisalsQuery = `
+        SELECT a.believedvalue, c.name as character_name
+        FROM appraisal a
+        JOIN characters c ON a.characterid = c.id
+        WHERE a.lootid = $1
+      `;
+      const appraisalsResult = await pool.query(appraisalsQuery, [item.id]);
+      return {
+        ...item,
+        appraisals: appraisalsResult.rows
+      };
+    }));
+
+    res.status(200).json({
+      summary: loot.summary,
+      individual: lootWithAppraisals
+    });
   } catch (error) {
     console.error('Error fetching kept character loot', error);
     res.status(500).json({ error: 'Internal server error' });
