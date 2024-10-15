@@ -13,60 +13,17 @@ DB_NAME = 'loot_tracking'
 DB_USER = 'loot_user'
 DB_PASSWORD = 'g5Zr7!cXw@2sP9Lk'  # Replace this with the actual password
 
-# Tables to not replicate rows
-NON_REPLICATED_TABLES = [
-    'appraisal', 'characters', 'consumableuse', 'gold', 'identify',
-    'invites', 'loot', 'settings', 'sold', 'users'
+# Tables to check and create if missing
+TABLES_TO_CHECK = [
+    'appraisal', 'characters', 'consumableuse', 'golarion_calendar_notes',
+    'golarion_current_date', 'gold', 'identify', 'invites', 'item', 'loot',
+    'mod', 'settings', 'sold', 'spells', 'users'
 ]
 
+# Tables to replicate content exactly
+TABLES_TO_REPLICATE = ['item', 'mod', 'spells']
 
-def get_docker_container_ids():
-    try:
-        result = subprocess.run(['docker', 'ps', '--format', '{{.ID}}\t{{.Names}}'],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                universal_newlines=True, check=True)
-        containers = []
-        for line in result.stdout.split('\n'):
-            if line:
-                container_id, name = line.split('\t')
-                if name.endswith('loot_db'):
-                    containers.append((container_id, name))
-        return containers
-    except subprocess.CalledProcessError as e:
-        print(f"Error running docker command: {e}")
-        return []
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        return []
-
-
-def get_container_port(container_id):
-    try:
-        result = subprocess.run(['docker', 'port', container_id, '5432'],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                universal_newlines=True, check=True)
-        if result.stdout:
-            return result.stdout.split(':')[-1].strip()
-    except subprocess.CalledProcessError as e:
-        print(f"Error getting port for container {container_id}: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-    return None
-
-
-def connect_to_db(port):
-    try:
-        return psycopg2.connect(
-            host=DB_HOST,
-            port=port,
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
-    except psycopg2.Error as e:
-        print(f"Unable to connect to database: {e}")
-        return None
-
+# ... (keep the existing functions: get_docker_container_ids, get_container_port, connect_to_db)
 
 def get_db_structure(conn):
     structure = {'tables': {}, 'indexes': {}}
@@ -77,9 +34,9 @@ def get_db_structure(conn):
             cur.execute("""
                 SELECT table_name, column_name, data_type
                 FROM information_schema.columns
-                WHERE table_schema = 'public'
+                WHERE table_schema = 'public' AND table_name = ANY(%s)
                 ORDER BY table_name, ordinal_position
-            """)
+            """, (TABLES_TO_CHECK,))
             for table, column, data_type in cur.fetchall():
                 if table not in structure['tables']:
                     structure['tables'][table] = []
@@ -89,8 +46,8 @@ def get_db_structure(conn):
             cur.execute("""
                 SELECT tablename, indexname, indexdef
                 FROM pg_indexes
-                WHERE schemaname = 'public'
-            """)
+                WHERE schemaname = 'public' AND tablename = ANY(%s)
+            """, (TABLES_TO_CHECK,))
             for table, index, indexdef in cur.fetchall():
                 if table not in structure['indexes']:
                     structure['indexes'][table] = []
@@ -100,101 +57,7 @@ def get_db_structure(conn):
 
     return structure
 
-
-def compare_structures(master, copy):
-    differences = {
-        'missing_tables': [],
-        'missing_columns': {},
-        'missing_indexes': {}
-    }
-
-    # Check for missing tables
-    for table in master['tables']:
-        if table not in copy['tables']:
-            differences['missing_tables'].append(table)
-
-    # Check for missing columns
-    for table in master['tables']:
-        if table in copy['tables']:
-            master_columns = set(master['tables'][table])
-            copy_columns = set(copy['tables'][table])
-            missing_columns = master_columns - copy_columns
-            if missing_columns:
-                differences['missing_columns'][table] = list(missing_columns)
-
-    # Check for missing indexes
-    for table in master['indexes']:
-        if table in copy['indexes']:
-            master_indexes = set(master['indexes'][table])
-            copy_indexes = set(copy['indexes'][table])
-            missing_indexes = master_indexes - copy_indexes
-            if missing_indexes:
-                differences['missing_indexes'][table] = list(missing_indexes)
-        elif table not in differences['missing_tables']:
-            differences['missing_indexes'][table] = master['indexes'][table]
-
-    return differences
-
-
-def generate_update_sql(differences, master_structure):
-    sql_statements = []
-
-    for table in differences['missing_tables']:
-        columns = master_structure['tables'].get(table, [])
-        column_definitions = ", ".join([f"{column} {data_type}" for column, data_type in columns])
-        sql_statements.append(f"CREATE TABLE {table} ({column_definitions});")
-
-    for table, columns in differences['missing_columns'].items():
-        for column, data_type in columns:
-            sql_statements.append(f"ALTER TABLE {table} ADD COLUMN {column} {data_type};")
-
-    for table, indexes in differences['missing_indexes'].items():
-        for _, indexdef in indexes:
-            sql_statements.append(indexdef + ";")
-
-    return "\n".join(sql_statements)
-
-
-def get_table_data(conn, table):
-    with conn.cursor() as cur:
-        cur.execute(f"SELECT * FROM {table}")
-        return cur.fetchall()
-
-
-def compare_table_data(master_data, copy_data):
-    master_set = set(map(tuple, master_data))
-    copy_set = set(map(tuple, copy_data))
-
-    missing_in_copy = master_set - copy_set
-    missing_in_master = copy_set - master_set
-
-    return list(missing_in_copy), list(missing_in_master)
-
-
-def generate_insert_sql(table, columns, rows):
-    if not rows:
-        return ""
-
-    column_names = ", ".join(columns)
-    values = []
-
-    def format_value(val):
-        if val is None:
-            return "NULL"
-        elif isinstance(val, str):
-            # Escape single quotes by doubling them
-            escaped_val = val.replace("'", "''")
-            return f"'{escaped_val}'"
-        else:
-            return str(val)
-
-    for row in rows:
-        value_str = ", ".join(map(format_value, row))
-        values.append(f"({value_str})")
-
-    values_str = ", ".join(values)
-    return f"INSERT INTO {table} ({column_names}) VALUES {values_str};"
-
+# ... (keep the existing functions: compare_structures, generate_update_sql, get_table_data, compare_table_data, generate_insert_sql)
 
 def main():
     parser = argparse.ArgumentParser(description="Compare PostgreSQL database structures and data")
@@ -235,8 +98,7 @@ def main():
             print("\nGenerated SQL to update the copy database structure:")
             print(update_sql)
 
-            confirm = input(
-                f"\nDo you want to apply these structural changes to the copy database ({container_name})? (y/n): ")
+            confirm = input(f"\nDo you want to apply these structural changes to the copy database ({container_name})? (y/n): ")
             if confirm.lower() == 'y':
                 try:
                     with copy_conn.cursor() as cur:
@@ -249,68 +111,39 @@ def main():
             else:
                 print("Structural changes not applied.")
 
-        # Compare data
-        for table in master_structure['tables']:
-            if table not in NON_REPLICATED_TABLES:
-                master_data = get_table_data(master_conn, table)
-                copy_data = get_table_data(copy_conn, table)
+        # Compare data for tables that need exact replication
+        for table in TABLES_TO_REPLICATE:
+            master_data = get_table_data(master_conn, table)
+            copy_data = get_table_data(copy_conn, table)
 
-                missing_in_copy, missing_in_master = compare_table_data(master_data, copy_data)
+            missing_in_copy, extra_in_copy = compare_table_data(master_data, copy_data)
 
+            if missing_in_copy or extra_in_copy:
+                print(f"\nDifferences found in table {table}:")
                 if missing_in_copy:
-                    print(f"\nRows missing in copy database for table {table}:")
-                    print(missing_in_copy)
+                    print(f"Rows missing in copy database: {len(missing_in_copy)}")
+                if extra_in_copy:
+                    print(f"Extra rows in copy database: {len(extra_in_copy)}")
 
-                    columns = [col[0] for col in master_structure['tables'][table]]
-                    insert_sql = generate_insert_sql(table, columns, missing_in_copy)
-
-                    confirm = input(
-                        f"Do you want to add these missing rows to the copy database ({container_name})? (y/n): ")
-                    if confirm.lower() == 'y':
-                        try:
-                            with copy_conn.cursor() as cur:
-                                cur.execute(insert_sql)
-                            copy_conn.commit()
-                            print(f"Missing rows added to {table} in copy database.")
-                        except psycopg2.Error as e:
-                            print(f"Error adding missing rows: {e}")
-                            print(f"SQL that caused the error: {insert_sql}")
-                            print("Detailed error information:")
-                            print(f"pgerror: {e.pgerror}")
-                            print(f"pgcode: {e.pgcode}")
-                            copy_conn.rollback()
-                    else:
-                        print("Missing rows not added.")
-
-                if missing_in_master:
-                    print(colored(f"\nWARNING: Rows found in copy database but missing in master for table {table}:",
-                                  "red"))
-                    print(colored(str(missing_in_master), "red"))
-
-                    columns = [col[0] for col in master_structure['tables'][table]]
-                    insert_sql = generate_insert_sql(table, columns, missing_in_master)
-
-                    confirm = input(colored(f"Do you want to add these rows to the master database? (y/n): ", "red"))
-                    if confirm.lower() == 'y':
-                        try:
-                            with master_conn.cursor() as cur:
-                                cur.execute(insert_sql)
-                            master_conn.commit()
-                            print(f"Rows added to {table} in master database.")
-                        except psycopg2.Error as e:
-                            print(f"Error adding rows to master: {e}")
-                            print(f"SQL that caused the error: {insert_sql}")
-                            print("Detailed error information:")
-                            print(f"pgerror: {e.pgerror}")
-                            print(f"pgcode: {e.pgcode}")
-                            master_conn.rollback()
-                    else:
-                        print("Rows not added to master database.")
+                confirm = input(f"Do you want to make the {table} table in the copy database identical to the master? (y/n): ")
+                if confirm.lower() == 'y':
+                    try:
+                        with copy_conn.cursor() as cur:
+                            cur.execute(f"DELETE FROM {table}")
+                            columns = [col[0] for col in master_structure['tables'][table]]
+                            insert_sql = generate_insert_sql(table, columns, master_data)
+                            cur.execute(insert_sql)
+                        copy_conn.commit()
+                        print(f"Table {table} in copy database now matches the master.")
+                    except psycopg2.Error as e:
+                        print(f"Error updating table {table}: {e}")
+                        copy_conn.rollback()
+                else:
+                    print(f"Table {table} not updated.")
 
         copy_conn.close()
 
     master_conn.close()
-
 
 if __name__ == "__main__":
     main()
