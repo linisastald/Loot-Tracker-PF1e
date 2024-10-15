@@ -932,5 +932,93 @@ exports.getUnidentifiedItems = async (req, res) => {
   }
 };
 
+exports.sellUpTo = async (req, res) => {
+  const { amount } = req.body;
+
+  try {
+    const pendingItems = await Loot.findPendingSale();
+
+    let totalSold = 0;
+    let itemsSold = [];
+
+    for (const item of pendingItems) {
+      const saleValue = item.type === 'trade good' ? item.value : item.value / 2;
+
+      if (totalSold + saleValue <= amount) {
+        itemsSold.push(item.id);
+        totalSold += saleValue;
+      } else {
+        break;
+      }
+    }
+
+    if (itemsSold.length > 0) {
+      await Loot.updateMany(
+        { _id: { $in: itemsSold } },
+        { $set: { status: 'Sold' } }
+      );
+
+      const goldEntry = {
+        sessionDate: new Date(),
+        transactionType: 'Sale',
+        platinum: 0,
+        gold: Math.floor(totalSold),
+        silver: Math.floor((totalSold % 1) * 10),
+        copper: Math.floor(((totalSold * 10) % 1) * 10),
+        notes: `Sale of ${itemsSold.length} items`
+      };
+
+      await Gold.create(goldEntry);
+    }
+
+    res.status(200).json({ message: `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold` });
+  } catch (error) {
+    console.error('Error selling items up to amount:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.sellAllExcept = async (req, res) => {
+  const { itemsToKeep } = req.body;
+
+  try {
+    const pendingItems = await Loot.findPendingSale();
+
+    let totalSold = 0;
+    let itemsSold = [];
+
+    for (const item of pendingItems) {
+      if (!itemsToKeep.includes(item.id)) {
+        const saleValue = item.type === 'trade good' ? item.value : item.value / 2;
+        itemsSold.push(item.id);
+        totalSold += saleValue;
+      }
+    }
+
+    if (itemsSold.length > 0) {
+      await Loot.updateMany(
+        { _id: { $in: itemsSold } },
+        { $set: { status: 'Sold' } }
+      );
+
+      const goldEntry = {
+        sessionDate: new Date(),
+        transactionType: 'Sale',
+        platinum: 0,
+        gold: Math.floor(totalSold),
+        silver: Math.floor((totalSold % 1) * 10),
+        copper: Math.floor(((totalSold * 10) % 1) * 10),
+        notes: `Sale of ${itemsSold.length} items`
+      };
+
+      await Gold.create(goldEntry);
+    }
+
+    res.status(200).json({ message: `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold` });
+  } catch (error) {
+    console.error('Error selling all items except selected:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
 
 module.exports = exports;

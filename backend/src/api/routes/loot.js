@@ -26,6 +26,9 @@ router.get('/mods', verifyToken, checkRole('DM'), lootController.getMods);
 router.put('/dm-update/:id', verifyToken, checkRole(['DM']), lootController.dmUpdateItem);
 router.get('/character-ledger', verifyToken, lootController.getCharacterLedger);
 router.get('/unidentified', verifyToken, lootController.getUnidentifiedItems);
+router.post('/sell-up-to', verifyToken, checkRole(['DM']), lootController.sellUpTo);
+router.post('/sell-all-except', verifyToken, checkRole(['DM']), lootController.sellAllExcept);
+
 
 router.put('/:id', verifyToken, lootController.updateSingleLootStatus);
 

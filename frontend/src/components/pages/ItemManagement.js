@@ -23,7 +23,8 @@ import {
   InputLabel,
   FormControl,
   TableSortLabel,
-  Autocomplete
+  Autocomplete,
+  Checkbox
 } from '@mui/material';
 
 const ItemManagement = () => {
@@ -39,6 +40,8 @@ const ItemManagement = () => {
   const [mods, setMods] = useState([]);
   const [activeCharacters, setActiveCharacters] = useState([]);
   const [sortConfig, setSortConfig] = useState({key: null, direction: 'ascending'});
+  const [sellUpToAmount, setSellUpToAmount] = useState('');
+  const [selectedPendingItems, setSelectedPendingItems] = useState([]);
 
   useEffect(() => {
     fetchPendingItems();
@@ -115,7 +118,6 @@ const ItemManagement = () => {
 
   const handleItemUpdateSubmit = async () => {
     try {
-      // Prepare the data, converting empty strings to null and ensuring correct types
       const preparedData = {
         session_date: updatedItem.session_date || null,
         quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
@@ -135,7 +137,6 @@ const ItemManagement = () => {
         dm_notes: updatedItem.dm_notes || null,
       };
 
-      // Include all fields in the dataToSend, even if they're null
       const dataToSend = {...preparedData};
 
       console.log('Data being sent to update:', dataToSend);
@@ -154,7 +155,6 @@ const ItemManagement = () => {
     try {
       await api.put(`/loot/confirm-sale`, {});
 
-      // Calculate gold, silver, and copper from pendingSaleTotal
       const totalValue = pendingSaleTotal;
       const gold = Math.floor(totalValue);
       const silver = Math.floor((totalValue - gold) * 10);
@@ -178,12 +178,54 @@ const ItemManagement = () => {
     }
   };
 
+  const handleSellUpTo = async () => {
+    try {
+      const amount = parseFloat(sellUpToAmount);
+      if (isNaN(amount) || amount <= 0) {
+        alert('Please enter a valid amount');
+        return;
+      }
+
+      const response = await api.post('/loot/sell-up-to', { amount });
+      if (response.status === 200) {
+        fetchPendingItems();
+        setSellUpToAmount('');
+        alert(`Successfully sold items up to ${amount}`);
+      }
+    } catch (error) {
+      console.error('Error selling items up to amount:', error);
+      alert('Failed to sell items');
+    }
+  };
+
+  const handleSellAllExcept = async () => {
+    try {
+      const itemsToKeep = selectedPendingItems;
+      const response = await api.post('/loot/sell-all-except', { itemsToKeep });
+      if (response.status === 200) {
+        fetchPendingItems();
+        setSelectedPendingItems([]);
+        alert('Successfully sold all items except selected');
+      }
+    } catch (error) {
+      console.error('Error selling all items except selected:', error);
+      alert('Failed to sell items');
+    }
+  };
+
+  const handlePendingItemSelect = (itemId) => {
+    setSelectedPendingItems(prev =>
+      prev.includes(itemId)
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    );
+  };
+
   const handleItemUpdateChange = (field, value) => {
     setUpdatedItem(prevItem => {
       if (field === 'modids') {
         return {...prevItem, [field]: value};
       }
-      // For select fields, explicitly set to null if value is an empty string
       if (['unidentified', 'masterwork', 'type', 'size', 'status', 'whohas'].includes(field)) {
         return {...prevItem, [field]: value === '' ? null : value};
       }
@@ -330,9 +372,29 @@ const ItemManagement = () => {
           <Typography variant="h6">Pending Sale Summary</Typography>
           <Typography>Number of Items: {pendingSaleCount}</Typography>
           <Typography>Total Value: {pendingSaleTotal.toFixed(2)}</Typography>
-          <Button variant="contained" color="primary" onClick={handleConfirmSale}>
-            Confirm Sale
-          </Button>
+          <Box display="flex" alignItems="center" mt={2}>
+            <TextField
+              label="Sell up to amount"
+              type="number"
+              value={sellUpToAmount}
+              onChange={(e) => setSellUpToAmount(e.target.value)}
+              sx={{ mr: 2 }}
+            />
+            <Button variant="contained" color="primary" onClick={handleSellUpTo} sx={{ mr: 2 }}>
+              Sell Up To
+            </Button>
+            <Button variant="contained" color="primary" onClick={handleConfirmSale} sx={{ mr: 2 }}>
+              Sell All
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleSellAllExcept}
+              disabled={selectedPendingItems.length === 0}
+            >
+              Sell All Except Selected
+            </Button>
+          </Box>
         </Box>
 
         {/* Pending Sale Items Table */}
@@ -342,6 +404,7 @@ const ItemManagement = () => {
             <Table>
               <TableHead>
                 <TableRow>
+                  <TableCell>Select</TableCell>
                   <TableCell>Session Date</TableCell>
                   <TableCell>Quantity</TableCell>
                   <TableCell>Name</TableCell>
@@ -362,7 +425,13 @@ const ItemManagement = () => {
               </TableHead>
               <TableBody>
                 {pendingItems.map((item) => (
-                  <TableRow key={item.id} onClick={() => { setUpdatedItem(item); setUpdateDialogOpen(true); }}>
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedPendingItems.includes(item.id)}
+                        onChange={() => handlePendingItemSelect(item.id)}
+                      />
+                    </TableCell>
                     <TableCell>{formatDate(item.session_date)}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>{item.name}</TableCell>
@@ -373,7 +442,7 @@ const ItemManagement = () => {
                     <TableCell>{item.status}</TableCell>
                     <TableCell>{item.itemid}</TableCell>
                     <TableCell>{item.modids?.join(', ')}</TableCell>
-					<TableCell>{item.charges}</TableCell>
+                    <TableCell>{item.charges}</TableCell>
                     <TableCell>{item.value}</TableCell>
                     <TableCell>{item.whohas}</TableCell>
                     <TableCell>{item.notes}</TableCell>
