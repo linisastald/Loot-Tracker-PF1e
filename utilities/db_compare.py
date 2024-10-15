@@ -150,14 +150,30 @@ def generate_update_sql(differences, master_structure):
             else:
                 column_definitions.append(f"{column} {data_type}")
         column_definitions_str = ", ".join(column_definitions)
-        sql_statements.append(f"CREATE TABLE {table} ({column_definitions_str});")
+        sql_statements.append(f"CREATE TABLE IF NOT EXISTS {table} ({column_definitions_str});")
 
     for table, columns in differences['missing_columns'].items():
         for column, data_type in columns:
             if data_type.upper() == 'ARRAY':
-                sql_statements.append(f"ALTER TABLE {table} ADD COLUMN {column} character varying[];")
+                sql_statements.append(f"""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                       WHERE table_name='{table}' AND column_name='{column}') THEN
+                            ALTER TABLE {table} ADD COLUMN {column} character varying[];
+                        END IF;
+                    END $$;
+                """)
             else:
-                sql_statements.append(f"ALTER TABLE {table} ADD COLUMN {column} {data_type};")
+                sql_statements.append(f"""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                       WHERE table_name='{table}' AND column_name='{column}') THEN
+                            ALTER TABLE {table} ADD COLUMN {column} {data_type};
+                        END IF;
+                    END $$;
+                """)
 
     for table, indexes in differences['missing_indexes'].items():
         for _, indexdef in indexes:
@@ -204,6 +220,41 @@ def generate_insert_sql(table, columns, rows):
 
     values_str = ", ".join(values)
     return f"INSERT INTO {table} ({column_names}) VALUES {values_str};"
+
+def reconcile_table_data(master_conn, copy_conn, table, master_structure):
+    master_data = get_table_data(master_conn, table)
+    copy_data = get_table_data(copy_conn, table)
+
+    missing_in_copy, extra_in_copy = compare_table_data(master_data, copy_data)
+
+    if missing_in_copy or extra_in_copy:
+        print(f"\nDifferences found in table {table}:")
+        if missing_in_copy:
+            print(f"Rows missing in copy database: {len(missing_in_copy)}")
+        if extra_in_copy:
+            print(f"Extra rows in copy database: {len(extra_in_copy)}")
+
+        confirm = input(f"Do you want to add missing rows to the {table} table in the copy database? (y/n): ")
+        if confirm.lower() == 'y':
+            try:
+                with copy_conn.cursor() as cur:
+                    columns = [col[0] for col in master_structure['tables'][table]]
+                    insert_sql = generate_insert_sql(table, columns, missing_in_copy)
+                    cur.execute(insert_sql)
+                copy_conn.commit()
+                print(f"Added missing rows to table {table} in copy database.")
+            except psycopg2.Error as e:
+                print(f"Error updating table {table}: {e}")
+                copy_conn.rollback()
+        else:
+            print(f"Table {table} not updated.")
+
+        if extra_in_copy:
+            print(f"\nWARNING: There are {len(extra_in_copy)} extra rows in the copy database for table {table}.")
+            print("These rows are not present in the master database.")
+            print("You may want to manually review these differences.")
+    else:
+        print(f"\nNo differences found in table {table}.")
 
 def main():
     parser = argparse.ArgumentParser(description="Compare PostgreSQL database structures and data")
@@ -257,35 +308,9 @@ def main():
             else:
                 print("Structural changes not applied.")
 
-        # Compare data for tables that need exact replication
+        # Compare and reconcile data for tables that need exact replication
         for table in TABLES_TO_REPLICATE:
-            master_data = get_table_data(master_conn, table)
-            copy_data = get_table_data(copy_conn, table)
-
-            missing_in_copy, extra_in_copy = compare_table_data(master_data, copy_data)
-
-            if missing_in_copy or extra_in_copy:
-                print(f"\nDifferences found in table {table}:")
-                if missing_in_copy:
-                    print(f"Rows missing in copy database: {len(missing_in_copy)}")
-                if extra_in_copy:
-                    print(f"Extra rows in copy database: {len(extra_in_copy)}")
-
-                confirm = input(f"Do you want to make the {table} table in the copy database identical to the master? (y/n): ")
-                if confirm.lower() == 'y':
-                    try:
-                        with copy_conn.cursor() as cur:
-                            cur.execute(f"DELETE FROM {table}")
-                            columns = [col[0] for col in master_structure['tables'][table]]
-                            insert_sql = generate_insert_sql(table, columns, master_data)
-                            cur.execute(insert_sql)
-                        copy_conn.commit()
-                        print(f"Table {table} in copy database now matches the master.")
-                    except psycopg2.Error as e:
-                        print(f"Error updating table {table}: {e}")
-                        copy_conn.rollback()
-                else:
-                    print(f"Table {table} not updated.")
+            reconcile_table_data(master_conn, copy_conn, table, master_structure)
 
         copy_conn.close()
 
