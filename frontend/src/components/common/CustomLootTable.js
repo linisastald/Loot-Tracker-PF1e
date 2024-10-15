@@ -227,15 +227,25 @@ const CustomLootTable = ({
   console.log('Loot data:', loot);
   console.log('Individual loot data:', individualLoot);
 
+   const aggregatedAppraisals = useMemo(() => {
+    const appraisalMap = new Map();
+
+    individualLoot.forEach(item => {
+      const key = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
+      if (!appraisalMap.has(key)) {
+        appraisalMap.set(key, []);
+      }
+      if (item.appraisals) {
+        appraisalMap.get(key).push(...item.appraisals);
+      }
+    });
+
+    return appraisalMap;
+  }, [individualLoot]);
+
   const getAppraisals = (item) => {
-    if (item.appraisals) {
-      return item.appraisals;
-    }
-    // If the item doesn't have appraisals, check if it has individualItems
-    if (item.individualItems && item.individualItems.length > 0) {
-      return item.individualItems[0].appraisals;
-    }
-    return null;
+    const key = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
+    return aggregatedAppraisals.get(key) || [];
   };
 
   const formatAppraisalDetails = (item) => {
