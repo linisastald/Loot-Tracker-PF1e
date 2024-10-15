@@ -249,18 +249,26 @@ const CustomLootTable = ({
   };
 
   const formatAppraisalDetails = (item) => {
-    if (!item.appraisals || item.appraisals.length === 0) {
+    console.log('Formatting appraisal details for item:', item);
+
+    const appraisals = getAppraisals(item);
+
+    if (!appraisals || appraisals.length === 0) {
+      console.log('No appraisals found for item');
       return 'No appraisals available';
     }
 
-    return item.appraisals.map(appraisal =>
-      `${appraisal.character_name}: ${appraisal.believedvalue}`
-    ).join('\n');
+    return appraisals.map(appraisal => {
+      console.log('Appraisal:', appraisal);
+      return `${appraisal.character_name}: ${appraisal.believedvalue}`;
+    }).join('\n');
   };
 
-
   const formatAverageAppraisal = (item) => {
+    console.log('Formatting average appraisal for item:', item);
+
     if (!item.average_appraisal) {
+      console.log('No average appraisal found for item');
       return '';
     }
 
@@ -273,7 +281,6 @@ const CustomLootTable = ({
       </Tooltip>
     );
   };
-
 
 
   return (
