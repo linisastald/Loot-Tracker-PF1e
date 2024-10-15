@@ -227,6 +227,7 @@ def generate_insert_sql(table, columns, rows):
     values_str = ", ".join(values)
     return f"INSERT INTO {table} ({column_names}) VALUES {values_str};"
 
+
 def reconcile_table_data(master_conn, copy_conn, table, master_structure):
     master_data = get_table_data(master_conn, table)
     copy_data = get_table_data(copy_conn, table)
@@ -253,29 +254,47 @@ def reconcile_table_data(master_conn, copy_conn, table, master_structure):
                         WHERE  i.indrelid = '{table}'::regclass
                         AND    i.indisprimary;
                     """)
-                    primary_key = cur.fetchone()[0]
+                    primary_key_result = cur.fetchone()
+                    primary_key = primary_key_result[0] if primary_key_result else None
 
-                    # Delete rows that are in copy but not in master
-                    extra_ids = [row[0] for row in extra_in_copy]
-                    if extra_ids:
-                        cur.execute(f"DELETE FROM {table} WHERE {primary_key} = ANY(%s)", (extra_ids,))
+                    if primary_key:
+                        # Delete rows that are in copy but not in master
+                        extra_ids = [row[0] for row in extra_in_copy]
+                        if extra_ids:
+                            cur.execute(f"DELETE FROM {table} WHERE {primary_key} = ANY(%s)", (extra_ids,))
 
-                    # Upsert rows from master
-                    columns = [col[0] for col in master_structure['tables'][table]]
-                    column_list = ', '.join(columns)
-                    update_list = ', '.join(f"{col} = EXCLUDED.{col}" for col in columns if col != primary_key)
+                        # Upsert rows from master
+                        columns = [col[0] for col in master_structure['tables'][table]]
+                        column_list = ', '.join(columns)
+                        update_list = ', '.join(f"{col} = EXCLUDED.{col}" for col in columns if col != primary_key)
 
-                    args_str = ','.join(
-                        cur.mogrify("(" + ",".join(["%s"] * len(row)) + ")", row).decode('utf-8') for row in
-                        missing_in_copy)
+                        args_str = ','.join(
+                            cur.mogrify("(" + ",".join(["%s"] * len(row)) + ")", row).decode('utf-8') for row in
+                            missing_in_copy)
 
-                    if args_str:  # Only execute if there are rows to insert/update
-                        cur.execute(f"""
-                            INSERT INTO {table} ({column_list})
-                            VALUES {args_str}
-                            ON CONFLICT ({primary_key})
-                            DO UPDATE SET {update_list}
-                        """)
+                        if args_str:  # Only execute if there are rows to insert/update
+                            cur.execute(f"""
+                                INSERT INTO {table} ({column_list})
+                                VALUES {args_str}
+                                ON CONFLICT ({primary_key})
+                                DO UPDATE SET {update_list}
+                            """)
+                    else:
+                        # If there's no primary key, we'll delete all rows and insert the master data
+                        cur.execute(f"DELETE FROM {table}")
+
+                        columns = [col[0] for col in master_structure['tables'][table]]
+                        column_list = ', '.join(columns)
+
+                        args_str = ','.join(
+                            cur.mogrify("(" + ",".join(["%s"] * len(row)) + ")", row).decode('utf-8') for row in
+                            master_data)
+
+                        if args_str:  # Only execute if there are rows to insert
+                            cur.execute(f"""
+                                INSERT INTO {table} ({column_list})
+                                VALUES {args_str}
+                            """)
 
                 copy_conn.commit()
                 print(f"Table {table} in copy database now matches the master.")
