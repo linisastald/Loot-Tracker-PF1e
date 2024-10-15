@@ -231,13 +231,13 @@ const CustomLootTable = ({
     ).join('\n');
   };
 
-  const formatAverageAppraisal = (value, appraisals) => {
-    if (value === null || value === undefined) return '';
-    const numValue = Number(value);
+  const formatAverageAppraisal = (item) => {
+    if (!item.average_appraisal) return '';
+    const numValue = Number(item.average_appraisal);
     const formattedValue = Number.isInteger(numValue) ? numValue.toString() : numValue.toFixed(2).replace(/\.?0+$/, '');
 
     return (
-      <Tooltip title={formatAppraisalDetails(appraisals)} arrow>
+      <Tooltip title={formatAppraisalDetails(item.appraisals)} arrow>
         <span>{formattedValue}</span>
       </Tooltip>
     );
@@ -503,7 +503,7 @@ const CustomLootTable = ({
                     {showColumns.believedValue && <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
                     {showColumns.averageAppraisal && (
                       <TableCell style={mainCellStyle}>
-                        {formatAverageAppraisal(item.average_appraisal, item.appraisals)}
+                        {formatAverageAppraisal(item)}
                       </TableCell>
                     )}
                     {showColumns.pendingSale && (
