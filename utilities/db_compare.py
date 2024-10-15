@@ -146,7 +146,7 @@ def generate_update_sql(differences, master_structure):
         column_definitions = []
         for column, data_type in columns:
             if data_type.upper() == 'ARRAY':
-                column_definitions.append(f"{column} character varying[]")  # Assuming it's an array of strings
+                column_definitions.append(f"{column} character varying[]")
             else:
                 column_definitions.append(f"{column} {data_type}")
         column_definitions_str = ", ".join(column_definitions)
@@ -155,25 +155,16 @@ def generate_update_sql(differences, master_structure):
     for table, columns in differences['missing_columns'].items():
         for column, data_type in columns:
             if data_type.upper() == 'ARRAY':
-                sql_statements.append(f"""
-                    DO $$
-                    BEGIN
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                                       WHERE table_name='{table}' AND column_name='{column}') THEN
-                            ALTER TABLE {table} ADD COLUMN {column} character varying[];
-                        END IF;
-                    END $$;
-                """)
-            else:
-                sql_statements.append(f"""
-                    DO $$
-                    BEGIN
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                                       WHERE table_name='{table}' AND column_name='{column}') THEN
-                            ALTER TABLE {table} ADD COLUMN {column} {data_type};
-                        END IF;
-                    END $$;
-                """)
+                data_type = 'character varying[]'
+            sql_statements.append(f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                   WHERE table_name='{table}' AND column_name='{column}') THEN
+                        ALTER TABLE {table} ADD COLUMN {column} {data_type};
+                    END IF;
+                END $$;
+            """)
 
     for table, indexes in differences['missing_indexes'].items():
         for _, indexdef in indexes:
@@ -226,7 +217,6 @@ def generate_insert_sql(table, columns, rows):
 
     values_str = ", ".join(values)
     return f"INSERT INTO {table} ({column_names}) VALUES {values_str};"
-
 
 def reconcile_table_data(master_conn, copy_conn, table, master_structure):
     master_data = get_table_data(master_conn, table)
@@ -345,13 +335,23 @@ def main():
             print("\nGenerated SQL to update the copy database structure:")
             print(update_sql)
 
-            confirm = input(f"\nDo you want to apply these structural changes to the copy database ({container_name})? (y/n): ")
+            confirm = input(
+                f"\nDo you want to apply these structural changes to the copy database ({container_name})? (y/n): ")
             if confirm.lower() == 'y':
                 try:
                     with copy_conn.cursor() as cur:
                         cur.execute(update_sql)
                     copy_conn.commit()
                     print("Structural changes applied successfully.")
+
+                    # Verify the changes
+                    copy_structure = get_db_structure(copy_conn)
+                    remaining_differences = compare_structures(master_structure, copy_structure)
+                    if any(remaining_differences.values()):
+                        print("Warning: Some structural differences still exist after applying changes:")
+                        print(remaining_differences)
+                    else:
+                        print("All structural changes have been successfully applied and verified.")
                 except psycopg2.Error as e:
                     print(f"Error applying structural changes: {e}")
                     copy_conn.rollback()
