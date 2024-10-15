@@ -40,13 +40,12 @@ const customRounding = (value) => {
 
 const fetchAndProcessAppraisals = async (lootId) => {
   const appraisalsQuery = `
-    SELECT DISTINCT ON (c.id)
+    SELECT 
       a.believedvalue,
       c.name as character_name
     FROM appraisal a
     JOIN characters c ON a.characterid = c.id
     WHERE a.lootid = $1
-    ORDER BY c.id, a.lastupdate DESC
   `;
   const appraisalsResult = await pool.query(appraisalsQuery, [lootId]);
 
@@ -57,129 +56,28 @@ const fetchAndProcessAppraisals = async (lootId) => {
   return { appraisals, average_appraisal: averageAppraisal };
 };
 
-exports.createLoot = async (req, res) => {
+exports.getAllLoot = async (req, res) => {
   try {
-    const { entries } = req.body;
-    const createdEntries = [];
-    for (const entry of entries) {
-      const {
-        itemId, name, quantity, notes, session_date, sessionDate,
-        item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
-        unidentified, masterwork, size, whoupdated, charges, type
-      } = entry;
-      let itemData, modsData, isMasterwork;
+    const isDM = req.query.isDM === 'true';
+    const activeCharacterId = isDM ? null : req.query.activeCharacterId;
 
-      if (parsedItem) {
-        // Use parsed data
-        const itemResult = await pool.query(`
-          SELECT id, name, type, subtype, value, weight
-          FROM item 
-          WHERE SIMILARITY(name, $1) > 0.3
-          ORDER BY SIMILARITY(name, $1) DESC 
-          LIMIT 1
-        `, [parsedItem]);
-
-        if (itemResult.rows.length > 0) {
-          itemData = { ...itemResult.rows[0], name: parsedItem };
-        } else {
-          itemData = {
-            id: itemId,
-            name: parsedItem,
-            type: itemType,
-            subtype: itemSubtype,
-            value: itemValue,
-            weight: null // Default weight to null if not found
-          };
-        }
-
-        // Use modIds if available, otherwise find matching mods
-        if (modIds && modIds.length > 0) {
-          const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [modIds]);
-          modsData = modsResult.rows;
-        } else {
-          modsData = await Promise.all(parsedMods.map(async (modName) => {
-            const result = await pool.query(`
-              SELECT id, name, plus, valuecalc, target, subtarget
-              FROM mod 
-              WHERE SIMILARITY(name, $1) > 0.3
-              AND (target = $2 OR target IS NULL)
-              AND (subtarget = $3 OR subtarget IS NULL)
-              ORDER BY 
-                CASE 
-                  WHEN target = $2 AND subtarget = $3 THEN 1
-                  WHEN target = $2 AND subtarget IS NULL THEN 2
-                  WHEN target = $2 THEN 3
-                  ELSE 4
-                END,
-                SIMILARITY(name, $1) DESC
-              LIMIT 1
-            `, [modName, itemData.type, itemData.subtype]);
-            return result.rows[0] || null;
-          }));
-        }
-        modsData = modsData.filter(mod => mod !== null);
-        isMasterwork = parsedMods.some(mod => mod.toLowerCase().includes('masterwork'));
-      } else if (itemId) {
-        // Item selected from autofill
-        const itemResult = await pool.query('SELECT id, name, type, subtype, value, weight FROM item WHERE id = $1', [itemId]);
-        itemData = itemResult.rows[0];
-
-        // Fetch mods if any
-        if (entry.modids && entry.modids.length > 0) {
-          const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [entry.modids]);
-          modsData = modsResult.rows;
-        } else {
-          modsData = [];
-        }
-        isMasterwork = masterwork || false;
-      } else {
-        // Manual entry without parsing or autofill
-        itemData = {
-          id: null,
-          name: name,
-          type: type || '',
-          subtype: '',
-          value: null,
-          weight: null
-        };
-        modsData = [];
-        isMasterwork = masterwork || false;
-      }
-
-      const calculatedValue = itemData.value ? calculateFinalValue(
-        parseFloat(itemData.value),
-        itemData.type,
-        itemData.subtype,
-        modsData,
-        isMasterwork,
-        itemData.name,
-        charges,
-        size,
-        itemData.weight
-      ) : 0;
-
-      const createdEntry = await Loot.create({
-        sessionDate: session_date || sessionDate,
-        quantity,
-        name: name || itemData.name,
-        unidentified: unidentified || false,
-        masterwork: isMasterwork,
-        type: itemData.type || itemType || type || '',
-        size: size || '',
-        itemid: itemData.id,
-        modids: modsData.map(mod => mod.id),
-        value: calculatedValue,
-        whoupdated,
-        notes: notes || '',
-        charges: charges || null
-      });
-
-      createdEntries.push(createdEntry);
+    if (!isDM && !activeCharacterId) {
+      return res.status(400).json({ error: 'Active character ID is required for non-DM users' });
     }
 
-    res.status(201).json(createdEntries);
+    const loot = await Loot.findAll(activeCharacterId);
+
+    const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
+      const { appraisals, average_appraisal } = await fetchAndProcessAppraisals(item.id);
+      return { ...item, appraisals, average_appraisal };
+    }));
+
+    res.status(200).json({
+      summary: loot.summary,
+      individual: lootWithAppraisals
+    });
   } catch (error) {
-    console.error('Error creating loot entries:', error);
+    console.error('Error fetching loot', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
