@@ -251,7 +251,7 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
   }
 };
 
-const fetchItemNames = async (inputValue) => {
+export const fetchItemNames = async (inputValue) => {
   try {
     const response = await api.get(`/loot/items`, {
       params: { query: inputValue }
