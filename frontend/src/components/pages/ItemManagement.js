@@ -587,9 +587,10 @@ const ItemManagement = () => {
               >
                 <MenuItem value="">None</MenuItem>
                 <MenuItem value="Pending Sale">Pending Sale</MenuItem>
-                <MenuItem value="Kept Character">Kept Character</MenuItem>
+                <MenuItem value="Kept Self">Kept Self</MenuItem>
                 <MenuItem value="Kept Party">Kept Party</MenuItem>
                 <MenuItem value="Trashed">Trashed</MenuItem>
+                <MenuItem value="Sold">Sold</MenuItem>
               </Select>
             </FormControl>
             <Autocomplete
