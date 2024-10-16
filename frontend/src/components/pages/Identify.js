@@ -118,16 +118,26 @@ const Identify = () => {
       // Fetch updated loot data
       await fetchLoot();
 
+      // Get the updated loot data
+      const updatedLootResponse = await api.get(`/loot`, { params: { isDM: isDMUser, activeCharacterId: activeUser?.activeCharacterId } });
+      const updatedLoot = updatedLootResponse.data;
+
       // Now use the updated loot data to get the new names
       const updatedIdentifications = successfulIdentifications.map(result => {
-        const updatedLootItem = loot.individual.find(i => i.id === result.itemId);
+        const updatedLootItem = updatedLoot.individual.find(i => i.id === result.itemId);
         return {
           ...result,
           newName: updatedLootItem ? updatedLootItem.name : 'Unknown'
         };
       });
 
-      setIdentifiedItems(prev => [...prev, ...updatedIdentifications]);
+      // Update identifiedItems state, avoiding duplicates
+      setIdentifiedItems(prev => {
+        const newItems = updatedIdentifications.filter(
+          newItem => !prev.some(existingItem => existingItem.itemId === newItem.itemId)
+        );
+        return [...prev, ...newItems];
+      });
     }
 
     setSelectedItems([]);
