@@ -87,43 +87,54 @@ const Identify = () => {
   };
 
   const handleIdentify = async (itemsToIdentify) => {
-    try {
-      const identifyResults = await Promise.all(itemsToIdentify.map(async (itemId) => {
-        const lootItem = loot.individual.find(i => i.id === itemId);
-        if (!lootItem) return null;
+  try {
+    const identifyResults = await Promise.all(itemsToIdentify.map(async (itemId) => {
+      const lootItem = loot.individual.find(i => i.id === itemId);
+      if (!lootItem) return null;
 
-        const item = items.find(i => i.id === lootItem.itemid);
-        const casterLevel = lootItem.casterlevel || (item ? item.casterlevel : null) || 1;
+      const item = items.find(i => i.id === lootItem.itemid);
+      const casterLevel = lootItem.casterlevel || (item ? item.casterlevel : null) || 1;
 
-        if (isDMUser) {
-          return { itemId, success: true, spellcraftRoll: 99, oldName: lootItem.name, newName: item ? item.name : 'Unknown' };
-        }
-
-        const diceRoll = Math.floor(Math.random() * 20) + 1;
-        const totalRoll = diceRoll + parseInt(spellcraftValue);
-        const success = totalRoll >= 15 + Math.min(casterLevel, 20);
-
-        return { itemId, success, spellcraftRoll: totalRoll, oldName: lootItem.name, newName: item ? item.name : 'Unknown' };
-      }));
-
-      const successfulIdentifications = identifyResults.filter(result => result && result.success);
-
-      if (successfulIdentifications.length > 0) {
-        await api.post('/loot/identify', {
-          items: successfulIdentifications.map(result => result.itemId),
-          characterId: isDMUser ? null : activeUser.activeCharacterId,
-          spellcraftRolls: successfulIdentifications.map(result => result.spellcraftRoll)
-        });
-
-        setIdentifiedItems(prev => [...prev, ...successfulIdentifications]);
+      if (isDMUser) {
+        return { itemId, success: true, spellcraftRoll: 99, oldName: lootItem.name };
       }
 
-      fetchLoot();
-      setSelectedItems([]);
-    } catch (error) {
-      console.error('Error identifying items:', error);
+      const diceRoll = Math.floor(Math.random() * 20) + 1;
+      const totalRoll = diceRoll + parseInt(spellcraftValue);
+      const success = totalRoll >= 15 + Math.min(casterLevel, 20);
+
+      return { itemId, success, spellcraftRoll: totalRoll, oldName: lootItem.name };
+    }));
+
+    const successfulIdentifications = identifyResults.filter(result => result && result.success);
+
+    if (successfulIdentifications.length > 0) {
+      await api.post('/loot/identify', {
+        items: successfulIdentifications.map(result => result.itemId),
+        characterId: isDMUser ? null : activeUser.activeCharacterId,
+        spellcraftRolls: successfulIdentifications.map(result => result.spellcraftRoll)
+      });
+
+      // Fetch updated loot data
+      await fetchLoot();
+
+      // Now use the updated loot data to get the new names
+      const updatedIdentifications = successfulIdentifications.map(result => {
+        const updatedLootItem = loot.individual.find(i => i.id === result.itemId);
+        return {
+          ...result,
+          newName: updatedLootItem ? updatedLootItem.name : 'Unknown'
+        };
+      });
+
+      setIdentifiedItems(prev => [...prev, ...updatedIdentifications]);
     }
-  };
+
+    setSelectedItems([]);
+  } catch (error) {
+    console.error('Error identifying items:', error);
+  }
+};
 
   const filteredLoot = {
     summary: loot.summary.filter(item => item.unidentified === true && item.itemid !== null),
