@@ -7,6 +7,12 @@ import {
   Button,
   Box,
   TextField,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from '@mui/material';
 import { fetchActiveUser } from '../../utils/utils';
 import CustomLootTable from '../common/CustomLootTable';
@@ -20,12 +26,13 @@ const Identify = () => {
   const [openItems, setOpenItems] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [isDMUser, setIsDMUser] = useState(false);
-  const [items, setItems] = useState([]); // New state to store all items
+  const [items, setItems] = useState([]);
+  const [identifiedItems, setIdentifiedItems] = useState([]);
 
   useEffect(() => {
     fetchActiveUserDetails();
     fetchLoot();
-    fetchItems(); // New function to fetch all items
+    fetchItems();
     setIsDMUser(isDM());
   }, []);
 
@@ -89,14 +96,14 @@ const Identify = () => {
         const casterLevel = lootItem.casterlevel || (item ? item.casterlevel : null) || 1;
 
         if (isDMUser) {
-          return { itemId, success: true, spellcraftRoll: 99 }; // Use 99 for DM identifications
+          return { itemId, success: true, spellcraftRoll: 99, oldName: lootItem.name, newName: item ? item.name : 'Unknown' };
         }
 
         const diceRoll = Math.floor(Math.random() * 20) + 1;
         const totalRoll = diceRoll + parseInt(spellcraftValue);
         const success = totalRoll >= 15 + Math.min(casterLevel, 20);
 
-        return { itemId, success, spellcraftRoll: totalRoll };
+        return { itemId, success, spellcraftRoll: totalRoll, oldName: lootItem.name, newName: item ? item.name : 'Unknown' };
       }));
 
       const successfulIdentifications = identifyResults.filter(result => result && result.success);
@@ -107,6 +114,8 @@ const Identify = () => {
           characterId: isDMUser ? null : activeUser.activeCharacterId,
           spellcraftRolls: successfulIdentifications.map(result => result.spellcraftRoll)
         });
+
+        setIdentifiedItems(prev => [...prev, ...successfulIdentifications]);
       }
 
       fetchLoot();
@@ -159,6 +168,32 @@ const Identify = () => {
           whoHas: false,
         }}
       />
+
+      {identifiedItems.length > 0 && (
+        <Paper sx={{ p: 2, mt: 2, mb: 2 }}>
+          <Typography variant="h6">Recently Identified Items</Typography>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Old Name</TableCell>
+                  <TableCell>New Name</TableCell>
+                  <TableCell>Spellcraft Roll</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {identifiedItems.map((item, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{item.oldName}</TableCell>
+                    <TableCell>{item.newName}</TableCell>
+                    <TableCell>{item.spellcraftRoll}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
 
       <Box
         sx={{
