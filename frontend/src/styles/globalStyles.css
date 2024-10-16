@@ -5,7 +5,7 @@
   box-sizing: border-box;
 }
 
-/* New global scrollbar styles */
+/* Global scrollbar styles */
 /* Webkit browsers (Chrome, Safari, newer versions of Edge) */
 ::-webkit-scrollbar {
   width: 8px;
