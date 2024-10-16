@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import jwt_decode from 'jwt-decode';
+import debounce from 'lodash/debounce';
 import {
   Container,
   Paper,
@@ -65,6 +66,7 @@ const LootEntry = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeCharacterId, setActiveCharacterId] = useState(null);
+  const [itemOptions, setItemOptions] = useState([]);
 
   useEffect(() => {
     const loadItemNames = async () => {
@@ -178,6 +180,18 @@ const LootEntry = () => {
     setEntries([]);
     setSelectedItems([]);
   };
+
+  const debouncedFetchItemNames = useCallback(
+      debounce(async (inputValue) => {
+        if (inputValue.length < 2) {
+          setItemOptions([]);
+          return;
+        }
+        const items = await fetchItemNames(inputValue);
+        setItemOptions(items);
+      }, 300),
+      []
+  );
 
 const handleSubmit = async (e) => {
   e.preventDefault();
@@ -388,10 +402,13 @@ const handleSubmit = async (e) => {
                     <Grid item xs>
                       <Autocomplete
                           freeSolo
-                          options={itemNames}
-                          getOptionLabel={(option) => option.name}
+                          options={itemOptions}
+                          getOptionLabel={(option) => option.name || ''}
                           onChange={(e, value) => handleItemSelect(index, e, value)}
-                          onInputChange={(e, value) => handleItemNameChange(index, e, value)}
+                          onInputChange={(e, newInputValue) => {
+                            handleItemNameChange(index, e, newInputValue);
+                            debouncedFetchItemNames(newInputValue);
+                          }}
                           renderInput={(params) => (
                               <TextField
                                   {...params}
@@ -404,7 +421,7 @@ const handleSubmit = async (e) => {
                                   size="small"
                               />
                           )}
-                          loadOptions={fetchItemNames}
+                          filterOptions={(x) => x} // Disable client-side filtering
                       />
                     </Grid>
                     {shouldShowCharges(entry.data.name) && (

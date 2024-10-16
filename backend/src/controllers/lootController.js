@@ -415,17 +415,24 @@ exports.getItems = async (req, res) => {
     let result;
 
     if (query) {
-      // If there's a search query, use full-text search
+      // Search based on user input
       result = await pool.query(`
         SELECT id, name, type, subtype, value
         FROM item
-        WHERE to_tsvector('english', name) @@ plainto_tsquery('english', $1)
-        ORDER BY ts_rank(to_tsvector('english', name), plainto_tsquery('english', $1)) DESC
-        LIMIT 10
-      `, [query]);
+        WHERE name ILIKE $1
+        ORDER BY 
+          CASE 
+            WHEN name ILIKE $2 THEN 1  -- Exact match
+            WHEN name ILIKE $3 THEN 2  -- Starts with query
+            WHEN name ILIKE $4 THEN 3  -- Contains query
+            ELSE 4
+          END,
+          name
+        LIMIT 50
+      `, [`%${query}%`, query, `${query}%`, `% ${query}%`]);
     } else {
-      // If no query, return all items (limit to 100 for performance)
-      result = await pool.query('SELECT id, name, type, subtype, value FROM item LIMIT 100');
+      // If no query, return an empty array
+      result = { rows: [] };
     }
 
     res.status(200).json(result.rows);

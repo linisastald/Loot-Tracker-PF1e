@@ -1,6 +1,8 @@
 import jwt_decode from 'jwt-decode';
 import api from './api';
 
+
+
 export const fetchActiveUser = async () => {
   try {
     const token = localStorage.getItem('token');
@@ -251,10 +253,10 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
   }
 };
 
-export const fetchItemNames = async (inputValue) => {
+export const fetchItemNames = async (query = '') => {
   try {
     const response = await api.get(`/loot/items`, {
-      params: { query: inputValue }
+      params: { query }
     });
     return response.data;
   } catch (error) {
