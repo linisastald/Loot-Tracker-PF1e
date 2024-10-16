@@ -411,7 +411,23 @@ exports.updateItem = async (req, res) => {
 
 exports.getItems = async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM item');
+    const { query } = req.query;
+    let result;
+
+    if (query) {
+      // If there's a search query, use full-text search
+      result = await pool.query(`
+        SELECT id, name, type, subtype, value
+        FROM item
+        WHERE to_tsvector('english', name) @@ plainto_tsquery('english', $1)
+        ORDER BY ts_rank(to_tsvector('english', name), plainto_tsquery('english', $1)) DESC
+        LIMIT 10
+      `, [query]);
+    } else {
+      // If no query, return all items (limit to 100 for performance)
+      result = await pool.query('SELECT id, name, type, subtype, value FROM item LIMIT 100');
+    }
+
     res.status(200).json(result.rows);
   } catch (error) {
     console.error('Error fetching items', error);

@@ -387,23 +387,24 @@ const handleSubmit = async (e) => {
                     </Grid>
                     <Grid item xs>
                       <Autocomplete
-                        freeSolo
-                        options={itemNames}
-                        getOptionLabel={(option) => option.name}
-                        onChange={(e, value) => handleItemSelect(index, e, value)}
-                        onInputChange={(e, value) => handleItemNameChange(index, e, value)}
-                        renderInput={(params) => (
-                          <TextField
-                            {...params}
-                            label="Item Name"
-                            name="name"
-                            value={entry.data.name || ''}
-                            onChange={(e) => handleEntryChange(index, e)}
-                            fullWidth
-                            required
-                            size="small"
-                          />
-                        )}
+                          freeSolo
+                          options={itemNames}
+                          getOptionLabel={(option) => option.name}
+                          onChange={(e, value) => handleItemSelect(index, e, value)}
+                          onInputChange={(e, value) => handleItemNameChange(index, e, value)}
+                          renderInput={(params) => (
+                              <TextField
+                                  {...params}
+                                  label="Item Name"
+                                  name="name"
+                                  value={entry.data.name || ''}
+                                  onChange={(e) => handleEntryChange(index, e)}
+                                  fullWidth
+                                  required
+                                  size="small"
+                              />
+                          )}
+                          loadOptions={fetchItemNames}
                       />
                     </Grid>
                     {shouldShowCharges(entry.data.name) && (

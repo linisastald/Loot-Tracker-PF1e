@@ -251,16 +251,12 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
   }
 };
 
-export const fetchItemNames = async () => {
+const fetchItemNames = async (inputValue) => {
   try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.error('No token found in localStorage');
-      throw new Error('No token found');
-    }
-
-    const response = await api.get(`/loot/items`);
-    return response.data;  // Return the original data without modification
+    const response = await api.get(`/loot/items`, {
+      params: { query: inputValue }
+    });
+    return response.data;
   } catch (error) {
     console.error('Error fetching item names:', error);
     return [];
