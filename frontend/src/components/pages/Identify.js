@@ -104,7 +104,7 @@ const Identify = () => {
       if (successfulIdentifications.length > 0) {
         await api.post('/loot/identify', {
           items: successfulIdentifications.map(result => result.itemId),
-          characterId: activeUser.activeCharacterId,
+          characterId: isDMUser ? null : activeUser.activeCharacterId,
           spellcraftRolls: successfulIdentifications.map(result => result.spellcraftRoll)
         });
       }
