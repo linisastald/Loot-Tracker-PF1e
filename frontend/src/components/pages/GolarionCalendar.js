@@ -19,6 +19,11 @@ import {
   Divider,
   Alert,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
@@ -60,7 +65,7 @@ const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected }) => ({
     backgroundColor: theme.palette.action.hover,
   },
   overflow: 'hidden',
-  width: '100%', // Ensure the day cell takes full width
+  width: '100%',
 }));
 
 const DayNumber = styled(Typography)({
@@ -76,7 +81,7 @@ const NotePreview = styled(Typography)({
   display: '-webkit-box',
   '-webkit-line-clamp': 3,
   '-webkit-box-orient': 'vertical',
-  width: '100%', // Ensure the note preview takes full width
+  width: '100%',
 });
 
 const GolarionCalendar = () => {
@@ -86,6 +91,8 @@ const GolarionCalendar = () => {
   const [notes, setNotes] = useState({});
   const [noteText, setNoteText] = useState('');
   const [error, setError] = useState(null);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [daysToAdd, setDaysToAdd] = useState('');
 
   useEffect(() => {
     fetchCurrentDate();
@@ -130,6 +137,44 @@ const GolarionCalendar = () => {
     } catch (error) {
       console.error('Error advancing day:', error);
       setError('Failed to advance day. Please try again later.');
+    }
+  };
+
+  const handleSetCurrentDay = async () => {
+    if (!selectedDate) return;
+
+    try {
+      await api.post('/calendar/set-current-date', {
+        year: selectedDate.year,
+        month: selectedDate.month,
+        day: selectedDate.day
+      });
+
+      setCurrentDate(selectedDate);
+      setConfirmDialogOpen(false);
+      setError(null);
+    } catch (error) {
+      console.error('Error setting current date:', error);
+      setError('Failed to set current date. Please try again later.');
+    }
+  };
+
+  const handleIncreaseDays = async () => {
+    const days = parseInt(daysToAdd);
+    if (isNaN(days) || days < 1) {
+      setError('Please enter a valid number of days');
+      return;
+    }
+
+    try {
+      for (let i = 0; i < days; i++) {
+        await handleNextDay();
+      }
+      setDaysToAdd('');
+      setError(null);
+    } catch (error) {
+      console.error('Error increasing days:', error);
+      setError('Failed to increase days. Please try again later.');
     }
   };
 
@@ -276,6 +321,32 @@ const GolarionCalendar = () => {
           <Grid item>
             <Button variant="contained" onClick={handleGoToToday}>Go to Today</Button>
           </Grid>
+          <Grid item>
+            <Button
+              variant="contained"
+              onClick={() => setConfirmDialogOpen(true)}
+              disabled={!selectedDate}
+            >
+              Set Current Day
+            </Button>
+          </Grid>
+          <Grid item sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TextField
+              label="Days"
+              type="number"
+              value={daysToAdd}
+              onChange={(e) => setDaysToAdd(e.target.value)}
+              size="small"
+              sx={{ width: '80px' }}
+            />
+            <Button
+              variant="contained"
+              onClick={handleIncreaseDays}
+              disabled={!daysToAdd}
+            >
+              Add Days
+            </Button>
+          </Grid>
         </Grid>
       </Paper>
 
@@ -323,6 +394,27 @@ const GolarionCalendar = () => {
           </Box>
         </Paper>
       )}
+
+      <Dialog
+        open={confirmDialogOpen}
+        onClose={() => setConfirmDialogOpen(false)}
+      >
+        <DialogTitle>Confirm Date Change</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to set the current date to {selectedDate ?
+              `${selectedDate.day} ${months[selectedDate.month].name} ${selectedDate.year}` :
+              ''
+            }?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleSetCurrentDay} variant="contained">
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
