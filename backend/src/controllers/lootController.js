@@ -329,15 +329,84 @@ exports.getPendingSaleItems = async (req, res) => {
 };
 
 exports.searchItems = async (req, res) => {
-  const { query } = req.query;
+  const { query, unidentified, type, size, status, itemid, modids, value } = req.query;
+
   try {
-    const result = await pool.query(`
-      SELECT * FROM loot
-      WHERE name ILIKE $1 OR notes ILIKE $1
-    `, [`%${query}%`]);
+    let sqlQuery = `SELECT * FROM loot WHERE 1=1`; // Start with a true condition
+    const queryParams = [];
+    let paramCount = 1;
+
+    // Name search (if provided)
+    if (query && query.trim() !== '') {
+      sqlQuery += ` AND (name ILIKE $${paramCount} OR notes ILIKE $${paramCount})`;
+      queryParams.push(`%${query}%`);
+      paramCount++;
+    }
+
+    // Unidentified filter
+    if (unidentified) {
+      sqlQuery += ` AND unidentified = $${paramCount}`;
+      queryParams.push(unidentified === 'true');
+      paramCount++;
+    }
+
+    // Type filter
+    if (type) {
+      sqlQuery += ` AND type = $${paramCount}`;
+      queryParams.push(type);
+      paramCount++;
+    }
+
+    // Size filter
+    if (size) {
+      sqlQuery += ` AND size = $${paramCount}`;
+      queryParams.push(size);
+      paramCount++;
+    }
+
+    // Status filter
+    if (status) {
+      sqlQuery += ` AND status = $${paramCount}`;
+      queryParams.push(status);
+      paramCount++;
+    }
+
+    // Item ID filter
+    if (itemid) {
+      if (itemid === 'null') {
+        sqlQuery += ` AND itemid IS NULL`;
+      } else if (itemid === 'notnull') {
+        sqlQuery += ` AND itemid IS NOT NULL`;
+      }
+    }
+
+    // Mod IDs filter
+    if (modids) {
+      if (modids === 'null') {
+        sqlQuery += ` AND (modids IS NULL OR modids = '{}')`;
+      } else if (modids === 'notnull') {
+        sqlQuery += ` AND modids IS NOT NULL AND modids != '{}'`;
+      }
+    }
+
+    // Value filter
+    if (value) {
+      if (value === 'null') {
+        sqlQuery += ` AND value IS NULL`;
+      } else if (value === 'notnull') {
+        sqlQuery += ` AND value IS NOT NULL`;
+      }
+    }
+
+    // Add order by clause
+    sqlQuery += ` ORDER BY session_date DESC`;
+
+    console.log('Executing query:', sqlQuery, queryParams); // For debugging
+
+    const result = await pool.query(sqlQuery, queryParams);
     res.status(200).json(result.rows);
   } catch (error) {
-    console.error('Error searching items', error);
+    console.error('Error searching items:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
