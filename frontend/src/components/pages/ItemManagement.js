@@ -24,7 +24,8 @@ import {
   FormControl,
   TableSortLabel,
   Autocomplete,
-  Checkbox
+  Checkbox,
+  Grid
 } from '@mui/material';
 
 const ItemManagement = () => {
@@ -42,6 +43,15 @@ const ItemManagement = () => {
   const [sortConfig, setSortConfig] = useState({key: null, direction: 'ascending'});
   const [sellUpToAmount, setSellUpToAmount] = useState('');
   const [selectedPendingItems, setSelectedPendingItems] = useState([]);
+  const [advancedSearch, setAdvancedSearch] = useState({
+    unidentified: '',
+    type: '',
+    size: '',
+    status: '',
+    itemid: '',
+    modids: '',
+    value: '',
+  });
 
   useEffect(() => {
     fetchPendingItems();
@@ -111,7 +121,7 @@ const ItemManagement = () => {
         return sum + (item.value ? (item.value / 2) : 0);
       }
     }, 0);
-    const roundedTotal = Math.ceil(total * 100) / 100; // Round up to the nearest hundredth
+    const roundedTotal = Math.ceil(total * 100) / 100;
     setPendingSaleTotal(roundedTotal);
     setPendingSaleCount(pendingItems.length);
   };
@@ -235,7 +245,17 @@ const ItemManagement = () => {
 
   const handleSearch = async () => {
     try {
-      const response = await api.get(`/loot/search?query=${searchTerm}`);
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('query', searchTerm);
+      if (advancedSearch.unidentified) params.append('unidentified', advancedSearch.unidentified);
+      if (advancedSearch.type) params.append('type', advancedSearch.type);
+      if (advancedSearch.size) params.append('size', advancedSearch.size);
+      if (advancedSearch.status) params.append('status', advancedSearch.status);
+      if (advancedSearch.itemid) params.append('itemid', advancedSearch.itemid);
+      if (advancedSearch.modids) params.append('modids', advancedSearch.modids);
+      if (advancedSearch.value) params.append('value', advancedSearch.value);
+
+      const response = await api.get(`/loot/search?${params.toString()}`);
       setFilteredItems(response.data);
     } catch (error) {
       console.error('Error searching items', error);
@@ -246,6 +266,15 @@ const ItemManagement = () => {
   const handleClearSearch = () => {
     setFilteredItems([]);
     setSearchTerm('');
+    setAdvancedSearch({
+      unidentified: '',
+      type: '',
+      size: '',
+      status: '',
+      itemid: '',
+      modids: '',
+      value: '',
+    });
   };
 
   const formatDate = (dateString) => {
@@ -282,21 +311,134 @@ const ItemManagement = () => {
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Item Management</Typography>
 
-        {/* Item Search */}
-        <Box mt={2} mb={2} display="flex">
-          <TextField
-            label="Search Items"
-            variant="outlined"
-            fullWidth
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Button variant="contained" color="primary" onClick={handleSearch} sx={{ ml: 2 }}>
-            Search
-          </Button>
-          <Button variant="contained" color="secondary" onClick={handleClearSearch} sx={{ ml: 2 }}>
-            Clear
-          </Button>
+        {/* Advanced Search Section */}
+        <Box mt={2} mb={2}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <TextField
+                label="Search Items"
+                variant="outlined"
+                fullWidth
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Unidentified</InputLabel>
+                <Select
+                  value={advancedSearch.unidentified}
+                  onChange={(e) => setAdvancedSearch(prev => ({...prev, unidentified: e.target.value}))}
+                >
+                  <MenuItem value="">Any</MenuItem>
+                  <MenuItem value="true">Yes</MenuItem>
+                  <MenuItem value="false">No</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={advancedSearch.type}
+                  onChange={(e) => setAdvancedSearch(prev => ({...prev, type: e.target.value}))}
+                >
+                  <MenuItem value="">Any</MenuItem>
+                  <MenuItem value="weapon">Weapon</MenuItem>
+                  <MenuItem value="armor">Armor</MenuItem>
+                  <MenuItem value="magic">Magic</MenuItem>
+                  <MenuItem value="gear">Gear</MenuItem>
+                  <MenuItem value="trade good">Trade Good</MenuItem>
+                  <MenuItem value="other">Other</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Size</InputLabel>
+                <Select
+                  value={advancedSearch.size}
+                  onChange={(e) => setAdvancedSearch(prev => ({...prev, size: e.target.value}))}
+                >
+                  <MenuItem value="">Any</MenuItem>
+                  <MenuItem value="Fine">Fine</MenuItem>
+                  <MenuItem value="Diminutive">Diminutive</MenuItem>
+                  <MenuItem value="Tiny">Tiny</MenuItem>
+                  <MenuItem value="Small">Small</MenuItem>
+                  <MenuItem value="Medium">Medium</MenuItem>
+                  <MenuItem value="Large">Large</MenuItem>
+                  <MenuItem value="Huge">Huge</MenuItem>
+                  <MenuItem value="Gargantuan">Gargantuan</MenuItem>
+                  <MenuItem value="Colossal">Colossal</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={advancedSearch.status}
+                  onChange={(e) => setAdvancedSearch(prev => ({...prev, status: e.target.value}))}
+                >
+                  <MenuItem value="">Any</MenuItem>
+                  <MenuItem value="Pending Sale">Pending Sale</MenuItem>
+                  <MenuItem value="Kept Self">Kept Self</MenuItem>
+                  <MenuItem value="Kept Party">Kept Party</MenuItem>
+                  <MenuItem value="Trashed">Trashed</MenuItem>
+                  <MenuItem value="Sold">Sold</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Item ID</InputLabel>
+                <Select
+                  value={advancedSearch.itemid}
+                  onChange={(e) => setAdvancedSearch(prev => ({...prev, itemid: e.target.value}))}
+                >
+                  <MenuItem value="">Any</MenuItem>
+                  <MenuItem value="null">Null</MenuItem>
+                  <MenuItem value="notnull">Has Value</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Mod IDs</InputLabel>
+                <Select
+                  value={advancedSearch.modids}
+                  onChange={(e) => setAdvancedSearch(prev => ({...prev, modids: e.target.value}))}
+                >
+                  <MenuItem value="">Any</MenuItem>
+                  <MenuItem value="null">Null</MenuItem>
+                  <MenuItem value="notnull">Has Values</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Value</InputLabel>
+                <Select
+                  value={advancedSearch.value}
+                  onChange={(e) => setAdvancedSearch(prev => ({...prev, value: e.target.value}))}
+                >
+                  <MenuItem value="">Any</MenuItem>
+                  <MenuItem value="null">Null</MenuItem>
+                  <MenuItem value="notnull">Has Value</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button variant="contained" color="primary" onClick={handleSearch} fullWidth>
+                  Search
+                </Button>
+                <Button variant="contained" color="secondary" onClick={handleClearSearch} fullWidth>
+                  Clear
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
         </Box>
 
         {/* Items Table */}
