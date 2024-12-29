@@ -43,6 +43,8 @@ const ItemManagement = () => {
   const [sortConfig, setSortConfig] = useState({key: null, direction: 'ascending'});
   const [sellUpToAmount, setSellUpToAmount] = useState('');
   const [selectedPendingItems, setSelectedPendingItems] = useState([]);
+  const [itemOptions, setItemOptions] = useState([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
   const [advancedSearch, setAdvancedSearch] = useState({
     unidentified: '',
     type: '',
@@ -264,6 +266,22 @@ const ItemManagement = () => {
     setFilteredItems([]);
   }
 };
+
+  const handleItemSearch = async (searchText) => {
+    if (!searchText) {
+      setItemOptions([]);
+      return;
+    }
+
+    setItemsLoading(true);
+    try {
+      const response = await api.get(`/loot/items?query=${searchText}`);
+      setItemOptions(response.data);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+    }
+    setItemsLoading(false);
+  };
 
   const handleClearSearch = () => {
     setFilteredItems([]);
@@ -738,11 +756,14 @@ const ItemManagement = () => {
               </Select>
             </FormControl>
             <Autocomplete
-              options={items}
-              getOptionLabel={(option) => option.name}
-              value={items.find(item => item.id === updatedItem.itemid) || null}
-              onChange={(_, newValue) => handleItemUpdateChange('itemid', newValue ? newValue.id : null)}
-              renderInput={(params) => <TextField {...params} label="Item" fullWidth margin="normal"/>}
+                options={itemOptions}
+                getOptionLabel={(option) => option.name}
+                value={items.find(item => item.id === updatedItem.itemid) || null}
+                onChange={(_, newValue) => handleItemUpdateChange('itemid', newValue ? newValue.id : null)}
+                onInputChange={(_, newInputValue) => handleItemSearch(newInputValue)}
+                loading={itemsLoading}
+                renderInput={(params) => <TextField {...params} label="Item" fullWidth margin="normal"/>}
+                isOptionEqualToValue={(option, value) => option.id === value?.id}
             />
             <Autocomplete
               multiple
