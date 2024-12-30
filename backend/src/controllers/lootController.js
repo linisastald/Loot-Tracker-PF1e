@@ -548,7 +548,37 @@ exports.appraiseLoot = async (req, res) => {
 
     // Helper function to round based on specified probabilities
     const customRounding = (value) => {
-      // ... (keep the existing customRounding function)
+      const randomValue = Math.random();
+      if (randomValue < 0.15) {
+        // Round to nearest hundredth
+        let roundedValue = Math.round(value * 100) / 100;
+        if (Math.random() < 0.99) {
+          const factor = 100;
+          const lastDigit = Math.round(roundedValue * factor) % 10;
+          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
+        }
+        return roundedValue;
+      } else if (randomValue < 0.4) {
+        // Round to nearest tenth
+        let roundedValue = Math.round(value * 10) / 10;
+        if (Math.random() < 0.75) {
+          const factor = 10;
+          const lastDigit = Math.round(roundedValue * factor) % 10;
+          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
+        }
+        return roundedValue;
+      } else {
+        // Round to nearest whole number
+        let roundedValue = Math.round(value);
+        if (Math.random() < 0.5) {
+          const lastDigit = roundedValue % 10;
+          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
+          roundedValue += adjust;
+        }
+        return roundedValue;
+      }
     };
 
     // Appraise each item
