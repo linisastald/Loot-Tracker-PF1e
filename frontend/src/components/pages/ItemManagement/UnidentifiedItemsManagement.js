@@ -33,6 +33,7 @@ const UnidentifiedItemsManagement = () => {
   const [items, setItems] = useState([]);
   const [itemOptions, setItemOptions] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
 
   useEffect(() => {
     fetchUnidentifiedItems();
@@ -82,6 +83,16 @@ const UnidentifiedItemsManagement = () => {
       return {...prevItem, [field]: value};
     });
   };
+
+  // Set the selected item when the dialog opens
+  useEffect(() => {
+    if (updateDialogOpen && updatedItem && updatedItem.itemid) {
+      const item = items.find(i => i.id === updatedItem.itemid);
+      setSelectedItem(item || null);
+    } else if (!updateDialogOpen) {
+      setSelectedItem(null);
+    }
+  }, [updateDialogOpen, updatedItem, items]);
 
   const handleIdentify = async (item) => {
     try {
@@ -206,16 +217,25 @@ const UnidentifiedItemsManagement = () => {
             <Grid item xs={12}>
               <Autocomplete
                 options={itemOptions}
-                getOptionLabel={(option) => option.name || ''}
-                value={items.find(item => item.id === updatedItem.itemid) || null}
-                onChange={(_, newValue) => handleItemUpdateChange('itemid', newValue ? newValue.id : null)}
+                getOptionLabel={(option) => {
+                  // Handle cases where option might be a string or null
+                  if (!option) return '';
+                  return typeof option === 'string' ? option : option.name || '';
+                }}
+                value={selectedItem}
+                onChange={(_, newValue) => {
+                  setSelectedItem(newValue);
+                  handleItemUpdateChange('itemid', newValue ? newValue.id : null);
+                }}
                 onInputChange={(_, newInputValue) => {
-                  handleItemSearch(newInputValue);
+                  if (newInputValue) handleItemSearch(newInputValue);
                 }}
                 loading={itemsLoading}
                 renderInput={(params) => <TextField {...params} label="Real Item" fullWidth margin="normal"/>}
-                isOptionEqualToValue={(option, value) => option.id === (value?.id || value)}
-                filterOptions={(x) => x} // Disable client-side filtering since we're using server-side
+                isOptionEqualToValue={(option, value) => {
+                  if (!option || !value) return false;
+                  return option.id === (typeof value === 'object' ? value.id : value);
+                }}
               />
             </Grid>
             <Grid item xs={12}>
