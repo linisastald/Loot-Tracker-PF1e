@@ -30,121 +30,91 @@ const UnidentifiedItemsManagement = () => {
   const [unidentifiedItems, setUnidentifiedItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
-  const [itemsMap, setItemsMap] = useState({});
-  const [modsMap, setModsMap] = useState({});
+  const [items, setItems] = useState([]);
   const [itemOptions, setItemOptions] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemInputValue, setItemInputValue] = useState('');
   const [mods, setMods] = useState([]);
-  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [debug, setDebug] = useState({});
 
   useEffect(() => {
-    const fetchInitialData = async () => {
-      setIsDataLoading(true);
-      await fetchUnidentifiedItems();
-      setIsDataLoading(false);
-    };
-    fetchInitialData();
+    fetchUnidentifiedItems();
+    fetchMods();
   }, []);
 
-  // After fetching unidentified items, load their associated items and mods
   useEffect(() => {
+    // Only fetch item details when we have unidentified items with itemids
     if (unidentifiedItems.length > 0) {
-      loadItemsAndMods(unidentifiedItems);
+      const itemIds = unidentifiedItems
+        .filter(item => item.itemid)
+        .map(item => item.itemid);
+
+      if (itemIds.length > 0) {
+        fetchItemsById(itemIds);
+      }
     }
   }, [unidentifiedItems]);
 
   const fetchUnidentifiedItems = async () => {
     try {
+      setLoading(true);
       const response = await api.get(`/loot/unidentified`);
+      console.log('Unidentified items:', response.data);
       setUnidentifiedItems(response.data);
-      return response.data;
     } catch (error) {
       console.error('Error fetching unidentified items:', error);
-      return [];
+    } finally {
+      setLoading(false);
     }
   };
 
-  const loadItemsAndMods = async (items) => {
-    // Extract all unique item ids
-    const itemIds = items
-      .filter(item => item.itemid)
-      .map(item => item.itemid)
-      .filter((id, index, self) => self.indexOf(id) === index);
-
-    // Extract all unique mod ids
-    const modIds = items
-      .filter(item => item.modids && Array.isArray(item.modids) && item.modids.length > 0)
-      .flatMap(item => item.modids)
-      .filter((id, index, self) => self.indexOf(id) === index);
-
-    // Load items and mods in parallel
+  const fetchItemsById = async (itemIds) => {
     try {
-      const [itemsResponse, modsResponse] = await Promise.all([
-        loadItems(itemIds),
-        loadMods(modIds)
-      ]);
+      // Create an array to collect all item data
+      let allItems = [];
 
-      // Create maps for faster lookup
-      const itemsMapData = {};
-      itemsResponse.forEach(item => {
-        itemsMapData[item.id] = item;
-      });
-      setItemsMap(itemsMapData);
+      // Due to API limitations, we need to fetch each item individually
+      for (const itemId of itemIds) {
+        const response = await api.get(`/loot/items?query=${itemId}`);
 
-      const modsMapData = {};
-      modsResponse.forEach(mod => {
-        modsMapData[mod.id] = {
-          ...mod,
-          displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
-        };
-      });
-      setModsMap(modsMapData);
-      setMods(modsResponse.map(mod => ({
+        // Find the exact item by ID
+        const exactItem = response.data.find(item => item.id === itemId);
+        if (exactItem) {
+          allItems.push(exactItem);
+        }
+      }
+
+      console.log('Fetched items:', allItems);
+      setItems(allItems);
+      setDebug(prev => ({...prev, items: allItems}));
+    } catch (error) {
+      console.error('Error fetching items by ID:', error);
+    }
+  };
+
+  const fetchAllItems = async () => {
+    try {
+      const response = await api.get(`/loot/items?query=a`); // Query with 'a' to get many items
+      console.log('All items:', response.data);
+      setItems(response.data);
+    } catch (error) {
+      console.error('Error fetching all items:', error);
+    }
+  };
+
+  const fetchMods = async () => {
+    try {
+      const response = await api.get(`/loot/mods`);
+      const modsWithDisplayNames = response.data.map(mod => ({
         ...mod,
         displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
-      })));
+      }));
+      setMods(modsWithDisplayNames);
+      console.log('Mods:', modsWithDisplayNames);
+      setDebug(prev => ({...prev, mods: modsWithDisplayNames}));
     } catch (error) {
-      console.error('Error loading items and mods:', error);
-    }
-  };
-
-  const loadItems = async (ids) => {
-    if (!ids || ids.length === 0) return [];
-
-    try {
-      // If we have specific ids, query for just those items
-      const query = ids.length === 1
-        ? `/loot/items?query=${ids[0]}`
-        : `/loot/items?query=${ids.join(',')}`;
-
-      const response = await api.get(query);
-      console.log('Items loaded:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('Error loading items:', error);
-      return [];
-    }
-  };
-
-  const loadMods = async (ids) => {
-    if (!ids || ids.length === 0) return [];
-
-    try {
-      // If we're implementing a specific mod endpoint, we would call it here
-      // For now, we'll fetch all mods and filter client-side
-      const response = await api.get(`/loot/mods`);
-
-      // Filter to only the mods we need
-      const filteredMods = ids.length > 0
-        ? response.data.filter(mod => ids.includes(mod.id))
-        : response.data;
-
-      console.log('Mods loaded:', filteredMods);
-      return filteredMods;
-    } catch (error) {
-      console.error('Error loading mods:', error);
-      return [];
+      console.error('Error fetching mods:', error);
     }
   };
 
@@ -157,7 +127,7 @@ const UnidentifiedItemsManagement = () => {
     setItemsLoading(true);
     try {
       const response = await api.get(`/loot/items?query=${searchText}`);
-      console.log('Search items result:', response.data);
+      console.log('Search results:', response.data);
       setItemOptions(response.data);
     } catch (error) {
       console.error('Error fetching items:', error);
@@ -172,7 +142,7 @@ const UnidentifiedItemsManagement = () => {
       const loadItemDetails = async () => {
         try {
           // Try to find the item in the already loaded items
-          const existingItem = itemsMap[updatedItem.itemid];
+          const existingItem = items.find(item => item.id === updatedItem.itemid);
 
           if (existingItem) {
             // If we already have it, update the input value
@@ -181,7 +151,6 @@ const UnidentifiedItemsManagement = () => {
           } else {
             // Otherwise fetch it
             const response = await api.get(`/loot/items?query=${updatedItem.itemid}`);
-            console.log('Fetched item details:', response.data);
             if (response.data && response.data.length > 0) {
               // Find the exact item
               const matchingItem = response.data.find(item => item.id === updatedItem.itemid);
@@ -201,7 +170,7 @@ const UnidentifiedItemsManagement = () => {
       setItemInputValue('');
       setItemOptions([]);
     }
-  }, [updateDialogOpen, updatedItem, itemsMap]);
+  }, [updateDialogOpen, updatedItem]);
 
   const handleItemUpdateChange = (field, value) => {
     setUpdatedItem(prevItem => {
@@ -218,7 +187,7 @@ const UnidentifiedItemsManagement = () => {
   const handleIdentify = async (item) => {
     try {
       // Set unidentified to false and update item name if itemid exists
-      const selectedItem = itemsMap[item.itemid];
+      const selectedItem = items.find(i => i.id === item.itemid);
 
       const updatedData = {
         unidentified: false,
@@ -258,8 +227,7 @@ const UnidentifiedItemsManagement = () => {
       setUpdateDialogOpen(false);
 
       // Refresh the list
-      const items = await fetchUnidentifiedItems();
-      loadItemsAndMods(items);
+      fetchUnidentifiedItems();
     } catch (error) {
       console.error('Error updating item', error);
     }
@@ -281,7 +249,7 @@ const UnidentifiedItemsManagement = () => {
       return <span style={{color: 'red'}}>Not linked</span>;
     }
 
-    const selectedItem = itemsMap[item.itemid];
+    const selectedItem = items.find(i => i.id === item.itemid);
     if (!selectedItem) {
       return <span style={{color: 'red'}}>Not linked (ID: {item.itemid})</span>;
     }
@@ -290,20 +258,19 @@ const UnidentifiedItemsManagement = () => {
 
     // If the item has mods, add them to the name
     if (item.modids && item.modids.length > 0 && Array.isArray(item.modids)) {
-      const itemModNames = item.modids
-        .map(modId => modsMap[modId]?.name)
-        .filter(name => name); // Filter out undefined
+      const itemMods = mods.filter(mod => item.modids.includes(mod.id));
+      const modNames = itemMods.map(mod => mod.name);
 
       // Sort mods to put '+X' mods first
-      itemModNames.sort((a, b) => {
+      modNames.sort((a, b) => {
         if (a.startsWith('+') && !b.startsWith('+')) return -1;
         if (!a.startsWith('+') && b.startsWith('+')) return 1;
         return 0;
       });
 
       // Combine mods with the item name
-      if (itemModNames.length > 0) {
-        displayName = `${itemModNames.join(' ')} ${selectedItem.name}`;
+      if (modNames.length > 0) {
+        displayName = `${modNames.join(' ')} ${selectedItem.name}`;
       }
     }
 
@@ -316,6 +283,18 @@ const UnidentifiedItemsManagement = () => {
       <Typography variant="body1" paragraph>
         Manage items that have been marked as unidentified. Link them to the actual items they represent and set spellcraft DCs.
       </Typography>
+
+      {/* Debug information - can be removed in production */}
+      {false && (
+        <div style={{marginBottom: 20, border: '1px solid #ccc', padding: 10}}>
+          <h3>Debug Info</h3>
+          <p>Items count: {items.length}</p>
+          <p>Mods count: {mods.length}</p>
+          <p>First item: {items[0]?.name}</p>
+          <p>First mod: {mods[0]?.name}</p>
+          <button onClick={() => console.log(debug)}>Log Debug Data</button>
+        </div>
+      )}
 
       <TableContainer component={Paper}>
         <Table>
