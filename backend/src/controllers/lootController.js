@@ -488,59 +488,6 @@ exports.searchItems = async (req, res) => {
   }
 };
 
-exports.confirmSale = async (req, res) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const pendingSaleItems = await client.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
-
-    if (pendingSaleItems.rows.length === 0) {
-      await client.query('COMMIT');
-      return res.status(200).json({ message: 'No items to sell' });
-    }
-
-    // Calculate total sale value using our utility function
-    const totalSold = calculateTotalSaleValue(pendingSaleItems.rows);
-
-    // Record each item as sold
-    for (const item of pendingSaleItems.rows) {
-      await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
-        item.id,
-        calculateItemSaleValue(item),
-        new Date(),
-      ]);
-      await client.query('UPDATE loot SET status = $1 WHERE id = $2', ['Sold', item.id]);
-    }
-
-    // Create gold entry
-    const goldEntry = {
-      session_date: new Date(),
-      transaction_type: 'Sale',
-      platinum: 0,
-      gold: Math.floor(totalSold),
-      silver: Math.floor((totalSold % 1) * 10),
-      copper: Math.floor(((totalSold * 10) % 1) * 10),
-      notes: `Sale of ${pendingSaleItems.rows.length} items`
-    };
-
-    await client.query(
-      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
-    );
-
-    await client.query('COMMIT');
-    res.status(200).json({
-      message: `Sale confirmed: ${pendingSaleItems.rows.length} items sold for ${totalSold.toFixed(2)} gold`
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error confirming sale', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
-};
-
 exports.updateItem = async (req, res) => {
   const { id } = req.params;
   const { session_date, quantity, name, ...otherFields } = req.body;
@@ -1100,138 +1047,6 @@ exports.getUnidentifiedItems = async (req, res) => {
   }
 };
 
-exports.sellUpTo = async (req, res) => {
-  const { amount } = req.body;
-  const client = await pool.connect();
-
-  try {
-    await client.query('BEGIN');
-
-    const pendingItemsResult = await client.query(
-      "SELECT * FROM loot WHERE status = 'Pending Sale' ORDER BY value ASC"
-    );
-    const pendingItems = pendingItemsResult.rows;
-
-    let totalSold = 0;
-    let itemsSold = [];
-    const itemsToSell = [];
-
-    for (const item of pendingItems) {
-      const saleValue = calculateItemSaleValue(item);
-
-      if (totalSold + saleValue <= amount) {
-        itemsSold.push(item.id);
-        itemsToSell.push(item);
-        totalSold += saleValue;
-      } else {
-        break;
-      }
-    }
-
-    if (itemsSold.length > 0) {
-      // Record each item as sold in the sold table
-      for (const item of itemsToSell) {
-        await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
-          item.id,
-          calculateItemSaleValue(item),
-          new Date(),
-        ]);
-      }
-
-      await client.query(
-        "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
-        [itemsSold]
-      );
-
-      const goldEntry = {
-        session_date: new Date(),
-        transaction_type: 'Sale',
-        platinum: 0,
-        gold: Math.floor(totalSold),
-        silver: Math.floor((totalSold % 1) * 10),
-        copper: Math.floor(((totalSold * 10) % 1) * 10),
-        notes: `Sale of ${itemsSold.length} items`
-      };
-
-      await client.query(
-        'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
-      );
-    }
-
-    await client.query('COMMIT');
-    res.status(200).json({ message: `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold` });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error selling items up to amount:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
-};
-
-exports.sellAllExcept = async (req, res) => {
-  const { itemsToKeep } = req.body;
-  const client = await pool.connect();
-
-  try {
-    await client.query('BEGIN');
-
-    const pendingItemsResult = await client.query(
-      "SELECT * FROM loot WHERE status = 'Pending Sale'"
-    );
-    const pendingItems = pendingItemsResult.rows;
-
-    const itemsToSell = pendingItems.filter(item => !itemsToKeep.includes(item.id));
-
-    // Get all the IDs of items to sell
-    const itemsSold = itemsToSell.map(item => item.id);
-
-    if (itemsSold.length > 0) {
-      // Use the utility function to calculate total sale value
-      const totalSold = calculateTotalSaleValue(itemsToSell);
-
-      // Record each item as sold in the sold table
-      for (const item of itemsToSell) {
-        await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
-          item.id,
-          calculateItemSaleValue(item),
-          new Date(),
-        ]);
-      }
-
-      await client.query(
-        "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
-        [itemsSold]
-      );
-
-      const goldEntry = {
-        session_date: new Date(),
-        transaction_type: 'Sale',
-        platinum: 0,
-        gold: Math.floor(totalSold),
-        silver: Math.floor((totalSold % 1) * 10),
-        copper: Math.floor(((totalSold * 10) % 1) * 10),
-        notes: `Sale of ${itemsSold.length} items`
-      };
-
-      await client.query(
-        'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
-      );
-    }
-
-    await client.query('COMMIT');
-    res.status(200).json({ message: `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold` });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error selling all items except selected:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
-};
-
 exports.getItemsById = async (req, res) => {
   try {
     const { ids } = req.query;
@@ -1290,6 +1105,88 @@ exports.getModsById = async (req, res) => {
   }
 };
 
+exports.confirmSale = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const pendingSaleItemsResult = await client.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
+    const allPendingItems = pendingSaleItemsResult.rows;
+
+    if (allPendingItems.length === 0) {
+      await client.query('COMMIT');
+      return res.status(200).json({ message: 'No items to sell' });
+    }
+
+    // Filter out unidentified items and items with null values
+    const validItems = allPendingItems.filter(item =>
+      item.unidentified !== true && item.value !== null
+    );
+
+    const invalidItems = allPendingItems.filter(item =>
+      item.unidentified === true || item.value === null
+    );
+
+    if (validItems.length === 0) {
+      await client.query('COMMIT');
+      return res.status(400).json({ error: 'All pending items are either unidentified or have no value' });
+    }
+
+    // Calculate total sale value using our utility function
+    const totalSold = calculateTotalSaleValue(validItems);
+
+    // Get the IDs of valid items
+    const validItemIds = validItems.map(item => item.id);
+
+    // Record each valid item as sold
+    for (const item of validItems) {
+      await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
+        item.id,
+        calculateItemSaleValue(item),
+        new Date(),
+      ]);
+    }
+
+    // Update only the valid items to sold status
+    await client.query('UPDATE loot SET status = $1 WHERE id = ANY($2)', ['Sold', validItemIds]);
+
+    // Create gold entry
+    const goldEntry = {
+      session_date: new Date(),
+      transaction_type: 'Sale',
+      platinum: 0,
+      gold: Math.floor(totalSold),
+      silver: Math.floor((totalSold % 1) * 10),
+      copper: Math.floor(((totalSold * 10) % 1) * 10),
+      notes: `Sale of ${validItems.length} items`
+    };
+
+    await client.query(
+      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
+    );
+
+    await client.query('COMMIT');
+
+    // Prepare the response message
+    let message = `Sale confirmed: ${validItems.length} items sold for ${totalSold.toFixed(2)} gold`;
+    if (invalidItems.length > 0) {
+      message += `. ${invalidItems.length} item(s) were not sold because they are either unidentified or have no value`;
+    }
+
+    res.status(200).json({
+      message,
+      validItemsSold: validItems.length,
+      invalidItemsSkipped: invalidItems.length
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error confirming sale', error);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+};
+
 exports.sellSelected = async (req, res) => {
   const { itemsToSell } = req.body;
   const client = await pool.connect();
@@ -1306,17 +1203,29 @@ exports.sellSelected = async (req, res) => {
       "SELECT * FROM loot WHERE id = ANY($1) AND status = 'Pending Sale'",
       [itemsToSell]
     );
-    const items = itemsResult.rows;
+    const allItems = itemsResult.rows;
 
-    if (items.length === 0) {
+    if (allItems.length === 0) {
       return res.status(400).json({ error: 'No valid items to sell' });
     }
 
-    // Use the utility function to calculate the total sale value
-    const totalSold = calculateTotalSaleValue(items);
+    // Filter out unidentified items and items with null values
+    const invalidItems = allItems.filter(item => item.unidentified === true || item.value === null);
+    const validItems = allItems.filter(item => item.unidentified !== true && item.value !== null);
 
-    // Record each item as sold in the sold table
-    for (const item of items) {
+    if (validItems.length === 0) {
+      return res.status(400).json({ error: 'All selected items are either unidentified or have no value' });
+    }
+
+    // Create a list of valid and invalid item IDs
+    const validItemIds = validItems.map(item => item.id);
+    const invalidItemIds = invalidItems.map(item => item.id);
+
+    // Use the utility function to calculate the total sale value
+    const totalSold = calculateTotalSaleValue(validItems);
+
+    // Record each valid item as sold in the sold table
+    for (const item of validItems) {
       await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
         item.id,
         calculateItemSaleValue(item),
@@ -1327,7 +1236,7 @@ exports.sellSelected = async (req, res) => {
     // Update the status of the sold items
     await client.query(
       "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
-      [itemsToSell]
+      [validItemIds]
     );
 
     // Record the sale in the gold table
@@ -1338,7 +1247,7 @@ exports.sellSelected = async (req, res) => {
       gold: Math.floor(totalSold),
       silver: Math.floor((totalSold % 1) * 10),
       copper: Math.floor(((totalSold * 10) % 1) * 10),
-      notes: `Sale of ${items.length} selected items`
+      notes: `Sale of ${validItems.length} selected items`
     };
 
     await client.query(
@@ -1348,7 +1257,18 @@ exports.sellSelected = async (req, res) => {
 
     // Commit the transaction
     await client.query('COMMIT');
-    res.status(200).json({ message: `Sold ${items.length} items for ${totalSold.toFixed(2)} gold` });
+
+    // Prepare the response message
+    let message = `Sold ${validItems.length} items for ${totalSold.toFixed(2)} gold`;
+    if (invalidItems.length > 0) {
+      message += `. ${invalidItems.length} item(s) were not sold because they are either unidentified or have no value`;
+    }
+
+    res.status(200).json({
+      message,
+      validItemsSold: validItems.length,
+      invalidItemsSkipped: invalidItems.length
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error selling selected items:', error);
@@ -1357,5 +1277,189 @@ exports.sellSelected = async (req, res) => {
     client.release();
   }
 };
+
+exports.sellAllExcept = async (req, res) => {
+  const { itemsToKeep } = req.body;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const pendingItemsResult = await client.query(
+      "SELECT * FROM loot WHERE status = 'Pending Sale'"
+    );
+    const pendingItems = pendingItemsResult.rows;
+
+    const itemsToConsiderSelling = pendingItems.filter(item => !itemsToKeep.includes(item.id));
+
+    if (itemsToConsiderSelling.length === 0) {
+      return res.status(400).json({ error: 'No items to sell' });
+    }
+
+    // Filter out unidentified items and items with null values
+    const validItemsToSell = itemsToConsiderSelling.filter(item =>
+      item.unidentified !== true && item.value !== null
+    );
+
+    const invalidItems = itemsToConsiderSelling.filter(item =>
+      item.unidentified === true || item.value === null
+    );
+
+    if (validItemsToSell.length === 0) {
+      return res.status(400).json({ error: 'All available items are either unidentified or have no value' });
+    }
+
+    // Get all the IDs of valid items to sell
+    const validItemIds = validItemsToSell.map(item => item.id);
+
+    // Use the utility function to calculate total sale value
+    const totalSold = calculateTotalSaleValue(validItemsToSell);
+
+    // Record each valid item as sold in the sold table
+    for (const item of validItemsToSell) {
+      await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
+        item.id,
+        calculateItemSaleValue(item),
+        new Date(),
+      ]);
+    }
+
+    await client.query(
+      "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
+      [validItemIds]
+    );
+
+    const goldEntry = {
+      session_date: new Date(),
+      transaction_type: 'Sale',
+      platinum: 0,
+      gold: Math.floor(totalSold),
+      silver: Math.floor((totalSold % 1) * 10),
+      copper: Math.floor(((totalSold * 10) % 1) * 10),
+      notes: `Sale of ${validItemIds.length} items`
+    };
+
+    await client.query(
+      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
+    );
+
+    await client.query('COMMIT');
+
+    // Prepare the response message
+    let message = `Sold ${validItemsToSell.length} items for ${totalSold.toFixed(2)} gold`;
+    if (invalidItems.length > 0) {
+      message += `. ${invalidItems.length} item(s) were not sold because they are either unidentified or have no value`;
+    }
+
+    res.status(200).json({
+      message,
+      validItemsSold: validItemsToSell.length,
+      invalidItemsSkipped: invalidItems.length
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error selling all items except selected:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+};
+
+exports.sellUpTo = async (req, res) => {
+  const { amount } = req.body;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const pendingItemsResult = await client.query(
+      "SELECT * FROM loot WHERE status = 'Pending Sale' ORDER BY value ASC"
+    );
+    const allPendingItems = pendingItemsResult.rows;
+
+    // Filter out unidentified items and items with null values
+    const validPendingItems = allPendingItems.filter(item =>
+      item.unidentified !== true && item.value !== null
+    );
+
+    if (validPendingItems.length === 0) {
+      return res.status(400).json({ error: 'No valid items to sell (all are either unidentified or have no value)' });
+    }
+
+    let totalSold = 0;
+    let itemsSold = [];
+    const itemsToSell = [];
+
+    for (const item of validPendingItems) {
+      const saleValue = calculateItemSaleValue(item);
+
+      if (totalSold + saleValue <= amount) {
+        itemsSold.push(item.id);
+        itemsToSell.push(item);
+        totalSold += saleValue;
+      } else {
+        break;
+      }
+    }
+
+    if (itemsSold.length === 0) {
+      return res.status(400).json({ error: 'No items could be sold up to the specified amount' });
+    }
+
+    // Record each item as sold in the sold table
+    for (const item of itemsToSell) {
+      await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
+        item.id,
+        calculateItemSaleValue(item),
+        new Date(),
+      ]);
+    }
+
+    await client.query(
+      "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
+      [itemsSold]
+    );
+
+    const goldEntry = {
+      session_date: new Date(),
+      transaction_type: 'Sale',
+      platinum: 0,
+      gold: Math.floor(totalSold),
+      silver: Math.floor((totalSold % 1) * 10),
+      copper: Math.floor(((totalSold * 10) % 1) * 10),
+      notes: `Sale of ${itemsSold.length} items`
+    };
+
+    await client.query(
+      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
+    );
+
+    await client.query('COMMIT');
+
+    // Count how many items were skipped due to being invalid
+    const invalidItemsCount = allPendingItems.length - validPendingItems.length;
+
+    // Prepare response message
+    let message = `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold`;
+    if (invalidItemsCount > 0) {
+      message += `. ${invalidItemsCount} item(s) were skipped because they are either unidentified or have no value`;
+    }
+
+    res.status(200).json({
+      message,
+      validItemsSold: itemsSold.length,
+      invalidItemsSkipped: invalidItemsCount
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error selling items up to amount:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+};
+
 
 module.exports = exports;
