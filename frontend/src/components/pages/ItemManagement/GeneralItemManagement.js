@@ -30,7 +30,9 @@ const GeneralItemManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredItems, setFilteredItems] = useState([]);
   const [items, setItems] = useState([]);
+  const [itemOptions, setItemOptions] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemInputValue, setItemInputValue] = useState('');
   const [mods, setMods] = useState([]);
   const [activeCharacters, setActiveCharacters] = useState([]);
   const [sortConfig, setSortConfig] = useState({key: null, direction: 'ascending'});
@@ -118,12 +120,58 @@ const GeneralItemManagement = () => {
     });
   };
 
-  // Updates when a user opens the dialog to edit an item
-  useEffect(() => {
-    if (updateDialogOpen) {
-      fetchItems();
+  const handleItemSearch = async (searchText) => {
+    if (!searchText || searchText.length < 2) {
+      setItemOptions([]);
+      return;
     }
-  }, [updateDialogOpen]);
+
+    setItemsLoading(true);
+    try {
+      const response = await api.get(`/loot/items?query=${searchText}`);
+      setItemOptions(response.data);
+    } catch (error) {
+      console.error('Error fetching items:', error);
+    } finally {
+      setItemsLoading(false);
+    }
+  };
+
+  // Load current item data when dialog opens
+  useEffect(() => {
+    if (updateDialogOpen && updatedItem && updatedItem.itemid) {
+      const loadItemDetails = async () => {
+        try {
+          // Try to find the item in the already loaded items
+          const existingItem = items.find(item => item.id === updatedItem.itemid);
+
+          if (existingItem) {
+            // If we already have it, update the input value
+            setItemInputValue(existingItem.name);
+            setItemOptions([existingItem]);
+          } else {
+            // Otherwise fetch it
+            const response = await api.get(`/loot/items?query=${updatedItem.itemid}`);
+            if (response.data && response.data.length > 0) {
+              // Find the exact item
+              const matchingItem = response.data.find(item => item.id === updatedItem.itemid);
+              if (matchingItem) {
+                setItemInputValue(matchingItem.name);
+                setItemOptions([matchingItem]);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error loading item details:', error);
+        }
+      };
+
+      loadItemDetails();
+    } else if (!updateDialogOpen) {
+      setItemInputValue('');
+      setItemOptions([]);
+    }
+  }, [updateDialogOpen, updatedItem]);
 
   const requestSort = (key) => {
     let direction = 'ascending';
@@ -499,27 +547,39 @@ const GeneralItemManagement = () => {
               <MenuItem value="Sold">Sold</MenuItem>
             </Select>
           </FormControl>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Item</InputLabel>
-            <Select
-              value={updatedItem.itemid || ''}
-              onChange={(e) => handleItemUpdateChange('itemid', e.target.value === '' ? null : e.target.value)}
-              onOpen={async () => {
-                try {
-                  // Load items when the dropdown opens
-                  const response = await api.get('/loot/items?query=');
-                  setItems(response.data);
-                } catch (error) {
-                  console.error('Error fetching items:', error);
-                }
-              }}
-            >
-              <MenuItem value=""><em>None</em></MenuItem>
-              {items.map((item) => (
-                <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            disablePortal
+            options={itemOptions}
+            getOptionLabel={(option) => {
+              // Handle various possible option formats
+              if (typeof option === 'string') return option;
+              return option?.name || '';
+            }}
+            inputValue={itemInputValue}
+            onInputChange={(_, newInputValue) => {
+              setItemInputValue(newInputValue);
+              handleItemSearch(newInputValue);
+            }}
+            onChange={(_, newValue) => {
+              if (newValue && typeof newValue === 'object') {
+                handleItemUpdateChange('itemid', newValue.id);
+              } else {
+                handleItemUpdateChange('itemid', null);
+              }
+            }}
+            loading={itemsLoading}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Item"
+                fullWidth
+                margin="normal"
+                helperText={updatedItem.itemid ? `Selected item ID: ${updatedItem.itemid}` : 'No item selected'}
+              />
+            )}
+            noOptionsText="Type to search items"
+            filterOptions={(x) => x} // Disable built-in filtering
+          />
           <Autocomplete
             multiple
             options={mods}
