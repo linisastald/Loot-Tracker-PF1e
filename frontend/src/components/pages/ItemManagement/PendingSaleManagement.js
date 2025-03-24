@@ -1,6 +1,7 @@
 // frontend/src/components/pages/ItemManagement/PendingSaleManagement.js
 import React, { useState, useEffect } from 'react';
 import api from '../../../utils/api';
+import { calculateItemSaleValue, calculateTotalSaleValue } from '../../../utils/saleValueCalculator';
 import {
   Typography,
   TableContainer,
@@ -146,13 +147,10 @@ const PendingSaleManagement = () => {
 
   const calculatePendingSaleSummary = (items) => {
     const pendingItems = items.filter(item => item.status === 'Pending Sale' || item.status === null);
-    const total = pendingItems.reduce((sum, item) => {
-      if (item.type === 'trade good') {
-        return sum + (item.value ? item.value : 0);
-      } else {
-        return sum + (item.value ? (item.value / 2) : 0);
-      }
-    }, 0);
+
+    // Use the imported utility function to calculate total
+    const total = calculateTotalSaleValue(pendingItems);
+
     const roundedTotal = Math.ceil(total * 100) / 100;
     setPendingSaleTotal(roundedTotal);
     setPendingSaleCount(pendingItems.length);
@@ -163,7 +161,10 @@ const PendingSaleManagement = () => {
       setLoading(true);
       await api.put(`/loot/confirm-sale`, {});
 
+      // We already have the total from our summary calculation
       const totalValue = pendingSaleTotal;
+
+      // Convert to currency units
       const gold = Math.floor(totalValue);
       const silver = Math.floor((totalValue - gold) * 10);
       const copper = Math.floor(((totalValue - gold) * 100) % 10);
@@ -175,7 +176,7 @@ const PendingSaleManagement = () => {
         gold,
         silver,
         copper,
-        notes: 'Sale of items',
+        notes: 'Sale of all pending items',
       };
 
       await api.post(`/gold`, { goldEntries: [goldEntry] });
@@ -438,9 +439,7 @@ const PendingSaleManagement = () => {
             </TableHead>
             <TableBody>
               {pendingItems.map((item) => {
-                const saleValue = item.type === 'trade good' ?
-                  (item.value || 0) :
-                  ((item.value || 0) / 2);
+                const saleValue = calculateItemSaleValue(item);
 
                 return (
                   <TableRow

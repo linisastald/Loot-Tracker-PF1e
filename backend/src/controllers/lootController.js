@@ -3,6 +3,7 @@ const Appraisal = require('../models/Appraisal');
 const pool = require('../config/db');
 const { parseItemDescriptionWithGPT } = require('../services/parseItemDescriptionWithGPT');
 const { calculateFinalValue } = require('../services/calculateFinalValue');
+const { calculateItemSaleValue, calculateTotalSaleValue } = require('../utils/saleValueCalculator');
 
 const customRounding = (value) => {
   const randomValue = Math.random();
@@ -493,17 +494,44 @@ exports.confirmSale = async (req, res) => {
     await client.query('BEGIN');
     const pendingSaleItems = await client.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
 
+    if (pendingSaleItems.rows.length === 0) {
+      await client.query('COMMIT');
+      return res.status(200).json({ message: 'No items to sell' });
+    }
+
+    // Calculate total sale value using our utility function
+    const totalSold = calculateTotalSaleValue(pendingSaleItems.rows);
+
+    // Record each item as sold
     for (const item of pendingSaleItems.rows) {
       await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
         item.id,
-        item.value / 2,
+        calculateItemSaleValue(item),
         new Date(),
       ]);
       await client.query('UPDATE loot SET status = $1 WHERE id = $2', ['Sold', item.id]);
     }
 
+    // Create gold entry
+    const goldEntry = {
+      session_date: new Date(),
+      transaction_type: 'Sale',
+      platinum: 0,
+      gold: Math.floor(totalSold),
+      silver: Math.floor((totalSold % 1) * 10),
+      copper: Math.floor(((totalSold * 10) % 1) * 10),
+      notes: `Sale of ${pendingSaleItems.rows.length} items`
+    };
+
+    await client.query(
+      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
+    );
+
     await client.query('COMMIT');
-    res.status(200).json({ message: 'Sale confirmed' });
+    res.status(200).json({
+      message: `Sale confirmed: ${pendingSaleItems.rows.length} items sold for ${totalSold.toFixed(2)} gold`
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error confirming sale', error);
@@ -1086,12 +1114,14 @@ exports.sellUpTo = async (req, res) => {
 
     let totalSold = 0;
     let itemsSold = [];
+    const itemsToSell = [];
 
     for (const item of pendingItems) {
-      const saleValue = item.type === 'trade good' ? item.value : item.value / 2;
+      const saleValue = calculateItemSaleValue(item);
 
       if (totalSold + saleValue <= amount) {
         itemsSold.push(item.id);
+        itemsToSell.push(item);
         totalSold += saleValue;
       } else {
         break;
@@ -1143,18 +1173,16 @@ exports.sellAllExcept = async (req, res) => {
     );
     const pendingItems = pendingItemsResult.rows;
 
-    let totalSold = 0;
     let itemsSold = [];
+    const itemsToSell = pendingItems.filter(item => !itemsToKeep.includes(item.id));
 
-    for (const item of pendingItems) {
-      if (!itemsToKeep.includes(item.id)) {
-        const saleValue = item.type === 'trade good' ? item.value : item.value / 2;
-        itemsSold.push(item.id);
-        totalSold += saleValue;
-      }
-    }
+    // Get all the IDs of items to sell
+    itemsSold = itemsToSell.map(item => item.id);
 
     if (itemsSold.length > 0) {
+      // Use the utility function to calculate total sale value
+      const totalSold = calculateTotalSaleValue(itemsToSell);
+
       await client.query(
         "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
         [itemsSold]
@@ -1267,13 +1295,8 @@ exports.sellSelected = async (req, res) => {
       return res.status(400).json({ error: 'No valid items to sell' });
     }
 
-    let totalSold = 0;
-
-    // Calculate total sale value
-    for (const item of items) {
-      const saleValue = item.type === 'trade good' ? item.value : item.value / 2;
-      totalSold += saleValue;
-    }
+    // Use the utility function to calculate the total sale value
+    const totalSold = calculateTotalSaleValue(items);
 
     // Update the status of the sold items
     await client.query(
