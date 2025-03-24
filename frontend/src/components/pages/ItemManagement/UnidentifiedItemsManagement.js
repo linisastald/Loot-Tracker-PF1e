@@ -1,4 +1,4 @@
-// frontend/src/components/pages/ItemManagement/UnidentifiedItemsManagement.js
+// frontend/src/components/pages/ItemManagement/PendingSaleManagement.js
 import React, { useState, useEffect } from 'react';
 import api from '../../../utils/api';
 import {
@@ -11,23 +11,35 @@ import {
   TableCell,
   Paper,
   Button,
+  Box,
+  TextField,
+  Card,
+  CardContent,
+  Grid,
+  Checkbox,
+  Divider,
+  Alert,
+  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
   Autocomplete,
-  Grid,
-  Box,
-  Tooltip,
 } from '@mui/material';
 
-const UnidentifiedItemsManagement = () => {
-  const [unidentifiedItems, setUnidentifiedItems] = useState([]);
+const PendingSaleManagement = () => {
+  const [pendingItems, setPendingItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [pendingSaleTotal, setPendingSaleTotal] = useState(0);
+  const [pendingSaleCount, setPendingSaleCount] = useState(0);
+  const [sellUpToAmount, setSellUpToAmount] = useState('');
+  const [selectedPendingItems, setSelectedPendingItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
   const [items, setItems] = useState([]);
@@ -37,21 +49,28 @@ const UnidentifiedItemsManagement = () => {
   const [mods, setMods] = useState([]);
 
   useEffect(() => {
-    fetchUnidentifiedItems();
-    fetchAllItems();
+    fetchPendingItems();
     fetchMods();
+    fetchItems();
   }, []);
 
-  const fetchUnidentifiedItems = async () => {
+  const fetchPendingItems = async () => {
     try {
-      const response = await api.get(`/loot/unidentified`);
-      setUnidentifiedItems(response.data);
+      setLoading(true);
+      const response = await api.get(`/loot/pending-sale`);
+      const itemsData = response.data || [];
+      setPendingItems(itemsData);
+      calculatePendingSaleSummary(itemsData);
+      setLoading(false);
     } catch (error) {
-      console.error('Error fetching unidentified items:', error);
+      console.error('Error fetching pending items:', error);
+      setError('Failed to fetch pending items.');
+      setPendingItems([]);
+      setLoading(false);
     }
   };
 
-  const fetchAllItems = async () => {
+  const fetchItems = async () => {
     try {
       const response = await api.get(`/loot/items`);
       setItems(response.data);
@@ -125,6 +144,107 @@ const UnidentifiedItemsManagement = () => {
     }
   }, [updateDialogOpen, updatedItem]);
 
+  const calculatePendingSaleSummary = (items) => {
+    const pendingItems = items.filter(item => item.status === 'Pending Sale' || item.status === null);
+    const total = pendingItems.reduce((sum, item) => {
+      if (item.type === 'trade good') {
+        return sum + (item.value ? item.value : 0);
+      } else {
+        return sum + (item.value ? (item.value / 2) : 0);
+      }
+    }, 0);
+    const roundedTotal = Math.ceil(total * 100) / 100;
+    setPendingSaleTotal(roundedTotal);
+    setPendingSaleCount(pendingItems.length);
+  };
+
+  const handleConfirmSale = async () => {
+    try {
+      setLoading(true);
+      await api.put(`/loot/confirm-sale`, {});
+
+      const totalValue = pendingSaleTotal;
+      const gold = Math.floor(totalValue);
+      const silver = Math.floor((totalValue - gold) * 10);
+      const copper = Math.floor(((totalValue - gold) * 100) % 10);
+
+      const goldEntry = {
+        sessionDate: new Date(),
+        transactionType: 'Sale',
+        platinum: 0,
+        gold,
+        silver,
+        copper,
+        notes: 'Sale of items',
+      };
+
+      await api.post(`/gold`, { goldEntries: [goldEntry] });
+
+      setSuccess(`Successfully sold ${pendingSaleCount} items for ${pendingSaleTotal.toFixed(2)} gold.`);
+      fetchPendingItems();
+      setLoading(false);
+    } catch (error) {
+      console.error('Error confirming sale', error);
+      setError('Failed to complete the sale process.');
+      setLoading(false);
+    }
+  };
+
+  const handleSellUpTo = async () => {
+    try {
+      setLoading(true);
+      const amount = parseFloat(sellUpToAmount);
+      if (isNaN(amount) || amount <= 0) {
+        setError('Please enter a valid amount');
+        setLoading(false);
+        return;
+      }
+
+      const response = await api.post('/loot/sell-up-to', { amount });
+      if (response.status === 200) {
+        setSuccess(`Successfully sold items up to ${amount} gold.`);
+        setSellUpToAmount('');
+        fetchPendingItems();
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error('Error selling items up to amount:', error);
+      setError('Failed to sell items.');
+      setLoading(false);
+    }
+  };
+
+  const handleSellAllExcept = async () => {
+    try {
+      setLoading(true);
+      if (selectedPendingItems.length === 0) {
+        setError('No items selected to keep.');
+        setLoading(false);
+        return;
+      }
+
+      const response = await api.post('/loot/sell-all-except', { itemsToKeep: selectedPendingItems });
+      if (response.status === 200) {
+        setSuccess('Successfully sold all items except selected.');
+        setSelectedPendingItems([]);
+        fetchPendingItems();
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error('Error selling all items except selected:', error);
+      setError('Failed to sell items.');
+      setLoading(false);
+    }
+  };
+
+  const handlePendingItemSelect = (itemId) => {
+    setSelectedPendingItems(prev =>
+      prev.includes(itemId)
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    );
+  };
+
   const handleItemUpdateChange = (field, value) => {
     setUpdatedItem(prevItem => {
       if (field === 'modids') {
@@ -137,27 +257,9 @@ const UnidentifiedItemsManagement = () => {
     });
   };
 
-  const handleIdentify = async (item) => {
+  const handleItemUpdateSubmit = async () => {
     try {
-      // Set unidentified to false and update item name if itemid exists
-      const selectedItem = items.find(i => i.id === item.itemid);
-
-      const updatedData = {
-        unidentified: false,
-        name: selectedItem ? selectedItem.name : item.name,
-      };
-
-      await api.put(`/loot/dm-update/${item.id}`, updatedData);
-
-      // Refresh the list
-      fetchUnidentifiedItems();
-    } catch (error) {
-      console.error('Error identifying item:', error);
-    }
-  };
-
-  const handleUpdateSubmit = async () => {
-    try {
+      setLoading(true);
       const preparedData = {
         session_date: updatedItem.session_date || null,
         quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
@@ -168,21 +270,24 @@ const UnidentifiedItemsManagement = () => {
         size: updatedItem.size || null,
         status: updatedItem.status || null,
         itemid: updatedItem.itemid !== '' ? parseInt(updatedItem.itemid, 10) : null,
+        modids: updatedItem.modids, // Ensure modids is passed through
         charges: updatedItem.charges !== '' ? parseInt(updatedItem.charges, 10) : null,
         value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
         notes: updatedItem.notes || null,
         spellcraft_dc: updatedItem.spellcraft_dc !== '' ? parseInt(updatedItem.spellcraft_dc, 10) : null,
         dm_notes: updatedItem.dm_notes || null,
-        modids: updatedItem.modids, // Ensure modids is passed through
       };
 
       await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
       setUpdateDialogOpen(false);
+      setSuccess('Item updated successfully');
 
       // Refresh the list
-      fetchUnidentifiedItems();
+      fetchPendingItems();
     } catch (error) {
       console.error('Error updating item', error);
+      setError('Failed to update item');
+      setLoading(false);
     }
   };
 
@@ -198,15 +303,19 @@ const UnidentifiedItemsManagement = () => {
 
   // Function to get the real item name
   const getRealItemName = (item) => {
-    if (!item || !item.itemid) return 'Not linked';
+    if (!item || !item.itemid) {
+      return <span style={{color: 'red'}}>Not linked</span>;
+    }
 
     const selectedItem = items.find(i => i.id === item.itemid);
-    if (!selectedItem) return 'Not linked';
+    if (!selectedItem) {
+      return <span style={{color: 'red'}}>Not linked</span>;
+    }
 
     let displayName = selectedItem.name;
 
     // If the item has mods, add them to the name
-    if (item.modids && item.modids.length > 0) {
+    if (item.modids && item.modids.length > 0 && Array.isArray(item.modids)) {
       const itemMods = mods.filter(mod => item.modids.includes(mod.id));
       const modNames = itemMods.map(mod => mod.name);
 
@@ -228,67 +337,117 @@ const UnidentifiedItemsManagement = () => {
 
   return (
     <>
-      <Typography variant="h6" gutterBottom>Unidentified Items</Typography>
-      <Typography variant="body1" paragraph>
-        Manage items that have been marked as unidentified. Link them to the actual items they represent and set spellcraft DCs.
-      </Typography>
+      <Typography variant="h6" gutterBottom>Pending Sale Items</Typography>
 
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Session Date</TableCell>
-              <TableCell>Quantity</TableCell>
-              <TableCell>Current Name</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Real Item</TableCell>
-              <TableCell>Spellcraft DC</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {unidentifiedItems.map((item) => (
-              <TableRow
-                key={item.id}
-                hover
-                onClick={() => {
-                  setUpdatedItem(item);
-                  setUpdateDialogOpen(true);
-                }}
-                sx={{ cursor: 'pointer' }}
-              >
-                <TableCell>{formatDate(item.session_date)}</TableCell>
-                <TableCell>{item.quantity}</TableCell>
-                <TableCell>{item.name}</TableCell>
-                <TableCell>{item.type}</TableCell>
-                <TableCell>
-                  {getRealItemName(item)}
-                </TableCell>
-                <TableCell>{item.spellcraft_dc || 'Not set'}</TableCell>
-                <TableCell>
-                  <Tooltip title="Mark as identified using linked item">
-                    <span> {/* Wrapper to make tooltip work with disabled button */}
-                      <Button
-                        variant="contained"
-                        size="small"
-                        color="secondary"
-                        onClick={(e) => {
-                          e.stopPropagation(); // Prevent row click
-                          handleIdentify(item);
-                        }}
-                        disabled={!item.itemid}
-                      >
-                        Identify
-                      </Button>
-                    </span>
-                  </Tooltip>
-                </TableCell>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
+
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>Pending Sale Summary</Typography>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={4}>
+              <Typography>Number of Items: {pendingSaleCount}</Typography>
+              <Typography>Total Value: {pendingSaleTotal.toFixed(2)} gold</Typography>
+            </Grid>
+            <Grid item xs={12} md={8}>
+              <Box display="flex" alignItems="center" flexWrap="wrap" gap={2}>
+                <TextField
+                  label="Sell up to amount"
+                  type="number"
+                  size="small"
+                  value={sellUpToAmount}
+                  onChange={(e) => setSellUpToAmount(e.target.value)}
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSellUpTo}
+                  disabled={loading || !sellUpToAmount}
+                >
+                  Sell Up To
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleConfirmSale}
+                  disabled={loading || pendingSaleCount === 0}
+                >
+                  Sell All
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSellAllExcept}
+                  disabled={loading || selectedPendingItems.length === 0}
+                >
+                  Sell All Except Selected
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {loading ? (
+        <Box display="flex" justifyContent="center" my={4}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell padding="checkbox">Select</TableCell>
+                <TableCell>Session Date</TableCell>
+                <TableCell>Quantity</TableCell>
+                <TableCell>Name</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Real Item</TableCell>
+                <TableCell>Value</TableCell>
+                <TableCell>Sale Value</TableCell>
+                <TableCell>Notes</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {pendingItems.map((item) => {
+                const saleValue = item.type === 'trade good' ?
+                  (item.value || 0) :
+                  ((item.value || 0) / 2);
 
+                return (
+                  <TableRow
+                    key={item.id}
+                    hover
+                    onClick={() => {
+                      setUpdatedItem(item);
+                      setUpdateDialogOpen(true);
+                    }}
+                    sx={{ cursor: 'pointer' }}
+                  >
+                    <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedPendingItems.includes(item.id)}
+                        onChange={() => handlePendingItemSelect(item.id)}
+                      />
+                    </TableCell>
+                    <TableCell>{formatDate(item.session_date)}</TableCell>
+                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.type}</TableCell>
+                    <TableCell>{getRealItemName(item)}</TableCell>
+                    <TableCell>{item.value}</TableCell>
+                    <TableCell>{saleValue.toFixed(2)}</TableCell>
+                    <TableCell>{item.notes}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {/* Edit Dialog */}
       <Dialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Update Item</DialogTitle>
         <DialogContent>
@@ -411,7 +570,7 @@ const UnidentifiedItemsManagement = () => {
             renderInput={(params) => (
               <TextField
                 {...params}
-                label="Real Item"
+                label="Item"
                 fullWidth
                 margin="normal"
                 helperText={updatedItem.itemid ? `Selected item ID: ${updatedItem.itemid}` : 'No item selected'}
@@ -454,14 +613,6 @@ const UnidentifiedItemsManagement = () => {
             rows={2}
           />
           <TextField
-            label="Spellcraft DC"
-            type="number"
-            fullWidth
-            value={updatedItem.spellcraft_dc || ''}
-            onChange={(e) => handleItemUpdateChange('spellcraft_dc', e.target.value)}
-            margin="normal"
-          />
-          <TextField
             label="DM Notes"
             fullWidth
             value={updatedItem.dm_notes || ''}
@@ -472,7 +623,7 @@ const UnidentifiedItemsManagement = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleUpdateSubmit} color="primary" variant="contained">
+          <Button onClick={handleItemUpdateSubmit} color="primary" variant="contained">
             Update Item
           </Button>
           <Button onClick={() => setUpdateDialogOpen(false)} color="secondary" variant="contained">
@@ -484,4 +635,4 @@ const UnidentifiedItemsManagement = () => {
   );
 };
 
-export default UnidentifiedItemsManagement;
+export default PendingSaleManagement;

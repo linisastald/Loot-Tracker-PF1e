@@ -51,6 +51,7 @@ const PendingSaleManagement = () => {
   useEffect(() => {
     fetchPendingItems();
     fetchMods();
+    fetchItems();
   }, []);
 
   const fetchPendingItems = async () => {
@@ -269,7 +270,7 @@ const PendingSaleManagement = () => {
         size: updatedItem.size || null,
         status: updatedItem.status || null,
         itemid: updatedItem.itemid !== '' ? parseInt(updatedItem.itemid, 10) : null,
-        modids: updatedItem.modids && updatedItem.modids.length > 0 ? updatedItem.modids : null,
+        modids: updatedItem.modids, // Ensure modids is passed through
         charges: updatedItem.charges !== '' ? parseInt(updatedItem.charges, 10) : null,
         value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
         notes: updatedItem.notes || null,
@@ -298,6 +299,36 @@ const PendingSaleManagement = () => {
       month: 'long',
       day: '2-digit',
     });
+  };
+
+  // Function to get the real item name
+  const getRealItemName = (item) => {
+    if (!item || !item.itemid) return '';
+
+    const selectedItem = items.find(i => i.id === item.itemid);
+    if (!selectedItem) return '';
+
+    let displayName = selectedItem.name;
+
+    // If the item has mods, add them to the name
+    if (item.modids && item.modids.length > 0) {
+      const itemMods = mods.filter(mod => item.modids.includes(mod.id));
+      const modNames = itemMods.map(mod => mod.name);
+
+      // Sort mods to put '+X' mods first
+      modNames.sort((a, b) => {
+        if (a.startsWith('+') && !b.startsWith('+')) return -1;
+        if (!a.startsWith('+') && b.startsWith('+')) return 1;
+        return 0;
+      });
+
+      // Combine mods with the item name
+      if (modNames.length > 0) {
+        displayName = `${modNames.join(' ')} ${selectedItem.name}`;
+      }
+    }
+
+    return displayName;
   };
 
   return (
@@ -368,6 +399,7 @@ const PendingSaleManagement = () => {
                 <TableCell>Quantity</TableCell>
                 <TableCell>Name</TableCell>
                 <TableCell>Type</TableCell>
+                <TableCell>Real Item</TableCell>
                 <TableCell>Value</TableCell>
                 <TableCell>Sale Value</TableCell>
                 <TableCell>Notes</TableCell>
@@ -399,6 +431,7 @@ const PendingSaleManagement = () => {
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>{item.type}</TableCell>
+                    <TableCell>{getRealItemName(item)}</TableCell>
                     <TableCell>{item.value}</TableCell>
                     <TableCell>{saleValue.toFixed(2)}</TableCell>
                     <TableCell>{item.notes}</TableCell>
@@ -574,14 +607,6 @@ const PendingSaleManagement = () => {
             margin="normal"
             multiline
             rows={2}
-          />
-          <TextField
-            label="Spellcraft DC"
-            type="number"
-            fullWidth
-            value={updatedItem.spellcraft_dc || ''}
-            onChange={(e) => handleItemUpdateChange('spellcraft_dc', e.target.value)}
-            margin="normal"
           />
           <TextField
             label="DM Notes"
