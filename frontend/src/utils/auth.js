@@ -31,7 +31,7 @@ export const isAuthenticated = () => {
 
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
-    if (payload.exp <= Date.now() / 1000) {
+    if (payload.exp && payload.exp <= Math.floor(Date.now() / 1000)) {
       localStorage.removeItem('token'); // Clear expired token
       return false;
     }

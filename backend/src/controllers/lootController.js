@@ -39,21 +39,103 @@ const customRounding = (value) => {
 };
 
 const fetchAndProcessAppraisals = async (lootId) => {
-  const appraisalsQuery = `
-    SELECT 
-      a.believedvalue,
-      c.name as character_name
-    FROM appraisal a
-    JOIN characters c ON a.characterid = c.id
-    WHERE a.lootid = $1
-  `;
-  const appraisalsResult = await pool.query(appraisalsQuery, [lootId]);
+  try {
+    const appraisalsQuery = `
+      SELECT 
+        a.id as appraisal_id,
+        a.characterid,
+        a.believedvalue,
+        a.appraisalroll,
+        c.name as character_name,
+        c.id as character_id
+      FROM appraisal a
+      JOIN characters c ON a.characterid = c.id
+      WHERE a.lootid = $1
+    `;
+    const appraisalsResult = await pool.query(appraisalsQuery, [lootId]);
 
-  const appraisals = appraisalsResult.rows;
-  const totalValue = appraisals.reduce((sum, appraisal) => sum + parseFloat(appraisal.believedvalue), 0);
-  const averageAppraisal = appraisals.length > 0 ? totalValue / appraisals.length : null;
+    const appraisals = appraisalsResult.rows;
 
-  return { appraisals, average_appraisal: averageAppraisal };
+    // Calculate average appraisal value
+    const totalValue = appraisals.reduce((sum, appraisal) => sum + parseFloat(appraisal.believedvalue || 0), 0);
+    const averageValue = appraisals.length > 0 ? totalValue / appraisals.length : null;
+    const averageAppraisal = averageValue !== null ? parseFloat(averageValue.toFixed(2)) : null;
+
+    return {
+      appraisals,
+      average_appraisal: averageAppraisal
+    };
+  } catch (error) {
+    console.error('Error in fetchAndProcessAppraisals:', error);
+    return { appraisals: [], average_appraisal: null };
+  }
+};
+
+const enhanceItemsWithAppraisals = async (items) => {
+  if (!items || !Array.isArray(items)) return [];
+
+  const enhancedItems = await Promise.all(items.map(async (item) => {
+    try {
+      if (!item.id) return item;
+
+      const { appraisals, average_appraisal } = await fetchAndProcessAppraisals(item.id);
+      return {
+        ...item,
+        appraisals,
+        average_appraisal
+      };
+    } catch (error) {
+      console.error(`Error enhancing item ${item.id} with appraisals:`, error);
+      return {
+        ...item,
+        appraisals: [],
+        average_appraisal: null
+      };
+    }
+  }));
+
+  return enhancedItems;
+};
+
+const updateAppraisalsOnValueChange = async (lootId, newValue) => {
+  try {
+    if (!lootId || newValue === undefined) return;
+
+    // Get all appraisals for the item
+    const appraisalsResult = await pool.query(
+      'SELECT * FROM appraisal WHERE lootid = $1',
+      [lootId]
+    );
+    const appraisals = appraisalsResult.rows;
+
+    // No need to update if there are no appraisals
+    if (appraisals.length === 0) return;
+
+    // Update each appraisal based on its roll
+    for (const appraisal of appraisals) {
+      let newBelievedValue;
+      const roll = parseInt(appraisal.appraisalroll);
+
+      if (roll >= 20) {
+        newBelievedValue = newValue;
+      } else if (roll >= 15) {
+        newBelievedValue = newValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
+      } else {
+        newBelievedValue = newValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
+      }
+
+      newBelievedValue = customRounding(newBelievedValue);
+
+      // Update the appraisal
+      await pool.query(
+        'UPDATE appraisal SET believedvalue = $1 WHERE id = $2',
+        [newBelievedValue, appraisal.id]
+      );
+    }
+  } catch (error) {
+    console.error('Error updating appraisals on value change:', error);
+    throw error;
+  }
 };
 
 exports.createLoot = async (req, res) => {
@@ -194,14 +276,12 @@ exports.getAllLoot = async (req, res) => {
 
     const loot = await Loot.findAll(activeCharacterId);
 
-    const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
-      const { appraisals, average_appraisal } = await fetchAndProcessAppraisals(item.id);
-      return { ...item, appraisals, average_appraisal };
-    }));
+    // Enhance individual items with appraisal data
+    const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
     res.status(200).json({
       summary: loot.summary,
-      individual: lootWithAppraisals
+      individual: enhancedIndividualLoot
     });
   } catch (error) {
     console.error('Error fetching loot', error);
@@ -230,14 +310,12 @@ exports.getKeptPartyLoot = async (req, res) => {
     const userId = req.user.id;
     const loot = await Loot.findByStatus('Kept Party', userId);
 
-    const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
-      const { appraisals, average_appraisal } = await fetchAndProcessAppraisals(item.id);
-      return { ...item, appraisals, average_appraisal };
-    }));
+    // Enhance individual items with appraisal data
+    const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
     res.status(200).json({
       summary: loot.summary,
-      individual: lootWithAppraisals
+      individual: enhancedIndividualLoot
     });
   } catch (error) {
     console.error('Error fetching kept party loot', error);
@@ -261,14 +339,12 @@ exports.getKeptCharacterLoot = async (req, res) => {
     const userId = req.user.id;
     const loot = await Loot.findByStatus('Kept Self', userId);
 
-    const lootWithAppraisals = await Promise.all(loot.individual.map(async (item) => {
-      const { appraisals, average_appraisal } = await fetchAndProcessAppraisals(item.id);
-      return { ...item, appraisals, average_appraisal };
-    }));
+    // Enhance individual items with appraisal data
+    const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
     res.status(200).json({
       summary: loot.summary,
-      individual: lootWithAppraisals
+      individual: enhancedIndividualLoot
     });
   } catch (error) {
     console.error('Error fetching kept character loot', error);
@@ -332,7 +408,7 @@ exports.searchItems = async (req, res) => {
   const { query, unidentified, type, size, status, itemid, modids, value } = req.query;
 
   try {
-    let sqlQuery = `SELECT * FROM loot WHERE 1=1`; // Start with a true condition
+    let sqlQuery = `SELECT * FROM loot`;
     const queryParams = [];
     let paramCount = 1;
 
@@ -533,8 +609,11 @@ exports.appraiseLoot = async (req, res) => {
       SELECT l.id, l.value, l.itemid, l.modids, l.name, l.masterwork, l.charges
       FROM loot l
       LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1
-      WHERE (l.status IS NULL OR l.status = 'Pending Sale') AND (l.unidentified = false or l.unidentified is null) AND a.id IS NULL
+      WHERE (l.status IS NULL OR l.status = 'Pending Sale') 
+        AND (l.unidentified = false OR l.unidentified IS NULL) 
+        AND a.id IS NULL
     `, [characterId]);
+
     const lootToAppraise = lootToAppraiseResult.rows;
 
     // Get all previous appraisals for the active character
@@ -544,66 +623,35 @@ exports.appraiseLoot = async (req, res) => {
       JOIN appraisal a ON a.lootid = l.id
       WHERE a.characterid = $1
     `, [characterId]);
-    const previousAppraisals = previousAppraisalsResult.rows;
 
-    // Helper function to round based on specified probabilities
-    const customRounding = (value) => {
-      const randomValue = Math.random();
-      if (randomValue < 0.15) {
-        // Round to nearest hundredth
-        let roundedValue = Math.round(value * 100) / 100;
-        if (Math.random() < 0.99) {
-          const factor = 100;
-          const lastDigit = Math.round(roundedValue * factor) % 10;
-          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
-        }
-        return roundedValue;
-      } else if (randomValue < 0.4) {
-        // Round to nearest tenth
-        let roundedValue = Math.round(value * 10) / 10;
-        if (Math.random() < 0.75) {
-          const factor = 10;
-          const lastDigit = Math.round(roundedValue * factor) % 10;
-          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-          roundedValue = (Math.round(roundedValue * factor) + adjust) / factor;
-        }
-        return roundedValue;
-      } else {
-        // Round to nearest whole number
-        let roundedValue = Math.round(value);
-        if (Math.random() < 0.5) {
-          const lastDigit = roundedValue % 10;
-          const adjust = (lastDigit <= 2 || lastDigit >= 8) ? -lastDigit : (5 - lastDigit);
-          roundedValue += adjust;
-        }
-        return roundedValue;
-      }
-    };
+    const previousAppraisals = previousAppraisalsResult.rows;
 
     // Appraise each item
     const createdAppraisals = [];
     for (const lootItem of lootToAppraise) {
       const { id: lootId, value: lootValue, itemid, modids, masterwork, charges } = lootItem;
 
-      // Check for previous appraisals
+      // Check for previous appraisals of similar items
       let previousAppraisal = previousAppraisals.find(appraisal =>
         appraisal.itemid === itemid &&
         JSON.stringify(appraisal.modids) === JSON.stringify(modids) &&
         appraisal.masterwork === masterwork &&
         appraisal.charges === charges &&
-        appraisal.value === lootValue
+        Math.abs(appraisal.value - lootValue) < 0.01 // Compare with small epsilon for floating point
       );
 
       let believedValue = null;
       let appraisalRoll = null;
 
       if (previousAppraisal) {
+        // Use previous appraisal value for similar items
         believedValue = previousAppraisal.believedvalue;
       } else {
-        appraisalRoll = Math.floor(Math.random() * 20) + 1 + appraisalBonus;
+        // Make a new appraisal roll
+        appraisalRoll = Math.floor(Math.random() * 20) + 1 + (appraisalBonus || 0);
 
-        if (lootValue !== null) {
+        // Calculate believed value based on roll
+        if (lootValue !== null && lootValue !== undefined) {
           if (appraisalRoll >= 20) {
             believedValue = lootValue;
           } else if (appraisalRoll >= 15) {
@@ -769,6 +817,11 @@ exports.dmUpdateItem = async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Get original item to check if value has changed
+    const originalItemResult = await client.query('SELECT * FROM loot WHERE id = $1', [id]);
+    const originalItem = originalItemResult.rows[0];
+    const originalValue = originalItem ? originalItem.value : null;
+
     const allowedFields = [
       'session_date', 'quantity', 'name', 'unidentified', 'masterwork',
       'type', 'size', 'status', 'itemid', 'modids', 'charges', 'value',
@@ -867,6 +920,11 @@ exports.dmUpdateItem = async (req, res) => {
 
       const valueUpdateResult = await client.query(valueUpdateQuery, [calculatedValue, id]);
       updatedItem = valueUpdateResult.rows[0];
+    }
+
+    // Check if value has changed and update appraisals if needed
+    if (updatedItem && originalValue !== updatedItem.value) {
+      await updateAppraisalsOnValueChange(id, updatedItem.value);
     }
 
     await client.query('COMMIT');

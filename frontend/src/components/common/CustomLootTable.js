@@ -244,12 +244,15 @@ const CustomLootTable = ({
   }, [individualLoot]);
 
   const getAppraisals = (item) => {
-    // Check if the item has appraisals directly
+    // If the item has appraisals property and it's an array, use it directly
     if (item.appraisals && Array.isArray(item.appraisals)) {
       return item.appraisals;
     }
 
-    // If not, try to find matching individual items and collect their appraisals
+    // If the item doesn't have appraisals directly, check individual items
+    const key = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
+
+    // Find matching individual items
     const matchingItems = individualLoot.filter(
       indItem =>
         indItem.name === item.name &&
@@ -259,45 +262,67 @@ const CustomLootTable = ({
         indItem.size === item.size
     );
 
-    // Collect all unique appraisals from matching items
-    const allAppraisals = matchingItems.flatMap(indItem => indItem.appraisals || []);
-    const uniqueAppraisals = Array.from(new Set(allAppraisals.map(JSON.stringify))).map(JSON.parse);
+    // Collect unique appraisals from all matching items
+    const allAppraisals = [];
+    matchingItems.forEach(indItem => {
+      if (indItem.appraisals && Array.isArray(indItem.appraisals)) {
+        indItem.appraisals.forEach(appraisal => {
+          // Only add if not already in the list (check by character ID)
+          if (!allAppraisals.some(a => a.characterid === appraisal.characterid)) {
+            allAppraisals.push(appraisal);
+          }
+        });
+      }
+    });
 
-    return uniqueAppraisals;
+    return allAppraisals;
   };
 
-
-
   const formatAppraisalDetails = (item) => {
-    console.log('Formatting appraisal details for item:', item);
-
     const appraisals = getAppraisals(item);
 
     if (!appraisals || appraisals.length === 0) {
-      console.log('No appraisals found for item');
       return 'No appraisals available';
     }
 
     return appraisals.map(appraisal => {
-      console.log('Appraisal:', appraisal);
-      return `${appraisal.character_name}: ${appraisal.believedvalue}`;
+      const characterName = appraisal.character_name || 'Unknown';
+      const value = parseFloat(appraisal.believedvalue);
+      return `${characterName}: ${isNaN(value) ? '?' : value.toFixed(2)}`;
     }).join('\n');
   };
 
   const formatAverageAppraisal = (item) => {
-    console.log('Formatting average appraisal for item:', item);
+    // If the item has average_appraisal property, use it directly
+    if (item.average_appraisal !== undefined && item.average_appraisal !== null) {
+      const value = parseFloat(item.average_appraisal);
+      const formattedValue = isNaN(value) ? '' : value.toFixed(2).replace(/\.0+$/, '');
 
+      return (
+        <Tooltip title={formatAppraisalDetails(item)} arrow>
+          <span>{formattedValue}</span>
+        </Tooltip>
+      );
+    }
+
+    // Otherwise calculate from appraisals
     const appraisals = getAppraisals(item);
 
     if (!appraisals || appraisals.length === 0) {
-      console.log('No appraisals found for item');
-      return '';
+      return null;
     }
 
-    const totalValue = appraisals.reduce((sum, appraisal) => sum + parseFloat(appraisal.believedvalue), 0);
-    const averageValue = totalValue / appraisals.length;
+    const values = appraisals
+      .map(a => parseFloat(a.believedvalue))
+      .filter(v => !isNaN(v));
 
-    const formattedValue = Number.isInteger(averageValue) ? averageValue.toString() : averageValue.toFixed(2).replace(/\.?0+$/, '');
+    if (values.length === 0) {
+      return null;
+    }
+
+    const total = values.reduce((sum, val) => sum + val, 0);
+    const average = total / values.length;
+    const formattedValue = average.toFixed(2).replace(/\.0+$/, '');
 
     return (
       <Tooltip title={formatAppraisalDetails(item)} arrow>
