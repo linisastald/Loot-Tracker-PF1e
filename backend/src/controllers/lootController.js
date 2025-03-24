@@ -408,7 +408,7 @@ exports.searchItems = async (req, res) => {
   const { query, unidentified, type, size, status, itemid, modids, value } = req.query;
 
   try {
-    let sqlQuery = `SELECT * FROM loot`;
+    let sqlQuery = `SELECT * FROM loot where 1=1`;
     const queryParams = [];
     let paramCount = 1;
 
