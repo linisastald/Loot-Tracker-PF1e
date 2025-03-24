@@ -235,6 +235,16 @@ const UnidentifiedItemsManagement = () => {
 
   const handleUpdateSubmit = async () => {
     try {
+      // If spellcraft_dc isn't set but we have the item info, calculate it
+      let spellcraftDC = updatedItem.spellcraft_dc;
+      if ((!spellcraftDC || spellcraftDC === '') && updatedItem.itemid) {
+        const selectedItem = itemsMap[updatedItem.itemid];
+        if (selectedItem) {
+          const casterLevel = selectedItem.casterlevel || 1;
+          spellcraftDC = 15 + Math.min(casterLevel, 20); // Cap at caster level 20
+        }
+      }
+
       const preparedData = {
         session_date: updatedItem.session_date || null,
         quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
@@ -248,7 +258,7 @@ const UnidentifiedItemsManagement = () => {
         charges: updatedItem.charges !== '' ? parseInt(updatedItem.charges, 10) : null,
         value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
         notes: updatedItem.notes || null,
-        spellcraft_dc: updatedItem.spellcraft_dc !== '' ? parseInt(updatedItem.spellcraft_dc, 10) : null,
+        spellcraft_dc: spellcraftDC !== '' ? parseInt(spellcraftDC, 10) : null,
         dm_notes: updatedItem.dm_notes || null,
         modids: updatedItem.modids, // Ensure modids is passed through
       };
@@ -315,6 +325,28 @@ const UnidentifiedItemsManagement = () => {
     return displayName;
   };
 
+  // Function to calculate Spellcraft DC if not set
+  const getSpellcraftDC = (item) => {
+    // If DC is already set, return it
+    if (item.spellcraft_dc) {
+      return item.spellcraft_dc;
+    }
+
+    // If we have item details, calculate the DC
+    if (item.itemid && itemsMap[item.itemid]) {
+      const itemDetails = itemsMap[item.itemid];
+
+      // Use the caster level from the item or default to 1
+      const casterLevel = itemDetails.casterlevel || 1;
+
+      // Spellcraft DC is typically 15 + caster level
+      return 15 + Math.min(casterLevel, 20); // Cap at caster level 20
+    }
+
+    // Default DC if we can't calculate
+    return 'Not set';
+  };
+
   return (
     <>
       <Typography variant="h6" gutterBottom>Unidentified Items</Typography>
@@ -358,7 +390,7 @@ const UnidentifiedItemsManagement = () => {
                   <TableCell>
                     {getRealItemName(item)}
                   </TableCell>
-                  <TableCell>{item.spellcraft_dc || 'Not set'}</TableCell>
+                  <TableCell>{getSpellcraftDC(item)}</TableCell>
                   <TableCell>
                     <Tooltip title="Mark as identified using linked item">
                       <span> {/* Wrapper to make tooltip work with disabled button */}
