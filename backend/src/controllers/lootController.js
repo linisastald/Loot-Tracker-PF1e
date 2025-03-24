@@ -1129,6 +1129,15 @@ exports.sellUpTo = async (req, res) => {
     }
 
     if (itemsSold.length > 0) {
+      // Record each item as sold in the sold table
+      for (const item of itemsToSell) {
+        await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
+          item.id,
+          calculateItemSaleValue(item),
+          new Date(),
+        ]);
+      }
+
       await client.query(
         "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
         [itemsSold]
@@ -1173,15 +1182,23 @@ exports.sellAllExcept = async (req, res) => {
     );
     const pendingItems = pendingItemsResult.rows;
 
-    let itemsSold = [];
     const itemsToSell = pendingItems.filter(item => !itemsToKeep.includes(item.id));
 
     // Get all the IDs of items to sell
-    itemsSold = itemsToSell.map(item => item.id);
+    const itemsSold = itemsToSell.map(item => item.id);
 
     if (itemsSold.length > 0) {
       // Use the utility function to calculate total sale value
       const totalSold = calculateTotalSaleValue(itemsToSell);
+
+      // Record each item as sold in the sold table
+      for (const item of itemsToSell) {
+        await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
+          item.id,
+          calculateItemSaleValue(item),
+          new Date(),
+        ]);
+      }
 
       await client.query(
         "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
@@ -1297,6 +1314,15 @@ exports.sellSelected = async (req, res) => {
 
     // Use the utility function to calculate the total sale value
     const totalSold = calculateTotalSaleValue(items);
+
+    // Record each item as sold in the sold table
+    for (const item of items) {
+      await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
+        item.id,
+        calculateItemSaleValue(item),
+        new Date(),
+      ]);
+    }
 
     // Update the status of the sold items
     await client.query(
