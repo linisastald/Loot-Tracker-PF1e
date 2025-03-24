@@ -30,45 +30,121 @@ const UnidentifiedItemsManagement = () => {
   const [unidentifiedItems, setUnidentifiedItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
-  const [items, setItems] = useState([]);
+  const [itemsMap, setItemsMap] = useState({});
+  const [modsMap, setModsMap] = useState({});
   const [itemOptions, setItemOptions] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemInputValue, setItemInputValue] = useState('');
   const [mods, setMods] = useState([]);
+  const [isDataLoading, setIsDataLoading] = useState(true);
 
   useEffect(() => {
-    fetchUnidentifiedItems();
-    fetchAllItems();
-    fetchMods();
+    const fetchInitialData = async () => {
+      setIsDataLoading(true);
+      await fetchUnidentifiedItems();
+      setIsDataLoading(false);
+    };
+    fetchInitialData();
   }, []);
+
+  // After fetching unidentified items, load their associated items and mods
+  useEffect(() => {
+    if (unidentifiedItems.length > 0) {
+      loadItemsAndMods(unidentifiedItems);
+    }
+  }, [unidentifiedItems]);
 
   const fetchUnidentifiedItems = async () => {
     try {
       const response = await api.get(`/loot/unidentified`);
       setUnidentifiedItems(response.data);
+      return response.data;
     } catch (error) {
       console.error('Error fetching unidentified items:', error);
+      return [];
     }
   };
 
-  const fetchAllItems = async () => {
-    try {
-      const response = await api.get(`/loot/items`);
-      setItems(response.data);
-    } catch (error) {
-      console.error('Error fetching all items:', error);
-    }
-  };
+  const loadItemsAndMods = async (items) => {
+    // Extract all unique item ids
+    const itemIds = items
+      .filter(item => item.itemid)
+      .map(item => item.itemid)
+      .filter((id, index, self) => self.indexOf(id) === index);
 
-  const fetchMods = async () => {
+    // Extract all unique mod ids
+    const modIds = items
+      .filter(item => item.modids && Array.isArray(item.modids) && item.modids.length > 0)
+      .flatMap(item => item.modids)
+      .filter((id, index, self) => self.indexOf(id) === index);
+
+    // Load items and mods in parallel
     try {
-      const response = await api.get(`/loot/mods`);
-      setMods(response.data.map(mod => ({
+      const [itemsResponse, modsResponse] = await Promise.all([
+        loadItems(itemIds),
+        loadMods(modIds)
+      ]);
+
+      // Create maps for faster lookup
+      const itemsMapData = {};
+      itemsResponse.forEach(item => {
+        itemsMapData[item.id] = item;
+      });
+      setItemsMap(itemsMapData);
+
+      const modsMapData = {};
+      modsResponse.forEach(mod => {
+        modsMapData[mod.id] = {
+          ...mod,
+          displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
+        };
+      });
+      setModsMap(modsMapData);
+      setMods(modsResponse.map(mod => ({
         ...mod,
         displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
       })));
     } catch (error) {
-      console.error('Error fetching mods:', error);
+      console.error('Error loading items and mods:', error);
+    }
+  };
+
+  const loadItems = async (ids) => {
+    if (!ids || ids.length === 0) return [];
+
+    try {
+      // If we have specific ids, query for just those items
+      const query = ids.length === 1
+        ? `/loot/items?query=${ids[0]}`
+        : `/loot/items?query=${ids.join(',')}`;
+
+      const response = await api.get(query);
+      console.log('Items loaded:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error loading items:', error);
+      return [];
+    }
+  };
+
+  const loadMods = async (ids) => {
+    if (!ids || ids.length === 0) return [];
+
+    try {
+      // If we're implementing a specific mod endpoint, we would call it here
+      // For now, we'll fetch all mods and filter client-side
+      const response = await api.get(`/loot/mods`);
+
+      // Filter to only the mods we need
+      const filteredMods = ids.length > 0
+        ? response.data.filter(mod => ids.includes(mod.id))
+        : response.data;
+
+      console.log('Mods loaded:', filteredMods);
+      return filteredMods;
+    } catch (error) {
+      console.error('Error loading mods:', error);
+      return [];
     }
   };
 
@@ -81,6 +157,7 @@ const UnidentifiedItemsManagement = () => {
     setItemsLoading(true);
     try {
       const response = await api.get(`/loot/items?query=${searchText}`);
+      console.log('Search items result:', response.data);
       setItemOptions(response.data);
     } catch (error) {
       console.error('Error fetching items:', error);
@@ -95,7 +172,7 @@ const UnidentifiedItemsManagement = () => {
       const loadItemDetails = async () => {
         try {
           // Try to find the item in the already loaded items
-          const existingItem = items.find(item => item.id === updatedItem.itemid);
+          const existingItem = itemsMap[updatedItem.itemid];
 
           if (existingItem) {
             // If we already have it, update the input value
@@ -104,6 +181,7 @@ const UnidentifiedItemsManagement = () => {
           } else {
             // Otherwise fetch it
             const response = await api.get(`/loot/items?query=${updatedItem.itemid}`);
+            console.log('Fetched item details:', response.data);
             if (response.data && response.data.length > 0) {
               // Find the exact item
               const matchingItem = response.data.find(item => item.id === updatedItem.itemid);
@@ -123,7 +201,7 @@ const UnidentifiedItemsManagement = () => {
       setItemInputValue('');
       setItemOptions([]);
     }
-  }, [updateDialogOpen, updatedItem]);
+  }, [updateDialogOpen, updatedItem, itemsMap]);
 
   const handleItemUpdateChange = (field, value) => {
     setUpdatedItem(prevItem => {
@@ -140,7 +218,7 @@ const UnidentifiedItemsManagement = () => {
   const handleIdentify = async (item) => {
     try {
       // Set unidentified to false and update item name if itemid exists
-      const selectedItem = items.find(i => i.id === item.itemid);
+      const selectedItem = itemsMap[item.itemid];
 
       const updatedData = {
         unidentified: false,
@@ -180,7 +258,8 @@ const UnidentifiedItemsManagement = () => {
       setUpdateDialogOpen(false);
 
       // Refresh the list
-      fetchUnidentifiedItems();
+      const items = await fetchUnidentifiedItems();
+      loadItemsAndMods(items);
     } catch (error) {
       console.error('Error updating item', error);
     }
@@ -202,28 +281,29 @@ const UnidentifiedItemsManagement = () => {
       return <span style={{color: 'red'}}>Not linked</span>;
     }
 
-    const selectedItem = items.find(i => i.id === item.itemid);
+    const selectedItem = itemsMap[item.itemid];
     if (!selectedItem) {
-      return <span style={{color: 'red'}}>Not linked</span>;
+      return <span style={{color: 'red'}}>Not linked (ID: {item.itemid})</span>;
     }
 
     let displayName = selectedItem.name;
 
     // If the item has mods, add them to the name
     if (item.modids && item.modids.length > 0 && Array.isArray(item.modids)) {
-      const itemMods = mods.filter(mod => item.modids.includes(mod.id));
-      const modNames = itemMods.map(mod => mod.name);
+      const itemModNames = item.modids
+        .map(modId => modsMap[modId]?.name)
+        .filter(name => name); // Filter out undefined
 
       // Sort mods to put '+X' mods first
-      modNames.sort((a, b) => {
+      itemModNames.sort((a, b) => {
         if (a.startsWith('+') && !b.startsWith('+')) return -1;
         if (!a.startsWith('+') && b.startsWith('+')) return 1;
         return 0;
       });
 
       // Combine mods with the item name
-      if (modNames.length > 0) {
-        displayName = `${modNames.join(' ')} ${selectedItem.name}`;
+      if (itemModNames.length > 0) {
+        displayName = `${itemModNames.join(' ')} ${selectedItem.name}`;
       }
     }
 
