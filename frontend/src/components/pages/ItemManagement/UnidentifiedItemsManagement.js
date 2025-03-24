@@ -24,97 +24,163 @@ import {
   Grid,
   Box,
   Tooltip,
+  CircularProgress,
 } from '@mui/material';
 
 const UnidentifiedItemsManagement = () => {
   const [unidentifiedItems, setUnidentifiedItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
-  const [items, setItems] = useState([]);
+  const [itemsMap, setItemsMap] = useState({});
+  const [modsMap, setModsMap] = useState({});
   const [itemOptions, setItemOptions] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemInputValue, setItemInputValue] = useState('');
   const [mods, setMods] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [debug, setDebug] = useState({});
 
+  // Initial data loading
   useEffect(() => {
-    fetchUnidentifiedItems();
-    fetchMods();
+    const loadInitialData = async () => {
+      setLoading(true);
+      await fetchUnidentifiedItems();
+      setLoading(false);
+    };
+
+    loadInitialData();
   }, []);
 
+  // Once we have unidentified items, fetch their associated items and mods
   useEffect(() => {
-    // Only fetch item details when we have unidentified items with itemids
-    if (unidentifiedItems.length > 0) {
+    if (unidentifiedItems && unidentifiedItems.length > 0) {
       const itemIds = unidentifiedItems
         .filter(item => item.itemid)
-        .map(item => item.itemid);
+        .map(item => item.itemid)
+        .filter((id, index, self) => self.indexOf(id) === index); // Get unique IDs
+
+      const modIds = unidentifiedItems
+        .filter(item => item.modids && Array.isArray(item.modids) && item.modids.length > 0)
+        .flatMap(item => item.modids)
+        .filter((id, index, self) => self.indexOf(id) === index); // Get unique IDs
 
       if (itemIds.length > 0) {
-        fetchItemsById(itemIds);
+        fetchItemsByIds(itemIds);
+      }
+
+      if (modIds.length > 0) {
+        fetchModsByIds(modIds);
+      } else {
+        // If no specific mods, fetch all mods as fallback
+        fetchAllMods();
       }
     }
   }, [unidentifiedItems]);
 
   const fetchUnidentifiedItems = async () => {
     try {
-      setLoading(true);
       const response = await api.get(`/loot/unidentified`);
       console.log('Unidentified items:', response.data);
       setUnidentifiedItems(response.data);
     } catch (error) {
       console.error('Error fetching unidentified items:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const fetchItemsById = async (itemIds) => {
+  // New function to fetch items by IDs using the new endpoint
+  const fetchItemsByIds = async (itemIds) => {
     try {
-      // Create an array to collect all item data
-      let allItems = [];
+      // Use the new endpoint
+      const response = await api.get(`/loot/items-by-id?ids=${itemIds.join(',')}`);
+      console.log('Items by ID:', response.data);
 
-      // Due to API limitations, we need to fetch each item individually
-      for (const itemId of itemIds) {
-        const response = await api.get(`/loot/items?query=${itemId}`);
+      // Create a map for easier lookups
+      const newItemsMap = {};
+      response.data.forEach(item => {
+        newItemsMap[item.id] = item;
+      });
 
-        // Find the exact item by ID
-        const exactItem = response.data.find(item => item.id === itemId);
-        if (exactItem) {
-          allItems.push(exactItem);
+      setItemsMap(newItemsMap);
+    } catch (error) {
+      console.error('Error fetching items by IDs:', error);
+
+      // Fallback to the old method if the new endpoint fails
+      console.log('Falling back to individual item fetches');
+      fetchItemsIndividually(itemIds);
+    }
+  };
+
+  // Fallback method to fetch items individually
+  const fetchItemsIndividually = async (itemIds) => {
+    try {
+      const newItemsMap = {};
+
+      // Fetch each item separately
+      for (const id of itemIds) {
+        try {
+          const response = await api.get(`/loot/items?query=${id}`);
+          const exactMatch = response.data.find(item => item.id === id);
+
+          if (exactMatch) {
+            newItemsMap[id] = exactMatch;
+          }
+        } catch (err) {
+          console.error(`Error fetching item ${id}:`, err);
         }
       }
 
-      console.log('Fetched items:', allItems);
-      setItems(allItems);
-      setDebug(prev => ({...prev, items: allItems}));
+      setItemsMap(newItemsMap);
     } catch (error) {
-      console.error('Error fetching items by ID:', error);
+      console.error('Error in fallback item fetching:', error);
     }
   };
 
-  const fetchAllItems = async () => {
+  // New function to fetch mods by IDs using the new endpoint
+  const fetchModsByIds = async (modIds) => {
     try {
-      const response = await api.get(`/loot/items?query=a`); // Query with 'a' to get many items
-      console.log('All items:', response.data);
-      setItems(response.data);
+      // Use the new endpoint
+      const response = await api.get(`/loot/mods-by-id?ids=${modIds.join(',')}`);
+      console.log('Mods by ID:', response.data);
+
+      const modsWithDisplayNames = response.data.map(mod => ({
+        ...mod,
+        displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
+      }));
+
+      // Create a map for easier lookups
+      const newModsMap = {};
+      modsWithDisplayNames.forEach(mod => {
+        newModsMap[mod.id] = mod;
+      });
+
+      setModsMap(newModsMap);
+      setMods(modsWithDisplayNames);
     } catch (error) {
-      console.error('Error fetching all items:', error);
+      console.error('Error fetching mods by IDs:', error);
+
+      // Fallback to fetching all mods
+      fetchAllMods();
     }
   };
 
-  const fetchMods = async () => {
+  const fetchAllMods = async () => {
     try {
       const response = await api.get(`/loot/mods`);
       const modsWithDisplayNames = response.data.map(mod => ({
         ...mod,
         displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
       }));
+
+      // Create a map for easier lookups
+      const newModsMap = {};
+      modsWithDisplayNames.forEach(mod => {
+        newModsMap[mod.id] = mod;
+      });
+
+      setModsMap(newModsMap);
       setMods(modsWithDisplayNames);
-      console.log('Mods:', modsWithDisplayNames);
-      setDebug(prev => ({...prev, mods: modsWithDisplayNames}));
+      console.log('All mods:', modsWithDisplayNames);
     } catch (error) {
-      console.error('Error fetching mods:', error);
+      console.error('Error fetching all mods:', error);
     }
   };
 
@@ -136,42 +202,6 @@ const UnidentifiedItemsManagement = () => {
     }
   };
 
-  // Load current item data when dialog opens
-  useEffect(() => {
-    if (updateDialogOpen && updatedItem && updatedItem.itemid) {
-      const loadItemDetails = async () => {
-        try {
-          // Try to find the item in the already loaded items
-          const existingItem = items.find(item => item.id === updatedItem.itemid);
-
-          if (existingItem) {
-            // If we already have it, update the input value
-            setItemInputValue(existingItem.name);
-            setItemOptions([existingItem]);
-          } else {
-            // Otherwise fetch it
-            const response = await api.get(`/loot/items?query=${updatedItem.itemid}`);
-            if (response.data && response.data.length > 0) {
-              // Find the exact item
-              const matchingItem = response.data.find(item => item.id === updatedItem.itemid);
-              if (matchingItem) {
-                setItemInputValue(matchingItem.name);
-                setItemOptions([matchingItem]);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error loading item details:', error);
-        }
-      };
-
-      loadItemDetails();
-    } else if (!updateDialogOpen) {
-      setItemInputValue('');
-      setItemOptions([]);
-    }
-  }, [updateDialogOpen, updatedItem]);
-
   const handleItemUpdateChange = (field, value) => {
     setUpdatedItem(prevItem => {
       if (field === 'modids') {
@@ -187,7 +217,7 @@ const UnidentifiedItemsManagement = () => {
   const handleIdentify = async (item) => {
     try {
       // Set unidentified to false and update item name if itemid exists
-      const selectedItem = items.find(i => i.id === item.itemid);
+      const selectedItem = itemsMap[item.itemid];
 
       const updatedData = {
         unidentified: false,
@@ -223,6 +253,7 @@ const UnidentifiedItemsManagement = () => {
         modids: updatedItem.modids, // Ensure modids is passed through
       };
 
+      console.log('Updating item with data:', preparedData);
       await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
       setUpdateDialogOpen(false);
 
@@ -249,7 +280,7 @@ const UnidentifiedItemsManagement = () => {
       return <span style={{color: 'red'}}>Not linked</span>;
     }
 
-    const selectedItem = items.find(i => i.id === item.itemid);
+    const selectedItem = itemsMap[item.itemid];
     if (!selectedItem) {
       return <span style={{color: 'red'}}>Not linked (ID: {item.itemid})</span>;
     }
@@ -258,8 +289,15 @@ const UnidentifiedItemsManagement = () => {
 
     // If the item has mods, add them to the name
     if (item.modids && item.modids.length > 0 && Array.isArray(item.modids)) {
-      const itemMods = mods.filter(mod => item.modids.includes(mod.id));
-      const modNames = itemMods.map(mod => mod.name);
+      let modNames = [];
+
+      // Get mod names from the map
+      item.modids.forEach(modId => {
+        const mod = modsMap[modId];
+        if (mod) {
+          modNames.push(mod.name);
+        }
+      });
 
       // Sort mods to put '+X' mods first
       modNames.sort((a, b) => {
@@ -284,73 +322,67 @@ const UnidentifiedItemsManagement = () => {
         Manage items that have been marked as unidentified. Link them to the actual items they represent and set spellcraft DCs.
       </Typography>
 
-      {/* Debug information - can be removed in production */}
-      {false && (
-        <div style={{marginBottom: 20, border: '1px solid #ccc', padding: 10}}>
-          <h3>Debug Info</h3>
-          <p>Items count: {items.length}</p>
-          <p>Mods count: {mods.length}</p>
-          <p>First item: {items[0]?.name}</p>
-          <p>First mod: {mods[0]?.name}</p>
-          <button onClick={() => console.log(debug)}>Log Debug Data</button>
-        </div>
-      )}
-
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Session Date</TableCell>
-              <TableCell>Quantity</TableCell>
-              <TableCell>Current Name</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Real Item</TableCell>
-              <TableCell>Spellcraft DC</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {unidentifiedItems.map((item) => (
-              <TableRow
-                key={item.id}
-                hover
-                onClick={() => {
-                  setUpdatedItem(item);
-                  setUpdateDialogOpen(true);
-                }}
-                sx={{ cursor: 'pointer' }}
-              >
-                <TableCell>{formatDate(item.session_date)}</TableCell>
-                <TableCell>{item.quantity}</TableCell>
-                <TableCell>{item.name}</TableCell>
-                <TableCell>{item.type}</TableCell>
-                <TableCell>
-                  {getRealItemName(item)}
-                </TableCell>
-                <TableCell>{item.spellcraft_dc || 'Not set'}</TableCell>
-                <TableCell>
-                  <Tooltip title="Mark as identified using linked item">
-                    <span> {/* Wrapper to make tooltip work with disabled button */}
-                      <Button
-                        variant="contained"
-                        size="small"
-                        color="secondary"
-                        onClick={(e) => {
-                          e.stopPropagation(); // Prevent row click
-                          handleIdentify(item);
-                        }}
-                        disabled={!item.itemid}
-                      >
-                        Identify
-                      </Button>
-                    </span>
-                  </Tooltip>
-                </TableCell>
+      {loading ? (
+        <Box display="flex" justifyContent="center" p={3}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Session Date</TableCell>
+                <TableCell>Quantity</TableCell>
+                <TableCell>Current Name</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Real Item</TableCell>
+                <TableCell>Spellcraft DC</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {unidentifiedItems.map((item) => (
+                <TableRow
+                  key={item.id}
+                  hover
+                  onClick={() => {
+                    setUpdatedItem(item);
+                    setUpdateDialogOpen(true);
+                  }}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <TableCell>{formatDate(item.session_date)}</TableCell>
+                  <TableCell>{item.quantity}</TableCell>
+                  <TableCell>{item.name}</TableCell>
+                  <TableCell>{item.type}</TableCell>
+                  <TableCell>
+                    {getRealItemName(item)}
+                  </TableCell>
+                  <TableCell>{item.spellcraft_dc || 'Not set'}</TableCell>
+                  <TableCell>
+                    <Tooltip title="Mark as identified using linked item">
+                      <span> {/* Wrapper to make tooltip work with disabled button */}
+                        <Button
+                          variant="contained"
+                          size="small"
+                          color="secondary"
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent row click
+                            handleIdentify(item);
+                          }}
+                          disabled={!item.itemid}
+                        >
+                          Identify
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
 
       <Dialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Update Item</DialogTitle>

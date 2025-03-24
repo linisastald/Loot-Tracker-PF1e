@@ -1187,4 +1187,62 @@ exports.sellAllExcept = async (req, res) => {
   }
 };
 
+exports.getItemsById = async (req, res) => {
+  try {
+    const { ids } = req.query;
+
+    if (!ids) {
+      return res.status(400).json({ error: 'Item IDs are required' });
+    }
+
+    // Parse the comma-separated list of IDs
+    const itemIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+
+    if (itemIds.length === 0) {
+      return res.status(400).json({ error: 'No valid item IDs provided' });
+    }
+
+    // Query the database for these specific items
+    const result = await pool.query(`
+      SELECT id, name, type, subtype, value, weight, casterlevel
+      FROM item
+      WHERE id = ANY($1)
+    `, [itemIds]);
+
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching items by ID:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+exports.getModsById = async (req, res) => {
+  try {
+    const { ids } = req.query;
+
+    if (!ids) {
+      return res.status(400).json({ error: 'Mod IDs are required' });
+    }
+
+    // Parse the comma-separated list of IDs
+    const modIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+
+    if (modIds.length === 0) {
+      return res.status(400).json({ error: 'No valid mod IDs provided' });
+    }
+
+    // Query the database for these specific mods
+    const result = await pool.query(`
+      SELECT id, name, plus, valuecalc, target, subtarget
+      FROM mod
+      WHERE id = ANY($1)
+    `, [modIds]);
+
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching mods by ID:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 module.exports = exports;
