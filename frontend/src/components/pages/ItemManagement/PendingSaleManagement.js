@@ -46,9 +46,11 @@ const PendingSaleManagement = () => {
   const [itemOptions, setItemOptions] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemInputValue, setItemInputValue] = useState('');
+  const [mods, setMods] = useState([]);
 
   useEffect(() => {
     fetchPendingItems();
+    fetchMods();
   }, []);
 
   const fetchPendingItems = async () => {
@@ -73,6 +75,18 @@ const PendingSaleManagement = () => {
       setItems(response.data);
     } catch (error) {
       console.error('Error fetching all items:', error);
+    }
+  };
+
+  const fetchMods = async () => {
+    try {
+      const response = await api.get(`/loot/mods`);
+      setMods(response.data.map(mod => ({
+        ...mod,
+        displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
+      })));
+    } catch (error) {
+      console.error('Error fetching mods:', error);
     }
   };
 
@@ -232,6 +246,9 @@ const PendingSaleManagement = () => {
 
   const handleItemUpdateChange = (field, value) => {
     setUpdatedItem(prevItem => {
+      if (field === 'modids') {
+        return {...prevItem, [field]: value};
+      }
       if (['unidentified', 'masterwork', 'type', 'size', 'status', 'whohas'].includes(field)) {
         return {...prevItem, [field]: value === '' ? null : value};
       }
@@ -252,6 +269,7 @@ const PendingSaleManagement = () => {
         size: updatedItem.size || null,
         status: updatedItem.status || null,
         itemid: updatedItem.itemid !== '' ? parseInt(updatedItem.itemid, 10) : null,
+        modids: updatedItem.modids && updatedItem.modids.length > 0 ? updatedItem.modids : null,
         charges: updatedItem.charges !== '' ? parseInt(updatedItem.charges, 10) : null,
         value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
         notes: updatedItem.notes || null,
@@ -523,6 +541,14 @@ const PendingSaleManagement = () => {
             )}
             noOptionsText="Type to search items"
             filterOptions={(x) => x} // Disable built-in filtering
+          />
+          <Autocomplete
+            multiple
+            options={mods}
+            getOptionLabel={(option) => option.displayName}
+            value={updatedItem.modids ? mods.filter(mod => updatedItem.modids.includes(mod.id)) : []}
+            onChange={(_, newValue) => handleItemUpdateChange('modids', newValue.map(v => v.id))}
+            renderInput={(params) => <TextField {...params} label="Mods" fullWidth margin="normal"/>}
           />
           <TextField
             label="Charges"
