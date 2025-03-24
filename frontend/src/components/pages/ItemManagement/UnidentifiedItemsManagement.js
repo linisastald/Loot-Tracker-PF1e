@@ -173,6 +173,7 @@ const UnidentifiedItemsManagement = () => {
         notes: updatedItem.notes || null,
         spellcraft_dc: updatedItem.spellcraft_dc !== '' ? parseInt(updatedItem.spellcraft_dc, 10) : null,
         dm_notes: updatedItem.dm_notes || null,
+        modids: updatedItem.modids, // Ensure modids is passed through
       };
 
       await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
@@ -193,6 +194,36 @@ const UnidentifiedItemsManagement = () => {
       month: 'long',
       day: '2-digit',
     });
+  };
+
+  // Function to get the real item name
+  const getRealItemName = (item) => {
+    if (!item || !item.itemid) return 'Not linked';
+
+    const selectedItem = items.find(i => i.id === item.itemid);
+    if (!selectedItem) return 'Not linked';
+
+    let displayName = selectedItem.name;
+
+    // If the item has mods, add them to the name
+    if (item.modids && item.modids.length > 0) {
+      const itemMods = mods.filter(mod => item.modids.includes(mod.id));
+      const modNames = itemMods.map(mod => mod.name);
+
+      // Sort mods to put '+X' mods first
+      modNames.sort((a, b) => {
+        if (a.startsWith('+') && !b.startsWith('+')) return -1;
+        if (!a.startsWith('+') && b.startsWith('+')) return 1;
+        return 0;
+      });
+
+      // Combine mods with the item name
+      if (modNames.length > 0) {
+        displayName = `${modNames.join(' ')} ${selectedItem.name}`;
+      }
+    }
+
+    return displayName;
   };
 
   return (
@@ -231,8 +262,7 @@ const UnidentifiedItemsManagement = () => {
                 <TableCell>{item.name}</TableCell>
                 <TableCell>{item.type}</TableCell>
                 <TableCell>
-                  {items.find(i => i.id === item.itemid)?.name ||
-                   <span style={{color: 'red'}}>Not linked</span>}
+                  {getRealItemName(item)}
                 </TableCell>
                 <TableCell>{item.spellcraft_dc || 'Not set'}</TableCell>
                 <TableCell>
