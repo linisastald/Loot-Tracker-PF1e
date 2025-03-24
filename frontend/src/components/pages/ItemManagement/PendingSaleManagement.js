@@ -237,6 +237,29 @@ const PendingSaleManagement = () => {
     }
   };
 
+  const handleSellSelected = async () => {
+    try {
+      setLoading(true);
+      if (selectedPendingItems.length === 0) {
+        setError('No items selected to sell.');
+        setLoading(false);
+        return;
+      }
+
+      const response = await api.post('/loot/sell-selected', { itemsToSell: selectedPendingItems });
+      if (response.status === 200) {
+        setSuccess('Successfully sold selected items.');
+        setSelectedPendingItems([]);
+        fetchPendingItems();
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error('Error selling selected items:', error);
+      setError('Failed to sell items.');
+      setLoading(false);
+    }
+  };
+
   const handlePendingItemSelect = (itemId) => {
     setSelectedPendingItems(prev =>
       prev.includes(itemId)
@@ -378,6 +401,14 @@ const PendingSaleManagement = () => {
                   disabled={loading || selectedPendingItems.length === 0}
                 >
                   Sell All Except Selected
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSellSelected}
+                  disabled={loading || selectedPendingItems.length === 0}
+                >
+                  Sell Selected
                 </Button>
               </Box>
             </Grid>

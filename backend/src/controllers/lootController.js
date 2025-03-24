@@ -1245,4 +1245,68 @@ exports.getModsById = async (req, res) => {
   }
 };
 
+exports.sellSelected = async (req, res) => {
+  const { itemsToSell } = req.body;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    if (!itemsToSell || itemsToSell.length === 0) {
+      return res.status(400).json({ error: 'No items selected to sell' });
+    }
+
+    // Fetch the selected items to calculate sale value
+    const itemsResult = await client.query(
+      "SELECT * FROM loot WHERE id = ANY($1) AND status = 'Pending Sale'",
+      [itemsToSell]
+    );
+    const items = itemsResult.rows;
+
+    if (items.length === 0) {
+      return res.status(400).json({ error: 'No valid items to sell' });
+    }
+
+    let totalSold = 0;
+
+    // Calculate total sale value
+    for (const item of items) {
+      const saleValue = item.type === 'trade good' ? item.value : item.value / 2;
+      totalSold += saleValue;
+    }
+
+    // Update the status of the sold items
+    await client.query(
+      "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
+      [itemsToSell]
+    );
+
+    // Record the sale in the gold table
+    const goldEntry = {
+      session_date: new Date(),
+      transaction_type: 'Sale',
+      platinum: 0,
+      gold: Math.floor(totalSold),
+      silver: Math.floor((totalSold % 1) * 10),
+      copper: Math.floor(((totalSold * 10) % 1) * 10),
+      notes: `Sale of ${items.length} selected items`
+    };
+
+    await client.query(
+      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
+    );
+
+    // Commit the transaction
+    await client.query('COMMIT');
+    res.status(200).json({ message: `Sold ${items.length} items for ${totalSold.toFixed(2)} gold` });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error selling selected items:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = exports;

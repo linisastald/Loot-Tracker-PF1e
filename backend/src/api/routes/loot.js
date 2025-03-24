@@ -30,6 +30,7 @@ router.get('/character-ledger', verifyToken, lootController.getCharacterLedger);
 router.get('/unidentified', verifyToken, lootController.getUnidentifiedItems);
 router.post('/sell-up-to', verifyToken, checkRole(['DM']), lootController.sellUpTo);
 router.post('/sell-all-except', verifyToken, checkRole(['DM']), lootController.sellAllExcept);
+router.post('/sell-selected', verifyToken, checkRole(['DM']), lootController.sellSelected);
 
 
 router.put('/:id', verifyToken, lootController.updateSingleLootStatus);
