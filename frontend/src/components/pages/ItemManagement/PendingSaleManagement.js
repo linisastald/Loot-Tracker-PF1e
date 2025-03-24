@@ -20,6 +20,14 @@ import {
   Divider,
   Alert,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 
 const PendingSaleManagement = () => {
@@ -31,6 +39,8 @@ const PendingSaleManagement = () => {
   const [pendingSaleCount, setPendingSaleCount] = useState(0);
   const [sellUpToAmount, setSellUpToAmount] = useState('');
   const [selectedPendingItems, setSelectedPendingItems] = useState([]);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updatedItem, setUpdatedItem] = useState({});
 
   useEffect(() => {
     fetchPendingItems();
@@ -153,6 +163,39 @@ const PendingSaleManagement = () => {
     );
   };
 
+  const handleItemUpdateChange = (field, value) => {
+    setUpdatedItem(prevItem => {
+      if (['unidentified', 'masterwork', 'type', 'size', 'status', 'whohas'].includes(field)) {
+        return {...prevItem, [field]: value === '' ? null : value};
+      }
+      return {...prevItem, [field]: value};
+    });
+  };
+
+  const handleItemUpdateSubmit = async () => {
+    try {
+      setLoading(true);
+      const preparedData = {
+        quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
+        name: updatedItem.name || null,
+        type: updatedItem.type || null,
+        value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
+        notes: updatedItem.notes || null,
+      };
+
+      await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
+      setUpdateDialogOpen(false);
+      setSuccess('Item updated successfully');
+
+      // Refresh the list
+      fetchPendingItems();
+    } catch (error) {
+      console.error('Error updating item', error);
+      setError('Failed to update item');
+      setLoading(false);
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -243,8 +286,16 @@ const PendingSaleManagement = () => {
                   ((item.value || 0) / 2);
 
                 return (
-                  <TableRow key={item.id}>
-                    <TableCell padding="checkbox">
+                  <TableRow
+                    key={item.id}
+                    hover
+                    onClick={() => {
+                      setUpdatedItem(item);
+                      setUpdateDialogOpen(true);
+                    }}
+                    sx={{ cursor: 'pointer' }}
+                  >
+                    <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={selectedPendingItems.includes(item.id)}
                         onChange={() => handlePendingItemSelect(item.id)}
@@ -264,6 +315,80 @@ const PendingSaleManagement = () => {
           </Table>
         </TableContainer>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Edit Pending Sale Item</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Quantity"
+                type="number"
+                fullWidth
+                value={updatedItem.quantity || ''}
+                onChange={(e) => handleItemUpdateChange('quantity', e.target.value)}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Name"
+                fullWidth
+                value={updatedItem.name || ''}
+                onChange={(e) => handleItemUpdateChange('name', e.target.value)}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={updatedItem.type || ''}
+                  onChange={(e) => handleItemUpdateChange('type', e.target.value)}
+                >
+                  <MenuItem value="">None</MenuItem>
+                  <MenuItem value="weapon">Weapon</MenuItem>
+                  <MenuItem value="armor">Armor</MenuItem>
+                  <MenuItem value="magic">Magic</MenuItem>
+                  <MenuItem value="gear">Gear</MenuItem>
+                  <MenuItem value="trade good">Trade Good</MenuItem>
+                  <MenuItem value="other">Other</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Value"
+                type="number"
+                fullWidth
+                value={updatedItem.value || ''}
+                onChange={(e) => handleItemUpdateChange('value', e.target.value)}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Notes"
+                fullWidth
+                value={updatedItem.notes || ''}
+                onChange={(e) => handleItemUpdateChange('notes', e.target.value)}
+                margin="normal"
+                multiline
+                rows={2}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUpdateDialogOpen(false)} color="secondary">
+            Cancel
+          </Button>
+          <Button onClick={handleItemUpdateSubmit} color="primary" variant="contained">
+            Update
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

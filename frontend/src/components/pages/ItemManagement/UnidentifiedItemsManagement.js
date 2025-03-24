@@ -151,7 +151,15 @@ const UnidentifiedItemsManagement = () => {
           </TableHead>
           <TableBody>
             {unidentifiedItems.map((item) => (
-              <TableRow key={item.id}>
+              <TableRow
+                key={item.id}
+                hover
+                onClick={() => {
+                  setUpdatedItem(item);
+                  setUpdateDialogOpen(true);
+                }}
+                sx={{ cursor: 'pointer' }}
+              >
                 <TableCell>{formatDate(item.session_date)}</TableCell>
                 <TableCell>{item.quantity}</TableCell>
                 <TableCell>{item.name}</TableCell>
@@ -162,30 +170,22 @@ const UnidentifiedItemsManagement = () => {
                 </TableCell>
                 <TableCell>{item.spellcraft_dc || 'Not set'}</TableCell>
                 <TableCell>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      color="primary"
-                      onClick={() => {
-                        setUpdatedItem(item);
-                        setUpdateDialogOpen(true);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Tooltip title="Mark as identified using linked item">
+                  <Tooltip title="Mark as identified using linked item">
+                    <span> {/* Wrapper to make tooltip work with disabled button */}
                       <Button
                         variant="contained"
                         size="small"
                         color="secondary"
-                        onClick={() => handleIdentify(item)}
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevent row click
+                          handleIdentify(item);
+                        }}
                         disabled={!item.itemid}
                       >
                         Identify
                       </Button>
-                    </Tooltip>
-                  </Box>
+                    </span>
+                  </Tooltip>
                 </TableCell>
               </TableRow>
             ))}

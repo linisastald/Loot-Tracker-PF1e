@@ -380,7 +380,15 @@ const GeneralItemManagement = () => {
             </TableHead>
             <TableBody>
               {sortedItems.map((item) => (
-                <TableRow key={item.id}>
+                <TableRow
+                  key={item.id}
+                  hover
+                  onClick={() => {
+                    setUpdatedItem(item);
+                    setUpdateDialogOpen(true);
+                  }}
+                  sx={{ cursor: 'pointer' }}
+                >
                   <TableCell>{formatDate(item.session_date)}</TableCell>
                   <TableCell>{item.quantity}</TableCell>
                   <TableCell>{item.name}</TableCell>
@@ -392,16 +400,9 @@ const GeneralItemManagement = () => {
                   <TableCell>{item.value}</TableCell>
                   <TableCell>{item.notes}</TableCell>
                   <TableCell>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={() => {
-                        setUpdatedItem(item);
-                        setUpdateDialogOpen(true);
-                      }}
-                    >
-                      Edit
-                    </Button>
+                    <Typography variant="caption" color="text.secondary">
+                      Click row to edit
+                    </Typography>
                   </TableCell>
                 </TableRow>
               ))}
