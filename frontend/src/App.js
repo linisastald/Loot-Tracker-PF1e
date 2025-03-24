@@ -98,7 +98,7 @@ function App() {
             <Route path="/kept-character" element={<KeptCharacter />} />
             <Route path="/sold-loot" element={<SoldLoot />} />
             <Route path="/character-user-management" element={<CharacterAndUserManagement />} />
-            <Route path="/item-management" element={<ItemManagement />} />
+            <Route path="/item-management/*" element={<ItemManagement />} />
             <Route path="/golarion-calendar" element={<GolarionCalendar />} />
             <Route path="/consumables" element={<Consumables />} />
             <Route path="/tasks" element={<Tasks />} />
