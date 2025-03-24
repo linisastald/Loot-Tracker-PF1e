@@ -31,9 +31,7 @@ const UnidentifiedItemsManagement = () => {
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updatedItem, setUpdatedItem] = useState({});
   const [items, setItems] = useState([]);
-  const [itemOptions, setItemOptions] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
-  const [selectedItem, setSelectedItem] = useState(null);
 
   useEffect(() => {
     fetchUnidentifiedItems();
@@ -58,22 +56,12 @@ const UnidentifiedItemsManagement = () => {
     }
   };
 
-  const handleItemSearch = async (searchText) => {
-    if (!searchText) {
-      setItemOptions([]);
-      return;
+  // Updates when a user opens the dialog to edit an item
+  useEffect(() => {
+    if (updateDialogOpen) {
+      fetchAllItems();
     }
-
-    setItemsLoading(true);
-    try {
-      const response = await api.get(`/loot/items?query=${searchText}`);
-      setItemOptions(response.data);
-    } catch (error) {
-      console.error('Error fetching items:', error);
-    } finally {
-      setItemsLoading(false);
-    }
-  };
+  }, [updateDialogOpen]);
 
   const handleItemUpdateChange = (field, value) => {
     setUpdatedItem(prevItem => {
@@ -83,16 +71,6 @@ const UnidentifiedItemsManagement = () => {
       return {...prevItem, [field]: value};
     });
   };
-
-  // Set the selected item when the dialog opens
-  useEffect(() => {
-    if (updateDialogOpen && updatedItem && updatedItem.itemid) {
-      const item = items.find(i => i.id === updatedItem.itemid);
-      setSelectedItem(item || null);
-    } else if (!updateDialogOpen) {
-      setSelectedItem(null);
-    }
-  }, [updateDialogOpen, updatedItem, items]);
 
   const handleIdentify = async (item) => {
     try {
@@ -215,28 +193,27 @@ const UnidentifiedItemsManagement = () => {
               </Typography>
             </Grid>
             <Grid item xs={12}>
-              <Autocomplete
-                options={itemOptions}
-                getOptionLabel={(option) => {
-                  // Handle cases where option might be a string or null
-                  if (!option) return '';
-                  return typeof option === 'string' ? option : option.name || '';
-                }}
-                value={selectedItem}
-                onChange={(_, newValue) => {
-                  setSelectedItem(newValue);
-                  handleItemUpdateChange('itemid', newValue ? newValue.id : null);
-                }}
-                onInputChange={(_, newInputValue) => {
-                  if (newInputValue) handleItemSearch(newInputValue);
-                }}
-                loading={itemsLoading}
-                renderInput={(params) => <TextField {...params} label="Real Item" fullWidth margin="normal"/>}
-                isOptionEqualToValue={(option, value) => {
-                  if (!option || !value) return false;
-                  return option.id === (typeof value === 'object' ? value.id : value);
-                }}
-              />
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Real Item</InputLabel>
+                <Select
+                  value={updatedItem.itemid || ''}
+                  onChange={(e) => handleItemUpdateChange('itemid', e.target.value === '' ? null : e.target.value)}
+                  onOpen={async () => {
+                    try {
+                      // Load items when the dropdown opens
+                      const response = await api.get('/loot/items?query=');
+                      setItems(response.data);
+                    } catch (error) {
+                      console.error('Error fetching items:', error);
+                    }
+                  }}
+                >
+                  <MenuItem value=""><em>None</em></MenuItem>
+                  {items.map((item) => (
+                    <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12}>
               <TextField
