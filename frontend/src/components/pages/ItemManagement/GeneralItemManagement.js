@@ -131,8 +131,9 @@ const GeneralItemManagement = () => {
       setItemOptions(response.data);
     } catch (error) {
       console.error('Error fetching items:', error);
+    } finally {
+      setItemsLoading(false);
     }
-    setItemsLoading(false);
   };
 
   const requestSort = (key) => {
@@ -511,13 +512,16 @@ const GeneralItemManagement = () => {
           </FormControl>
           <Autocomplete
             options={itemOptions}
-            getOptionLabel={(option) => option.name}
+            getOptionLabel={(option) => option.name || ''}
             value={items.find(item => item.id === updatedItem.itemid) || null}
             onChange={(_, newValue) => handleItemUpdateChange('itemid', newValue ? newValue.id : null)}
-            onInputChange={(_, newInputValue) => handleItemSearch(newInputValue)}
+            onInputChange={(_, newInputValue) => {
+              handleItemSearch(newInputValue);
+            }}
             loading={itemsLoading}
             renderInput={(params) => <TextField {...params} label="Item" fullWidth margin="normal"/>}
-            isOptionEqualToValue={(option, value) => option.id === value?.id}
+            isOptionEqualToValue={(option, value) => option.id === (value?.id || value)}
+            filterOptions={(x) => x} // Disable client-side filtering since we're using server-side
           />
           <Autocomplete
             multiple
