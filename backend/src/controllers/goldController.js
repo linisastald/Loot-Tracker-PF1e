@@ -24,6 +24,7 @@ exports.createGoldEntry = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.getAllGoldEntries = async (req, res) => {
   const { startDate, endDate } = req.query;
   try {
@@ -39,6 +40,7 @@ exports.getAllGoldEntries = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.distributeAllGold = async (req, res) => {
   try {
     const client = await pool.connect();
@@ -163,8 +165,6 @@ exports.distributePlusPartyLoot = async (req, res) => {
   }
 };
 
-
-
 exports.definePartyLootDistribute = async (req, res) => {
   const { partyLootAmount } = req.body;
   try {
@@ -232,6 +232,7 @@ exports.definePartyLootDistribute = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 exports.defineCharacterDistribute = async (req, res) => {
   const { characterDistributeAmount } = req.body;
   try {
@@ -284,6 +285,7 @@ exports.defineCharacterDistribute = async (req, res) => {
     res.status500().json({ error: 'Internal server error' });
   }
 };
+
 exports.balance = async (req, res) => {
   try {
     const client = await pool.connect();
@@ -293,31 +295,38 @@ exports.balance = async (req, res) => {
       const userId = decodedToken.id;
 
       // Get total copper and silver
-      const totalResult = await client.query('SELECT SUM(copper) AS total_copper, SUM(silver) AS total_silver FROM gold');
-      const totalCopper = parseInt(totalResult.rows[0].total_copper, 10);
-      const totalSilver = parseInt(totalResult.rows[0].total_silver, 10);
+      const totalResult = await client.query('SELECT SUM(copper) AS total_copper, SUM(silver) AS total_silver, SUM(gold) AS total_gold FROM gold');
+      const totalCopper = parseInt(totalResult.rows[0].total_copper, 10) || 0;
+      const totalSilver = parseInt(totalResult.rows[0].total_silver, 10) || 0;
+      const totalGold = parseInt(totalResult.rows[0].total_gold, 10) || 0;
 
-      // Convert copper to silver
-      const additionalSilver = Math.floor(totalCopper / 10);
-      const remainingCopper = totalCopper % 10;
+      // Calculate the balancing transaction values
+      // First convert copper to silver
+      const copperToSilver = Math.floor(totalCopper / 10);
+      const newCopper = totalCopper % 10;
 
-      // Convert silver to gold
-      const additionalGold = Math.floor((totalSilver + additionalSilver) / 10);
-      const remainingSilver = (totalSilver + additionalSilver) % 10;
+      // Then convert silver (including newly converted from copper) to gold
+      const totalSilverAfterConversion = totalSilver + copperToSilver;
+      const silverToGold = Math.floor(totalSilverAfterConversion / 10);
+      const newSilver = totalSilverAfterConversion % 10;
 
+      const newGold = totalGold + silverToGold;
 
-      // Create a single balance entry
+      // Create a balancing entry that sets the final values to what they should be
       const balanceEntry = {
         sessionDate: new Date(),
         transactionType: 'Balance',
         platinum: 0,
-        gold: additionalGold,
-        silver: remainingSilver - totalSilver,
-        copper: remainingCopper - totalCopper,
+        gold: silverToGold,  // Add the converted gold
+        silver: newSilver - totalSilver,  // The difference to reach the new silver value
+        copper: newCopper - totalCopper,  // The difference to reach the new copper value
         notes: 'Balanced currencies',
         userId,
       };
+
+      // Only create a balance entry if there are actual changes
       if (balanceEntry.gold === 0 && balanceEntry.silver === 0 && balanceEntry.copper === 0) {
+        res.status(200).json({ message: 'No balancing needed' });
         return;
       }
 
