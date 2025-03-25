@@ -3,6 +3,11 @@ import React, { useState, useEffect } from 'react';
 import api from '../../../utils/api';
 import { calculateItemSaleValue, calculateTotalSaleValue } from '../../../utils/saleValueCalculator';
 import {
+  formatDate,
+  updateItemAsDM,
+  formatItemNameWithMods
+} from '../../../utils/utils';
+import {
   Typography,
   TableContainer,
   Table,
@@ -35,7 +40,9 @@ const PendingSaleManagement = () => {
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState({});
   const [items, setItems] = useState([]);
+  const [itemsMap, setItemsMap] = useState({});
   const [mods, setMods] = useState([]);
+  const [modsMap, setModsMap] = useState({});
 
   useEffect(() => {
     fetchPendingItems();
@@ -63,6 +70,13 @@ const PendingSaleManagement = () => {
     try {
       const response = await api.get(`/loot/items`);
       setItems(response.data);
+
+      // Create a map for easier lookups
+      const newItemsMap = {};
+      response.data.forEach(item => {
+        newItemsMap[item.id] = item;
+      });
+      setItemsMap(newItemsMap);
     } catch (error) {
       console.error('Error fetching all items:', error);
     }
@@ -71,10 +85,19 @@ const PendingSaleManagement = () => {
   const fetchMods = async () => {
     try {
       const response = await api.get(`/loot/mods`);
-      setMods(response.data.map(mod => ({
+      const modsWithDisplayNames = response.data.map(mod => ({
         ...mod,
         displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
-      })));
+      }));
+
+      setMods(modsWithDisplayNames);
+
+      // Create a map for easier lookups
+      const newModsMap = {};
+      modsWithDisplayNames.forEach(mod => {
+        newModsMap[mod.id] = mod;
+      });
+      setModsMap(newModsMap);
     } catch (error) {
       console.error('Error fetching mods:', error);
     }
@@ -205,59 +228,25 @@ const PendingSaleManagement = () => {
   };
 
   const handleItemUpdateSubmit = async (updatedData) => {
-    try {
-      setLoading(true);
-      await api.put(`/loot/dm-update/${selectedItem.id}`, updatedData);
-      setUpdateDialogOpen(false);
-      setSuccess('Item updated successfully');
-
-      // Refresh the list
-      fetchPendingItems();
-    } catch (error) {
-      console.error('Error updating item', error);
-      setError('Failed to update item');
-      setLoading(false);
-    }
+    // Use the utility function for updating
+    await updateItemAsDM(
+      selectedItem.id,
+      updatedData,
+      (successMessage) => {
+        setSuccess(successMessage);
+        setUpdateDialogOpen(false);
+        fetchPendingItems();
+      },
+      (errorMessage) => {
+        setError(errorMessage);
+      },
+      () => setLoading(false)
+    );
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: '2-digit',
-    });
-  };
-
-  // Function to get the real item name
+  // Get the formatted item name with mods
   const getRealItemName = (item) => {
-    if (!item || !item.itemid) return '';
-
-    const selectedItem = items.find(i => i.id === item.itemid);
-    if (!selectedItem) return '';
-
-    let displayName = selectedItem.name;
-
-    // If the item has mods, add them to the name
-    if (item.modids && item.modids.length > 0) {
-      const itemMods = mods.filter(mod => item.modids.includes(mod.id));
-      const modNames = itemMods.map(mod => mod.name);
-
-      // Sort mods to put '+X' mods first
-      modNames.sort((a, b) => {
-        if (a.startsWith('+') && !b.startsWith('+')) return -1;
-        if (!a.startsWith('+') && b.startsWith('+')) return 1;
-        return 0;
-      });
-
-      // Combine mods with the item name
-      if (modNames.length > 0) {
-        displayName = `${modNames.join(' ')} ${selectedItem.name}`;
-      }
-    }
-
-    return displayName;
+    return formatItemNameWithMods(item, itemsMap, modsMap);
   };
 
   return (

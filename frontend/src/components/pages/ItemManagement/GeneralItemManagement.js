@@ -2,6 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../../utils/api';
 import {
+  formatDate,
+  updateItemAsDM,
+} from '../../../utils/utils';
+import {
   Typography,
   TextField,
   Button,
@@ -27,6 +31,9 @@ const GeneralItemManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredItems, setFilteredItems] = useState([]);
   const [items, setItems] = useState([]);
+  const [mods, setMods] = useState([]);
+  const [itemsMap, setItemsMap] = useState({});
+  const [modsMap, setModsMap] = useState({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [sortConfig, setSortConfig] = useState({key: null, direction: 'ascending'});
@@ -50,6 +57,13 @@ const GeneralItemManagement = () => {
     try {
       const response = await api.get(`/loot/items`);
       setItems(response.data);
+
+      // Create a map for easier lookups
+      const newItemsMap = {};
+      response.data.forEach(item => {
+        newItemsMap[item.id] = item;
+      });
+      setItemsMap(newItemsMap);
     } catch (error) {
       console.error('Error fetching all items:', error);
       setError('Error fetching items');
@@ -118,28 +132,21 @@ const GeneralItemManagement = () => {
     return sortableItems;
   }, [filteredItems, sortConfig]);
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: '2-digit',
-    });
-  };
-
   const handleItemUpdateSubmit = async (updatedData) => {
-    try {
-      await api.put(`/loot/dm-update/${selectedItem.id}`, updatedData);
-      setSuccess('Item updated successfully');
-      setUpdateDialogOpen(false);
-
-      // Refresh the search results
-      handleSearch();
-    } catch (error) {
-      console.error('Error updating item:', error);
-      setError(error.response?.data?.error || 'Failed to update item');
-    }
+    // Use the utility function for updating
+    await updateItemAsDM(
+      selectedItem.id,
+      updatedData,
+      (successMessage) => {
+        setSuccess(successMessage);
+        setUpdateDialogOpen(false);
+        // Refresh the search results to show updated data
+        handleSearch();
+      },
+      (errorMessage) => {
+        setError(errorMessage);
+      }
+    );
   };
 
   return (
