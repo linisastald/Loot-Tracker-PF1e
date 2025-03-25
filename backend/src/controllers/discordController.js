@@ -1,17 +1,13 @@
+// src/controllers/discordController.js
 const axios = require('axios');
 const dbUtils = require('../utils/dbUtils');
-const controllerUtils = require('../utils/controllerUtils');
+const controllerFactory = require('../utils/controllerFactory');
 
 /**
  * Send a message to Discord
  */
 const sendMessage = async (req, res) => {
   const { embeds } = req.body;
-
-  // Validate required fields
-  if (!embeds || !Array.isArray(embeds)) {
-    throw new controllerUtils.ValidationError('Embeds array is required');
-  }
 
   // Fetch Discord settings
   const settings = await dbUtils.executeQuery(
@@ -26,7 +22,7 @@ const sendMessage = async (req, res) => {
 
   // Check if Discord settings are configured
   if (!discord_bot_token || !discord_channel_id) {
-    throw new controllerUtils.ValidationError('Discord settings are not configured');
+    throw controllerFactory.createValidationError('Discord settings are not configured');
   }
 
   // Send each embed separately
@@ -42,13 +38,19 @@ const sendMessage = async (req, res) => {
     }
   }
 
-  controllerUtils.sendSuccessResponse(res, {
+  controllerFactory.sendSuccessResponse(res, {
     success: true,
     message: 'Tasks sent to Discord successfully'
   });
 };
 
-// Wrap all controller functions with error handling
-exports.sendMessage = controllerUtils.withErrorHandling(sendMessage, 'Error sending message to Discord');
+// Define validation rules
+const sendMessageValidation = {
+  requiredFields: ['embeds']
+};
 
-module.exports = exports;
+// Create handler with validation and error handling
+exports.sendMessage = controllerFactory.createHandler(sendMessage, {
+  errorMessage: 'Error sending message to Discord',
+  validation: sendMessageValidation
+});

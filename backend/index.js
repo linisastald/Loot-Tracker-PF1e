@@ -89,6 +89,9 @@ app.get('/', (req, res) => {
   res.send('Welcome to the Pathfinder Loot Tracker API');
 });
 
+// Import updated auth middleware
+const authMiddleware = require('./src/middleware/auth');
+
 // Import routes
 const authRoutes = require('./src/api/routes/auth');
 const lootRoutes = require('./src/api/routes/loot');

@@ -1,35 +1,21 @@
+// src/controllers/soldController.js
 const Sold = require('../models/Sold');
-const dbUtils = require('../utils/dbUtils');
-const controllerUtils = require('../utils/controllerUtils');
+const controllerFactory = require('../utils/controllerFactory');
 
 /**
  * Create a new sold item record
  */
 const create = async (req, res) => {
-  // Validate required fields
-  controllerUtils.validateRequiredFields(req.body, ['lootid', 'soldfor', 'soldon']);
-
   const soldItem = await Sold.create(req.body);
-  controllerUtils.sendCreatedResponse(res, soldItem);
+  controllerFactory.sendCreatedResponse(res, soldItem);
 };
 
 /**
  * Get all sold items summarized by date
  */
 const getAll = async (req, res) => {
-  const query = `
-    SELECT
-      s.soldon,
-      COUNT(l.id) AS number_of_items,
-      SUM(s.soldfor) AS total
-    FROM sold s
-    JOIN loot l ON s.lootid = l.id
-    GROUP BY s.soldon
-    ORDER BY s.soldon DESC;
-  `;
-
-  const result = await dbUtils.executeQuery(query);
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  const soldSummary = await Sold.findAll();
+  controllerFactory.sendSuccessResponse(res, soldSummary);
 };
 
 /**
@@ -37,29 +23,29 @@ const getAll = async (req, res) => {
  */
 const getDetailsByDate = async (req, res) => {
   const { soldon } = req.params;
-
-  if (!soldon) {
-    throw new controllerUtils.ValidationError('Sale date is required');
-  }
-
-  const query = `
-    SELECT
-      l.session_date,
-      l.quantity,
-      l.name,
-      s.soldfor
-    FROM sold s
-    JOIN loot l ON s.lootid = l.id
-    WHERE s.soldon = $1;
-  `;
-
-  const result = await dbUtils.executeQuery(query, [soldon]);
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  const soldDetails = await Sold.findDetailsByDate(soldon);
+  controllerFactory.sendSuccessResponse(res, soldDetails);
 };
 
-// Wrap all controller functions with error handling
-exports.create = controllerUtils.withErrorHandling(create, 'Error creating sold item record');
-exports.getAll = controllerUtils.withErrorHandling(getAll, 'Error fetching all sold records');
-exports.getDetailsByDate = controllerUtils.withErrorHandling(getDetailsByDate, 'Error fetching sold details for date');
+// Define validation rules
+const createValidation = {
+  requiredFields: ['lootid', 'soldfor', 'soldon']
+};
 
-module.exports = exports;
+const getDetailsValidation = {
+  requiredFields: ['soldon']
+};
+
+// Create handlers with validation and error handling
+exports.create = controllerFactory.createHandler(create, {
+  errorMessage: 'Error creating sold item record',
+  validation: createValidation
+});
+
+exports.getAll = controllerFactory.createHandler(getAll, {
+  errorMessage: 'Error fetching all sold records'
+});
+
+exports.getDetailsByDate = controllerFactory.createHandler(getDetailsByDate, {
+  errorMessage: 'Error fetching sold details for date'
+});

@@ -1,5 +1,6 @@
+// src/controllers/consumablesController.js
 const dbUtils = require('../utils/dbUtils');
-const controllerUtils = require('../utils/controllerUtils');
+const controllerFactory = require('../utils/controllerFactory');
 
 /**
  * Get all consumables (wands, potions, scrolls)
@@ -30,7 +31,7 @@ const getConsumables = async (req, res) => {
   ]);
 
   // Return combined results
-  controllerUtils.sendSuccessResponse(res, {
+  controllerFactory.sendSuccessResponse(res, {
     wands: wandsResult.rows,
     potionsScrolls: potionsScrollsResult.rows
   });
@@ -41,11 +42,6 @@ const getConsumables = async (req, res) => {
  */
 const useConsumable = async (req, res) => {
   const { itemid, type } = req.body;
-
-  // Validate required fields
-  if (!itemid || !type) {
-    throw new controllerUtils.ValidationError('Missing required fields');
-  }
 
   return await dbUtils.executeTransaction(async (client) => {
     let updateQuery;
@@ -79,7 +75,7 @@ const useConsumable = async (req, res) => {
     const result = await client.query(updateQuery, [itemid]);
 
     if (result.rows.length === 0) {
-      throw new controllerUtils.NotFoundError('Consumable not found or no uses left');
+      throw controllerFactory.createNotFoundError('Consumable not found or no uses left');
     }
 
     const insertUseQuery = `
@@ -90,7 +86,7 @@ const useConsumable = async (req, res) => {
     await client.query(insertUseQuery, [result.rows[0].id, req.user.id]);
 
     return { message: 'Consumable used successfully' };
-  }, 'Error using consumable');
+  });
 };
 
 /**
@@ -99,9 +95,9 @@ const useConsumable = async (req, res) => {
 const updateWandCharges = async (req, res) => {
   const { id, charges } = req.body;
 
-  // Validate required fields
-  if (!id || !charges || isNaN(charges) || charges < 1 || charges > 50) {
-    throw new controllerUtils.ValidationError('Invalid input. Charges must be between 1 and 50.');
+  // Validate charges range
+  if (charges < 1 || charges > 50) {
+    throw controllerFactory.createValidationError('Charges must be between 1 and 50');
   }
 
   const updateQuery = `
@@ -114,10 +110,10 @@ const updateWandCharges = async (req, res) => {
   const result = await dbUtils.executeQuery(updateQuery, [charges, id]);
 
   if (result.rows.length === 0) {
-    throw new controllerUtils.NotFoundError('Wand not found or not in kept party status');
+    throw controllerFactory.createNotFoundError('Wand not found or not in kept party status');
   }
 
-  controllerUtils.sendSuccessResponse(res, {
+  controllerFactory.sendSuccessResponse(res, {
     message: 'Wand charges updated successfully',
     wand: result.rows[0]
   });
@@ -137,13 +133,33 @@ const getConsumableUseHistory = async (req, res) => {
   `;
 
   const result = await dbUtils.executeQuery(historyQuery);
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 
-// Wrap all controller functions with error handling
-exports.getConsumables = controllerUtils.withErrorHandling(getConsumables, 'Error fetching consumables');
-exports.useConsumable = controllerUtils.withErrorHandling(useConsumable, 'Error using consumable');
-exports.updateWandCharges = controllerUtils.withErrorHandling(updateWandCharges, 'Error updating wand charges');
-exports.getConsumableUseHistory = controllerUtils.withErrorHandling(getConsumableUseHistory, 'Error fetching consumable use history');
+// Define validation rules
+const useConsumableValidation = {
+  requiredFields: ['itemid', 'type']
+};
 
-module.exports = exports;
+const updateWandValidation = {
+  requiredFields: ['id', 'charges']
+};
+
+// Create handlers with validation and error handling
+exports.getConsumables = controllerFactory.createHandler(getConsumables, {
+  errorMessage: 'Error fetching consumables'
+});
+
+exports.useConsumable = controllerFactory.createHandler(useConsumable, {
+  errorMessage: 'Error using consumable',
+  validation: useConsumableValidation
+});
+
+exports.updateWandCharges = controllerFactory.createHandler(updateWandCharges, {
+  errorMessage: 'Error updating wand charges',
+  validation: updateWandValidation
+});
+
+exports.getConsumableUseHistory = controllerFactory.createHandler(getConsumableUseHistory, {
+  errorMessage: 'Error fetching consumable use history'
+});

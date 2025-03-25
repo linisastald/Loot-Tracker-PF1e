@@ -1,5 +1,6 @@
+// src/controllers/calendarController.js
 const dbUtils = require('../utils/dbUtils');
-const controllerUtils = require('../utils/controllerUtils');
+const controllerFactory = require('../utils/controllerFactory');
 
 /**
  * Get the current date in the Golarion calendar
@@ -15,9 +16,9 @@ const getCurrentDate = async (req, res) => {
       [4722, 0, 1]
     );
 
-    controllerUtils.sendSuccessResponse(res, { year: 4722, month: 0, day: 1 });
+    controllerFactory.sendSuccessResponse(res, { year: 4722, month: 0, day: 1 });
   } else {
-    controllerUtils.sendSuccessResponse(res, result.rows[0]);
+    controllerFactory.sendSuccessResponse(res, result.rows[0]);
   }
 };
 
@@ -48,7 +49,7 @@ const advanceDay = async (req, res) => {
     );
 
     return { year, month, day };
-  }, 'Error advancing day');
+  });
 };
 
 /**
@@ -63,7 +64,7 @@ const getNotes = async (req, res) => {
     notes[`${row.year}-${row.month}-${row.day}`] = row.note;
   });
 
-  controllerUtils.sendSuccessResponse(res, notes);
+  controllerFactory.sendSuccessResponse(res, notes);
 };
 
 /**
@@ -71,15 +72,6 @@ const getNotes = async (req, res) => {
  */
 const saveNote = async (req, res) => {
   const { date, note } = req.body;
-
-  // Validate required fields
-  if (!date || !date.year || date.month === undefined || date.day === undefined) {
-    throw new controllerUtils.ValidationError('Valid date with year, month, and day is required');
-  }
-
-  if (!note) {
-    throw new controllerUtils.ValidationError('Note content is required');
-  }
 
   // Use upsert to save or update the note
   await dbUtils.executeQuery(
@@ -89,13 +81,28 @@ const saveNote = async (req, res) => {
     [date.year, date.month, date.day, note]
   );
 
-  controllerUtils.sendSuccessMessage(res, 'Note saved successfully');
+  controllerFactory.sendSuccessMessage(res, 'Note saved successfully');
 };
 
-// Wrap all controller functions with error handling
-exports.getCurrentDate = controllerUtils.withErrorHandling(getCurrentDate, 'Error getting current date');
-exports.advanceDay = controllerUtils.withErrorHandling(advanceDay, 'Error advancing day');
-exports.getNotes = controllerUtils.withErrorHandling(getNotes, 'Error getting calendar notes');
-exports.saveNote = controllerUtils.withErrorHandling(saveNote, 'Error saving calendar note');
+// Define validation rules
+const saveNoteValidation = {
+  requiredFields: ['date', 'note']
+};
 
-module.exports = exports;
+// Create handlers with validation and error handling
+exports.getCurrentDate = controllerFactory.createHandler(getCurrentDate, {
+  errorMessage: 'Error getting current date'
+});
+
+exports.advanceDay = controllerFactory.createHandler(advanceDay, {
+  errorMessage: 'Error advancing day'
+});
+
+exports.getNotes = controllerFactory.createHandler(getNotes, {
+  errorMessage: 'Error getting calendar notes'
+});
+
+exports.saveNote = controllerFactory.createHandler(saveNote, {
+  errorMessage: 'Error saving calendar note',
+  validation: saveNoteValidation
+});

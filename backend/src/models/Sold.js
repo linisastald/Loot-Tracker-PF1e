@@ -1,35 +1,22 @@
+// src/models/Sold.js
+const BaseModel = require('./BaseModel');
 const dbUtils = require('../utils/dbUtils');
 
-/**
- * Sold model for handling loot item sales
- */
-const Sold = {
-  /**
-   * Create a new sold record
-   * @param {Object} soldItem - The sold item data
-   * @return {Promise<Object>} - The created sold record
-   */
-  create: async (soldItem) => {
-    if (!soldItem.lootid || !soldItem.soldfor || !soldItem.soldon) {
-      throw new Error('Loot ID, sold for amount, and sold on date are required');
-    }
-
-    const query = `
-      INSERT INTO sold (lootid, soldfor, soldon)
-      VALUES ($1, $2, $3)
-      RETURNING *;
-    `;
-
-    const values = [soldItem.lootid, soldItem.soldfor, soldItem.soldon];
-    const result = await dbUtils.executeQuery(query, values, 'Error creating sold record');
-    return result.rows[0];
-  },
+class SoldModel extends BaseModel {
+  constructor() {
+    super({
+      tableName: 'sold',
+      primaryKey: 'id',
+      fields: ['lootid', 'soldfor', 'soldon'],
+      timestamps: { createdAt: false, updatedAt: false }
+    });
+  }
 
   /**
    * Find all sold records summarized by date
    * @return {Promise<Array>} - Sold records summarized by date
    */
-  findAll: async () => {
+  async findAll() {
     const query = `
       SELECT
         s.soldon,
@@ -41,16 +28,16 @@ const Sold = {
       ORDER BY s.soldon DESC;
     `;
 
-    const result = await dbUtils.executeQuery(query, [], 'Error fetching sold items summary');
+    const result = await dbUtils.executeQuery(query);
     return result.rows;
-  },
+  }
 
   /**
    * Find details of items sold on a specific date
    * @param {string} soldon - The date items were sold on
    * @return {Promise<Array>} - Detailed sold records for the date
    */
-  findDetailsByDate: async (soldon) => {
+  async findDetailsByDate(soldon) {
     if (!soldon) {
       throw new Error('Sold on date is required');
     }
@@ -66,16 +53,16 @@ const Sold = {
       WHERE s.soldon = $1;
     `;
 
-    const result = await dbUtils.executeQuery(query, [soldon], 'Error fetching sold details by date');
+    const result = await dbUtils.executeQuery(query, [soldon]);
     return result.rows;
-  },
+  }
 
   /**
    * Get total sales by period
    * @param {string} period - Period to group by ('day', 'week', 'month', 'year')
    * @return {Promise<Array>} - Sales totals by period
    */
-  getTotalsByPeriod: async (period) => {
+  async getTotalsByPeriod(period) {
     let dateFormat;
 
     switch (period) {
@@ -106,9 +93,10 @@ const Sold = {
       ORDER BY period DESC;
     `;
 
-    const result = await dbUtils.executeQuery(query, [dateFormat], 'Error fetching sold totals by period');
+    const result = await dbUtils.executeQuery(query, [dateFormat]);
     return result.rows;
   }
-};
+}
 
-module.exports = Sold;
+// Export a singleton instance
+module.exports = new SoldModel();

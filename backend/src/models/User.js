@@ -1,19 +1,16 @@
+// src/models/User.js
+const BaseModel = require('./BaseModel');
 const dbUtils = require('../utils/dbUtils');
 
-/**
- * User model for user-related database operations
- */
-const User = {
-  /**
-   * Find a user by ID
-   * @param {number} id - User ID
-   * @return {Promise<Object|null>} - User object or null if not found
-   */
-  async findById(id) {
-    const query = 'SELECT id, username, role, joined FROM users WHERE id = $1';
-    const result = await dbUtils.executeQuery(query, [id], 'Error finding user by ID');
-    return result.rows[0] || null;
-  },
+class UserModel extends BaseModel {
+  constructor() {
+    super({
+      tableName: 'users',
+      primaryKey: 'id',
+      fields: ['username', 'password', 'role', 'joined', 'login_attempts', 'locked_until'],
+      timestamps: { createdAt: 'joined', updatedAt: false }
+    });
+  }
 
   /**
    * Find a user by username
@@ -24,23 +21,7 @@ const User = {
     const query = 'SELECT * FROM users WHERE username = $1';
     const result = await dbUtils.executeQuery(query, [username], 'Error finding user by username');
     return result.rows[0] || null;
-  },
-
-  /**
-   * Create a new user
-   * @param {Object} userData - User data (username, password, role)
-   * @return {Promise<Object>} - Created user object
-   */
-  async create(userData) {
-    const query = `
-      INSERT INTO users (username, password, role) 
-      VALUES ($1, $2, $3) 
-      RETURNING id, username, role, joined
-    `;
-    const values = [userData.username, userData.password, userData.role];
-    const result = await dbUtils.executeQuery(query, values, 'Error creating user');
-    return result.rows[0];
-  },
+  }
 
   /**
    * Get the active character for a user
@@ -58,7 +39,7 @@ const User = {
 
     const result = await dbUtils.executeQuery(query, [userId], 'Error getting active character');
     return result.rows[0] || null;
-  },
+  }
 
   /**
    * Get all characters for a user
@@ -74,7 +55,7 @@ const User = {
 
     const result = await dbUtils.executeQuery(query, [userId], 'Error getting user characters');
     return result.rows;
-  },
+  }
 
   /**
    * Get all characters in the system
@@ -90,7 +71,7 @@ const User = {
 
     const result = await dbUtils.executeQuery(query, [], 'Error fetching all characters');
     return result.rows;
-  },
+  }
 
   /**
    * Add a character for a user
@@ -115,7 +96,7 @@ const User = {
 
     const result = await dbUtils.executeQuery(query, values, 'Error adding character');
     return result.rows[0];
-  },
+  }
 
   /**
    * Update a character
@@ -142,7 +123,7 @@ const User = {
 
     const result = await dbUtils.executeQuery(query, values, 'Error updating character');
     return result.rows[0];
-  },
+  }
 
   /**
    * Deactivate all characters for a user
@@ -157,7 +138,7 @@ const User = {
     `;
 
     await dbUtils.executeQuery(query, [userId], 'Error deactivating all characters');
-  },
+  }
 
   /**
    * Get all active characters in the system
@@ -174,7 +155,7 @@ const User = {
 
     const result = await dbUtils.executeQuery(query, [], 'Error fetching active characters');
     return result.rows;
-  },
+  }
 
   /**
    * Update user password
@@ -190,10 +171,10 @@ const User = {
     `;
 
     await dbUtils.executeQuery(query, [newPassword, userId], 'Error updating password');
-  },
+  }
 
   /**
-   * Get all users
+   * Get all users with optional filtering
    * @param {Object} options - Query options (e.g., excludeRole)
    * @return {Promise<Array>} - Array of user objects
    */
@@ -211,6 +192,7 @@ const User = {
     const result = await dbUtils.executeQuery(query, values, 'Error fetching all users');
     return result.rows;
   }
-};
+}
 
-module.exports = User;
+// Export a singleton instance
+module.exports = new UserModel();
