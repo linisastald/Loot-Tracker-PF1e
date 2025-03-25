@@ -784,38 +784,48 @@ const dmUpdateItem = async (req, res) => {
       )
     );
 
-    const updateFields = Object.keys(filteredUpdateData)
-      .map((key, index) => {
-        switch(key) {
-          case 'session_date':
-            return `${key} = ${index + 1}::timestamp`;
-          case 'quantity':
-          case 'itemid':
-          case 'charges':
-          case 'value':
-          case 'whohas':
-          case 'spellcraft_dc':
-            return `${key} = ${index + 1}::integer`;
-          case 'unidentified':
-          case 'masterwork':
-            return `${key} = ${index + 1}::boolean`;
-          case 'modids':
-            return `${key} = ${index + 1}::integer[]`;
-          default:
-            return `${key} = ${index + 1}::text`;
+    // Process session_date to ensure it's a valid timestamp
+    if (filteredUpdateData.session_date) {
+      try {
+        // If it's not already a Date object, try to parse it
+        if (!(filteredUpdateData.session_date instanceof Date)) {
+          filteredUpdateData.session_date = new Date(filteredUpdateData.session_date);
         }
-      });
+      } catch (error) {
+        console.error('Error parsing session_date:', error);
+        throw new Error('Invalid session_date format');
+      }
+    }
 
-    updateFields.push(`lastupdate = CURRENT_TIMESTAMP`);
+    // Build query parameters and values
+    const updateParams = [];
+    const updateValues = [];
+    let paramIndex = 1;
+
+    for (const [key, value] of Object.entries(filteredUpdateData)) {
+      updateParams.push(`${key} = $${paramIndex}`);
+      updateValues.push(value);
+      paramIndex++;
+    }
+
+    // Add lastupdate field
+    updateParams.push(`lastupdate = CURRENT_TIMESTAMP`);
+
+    // Make sure we have at least one field to update
+    if (updateParams.length === 1) {
+      // Only lastupdate is being updated, no real changes
+      return originalItem;
+    }
+
+    // Add the ID as the last parameter
+    updateValues.push(id);
 
     const updateQuery = `
       UPDATE loot
-      SET ${updateFields.join(', ')}
-      WHERE id = ${Object.keys(filteredUpdateData).length + 1}::integer
+      SET ${updateParams.join(', ')}
+      WHERE id = $${paramIndex}
       RETURNING *
     `;
-
-    const updateValues = [...Object.values(filteredUpdateData), id];
 
     const updateResult = await client.query(updateQuery, updateValues);
 
