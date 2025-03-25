@@ -221,9 +221,6 @@ const GeneralItemManagement = () => {
 
   const handleItemUpdateSubmit = async () => {
     try {
-      // Show loading state
-      setLoading(true);
-
       // Prepare data for submission
       const preparedData = {
         session_date: updatedItem.session_date || null,
@@ -264,8 +261,6 @@ const GeneralItemManagement = () => {
     } catch (error) {
       console.error('Error updating item:', error);
       setError(error.response?.data?.error || 'Failed to update item');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -473,8 +468,6 @@ const GeneralItemManagement = () => {
           onClose={() => setUpdateDialogOpen(false)}
           maxWidth="md"
           fullWidth
-          disableBackdropClick={loading}
-          disableEscapeKeyDown={loading}
       >
         <DialogTitle>Update Item</DialogTitle>
         <DialogContent>
@@ -646,15 +639,13 @@ const GeneralItemManagement = () => {
               onClick={handleItemUpdateSubmit}
               color="primary"
               variant="contained"
-              disabled={loading}
           >
-            {loading ? 'Updating...' : 'Update Item'}
+            Update Item
           </Button>
           <Button
               onClick={() => setUpdateDialogOpen(false)}
               color="secondary"
               variant="contained"
-              disabled={loading}
           >
             Cancel
           </Button>
