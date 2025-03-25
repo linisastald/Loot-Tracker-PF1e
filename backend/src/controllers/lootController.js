@@ -1,6 +1,7 @@
 const Loot = require('../models/Loot');
 const Appraisal = require('../models/Appraisal');
-const pool = require('../config/db');
+const dbUtils = require('../utils/dbUtils');
+const controllerUtils = require('../utils/controllerUtils');
 const { parseItemDescriptionWithGPT } = require('../services/parseItemDescriptionWithGPT');
 const { calculateFinalValue } = require('../services/calculateFinalValue');
 const { calculateItemSaleValue, calculateTotalSaleValue } = require('../utils/saleValueCalculator');
@@ -53,7 +54,7 @@ const fetchAndProcessAppraisals = async (lootId) => {
       JOIN characters c ON a.characterid = c.id
       WHERE a.lootid = $1
     `;
-    const appraisalsResult = await pool.query(appraisalsQuery, [lootId]);
+    const appraisalsResult = await dbUtils.executeQuery(appraisalsQuery, [lootId]);
 
     const appraisals = appraisalsResult.rows;
 
@@ -98,12 +99,15 @@ const enhanceItemsWithAppraisals = async (items) => {
   return enhancedItems;
 };
 
+/**
+ * Update appraisals when an item's value changes
+ */
 const updateAppraisalsOnValueChange = async (lootId, newValue) => {
   try {
     if (!lootId || newValue === undefined) return;
 
     // Get all appraisals for the item
-    const appraisalsResult = await pool.query(
+    const appraisalsResult = await dbUtils.executeQuery(
       'SELECT * FROM appraisal WHERE lootid = $1',
       [lootId]
     );
@@ -128,7 +132,7 @@ const updateAppraisalsOnValueChange = async (lootId, newValue) => {
       newBelievedValue = customRounding(newBelievedValue);
 
       // Update the appraisal
-      await pool.query(
+      await dbUtils.executeQuery(
         'UPDATE appraisal SET believedvalue = $1 WHERE id = $2',
         [newBelievedValue, appraisal.id]
       );
@@ -139,448 +143,450 @@ const updateAppraisalsOnValueChange = async (lootId, newValue) => {
   }
 };
 
-exports.createLoot = async (req, res) => {
-  try {
-    const { entries } = req.body;
-    const createdEntries = [];
-    for (const entry of entries) {
-      const {
-        itemId, name, quantity, notes, session_date, sessionDate,
-        item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
-        unidentified, masterwork, size, whoupdated, charges, type
-      } = entry;
-      let itemData, modsData, isMasterwork;
+/**
+ * Create new loot entries
+ */
+const createLoot = async (req, res) => {
+  const { entries } = req.body;
 
-      if (parsedItem) {
-        // Use parsed data
-        const itemResult = await pool.query(`
-          SELECT id, name, type, subtype, value, weight
-          FROM item 
-          WHERE SIMILARITY(name, $1) > 0.3
-          ORDER BY SIMILARITY(name, $1) DESC 
-          LIMIT 1
-        `, [parsedItem]);
+  // Validate entries
+  if (!entries || !Array.isArray(entries) || entries.length === 0) {
+    throw new controllerUtils.ValidationError('Entries array is required');
+  }
 
-        if (itemResult.rows.length > 0) {
-          itemData = { ...itemResult.rows[0], name: parsedItem };
-        } else {
-          itemData = {
-            id: itemId,
-            name: parsedItem,
-            type: itemType,
-            subtype: itemSubtype,
-            value: itemValue,
-            weight: null // Default weight to null if not found
-          };
-        }
+  const createdEntries = [];
 
-        // Use modIds if available, otherwise find matching mods
-        if (modIds && modIds.length > 0) {
-          const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [modIds]);
-          modsData = modsResult.rows;
-        } else {
-          modsData = await Promise.all(parsedMods.map(async (modName) => {
-            const result = await pool.query(`
-              SELECT id, name, plus, valuecalc, target, subtarget
-              FROM mod 
-              WHERE SIMILARITY(name, $1) > 0.3
-              AND (target = $2 OR target IS NULL)
-              AND (subtarget = $3 OR subtarget IS NULL)
-              ORDER BY 
-                CASE 
-                  WHEN target = $2 AND subtarget = $3 THEN 1
-                  WHEN target = $2 AND subtarget IS NULL THEN 2
-                  WHEN target = $2 THEN 3
-                  ELSE 4
-                END,
-                SIMILARITY(name, $1) DESC
-              LIMIT 1
-            `, [modName, itemData.type, itemData.subtype]);
-            return result.rows[0] || null;
-          }));
-        }
-        modsData = modsData.filter(mod => mod !== null);
-        isMasterwork = parsedMods.some(mod => mod.toLowerCase().includes('masterwork'));
-      } else if (itemId) {
-        // Item selected from autofill
-        const itemResult = await pool.query('SELECT id, name, type, subtype, value, weight FROM item WHERE id = $1', [itemId]);
-        itemData = itemResult.rows[0];
+  for (const entry of entries) {
+    const {
+      itemId, name, quantity, notes, session_date, sessionDate,
+      item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
+      unidentified, masterwork, size, whoupdated, charges, type
+    } = entry;
 
-        // Fetch mods if any
-        if (entry.modids && entry.modids.length > 0) {
-          const modsResult = await pool.query('SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)', [entry.modids]);
-          modsData = modsResult.rows;
-        } else {
-          modsData = [];
-        }
-        isMasterwork = masterwork || false;
+    let itemData, modsData, isMasterwork;
+
+    if (parsedItem) {
+      // Use parsed data
+      const itemResult = await dbUtils.executeQuery(`
+        SELECT id, name, type, subtype, value, weight
+        FROM item 
+        WHERE SIMILARITY(name, $1) > 0.3
+        ORDER BY SIMILARITY(name, $1) DESC 
+        LIMIT 1
+      `, [parsedItem]);
+
+      if (itemResult.rows.length > 0) {
+        itemData = { ...itemResult.rows[0], name: parsedItem };
       } else {
-        // Manual entry without parsing or autofill
         itemData = {
-          id: null,
-          name: name,
-          type: type || '',
-          subtype: '',
-          value: null,
-          weight: null
+          id: itemId,
+          name: parsedItem,
+          type: itemType,
+          subtype: itemSubtype,
+          value: itemValue,
+          weight: null // Default weight to null if not found
         };
-        modsData = [];
-        isMasterwork = masterwork || false;
       }
 
-      const calculatedValue = itemData.value ? calculateFinalValue(
-        parseFloat(itemData.value),
-        itemData.type,
-        itemData.subtype,
-        modsData,
-        isMasterwork,
-        itemData.name,
-        charges,
-        size,
-        itemData.weight
-      ) : 0;
+      // Use modIds if available, otherwise find matching mods
+      if (modIds && modIds.length > 0) {
+        const modsResult = await dbUtils.executeQuery(
+          'SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)',
+          [modIds]
+        );
+        modsData = modsResult.rows;
+      } else {
+        modsData = await Promise.all(parsedMods.map(async (modName) => {
+          const result = await dbUtils.executeQuery(`
+            SELECT id, name, plus, valuecalc, target, subtarget
+            FROM mod 
+            WHERE SIMILARITY(name, $1) > 0.3
+            AND (target = $2 OR target IS NULL)
+            AND (subtarget = $3 OR subtarget IS NULL)
+            ORDER BY 
+              CASE 
+                WHEN target = $2 AND subtarget = $3 THEN 1
+                WHEN target = $2 AND subtarget IS NULL THEN 2
+                WHEN target = $2 THEN 3
+                ELSE 4
+              END,
+              SIMILARITY(name, $1) DESC
+            LIMIT 1
+          `, [modName, itemData.type, itemData.subtype]);
+          return result.rows[0] || null;
+        }));
+      }
+      modsData = modsData.filter(mod => mod !== null);
+      isMasterwork = parsedMods.some(mod => mod.toLowerCase().includes('masterwork'));
+    } else if (itemId) {
+      // Item selected from autofill
+      const itemResult = await dbUtils.executeQuery(
+        'SELECT id, name, type, subtype, value, weight FROM item WHERE id = $1',
+        [itemId]
+      );
+      itemData = itemResult.rows[0];
 
-      const createdEntry = await Loot.create({
-        sessionDate: session_date || sessionDate,
-        quantity,
-        name: name || itemData.name,
-        unidentified: unidentified || false,
-        masterwork: isMasterwork,
-        type: itemData.type || itemType || type || '',
-        size: size || '',
-        itemid: itemData.id,
-        modids: modsData.map(mod => mod.id),
-        value: calculatedValue,
-        whoupdated,
-        notes: notes || '',
-        charges: charges || null
-      });
-
-      createdEntries.push(createdEntry);
+      // Fetch mods if any
+      if (entry.modids && entry.modids.length > 0) {
+        const modsResult = await dbUtils.executeQuery(
+          'SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)',
+          [entry.modids]
+        );
+        modsData = modsResult.rows;
+      } else {
+        modsData = [];
+      }
+      isMasterwork = masterwork || false;
+    } else {
+      // Manual entry without parsing or autofill
+      itemData = {
+        id: null,
+        name: name,
+        type: type || '',
+        subtype: '',
+        value: null,
+        weight: null
+      };
+      modsData = [];
+      isMasterwork = masterwork || false;
     }
 
-    res.status(201).json(createdEntries);
-  } catch (error) {
-    console.error('Error creating loot entries:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
+    const calculatedValue = itemData.value ? calculateFinalValue(
+      parseFloat(itemData.value),
+      itemData.type,
+      itemData.subtype,
+      modsData,
+      isMasterwork,
+      itemData.name,
+      charges,
+      size,
+      itemData.weight
+    ) : 0;
 
-exports.getAllLoot = async (req, res) => {
-  try {
-    const isDM = req.query.isDM === 'true';
-    const activeCharacterId = isDM ? null : req.query.activeCharacterId;
-
-    if (!isDM && !activeCharacterId) {
-      return res.status(400).json({ error: 'Active character ID is required for non-DM users' });
-    }
-
-    const loot = await Loot.findAll(activeCharacterId);
-
-    // Enhance individual items with appraisal data
-    const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
-
-    res.status(200).json({
-      summary: loot.summary,
-      individual: enhancedIndividualLoot
+    const createdEntry = await Loot.create({
+      sessionDate: session_date || sessionDate,
+      quantity,
+      name: name || itemData.name,
+      unidentified: unidentified || false,
+      masterwork: isMasterwork,
+      type: itemData.type || itemType || type || '',
+      size: size || '',
+      itemid: itemData.id,
+      modids: modsData.map(mod => mod.id),
+      value: calculatedValue,
+      whoupdated,
+      notes: notes || '',
+      charges: charges || null
     });
-  } catch (error) {
-    console.error('Error fetching loot', error);
-    res.status(500).json({ error: 'Internal server error' });
+
+    createdEntries.push(createdEntry);
   }
+
+  controllerUtils.sendCreatedResponse(res, createdEntries);
 };
 
-exports.updateLootStatus = async (req, res) => {
+/**
+ * Get all loot
+ */
+const getAllLoot = async (req, res) => {
+  const isDM = req.query.isDM === 'true';
+  const activeCharacterId = isDM ? null : req.query.activeCharacterId;
+
+  if (!isDM && !activeCharacterId) {
+    throw new controllerUtils.ValidationError('Active character ID is required for non-DM users');
+  }
+
+  const loot = await Loot.findAll(activeCharacterId);
+
+  // Enhance individual items with appraisal data
+  const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
+
+  controllerUtils.sendSuccessResponse(res, {
+    summary: loot.summary,
+    individual: enhancedIndividualLoot
+  });
+};
+
+/**
+ * Update loot status (e.g., mark as sold, kept, trashed)
+ */
+const updateLootStatus = async (req, res) => {
   const { ids, status, userId, whohas } = req.body;
 
+  // Validate required fields
   if (!ids || !status || !userId) {
-    return res.status(400).json({ error: 'Missing required fields' });
+    throw new controllerUtils.ValidationError('Missing required fields');
   }
 
-  try {
-    await Loot.updateStatus(ids.map(Number), status, status === 'Kept Self' ? whohas : null);
-    res.status(200).send('Loot status updated');
-  } catch (error) {
-    console.error('Error updating loot status', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  await Loot.updateStatus(ids.map(Number), status, status === 'Kept Self' ? whohas : null);
+  controllerUtils.sendSuccessMessage(res, 'Loot status updated');
 };
 
-exports.getKeptPartyLoot = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const loot = await Loot.findByStatus('Kept Party', userId);
+/**
+ * Get loot kept by party
+ */
+const getKeptPartyLoot = async (req, res) => {
+  const userId = req.user.id;
+  const loot = await Loot.findByStatus('Kept Party', userId);
 
-    // Enhance individual items with appraisal data
-    const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
+  // Enhance individual items with appraisal data
+  const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
-    res.status(200).json({
-      summary: loot.summary,
-      individual: enhancedIndividualLoot
-    });
-  } catch (error) {
-    console.error('Error fetching kept party loot', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  controllerUtils.sendSuccessResponse(res, {
+    summary: loot.summary,
+    individual: enhancedIndividualLoot
+  });
 };
 
-exports.getTrashedLoot = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const loot = await Loot.findByStatus('Trashed', userId);
-    res.status(200).json(loot);
-  } catch (error) {
-    console.error('Error fetching trashed loot', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+/**
+ * Get trashed loot
+ */
+const getTrashedLoot = async (req, res) => {
+  const userId = req.user.id;
+  const loot = await Loot.findByStatus('Trashed', userId);
+  controllerUtils.sendSuccessResponse(res, loot);
 };
 
-exports.getKeptCharacterLoot = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const loot = await Loot.findByStatus('Kept Self', userId);
+/**
+ * Get loot kept by character
+ */
+const getKeptCharacterLoot = async (req, res) => {
+  const userId = req.user.id;
+  const loot = await Loot.findByStatus('Kept Self', userId);
 
-    // Enhance individual items with appraisal data
-    const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
+  // Enhance individual items with appraisal data
+  const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
-    res.status(200).json({
-      summary: loot.summary,
-      individual: enhancedIndividualLoot
-    });
-  } catch (error) {
-    console.error('Error fetching kept character loot', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  controllerUtils.sendSuccessResponse(res, {
+    summary: loot.summary,
+    individual: enhancedIndividualLoot
+  });
 };
 
-exports.splitStack = async (req, res) => {
+/**
+ * Split stack of items
+ */
+const splitStack = async (req, res) => {
   const { id, splits, userId } = req.body;
 
-  try {
-    await Loot.splitStack(id, splits, userId);
-    res.status(200).send('Stack split successfully');
-  } catch (error) {
-    console.error('Error splitting stack:', error);
-    res.status(500).json({ error: 'Internal server error', details: error.message });
+  // Validate required fields
+  if (!id || !splits || !userId) {
+    throw new controllerUtils.ValidationError('Missing required fields');
   }
+
+  await Loot.splitStack(id, splits, userId);
+  controllerUtils.sendSuccessMessage(res, 'Stack split successfully');
 };
 
-exports.updateEntry = async (req, res) => {
+/**
+ * Update loot entry
+ */
+const updateItem = async (req, res) => {
+  const { id } = req.params;
+  const { session_date, quantity, name, ...otherFields } = req.body;
+
+  // Validate required fields
+  if (!id || !session_date || !quantity || !name) {
+    throw new controllerUtils.ValidationError(
+      `ID ${id}, Session Date ${session_date}, Quantity ${quantity}, and Name ${name} are required`
+    );
+  }
+
+  const updateFields = { session_date, quantity, name, ...otherFields };
+
+  const query = `
+    UPDATE loot
+    SET ${Object.keys(updateFields).map((key, index) => `${key} = $${index + 1}`).join(', ')},
+        lastupdate = CURRENT_TIMESTAMP
+    WHERE id = $${Object.keys(updateFields).length + 1}
+    RETURNING *
+  `;
+
+  const values = [...Object.values(updateFields), id];
+
+  const result = await dbUtils.executeQuery(query, values);
+
+  if (result.rows.length === 0) {
+    throw new controllerUtils.NotFoundError('Item not found');
+  }
+
+  controllerUtils.sendSuccessResponse(res, result.rows[0]);
+};
+
+/**
+ * Update entry
+ */
+const updateEntry = async (req, res) => {
   const { id } = req.params;
   const { updatedEntry } = req.body;
 
-  try {
-    await Loot.updateEntry(id, updatedEntry);
-    res.status(200).send('Entry updated successfully');
-  } catch (error) {
-    console.error('Error updating entry', error);
-    res.status(500).json({ error: 'Internal server error' });
+  if (!id || !updatedEntry) {
+    throw new controllerUtils.ValidationError('ID and updated entry are required');
   }
+
+  await Loot.updateEntry(id, updatedEntry);
+  controllerUtils.sendSuccessMessage(res, 'Entry updated successfully');
 };
 
-exports.updateSingleLootStatus = async (req, res) => {
+/**
+ * Update single loot status
+ */
+const updateSingleLootStatus = async (req, res) => {
   const { id } = req.params;
   const { status, userId, whohas } = req.body;
 
   if (!id || !status || !userId) {
-    return res.status(400).json({ error: 'Missing required fields' });
+    throw new controllerUtils.ValidationError('Missing required fields');
   }
 
-  try {
-    await Loot.updateStatus([id], status, status === 'Kept Self' ? whohas : null);
-    res.status(200).send('Loot status updated');
-  } catch (error) {
-    console.error('Error updating loot status', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  await Loot.updateStatus([id], status, status === 'Kept Self' ? whohas : null);
+  controllerUtils.sendSuccessMessage(res, 'Loot status updated');
 };
 
-exports.getPendingSaleItems = async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching pending sale items', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+/**
+ * Get pending sale items (DM only)
+ */
+const getPendingSaleItems = async (req, res) => {
+  const result = await dbUtils.executeQuery('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
 
-exports.searchItems = async (req, res) => {
+/**
+ * Search items
+ */
+const searchItems = async (req, res) => {
   const { query, unidentified, type, size, status, itemid, modids, value } = req.query;
 
-  try {
-    let sqlQuery = `SELECT * FROM loot where 1=1`;
-    const queryParams = [];
-    let paramCount = 1;
+  let sqlQuery = `SELECT * FROM loot where 1=1`;
+  const queryParams = [];
+  let paramCount = 1;
 
-    // Name search (if provided)
-    if (query && query.trim() !== '') {
-      sqlQuery += ` AND (name ILIKE $${paramCount} OR notes ILIKE $${paramCount})`;
-      queryParams.push(`%${query}%`);
-      paramCount++;
-    }
-
-    // Unidentified filter
-    if (unidentified) {
-      sqlQuery += ` AND unidentified = $${paramCount}`;
-      queryParams.push(unidentified === 'true');
-      paramCount++;
-    }
-
-    // Type filter
-    if (type) {
-      sqlQuery += ` AND type = $${paramCount}`;
-      queryParams.push(type);
-      paramCount++;
-    }
-
-    // Size filter
-    if (size) {
-      sqlQuery += ` AND size = $${paramCount}`;
-      queryParams.push(size);
-      paramCount++;
-    }
-
-    // Status filter
-    if (status) {
-      sqlQuery += ` AND status = $${paramCount}`;
-      queryParams.push(status);
-      paramCount++;
-    }
-
-    // Item ID filter
-    if (itemid) {
-      if (itemid === 'null') {
-        sqlQuery += ` AND itemid IS NULL`;
-      } else if (itemid === 'notnull') {
-        sqlQuery += ` AND itemid IS NOT NULL`;
-      }
-    }
-
-    // Mod IDs filter
-    if (modids) {
-      if (modids === 'null') {
-        sqlQuery += ` AND (modids IS NULL OR modids = '{}')`;
-      } else if (modids === 'notnull') {
-        sqlQuery += ` AND modids IS NOT NULL AND modids != '{}'`;
-      }
-    }
-
-    // Value filter
-    if (value) {
-      if (value === 'null') {
-        sqlQuery += ` AND value IS NULL`;
-      } else if (value === 'notnull') {
-        sqlQuery += ` AND value IS NOT NULL`;
-      }
-    }
-
-    // Add order by clause
-    sqlQuery += ` ORDER BY session_date DESC`;
-
-    console.log('Executing query:', sqlQuery, queryParams); // For debugging
-
-    const result = await pool.query(sqlQuery, queryParams);
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error searching items:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  // Name search (if provided)
+  if (query && query.trim() !== '') {
+    sqlQuery += ` AND (name ILIKE $${paramCount} OR notes ILIKE $${paramCount})`;
+    queryParams.push(`%${query}%`);
+    paramCount++;
   }
+
+  // Unidentified filter
+  if (unidentified) {
+    sqlQuery += ` AND unidentified = $${paramCount}`;
+    queryParams.push(unidentified === 'true');
+    paramCount++;
+  }
+
+  // Type filter
+  if (type) {
+    sqlQuery += ` AND type = $${paramCount}`;
+    queryParams.push(type);
+    paramCount++;
+  }
+
+  // Size filter
+  if (size) {
+    sqlQuery += ` AND size = $${paramCount}`;
+    queryParams.push(size);
+    paramCount++;
+  }
+
+  // Status filter
+  if (status) {
+    sqlQuery += ` AND status = $${paramCount}`;
+    queryParams.push(status);
+    paramCount++;
+  }
+
+  // Item ID filter
+  if (itemid) {
+    if (itemid === 'null') {
+      sqlQuery += ` AND itemid IS NULL`;
+    } else if (itemid === 'notnull') {
+      sqlQuery += ` AND itemid IS NOT NULL`;
+    }
+  }
+
+  // Mod IDs filter
+  if (modids) {
+    if (modids === 'null') {
+      sqlQuery += ` AND (modids IS NULL OR modids = '{}')`;
+    } else if (modids === 'notnull') {
+      sqlQuery += ` AND modids IS NOT NULL AND modids != '{}'`;
+    }
+  }
+
+  // Value filter
+  if (value) {
+    if (value === 'null') {
+      sqlQuery += ` AND value IS NULL`;
+    } else if (value === 'notnull') {
+      sqlQuery += ` AND value IS NOT NULL`;
+    }
+  }
+
+  // Add order by clause
+  sqlQuery += ` ORDER BY session_date DESC`;
+
+  const result = await dbUtils.executeQuery(sqlQuery, queryParams);
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
 
-exports.updateItem = async (req, res) => {
-  const { id } = req.params;
-  const { session_date, quantity, name, ...otherFields } = req.body;
-  console.log('Received data:', { id, session_date, quantity, name, ...otherFields });
-  if (!id || !session_date || !quantity || !name) {
-    return res.status(400).json({
-      error: `ID ${id}, Session Date ${session_date}, Quantity ${quantity}, and Name ${name} are required`
-    });
+/**
+ * Get items
+ */
+const getItems = async (req, res) => {
+  const { query } = req.query;
+  let result;
+
+  if (query) {
+    // Search based on user input
+    result = await dbUtils.executeQuery(`
+      SELECT id, name, type, subtype, value
+      FROM item
+      WHERE name ILIKE $1
+      ORDER BY 
+        CASE 
+          WHEN name ILIKE $2 THEN 1  -- Exact match
+          WHEN name ILIKE $3 THEN 2  -- Starts with query
+          WHEN name ILIKE $4 THEN 3  -- Contains query
+          ELSE 4
+        END,
+        name
+      LIMIT 50
+    `, [`%${query}%`, query, `${query}%`, `% ${query}%`]);
+  } else {
+    // If no query, return an empty array
+    result = { rows: [] };
   }
 
-  try {
-    const updateFields = {
-      session_date,
-      quantity,
-      name,
-      ...otherFields
-    };
-
-    const query = `
-      UPDATE loot
-      SET ${Object.keys(updateFields).map((key, index) => `${key} = $${index + 1}`).join(', ')},
-          lastupdate = CURRENT_TIMESTAMP
-      WHERE id = $${Object.keys(updateFields).length + 1}
-      RETURNING *
-    `;
-
-    const values = [...Object.values(updateFields), id];
-
-    const result = await pool.query(query, values);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Item not found' });
-    }
-
-    res.status(200).json(result.rows[0]);
-  } catch (error) {
-    console.error('Error updating item', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
 
-exports.getItems = async (req, res) => {
-  try {
-    const { query } = req.query;
-    let result;
+/**
+ * Appraise loot
+ */
+const appraiseLoot = async (req, res) => {
+  const { userId } = req.body;
 
-    if (query) {
-      // Search based on user input
-      result = await pool.query(`
-        SELECT id, name, type, subtype, value
-        FROM item
-        WHERE name ILIKE $1
-        ORDER BY 
-          CASE 
-            WHEN name ILIKE $2 THEN 1  -- Exact match
-            WHEN name ILIKE $3 THEN 2  -- Starts with query
-            WHEN name ILIKE $4 THEN 3  -- Contains query
-            ELSE 4
-          END,
-          name
-        LIMIT 50
-      `, [`%${query}%`, query, `${query}%`, `% ${query}%`]);
-    } else {
-      // If no query, return an empty array
-      result = { rows: [] };
-    }
-
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching items', error);
-    res.status(500).json({ error: 'Internal server error' });
+  if (!userId) {
+    throw new controllerUtils.ValidationError('User ID is required');
   }
-};
 
-exports.appraiseLoot = async (req, res) => {
-  try {
-    const { userId } = req.body;
-
+  return await dbUtils.executeTransaction(async (client) => {
     // Get active character for the user
-    const activeCharacterResult = await pool.query(
+    const activeCharacterResult = await client.query(
       'SELECT * FROM characters WHERE active = true AND user_id = $1',
       [userId]
     );
     const activeCharacter = activeCharacterResult.rows[0];
 
     if (!activeCharacter) {
-      return res.status(400).json({ error: 'No active character found' });
+      throw new controllerUtils.ValidationError('No active character found');
     }
 
     const { id: characterId, appraisal_bonus: appraisalBonus } = activeCharacter;
 
     // Get loot items to be appraised
-    const lootToAppraiseResult = await pool.query(`
+    const lootToAppraiseResult = await client.query(`
       SELECT l.id, l.value, l.itemid, l.modids, l.name, l.masterwork, l.charges
       FROM loot l
       LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1
@@ -592,7 +598,7 @@ exports.appraiseLoot = async (req, res) => {
     const lootToAppraise = lootToAppraiseResult.rows;
 
     // Get all previous appraisals for the active character
-    const previousAppraisalsResult = await pool.query(`
+    const previousAppraisalsResult = await client.query(`
       SELECT l.itemid, l.modids, l.masterwork, l.charges, l.value, a.believedvalue
       FROM loot l
       JOIN appraisal a ON a.lootid = l.id
@@ -657,141 +663,102 @@ exports.appraiseLoot = async (req, res) => {
       }
     }
 
-    res.status(201).json(createdAppraisals);
-  } catch (error) {
-    console.error('Error appraising loot:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+    return createdAppraisals;
+  }, 'Error appraising loot');
 };
 
-exports.parseItemDescription = async (req, res) => {
-  try {
-    const { description } = req.body;
-    const parsedData = await parseItemDescriptionWithGPT(description);
+/**
+ * Parse item description using GPT
+ */
+const parseItemDescription = async (req, res) => {
+  const { description } = req.body;
 
-    // Fetch item from the database based on item name (using similarity)
-    const itemResult = await pool.query(`
-      SELECT id, name, type, subtype, value 
-      FROM item 
+  if (!description) {
+    throw new controllerUtils.ValidationError('Item description is required');
+  }
+
+  const parsedData = await parseItemDescriptionWithGPT(description);
+
+  // Fetch item from the database based on item name (using similarity)
+  const itemResult = await dbUtils.executeQuery(`
+    SELECT id, name, type, subtype, value 
+    FROM item 
+    WHERE SIMILARITY(name, $1) > 0.3
+    ORDER BY SIMILARITY(name, $1) DESC
+    LIMIT 1
+  `, [parsedData.item]);
+
+  if (itemResult.rows.length > 0) {
+    const item = itemResult.rows[0];
+    parsedData.itemId = item.id;
+    parsedData.itemType = item.type;
+    parsedData.itemSubtype = item.subtype;
+    parsedData.itemValue = item.value;
+  }
+
+  // Fetch mod IDs from the database based on mod names (using similarity)
+  const modNames = parsedData.mods || [];
+  const modIds = await Promise.all(modNames.map(async (mod) => {
+    const result = await dbUtils.executeQuery(`
+      SELECT id 
+      FROM mod 
       WHERE SIMILARITY(name, $1) > 0.3
-      ORDER BY SIMILARITY(name, $1) DESC
+      AND (target = $2 OR target IS NULL)
+      AND (subtarget = $3 OR subtarget IS NULL)
+      ORDER BY 
+        CASE 
+          WHEN target = $2 AND subtarget = $3 THEN 1
+          WHEN target = $2 AND subtarget IS NULL THEN 2
+          WHEN target = $2 THEN 3
+          ELSE 4
+        END,
+        SIMILARITY(name, $1) DESC
       LIMIT 1
-    `, [parsedData.item]);
+    `, [mod, parsedData.itemType, parsedData.itemSubtype]);
+    return result.rows[0] ? result.rows[0].id : null;
+  }));
 
-    if (itemResult.rows.length > 0) {
-      const item = itemResult.rows[0];
-      parsedData.itemId = item.id;
-      parsedData.itemType = item.type;
-      parsedData.itemSubtype = item.subtype;
-      parsedData.itemValue = item.value;
-    }
+  parsedData.modIds = modIds.filter(id => id !== null);
 
-    // Fetch mod IDs from the database based on mod names (using similarity)
-    const modNames = parsedData.mods || [];
-    const modIds = await Promise.all(modNames.map(async (mod) => {
-      const result = await pool.query(`
-        SELECT id 
-        FROM mod 
-        WHERE SIMILARITY(name, $1) > 0.3
-        AND (target = $2 OR target IS NULL)
-        AND (subtarget = $3 OR subtarget IS NULL)
-        ORDER BY 
-          CASE 
-            WHEN target = $2 AND subtarget = $3 THEN 1
-            WHEN target = $2 AND subtarget IS NULL THEN 2
-            WHEN target = $2 THEN 3
-            ELSE 4
-          END,
-          SIMILARITY(name, $1) DESC
-        LIMIT 1
-      `, [mod, parsedData.itemType, parsedData.itemSubtype]);
-      return result.rows[0] ? result.rows[0].id : null;
-    }));
-
-    parsedData.modIds = modIds.filter(id => id !== null);
-
-    res.status(200).json(parsedData);
-  } catch (error) {
-    console.error('Error parsing item description:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  controllerUtils.sendSuccessResponse(res, parsedData);
 };
 
-exports.calculateValue = async (req, res) => {
-  try {
-    const { itemId, itemType, itemSubtype, isMasterwork, itemValue, mods, charges, size, weight } = req.body;
+/**
+ * Calculate item value
+ */
+const calculateValue = async (req, res) => {
+  const { itemId, itemType, itemSubtype, isMasterwork, itemValue, mods, charges, size, weight } = req.body;
 
-    const modDetails = await Promise.all(mods.map(async (mod) => {
-      const result = await pool.query('SELECT id, plus, valuecalc FROM mod WHERE id = $1', [mod.id]);
-      return result.rows[0];
-    }));
+  const modDetails = await Promise.all(mods.map(async (mod) => {
+    const result = await dbUtils.executeQuery('SELECT id, plus, valuecalc FROM mod WHERE id = $1', [mod.id]);
+    return result.rows[0];
+  }));
 
-    const finalValue = calculateFinalValue(itemValue, itemType, itemSubtype, modDetails, isMasterwork, null, charges, size, weight);
+  const finalValue = calculateFinalValue(itemValue, itemType, itemSubtype, modDetails, isMasterwork, null, charges, size, weight);
 
-    res.status(200).json({ value: finalValue });
-  } catch (error) {
-    console.error('Error calculating value:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  controllerUtils.sendSuccessResponse(res, { value: finalValue });
 };
 
-exports.getMods = async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM mod');
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching mods', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+/**
+ * Get all mods
+ */
+const getMods = async (req, res) => {
+  const result = await dbUtils.executeQuery('SELECT * FROM mod');
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
 
-exports.updateAppraisalsOnValueChange = async (itemId, newValue) => {
-  try {
-    // Get all appraisals for the item
-    const appraisalsResult = await pool.query(
-      'SELECT * FROM appraisal WHERE lootid = $1',
-      [itemId]
-    );
-    const appraisals = appraisalsResult.rows;
-
-    for (const appraisal of appraisals) {
-      let newBelievedValue;
-
-      if (appraisal.appraisalroll >= 20) {
-        newBelievedValue = newValue;
-      } else if (appraisal.appraisalroll >= 15) {
-        newBelievedValue = newValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
-      } else {
-        newBelievedValue = newValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
-      }
-
-      newBelievedValue = customRounding(newBelievedValue);
-
-      // Update the appraisal
-      await pool.query(
-        'UPDATE appraisal SET believedvalue = $1 WHERE id = $2',
-        [newBelievedValue, appraisal.id]
-      );
-    }
-  } catch (error) {
-    console.error('Error updating appraisals on value change:', error);
-    throw error;
-  }
-};
-
-exports.dmUpdateItem = async (req, res) => {
+/**
+ * Update item with DM privileges
+ */
+const dmUpdateItem = async (req, res) => {
   const { id } = req.params;
   let updateData = req.body;
 
   if (!id) {
-    return res.status(400).json({ error: 'Item ID is required' });
+    throw new controllerUtils.ValidationError('Item ID is required');
   }
 
-  const client = await pool.connect();
-
-  try {
-    await client.query('BEGIN');
-
+  return await dbUtils.executeTransaction(async (client) => {
     // Get original item to check if value has changed
     const originalItemResult = await client.query('SELECT * FROM loot WHERE id = $1', [id]);
     const originalItem = originalItemResult.rows[0];
@@ -836,20 +803,16 @@ exports.dmUpdateItem = async (req, res) => {
     const updateQuery = `
       UPDATE loot
       SET ${updateFields.join(', ')}
-      WHERE id = $${Object.keys(filteredUpdateData).length + 1}::integer
+      WHERE id = ${Object.keys(filteredUpdateData).length + 1}::integer
       RETURNING *
     `;
 
     const updateValues = [...Object.values(filteredUpdateData), id];
 
-    console.log('Update Query:', updateQuery);
-    console.log('Update Values:', updateValues);
-
     const updateResult = await client.query(updateQuery, updateValues);
 
     if (updateResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Item not found' });
+      throw new controllerUtils.NotFoundError('Item not found');
     }
 
     let updatedItem = updateResult.rows[0];
@@ -902,34 +865,29 @@ exports.dmUpdateItem = async (req, res) => {
       await updateAppraisalsOnValueChange(id, updatedItem.value);
     }
 
-    await client.query('COMMIT');
-    res.status(200).json(updatedItem);
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error updating item', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
+    return updatedItem;
+  }, 'Error updating item');
 };
 
-exports.getUnprocessedCount = async (req, res) => {
-  try {
-    const result = await pool.query('SELECT COUNT(*) FROM loot WHERE status IS NULL');
-    res.json({ count: parseInt(result.rows[0].count) });
-  } catch (error) {
-    console.error('Error fetching unprocessed loot count:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+/**
+ * Get count of unprocessed loot items
+ */
+const getUnprocessedCount = async (req, res) => {
+  const result = await dbUtils.executeQuery('SELECT COUNT(*) FROM loot WHERE status IS NULL');
+  controllerUtils.sendSuccessResponse(res, { count: parseInt(result.rows[0].count) });
 };
 
-exports.identifyItems = async (req, res) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+/**
+ * Identify items
+ */
+const identifyItems = async (req, res) => {
+  const { items, characterId, spellcraftRolls } = req.body;
 
-    const { items, characterId, spellcraftRolls } = req.body;
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    throw new controllerUtils.ValidationError('Items array is required');
+  }
 
+  return await dbUtils.executeTransaction(async (client) => {
     const updatedItems = [];
 
     for (let i = 0; i < items.length; i++) {
@@ -987,134 +945,118 @@ exports.identifyItems = async (req, res) => {
       updatedItems.push({...lootItem, name: newName, unidentified: false});
     }
 
-    await client.query('COMMIT');
-    res.status(200).json({ message: 'Items identified successfully', updatedItems });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error in identifyItems:', error);
-    res.status(500).json({ error: 'An error occurred while identifying items' });
-  } finally {
-    client.release();
-  }
+    return { message: 'Items identified successfully', updatedItems };
+  }, 'Error identifying items');
 };
 
-exports.getCharacterLedger = async (req, res) => {
-  try {
-    const ledgerQuery = `
-      SELECT 
-        c.name AS character,
-        c.active,
-        COALESCE(SUM(l.value), 0) AS lootValue,
-        COALESCE(SUM(
-          CASE 
-            WHEN g.transaction_type = 'Party Payment' 
-            THEN (g.copper::decimal / 100 + g.silver::decimal / 10 + g.gold::decimal + g.platinum::decimal * 10)
-            ELSE 0 
-          END
-        ), 0) AS payments
-      FROM 
-        characters c
-      LEFT JOIN 
-        loot l ON c.id = l.whohas AND l.status = 'Kept Self'
-      LEFT JOIN 
-        gold g ON c.id = g.character_id AND g.transaction_type = 'Party Payment'
-      GROUP BY 
-        c.id, c.name, c.active
-    `;
+/**
+ * Get character loot ledger
+ */
+const getCharacterLedger = async (req, res) => {
+  const ledgerQuery = `
+    SELECT 
+      c.name AS character,
+      c.active,
+      COALESCE(SUM(l.value), 0) AS lootValue,
+      COALESCE(SUM(
+        CASE 
+          WHEN g.transaction_type = 'Party Payment' 
+          THEN (g.copper::decimal / 100 + g.silver::decimal / 10 + g.gold::decimal + g.platinum::decimal * 10)
+          ELSE 0 
+        END
+      ), 0) AS payments
+    FROM 
+      characters c
+    LEFT JOIN 
+      loot l ON c.id = l.whohas AND l.status = 'Kept Self'
+    LEFT JOIN 
+      gold g ON c.id = g.character_id AND g.transaction_type = 'Party Payment'
+    GROUP BY 
+      c.id, c.name, c.active
+  `;
 
-    const result = await pool.query(ledgerQuery);
-
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching character ledger:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  const result = await dbUtils.executeQuery(ledgerQuery);
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
 
-exports.getUnidentifiedItems = async (req, res) => {
-  try {
-    const query = `
-      SELECT l.*, i.name as real_item_name
-      FROM loot l
-      LEFT JOIN item i ON l.itemid = i.id
-      WHERE l.unidentified = true
-    `;
-    const result = await pool.query(query);
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching unidentified items:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+/**
+ * Get unidentified items
+ */
+const getUnidentifiedItems = async (req, res) => {
+  const query = `
+    SELECT l.*, i.name as real_item_name
+    FROM loot l
+    LEFT JOIN item i ON l.itemid = i.id
+    WHERE l.unidentified = true
+  `;
+  const result = await dbUtils.executeQuery(query);
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
 
-exports.getItemsById = async (req, res) => {
-  try {
-    const { ids } = req.query;
+/**
+ * Get items by ID
+ */
+const getItemsById = async (req, res) => {
+  const { ids } = req.query;
 
-    if (!ids) {
-      return res.status(400).json({ error: 'Item IDs are required' });
-    }
-
-    // Parse the comma-separated list of IDs
-    const itemIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
-
-    if (itemIds.length === 0) {
-      return res.status(400).json({ error: 'No valid item IDs provided' });
-    }
-
-    // Query the database for these specific items
-    const result = await pool.query(`
-      SELECT id, name, type, subtype, value, weight, casterlevel
-      FROM item
-      WHERE id = ANY($1)
-    `, [itemIds]);
-
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching items by ID:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  if (!ids) {
+    throw new controllerUtils.ValidationError('Item IDs are required');
   }
+
+  // Parse the comma-separated list of IDs
+  const itemIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+
+  if (itemIds.length === 0) {
+    throw new controllerUtils.ValidationError('No valid item IDs provided');
+  }
+
+  // Query the database for these specific items
+  const result = await dbUtils.executeQuery(`
+    SELECT id, name, type, subtype, value, weight, casterlevel
+    FROM item
+    WHERE id = ANY($1)
+  `, [itemIds]);
+
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
 
-exports.getModsById = async (req, res) => {
-  try {
-    const { ids } = req.query;
+/**
+ * Get mods by ID
+ */
+const getModsById = async (req, res) => {
+  const { ids } = req.query;
 
-    if (!ids) {
-      return res.status(400).json({ error: 'Mod IDs are required' });
-    }
-
-    // Parse the comma-separated list of IDs
-    const modIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
-
-    if (modIds.length === 0) {
-      return res.status(400).json({ error: 'No valid mod IDs provided' });
-    }
-
-    // Query the database for these specific mods
-    const result = await pool.query(`
-      SELECT id, name, plus, valuecalc, target, subtarget
-      FROM mod
-      WHERE id = ANY($1)
-    `, [modIds]);
-
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching mods by ID:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  if (!ids) {
+    throw new controllerUtils.ValidationError('Mod IDs are required');
   }
+
+  // Parse the comma-separated list of IDs
+  const modIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+
+  if (modIds.length === 0) {
+    throw new controllerUtils.ValidationError('No valid mod IDs provided');
+  }
+
+  // Query the database for these specific mods
+  const result = await dbUtils.executeQuery(`
+    SELECT id, name, plus, valuecalc, target, subtarget
+    FROM mod
+    WHERE id = ANY($1)
+  `, [modIds]);
+
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
 
-exports.confirmSale = async (req, res) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+/**
+ * Confirm sale of pending items
+ */
+const confirmSale = async (req, res) => {
+  return await dbUtils.executeTransaction(async (client) => {
     const pendingSaleItemsResult = await client.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
     const allPendingItems = pendingSaleItemsResult.rows;
 
     if (allPendingItems.length === 0) {
-      await client.query('COMMIT');
-      return res.status(200).json({ message: 'No items to sell' });
+      return { message: 'No items to sell' };
     }
 
     // Filter out unidentified items and items with null values
@@ -1127,8 +1069,7 @@ exports.confirmSale = async (req, res) => {
     );
 
     if (validItems.length === 0) {
-      await client.query('COMMIT');
-      return res.status(400).json({ error: 'All pending items are either unidentified or have no value' });
+      throw new controllerUtils.ValidationError('All pending items are either unidentified or have no value');
     }
 
     // Calculate total sale value using our utility function
@@ -1165,39 +1106,31 @@ exports.confirmSale = async (req, res) => {
       [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
     );
 
-    await client.query('COMMIT');
-
     // Prepare the response message
     let message = `Sale confirmed: ${validItems.length} items sold for ${totalSold.toFixed(2)} gold`;
     if (invalidItems.length > 0) {
       message += `. ${invalidItems.length} item(s) were not sold because they are either unidentified or have no value`;
     }
 
-    res.status(200).json({
+    return {
       message,
       validItemsSold: validItems.length,
       invalidItemsSkipped: invalidItems.length
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error confirming sale', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
+    };
+  }, 'Error confirming sale');
 };
 
-exports.sellSelected = async (req, res) => {
+/**
+ * Sell selected items
+ */
+const sellSelected = async (req, res) => {
   const { itemsToSell } = req.body;
-  const client = await pool.connect();
 
-  try {
-    await client.query('BEGIN');
+  if (!itemsToSell || itemsToSell.length === 0) {
+    throw new controllerUtils.ValidationError('No items selected to sell');
+  }
 
-    if (!itemsToSell || itemsToSell.length === 0) {
-      return res.status(400).json({ error: 'No items selected to sell' });
-    }
-
+  return await dbUtils.executeTransaction(async (client) => {
     // Fetch the selected items to calculate sale value
     const itemsResult = await client.query(
       "SELECT * FROM loot WHERE id = ANY($1) AND status = 'Pending Sale'",
@@ -1206,7 +1139,7 @@ exports.sellSelected = async (req, res) => {
     const allItems = itemsResult.rows;
 
     if (allItems.length === 0) {
-      return res.status(400).json({ error: 'No valid items to sell' });
+      throw new controllerUtils.ValidationError('No valid items to sell');
     }
 
     // Filter out unidentified items and items with null values
@@ -1214,12 +1147,11 @@ exports.sellSelected = async (req, res) => {
     const validItems = allItems.filter(item => item.unidentified !== true && item.value !== null);
 
     if (validItems.length === 0) {
-      return res.status(400).json({ error: 'All selected items are either unidentified or have no value' });
+      throw new controllerUtils.ValidationError('All selected items are either unidentified or have no value');
     }
 
     // Create a list of valid and invalid item IDs
     const validItemIds = validItems.map(item => item.id);
-    const invalidItemIds = invalidItems.map(item => item.id);
 
     // Use the utility function to calculate the total sale value
     const totalSold = calculateTotalSaleValue(validItems);
@@ -1255,36 +1187,31 @@ exports.sellSelected = async (req, res) => {
       [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
     );
 
-    // Commit the transaction
-    await client.query('COMMIT');
-
     // Prepare the response message
     let message = `Sold ${validItems.length} items for ${totalSold.toFixed(2)} gold`;
     if (invalidItems.length > 0) {
       message += `. ${invalidItems.length} item(s) were not sold because they are either unidentified or have no value`;
     }
 
-    res.status(200).json({
+    return {
       message,
       validItemsSold: validItems.length,
       invalidItemsSkipped: invalidItems.length
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error selling selected items:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
+    };
+  }, 'Error selling selected items');
 };
 
-exports.sellAllExcept = async (req, res) => {
+/**
+ * Sell all items except selected ones
+ */
+const sellAllExcept = async (req, res) => {
   const { itemsToKeep } = req.body;
-  const client = await pool.connect();
 
-  try {
-    await client.query('BEGIN');
+  if (!itemsToKeep || !Array.isArray(itemsToKeep)) {
+    throw new controllerUtils.ValidationError('Items to keep array is required');
+  }
 
+  return await dbUtils.executeTransaction(async (client) => {
     const pendingItemsResult = await client.query(
       "SELECT * FROM loot WHERE status = 'Pending Sale'"
     );
@@ -1293,7 +1220,7 @@ exports.sellAllExcept = async (req, res) => {
     const itemsToConsiderSelling = pendingItems.filter(item => !itemsToKeep.includes(item.id));
 
     if (itemsToConsiderSelling.length === 0) {
-      return res.status(400).json({ error: 'No items to sell' });
+      throw new controllerUtils.ValidationError('No items to sell');
     }
 
     // Filter out unidentified items and items with null values
@@ -1306,7 +1233,7 @@ exports.sellAllExcept = async (req, res) => {
     );
 
     if (validItemsToSell.length === 0) {
-      return res.status(400).json({ error: 'All available items are either unidentified or have no value' });
+      throw new controllerUtils.ValidationError('All available items are either unidentified or have no value');
     }
 
     // Get all the IDs of valid items to sell
@@ -1344,35 +1271,31 @@ exports.sellAllExcept = async (req, res) => {
       [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
     );
 
-    await client.query('COMMIT');
-
     // Prepare the response message
     let message = `Sold ${validItemsToSell.length} items for ${totalSold.toFixed(2)} gold`;
     if (invalidItems.length > 0) {
       message += `. ${invalidItems.length} item(s) were not sold because they are either unidentified or have no value`;
     }
 
-    res.status(200).json({
+    return {
       message,
       validItemsSold: validItemsToSell.length,
       invalidItemsSkipped: invalidItems.length
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error selling all items except selected:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
+    };
+  }, 'Error selling all items except selected');
 };
 
-exports.sellUpTo = async (req, res) => {
+/**
+ * Sell up to a specified amount
+ */
+const sellUpTo = async (req, res) => {
   const { amount } = req.body;
-  const client = await pool.connect();
 
-  try {
-    await client.query('BEGIN');
+  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+    throw new controllerUtils.ValidationError('Valid amount is required');
+  }
 
+  return await dbUtils.executeTransaction(async (client) => {
     const pendingItemsResult = await client.query(
       "SELECT * FROM loot WHERE status = 'Pending Sale' ORDER BY value ASC"
     );
@@ -1384,7 +1307,7 @@ exports.sellUpTo = async (req, res) => {
     );
 
     if (validPendingItems.length === 0) {
-      return res.status(400).json({ error: 'No valid items to sell (all are either unidentified or have no value)' });
+      throw new controllerUtils.ValidationError('No valid items to sell (all are either unidentified or have no value)');
     }
 
     let totalSold = 0;
@@ -1404,7 +1327,7 @@ exports.sellUpTo = async (req, res) => {
     }
 
     if (itemsSold.length === 0) {
-      return res.status(400).json({ error: 'No items could be sold up to the specified amount' });
+      throw new controllerUtils.ValidationError('No items could be sold up to the specified amount');
     }
 
     // Record each item as sold in the sold table
@@ -1436,8 +1359,6 @@ exports.sellUpTo = async (req, res) => {
       [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
     );
 
-    await client.query('COMMIT');
-
     // Count how many items were skipped due to being invalid
     const invalidItemsCount = allPendingItems.length - validPendingItems.length;
 
@@ -1447,19 +1368,44 @@ exports.sellUpTo = async (req, res) => {
       message += `. ${invalidItemsCount} item(s) were skipped because they are either unidentified or have no value`;
     }
 
-    res.status(200).json({
+    return {
       message,
       validItemsSold: itemsSold.length,
       invalidItemsSkipped: invalidItemsCount
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error selling items up to amount:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
+    };
+  }, 'Error selling items up to amount');
 };
 
+// Wrap all controller functions with error handling
+exports.createLoot = controllerUtils.withErrorHandling(createLoot, 'Error creating loot entries');
+exports.getAllLoot = controllerUtils.withErrorHandling(getAllLoot, 'Error fetching all loot');
+exports.updateLootStatus = controllerUtils.withErrorHandling(updateLootStatus, 'Error updating loot status');
+exports.getKeptPartyLoot = controllerUtils.withErrorHandling(getKeptPartyLoot, 'Error fetching kept party loot');
+exports.getTrashedLoot = controllerUtils.withErrorHandling(getTrashedLoot, 'Error fetching trashed loot');
+exports.getKeptCharacterLoot = controllerUtils.withErrorHandling(getKeptCharacterLoot, 'Error fetching kept character loot');
+exports.splitStack = controllerUtils.withErrorHandling(splitStack, 'Error splitting stack');
+exports.updateEntry = controllerUtils.withErrorHandling(updateEntry, 'Error updating entry');
+exports.updateSingleLootStatus = controllerUtils.withErrorHandling(updateSingleLootStatus, 'Error updating single loot status');
+exports.getPendingSaleItems = controllerUtils.withErrorHandling(getPendingSaleItems, 'Error fetching pending sale items');
+exports.searchItems = controllerUtils.withErrorHandling(searchItems, 'Error searching items');
+exports.getItems = controllerUtils.withErrorHandling(getItems, 'Error fetching items');
+exports.appraiseLoot = controllerUtils.withErrorHandling(appraiseLoot, 'Error appraising loot');
+exports.parseItemDescription = controllerUtils.withErrorHandling(parseItemDescription, 'Error parsing item description');
+exports.calculateValue = controllerUtils.withErrorHandling(calculateValue, 'Error calculating value');
+exports.getMods = controllerUtils.withErrorHandling(getMods, 'Error fetching mods');
+exports.dmUpdateItem = controllerUtils.withErrorHandling(dmUpdateItem, 'Error updating item (DM)');
+exports.getUnprocessedCount = controllerUtils.withErrorHandling(getUnprocessedCount, 'Error getting unprocessed count');
+exports.identifyItems = controllerUtils.withErrorHandling(identifyItems, 'Error identifying items');
+exports.getCharacterLedger = controllerUtils.withErrorHandling(getCharacterLedger, 'Error fetching character ledger');
+exports.getUnidentifiedItems = controllerUtils.withErrorHandling(getUnidentifiedItems, 'Error fetching unidentified items');
+exports.getItemsById = controllerUtils.withErrorHandling(getItemsById, 'Error fetching items by ID');
+exports.getModsById = controllerUtils.withErrorHandling(getModsById, 'Error fetching mods by ID');
+exports.confirmSale = controllerUtils.withErrorHandling(confirmSale, 'Error confirming sale');
+exports.sellSelected = controllerUtils.withErrorHandling(sellSelected, 'Error selling selected items');
+exports.sellAllExcept = controllerUtils.withErrorHandling(sellAllExcept, 'Error selling all except selected items');
+exports.sellUpTo = controllerUtils.withErrorHandling(sellUpTo, 'Error selling up to amount');
+
+// For backward compatibility
+exports.updateItem = controllerUtils.withErrorHandling(updateItem, 'Error updating item');
 
 module.exports = exports;
