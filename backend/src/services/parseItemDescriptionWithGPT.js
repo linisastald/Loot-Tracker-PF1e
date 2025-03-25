@@ -1,11 +1,19 @@
 const {OpenAI} = require('openai');
+const logger = require('../utils/logger');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY // This is also the default, can be omitted
 });
-// Function to call GPT API to parse item description
+
+/**
+ * Function to call GPT API to parse item description
+ * @param {string} description - The item description to parse
+ * @returns {Promise<Object>} - The parsed item data
+ */
 const parseItemDescriptionWithGPT = async (description) => {
     try {
+        logger.info(`Parsing item description with GPT: "${description.substring(0, 50)}..."`);
+
         const response = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
             messages: [
@@ -28,16 +36,16 @@ const parseItemDescriptionWithGPT = async (description) => {
                     content: `Parse the following item description into its components (mods and item): "${description}".`
                 }
             ],
-
             temperature: 0.5,
             max_tokens: 64,
             top_p: 1,
         });
 
         const parsedData = JSON.parse(response.choices[0].message.content.trim());
+        logger.info(`Successfully parsed item: ${JSON.stringify(parsedData)}`);
         return parsedData;
     } catch (error) {
-        console.error("Error parsing item description with GPT:", error);
+        logger.error(`Error parsing item description with GPT: ${error.message}`);
         throw error;
     }
 };

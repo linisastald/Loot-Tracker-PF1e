@@ -1,17 +1,42 @@
 const jwt = require('jsonwebtoken');
+const logger = require('../utils/logger');
 require('dotenv').config();
 
+/**
+ * Middleware to verify JWT token from request header
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ * @returns {void}
+ */
 const verifyToken = (req, res, next) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
   try {
+    // Extract token from Authorization header
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+
+    if (!token) {
+      logger.warn('Authentication failed: No token provided');
+      return res.status(401).json({ error: 'No token provided' });
+    }
+
+    // Verify token using JWT secret
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Add user data to request object
     req.user = decoded;
+
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
+    if (error.name === 'TokenExpiredError') {
+      logger.warn('Authentication failed: Token expired');
+      return res.status(401).json({ error: 'Token expired' });
+    } else if (error.name === 'JsonWebTokenError') {
+      logger.warn(`Authentication failed: Invalid token - ${error.message}`);
+      return res.status(401).json({ error: 'Invalid token' });
+    } else {
+      logger.error(`Authentication error: ${error.message}`);
+      return res.status(401).json({ error: 'Invalid token' });
+    }
   }
 };
 
