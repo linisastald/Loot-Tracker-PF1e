@@ -1,192 +1,210 @@
 const bcrypt = require('bcryptjs');
-const pool = require('../config/db');
-const jwt = require('jsonwebtoken');
+const dbUtils = require('../utils/dbUtils');
+const controllerUtils = require('../utils/controllerUtils');
 const User = require('../models/User');
 
-exports.changePassword = async (req, res) => {
+/**
+ * Change user password
+ */
+const changePassword = async (req, res) => {
   const { oldPassword, newPassword } = req.body;
   const userId = req.user.id;
 
-  try {
-    const result = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
-    const user = result.rows[0];
+  // Validate required fields
+  controllerUtils.validateRequiredFields(req.body, ['oldPassword', 'newPassword']);
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+  // Get the user
+  const result = await dbUtils.executeQuery('SELECT * FROM users WHERE id = $1', [userId]);
+  const user = result.rows[0];
 
-    const isMatch = await bcrypt.compare(oldPassword, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: 'Old password is incorrect' });
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
-
-    res.status(200).json({ message: 'Password changed successfully' });
-  } catch (error) {
-    console.error('Error changing password', error);
-    res.status(500).json({ error: 'Internal server error' });
+  if (!user) {
+    throw new controllerUtils.NotFoundError('User not found');
   }
+
+  // Check if old password is correct
+  const isMatch = await bcrypt.compare(oldPassword, user.password);
+  if (!isMatch) {
+    throw new controllerUtils.ValidationError('Old password is incorrect');
+  }
+
+  // Hash and update the new password
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  await dbUtils.executeQuery('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
+
+  controllerUtils.sendSuccessMessage(res, 'Password changed successfully');
 };
-exports.getCharacters = async (req, res) => {
+
+/**
+ * Get user's characters
+ */
+const getCharacters = async (req, res) => {
   const userId = req.user.id;
+  const result = await dbUtils.executeQuery('SELECT * FROM characters WHERE user_id = $1', [userId]);
+  controllerUtils.sendSuccessResponse(res, result.rows);
+};
 
-  try {
-    const result = await pool.query('SELECT * FROM characters WHERE user_id = $1', [userId]);
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching characters', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+/**
+ * Get all active characters
+ */
+const getActiveCharacters = async (req, res) => {
+  const result = await dbUtils.executeQuery('SELECT name, id FROM characters WHERE active IS true ORDER BY name DESC');
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
-exports.getActiveCharacters = async (req, res) => {
-  try {
-    const result = await pool.query('select name,id from characters where active is true order by name desc');
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching characters', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-exports.addCharacter = async (req, res) => {
+
+/**
+ * Add a new character
+ */
+const addCharacter = async (req, res) => {
   const { name, appraisal_bonus, birthday, deathday, active } = req.body;
   const userId = req.user.id;
 
-  try {
-    const result = await pool.query(
-      'INSERT INTO characters (user_id, name, appraisal_bonus, birthday, deathday, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [
-        userId,
-        name,
-        appraisal_bonus,
-        birthday || null,
-        deathday || null,
-        active
-      ]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (error) {
-    console.error('Error adding character', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  // Validate required fields
+  controllerUtils.validateRequiredFields(req.body, ['name']);
+
+  const result = await dbUtils.executeQuery(
+    'INSERT INTO characters (user_id, name, appraisal_bonus, birthday, deathday, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+    [userId, name, appraisal_bonus, birthday || null, deathday || null, active]
+  );
+
+  controllerUtils.sendCreatedResponse(res, result.rows[0]);
 };
-exports.updateCharacter = async (req, res) => {
+
+/**
+ * Update a character
+ */
+const updateCharacter = async (req, res) => {
   const { id, name, appraisal_bonus, birthday, deathday, active } = req.body;
   const userId = req.user.id;
 
-  try {
-    const result = await pool.query(
-      'UPDATE characters SET name = $1, appraisal_bonus = $2, birthday = $3, deathday = $4, active = $5 WHERE id = $6 AND user_id = $7 RETURNING *',
-      [
-        name,
-        appraisal_bonus,
-        birthday || null,
-        deathday || null,
-        active,
-        id,
-        userId
-      ]
-    );
-    res.status(200).json(result.rows[0]);
-  } catch (error) {
-    console.error('Error updating character', error);
-    res.status(500).json({ error: 'Internal server error' });
+  // Validate required fields
+  controllerUtils.validateRequiredFields(req.body, ['id', 'name']);
+
+  const result = await dbUtils.executeQuery(
+    'UPDATE characters SET name = $1, appraisal_bonus = $2, birthday = $3, deathday = $4, active = $5 WHERE id = $6 AND user_id = $7 RETURNING *',
+    [name, appraisal_bonus, birthday || null, deathday || null, active, id, userId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new controllerUtils.NotFoundError('Character not found or you do not have permission to update it');
   }
+
+  controllerUtils.sendSuccessResponse(res, result.rows[0]);
 };
-exports.getUserById = async (req, res) => {
+
+/**
+ * Get user by ID
+ */
+const getUserById = async (req, res) => {
   const { id } = req.params;
   const userId = parseInt(id, 10);
 
   if (isNaN(userId)) {
-    console.error('Invalid user ID');
-    return res.status(400).json({ error: 'Invalid user ID' });
+    throw new controllerUtils.ValidationError('Invalid user ID');
   }
 
-  try {
-    const userResult = await pool.query('SELECT id, username, role, joined FROM users WHERE id = $1', [userId]);
-    if (userResult.rows.length === 0) {
-      console.error('User not found');
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const user = userResult.rows[0];
-
-    const activeCharacterResult = await User.getActiveCharacter(user.id);
-    const activeCharacterId = activeCharacterResult ? activeCharacterResult.character_id : null;
-
-    res.status(200).json({ ...user, activeCharacterId });
-  } catch (error) {
-    console.error('Error fetching user', error);
-    res.status(500).json({ error: 'Internal server error' });
+  // Get the user
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new controllerUtils.NotFoundError('User not found');
   }
+
+  // Get active character
+  const activeCharacterResult = await User.getActiveCharacter(user.id);
+  const activeCharacterId = activeCharacterResult ? activeCharacterResult.character_id : null;
+
+  controllerUtils.sendSuccessResponse(res, { ...user, activeCharacterId });
 };
-exports.deactivateAllCharacters = async (req, res) => {
+
+/**
+ * Deactivate all user's characters
+ */
+const deactivateAllCharacters = async (req, res) => {
   const userId = req.user.id;
+  await dbUtils.executeQuery('UPDATE characters SET active = false WHERE user_id = $1', [userId]);
+  controllerUtils.sendSuccessMessage(res, 'All characters deactivated');
+};
 
-  try {
-    await pool.query('UPDATE characters SET active = false WHERE user_id = $1', [userId]);
-    res.status(200).json({ message: 'All characters deactivated' });
-  } catch (error) {
-    console.error('Error deactivating characters', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+/**
+ * Reset user's password (DM only)
+ */
+const resetPassword = async (req, res) => {
+  const { userId, newPassword } = req.body;
+
+  // Validate required fields
+  controllerUtils.validateRequiredFields(req.body, ['userId', 'newPassword']);
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  await dbUtils.executeQuery('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
+
+  controllerUtils.sendSuccessMessage(res, 'Password reset successfully');
 };
-exports.resetPassword = async (req, res) => {
-  try {
-    const { userId, newPassword } = req.body;
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
-    res.status(200).json({ message: 'Password reset successfully' });
-  } catch (error) {
-    console.error('Error resetting password:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+
+/**
+ * Delete a user (mark as deleted) (DM only)
+ */
+const deleteUser = async (req, res) => {
+  const { userId } = req.body;
+
+  // Validate required fields
+  controllerUtils.validateRequiredFields(req.body, ['userId']);
+
+  await dbUtils.executeQuery('UPDATE users SET role = $1 WHERE id = $2', ['deleted', userId]);
+
+  controllerUtils.sendSuccessMessage(res, 'User deleted successfully');
 };
-exports.deleteUser = async (req, res) => {
-  try {
-    const { userId } = req.body;
-    await pool.query('UPDATE users SET role = $1 WHERE id = $2', ['deleted', userId]);
-    res.status(200).json({ message: 'User deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting user:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+
+/**
+ * Update a setting (DM only)
+ */
+const updateSetting = async (req, res) => {
+  const { name, value } = req.body;
+
+  // Validate required fields
+  controllerUtils.validateRequiredFields(req.body, ['name', 'value']);
+
+  await dbUtils.executeQuery(
+    'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
+    [name, value]
+  );
+
+  controllerUtils.sendSuccessMessage(res, 'Setting updated successfully');
 };
-exports.updateSetting = async (req, res) => {
-  try {
-    const { name, value } = req.body;
-    await pool.query('INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value', [name, value]);
-    res.status(200).json({ message: 'Setting updated successfully' });
-  } catch (error) {
-    console.error('Error updating setting:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+
+/**
+ * Get all settings (DM only)
+ */
+const getSettings = async (req, res) => {
+  const result = await dbUtils.executeQuery('SELECT * FROM settings');
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
-exports.getSettings = async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM settings');
-    res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error fetching settings:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+
+/**
+ * Get all users (DM only)
+ */
+const getAllUsers = async (req, res) => {
+  const users = await dbUtils.executeQuery('SELECT id, username, role, joined FROM users WHERE role != $1', ['deleted']);
+  controllerUtils.sendSuccessResponse(res, users.rows);
 };
-exports.getAllUsers = async (req, res) => {
-  try {
-    const users = await pool.query('SELECT id, username, role, joined FROM users WHERE role != $1', ['deleted']);
-    res.json(users.rows);
-  } catch (error) {
-    console.error('Error fetching all users:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+
+/**
+ * Get all characters (DM only)
+ */
+const getAllCharacters = async (req, res) => {
+  const characters = await User.getAllCharacters();
+  controllerUtils.sendSuccessResponse(res, characters);
 };
-exports.getAllCharacters = async (req, res) => {
-  try {
-    const characters = await User.getAllCharacters();
-    res.status(200).json(characters);
-  } catch (error) {
-    console.error('Error fetching all characters', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
+
+// Wrap all controller functions with error handling
+exports.changePassword = controllerUtils.withErrorHandling(changePassword, 'Error changing password');
+exports.getCharacters = controllerUtils.withErrorHandling(getCharacters, 'Error fetching characters');
+exports.getActiveCharacters = controllerUtils.withErrorHandling(getActiveCharacters, 'Error fetching active characters');
+exports.addCharacter = controllerUtils.withErrorHandling(addCharacter, 'Error adding character');
+exports.updateCharacter = controllerUtils.withErrorHandling(updateCharacter, 'Error updating character');
+exports.getUserById = controllerUtils.withErrorHandling(getUserById, 'Error fetching user');
+exports.deactivateAllCharacters = controllerUtils.withErrorHandling(deactivateAllCharacters, 'Error deactivating characters');
+exports.resetPassword = controllerUtils.withErrorHandling(resetPassword, 'Error resetting password');
+exports.deleteUser = controllerUtils.withErrorHandling(deleteUser, 'Error deleting user');
+exports.updateSetting = controllerUtils.withErrorHandling(updateSetting, 'Error updating setting');
+exports.getSettings = controllerUtils.withErrorHandling(getSettings, 'Error fetching settings');
+exports.getAllUsers = controllerUtils.withErrorHandling(getAllUsers, 'Error fetching all users');
+exports.getAllCharacters = controllerUtils.withErrorHandling(getAllCharacters, 'Error fetching all characters');

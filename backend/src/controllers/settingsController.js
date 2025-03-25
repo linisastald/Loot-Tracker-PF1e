@@ -1,30 +1,32 @@
-const pool = require('../config/db');
+const dbUtils = require('../utils/dbUtils');
+const controllerUtils = require('../utils/controllerUtils');
 
-exports.getDiscordSettings = async (req, res) => {
-  try {
-    const settings = await pool.query(
-      'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\')'
-    );
+/**
+ * Get Discord settings
+ */
+const getDiscordSettings = async (req, res) => {
+  const settings = await dbUtils.executeQuery(
+    'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\')'
+  );
 
-    const formattedSettings = settings.rows.reduce((acc, row) => {
-      acc[row.name] = row.value;
-      return acc;
-    }, {});
+  const formattedSettings = settings.rows.reduce((acc, row) => {
+    acc[row.name] = row.value;
+    return acc;
+  }, {});
 
-    res.json(formattedSettings);
-  } catch (error) {
-    console.error('Error fetching Discord settings:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  controllerUtils.sendSuccessResponse(res, formattedSettings);
 };
 
-exports.getCampaignName = async (req, res) => {
-  try {
-    const result = await pool.query('SELECT value FROM settings WHERE name = \'campaign_name\'');
-    const campaignName = result.rows[0]?.value || 'Loot Tracker';
-    res.json({ value: campaignName });
-  } catch (error) {
-    console.error('Error fetching campaign name:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+/**
+ * Get campaign name
+ */
+const getCampaignName = async (req, res) => {
+  const result = await dbUtils.executeQuery('SELECT value FROM settings WHERE name = \'campaign_name\'');
+  const campaignName = result.rows[0]?.value || 'Loot Tracker';
+
+  controllerUtils.sendSuccessResponse(res, { value: campaignName });
 };
+
+// Wrap all controller functions with error handling
+exports.getDiscordSettings = controllerUtils.withErrorHandling(getDiscordSettings, 'Error fetching Discord settings');
+exports.getCampaignName = controllerUtils.withErrorHandling(getCampaignName, 'Error fetching campaign name');
