@@ -1,52 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import api from '../../utils/api';
+import React from 'react';
 import {
   Container,
   Paper,
   Typography,
 } from '@mui/material';
 import CustomLootTable from '../common/CustomLootTable';
-import {
-  fetchActiveUser,
-  handleSelectItem,
-  applyFilters,
-} from '../../utils/utils';
+import useLootManagement from '../../hooks/useLootManagement';
 
-const UnprocessedLoot = () => {
-  const [loot, setLoot] = useState({
-    summary: [],
-    individual: []
-  }), [selectedItems, setSelectedItems] = useState([]), [, setActiveUser] = useState(null), [filters] = useState({
-    unidentified: '',
-    type: '',
-    size: '',
-    pendingSale: ''
-  }), [openItems, setOpenItems] = useState({}), [sortConfig, setSortConfig] = useState({key: '', direction: 'asc'});
-
-  useEffect(() => {
-    fetchLoot();
-    fetchActiveUserDetails();
-  }, []);
-
-  const fetchLoot = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await api.get(`/loot/trash`);
-      setLoot(response.data);
-    } catch (error) {
-      console.error('Error fetching loot:', error);
-    }
-  };
-
-  const fetchActiveUserDetails = async () => {
-    const user = await fetchActiveUser();
-    if (user && user.activeCharacterId) {
-      setActiveUser(user);
-    } else {
-      console.error('Active character ID is not available or user could not be fetched');
-    }
-  };
-  const filteredLoot = applyFilters(loot, filters);
+const GivenAwayOrTrashed = () => {
+  const {
+    loot,
+    selectedItems,
+    setSelectedItems,
+    openItems,
+    setOpenItems,
+    sortConfig,
+    setSortConfig,
+    handleSelectItem,
+  } = useLootManagement('Trashed');
 
   return (
     <Container maxWidth={false} component="main">
@@ -54,8 +25,8 @@ const UnprocessedLoot = () => {
         <Typography variant="h6">Trashed or Given Away Loot</Typography>
       </Paper>
       <CustomLootTable
-        loot={filteredLoot.summary}
-        individualLoot={filteredLoot.individual}
+        loot={loot.summary}
+        individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
         openItems={openItems}
@@ -89,4 +60,4 @@ const UnprocessedLoot = () => {
   );
 };
 
-export default UnprocessedLoot;
+export default GivenAwayOrTrashed;

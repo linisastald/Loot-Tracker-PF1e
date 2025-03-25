@@ -1,0 +1,185 @@
+import { useState, useEffect } from 'react';
+import api from '../utils/api';
+import {
+  fetchActiveUser,
+  applyFilters,
+  handleSelectItem,
+  handleSell,
+  handleTrash,
+  handleKeepSelf,
+  handleKeepParty,
+  handleSplitSubmit,
+  handleOpenUpdateDialog,
+  handleOpenSplitDialog,
+  handleUpdateDialogClose,
+  handleSplitDialogClose,
+  handleUpdateChange,
+  handleUpdateSubmit,
+} from '../utils/utils';
+import { isDM } from '../utils/auth';
+
+const useLootManagement = (statusToFetch) => {
+  // Common state
+  const [loot, setLoot] = useState({ summary: [], individual: [] });
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
+  const [openSplitDialog, setOpenSplitDialog] = useState(false);
+  const [splitItem, setSplitItem] = useState(null);
+  const [splitQuantities, setSplitQuantities] = useState([]);
+  const [updatedEntry, setUpdatedEntry] = useState({});
+  const [activeUser, setActiveUser] = useState(null);
+  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '', whoHas: [] });
+  const [openItems, setOpenItems] = useState({});
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+
+  // Fetch data based on the status
+  const fetchLoot = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      let endpoint;
+
+      if (!statusToFetch) {
+        // For unprocessed loot
+        const isDMUser = isDM();
+        let params = { isDM: isDMUser };
+
+        if (!isDMUser) {
+          const currentActiveUser = await fetchActiveUser();
+          if (currentActiveUser && currentActiveUser.activeCharacterId) {
+            params.activeCharacterId = currentActiveUser.activeCharacterId;
+          } else {
+            console.error('No active character ID available');
+            return;
+          }
+        }
+
+        const response = await api.get(`/loot`, { params });
+        setLoot(response.data);
+      } else if (statusToFetch === 'Kept Party') {
+        const response = await api.get(`/loot/kept-party`);
+        setLoot(response.data);
+      } else if (statusToFetch === 'Kept Self') {
+        const response = await api.get(`/loot/kept-character`);
+        setLoot(response.data);
+      } else if (statusToFetch === 'Trashed') {
+        const response = await api.get(`/loot/trash`);
+        setLoot(response.data);
+      }
+    } catch (error) {
+      console.error(`Error fetching loot:`, error);
+    }
+  };
+
+  const fetchActiveUserDetails = async () => {
+    const user = await fetchActiveUser();
+    if (user && user.activeCharacterId) {
+      setActiveUser(user);
+    } else {
+      console.error('Active character ID is not available or user could not be fetched');
+    }
+  };
+
+  useEffect(() => {
+    const initializeComponent = async () => {
+      if (!isDM()) {
+        await fetchActiveUserDetails();
+        fetchLoot();
+      } else {
+        fetchLoot();
+        await fetchActiveUserDetails();
+      }
+    };
+
+    initializeComponent();
+  }, []);
+
+  const handleAction = async (actionFunc) => {
+    await actionFunc(selectedItems, fetchLoot, activeUser);
+    setSelectedItems([]);
+  };
+
+  const handleOpenSplitDialogWrapper = (item) => {
+    handleOpenSplitDialog(item, setSplitItem, setSplitQuantities, setOpenSplitDialog);
+  };
+
+  const handleSplitChange = (index, value) => {
+    const updatedQuantities = [...splitQuantities];
+    updatedQuantities[index].quantity = parseInt(value, 10);
+    setSplitQuantities(updatedQuantities);
+  };
+
+  const handleAddSplit = () => {
+    setSplitQuantities([...splitQuantities, { quantity: 0 }]);
+  };
+
+  const filteredLoot = applyFilters(loot, filters);
+
+  const handleUpdateDialogWrapper = () => {
+    handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog);
+  };
+
+  const handleSplitSubmitWrapper = () => {
+    handleSplitSubmit(
+      splitQuantities,
+      selectedItems,
+      splitItem?.quantity || 0,
+      activeUser?.id,
+      fetchLoot,
+      setOpenSplitDialog,
+      setSelectedItems
+    );
+  };
+
+  const handleUpdateSubmitWrapper = () => {
+    handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog);
+  };
+
+  // Special function for handling appraise in UnprocessedLoot
+  const handleAppraise = async () => {
+    try {
+      await api.post(`/loot/appraise`, { userId: activeUser.id });
+      fetchLoot();
+    } catch (error) {
+      console.error('Error appraising loot:', error);
+    }
+  };
+
+  return {
+    loot: filteredLoot,
+    selectedItems,
+    setSelectedItems,
+    openUpdateDialog,
+    setOpenUpdateDialog,
+    openSplitDialog,
+    setOpenSplitDialog,
+    splitItem,
+    splitQuantities,
+    updatedEntry,
+    activeUser,
+    filters,
+    setFilters,
+    openItems,
+    setOpenItems,
+    sortConfig,
+    setSortConfig,
+    handleAction,
+    handleSelectItem: (id) => handleSelectItem(id, setSelectedItems),
+    handleOpenSplitDialogWrapper,
+    handleSplitChange,
+    handleAddSplit,
+    handleUpdateDialogWrapper,
+    handleUpdateDialogClose: () => handleUpdateDialogClose(setOpenUpdateDialog),
+    handleSplitDialogClose: () => handleSplitDialogClose(setOpenSplitDialog),
+    handleUpdateChange: (e) => handleUpdateChange(e, setUpdatedEntry),
+    handleSplitSubmitWrapper,
+    handleUpdateSubmitWrapper,
+    handleAppraise,
+    // Expose common action handlers
+    handleSell: (ids) => handleSell(ids, fetchLoot),
+    handleTrash: (ids) => handleTrash(ids, fetchLoot),
+    handleKeepSelf: (ids) => handleKeepSelf(ids, fetchLoot, activeUser),
+    handleKeepParty: (ids) => handleKeepParty(ids, fetchLoot),
+  };
+};
+
+export default useLootManagement;

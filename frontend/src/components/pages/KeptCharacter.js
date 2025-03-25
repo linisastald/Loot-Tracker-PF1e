@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import api from '../../utils/api';
+import React from 'react';
 import {
     Container,
     Paper,
@@ -9,80 +8,38 @@ import {
 import CustomLootTable from '../common/CustomLootTable';
 import CustomSplitStackDialog from '../common/dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from '../common/dialogs/CustomUpdateDialog';
-import {
-  fetchActiveUser,
-  handleSelectItem,
-  handleSell,
-  handleTrash,
-  handleKeepSelf,
-  handleKeepParty,
-  handleSplitSubmit,
-  handleOpenUpdateDialog,
-  handleOpenSplitDialog,
-  handleUpdateDialogClose,
-  handleSplitDialogClose,
-  handleUpdateChange,
-  applyFilters,
-  handleUpdateSubmit,
-} from '../../utils/utils';
+import useLootManagement from '../../hooks/useLootManagement';
 
 const KeptCharacter = () => {
-  const [loot, setLoot] = useState({ summary: [], individual: [] });
-  const [selectedItems, setSelectedItems] = useState([]);
-  const [openUpdateDialog, setOpenUpdateDialog] = useState(false);
-  const [openSplitDialog, setOpenSplitDialog] = useState(false);
-  const [splitItem, setSplitItem] = useState(null);
-  const [splitQuantities, setSplitQuantities] = useState([]);
-  const [updatedEntry, setUpdatedEntry] = useState({});
-  const [activeUser, setActiveUser] = useState(null);
-  const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '', whoHas: [] });
-  const [openItems, setOpenItems] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-
-  useEffect(() => {
-    fetchLoot();
-    fetchActiveUserDetails();
-  }, []);
-
-  const fetchLoot = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await api.get(`/loot/kept-character`);
-      setLoot(response.data);
-    } catch (error) {
-      console.error('Error fetching loot:', error);
-    }
-  };
-
-  const fetchActiveUserDetails = async () => {
-    const user = await fetchActiveUser();
-    if (user && user.activeCharacterId) {
-      setActiveUser(user);
-    } else {
-      console.error('Active character ID is not available or user could not be fetched');
-    }
-  };
-
-  const handleAction = async (actionFunc) => {
-    await actionFunc(selectedItems, fetchLoot, activeUser);
-    setSelectedItems([]);  // Ensure selection resets after action
-  };
-
-  const handleOpenSplitDialogWrapper = (item) => {
-    handleOpenSplitDialog(item, setSplitItem, setSplitQuantities, setOpenSplitDialog);
-  };
-
-  const handleSplitChange = (index, value) => {
-    const updatedQuantities = [...splitQuantities];
-    updatedQuantities[index].quantity = parseInt(value, 10); // Ensure the value is an integer
-    setSplitQuantities(updatedQuantities);
-  };
-
-  const handleAddSplit = () => {
-    setSplitQuantities([...splitQuantities, { quantity: 0 }]);
-  };
-
-  const filteredLoot = applyFilters(loot, filters);
+  const {
+    loot,
+    selectedItems,
+    setSelectedItems,
+    openUpdateDialog,
+    openSplitDialog,
+    splitQuantities,
+    updatedEntry,
+    filters,
+    setFilters,
+    openItems,
+    setOpenItems,
+    sortConfig,
+    setSortConfig,
+    handleAction,
+    handleSelectItem,
+    handleOpenSplitDialogWrapper,
+    handleSplitChange,
+    handleAddSplit,
+    handleUpdateDialogWrapper,
+    handleUpdateDialogClose,
+    handleSplitDialogClose,
+    handleUpdateChange,
+    handleSplitSubmitWrapper,
+    handleUpdateSubmitWrapper,
+    handleSell,
+    handleTrash,
+    handleKeepParty,
+  } = useLootManagement('Kept Self');
 
   return (
     <Container maxWidth={false} component="main">
@@ -90,15 +47,15 @@ const KeptCharacter = () => {
         <Typography variant="h6">Loot Kept by Character</Typography>
       </Paper>
       <CustomLootTable
-        loot={filteredLoot.summary}
-        individualLoot={filteredLoot.individual}
+        loot={loot.summary}
+        individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
         openItems={openItems}
         setOpenItems={setOpenItems}
         handleSelectItem={handleSelectItem}
         sortConfig={sortConfig}
-        setSortConfig={setSortConfig} // Pass down the sorting state and setter
+        setSortConfig={setSortConfig}
         showColumns={{
           select: true,
           quantity: true,
@@ -121,8 +78,9 @@ const KeptCharacter = () => {
           whoHas: true,
         }}
         filters={filters}
-        setFilters={setFilters} // Ensure filters can be updated
+        setFilters={setFilters}
       />
+
       {/* Floating button container */}
       <Box
         sx={{
@@ -148,7 +106,7 @@ const KeptCharacter = () => {
           </Button>
         )}
         {selectedItems.length === 1 && (
-          <Button variant="contained" color="primary" onClick={() => handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog)}>
+          <Button variant="contained" color="primary" onClick={handleUpdateDialogWrapper}>
             Update
           </Button>
         )}
@@ -156,19 +114,19 @@ const KeptCharacter = () => {
 
       <CustomSplitStackDialog
         open={openSplitDialog}
-        handleClose={() => handleSplitDialogClose(setOpenSplitDialog)}
+        handleClose={handleSplitDialogClose}
         splitQuantities={splitQuantities}
         handleSplitChange={handleSplitChange}
         handleAddSplit={handleAddSplit}
-        handleSplitSubmit={() => handleSplitSubmit(splitQuantities, selectedItems, splitItem.quantity, activeUser.id, fetchLoot, setOpenSplitDialog, setSelectedItems)} // Pass setOpenSplitDialog and setSelectedItems
+        handleSplitSubmit={handleSplitSubmitWrapper}
       />
 
       <CustomUpdateDialog
         open={openUpdateDialog}
-        onClose={() => handleUpdateDialogClose(setOpenUpdateDialog)}
+        onClose={handleUpdateDialogClose}
         updatedEntry={updatedEntry}
-        onUpdateChange={(e) => handleUpdateChange(e, setUpdatedEntry)}
-        onUpdateSubmit={() => handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog)} // Pass updatedEntry and setOpenUpdateDialog
+        onUpdateChange={handleUpdateChange}
+        onUpdateSubmit={handleUpdateSubmitWrapper}
       />
     </Container>
   );
