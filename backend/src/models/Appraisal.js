@@ -1,7 +1,8 @@
-// backend/src/models/Appraisal.js - Updated
+const dbUtils = require('../utils/dbUtils');
 
-const pool = require('../config/db');
-
+/**
+ * Appraisal model - handles interactions with the appraisal table
+ */
 const Appraisal = {
   /**
    * Create a new appraisal
@@ -24,14 +25,9 @@ const Appraisal = {
       entry.appraisalroll,
       entry.believedvalue
     ];
-    
-    try {
-      const result = await pool.query(query, values);
-      return result.rows[0];
-    } catch (error) {
-      console.error('Error creating appraisal:', error);
-      throw error;
-    }
+
+    const result = await dbUtils.executeQuery(query, values, 'Error creating appraisal');
+    return result.rows[0];
   },
 
   /**
@@ -40,21 +36,17 @@ const Appraisal = {
    * @return {Promise<Array>} - Array of appraisal objects
    */
   getByLootId: async (lootId) => {
-    try {
-      const query = `
-        SELECT 
-          a.*,
-          c.name as character_name
-        FROM appraisal a
-        JOIN characters c ON a.characterid = c.id
-        WHERE a.lootid = $1
-      `;
-      const result = await pool.query(query, [lootId]);
-      return result.rows;
-    } catch (error) {
-      console.error('Error fetching appraisals by loot ID:', error);
-      throw error;
-    }
+    const query = `
+      SELECT 
+        a.*,
+        c.name as character_name
+      FROM appraisal a
+      JOIN characters c ON a.characterid = c.id
+      WHERE a.lootid = $1
+    `;
+
+    const result = await dbUtils.executeQuery(query, [lootId], 'Error fetching appraisals by loot ID');
+    return result.rows;
   },
 
   /**
@@ -63,23 +55,19 @@ const Appraisal = {
    * @return {Promise<number|null>} - The average appraisal value or null
    */
   getAverageByLootId: async (lootId) => {
-    try {
-      const query = `
-        SELECT AVG(believedvalue) as average
-        FROM appraisal
-        WHERE lootid = $1
-      `;
-      const result = await pool.query(query, [lootId]);
-      
-      if (result.rows.length === 0 || result.rows[0].average === null) {
-        return null;
-      }
-      
-      return parseFloat(result.rows[0].average);
-    } catch (error) {
-      console.error('Error calculating average appraisal:', error);
-      throw error;
+    const query = `
+      SELECT AVG(believedvalue) as average
+      FROM appraisal
+      WHERE lootid = $1
+    `;
+
+    const result = await dbUtils.executeQuery(query, [lootId], 'Error calculating average appraisal');
+
+    if (result.rows.length === 0 || result.rows[0].average === null) {
+      return null;
     }
+
+    return parseFloat(result.rows[0].average);
   },
 
   /**
@@ -89,19 +77,15 @@ const Appraisal = {
    * @return {Promise<Object>} - The updated appraisal
    */
   updateValue: async (id, believedValue) => {
-    try {
-      const query = `
-        UPDATE appraisal
-        SET believedvalue = $1
-        WHERE id = $2
-        RETURNING *
-      `;
-      const result = await pool.query(query, [believedValue, id]);
-      return result.rows[0];
-    } catch (error) {
-      console.error('Error updating appraisal value:', error);
-      throw error;
-    }
+    const query = `
+      UPDATE appraisal
+      SET believedvalue = $1
+      WHERE id = $2
+      RETURNING *
+    `;
+
+    const result = await dbUtils.executeQuery(query, [believedValue, id], 'Error updating appraisal value');
+    return result.rows[0];
   }
 };
 

@@ -1,5 +1,5 @@
 /**
- * Database utility functions to reduce code duplication in controllers
+ * Database utility functions to reduce code duplication in controllers and models
  */
 const pool = require('../config/db');
 const logger = require('./logger');
@@ -12,12 +12,29 @@ const logger = require('./logger');
  * @returns {Promise<Object>} - Query result
  */
 const executeQuery = async (queryText, params = [], errorMessage = 'Database query error') => {
+  const startTime = Date.now();
+  const client = await pool.connect();
+
   try {
-    const result = await pool.query(queryText, params);
+    const result = await client.query(queryText, params);
+    const duration = Date.now() - startTime;
+
+    // Log slow queries for performance monitoring (over 500ms)
+    if (duration > 500) {
+      logger.warn(`Slow query (${duration}ms): ${queryText.slice(0, 200)}${queryText.length > 200 ? '...' : ''}`);
+    }
+
     return result;
   } catch (error) {
-    logger.error(`${errorMessage}: ${error.message}`);
+    // Get line numbers and prepare user-friendly error message
+    const stack = error.stack || '';
+    const position = error.position || '';
+    const queryPreview = queryText ? queryText.slice(0, 100) + '...' : 'Query text unavailable';
+
+    logger.error(`${errorMessage}: ${error.message}\nQuery: ${queryPreview}\nPosition: ${position}\nStack: ${stack}`);
     throw error;
+  } finally {
+    client.release();
   }
 };
 
@@ -29,14 +46,17 @@ const executeQuery = async (queryText, params = [], errorMessage = 'Database que
  */
 const executeTransaction = async (callback, errorMessage = 'Transaction error') => {
   const client = await pool.connect();
+
   try {
     await client.query('BEGIN');
+
     const result = await callback(client);
+
     await client.query('COMMIT');
     return result;
   } catch (error) {
     await client.query('ROLLBACK');
-    logger.error(`${errorMessage}: ${error.message}`);
+    logger.error(`${errorMessage}: ${error.message}\nStack: ${error.stack || ''}`);
     throw error;
   } finally {
     client.release();
@@ -112,10 +132,109 @@ const updateById = async (table, id, data, idColumn = 'id') => {
   return result.rows.length > 0 ? result.rows[0] : null;
 };
 
+/**
+ * Insert a new row into a table
+ * @param {string} table - Table name
+ * @param {Object} data - Data to insert
+ * @returns {Promise<Object>} - Inserted row
+ */
+const insert = async (table, data) => {
+  const keys = Object.keys(data);
+  const values = Object.values(data);
+  const placeholders = keys.map((_, i) => `$${i + 1}`);
+
+  const query = `
+    INSERT INTO ${table} (${keys.join(', ')})
+    VALUES (${placeholders.join(', ')})
+    RETURNING *
+  `;
+
+  const result = await executeQuery(query, values, `Error inserting into ${table}`);
+  return result.rows[0];
+};
+
+/**
+ * Delete a row from a table
+ * @param {string} table - Table name
+ * @param {number|string} id - Row id
+ * @param {string} [idColumn='id'] - ID column name
+ * @returns {Promise<boolean>} - True if deleted, false if not found
+ */
+const deleteById = async (table, id, idColumn = 'id') => {
+  const query = `
+    DELETE FROM ${table}
+    WHERE ${idColumn} = $1
+    RETURNING ${idColumn}
+  `;
+
+  const result = await executeQuery(query, [id], `Error deleting from ${table} where ${idColumn} = ${id}`);
+  return result.rows.length > 0;
+};
+
+/**
+ * Get multiple rows with pagination
+ * @param {string} table - Table name
+ * @param {Object} options - Query options (limit, offset, orderBy, where)
+ * @returns {Promise<Object>} - Rows and count
+ */
+const getMany = async (table, options = {}) => {
+  const {
+    limit = 50,
+    offset = 0,
+    orderBy = {column: 'id', direction: 'ASC'},
+    where = null
+  } = options;
+
+  let whereClause = '';
+  let values = [limit, offset];
+  let paramIndex = 3;
+
+  if (where) {
+    const whereClauses = [];
+    const whereValues = [];
+
+    for (const [key, value] of Object.entries(where)) {
+      whereClauses.push(`${key} = $${paramIndex}`);
+      whereValues.push(value);
+      paramIndex++;
+    }
+
+    if (whereClauses.length > 0) {
+      whereClause = `WHERE ${whereClauses.join(' AND ')}`;
+      values = [...values, ...whereValues];
+    }
+  }
+
+  const query = `
+    SELECT * FROM ${table}
+    ${whereClause}
+    ORDER BY ${orderBy.column} ${orderBy.direction}
+    LIMIT $1 OFFSET $2
+  `;
+
+  const countQuery = `
+    SELECT COUNT(*) FROM ${table}
+    ${whereClause}
+  `;
+
+  const [rows, count] = await Promise.all([
+    executeQuery(query, values, `Error fetching from ${table}`),
+    executeQuery(countQuery, where ? values.slice(2) : [], `Error counting rows in ${table}`)
+  ]);
+
+  return {
+    rows: rows.rows,
+    count: parseInt(count.rows[0].count)
+  };
+};
+
 module.exports = {
   executeQuery,
   executeTransaction,
   rowExists,
   getById,
-  updateById
+  updateById,
+  insert,
+  deleteById,
+  getMany
 };
