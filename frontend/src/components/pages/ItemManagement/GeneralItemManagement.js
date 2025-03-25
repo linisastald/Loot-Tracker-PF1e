@@ -244,10 +244,11 @@ const GeneralItemManagement = () => {
 
       setSuccess('Item updated successfully');
       handleSearch();
-      setUpdateDialogOpen(false);
     } catch (error) {
       console.error('Error updating item:', error);
       setError(error.response?.data?.error || 'Failed to update item');
+    } finally {
+      setUpdateDialogOpen(false);
     }
   };
 
