@@ -239,15 +239,16 @@ const GeneralItemManagement = () => {
         spellcraft_dc: updatedItem.spellcraft_dc !== '' ? parseInt(updatedItem.spellcraft_dc, 10) : null,
         dm_notes: updatedItem.dm_notes || null,
       };
-
+      console.log('before api');
       await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
-
+      console.log('after api');
       setSuccess('Item updated successfully');
       handleSearch();
     } catch (error) {
       console.error('Error updating item:', error);
       setError(error.response?.data?.error || 'Failed to update item');
     } finally {
+      console.log('finally');
       setUpdateDialogOpen(false);
     }
   };
