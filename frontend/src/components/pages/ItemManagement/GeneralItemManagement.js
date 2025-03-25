@@ -221,7 +221,10 @@ const GeneralItemManagement = () => {
 
   const handleItemUpdateSubmit = async () => {
     try {
+      // Show loading state
       setLoading(true);
+
+      // Prepare data for submission
       const preparedData = {
         session_date: updatedItem.session_date || null,
         quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
@@ -241,21 +244,27 @@ const GeneralItemManagement = () => {
         dm_notes: updatedItem.dm_notes || null,
       };
 
-      await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
+      console.log('Sending update request with data:', preparedData);
+
+      // Send the update request
+      const response = await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
+      console.log('Update response:', response);
 
       // Set success message
       setSuccess('Item updated successfully');
 
-      // Close the dialog
+      // Reset form and close dialog
+      setUpdatedItem({});
       setUpdateDialogOpen(false);
 
-      // Refresh the search results
+      // Refresh the data
+      setTimeout(() => {
       handleSearch();
-
-      setLoading(false);
+      }, 500);
     } catch (error) {
-      console.error('Error updating item', error);
-      setError(error.response?.data?.error || 'Error updating item');
+      console.error('Error updating item:', error);
+      setError(error.response?.data?.error || 'Failed to update item');
+    } finally {
       setLoading(false);
     }
   };
@@ -459,7 +468,14 @@ const GeneralItemManagement = () => {
         </TableContainer>
       )}
 
-      <Dialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog
+          open={updateDialogOpen}
+          onClose={() => setUpdateDialogOpen(false)}
+          maxWidth="md"
+          fullWidth
+          disableBackdropClick={loading}
+          disableEscapeKeyDown={loading}
+      >
         <DialogTitle>Update Item</DialogTitle>
         <DialogContent>
           <TextField
@@ -626,10 +642,20 @@ const GeneralItemManagement = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleItemUpdateSubmit} color="primary" variant="contained">
-            Update Item
+          <Button
+              onClick={handleItemUpdateSubmit}
+              color="primary"
+              variant="contained"
+              disabled={loading}
+          >
+            {loading ? 'Updating...' : 'Update Item'}
           </Button>
-          <Button onClick={() => setUpdateDialogOpen(false)} color="secondary" variant="contained">
+          <Button
+              onClick={() => setUpdateDialogOpen(false)}
+              color="secondary"
+              variant="contained"
+              disabled={loading}
+          >
             Cancel
           </Button>
         </DialogActions>
