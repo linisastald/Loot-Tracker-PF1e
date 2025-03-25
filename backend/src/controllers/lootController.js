@@ -1,11 +1,14 @@
 const Loot = require('../models/Loot');
 const Appraisal = require('../models/Appraisal');
 const dbUtils = require('../utils/dbUtils');
-const controllerUtils = require('../utils/controllerUtils');
+const controllerFactory = require('../utils/controllerFactory');
 const { parseItemDescriptionWithGPT } = require('../services/parseItemDescriptionWithGPT');
 const { calculateFinalValue } = require('../services/calculateFinalValue');
 const { calculateItemSaleValue, calculateTotalSaleValue } = require('../utils/saleValueCalculator');
 
+/**
+ * Helper function for custom rounding of values
+ */
 const customRounding = (value) => {
   const randomValue = Math.random();
   if (randomValue < 0.15) {
@@ -40,6 +43,9 @@ const customRounding = (value) => {
   }
 };
 
+/**
+ * Fetch and process appraisals for an item
+ */
 const fetchAndProcessAppraisals = async (lootId) => {
   try {
     const appraisalsQuery = `
@@ -73,6 +79,9 @@ const fetchAndProcessAppraisals = async (lootId) => {
   }
 };
 
+/**
+ * Enhance items with appraisal information
+ */
 const enhanceItemsWithAppraisals = async (items) => {
   if (!items || !Array.isArray(items)) return [];
 
@@ -142,7 +151,6 @@ const updateAppraisalsOnValueChange = async (lootId, newValue) => {
     throw error;
   }
 };
-
 /**
  * Create new loot entries
  */
@@ -151,7 +159,7 @@ const createLoot = async (req, res) => {
 
   // Validate entries
   if (!entries || !Array.isArray(entries) || entries.length === 0) {
-    throw new controllerUtils.ValidationError('Entries array is required');
+    throw controllerFactory.createValidationError('Entries array is required');
   }
 
   const createdEntries = [];
@@ -282,7 +290,7 @@ const createLoot = async (req, res) => {
     createdEntries.push(createdEntry);
   }
 
-  controllerUtils.sendCreatedResponse(res, createdEntries);
+  controllerFactory.sendCreatedResponse(res, createdEntries);
 };
 
 /**
@@ -293,7 +301,7 @@ const getAllLoot = async (req, res) => {
   const activeCharacterId = isDM ? null : req.query.activeCharacterId;
 
   if (!isDM && !activeCharacterId) {
-    throw new controllerUtils.ValidationError('Active character ID is required for non-DM users');
+    throw controllerFactory.createValidationError('Active character ID is required for non-DM users');
   }
 
   const loot = await Loot.findAll(activeCharacterId);
@@ -301,7 +309,7 @@ const getAllLoot = async (req, res) => {
   // Enhance individual items with appraisal data
   const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
-  controllerUtils.sendSuccessResponse(res, {
+  controllerFactory.sendSuccessResponse(res, {
     summary: loot.summary,
     individual: enhancedIndividualLoot
   });
@@ -315,11 +323,11 @@ const updateLootStatus = async (req, res) => {
 
   // Validate required fields
   if (!ids || !status || !userId) {
-    throw new controllerUtils.ValidationError('Missing required fields');
+    throw controllerFactory.createValidationError('Missing required fields');
   }
 
   await Loot.updateStatus(ids.map(Number), status, status === 'Kept Self' ? whohas : null);
-  controllerUtils.sendSuccessMessage(res, 'Loot status updated');
+  controllerFactory.sendSuccessMessage(res, 'Loot status updated');
 };
 
 /**
@@ -332,7 +340,7 @@ const getKeptPartyLoot = async (req, res) => {
   // Enhance individual items with appraisal data
   const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
-  controllerUtils.sendSuccessResponse(res, {
+  controllerFactory.sendSuccessResponse(res, {
     summary: loot.summary,
     individual: enhancedIndividualLoot
   });
@@ -344,7 +352,7 @@ const getKeptPartyLoot = async (req, res) => {
 const getTrashedLoot = async (req, res) => {
   const userId = req.user.id;
   const loot = await Loot.findByStatus('Trashed', userId);
-  controllerUtils.sendSuccessResponse(res, loot);
+  controllerFactory.sendSuccessResponse(res, loot);
 };
 
 /**
@@ -357,7 +365,7 @@ const getKeptCharacterLoot = async (req, res) => {
   // Enhance individual items with appraisal data
   const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
-  controllerUtils.sendSuccessResponse(res, {
+  controllerFactory.sendSuccessResponse(res, {
     summary: loot.summary,
     individual: enhancedIndividualLoot
   });
@@ -371,11 +379,11 @@ const splitStack = async (req, res) => {
 
   // Validate required fields
   if (!id || !splits || !userId) {
-    throw new controllerUtils.ValidationError('Missing required fields');
+    throw controllerFactory.createValidationError('Missing required fields');
   }
 
   await Loot.splitStack(id, splits, userId);
-  controllerUtils.sendSuccessMessage(res, 'Stack split successfully');
+  controllerFactory.sendSuccessMessage(res, 'Stack split successfully');
 };
 
 /**
@@ -387,7 +395,7 @@ const updateItem = async (req, res) => {
 
   // Validate required fields
   if (!id || !session_date || !quantity || !name) {
-    throw new controllerUtils.ValidationError(
+    throw controllerFactory.createValidationError(
       `ID ${id}, Session Date ${session_date}, Quantity ${quantity}, and Name ${name} are required`
     );
   }
@@ -407,10 +415,10 @@ const updateItem = async (req, res) => {
   const result = await dbUtils.executeQuery(query, values);
 
   if (result.rows.length === 0) {
-    throw new controllerUtils.NotFoundError('Item not found');
+    throw controllerFactory.createNotFoundError('Item not found');
   }
 
-  controllerUtils.sendSuccessResponse(res, result.rows[0]);
+  controllerFactory.sendSuccessResponse(res, result.rows[0]);
 };
 
 /**
@@ -421,11 +429,11 @@ const updateEntry = async (req, res) => {
   const { updatedEntry } = req.body;
 
   if (!id || !updatedEntry) {
-    throw new controllerUtils.ValidationError('ID and updated entry are required');
+    throw controllerFactory.createValidationError('ID and updated entry are required');
   }
 
   await Loot.updateEntry(id, updatedEntry);
-  controllerUtils.sendSuccessMessage(res, 'Entry updated successfully');
+  controllerFactory.sendSuccessMessage(res, 'Entry updated successfully');
 };
 
 /**
@@ -436,11 +444,11 @@ const updateSingleLootStatus = async (req, res) => {
   const { status, userId, whohas } = req.body;
 
   if (!id || !status || !userId) {
-    throw new controllerUtils.ValidationError('Missing required fields');
+    throw controllerFactory.createValidationError('Missing required fields');
   }
 
   await Loot.updateStatus([id], status, status === 'Kept Self' ? whohas : null);
-  controllerUtils.sendSuccessMessage(res, 'Loot status updated');
+  controllerFactory.sendSuccessMessage(res, 'Loot status updated');
 };
 
 /**
@@ -448,7 +456,7 @@ const updateSingleLootStatus = async (req, res) => {
  */
 const getPendingSaleItems = async (req, res) => {
   const result = await dbUtils.executeQuery('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 
 /**
@@ -457,7 +465,7 @@ const getPendingSaleItems = async (req, res) => {
 const searchItems = async (req, res) => {
   const { query, unidentified, type, size, status, itemid, modids, value } = req.query;
 
-  let sqlQuery = `SELECT * FROM loot where 1=1`;
+  let sqlQuery = `SELECT * FROM loot WHERE 1=1`;
   const queryParams = [];
   let paramCount = 1;
 
@@ -527,7 +535,7 @@ const searchItems = async (req, res) => {
   sqlQuery += ` ORDER BY session_date DESC`;
 
   const result = await dbUtils.executeQuery(sqlQuery, queryParams);
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 
 /**
@@ -558,7 +566,7 @@ const getItems = async (req, res) => {
     result = { rows: [] };
   }
 
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 
 /**
@@ -568,7 +576,7 @@ const appraiseLoot = async (req, res) => {
   const { userId } = req.body;
 
   if (!userId) {
-    throw new controllerUtils.ValidationError('User ID is required');
+    throw controllerFactory.createValidationError('User ID is required');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -580,7 +588,7 @@ const appraiseLoot = async (req, res) => {
     const activeCharacter = activeCharacterResult.rows[0];
 
     if (!activeCharacter) {
-      throw new controllerUtils.ValidationError('No active character found');
+      throw controllerFactory.createValidationError('No active character found');
     }
 
     const { id: characterId, appraisal_bonus: appraisalBonus } = activeCharacter;
@@ -674,7 +682,7 @@ const parseItemDescription = async (req, res) => {
   const { description } = req.body;
 
   if (!description) {
-    throw new controllerUtils.ValidationError('Item description is required');
+    throw controllerFactory.createValidationError('Item description is required');
   }
 
   const parsedData = await parseItemDescriptionWithGPT(description);
@@ -720,7 +728,7 @@ const parseItemDescription = async (req, res) => {
 
   parsedData.modIds = modIds.filter(id => id !== null);
 
-  controllerUtils.sendSuccessResponse(res, parsedData);
+  controllerFactory.sendSuccessResponse(res, parsedData);
 };
 
 /**
@@ -736,7 +744,7 @@ const calculateValue = async (req, res) => {
 
   const finalValue = calculateFinalValue(itemValue, itemType, itemSubtype, modDetails, isMasterwork, null, charges, size, weight);
 
-  controllerUtils.sendSuccessResponse(res, { value: finalValue });
+  controllerFactory.sendSuccessResponse(res, { value: finalValue });
 };
 
 /**
@@ -744,7 +752,7 @@ const calculateValue = async (req, res) => {
  */
 const getMods = async (req, res) => {
   const result = await dbUtils.executeQuery('SELECT * FROM mod');
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 
 /**
@@ -755,7 +763,7 @@ const dmUpdateItem = async (req, res) => {
   let updateData = req.body;
 
   if (!id) {
-    throw new controllerUtils.ValidationError('Item ID is required');
+    throw controllerFactory.createValidationError('Item ID is required');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -780,21 +788,21 @@ const dmUpdateItem = async (req, res) => {
       .map((key, index) => {
         switch(key) {
           case 'session_date':
-            return `${key} = $${index + 1}::timestamp`;
+            return `${key} = ${index + 1}::timestamp`;
           case 'quantity':
           case 'itemid':
           case 'charges':
           case 'value':
           case 'whohas':
           case 'spellcraft_dc':
-            return `${key} = $${index + 1}::integer`;
+            return `${key} = ${index + 1}::integer`;
           case 'unidentified':
           case 'masterwork':
-            return `${key} = $${index + 1}::boolean`;
+            return `${key} = ${index + 1}::boolean`;
           case 'modids':
-            return `${key} = $${index + 1}::integer[]`;
+            return `${key} = ${index + 1}::integer[]`;
           default:
-            return `${key} = $${index + 1}::text`;
+            return `${key} = ${index + 1}::text`;
         }
       });
 
@@ -812,7 +820,7 @@ const dmUpdateItem = async (req, res) => {
     const updateResult = await client.query(updateQuery, updateValues);
 
     if (updateResult.rows.length === 0) {
-      throw new controllerUtils.NotFoundError('Item not found');
+      throw controllerFactory.createNotFoundError('Item not found');
     }
 
     let updatedItem = updateResult.rows[0];
@@ -874,7 +882,7 @@ const dmUpdateItem = async (req, res) => {
  */
 const getUnprocessedCount = async (req, res) => {
   const result = await dbUtils.executeQuery('SELECT COUNT(*) FROM loot WHERE status IS NULL');
-  controllerUtils.sendSuccessResponse(res, { count: parseInt(result.rows[0].count) });
+  controllerFactory.sendSuccessResponse(res, { count: parseInt(result.rows[0].count) });
 };
 
 /**
@@ -884,7 +892,7 @@ const identifyItems = async (req, res) => {
   const { items, characterId, spellcraftRolls } = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
-    throw new controllerUtils.ValidationError('Items array is required');
+    throw controllerFactory.createValidationError('Items array is required');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -976,7 +984,7 @@ const getCharacterLedger = async (req, res) => {
   `;
 
   const result = await dbUtils.executeQuery(ledgerQuery);
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 
 /**
@@ -990,7 +998,7 @@ const getUnidentifiedItems = async (req, res) => {
     WHERE l.unidentified = true
   `;
   const result = await dbUtils.executeQuery(query);
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 
 /**
@@ -1000,14 +1008,14 @@ const getItemsById = async (req, res) => {
   const { ids } = req.query;
 
   if (!ids) {
-    throw new controllerUtils.ValidationError('Item IDs are required');
+    throw controllerFactory.createValidationError('Item IDs are required');
   }
 
   // Parse the comma-separated list of IDs
   const itemIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
 
   if (itemIds.length === 0) {
-    throw new controllerUtils.ValidationError('No valid item IDs provided');
+    throw controllerFactory.createValidationError('No valid item IDs provided');
   }
 
   // Query the database for these specific items
@@ -1017,7 +1025,7 @@ const getItemsById = async (req, res) => {
     WHERE id = ANY($1)
   `, [itemIds]);
 
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 
 /**
@@ -1027,14 +1035,14 @@ const getModsById = async (req, res) => {
   const { ids } = req.query;
 
   if (!ids) {
-    throw new controllerUtils.ValidationError('Mod IDs are required');
+    throw controllerFactory.createValidationError('Mod IDs are required');
   }
 
   // Parse the comma-separated list of IDs
   const modIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
 
   if (modIds.length === 0) {
-    throw new controllerUtils.ValidationError('No valid mod IDs provided');
+    throw controllerFactory.createValidationError('No valid mod IDs provided');
   }
 
   // Query the database for these specific mods
@@ -1044,7 +1052,7 @@ const getModsById = async (req, res) => {
     WHERE id = ANY($1)
   `, [modIds]);
 
-  controllerUtils.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 
 /**
@@ -1069,7 +1077,7 @@ const confirmSale = async (req, res) => {
     );
 
     if (validItems.length === 0) {
-      throw new controllerUtils.ValidationError('All pending items are either unidentified or have no value');
+      throw controllerFactory.createValidationError('All pending items are either unidentified or have no value');
     }
 
     // Calculate total sale value using our utility function
@@ -1127,7 +1135,7 @@ const sellSelected = async (req, res) => {
   const { itemsToSell } = req.body;
 
   if (!itemsToSell || itemsToSell.length === 0) {
-    throw new controllerUtils.ValidationError('No items selected to sell');
+    throw controllerFactory.createValidationError('No items selected to sell');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -1139,7 +1147,7 @@ const sellSelected = async (req, res) => {
     const allItems = itemsResult.rows;
 
     if (allItems.length === 0) {
-      throw new controllerUtils.ValidationError('No valid items to sell');
+      throw controllerFactory.createValidationError('No valid items to sell');
     }
 
     // Filter out unidentified items and items with null values
@@ -1147,7 +1155,7 @@ const sellSelected = async (req, res) => {
     const validItems = allItems.filter(item => item.unidentified !== true && item.value !== null);
 
     if (validItems.length === 0) {
-      throw new controllerUtils.ValidationError('All selected items are either unidentified or have no value');
+      throw controllerFactory.createValidationError('All selected items are either unidentified or have no value');
     }
 
     // Create a list of valid and invalid item IDs
@@ -1208,7 +1216,7 @@ const sellAllExcept = async (req, res) => {
   const { itemsToKeep } = req.body;
 
   if (!itemsToKeep || !Array.isArray(itemsToKeep)) {
-    throw new controllerUtils.ValidationError('Items to keep array is required');
+    throw controllerFactory.createValidationError('Items to keep array is required');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -1220,7 +1228,7 @@ const sellAllExcept = async (req, res) => {
     const itemsToConsiderSelling = pendingItems.filter(item => !itemsToKeep.includes(item.id));
 
     if (itemsToConsiderSelling.length === 0) {
-      throw new controllerUtils.ValidationError('No items to sell');
+      throw controllerFactory.createValidationError('No items to sell');
     }
 
     // Filter out unidentified items and items with null values
@@ -1233,7 +1241,7 @@ const sellAllExcept = async (req, res) => {
     );
 
     if (validItemsToSell.length === 0) {
-      throw new controllerUtils.ValidationError('All available items are either unidentified or have no value');
+      throw controllerFactory.createValidationError('All available items are either unidentified or have no value');
     }
 
     // Get all the IDs of valid items to sell
@@ -1292,7 +1300,7 @@ const sellUpTo = async (req, res) => {
   const { amount } = req.body;
 
   if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-    throw new controllerUtils.ValidationError('Valid amount is required');
+    throw controllerFactory.createValidationError('Valid amount is required');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -1307,7 +1315,7 @@ const sellUpTo = async (req, res) => {
     );
 
     if (validPendingItems.length === 0) {
-      throw new controllerUtils.ValidationError('No valid items to sell (all are either unidentified or have no value)');
+      throw controllerFactory.createValidationError('No valid items to sell (all are either unidentified or have no value)');
     }
 
     let totalSold = 0;
@@ -1327,7 +1335,7 @@ const sellUpTo = async (req, res) => {
     }
 
     if (itemsSold.length === 0) {
-      throw new controllerUtils.ValidationError('No items could be sold up to the specified amount');
+      throw controllerFactory.createValidationError('No items could be sold up to the specified amount');
     }
 
     // Record each item as sold in the sold table
@@ -1376,36 +1384,169 @@ const sellUpTo = async (req, res) => {
   }, 'Error selling items up to amount');
 };
 
-// Wrap all controller functions with error handling
-exports.createLoot = controllerUtils.withErrorHandling(createLoot, 'Error creating loot entries');
-exports.getAllLoot = controllerUtils.withErrorHandling(getAllLoot, 'Error fetching all loot');
-exports.updateLootStatus = controllerUtils.withErrorHandling(updateLootStatus, 'Error updating loot status');
-exports.getKeptPartyLoot = controllerUtils.withErrorHandling(getKeptPartyLoot, 'Error fetching kept party loot');
-exports.getTrashedLoot = controllerUtils.withErrorHandling(getTrashedLoot, 'Error fetching trashed loot');
-exports.getKeptCharacterLoot = controllerUtils.withErrorHandling(getKeptCharacterLoot, 'Error fetching kept character loot');
-exports.splitStack = controllerUtils.withErrorHandling(splitStack, 'Error splitting stack');
-exports.updateEntry = controllerUtils.withErrorHandling(updateEntry, 'Error updating entry');
-exports.updateSingleLootStatus = controllerUtils.withErrorHandling(updateSingleLootStatus, 'Error updating single loot status');
-exports.getPendingSaleItems = controllerUtils.withErrorHandling(getPendingSaleItems, 'Error fetching pending sale items');
-exports.searchItems = controllerUtils.withErrorHandling(searchItems, 'Error searching items');
-exports.getItems = controllerUtils.withErrorHandling(getItems, 'Error fetching items');
-exports.appraiseLoot = controllerUtils.withErrorHandling(appraiseLoot, 'Error appraising loot');
-exports.parseItemDescription = controllerUtils.withErrorHandling(parseItemDescription, 'Error parsing item description');
-exports.calculateValue = controllerUtils.withErrorHandling(calculateValue, 'Error calculating value');
-exports.getMods = controllerUtils.withErrorHandling(getMods, 'Error fetching mods');
-exports.dmUpdateItem = controllerUtils.withErrorHandling(dmUpdateItem, 'Error updating item (DM)');
-exports.getUnprocessedCount = controllerUtils.withErrorHandling(getUnprocessedCount, 'Error getting unprocessed count');
-exports.identifyItems = controllerUtils.withErrorHandling(identifyItems, 'Error identifying items');
-exports.getCharacterLedger = controllerUtils.withErrorHandling(getCharacterLedger, 'Error fetching character ledger');
-exports.getUnidentifiedItems = controllerUtils.withErrorHandling(getUnidentifiedItems, 'Error fetching unidentified items');
-exports.getItemsById = controllerUtils.withErrorHandling(getItemsById, 'Error fetching items by ID');
-exports.getModsById = controllerUtils.withErrorHandling(getModsById, 'Error fetching mods by ID');
-exports.confirmSale = controllerUtils.withErrorHandling(confirmSale, 'Error confirming sale');
-exports.sellSelected = controllerUtils.withErrorHandling(sellSelected, 'Error selling selected items');
-exports.sellAllExcept = controllerUtils.withErrorHandling(sellAllExcept, 'Error selling all except selected items');
-exports.sellUpTo = controllerUtils.withErrorHandling(sellUpTo, 'Error selling up to amount');
+// Define validation rules for controller functions
+const createLootValidation = {
+  requiredFields: ['entries']
+};
+
+const updateLootStatusValidation = {
+  requiredFields: ['ids', 'status', 'userId']
+};
+
+const splitStackValidation = {
+  requiredFields: ['id', 'splits', 'userId']
+};
+
+const updateEntryValidation = {
+  requiredFields: ['id', 'updatedEntry']
+};
+
+const appraiseLootValidation = {
+  requiredFields: ['userId']
+};
+
+const parseItemDescriptionValidation = {
+  requiredFields: ['description']
+};
+
+const identifyItemsValidation = {
+  requiredFields: ['items']
+};
+
+const sellSelectedValidation = {
+  requiredFields: ['itemsToSell']
+};
+
+const sellAllExceptValidation = {
+  requiredFields: ['itemsToKeep']
+};
+
+const sellUpToValidation = {
+  requiredFields: ['amount']
+};
+
+// Wrap all controller functions with error handling using the controller factory
+exports.createLoot = controllerFactory.createHandler(createLoot, {
+  errorMessage: 'Error creating loot entries',
+  validation: createLootValidation
+});
+
+exports.getAllLoot = controllerFactory.createHandler(getAllLoot, {
+  errorMessage: 'Error fetching all loot'
+});
+
+exports.updateLootStatus = controllerFactory.createHandler(updateLootStatus, {
+  errorMessage: 'Error updating loot status',
+  validation: updateLootStatusValidation
+});
+
+exports.getKeptPartyLoot = controllerFactory.createHandler(getKeptPartyLoot, {
+  errorMessage: 'Error fetching kept party loot'
+});
+
+exports.getTrashedLoot = controllerFactory.createHandler(getTrashedLoot, {
+  errorMessage: 'Error fetching trashed loot'
+});
+
+exports.getKeptCharacterLoot = controllerFactory.createHandler(getKeptCharacterLoot, {
+  errorMessage: 'Error fetching kept character loot'
+});
+
+exports.splitStack = controllerFactory.createHandler(splitStack, {
+  errorMessage: 'Error splitting stack',
+  validation: splitStackValidation
+});
+
+exports.updateEntry = controllerFactory.createHandler(updateEntry, {
+  errorMessage: 'Error updating entry',
+  validation: updateEntryValidation
+});
+
+exports.updateSingleLootStatus = controllerFactory.createHandler(updateSingleLootStatus, {
+  errorMessage: 'Error updating single loot status'
+});
+
+exports.getPendingSaleItems = controllerFactory.createHandler(getPendingSaleItems, {
+  errorMessage: 'Error fetching pending sale items'
+});
+
+exports.searchItems = controllerFactory.createHandler(searchItems, {
+  errorMessage: 'Error searching items'
+});
+
+exports.getItems = controllerFactory.createHandler(getItems, {
+  errorMessage: 'Error fetching items'
+});
+
+exports.appraiseLoot = controllerFactory.createHandler(appraiseLoot, {
+  errorMessage: 'Error appraising loot',
+  validation: appraiseLootValidation
+});
+
+exports.parseItemDescription = controllerFactory.createHandler(parseItemDescription, {
+  errorMessage: 'Error parsing item description',
+  validation: parseItemDescriptionValidation
+});
+
+exports.calculateValue = controllerFactory.createHandler(calculateValue, {
+  errorMessage: 'Error calculating value'
+});
+
+exports.getMods = controllerFactory.createHandler(getMods, {
+  errorMessage: 'Error fetching mods'
+});
+
+exports.dmUpdateItem = controllerFactory.createHandler(dmUpdateItem, {
+  errorMessage: 'Error updating item (DM)'
+});
+
+exports.getUnprocessedCount = controllerFactory.createHandler(getUnprocessedCount, {
+  errorMessage: 'Error getting unprocessed count'
+});
+
+exports.identifyItems = controllerFactory.createHandler(identifyItems, {
+  errorMessage: 'Error identifying items',
+  validation: identifyItemsValidation
+});
+
+exports.getCharacterLedger = controllerFactory.createHandler(getCharacterLedger, {
+  errorMessage: 'Error fetching character ledger'
+});
+
+exports.getUnidentifiedItems = controllerFactory.createHandler(getUnidentifiedItems, {
+  errorMessage: 'Error fetching unidentified items'
+});
+
+exports.getItemsById = controllerFactory.createHandler(getItemsById, {
+  errorMessage: 'Error fetching items by ID'
+});
+
+exports.getModsById = controllerFactory.createHandler(getModsById, {
+  errorMessage: 'Error fetching mods by ID'
+});
+
+exports.confirmSale = controllerFactory.createHandler(confirmSale, {
+  errorMessage: 'Error confirming sale'
+});
+
+exports.sellSelected = controllerFactory.createHandler(sellSelected, {
+  errorMessage: 'Error selling selected items',
+  validation: sellSelectedValidation
+});
+
+exports.sellAllExcept = controllerFactory.createHandler(sellAllExcept, {
+  errorMessage: 'Error selling all except selected items',
+  validation: sellAllExceptValidation
+});
+
+exports.sellUpTo = controllerFactory.createHandler(sellUpTo, {
+  errorMessage: 'Error selling up to amount',
+  validation: sellUpToValidation
+});
 
 // For backward compatibility
-exports.updateItem = controllerUtils.withErrorHandling(updateItem, 'Error updating item');
+exports.updateItem = controllerFactory.createHandler(updateItem, {
+  errorMessage: 'Error updating item'
+});
 
 module.exports = exports;
