@@ -221,6 +221,7 @@ const GeneralItemManagement = () => {
 
   const handleItemUpdateSubmit = async () => {
     try {
+      setLoading(true);
       const preparedData = {
         session_date: updatedItem.session_date || null,
         quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
@@ -241,12 +242,21 @@ const GeneralItemManagement = () => {
       };
 
       await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
+
+      // Set success message
+      setSuccess('Item updated successfully');
+
+      // Close the dialog
       setUpdateDialogOpen(false);
 
       // Refresh the search results
       handleSearch();
+
+      setLoading(false);
     } catch (error) {
       console.error('Error updating item', error);
+      setError(error.response?.data?.error || 'Error updating item');
+      setLoading(false);
     }
   };
 
