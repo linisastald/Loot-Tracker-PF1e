@@ -1,34 +1,54 @@
 const axios = require('axios');
-const pool = require('../config/db');
+const dbUtils = require('../utils/dbUtils');
+const controllerUtils = require('../utils/controllerUtils');
 
-exports.sendMessage = async (req, res) => {
-  try {
-    const { embeds } = req.body;
-    const settings = await pool.query(
-      'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\')'
-    );
+/**
+ * Send a message to Discord
+ */
+const sendMessage = async (req, res) => {
+  const { embeds } = req.body;
 
-    const { discord_bot_token, discord_channel_id } = settings.rows.reduce((acc, row) => {
-      acc[row.name] = row.value;
-      return acc;
-    }, {});
+  // Validate required fields
+  if (!embeds || !Array.isArray(embeds)) {
+    throw new controllerUtils.ValidationError('Embeds array is required');
+  }
 
-    if (!discord_bot_token || !discord_channel_id) {
-      return res.status(400).json({ error: 'Discord settings are not configured' });
-    }
+  // Fetch Discord settings
+  const settings = await dbUtils.executeQuery(
+    'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\')'
+  );
 
-    // Send each embed separately
-    for (const embed of embeds) {
+  // Convert rows to a settings object
+  const { discord_bot_token, discord_channel_id } = settings.rows.reduce((acc, row) => {
+    acc[row.name] = row.value;
+    return acc;
+  }, {});
+
+  // Check if Discord settings are configured
+  if (!discord_bot_token || !discord_channel_id) {
+    throw new controllerUtils.ValidationError('Discord settings are not configured');
+  }
+
+  // Send each embed separately
+  for (const embed of embeds) {
+    try {
       await axios.post(
         `https://discordapp.com/api/channels/${discord_channel_id}/messages`,
         embed,
         { headers: { Authorization: `Bot ${discord_bot_token}` } }
       );
+    } catch (error) {
+      throw new Error(`Failed to send message to Discord: ${error.message}`);
     }
-
-    res.json({ success: true, message: 'Tasks sent to Discord successfully' });
-  } catch (error) {
-    console.error('Error sending message to Discord:', error);
-    res.status(500).json({ error: 'Failed to send message to Discord' });
   }
+
+  controllerUtils.sendSuccessResponse(res, {
+    success: true,
+    message: 'Tasks sent to Discord successfully'
+  });
 };
+
+// Wrap all controller functions with error handling
+exports.sendMessage = controllerUtils.withErrorHandling(sendMessage, 'Error sending message to Discord');
+
+module.exports = exports;

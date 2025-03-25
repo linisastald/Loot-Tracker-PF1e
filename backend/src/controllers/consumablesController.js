@@ -1,51 +1,55 @@
-// backend/controllers/consumablesController.js
-const pool = require('../config/db');
+const dbUtils = require('../utils/dbUtils');
+const controllerUtils = require('../utils/controllerUtils');
 
-exports.getConsumables = async (req, res) => {
-  try {
-    const wandsQuery = `
-      SELECT l.id, l.quantity, l.name, l.charges
-      FROM loot l
-      JOIN item i ON l.itemid = i.id
-      WHERE i.name ILIKE '%wand of%' AND l.status = 'Kept Party'
-    `;
+/**
+ * Get all consumables (wands, potions, scrolls)
+ */
+const getConsumables = async (req, res) => {
+  // Get all wands
+  const wandsQuery = `
+    SELECT l.id, l.quantity, l.name, l.charges
+    FROM loot l
+    JOIN item i ON l.itemid = i.id
+    WHERE i.name ILIKE '%wand of%' AND l.status = 'Kept Party'
+  `;
 
-    const potionsScrollsQuery = `
-      SELECT i.id as itemid, SUM(l.quantity) as quantity, i.name, 
-             CASE WHEN i.name ILIKE '%potion of%' THEN 'potion' ELSE 'scroll' END as type
-      FROM loot l
-      JOIN item i ON l.itemid = i.id
-      WHERE (i.name ILIKE '%potion of%' OR i.name ILIKE '%scroll of%') AND l.status = 'Kept Party'
-      GROUP BY i.id, i.name
-    `;
+  // Get all potions and scrolls
+  const potionsScrollsQuery = `
+    SELECT i.id as itemid, SUM(l.quantity) as quantity, i.name, 
+           CASE WHEN i.name ILIKE '%potion of%' THEN 'potion' ELSE 'scroll' END as type
+    FROM loot l
+    JOIN item i ON l.itemid = i.id
+    WHERE (i.name ILIKE '%potion of%' OR i.name ILIKE '%scroll of%') AND l.status = 'Kept Party'
+    GROUP BY i.id, i.name
+  `;
 
-    const [wandsResult, potionsScrollsResult] = await Promise.all([
-      pool.query(wandsQuery),
-      pool.query(potionsScrollsQuery)
-    ]);
+  // Execute both queries
+  const [wandsResult, potionsScrollsResult] = await Promise.all([
+    dbUtils.executeQuery(wandsQuery),
+    dbUtils.executeQuery(potionsScrollsQuery)
+  ]);
 
-    res.json({
-      wands: wandsResult.rows,
-      potionsScrolls: potionsScrollsResult.rows
-    });
-  } catch (error) {
-    console.error('Error fetching consumables:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  // Return combined results
+  controllerUtils.sendSuccessResponse(res, {
+    wands: wandsResult.rows,
+    potionsScrolls: potionsScrollsResult.rows
+  });
 };
 
-exports.useConsumable = async (req, res) => {
+/**
+ * Use a consumable (wand, potion, or scroll)
+ */
+const useConsumable = async (req, res) => {
   const { itemid, type } = req.body;
-  const client = await pool.connect();
 
-  try {
-    if (!itemid || !type) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
+  // Validate required fields
+  if (!itemid || !type) {
+    throw new controllerUtils.ValidationError('Missing required fields');
+  }
 
-    await client.query('BEGIN');
-
+  return await dbUtils.executeTransaction(async (client) => {
     let updateQuery;
+
     if (type === 'wand') {
       updateQuery = `
         UPDATE loot
@@ -75,70 +79,71 @@ exports.useConsumable = async (req, res) => {
     const result = await client.query(updateQuery, [itemid]);
 
     if (result.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Consumable not found or no uses left' });
+      throw new controllerUtils.NotFoundError('Consumable not found or no uses left');
     }
 
     const insertUseQuery = `
       INSERT INTO consumableuse (lootid, who, time)
       VALUES ($1, $2, CURRENT_TIMESTAMP)
     `;
+
     await client.query(insertUseQuery, [result.rows[0].id, req.user.id]);
 
-    await client.query('COMMIT');
-    res.json({ message: 'Consumable used successfully' });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error using consumable:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
-  }
+    return { message: 'Consumable used successfully' };
+  }, 'Error using consumable');
 };
 
-exports.updateWandCharges = async (req, res) => {
+/**
+ * Update wand charges
+ */
+const updateWandCharges = async (req, res) => {
   const { id, charges } = req.body;
 
-  try {
-    if (!id || !charges || isNaN(charges) || charges < 1 || charges > 50) {
-      return res.status(400).json({ error: 'Invalid input. Charges must be between 1 and 50.' });
-    }
-
-    const updateQuery = `
-      UPDATE loot
-      SET charges = $1
-      WHERE id = $2 AND status = 'Kept Party'
-      RETURNING *
-    `;
-    const result = await pool.query(updateQuery, [charges, id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Wand not found or not in kept party status' });
-    }
-
-    res.json({ message: 'Wand charges updated successfully', wand: result.rows[0] });
-  } catch (error) {
-    console.error('Error updating wand charges:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  // Validate required fields
+  if (!id || !charges || isNaN(charges) || charges < 1 || charges > 50) {
+    throw new controllerUtils.ValidationError('Invalid input. Charges must be between 1 and 50.');
   }
+
+  const updateQuery = `
+    UPDATE loot
+    SET charges = $1
+    WHERE id = $2 AND status = 'Kept Party'
+    RETURNING *
+  `;
+
+  const result = await dbUtils.executeQuery(updateQuery, [charges, id]);
+
+  if (result.rows.length === 0) {
+    throw new controllerUtils.NotFoundError('Wand not found or not in kept party status');
+  }
+
+  controllerUtils.sendSuccessResponse(res, {
+    message: 'Wand charges updated successfully',
+    wand: result.rows[0]
+  });
 };
 
-exports.getConsumableUseHistory = async (req, res) => {
-  try {
-    const historyQuery = `
-      SELECT cu.id, cu.time, l.name as item_name, c.name as character_name
-      FROM consumableuse cu
-      JOIN loot l ON cu.lootid = l.id
-      JOIN characters c ON cu.who = c.id
-      ORDER BY cu.time DESC
-      LIMIT 100
-    `;
+/**
+ * Get consumable use history
+ */
+const getConsumableUseHistory = async (req, res) => {
+  const historyQuery = `
+    SELECT cu.id, cu.time, l.name as item_name, c.name as character_name
+    FROM consumableuse cu
+    JOIN loot l ON cu.lootid = l.id
+    JOIN characters c ON cu.who = c.id
+    ORDER BY cu.time DESC
+    LIMIT 100
+  `;
 
-    const result = await pool.query(historyQuery);
-
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error fetching consumable use history:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  const result = await dbUtils.executeQuery(historyQuery);
+  controllerUtils.sendSuccessResponse(res, result.rows);
 };
+
+// Wrap all controller functions with error handling
+exports.getConsumables = controllerUtils.withErrorHandling(getConsumables, 'Error fetching consumables');
+exports.useConsumable = controllerUtils.withErrorHandling(useConsumable, 'Error using consumable');
+exports.updateWandCharges = controllerUtils.withErrorHandling(updateWandCharges, 'Error updating wand charges');
+exports.getConsumableUseHistory = controllerUtils.withErrorHandling(getConsumableUseHistory, 'Error fetching consumable use history');
+
+module.exports = exports;
