@@ -32,7 +32,6 @@ router.post('/sell-up-to', verifyToken, checkRole('DM'), lootController.sellUpTo
 router.post('/sell-all-except', verifyToken, checkRole('DM'), lootController.sellAllExcept);
 router.post('/sell-selected', verifyToken, checkRole('DM'), lootController.sellSelected);
 
-
 router.put('/:id', verifyToken, lootController.updateSingleLootStatus);
 
 module.exports = router;
