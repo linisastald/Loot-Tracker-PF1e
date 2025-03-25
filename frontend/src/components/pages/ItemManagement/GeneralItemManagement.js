@@ -221,7 +221,6 @@ const GeneralItemManagement = () => {
 
   const handleItemUpdateSubmit = async () => {
     try {
-      // Prepare data for submission
       const preparedData = {
         session_date: updatedItem.session_date || null,
         quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
@@ -234,30 +233,18 @@ const GeneralItemManagement = () => {
         itemid: updatedItem.itemid !== '' ? parseInt(updatedItem.itemid, 10) : null,
         modids: updatedItem.modids && updatedItem.modids.length > 0 ? updatedItem.modids : null,
         charges: updatedItem.charges !== '' ? parseInt(updatedItem.charges, 10) : null,
-        value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
+        value: updatedItem.value !== '' ? parseFloat(updatedItem.value) : null,
         whohas: updatedItem.whohas !== '' ? parseInt(updatedItem.whohas, 10) : null,
         notes: updatedItem.notes || null,
         spellcraft_dc: updatedItem.spellcraft_dc !== '' ? parseInt(updatedItem.spellcraft_dc, 10) : null,
         dm_notes: updatedItem.dm_notes || null,
       };
 
-      console.log('Sending update request with data:', preparedData);
+      await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
 
-      // Send the update request
-      const response = await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
-      console.log('Update response:', response);
-
-      // Set success message
       setSuccess('Item updated successfully');
-
-      // Reset form and close dialog
-      setUpdatedItem({});
-      setUpdateDialogOpen(false);
-
-      // Refresh the data
-      setTimeout(() => {
       handleSearch();
-      }, 500);
+      setUpdateDialogOpen(false);
     } catch (error) {
       console.error('Error updating item:', error);
       setError(error.response?.data?.error || 'Failed to update item');
