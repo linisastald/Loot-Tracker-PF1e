@@ -1,7 +1,6 @@
 // src/controllers/goldController.js
 const Gold = require('../models/Gold');
 const dbUtils = require('../utils/dbUtils');
-const controllerFactory = require('../utils/controllerFactory');
 const jwt_decode = require('jwt-decode');
 
 /**
@@ -9,6 +8,11 @@ const jwt_decode = require('jwt-decode');
  */
 const createGoldEntry = async (req, res) => {
   const { goldEntries } = req.body;
+
+  if (!goldEntries || !Array.isArray(goldEntries)) {
+    return res.status(400).json({ error: 'Gold entries array is required' });
+  }
+
   const createdEntries = [];
 
   for (const entry of goldEntries) {
@@ -17,63 +21,75 @@ const createGoldEntry = async (req, res) => {
     // Adjust values based on transaction type
     const adjustedEntry = {
       ...entry,
-      platinum: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(platinum) : platinum,
-      gold: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(gold) : gold,
-      silver: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(silver) : silver,
-      copper: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(copper) : copper
+      platinum: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(platinum || 0) : (platinum || 0),
+      gold: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(gold || 0) : (gold || 0),
+      silver: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(silver || 0) : (silver || 0),
+      copper: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(copper || 0) : (copper || 0)
     };
 
-    const createdEntry = await Gold.create(adjustedEntry);
-    createdEntries.push(createdEntry);
+    try {
+      const createdEntry = await Gold.create(adjustedEntry);
+      createdEntries.push(createdEntry);
+    } catch (error) {
+      console.error('Error creating gold entry:', error);
+      return res.status(500).json({ error: 'Error creating gold entry' });
+    }
   }
 
-  controllerFactory.sendCreatedResponse(res, createdEntries);
+  return res.status(201).json(createdEntries);
 };
 
 /**
- * Get all gold entries
+ * Get all gold entries with optional date filtering
  */
 const getAllGoldEntries = async (req, res) => {
-  const { startDate, endDate } = req.query;
+  // Get query parameters with defaults
+  const startDate = req.query.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default: 30 days ago
+  const endDate = req.query.endDate || new Date(); // Default: current date
 
-  const query = `
-    SELECT * FROM gold
-    WHERE session_date BETWEEN $1 AND $2
-    ORDER BY session_date DESC
-  `;
-  const result = await dbUtils.executeQuery(query, [startDate, endDate]);
+  try {
+    const query = `
+      SELECT * FROM gold
+      WHERE session_date BETWEEN $1 AND $2
+      ORDER BY session_date DESC
+    `;
+    const result = await dbUtils.executeQuery(query, [startDate, endDate]);
 
-  controllerFactory.sendSuccessResponse(res, result.rows);
+    return res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching gold entries:', error);
+    return res.status(500).json({ error: 'Error fetching gold entries' });
+  }
 };
 
 /**
  * Distribute all gold evenly among active characters
  */
 const distributeAllGold = async (req, res) => {
-  return await dbUtils.executeTransaction(async (client) => {
+  try {
     const token = req.headers.authorization.split(' ')[1];
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
     // Get active characters
-    const activeCharactersResult = await client.query(
+    const activeCharactersResult = await dbUtils.executeQuery(
       'SELECT id, name FROM characters WHERE active = true'
     );
     const activeCharacters = activeCharactersResult.rows;
 
     if (activeCharacters.length === 0) {
-      throw controllerFactory.createValidationError('No active characters found');
+      return res.status(400).json({ error: 'No active characters found' });
     }
 
     // Get total balance for each currency
-    const totalResult = await client.query(
+    const totalResult = await dbUtils.executeQuery(
       'SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold'
     );
 
-    const totalPlatinum = parseFloat(totalResult.rows[0].total_platinum);
-    const totalGold = parseFloat(totalResult.rows[0].total_gold);
-    const totalSilver = parseFloat(totalResult.rows[0].total_silver);
-    const totalCopper = parseFloat(totalResult.rows[0].total_copper);
+    const totalPlatinum = parseFloat(totalResult.rows[0].total_platinum) || 0;
+    const totalGold = parseFloat(totalResult.rows[0].total_gold) || 0;
+    const totalSilver = parseFloat(totalResult.rows[0].total_silver) || 0;
+    const totalCopper = parseFloat(totalResult.rows[0].total_copper) || 0;
 
     const numCharacters = activeCharacters.length;
 
@@ -84,74 +100,80 @@ const distributeAllGold = async (req, res) => {
     const distributeCopper = Math.floor(totalCopper / numCharacters);
 
     if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
-      throw controllerFactory.createValidationError('No currency to distribute');
+      return res.status(400).json({ error: 'No currency to distribute' });
     }
 
     const createdEntries = [];
 
-    for (const character of activeCharacters) {
-      const entry = {
-        sessionDate: new Date(),
-        transactionType: 'Withdrawal',
-        platinum: -distributePlatinum,
-        gold: -distributeGold,
-        silver: -distributeSilver,
-        copper: -distributeCopper,
-        notes: `Distributed to ${character.name}`,
-        userId,
-      };
+    // Execute in a transaction
+    await dbUtils.executeTransaction(async (client) => {
+      for (const character of activeCharacters) {
+        const entry = {
+          sessionDate: new Date(),
+          transactionType: 'Withdrawal',
+          platinum: -distributePlatinum,
+          gold: -distributeGold,
+          silver: -distributeSilver,
+          copper: -distributeCopper,
+          notes: `Distributed to ${character.name}`,
+          userId,
+        };
 
-      const insertQuery = `
-        INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING *
-      `;
+        const insertQuery = `
+          INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING *
+        `;
 
-      const insertResult = await client.query(insertQuery, [
-        entry.sessionDate,
-        entry.transactionType,
-        entry.platinum,
-        entry.gold,
-        entry.silver,
-        entry.copper,
-        entry.notes
-      ]);
+        const insertResult = await client.query(insertQuery, [
+          entry.sessionDate,
+          entry.transactionType,
+          entry.platinum,
+          entry.gold,
+          entry.silver,
+          entry.copper,
+          entry.notes
+        ]);
 
-      createdEntries.push(insertResult.rows[0]);
-    }
+        createdEntries.push(insertResult.rows[0]);
+      }
+    });
 
-    return createdEntries;
-  });
+    return res.status(200).json(createdEntries);
+  } catch (error) {
+    console.error('Error distributing gold:', error);
+    return res.status(500).json({ error: 'Error distributing gold' });
+  }
 };
 
 /**
  * Distribute gold plus party loot (reserves one share for party loot)
  */
 const distributePlusPartyLoot = async (req, res) => {
-  return await dbUtils.executeTransaction(async (client) => {
+  try {
     const token = req.headers.authorization.split(' ')[1];
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
     // Get active characters
-    const activeCharactersResult = await client.query(
+    const activeCharactersResult = await dbUtils.executeQuery(
       'SELECT id, name FROM characters WHERE active = true'
     );
     const activeCharacters = activeCharactersResult.rows;
 
     if (activeCharacters.length === 0) {
-      throw controllerFactory.createValidationError('No active characters found');
+      return res.status(400).json({ error: 'No active characters found' });
     }
 
     // Get total balance for each currency
-    const totalResult = await client.query(
+    const totalResult = await dbUtils.executeQuery(
       'SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold'
     );
 
-    const totalPlatinum = parseFloat(totalResult.rows[0].total_platinum);
-    const totalGold = parseFloat(totalResult.rows[0].total_gold);
-    const totalSilver = parseFloat(totalResult.rows[0].total_silver);
-    const totalCopper = parseFloat(totalResult.rows[0].total_copper);
+    const totalPlatinum = parseFloat(totalResult.rows[0].total_platinum) || 0;
+    const totalGold = parseFloat(totalResult.rows[0].total_gold) || 0;
+    const totalSilver = parseFloat(totalResult.rows[0].total_silver) || 0;
+    const totalCopper = parseFloat(totalResult.rows[0].total_copper) || 0;
 
     const numCharacters = activeCharacters.length;
     // numCharacters + 1 for party loot
@@ -164,57 +186,63 @@ const distributePlusPartyLoot = async (req, res) => {
     const distributeCopper = Math.floor(totalCopper / shareDivisor);
 
     if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
-      throw controllerFactory.createValidationError('No currency to distribute');
+      return res.status(400).json({ error: 'No currency to distribute' });
     }
 
     const createdEntries = [];
 
-    for (const character of activeCharacters) {
-      const entry = {
-        sessionDate: new Date(),
-        transactionType: 'Withdrawal',
-        platinum: -distributePlatinum,
-        gold: -distributeGold,
-        silver: -distributeSilver,
-        copper: -distributeCopper,
-        notes: `Distributed to ${character.name}`,
-        userId,
-      };
+    // Execute in a transaction
+    await dbUtils.executeTransaction(async (client) => {
+      for (const character of activeCharacters) {
+        const entry = {
+          sessionDate: new Date(),
+          transactionType: 'Withdrawal',
+          platinum: -distributePlatinum,
+          gold: -distributeGold,
+          silver: -distributeSilver,
+          copper: -distributeCopper,
+          notes: `Distributed to ${character.name}`,
+          userId,
+        };
 
-      const insertQuery = `
-        INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING *
-      `;
+        const insertQuery = `
+          INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING *
+        `;
 
-      const insertResult = await client.query(insertQuery, [
-        entry.sessionDate,
-        entry.transactionType,
-        entry.platinum,
-        entry.gold,
-        entry.silver,
-        entry.copper,
-        entry.notes
-      ]);
+        const insertResult = await client.query(insertQuery, [
+          entry.sessionDate,
+          entry.transactionType,
+          entry.platinum,
+          entry.gold,
+          entry.silver,
+          entry.copper,
+          entry.notes
+        ]);
 
-      createdEntries.push(insertResult.rows[0]);
-    }
+        createdEntries.push(insertResult.rows[0]);
+      }
+    });
 
-    return createdEntries;
-  });
+    return res.status(200).json(createdEntries);
+  } catch (error) {
+    console.error('Error distributing gold plus party loot:', error);
+    return res.status(500).json({ error: 'Error distributing gold plus party loot' });
+  }
 };
 
 /**
  * Balance currencies by converting coppers to silvers, silvers to gold
  */
 const balance = async (req, res) => {
-  return await dbUtils.executeTransaction(async (client) => {
+  try {
     const token = req.headers.authorization.split(' ')[1];
     const decodedToken = jwt_decode(token);
     const userId = decodedToken.id;
 
     // Get total copper and silver
-    const totalResult = await client.query(
+    const totalResult = await dbUtils.executeQuery(
       'SELECT SUM(copper) AS total_copper, SUM(silver) AS total_silver, SUM(gold) AS total_gold FROM gold'
     );
 
@@ -248,7 +276,7 @@ const balance = async (req, res) => {
 
     // Only create a balance entry if there are actual changes
     if (balanceEntry.gold === 0 && balanceEntry.silver === 0 && balanceEntry.copper === 0) {
-      return { message: 'No balancing needed' };
+      return res.status(200).json({ message: 'No balancing needed' });
     }
 
     // Insert the balance entry
@@ -258,7 +286,7 @@ const balance = async (req, res) => {
       RETURNING *
     `;
 
-    const result = await client.query(query, [
+    const result = await dbUtils.executeQuery(query, [
       balanceEntry.sessionDate,
       balanceEntry.transactionType,
       balanceEntry.platinum,
@@ -268,38 +296,17 @@ const balance = async (req, res) => {
       balanceEntry.notes
     ]);
 
-    return [result.rows[0]];
-  });
+    return res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error balancing currencies:', error);
+    return res.status(500).json({ error: 'Error balancing currencies' });
+  }
 };
 
-// Define the validation rules
-const goldEntriesValidation = {
-  requiredFields: ['goldEntries']
+module.exports = {
+  createGoldEntry,
+  getAllGoldEntries,
+  distributeAllGold,
+  distributePlusPartyLoot,
+  balance
 };
-
-const dateRangeValidation = {
-  requiredFields: ['startDate', 'endDate']
-};
-
-// Create handlers with validation
-exports.createGoldEntry = controllerFactory.createHandler(createGoldEntry, {
-  errorMessage: 'Error creating gold entry',
-  validation: goldEntriesValidation
-});
-
-exports.getAllGoldEntries = controllerFactory.createHandler(getAllGoldEntries, {
-  errorMessage: 'Error fetching gold entries',
-  validation: dateRangeValidation
-});
-
-exports.distributeAllGold = controllerFactory.createHandler(distributeAllGold, {
-  errorMessage: 'Error distributing gold'
-});
-
-exports.distributePlusPartyLoot = controllerFactory.createHandler(distributePlusPartyLoot, {
-  errorMessage: 'Error distributing gold plus party loot'
-});
-
-exports.balance = controllerFactory.createHandler(balance, {
-  errorMessage: 'Error balancing currencies'
-});
