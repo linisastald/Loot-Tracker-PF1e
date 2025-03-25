@@ -11,33 +11,22 @@ import {
   TableCell,
   Paper,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Autocomplete,
-  Grid,
   Box,
   Tooltip,
   CircularProgress,
+  Alert,
 } from '@mui/material';
+import ItemManagementDialog from '../../common/dialogs/ItemManagementDialog';
 
 const UnidentifiedItemsManagement = () => {
   const [unidentifiedItems, setUnidentifiedItems] = useState([]);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
-  const [updatedItem, setUpdatedItem] = useState({});
+  const [selectedItem, setSelectedItem] = useState(null);
   const [itemsMap, setItemsMap] = useState({});
   const [modsMap, setModsMap] = useState({});
-  const [itemOptions, setItemOptions] = useState([]);
-  const [itemsLoading, setItemsLoading] = useState(false);
-  const [itemInputValue, setItemInputValue] = useState('');
-  const [mods, setMods] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
   // Initial data loading
   useEffect(() => {
@@ -83,6 +72,7 @@ const UnidentifiedItemsManagement = () => {
       setUnidentifiedItems(response.data);
     } catch (error) {
       console.error('Error fetching unidentified items:', error);
+      setError('Failed to fetch unidentified items');
     }
   };
 
@@ -91,7 +81,6 @@ const UnidentifiedItemsManagement = () => {
     try {
       // Use the new endpoint
       const response = await api.get(`/loot/items-by-id?ids=${itemIds.join(',')}`);
-      console.log('Items by ID:', response.data);
 
       // Create a map for easier lookups
       const newItemsMap = {};
@@ -102,9 +91,7 @@ const UnidentifiedItemsManagement = () => {
       setItemsMap(newItemsMap);
     } catch (error) {
       console.error('Error fetching items by IDs:', error);
-
       // Fallback to the old method if the new endpoint fails
-      console.log('Falling back to individual item fetches');
       fetchItemsIndividually(itemIds);
     }
   };
@@ -139,7 +126,6 @@ const UnidentifiedItemsManagement = () => {
     try {
       // Use the new endpoint
       const response = await api.get(`/loot/mods-by-id?ids=${modIds.join(',')}`);
-      console.log('Mods by ID:', response.data);
 
       const modsWithDisplayNames = response.data.map(mod => ({
         ...mod,
@@ -153,10 +139,8 @@ const UnidentifiedItemsManagement = () => {
       });
 
       setModsMap(newModsMap);
-      setMods(modsWithDisplayNames);
     } catch (error) {
       console.error('Error fetching mods by IDs:', error);
-
       // Fallback to fetching all mods
       fetchAllMods();
     }
@@ -177,41 +161,32 @@ const UnidentifiedItemsManagement = () => {
       });
 
       setModsMap(newModsMap);
-      setMods(modsWithDisplayNames);
-      console.log('All mods:', modsWithDisplayNames);
     } catch (error) {
       console.error('Error fetching all mods:', error);
     }
   };
 
-  const handleItemSearch = async (searchText) => {
-    if (!searchText || searchText.length < 2) {
-      setItemOptions([]);
-      return;
-    }
-
-    setItemsLoading(true);
+  const handleUpdateSubmit = async (updatedData) => {
     try {
-      const response = await api.get(`/loot/items?query=${searchText}`);
-      console.log('Search results:', response.data);
-      setItemOptions(response.data);
-    } catch (error) {
-      console.error('Error fetching items:', error);
-    } finally {
-      setItemsLoading(false);
-    }
-  };
+      // If spellcraft_dc isn't set but we have the item info, calculate it
+      if ((!updatedData.spellcraft_dc || updatedData.spellcraft_dc === '') && updatedData.itemid) {
+        const selectedItem = itemsMap[updatedData.itemid];
+        if (selectedItem) {
+          const casterLevel = selectedItem.casterlevel || 1;
+          updatedData.spellcraft_dc = 15 + Math.min(casterLevel, 20); // Cap at caster level 20
+        }
+      }
 
-  const handleItemUpdateChange = (field, value) => {
-    setUpdatedItem(prevItem => {
-      if (field === 'modids') {
-        return {...prevItem, [field]: value};
-      }
-      if (['unidentified', 'masterwork', 'type', 'size', 'status', 'whohas'].includes(field)) {
-        return {...prevItem, [field]: value === '' ? null : value};
-      }
-      return {...prevItem, [field]: value};
-    });
+      console.log('Updating item with data:', updatedData);
+      await api.put(`/loot/dm-update/${selectedItem.id}`, updatedData);
+      setUpdateDialogOpen(false);
+      setSuccess('Item updated successfully');
+      // Refresh the list
+      fetchUnidentifiedItems();
+    } catch (error) {
+      console.error('Error updating item', error);
+      setError('Failed to update item');
+    }
   };
 
   const handleIdentify = async (item) => {
@@ -225,52 +200,12 @@ const UnidentifiedItemsManagement = () => {
       };
 
       await api.put(`/loot/dm-update/${item.id}`, updatedData);
-
+      setSuccess('Item identified successfully');
       // Refresh the list
       fetchUnidentifiedItems();
     } catch (error) {
       console.error('Error identifying item:', error);
-    }
-  };
-
-  const handleUpdateSubmit = async () => {
-    try {
-      // If spellcraft_dc isn't set but we have the item info, calculate it
-      let spellcraftDC = updatedItem.spellcraft_dc;
-      if ((!spellcraftDC || spellcraftDC === '') && updatedItem.itemid) {
-        const selectedItem = itemsMap[updatedItem.itemid];
-        if (selectedItem) {
-          const casterLevel = selectedItem.casterlevel || 1;
-          spellcraftDC = 15 + Math.min(casterLevel, 20); // Cap at caster level 20
-        }
-      }
-
-      const preparedData = {
-        session_date: updatedItem.session_date || null,
-        quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
-        name: updatedItem.name || null,
-        unidentified: updatedItem.unidentified === '' ? null : updatedItem.unidentified,
-        masterwork: updatedItem.masterwork === '' ? null : updatedItem.masterwork,
-        type: updatedItem.type || null,
-        size: updatedItem.size || null,
-        status: updatedItem.status || null,
-        itemid: updatedItem.itemid !== '' ? parseInt(updatedItem.itemid, 10) : null,
-        charges: updatedItem.charges !== '' ? parseInt(updatedItem.charges, 10) : null,
-        value: updatedItem.value !== '' ? parseInt(updatedItem.value, 10) : null,
-        notes: updatedItem.notes || null,
-        spellcraft_dc: spellcraftDC !== '' ? parseInt(spellcraftDC, 10) : null,
-        dm_notes: updatedItem.dm_notes || null,
-        modids: updatedItem.modids, // Ensure modids is passed through
-      };
-
-      console.log('Updating item with data:', preparedData);
-      await api.put(`/loot/dm-update/${updatedItem.id}`, preparedData);
-      setUpdateDialogOpen(false);
-
-      // Refresh the list
-      fetchUnidentifiedItems();
-    } catch (error) {
-      console.error('Error updating item', error);
+      setError('Failed to identify item');
     }
   };
 
@@ -354,6 +289,9 @@ const UnidentifiedItemsManagement = () => {
         Manage items that have been marked as unidentified. Link them to the actual items they represent and set spellcraft DCs.
       </Typography>
 
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
+
       {loading ? (
         <Box display="flex" justifyContent="center" p={3}>
           <CircularProgress />
@@ -378,7 +316,7 @@ const UnidentifiedItemsManagement = () => {
                   key={item.id}
                   hover
                   onClick={() => {
-                    setUpdatedItem(item);
+                    setSelectedItem(item);
                     setUpdateDialogOpen(true);
                   }}
                   sx={{ cursor: 'pointer' }}
@@ -416,197 +354,13 @@ const UnidentifiedItemsManagement = () => {
         </TableContainer>
       )}
 
-      <Dialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Update Item</DialogTitle>
-        <DialogContent>
-          <TextField
-            label="Session Date"
-            type="date"
-            fullWidth
-            value={updatedItem.session_date ? updatedItem.session_date.split('T')[0] : ''}
-            onChange={(e) => handleItemUpdateChange('session_date', e.target.value)}
-            margin="normal"
-            InputLabelProps={{
-              shrink: true,
-            }}
-          />
-          <TextField
-            label="Quantity"
-            type="number"
-            fullWidth
-            value={updatedItem.quantity || ''}
-            onChange={(e) => handleItemUpdateChange('quantity', e.target.value)}
-            margin="normal"
-          />
-          <TextField
-            label="Name"
-            fullWidth
-            value={updatedItem.name || ''}
-            onChange={(e) => handleItemUpdateChange('name', e.target.value)}
-            margin="normal"
-          />
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Unidentified</InputLabel>
-            <Select
-              value={updatedItem.unidentified === null ? '' : updatedItem.unidentified}
-              onChange={(e) => handleItemUpdateChange('unidentified', e.target.value === '' ? null : e.target.value)}
-            >
-              <MenuItem value="">None</MenuItem>
-              <MenuItem value={true}>Yes</MenuItem>
-              <MenuItem value={false}>No</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Masterwork</InputLabel>
-            <Select
-              value={updatedItem.masterwork === null ? '' : updatedItem.masterwork}
-              onChange={(e) => handleItemUpdateChange('masterwork', e.target.value === '' ? null : e.target.value)}
-            >
-              <MenuItem value="">None</MenuItem>
-              <MenuItem value={true}>Yes</MenuItem>
-              <MenuItem value={false}>No</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Type</InputLabel>
-            <Select
-              value={updatedItem.type || ''}
-              onChange={(e) => handleItemUpdateChange('type', e.target.value === '' ? null : e.target.value)}
-            >
-              <MenuItem value="">None</MenuItem>
-              <MenuItem value="weapon">Weapon</MenuItem>
-              <MenuItem value="armor">Armor</MenuItem>
-              <MenuItem value="magic">Magic</MenuItem>
-              <MenuItem value="gear">Gear</MenuItem>
-              <MenuItem value="trade good">Trade Good</MenuItem>
-              <MenuItem value="other">Other</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Size</InputLabel>
-            <Select
-              value={updatedItem.size || ''}
-              onChange={(e) => handleItemUpdateChange('size', e.target.value === '' ? null : e.target.value)}
-            >
-              <MenuItem value="">None</MenuItem>
-              <MenuItem value="Fine">Fine</MenuItem>
-              <MenuItem value="Diminutive">Diminutive</MenuItem>
-              <MenuItem value="Tiny">Tiny</MenuItem>
-              <MenuItem value="Small">Small</MenuItem>
-              <MenuItem value="Medium">Medium</MenuItem>
-              <MenuItem value="Large">Large</MenuItem>
-              <MenuItem value="Huge">Huge</MenuItem>
-              <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-              <MenuItem value="Colossal">Colossal</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Status</InputLabel>
-            <Select
-              value={updatedItem.status || ''}
-              onChange={(e) => handleItemUpdateChange('status', e.target.value === '' ? null : e.target.value)}
-            >
-              <MenuItem value="">None</MenuItem>
-              <MenuItem value="Pending Sale">Pending Sale</MenuItem>
-              <MenuItem value="Kept Self">Kept Self</MenuItem>
-              <MenuItem value="Kept Party">Kept Party</MenuItem>
-              <MenuItem value="Trashed">Trashed</MenuItem>
-              <MenuItem value="Sold">Sold</MenuItem>
-            </Select>
-          </FormControl>
-          <Autocomplete
-            disablePortal
-            options={itemOptions}
-            getOptionLabel={(option) => {
-              // Handle various possible option formats
-              if (typeof option === 'string') return option;
-              return option?.name || '';
-            }}
-            inputValue={itemInputValue}
-            onInputChange={(_, newInputValue) => {
-              setItemInputValue(newInputValue);
-              handleItemSearch(newInputValue);
-            }}
-            onChange={(_, newValue) => {
-              if (newValue && typeof newValue === 'object') {
-                handleItemUpdateChange('itemid', newValue.id);
-              } else {
-                handleItemUpdateChange('itemid', null);
-              }
-            }}
-            loading={itemsLoading}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Real Item"
-                fullWidth
-                margin="normal"
-                helperText={updatedItem.itemid ? `Selected item ID: ${updatedItem.itemid}` : 'No item selected'}
-              />
-            )}
-            noOptionsText="Type to search items"
-            filterOptions={(x) => x} // Disable built-in filtering
-          />
-          <Autocomplete
-            multiple
-            options={mods}
-            getOptionLabel={(option) => option.displayName}
-            value={updatedItem.modids ? mods.filter(mod => updatedItem.modids.includes(mod.id)) : []}
-            onChange={(_, newValue) => handleItemUpdateChange('modids', newValue.map(v => v.id))}
-            renderInput={(params) => <TextField {...params} label="Mods" fullWidth margin="normal"/>}
-          />
-          <TextField
-            label="Charges"
-            type="number"
-            fullWidth
-            value={updatedItem.charges || ''}
-            onChange={(e) => handleItemUpdateChange('charges', e.target.value)}
-            margin="normal"
-          />
-          <TextField
-            label="Value"
-            type="number"
-            fullWidth
-            value={updatedItem.value || ''}
-            onChange={(e) => handleItemUpdateChange('value', e.target.value)}
-            margin="normal"
-          />
-          <TextField
-            label="Notes"
-            fullWidth
-            value={updatedItem.notes || ''}
-            onChange={(e) => handleItemUpdateChange('notes', e.target.value)}
-            margin="normal"
-            multiline
-            rows={2}
-          />
-          <TextField
-            label="Spellcraft DC"
-            type="number"
-            fullWidth
-            value={updatedItem.spellcraft_dc || ''}
-            onChange={(e) => handleItemUpdateChange('spellcraft_dc', e.target.value)}
-            margin="normal"
-          />
-          <TextField
-            label="DM Notes"
-            fullWidth
-            value={updatedItem.dm_notes || ''}
-            onChange={(e) => handleItemUpdateChange('dm_notes', e.target.value)}
-            margin="normal"
-            multiline
-            rows={2}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleUpdateSubmit} color="primary" variant="contained">
-            Update Item
-          </Button>
-          <Button onClick={() => setUpdateDialogOpen(false)} color="secondary" variant="contained">
-            Cancel
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ItemManagementDialog
+        open={updateDialogOpen}
+        onClose={() => setUpdateDialogOpen(false)}
+        item={selectedItem}
+        onSave={handleUpdateSubmit}
+        title="Update Unidentified Item"
+      />
     </>
   );
 };
