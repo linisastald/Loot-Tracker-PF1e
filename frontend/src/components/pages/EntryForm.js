@@ -94,8 +94,13 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           options={itemSuggestions}
           value={localEntry.name || ''}
           inputValue={localEntry.name || ''}
-          onInputChange={(event, newInputValue) => {
+          onInputChange={async (event, newInputValue) => {
             handleChange('name', newInputValue);
+            // Fetch items when typing
+            if (newInputValue.length >= 2) {
+              const fetchedItems = await fetchItemNames(newInputValue);
+              setItemSuggestions(fetchedItems);
+            }
           }}
           onChange={(event, newValue) => {
             if (newValue) {
