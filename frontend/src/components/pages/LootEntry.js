@@ -14,7 +14,7 @@ import {
   Box,
   Alert
 } from '@mui/material';
-import EntryForm from './components/EntryForm';
+import EntryForm from './EntryForm';
 
 const LootEntry = () => {
   const {
