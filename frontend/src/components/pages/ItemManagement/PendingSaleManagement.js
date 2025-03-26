@@ -54,9 +54,15 @@ const PendingSaleManagement = () => {
     try {
       setLoading(true);
       const response = await api.get(`/loot/pending-sale`);
-      const itemsData = response.data || [];
-      setPendingItems(itemsData);
-      calculatePendingSaleSummary(itemsData);
+      // Check for proper data structure
+      if (response.data && Array.isArray(response.data.items)) {
+        setPendingItems(response.data.items);
+        calculatePendingSaleSummary(response.data.items);
+      } else {
+        console.error('Unexpected data structure:', response.data);
+        setPendingItems([]);
+        setError('Invalid data structure received from server');
+      }
       setLoading(false);
     } catch (error) {
       console.error('Error fetching pending items:', error);
@@ -85,25 +91,38 @@ const PendingSaleManagement = () => {
   const fetchMods = async () => {
     try {
       const response = await api.get(`/loot/mods`);
-      const modsWithDisplayNames = response.data.map(mod => ({
-        ...mod,
-        displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
-      }));
+      if (response.data && Array.isArray(response.data.mods)) {
+        const modsWithDisplayNames = response.data.mods.map(mod => ({
+          ...mod,
+          displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
+        }));
 
-      setMods(modsWithDisplayNames);
+        setMods(modsWithDisplayNames);
 
-      // Create a map for easier lookups
-      const newModsMap = {};
-      modsWithDisplayNames.forEach(mod => {
-        newModsMap[mod.id] = mod;
-      });
-      setModsMap(newModsMap);
+        // Create a map for easier lookups
+        const newModsMap = {};
+        modsWithDisplayNames.forEach(mod => {
+          newModsMap[mod.id] = mod;
+        });
+        setModsMap(newModsMap);
+      } else {
+        console.error('Unexpected mods data structure:', response.data);
+        setMods([]);
+      }
     } catch (error) {
       console.error('Error fetching mods:', error);
+      setMods([]);
     }
   };
 
   const calculatePendingSaleSummary = (items) => {
+    if (!Array.isArray(items)) {
+      console.error('Items is not an array:', items);
+      setPendingSaleTotal(0);
+      setPendingSaleCount(0);
+      return;
+    }
+
     const pendingItems = items.filter(item => item.status === 'Pending Sale' || item.status === null);
 
     // Use the imported utility function to calculate total
@@ -125,7 +144,7 @@ const PendingSaleManagement = () => {
       // Convert to currency units
       const gold = Math.floor(totalValue);
       const silver = Math.floor((totalValue - gold) * 10);
-      const copper = Math.floor(((totalValue - gold) * 100) % 10);
+      const copper = Math.floor(((totalValue * 10) % 1) * 10);
 
       const goldEntry = {
         sessionDate: new Date(),

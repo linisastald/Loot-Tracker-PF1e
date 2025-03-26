@@ -76,9 +76,16 @@ const UnidentifiedItemsManagement = () => {
     try {
       const response = await api.get(`/loot/unidentified`);
       console.log('Unidentified items:', response.data);
-      setUnidentifiedItems(response.data);
+      if (response.data && Array.isArray(response.data.items)) {
+        setUnidentifiedItems(response.data.items);
+      } else {
+        console.error('Unexpected data structure:', response.data);
+        setUnidentifiedItems([]);
+        setError('Invalid data structure received from server');
+      }
     } catch (error) {
       console.error('Error fetching unidentified items:', error);
+      setUnidentifiedItems([]);
       setError('Failed to fetch unidentified items');
     }
   };
@@ -264,7 +271,7 @@ const UnidentifiedItemsManagement = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {unidentifiedItems.map((item) => (
+              {Array.isArray(unidentifiedItems) ? unidentifiedItems.map((item) => (
                 <TableRow
                   key={item.id}
                   hover
@@ -301,7 +308,7 @@ const UnidentifiedItemsManagement = () => {
                     </Tooltip>
                   </TableCell>
                 </TableRow>
-              ))}
+              )) : null}
             </TableBody>
           </Table>
         </TableContainer>

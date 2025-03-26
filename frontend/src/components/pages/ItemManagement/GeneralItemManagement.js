@@ -117,6 +117,9 @@ const GeneralItemManagement = () => {
   };
 
   const sortedItems = React.useMemo(() => {
+    if (!filteredItems || !Array.isArray(filteredItems)) {
+      return [];
+    }
     let sortableItems = [...filteredItems];
     if (sortConfig.key !== null) {
       sortableItems.sort((a, b) => {
