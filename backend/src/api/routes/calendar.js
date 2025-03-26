@@ -5,6 +5,7 @@ const verifyToken = require('../../middleware/auth');
 
 router.get('/current-date', verifyToken, calendarController.getCurrentDate);
 router.post('/next-day', verifyToken, calendarController.advanceDay);
+router.post('/set-current-date', verifyToken, calendarController.setCurrentDate);
 router.get('/notes', verifyToken, calendarController.getNotes);
 router.post('/notes', verifyToken, calendarController.saveNote);
 

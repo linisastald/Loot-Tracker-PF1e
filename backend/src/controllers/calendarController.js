@@ -62,12 +62,6 @@ const setCurrentDate = async (req, res) => {
       );
     }
 
-    // Add a calendar event for the date change
-    await client.query(
-      'INSERT INTO golarion_calendar_events (year, month, day, event_type, description) VALUES ($1, $2, $3, $4, $5)',
-      [year, month, day, 'DATE_CHANGE', 'Date was manually set']
-    );
-
     controllerFactory.sendSuccessResponse(res, { year, month, day }, 'Current date set successfully');
   });
 };
@@ -113,12 +107,6 @@ const advanceDay = async (req, res) => {
     await client.query(
       'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
       [year, month, day]
-    );
-
-    // Log the date change event
-    await client.query(
-      'INSERT INTO golarion_calendar_events (year, month, day, event_type, description) VALUES ($1, $2, $3, $4, $5)',
-      [year, month, day, 'DATE_ADVANCE', 'Day advanced']
     );
 
     controllerFactory.sendSuccessResponse(res, { year, month, day }, 'Date advanced successfully');
@@ -176,28 +164,6 @@ const saveNote = async (req, res) => {
 };
 
 /**
- * Get calendar events
- */
-const getCalendarEvents = async (req, res) => {
-  const { startYear, startMonth, startDay, endYear, endMonth, endDay } = req.query;
-
-  // If date range is provided, validate and use it
-  let query = 'SELECT * FROM golarion_calendar_events';
-  const params = [];
-
-  if (startYear && startMonth !== undefined && startDay && endYear && endMonth !== undefined && endDay) {
-    query += ` WHERE (year > $1 OR (year = $1 AND month > $2) OR (year = $1 AND month = $2 AND day >= $3))
-               AND (year < $4 OR (year = $4 AND month < $5) OR (year = $4 AND month = $5 AND day <= $6))`;
-    params.push(startYear, startMonth, startDay, endYear, endMonth, endDay);
-  }
-
-  query += ' ORDER BY year, month, day';
-
-  const result = await dbUtils.executeQuery(query, params);
-  controllerFactory.sendSuccessResponse(res, result.rows, 'Calendar events retrieved');
-};
-
-/**
  * Helper function to get the number of days in a month
  * @param {number} month - The month (0-11)
  * @returns {number} - The number of days in the month
@@ -238,9 +204,5 @@ module.exports = {
   saveNote: controllerFactory.createHandler(saveNote, {
     errorMessage: 'Error saving calendar note',
     validation: saveNoteValidation
-  }),
-
-  getCalendarEvents: controllerFactory.createHandler(getCalendarEvents, {
-    errorMessage: 'Error getting calendar events'
   })
 };
