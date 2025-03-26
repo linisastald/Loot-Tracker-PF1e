@@ -89,25 +89,32 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
         />
       </Grid>
       <Grid item xs={12} md={6}>
-              <Autocomplete
-          freeSolo
-          value={localEntry.name || ''}
+          <Autocomplete
           options={itemSuggestions}
-          filterOptions={(options, { inputValue }) =>
-            options.filter(option =>
-              typeof option === 'string'
-                ? option.toLowerCase().includes(inputValue.toLowerCase())
-                : option.name.toLowerCase().includes(inputValue.toLowerCase())
-            )
-          }
-          getOptionLabel={(option) => {
-            // Handle both string options and object options
-            return typeof option === 'string' ? option : (option.name || '');
-          }}
-          onChange={handleItemSelect}
+          value={localEntry.name || null}
+          inputValue={localEntry.name || ''}
           onInputChange={(event, newInputValue) => {
             handleChange('name', newInputValue);
           }}
+          onChange={(event, newValue) => {
+              if (newValue) {
+                  handleChange('name', typeof newValue === 'string' ? newValue : newValue.name);
+                  handleChange('itemId', typeof newValue === 'object' ? newValue.id : null);
+                  handleChange('type', typeof newValue === 'object' ? newValue.type : '');
+                  handleChange('value', typeof newValue === 'object' ? newValue.value : null);
+              } else {
+                  handleChange('name', '');
+                  handleChange('itemId', null);
+                  handleChange('type', '');
+                  handleChange('value', null);
+              }
+          }}
+          filterOptions={(options, {inputValue}) =>
+              options.filter(option =>
+                  option.name.toLowerCase().includes(inputValue.toLowerCase())
+              )
+          }
+          getOptionLabel={(option) => option.name}
           renderInput={(params) => (
             <TextField
               {...params}
