@@ -12,6 +12,25 @@ const dotenv = require('dotenv');
 const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 
+// Enhanced error handling
+process.on('uncaughtException', (error) => {
+  logger.error('UNCAUGHT EXCEPTION', {
+    message: error.message,
+    stack: error.stack,
+    name: error.name
+  });
+  console.error('UNCAUGHT EXCEPTION:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('UNHANDLED REJECTION', {
+    reason: reason instanceof Error ? reason.message : reason,
+    promise
+  });
+  console.error('UNHANDLED REJECTION:', reason);
+});
+
 // Load environment variables
 dotenv.config();
 
@@ -19,13 +38,23 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Configure CORS
-app.use(cors({
-  origin: ['http://192.168.0.64:3000', 'http://localhost:3000'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
-}));
+// Middleware for logging unhandled errors in route handlers
+const errorHandler = (err, req, res, next) => {
+  logger.error('Unhandled Error', {
+    message: err.message,
+    stack: err.stack,
+    method: req.method,
+    path: req.path
+  });
+  console.error('Unhandled Error:', err);
+
+  // Send error response
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+};
 
 // Detect host IP for Docker networking
 let hostIp;
@@ -38,7 +67,16 @@ try {
 }
 process.env.HOST_IP = hostIp;
 
-// Apply security middleware with appropriate settings for development
+// Configure CORS
+const corsOptions = {
+  origin: ['http://192.168.0.64:3000', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
+};
+app.use(cors(corsOptions));
+
+// Security middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   contentSecurityPolicy: false
@@ -56,29 +94,6 @@ const limiter = rateLimit({
       success: false,
       message: 'Too many requests, please try again later.'
     });
-
-// Make the CSRF middleware configurable
-const optionalCsrfProtection = (req, res, next) => {
-  // Skip CSRF for now to get the app working
-  return next();
-
-  // Once everything is working, you can enable this:
-  // if (req.path === '/auth/login' || req.path === '/auth/register') {
-  //   return next();
-  // }
-  // csrfProtection(req, res, next);
-};
-
-// Basic route
-app.get('/', (req, res) => {
-  res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
-});
-
-// CSRF Token route - don't apply CSRF protection to the CSRF token route itself
-app.get('/api/csrf-token', (req, res) => {
-  // Generate a token even without CSRF middleware for now
-  res.success({ csrfToken: 'temporary-token-for-development' });
-});
   }
 });
 app.use(limiter);
@@ -87,14 +102,69 @@ app.use(limiter);
 app.use(bodyParser.json());
 app.use(cookieParser());
 
-// Add API response middleware - adds standardized response methods to res object
+// Add API response middleware
 app.use(apiResponseMiddleware);
 
-// CSRF protection - Make it optional for dev environment
+// CSRF configuration (optional for now)
 const csrfProtection = csrf({
   cookie: {
     httpOnly: true,
-    sameSite: 'lax', // Changed from 'Strict' to 'lax' for development
-    // secure: process.env.NODE_ENV === 'production'
+    sameSite: 'lax',
   }
 });
+
+// Route imports
+const authRoutes = require('./src/api/routes/auth');
+const lootRoutes = require('./src/api/routes/loot');
+const userRoutes = require('./src/api/routes/user');
+const goldRoutes = require('./src/api/routes/gold');
+const discordRoutes = require('./src/api/routes/discord');
+const settingsRoutes = require('./src/api/routes/settings');
+const consumablesRoutes = require('./src/api/routes/consumables');
+const calendarRoutes = require('./src/api/routes/calendar');
+const soldRoutes = require('./src/api/routes/sold');
+
+// Routes
+app.get('/', (req, res) => {
+  res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
+});
+
+// CSRF Token route (simplified for now)
+app.get('/api/csrf-token', (req, res) => {
+  res.success({ csrfToken: 'temporary-token-for-development' });
+});
+
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/loot', lootRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/gold', goldRoutes);
+app.use('/api/discord', discordRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/consumables', consumablesRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/sold', soldRoutes);
+
+// Global error handler
+app.use(errorHandler);
+
+// Start server
+const server = app.listen(port, () => {
+  logger.info(`Server running on port ${port}`);
+  console.log(`Server running on port ${port}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    logger.info('HTTP server closed');
+    // Close database connection
+    pool.end(() => {
+      logger.info('Database pool closed');
+      process.exit(0);
+    });
+  });
+});
+
+module.exports = app;
