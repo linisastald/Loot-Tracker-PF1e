@@ -55,8 +55,11 @@ const Consumables = () => {
     try {
       const type = name.toLowerCase().includes('potion of') ? 'potion' :
                    name.toLowerCase().includes('scroll of') ? 'scroll' : 'wand';
-      await api.post(`/consumables/use`, { itemid, type });
-      fetchConsumables();
+      const response = await api.post(`/consumables/use`, { itemid, type });
+      // Add a small delay to ensure server processes the update before fetching
+      setTimeout(() => {
+        fetchConsumables();
+      }, 300);
     } catch (error) {
       console.error('Error using consumable:', error);
     }
