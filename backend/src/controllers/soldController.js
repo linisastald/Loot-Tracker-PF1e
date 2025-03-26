@@ -95,7 +95,7 @@ const getDetailsByDate = async (req, res) => {
         l.quantity,
         l.name,
         s.soldfor,
-        s.notes
+        l.notes
       FROM sold s
       JOIN loot l ON s.lootid = l.id
       WHERE s.soldon::date = $1::date
