@@ -89,25 +89,30 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
         />
       </Grid>
       <Grid item xs={12} md={6}>
-        <Autocomplete
+              <Autocomplete
           freeSolo
           value={localEntry.name || ''}
           options={itemSuggestions}
+          filterOptions={(options, { inputValue }) =>
+            options.filter(option =>
+              typeof option === 'string'
+                ? option.toLowerCase().includes(inputValue.toLowerCase())
+                : option.name.toLowerCase().includes(inputValue.toLowerCase())
+            )
+          }
           getOptionLabel={(option) => {
             // Handle both string options and object options
             return typeof option === 'string' ? option : (option.name || '');
           }}
           onChange={handleItemSelect}
+          onInputChange={(event, newInputValue) => {
+            handleChange('name', newInputValue);
+          }}
           renderInput={(params) => (
             <TextField
               {...params}
               label="Item Name"
               fullWidth
-              onChange={(e) => {
-                if (e.target.value !== undefined) {
-                  handleChange('name', e.target.value);
-                }
-              }}
             />
           )}
         />

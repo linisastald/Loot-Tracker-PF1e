@@ -20,10 +20,17 @@ export const fetchInitialData = async (setItemOptions, setActiveCharacterId) => 
 
 export const fetchItemNames = async (query = '') => {
   try {
-    const response = await api.get(`/loot/items`, {
-      params: { query }
-    });
-    return response.data;
+    // If query is empty, return all items
+    const params = query.trim() ? { query } : {};
+    const response = await api.get(`/loot/items`, { params });
+
+    // Ensure we always return an array of objects with name and id
+    return response.data.map(item => ({
+      name: item.name,
+      id: item.id,
+      type: item.type,
+      value: item.value
+    }));
   } catch (error) {
     console.error('Error fetching item names:', error);
     return [];
