@@ -75,18 +75,16 @@ const EntryForm = ({ entry, index, itemOptions, onRemove, onChange }) => {
       <Grid item xs={12} md={6}>
         <Autocomplete
           freeSolo
-          inputValue={inputValue}
+          inputValue={inputValue || localEntry.name || ''}
           onInputChange={handleInputChange}
           onChange={handleItemSelect}
           options={itemSuggestions}
-          getOptionLabel={(option) => option.name || ''}
+          getOptionLabel={(option) => typeof option === 'string' ? option : (option.name || '')}
           renderInput={(params) => (
             <TextField
               {...params}
               label="Item Name"
               fullWidth
-              value={localEntry.name}
-              onChange={(e) => handleChange('name', e.target.value)}
             />
           )}
         />
