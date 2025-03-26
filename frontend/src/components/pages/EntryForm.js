@@ -216,15 +216,17 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           onChange={(e) => handleChange('notes', e.target.value)}
         />
       </Grid>
-      <Grid item xs={12} md={3}>
-        <TextField
-          label="Charges"
-          type="number"
-          fullWidth
-          value={localEntry.charges || ''}
-          onChange={(e) => handleChange('charges', e.target.value)}
-        />
-      </Grid>
+      {localEntry.name && localEntry.name.toLowerCase().startsWith('wand of ') && (
+        <Grid item xs={12} md={3}>
+          <TextField
+            label="Charges"
+            type="number"
+            fullWidth
+            value={localEntry.charges || ''}
+            onChange={(e) => handleChange('charges', e.target.value)}
+          />
+        </Grid>
+      )}
       <Grid item xs={12} md={3}>
         <FormControlLabel
           control={
