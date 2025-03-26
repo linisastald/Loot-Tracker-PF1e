@@ -19,8 +19,11 @@ import { Delete as DeleteIcon } from '@mui/icons-material';
 
 const EntryForm = ({ entry, index, itemOptions, onRemove, onChange }) => {
   const [localEntry, setLocalEntry] = useState(entry.data);
-  const [inputValue, setInputValue] = useState('');
   const [itemSuggestions, setItemSuggestions] = useState([]);
+
+  useEffect(() => {
+    setLocalEntry(entry.data);
+  }, [entry.data]);
 
   useEffect(() => {
     if (itemOptions) {
@@ -33,17 +36,26 @@ const EntryForm = ({ entry, index, itemOptions, onRemove, onChange }) => {
     onChange(index, { [field]: value });
   };
 
-  const handleItemSelect = (event, item) => {
-    if (item) {
-      handleChange('name', item.name);
-      handleChange('itemId', item.id);
-      handleChange('type', item.type || '');
-      handleChange('value', item.value);
+  const handleItemSelect = (event, newValue) => {
+    if (!newValue) {
+      // If clearing the field
+      handleChange('name', '');
+      handleChange('itemId', null);
+      handleChange('type', '');
+      handleChange('value', null);
+      return;
     }
-  };
 
-  const handleInputChange = (event, newInputValue) => {
-    setInputValue(newInputValue);
+    if (typeof newValue === 'string') {
+      // Just update the name if a string is provided
+      handleChange('name', newValue);
+    } else {
+      // Full item object from autocomplete
+      handleChange('name', newValue.name);
+      handleChange('itemId', newValue.id);
+      handleChange('type', newValue.type || '');
+      handleChange('value', newValue.value);
+    }
   };
 
   const renderItemForm = () => (
@@ -75,16 +87,23 @@ const EntryForm = ({ entry, index, itemOptions, onRemove, onChange }) => {
       <Grid item xs={12} md={6}>
         <Autocomplete
           freeSolo
-          inputValue={inputValue || localEntry.name || ''}
-          onInputChange={handleInputChange}
-          onChange={handleItemSelect}
+          value={localEntry.name || ''}
           options={itemSuggestions}
-          getOptionLabel={(option) => typeof option === 'string' ? option : (option.name || '')}
+          getOptionLabel={(option) => {
+            // Handle both string options and object options
+            return typeof option === 'string' ? option : (option.name || '');
+          }}
+          onChange={handleItemSelect}
           renderInput={(params) => (
             <TextField
               {...params}
               label="Item Name"
               fullWidth
+              onChange={(e) => {
+                if (e.target.value !== undefined) {
+                  handleChange('name', e.target.value);
+                }
+              }}
             />
           )}
         />
