@@ -224,16 +224,44 @@ const PendingSaleManagement = () => {
         return;
       }
 
-      const response = await api.post('/loot/sell-selected', { itemsToSell: selectedPendingItems });
-      if (response.status === 200) {
-        setSuccess('Successfully sold selected items.');
+      // Check if all selected items are valid (need to be unidentified and have a value)
+      const validItems = pendingItems.filter(item =>
+        selectedPendingItems.includes(item.id) &&
+        item.unidentified !== true &&
+        item.value !== null
+      );
+
+      if (validItems.length === 0) {
+        setError('None of the selected items can be sold. Items must be identified and have a value.');
+        setLoading(false);
+        return;
+      }
+
+      // Only send valid item IDs to the backend
+      const validItemIds = validItems.map(item => item.id);
+      const response = await api.post('/loot/sell-selected', { itemsToSell: validItemIds });
+
+      if (response.data && response.data.success) {
+        const soldCount = response.data.sold?.count || 0;
+        const totalValue = response.data.sold?.total || 0;
+        const skippedCount = response.data.skipped?.count || 0;
+
+        let successMessage = `Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`;
+        if (skippedCount > 0) {
+          successMessage += ` (${skippedCount} items were skipped)`;
+        }
+
+        setSuccess(successMessage);
         setSelectedPendingItems([]);
         fetchPendingItems();
       }
       setLoading(false);
     } catch (error) {
       console.error('Error selling selected items:', error);
-      setError('Failed to sell items.');
+
+      // Extract more specific error message if available
+      const errorMessage = error.message || 'Failed to sell items.';
+      setError(errorMessage);
       setLoading(false);
     }
   };
