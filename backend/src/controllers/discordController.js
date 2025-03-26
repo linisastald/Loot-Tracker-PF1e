@@ -41,16 +41,40 @@ const sendMessage = async (req, res) => {
     throw controllerFactory.createValidationError('Discord channel ID is not configured');
   }
 
-  // Prepare the message payload
+  // Fix: Properly prepare the message payload
+  // The issue is that tasks.js is sending an array of embed objects, but we need a single object with embeds array
   const payload = {};
   if (content) {
     payload.content = content;
   }
-  if (embeds && embeds.length > 0) {
-    payload.embeds = embeds;
+
+  // Fix: Process embeds correctly - if we receive an array of embed objects, we need to flatten it
+  if (embeds && Array.isArray(embeds)) {
+    // Check if embeds is already an array of Discord embed objects
+    if (embeds.some(embed => embed.embeds)) {
+      // Extract and flatten embeds from the array of objects containing embeds
+      payload.embeds = embeds.reduce((acc, item) => {
+        if (item.embeds && Array.isArray(item.embeds)) {
+          return [...acc, ...item.embeds];
+        }
+        return acc;
+      }, []);
+    } else {
+      // Already a proper array of embed objects
+      payload.embeds = embeds;
+    }
   }
 
   try {
+    // Log the actual payload being sent for debugging
+    logger.info('Sending Discord message payload:', {
+      channelId: discord_channel_id,
+      payloadStructure: {
+        hasContent: Boolean(payload.content),
+        embedsCount: payload.embeds ? payload.embeds.length : 0
+      }
+    });
+
     // Send the message
     const response = await axios.post(
       `https://discord.com/api/channels/${discord_channel_id}/messages`,
@@ -78,7 +102,8 @@ const sendMessage = async (req, res) => {
     if (error.response && error.response.data) {
       logger.error('Discord API error:', {
         status: error.response.status,
-        error: error.response.data
+        error: error.response.data,
+        payload: JSON.stringify(payload) // Log the payload for debugging
       });
 
       // Handle specific Discord error codes
@@ -88,6 +113,8 @@ const sendMessage = async (req, res) => {
         throw controllerFactory.createNotFoundError('Discord channel not found');
       } else if (error.response.status === 429) {
         throw controllerFactory.createValidationError('Rate limited by Discord API, please try again later');
+      } else if (error.response.status === 400) {
+        throw controllerFactory.createValidationError(`Bad request: ${JSON.stringify(error.response.data)}`);
       }
     }
 
