@@ -33,7 +33,10 @@ const CharacterLootLedger = () => {
       setLoading(true);
       const response = await api.get('/loot/character-ledger');
       console.log('API response:', response.data); // Log the raw API response
-      const activeCharacterData = response.data
+      if (!response.data.characters || !Array.isArray(response.data.characters)) {
+        throw new Error('Invalid response format: characters array not found');
+      }
+      const activeCharacterData = response.data.characters
         .filter(character => character.active)
         .map(character => ({
           ...character,
