@@ -53,11 +53,15 @@ const PendingSaleManagement = () => {
   const fetchPendingItems = async () => {
     try {
       setLoading(true);
+      console.log('Fetching pending items...');
       const response = await api.get(`/loot/pending-sale`);
+      console.log('Response:', response);
+
       // Check for proper data structure
       if (response.data && Array.isArray(response.data.items)) {
         setPendingItems(response.data.items);
         calculatePendingSaleSummary(response.data.items);
+        console.log('Pending items set:', response.data.items.length);
       } else {
         console.error('Unexpected data structure:', response.data);
         setPendingItems([]);
@@ -136,30 +140,16 @@ const PendingSaleManagement = () => {
   const handleConfirmSale = async () => {
     try {
       setLoading(true);
-      await api.put(`/loot/confirm-sale`, {});
+      const response = await api.put(`/loot/confirm-sale`, {});
 
-      // We already have the total from our summary calculation
-      const totalValue = pendingSaleTotal;
+      if (response.data && response.data.success) {
+        const soldCount = response.data.sold?.count || 0;
+        const totalValue = response.data.sold?.total || 0;
 
-      // Convert to currency units
-      const gold = Math.floor(totalValue);
-      const silver = Math.floor((totalValue - gold) * 10);
-      const copper = Math.floor(((totalValue * 10) % 1) * 10);
-
-      const goldEntry = {
-        sessionDate: new Date(),
-        transactionType: 'Sale',
-        platinum: 0,
-        gold,
-        silver,
-        copper,
-        notes: 'Sale of all pending items',
-      };
-
-      await api.post(`/gold`, { goldEntries: [goldEntry] });
-
-      setSuccess(`Successfully sold ${pendingSaleCount} items for ${pendingSaleTotal.toFixed(2)} gold.`);
-      fetchPendingItems();
+        setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`);
+        // Refresh data
+        await fetchPendingItems();
+      }
       setLoading(false);
     } catch (error) {
       console.error('Error confirming sale', error);
@@ -179,10 +169,14 @@ const PendingSaleManagement = () => {
       }
 
       const response = await api.post('/loot/sell-up-to', { amount });
-      if (response.status === 200) {
-        setSuccess(`Successfully sold items up to ${amount} gold.`);
+      if (response.data && response.data.success) {
+        const soldCount = response.data.sold?.count || 0;
+        const totalValue = response.data.sold?.total || 0;
+
+        setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`);
         setSellUpToAmount('');
-        fetchPendingItems();
+        // Make sure we await the fetch to ensure data is refreshed
+        await fetchPendingItems();
       }
       setLoading(false);
     } catch (error) {
@@ -202,15 +196,21 @@ const PendingSaleManagement = () => {
       }
 
       const response = await api.post('/loot/sell-all-except', { itemsToKeep: selectedPendingItems });
-      if (response.status === 200) {
-        setSuccess('Successfully sold all items except selected.');
+      if (response.data && response.data.success) {
+        const soldCount = response.data.sold?.count || 0;
+        const totalValue = response.data.sold?.total || 0;
+        const keptCount = response.data.kept?.count || 0;
+
+        setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold, kept ${keptCount} items.`);
         setSelectedPendingItems([]);
-        fetchPendingItems();
+        // Use await to ensure data is refreshed before UI updates
+        await fetchPendingItems();
       }
       setLoading(false);
     } catch (error) {
       console.error('Error selling all items except selected:', error);
-      setError('Failed to sell items.');
+      const errorMessage = error.message || 'Failed to sell items.';
+      setError(errorMessage);
       setLoading(false);
     }
   };
@@ -224,7 +224,7 @@ const PendingSaleManagement = () => {
         return;
       }
 
-      // Check if all selected items are valid (need to be unidentified and have a value)
+      // Check if all selected items are valid (need to be identified and have a value)
       const validItems = pendingItems.filter(item =>
         selectedPendingItems.includes(item.id) &&
         item.unidentified !== true &&
@@ -239,7 +239,9 @@ const PendingSaleManagement = () => {
 
       // Only send valid item IDs to the backend
       const validItemIds = validItems.map(item => item.id);
+      console.log('Sending items to sell:', validItemIds);
       const response = await api.post('/loot/sell-selected', { itemsToSell: validItemIds });
+      console.log('Sell selected response:', response);
 
       if (response.data && response.data.success) {
         const soldCount = response.data.sold?.count || 0;
@@ -253,7 +255,8 @@ const PendingSaleManagement = () => {
 
         setSuccess(successMessage);
         setSelectedPendingItems([]);
-        fetchPendingItems();
+        // Use await to ensure data is refreshed before UI updates
+        await fetchPendingItems();
       }
       setLoading(false);
     } catch (error) {
