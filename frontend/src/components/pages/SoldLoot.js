@@ -54,7 +54,9 @@ const SoldLoot = () => {
     if (!soldDetails[date]) {
       const fetchSoldDetails = async () => {
         try {
-          const response = await api.get(`/sold/${date}`);
+          // Format the date as YYYY-MM-DD to avoid timestamp issues
+          const formattedDate = date.split('T')[0];
+          const response = await api.get(`/sold/${formattedDate}`);
 
           // Handle different response formats
           if (response.data && Array.isArray(response.data)) {
