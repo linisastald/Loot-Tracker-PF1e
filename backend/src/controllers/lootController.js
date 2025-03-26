@@ -1,3 +1,4 @@
+// src/controllers/lootController.js
 const Loot = require('../models/Loot');
 const Appraisal = require('../models/Appraisal');
 const dbUtils = require('../utils/dbUtils');
@@ -42,7 +43,6 @@ const customRounding = (value) => {
     return roundedValue;
   }
 };
-
 /**
  * Fetch and process appraisals for an item
  */
@@ -78,7 +78,6 @@ const fetchAndProcessAppraisals = async (lootId) => {
     return { appraisals: [], average_appraisal: null };
   }
 };
-
 /**
  * Enhance items with appraisal information
  */
@@ -107,7 +106,6 @@ const enhanceItemsWithAppraisals = async (items) => {
 
   return enhancedItems;
 };
-
 /**
  * Update appraisals when an item's value changes
  */
@@ -292,7 +290,6 @@ const createLoot = async (req, res) => {
 
   controllerFactory.sendCreatedResponse(res, createdEntries);
 };
-
 /**
  * Get all loot
  */
@@ -314,7 +311,6 @@ const getAllLoot = async (req, res) => {
     individual: enhancedIndividualLoot
   });
 };
-
 /**
  * Update loot status (e.g., mark as sold, kept, trashed)
  */
@@ -329,7 +325,6 @@ const updateLootStatus = async (req, res) => {
   await Loot.updateStatus(ids.map(Number), status, status === 'Kept Self' ? whohas : null);
   controllerFactory.sendSuccessMessage(res, 'Loot status updated');
 };
-
 /**
  * Get loot kept by party
  */
@@ -345,7 +340,6 @@ const getKeptPartyLoot = async (req, res) => {
     individual: enhancedIndividualLoot
   });
 };
-
 /**
  * Get trashed loot
  */
@@ -354,7 +348,6 @@ const getTrashedLoot = async (req, res) => {
   const loot = await Loot.findByStatus('Trashed', userId);
   controllerFactory.sendSuccessResponse(res, loot);
 };
-
 /**
  * Get loot kept by character
  */
@@ -370,7 +363,6 @@ const getKeptCharacterLoot = async (req, res) => {
     individual: enhancedIndividualLoot
   });
 };
-
 /**
  * Split stack of items
  */
@@ -385,7 +377,6 @@ const splitStack = async (req, res) => {
   await Loot.splitStack(id, splits, userId);
   controllerFactory.sendSuccessMessage(res, 'Stack split successfully');
 };
-
 /**
  * Update loot entry
  */
@@ -420,7 +411,6 @@ const updateItem = async (req, res) => {
 
   controllerFactory.sendSuccessResponse(res, result.rows[0]);
 };
-
 /**
  * Update entry
  */
@@ -435,7 +425,6 @@ const updateEntry = async (req, res) => {
   await Loot.updateEntry(id, updatedEntry);
   controllerFactory.sendSuccessMessage(res, 'Entry updated successfully');
 };
-
 /**
  * Update single loot status
  */
@@ -450,7 +439,6 @@ const updateSingleLootStatus = async (req, res) => {
   await Loot.updateStatus([id], status, status === 'Kept Self' ? whohas : null);
   controllerFactory.sendSuccessMessage(res, 'Loot status updated');
 };
-
 /**
  * Get pending sale items (DM only)
  */
@@ -458,7 +446,6 @@ const getPendingSaleItems = async (req, res) => {
   const result = await dbUtils.executeQuery('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
   controllerFactory.sendSuccessResponse(res, result.rows);
 };
-
 /**
  * Search items
  */
@@ -537,7 +524,6 @@ const searchItems = async (req, res) => {
   const result = await dbUtils.executeQuery(sqlQuery, queryParams);
   controllerFactory.sendSuccessResponse(res, result.rows);
 };
-
 /**
  * Get items
  */
@@ -568,7 +554,6 @@ const getItems = async (req, res) => {
 
   controllerFactory.sendSuccessResponse(res, result.rows);
 };
-
 /**
  * Appraise loot
  */
@@ -674,7 +659,6 @@ const appraiseLoot = async (req, res) => {
     return createdAppraisals;
   }, 'Error appraising loot');
 };
-
 /**
  * Parse item description using GPT
  */
@@ -730,7 +714,6 @@ const parseItemDescription = async (req, res) => {
 
   controllerFactory.sendSuccessResponse(res, parsedData);
 };
-
 /**
  * Calculate item value
  */
@@ -746,7 +729,6 @@ const calculateValue = async (req, res) => {
 
   controllerFactory.sendSuccessResponse(res, { value: finalValue });
 };
-
 /**
  * Get all mods
  */
@@ -754,7 +736,6 @@ const getMods = async (req, res) => {
   const result = await dbUtils.executeQuery('SELECT * FROM mod');
   controllerFactory.sendSuccessResponse(res, result.rows);
 };
-
 /**
  * Update item with DM privileges
  */
@@ -886,7 +867,6 @@ const dmUpdateItem = async (req, res) => {
     return updatedItem;
   }, 'Error updating item');
 };
-
 /**
  * Get count of unprocessed loot items
  */
@@ -894,7 +874,6 @@ const getUnprocessedCount = async (req, res) => {
   const result = await dbUtils.executeQuery('SELECT COUNT(*) FROM loot WHERE status IS NULL');
   controllerFactory.sendSuccessResponse(res, { count: parseInt(result.rows[0].count) });
 };
-
 /**
  * Identify items
  */
@@ -966,7 +945,6 @@ const identifyItems = async (req, res) => {
     return { message: 'Items identified successfully', updatedItems };
   }, 'Error identifying items');
 };
-
 /**
  * Get character loot ledger
  */
@@ -996,7 +974,6 @@ const getCharacterLedger = async (req, res) => {
   const result = await dbUtils.executeQuery(ledgerQuery);
   controllerFactory.sendSuccessResponse(res, result.rows);
 };
-
 /**
  * Get unidentified items
  */
@@ -1010,7 +987,6 @@ const getUnidentifiedItems = async (req, res) => {
   const result = await dbUtils.executeQuery(query);
   controllerFactory.sendSuccessResponse(res, result.rows);
 };
-
 /**
  * Get items by ID
  */
@@ -1037,7 +1013,6 @@ const getItemsById = async (req, res) => {
 
   controllerFactory.sendSuccessResponse(res, result.rows);
 };
-
 /**
  * Get mods by ID
  */
@@ -1064,7 +1039,6 @@ const getModsById = async (req, res) => {
 
   controllerFactory.sendSuccessResponse(res, result.rows);
 };
-
 /**
  * Confirm sale of pending items
  */
@@ -1137,7 +1111,6 @@ const confirmSale = async (req, res) => {
     };
   }, 'Error confirming sale');
 };
-
 /**
  * Sell selected items
  */
@@ -1218,7 +1191,6 @@ const sellSelected = async (req, res) => {
     };
   }, 'Error selling selected items');
 };
-
 /**
  * Sell all items except selected ones
  */
@@ -1302,7 +1274,6 @@ const sellAllExcept = async (req, res) => {
     };
   }, 'Error selling all items except selected');
 };
-
 /**
  * Sell up to a specified amount
  */
@@ -1393,44 +1364,34 @@ const sellUpTo = async (req, res) => {
     };
   }, 'Error selling items up to amount');
 };
-
 // Define validation rules for controller functions
 const createLootValidation = {
   requiredFields: ['entries']
 };
-
 const updateLootStatusValidation = {
   requiredFields: ['ids', 'status', 'userId']
 };
-
 const splitStackValidation = {
   requiredFields: ['id', 'splits', 'userId']
 };
-
 const updateEntryValidation = {
   requiredFields: ['id', 'updatedEntry']
 };
-
 const appraiseLootValidation = {
   requiredFields: ['userId']
 };
-
 const parseItemDescriptionValidation = {
   requiredFields: ['description']
 };
-
 const identifyItemsValidation = {
   requiredFields: ['items']
 };
-
 const sellSelectedValidation = {
   requiredFields: ['itemsToSell']
 };
-
 const sellAllExceptValidation = {
   requiredFields: ['itemsToKeep']
 };
-
 const sellUpToValidation = {
   requiredFields: ['amount']
 };
@@ -1440,123 +1401,95 @@ exports.createLoot = controllerFactory.createHandler(createLoot, {
   errorMessage: 'Error creating loot entries',
   validation: createLootValidation
 });
-
 exports.getAllLoot = controllerFactory.createHandler(getAllLoot, {
   errorMessage: 'Error fetching all loot'
 });
-
 exports.updateLootStatus = controllerFactory.createHandler(updateLootStatus, {
   errorMessage: 'Error updating loot status',
   validation: updateLootStatusValidation
 });
-
 exports.getKeptPartyLoot = controllerFactory.createHandler(getKeptPartyLoot, {
   errorMessage: 'Error fetching kept party loot'
 });
-
 exports.getTrashedLoot = controllerFactory.createHandler(getTrashedLoot, {
   errorMessage: 'Error fetching trashed loot'
 });
-
 exports.getKeptCharacterLoot = controllerFactory.createHandler(getKeptCharacterLoot, {
   errorMessage: 'Error fetching kept character loot'
 });
-
 exports.splitStack = controllerFactory.createHandler(splitStack, {
   errorMessage: 'Error splitting stack',
   validation: splitStackValidation
 });
-
 exports.updateEntry = controllerFactory.createHandler(updateEntry, {
   errorMessage: 'Error updating entry',
   validation: updateEntryValidation
 });
-
 exports.updateSingleLootStatus = controllerFactory.createHandler(updateSingleLootStatus, {
   errorMessage: 'Error updating single loot status'
 });
-
 exports.getPendingSaleItems = controllerFactory.createHandler(getPendingSaleItems, {
   errorMessage: 'Error fetching pending sale items'
 });
-
 exports.searchItems = controllerFactory.createHandler(searchItems, {
   errorMessage: 'Error searching items'
 });
-
 exports.getItems = controllerFactory.createHandler(getItems, {
   errorMessage: 'Error fetching items'
 });
-
 exports.appraiseLoot = controllerFactory.createHandler(appraiseLoot, {
   errorMessage: 'Error appraising loot',
   validation: appraiseLootValidation
 });
-
 exports.parseItemDescription = controllerFactory.createHandler(parseItemDescription, {
   errorMessage: 'Error parsing item description',
   validation: parseItemDescriptionValidation
 });
-
 exports.calculateValue = controllerFactory.createHandler(calculateValue, {
   errorMessage: 'Error calculating value'
 });
-
 exports.getMods = controllerFactory.createHandler(getMods, {
   errorMessage: 'Error fetching mods'
 });
-
 exports.dmUpdateItem = controllerFactory.createHandler(dmUpdateItem, {
   errorMessage: 'Error updating item (DM)'
 });
-
 exports.getUnprocessedCount = controllerFactory.createHandler(getUnprocessedCount, {
   errorMessage: 'Error getting unprocessed count'
 });
-
 exports.identifyItems = controllerFactory.createHandler(identifyItems, {
   errorMessage: 'Error identifying items',
   validation: identifyItemsValidation
 });
-
 exports.getCharacterLedger = controllerFactory.createHandler(getCharacterLedger, {
   errorMessage: 'Error fetching character ledger'
 });
-
 exports.getUnidentifiedItems = controllerFactory.createHandler(getUnidentifiedItems, {
   errorMessage: 'Error fetching unidentified items'
 });
-
 exports.getItemsById = controllerFactory.createHandler(getItemsById, {
   errorMessage: 'Error fetching items by ID'
 });
-
 exports.getModsById = controllerFactory.createHandler(getModsById, {
   errorMessage: 'Error fetching mods by ID'
 });
-
 exports.confirmSale = controllerFactory.createHandler(confirmSale, {
   errorMessage: 'Error confirming sale'
 });
-
 exports.sellSelected = controllerFactory.createHandler(sellSelected, {
   errorMessage: 'Error selling selected items',
   validation: sellSelectedValidation
 });
-
 exports.sellAllExcept = controllerFactory.createHandler(sellAllExcept, {
   errorMessage: 'Error selling all except selected items',
   validation: sellAllExceptValidation
 });
-
 exports.sellUpTo = controllerFactory.createHandler(sellUpTo, {
   errorMessage: 'Error selling up to amount',
   validation: sellUpToValidation
 });
-
 // For backward compatibility
 exports.updateItem = controllerFactory.createHandler(updateItem, {
   errorMessage: 'Error updating item'
 });
-
 module.exports = exports;
