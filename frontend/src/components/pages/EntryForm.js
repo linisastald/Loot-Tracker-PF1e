@@ -16,8 +16,9 @@ import {
   Autocomplete,
 } from '@mui/material';
 import { Delete as DeleteIcon } from '@mui/icons-material';
+import { fetchItemNames } from '../../utils/lootEntryUtils';
 
-const EntryForm = ({ entry, index, itemOptions, onRemove, onChange }) => {
+const EntryForm = ({ entry, index, onRemove, onChange }) => {
   const [localEntry, setLocalEntry] = useState(entry.data);
   const [itemSuggestions, setItemSuggestions] = useState([]);
 
@@ -26,10 +27,13 @@ const EntryForm = ({ entry, index, itemOptions, onRemove, onChange }) => {
   }, [entry.data]);
 
   useEffect(() => {
-    if (itemOptions) {
-      setItemSuggestions(itemOptions);
-    }
-  }, [itemOptions]);
+    const loadItemOptions = async () => {
+      const items = await fetchItemNames();
+      setItemSuggestions(items);
+    };
+
+    loadItemOptions();
+  }, []);
 
   const handleChange = (field, value) => {
     setLocalEntry(prev => ({ ...prev, [field]: value }));

@@ -3,7 +3,8 @@ import api from '../../utils/api';
 import {
   validateLootEntries,
   prepareEntryForSubmission,
-  fetchInitialData
+  fetchInitialData,
+  fetchItemNames
 } from '../../utils/lootEntryUtils';
 import useLootEntryForm from '../../hooks/useLootEntryForm';
 import {
