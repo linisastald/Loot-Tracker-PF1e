@@ -3,6 +3,7 @@ const Loot = require('../models/Loot');
 const Appraisal = require('../models/Appraisal');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
+const logger = require('../utils/logger');
 const { parseItemDescriptionWithGPT } = require('../services/parseItemDescriptionWithGPT');
 const { calculateFinalValue } = require('../services/calculateFinalValue');
 const { calculateItemSaleValue, calculateTotalSaleValue } = require('../utils/saleValueCalculator');
@@ -74,7 +75,7 @@ const fetchAndProcessAppraisals = async (lootId) => {
       average_appraisal: averageAppraisal
     };
   } catch (error) {
-    console.error('Error in fetchAndProcessAppraisals:', error);
+    logger.error('Error in fetchAndProcessAppraisals:', error);
     return { appraisals: [], average_appraisal: null };
   }
 };
@@ -95,7 +96,7 @@ const enhanceItemsWithAppraisals = async (items) => {
         average_appraisal
       };
     } catch (error) {
-      console.error(`Error enhancing item ${item.id} with appraisals:`, error);
+      logger.error(`Error enhancing item ${item.id} with appraisals:`, error);
       return {
         ...item,
         appraisals: [],
@@ -145,7 +146,7 @@ const updateAppraisalsOnValueChange = async (lootId, newValue) => {
       );
     }
   } catch (error) {
-    console.error('Error updating appraisals on value change:', error);
+    logger.error('Error updating appraisals on value change:', error);
     throw error;
   }
 };
@@ -161,134 +162,161 @@ const createLoot = async (req, res) => {
   }
 
   const createdEntries = [];
+  let processingErrors = [];
 
   for (const entry of entries) {
-    const {
-      itemId, name, quantity, notes, session_date, sessionDate,
-      item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
-      unidentified, masterwork, size, whoupdated, charges, type
-    } = entry;
+    try {
+      const {
+        itemId, name, quantity, notes, session_date, sessionDate,
+        item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
+        unidentified, masterwork, size, whoupdated, charges, type
+      } = entry;
 
-    let itemData, modsData, isMasterwork;
+      let itemData, modsData, isMasterwork;
 
-    if (parsedItem) {
-      // Use parsed data
-      const itemResult = await dbUtils.executeQuery(`
-        SELECT id, name, type, subtype, value, weight
-        FROM item 
-        WHERE SIMILARITY(name, $1) > 0.3
-        ORDER BY SIMILARITY(name, $1) DESC 
-        LIMIT 1
-      `, [parsedItem]);
+      if (parsedItem) {
+        // Use parsed data
+        const itemResult = await dbUtils.executeQuery(`
+          SELECT id, name, type, subtype, value, weight
+          FROM item 
+          WHERE SIMILARITY(name, $1) > 0.3
+          ORDER BY SIMILARITY(name, $1) DESC 
+          LIMIT 1
+        `, [parsedItem]);
 
-      if (itemResult.rows.length > 0) {
-        itemData = { ...itemResult.rows[0], name: parsedItem };
+        if (itemResult.rows.length > 0) {
+          itemData = { ...itemResult.rows[0], name: parsedItem };
+        } else {
+          itemData = {
+            id: itemId,
+            name: parsedItem,
+            type: itemType,
+            subtype: itemSubtype,
+            value: itemValue,
+            weight: null // Default weight to null if not found
+          };
+        }
+
+        // Use modIds if available, otherwise find matching mods
+        if (modIds && modIds.length > 0) {
+          const modsResult = await dbUtils.executeQuery(
+            'SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)',
+            [modIds]
+          );
+          modsData = modsResult.rows;
+        } else if (parsedMods && Array.isArray(parsedMods)) {
+          modsData = await Promise.all(parsedMods.map(async (modName) => {
+            const result = await dbUtils.executeQuery(`
+              SELECT id, name, plus, valuecalc, target, subtarget
+              FROM mod 
+              WHERE SIMILARITY(name, $1) > 0.3
+              AND (target = $2 OR target IS NULL)
+              AND (subtarget = $3 OR subtarget IS NULL)
+              ORDER BY 
+                CASE 
+                  WHEN target = $2 AND subtarget = $3 THEN 1
+                  WHEN target = $2 AND subtarget IS NULL THEN 2
+                  WHEN target = $2 THEN 3
+                  ELSE 4
+                END,
+                SIMILARITY(name, $1) DESC
+              LIMIT 1
+            `, [modName, itemData.type, itemData.subtype]);
+            return result.rows[0] || null;
+          }));
+          modsData = modsData.filter(mod => mod !== null);
+        } else {
+          modsData = [];
+        }
+
+        isMasterwork = parsedMods && Array.isArray(parsedMods) ?
+          parsedMods.some(mod => mod.toLowerCase().includes('masterwork')) :
+          masterwork || false;
+      } else if (itemId) {
+        // Item selected from autofill
+        const itemResult = await dbUtils.executeQuery(
+          'SELECT id, name, type, subtype, value, weight FROM item WHERE id = $1',
+          [itemId]
+        );
+        itemData = itemResult.rows[0];
+
+        // Fetch mods if any
+        if (entry.modids && entry.modids.length > 0) {
+          const modsResult = await dbUtils.executeQuery(
+            'SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)',
+            [entry.modids]
+          );
+          modsData = modsResult.rows;
+        } else {
+          modsData = [];
+        }
+        isMasterwork = masterwork || false;
       } else {
+        // Manual entry without parsing or autofill
         itemData = {
-          id: itemId,
-          name: parsedItem,
-          type: itemType,
-          subtype: itemSubtype,
-          value: itemValue,
-          weight: null // Default weight to null if not found
+          id: null,
+          name: name,
+          type: type || '',
+          subtype: '',
+          value: null,
+          weight: null
         };
-      }
-
-      // Use modIds if available, otherwise find matching mods
-      if (modIds && modIds.length > 0) {
-        const modsResult = await dbUtils.executeQuery(
-          'SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)',
-          [modIds]
-        );
-        modsData = modsResult.rows;
-      } else {
-        modsData = await Promise.all(parsedMods.map(async (modName) => {
-          const result = await dbUtils.executeQuery(`
-            SELECT id, name, plus, valuecalc, target, subtarget
-            FROM mod 
-            WHERE SIMILARITY(name, $1) > 0.3
-            AND (target = $2 OR target IS NULL)
-            AND (subtarget = $3 OR subtarget IS NULL)
-            ORDER BY 
-              CASE 
-                WHEN target = $2 AND subtarget = $3 THEN 1
-                WHEN target = $2 AND subtarget IS NULL THEN 2
-                WHEN target = $2 THEN 3
-                ELSE 4
-              END,
-              SIMILARITY(name, $1) DESC
-            LIMIT 1
-          `, [modName, itemData.type, itemData.subtype]);
-          return result.rows[0] || null;
-        }));
-      }
-      modsData = modsData.filter(mod => mod !== null);
-      isMasterwork = parsedMods.some(mod => mod.toLowerCase().includes('masterwork'));
-    } else if (itemId) {
-      // Item selected from autofill
-      const itemResult = await dbUtils.executeQuery(
-        'SELECT id, name, type, subtype, value, weight FROM item WHERE id = $1',
-        [itemId]
-      );
-      itemData = itemResult.rows[0];
-
-      // Fetch mods if any
-      if (entry.modids && entry.modids.length > 0) {
-        const modsResult = await dbUtils.executeQuery(
-          'SELECT id, name, plus, valuecalc, target, subtarget FROM mod WHERE id = ANY($1)',
-          [entry.modids]
-        );
-        modsData = modsResult.rows;
-      } else {
         modsData = [];
+        isMasterwork = masterwork || false;
       }
-      isMasterwork = masterwork || false;
-    } else {
-      // Manual entry without parsing or autofill
-      itemData = {
-        id: null,
-        name: name,
-        type: type || '',
-        subtype: '',
-        value: null,
-        weight: null
-      };
-      modsData = [];
-      isMasterwork = masterwork || false;
+
+      // Calculate value if item has base value
+      const calculatedValue = itemData.value ? calculateFinalValue(
+        parseFloat(itemData.value),
+        itemData.type,
+        itemData.subtype,
+        modsData,
+        isMasterwork,
+        itemData.name,
+        charges,
+        size,
+        itemData.weight
+      ) : 0;
+
+      const createdEntry = await Loot.create({
+        sessionDate: session_date || sessionDate,
+        quantity,
+        name: name || itemData.name,
+        unidentified: unidentified || false,
+        masterwork: isMasterwork,
+        type: itemData.type || itemType || type || '',
+        size: size || '',
+        itemid: itemData.id,
+        modids: modsData.map(mod => mod.id),
+        value: calculatedValue,
+        whoupdated,
+        notes: notes || '',
+        charges: charges || null
+      });
+
+      createdEntries.push(createdEntry);
+    } catch (error) {
+      logger.error(`Error creating loot entry: ${error.message}`, { entry });
+      processingErrors.push({
+        entry: entry.name || 'Unknown item',
+        error: error.message
+      });
     }
-
-    const calculatedValue = itemData.value ? calculateFinalValue(
-      parseFloat(itemData.value),
-      itemData.type,
-      itemData.subtype,
-      modsData,
-      isMasterwork,
-      itemData.name,
-      charges,
-      size,
-      itemData.weight
-    ) : 0;
-
-    const createdEntry = await Loot.create({
-      sessionDate: session_date || sessionDate,
-      quantity,
-      name: name || itemData.name,
-      unidentified: unidentified || false,
-      masterwork: isMasterwork,
-      type: itemData.type || itemType || type || '',
-      size: size || '',
-      itemid: itemData.id,
-      modids: modsData.map(mod => mod.id),
-      value: calculatedValue,
-      whoupdated,
-      notes: notes || '',
-      charges: charges || null
-    });
-
-    createdEntries.push(createdEntry);
   }
 
-  controllerFactory.sendCreatedResponse(res, createdEntries);
+  if (createdEntries.length === 0 && processingErrors.length > 0) {
+    // All entries failed
+    throw controllerFactory.createValidationError(`Failed to create any loot entries: ${processingErrors[0].error}`);
+  }
+
+  const responseMessage = processingErrors.length > 0
+    ? `Created ${createdEntries.length} entries with ${processingErrors.length} errors`
+    : `Successfully created ${createdEntries.length} loot entries`;
+
+  controllerFactory.sendCreatedResponse(res, {
+    entries: createdEntries,
+    errors: processingErrors.length > 0 ? processingErrors : undefined
+  }, responseMessage);
 };
 /**
  * Get all loot
@@ -301,15 +329,24 @@ const getAllLoot = async (req, res) => {
     throw controllerFactory.createValidationError('Active character ID is required for non-DM users');
   }
 
-  const loot = await Loot.findAll(activeCharacterId);
+  try {
+    const loot = await Loot.findAll(activeCharacterId);
 
-  // Enhance individual items with appraisal data
-  const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
+    // Enhance individual items with appraisal data
+    const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
-  controllerFactory.sendSuccessResponse(res, {
-    summary: loot.summary,
-    individual: enhancedIndividualLoot
-  });
+    controllerFactory.sendSuccessResponse(res, {
+      summary: loot.summary,
+      individual: enhancedIndividualLoot,
+      count: {
+        summary: loot.summary.length,
+        individual: enhancedIndividualLoot.length
+      }
+    }, 'Loot data retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching all loot:', error);
+    throw error;
+  }
 };
 /**
  * Update loot status (e.g., mark as sold, kept, trashed)
@@ -318,50 +355,113 @@ const updateLootStatus = async (req, res) => {
   const { ids, status, userId, whohas } = req.body;
 
   // Validate required fields
-  if (!ids || !status || !userId) {
-    throw controllerFactory.createValidationError('Missing required fields');
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    throw controllerFactory.createValidationError('Item IDs array is required');
   }
 
-  await Loot.updateStatus(ids.map(Number), status, status === 'Kept Self' ? whohas : null);
-  controllerFactory.sendSuccessMessage(res, 'Loot status updated');
+  if (!status) {
+    throw controllerFactory.createValidationError('Status is required');
+  }
+
+  // Validate status value
+  const validStatuses = ['Kept Party', 'Kept Self', 'Trashed', 'Pending Sale', 'Sold'];
+  if (!validStatuses.includes(status)) {
+    throw controllerFactory.createValidationError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+  }
+
+  // If status is Kept Self, whohas is required
+  if (status === 'Kept Self' && !whohas) {
+    throw controllerFactory.createValidationError('Character ID (whohas) is required for Kept Self status');
+  }
+
+  try {
+    await Loot.updateStatus(ids.map(Number), status, status === 'Kept Self' ? whohas : null);
+
+    logger.info(`Status updated to "${status}" for ${ids.length} items`, {
+      userId,
+      itemCount: ids.length,
+      status,
+      whohas: status === 'Kept Self' ? whohas : null
+    });
+
+    controllerFactory.sendSuccessResponse(res, {
+      updated: ids.length,
+      status,
+      ids
+    }, `${ids.length} items updated to status: ${status}`);
+  } catch (error) {
+    logger.error('Error updating loot status:', error);
+    throw error;
+  }
 };
 /**
  * Get loot kept by party
  */
 const getKeptPartyLoot = async (req, res) => {
-  const userId = req.user.id;
-  const loot = await Loot.findByStatus('Kept Party', userId);
+  try {
+    const userId = req.user.id;
+    const loot = await Loot.findByStatus('Kept Party', userId);
 
-  // Enhance individual items with appraisal data
-  const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
+    // Enhance individual items with appraisal data
+    const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
-  controllerFactory.sendSuccessResponse(res, {
-    summary: loot.summary,
-    individual: enhancedIndividualLoot
-  });
+    controllerFactory.sendSuccessResponse(res, {
+      summary: loot.summary,
+      individual: enhancedIndividualLoot,
+      count: {
+        summary: loot.summary.length,
+        individual: enhancedIndividualLoot.length
+      }
+    }, 'Party loot retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching party loot:', error);
+    throw error;
+  }
 };
 /**
  * Get trashed loot
  */
 const getTrashedLoot = async (req, res) => {
-  const userId = req.user.id;
-  const loot = await Loot.findByStatus('Trashed', userId);
-  controllerFactory.sendSuccessResponse(res, loot);
+  try {
+    const userId = req.user.id;
+    const loot = await Loot.findByStatus('Trashed', userId);
+
+    controllerFactory.sendSuccessResponse(res, {
+      summary: loot.summary,
+      individual: loot.individual,
+      count: {
+        summary: loot.summary.length,
+        individual: loot.individual.length
+      }
+    }, 'Trashed loot retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching trashed loot:', error);
+    throw error;
+  }
 };
 /**
  * Get loot kept by character
  */
 const getKeptCharacterLoot = async (req, res) => {
-  const userId = req.user.id;
-  const loot = await Loot.findByStatus('Kept Self', userId);
+  try {
+    const userId = req.user.id;
+    const loot = await Loot.findByStatus('Kept Self', userId);
 
-  // Enhance individual items with appraisal data
-  const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
+    // Enhance individual items with appraisal data
+    const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
 
-  controllerFactory.sendSuccessResponse(res, {
-    summary: loot.summary,
-    individual: enhancedIndividualLoot
-  });
+    controllerFactory.sendSuccessResponse(res, {
+      summary: loot.summary,
+      individual: enhancedIndividualLoot,
+      count: {
+        summary: loot.summary.length,
+        individual: enhancedIndividualLoot.length
+      }
+    }, 'Character loot retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching character loot:', error);
+    throw error;
+  }
 };
 /**
  * Split stack of items
@@ -370,12 +470,70 @@ const splitStack = async (req, res) => {
   const { id, splits, userId } = req.body;
 
   // Validate required fields
-  if (!id || !splits || !userId) {
-    throw controllerFactory.createValidationError('Missing required fields');
+  if (!id) {
+    throw controllerFactory.createValidationError('Item ID is required');
   }
 
-  await Loot.splitStack(id, splits, userId);
-  controllerFactory.sendSuccessMessage(res, 'Stack split successfully');
+  if (!splits || !Array.isArray(splits) || splits.length < 2) {
+    throw controllerFactory.createValidationError('At least two split quantities are required');
+  }
+
+  if (!userId) {
+    throw controllerFactory.createValidationError('User ID is required');
+  }
+
+  // Validate that split quantities are positive integers
+  const invalidSplits = splits.filter(split =>
+    !Number.isInteger(parseInt(split.quantity)) || parseInt(split.quantity) <= 0
+  );
+
+  if (invalidSplits.length > 0) {
+    throw controllerFactory.createValidationError('All split quantities must be positive integers');
+  }
+
+  try {
+    // Fetch original item to ensure it exists and verify total quantity
+    const itemResult = await dbUtils.executeQuery('SELECT * FROM loot WHERE id = $1', [id]);
+
+    if (itemResult.rows.length === 0) {
+      throw controllerFactory.createNotFoundError('Item not found');
+    }
+
+    const originalItem = itemResult.rows[0];
+    const totalOriginalQuantity = originalItem.quantity;
+
+    // Calculate total of split quantities
+    const totalSplitQuantity = splits.reduce((sum, split) => sum + parseInt(split.quantity), 0);
+
+    // Validate total quantities match
+    if (totalSplitQuantity !== totalOriginalQuantity) {
+      throw controllerFactory.createValidationError(
+        `Total split quantity (${totalSplitQuantity}) must equal original item quantity (${totalOriginalQuantity})`
+      );
+    }
+
+    await Loot.splitStack(id, splits, userId);
+
+    logger.info(`Item ${id} split into ${splits.length} stacks`, {
+      userId,
+      itemId: id,
+      splits: splits.map(s => parseInt(s.quantity))
+    });
+
+    controllerFactory.sendSuccessResponse(res, {
+      original: {
+        id,
+        quantity: totalOriginalQuantity
+      },
+      splits: splits.map((split, index) => ({
+        index,
+        quantity: parseInt(split.quantity)
+      }))
+    }, 'Stack split successfully');
+  } catch (error) {
+    logger.error('Error splitting stack:', error);
+    throw error;
+  }
 };
 /**
  * Update loot entry
@@ -385,31 +543,45 @@ const updateItem = async (req, res) => {
   const { session_date, quantity, name, ...otherFields } = req.body;
 
   // Validate required fields
-  if (!id || !session_date || !quantity || !name) {
-    throw controllerFactory.createValidationError(
-      `ID ${id}, Session Date ${session_date}, Quantity ${quantity}, and Name ${name} are required`
-    );
+  if (!id) {
+    throw controllerFactory.createValidationError('Item ID is required');
+  }
+
+  if (!session_date || !quantity || !name) {
+    throw controllerFactory.createValidationError('Session date, quantity, and name are required');
   }
 
   const updateFields = { session_date, quantity, name, ...otherFields };
 
-  const query = `
-    UPDATE loot
-    SET ${Object.keys(updateFields).map((key, index) => `${key} = $${index + 1}`).join(', ')},
-        lastupdate = CURRENT_TIMESTAMP
-    WHERE id = $${Object.keys(updateFields).length + 1}
-    RETURNING *
-  `;
+  try {
+    const query = `
+      UPDATE loot
+      SET ${Object.keys(updateFields).map((key, index) => `${key} = $${index + 1}`).join(', ')},
+          lastupdate = CURRENT_TIMESTAMP
+      WHERE id = $${Object.keys(updateFields).length + 1}
+      RETURNING *
+    `;
 
-  const values = [...Object.values(updateFields), id];
+    const values = [...Object.values(updateFields), id];
+    const result = await dbUtils.executeQuery(query, values);
 
-  const result = await dbUtils.executeQuery(query, values);
+    if (result.rows.length === 0) {
+      throw controllerFactory.createNotFoundError('Item not found');
+    }
 
-  if (result.rows.length === 0) {
-    throw controllerFactory.createNotFoundError('Item not found');
+    logger.info(`Item ${id} updated`, {
+      userId: req.user.id,
+      itemId: id,
+      fields: Object.keys(updateFields)
+    });
+
+    controllerFactory.sendSuccessResponse(res, result.rows[0], 'Item updated successfully');
+  } catch (error) {
+    if (error.name !== 'NotFoundError') {
+      logger.error(`Error updating item ${id}:`, error);
+    }
+    throw error;
   }
-
-  controllerFactory.sendSuccessResponse(res, result.rows[0]);
 };
 /**
  * Update entry
@@ -443,8 +615,29 @@ const updateSingleLootStatus = async (req, res) => {
  * Get pending sale items (DM only)
  */
 const getPendingSaleItems = async (req, res) => {
-  const result = await dbUtils.executeQuery('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
-  controllerFactory.sendSuccessResponse(res, result.rows);
+  // Ensure DM permission (should be handled by middleware too)
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can access pending sale items');
+  }
+
+  try {
+    const result = await dbUtils.executeQuery('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
+
+    // Calculate the total estimated sale value
+    const totalEstimatedValue = result.rows.reduce((sum, item) => {
+      const saleValue = calculateItemSaleValue(item);
+      return sum + saleValue;
+    }, 0);
+
+    controllerFactory.sendSuccessResponse(res, {
+      items: result.rows,
+      count: result.rows.length,
+      totalEstimatedValue: parseFloat(totalEstimatedValue.toFixed(2))
+    }, 'Pending sale items retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching pending sale items:', error);
+    throw error;
+  }
 };
 /**
  * Search items
@@ -452,107 +645,138 @@ const getPendingSaleItems = async (req, res) => {
 const searchItems = async (req, res) => {
   const { query, unidentified, type, size, status, itemid, modids, value } = req.query;
 
-  let sqlQuery = `SELECT * FROM loot WHERE 1=1`;
-  const queryParams = [];
-  let paramCount = 1;
+  try {
+    let sqlQuery = `SELECT * FROM loot WHERE 1=1`;
+    const queryParams = [];
+    let paramCount = 1;
 
-  // Name search (if provided)
-  if (query && query.trim() !== '') {
-    sqlQuery += ` AND (name ILIKE $${paramCount} OR notes ILIKE $${paramCount})`;
-    queryParams.push(`%${query}%`);
-    paramCount++;
-  }
-
-  // Unidentified filter
-  if (unidentified) {
-    sqlQuery += ` AND unidentified = $${paramCount}`;
-    queryParams.push(unidentified === 'true');
-    paramCount++;
-  }
-
-  // Type filter
-  if (type) {
-    sqlQuery += ` AND type = $${paramCount}`;
-    queryParams.push(type);
-    paramCount++;
-  }
-
-  // Size filter
-  if (size) {
-    sqlQuery += ` AND size = $${paramCount}`;
-    queryParams.push(size);
-    paramCount++;
-  }
-
-  // Status filter
-  if (status) {
-    sqlQuery += ` AND status = $${paramCount}`;
-    queryParams.push(status);
-    paramCount++;
-  }
-
-  // Item ID filter
-  if (itemid) {
-    if (itemid === 'null') {
-      sqlQuery += ` AND itemid IS NULL`;
-    } else if (itemid === 'notnull') {
-      sqlQuery += ` AND itemid IS NOT NULL`;
+    // Name search (if provided)
+    if (query && query.trim() !== '') {
+      sqlQuery += ` AND (name ILIKE $${paramCount} OR notes ILIKE $${paramCount})`;
+      queryParams.push(`%${query}%`);
+      paramCount++;
     }
-  }
 
-  // Mod IDs filter
-  if (modids) {
-    if (modids === 'null') {
-      sqlQuery += ` AND (modids IS NULL OR modids = '{}')`;
-    } else if (modids === 'notnull') {
-      sqlQuery += ` AND modids IS NOT NULL AND modids != '{}'`;
+    // Unidentified filter
+    if (unidentified) {
+      sqlQuery += ` AND unidentified = $${paramCount}`;
+      queryParams.push(unidentified === 'true');
+      paramCount++;
     }
-  }
 
-  // Value filter
-  if (value) {
-    if (value === 'null') {
-      sqlQuery += ` AND value IS NULL`;
-    } else if (value === 'notnull') {
-      sqlQuery += ` AND value IS NOT NULL`;
+    // Type filter
+    if (type) {
+      sqlQuery += ` AND type = $${paramCount}`;
+      queryParams.push(type);
+      paramCount++;
     }
+
+    // Size filter
+    if (size) {
+      sqlQuery += ` AND size = $${paramCount}`;
+      queryParams.push(size);
+      paramCount++;
+    }
+
+    // Status filter
+    if (status) {
+      sqlQuery += ` AND status = $${paramCount}`;
+      queryParams.push(status);
+      paramCount++;
+    }
+
+    // Item ID filter
+    if (itemid) {
+      if (itemid === 'null') {
+        sqlQuery += ` AND itemid IS NULL`;
+      } else if (itemid === 'notnull') {
+        sqlQuery += ` AND itemid IS NOT NULL`;
+      }
+    }
+
+    // Mod IDs filter
+    if (modids) {
+      if (modids === 'null') {
+        sqlQuery += ` AND (modids IS NULL OR modids = '{}')`;
+      } else if (modids === 'notnull') {
+        sqlQuery += ` AND modids IS NOT NULL AND modids != '{}'`;
+      }
+    }
+
+    // Value filter
+    if (value) {
+      if (value === 'null') {
+        sqlQuery += ` AND value IS NULL`;
+      } else if (value === 'notnull') {
+        sqlQuery += ` AND value IS NOT NULL`;
+      }
+    }
+
+    // Add order by clause
+    sqlQuery += ` ORDER BY session_date DESC`;
+
+    // Add limit if specified
+    const limit = req.query.limit ? parseInt(req.query.limit) : 100;
+    sqlQuery += ` LIMIT $${paramCount}`;
+    queryParams.push(limit);
+
+    const result = await dbUtils.executeQuery(sqlQuery, queryParams);
+
+    controllerFactory.sendSuccessResponse(res, {
+      items: result.rows,
+      count: result.rows.length,
+      limit,
+      filters: {
+        query,
+        unidentified,
+        type,
+        size,
+        status,
+        itemid,
+        modids,
+        value
+      }
+    }, `${result.rows.length} items found matching search criteria`);
+  } catch (error) {
+    logger.error('Error searching items:', error);
+    throw error;
   }
-
-  // Add order by clause
-  sqlQuery += ` ORDER BY session_date DESC`;
-
-  const result = await dbUtils.executeQuery(sqlQuery, queryParams);
-  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 /**
  * Get items
  */
 const getItems = async (req, res) => {
   const { query } = req.query;
-  let result;
 
-  if (query) {
-    // Search based on user input
-    result = await dbUtils.executeQuery(`
-      SELECT id, name, type, subtype, value
-      FROM item
-      WHERE name ILIKE $1
-      ORDER BY 
-        CASE 
-          WHEN name ILIKE $2 THEN 1  -- Exact match
-          WHEN name ILIKE $3 THEN 2  -- Starts with query
-          WHEN name ILIKE $4 THEN 3  -- Contains query
-          ELSE 4
-        END,
-        name
-      LIMIT 50
-    `, [`%${query}%`, query, `${query}%`, `% ${query}%`]);
-  } else {
-    // If no query, return an empty array
-    result = { rows: [] };
+  try {
+    let result;
+
+    if (query) {
+      // Search based on user input
+      result = await dbUtils.executeQuery(`
+        SELECT id, name, type, subtype, value, casterlevel
+        FROM item
+        WHERE name ILIKE $1
+        ORDER BY 
+          CASE 
+            WHEN name ILIKE $2 THEN 1  -- Exact match
+            WHEN name ILIKE $3 THEN 2  -- Starts with query
+            WHEN name ILIKE $4 THEN 3  -- Contains query
+            ELSE 4
+          END,
+          name
+        LIMIT 50
+      `, [`%${query}%`, query, `${query}%`, `% ${query}%`]);
+    } else {
+      // If no query, return an empty array
+      result = { rows: [] };
+    }
+
+    controllerFactory.sendSuccessResponse(res, result.rows, `${result.rows.length} items found`);
+  } catch (error) {
+    logger.error('Error fetching items:', error);
+    throw error;
   }
-
-  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 /**
  * Appraise loot
@@ -564,100 +788,124 @@ const appraiseLoot = async (req, res) => {
     throw controllerFactory.createValidationError('User ID is required');
   }
 
-  return await dbUtils.executeTransaction(async (client) => {
-    // Get active character for the user
-    const activeCharacterResult = await client.query(
-      'SELECT * FROM characters WHERE active = true AND user_id = $1',
-      [userId]
-    );
-    const activeCharacter = activeCharacterResult.rows[0];
-
-    if (!activeCharacter) {
-      throw controllerFactory.createValidationError('No active character found');
-    }
-
-    const { id: characterId, appraisal_bonus: appraisalBonus } = activeCharacter;
-
-    // Get loot items to be appraised
-    const lootToAppraiseResult = await client.query(`
-      SELECT l.id, l.value, l.itemid, l.modids, l.name, l.masterwork, l.charges
-      FROM loot l
-      LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1
-      WHERE (l.status IS NULL OR l.status = 'Pending Sale') 
-        AND (l.unidentified = false OR l.unidentified IS NULL) 
-        AND a.id IS NULL
-    `, [characterId]);
-
-    const lootToAppraise = lootToAppraiseResult.rows;
-
-    // Get all previous appraisals for the active character
-    const previousAppraisalsResult = await client.query(`
-      SELECT l.itemid, l.modids, l.masterwork, l.charges, l.value, a.believedvalue
-      FROM loot l
-      JOIN appraisal a ON a.lootid = l.id
-      WHERE a.characterid = $1
-    `, [characterId]);
-
-    const previousAppraisals = previousAppraisalsResult.rows;
-
-    // Appraise each item
-    const createdAppraisals = [];
-    for (const lootItem of lootToAppraise) {
-      const { id: lootId, value: lootValue, itemid, modids, masterwork, charges } = lootItem;
-
-      // Check for previous appraisals of similar items
-      let previousAppraisal = previousAppraisals.find(appraisal =>
-        appraisal.itemid === itemid &&
-        JSON.stringify(appraisal.modids) === JSON.stringify(modids) &&
-        appraisal.masterwork === masterwork &&
-        appraisal.charges === charges &&
-        Math.abs(appraisal.value - lootValue) < 0.01 // Compare with small epsilon for floating point
+  try {
+    return await dbUtils.executeTransaction(async (client) => {
+      // Get active character for the user
+      const activeCharacterResult = await client.query(
+        'SELECT * FROM characters WHERE active = true AND user_id = $1',
+        [userId]
       );
+      const activeCharacter = activeCharacterResult.rows[0];
 
-      let believedValue = null;
-      let appraisalRoll = null;
+      if (!activeCharacter) {
+        throw controllerFactory.createValidationError('No active character found');
+      }
 
-      if (previousAppraisal) {
-        // Use previous appraisal value for similar items
-        believedValue = previousAppraisal.believedvalue;
-      } else {
-        // Make a new appraisal roll
-        appraisalRoll = Math.floor(Math.random() * 20) + 1 + (appraisalBonus || 0);
+      const { id: characterId, appraisal_bonus: appraisalBonus } = activeCharacter;
 
-        // Calculate believed value based on roll
-        if (lootValue !== null && lootValue !== undefined) {
-          if (appraisalRoll >= 20) {
-            believedValue = lootValue;
-          } else if (appraisalRoll >= 15) {
-            believedValue = lootValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
-          } else {
-            if (lootValue === 0) {
-              // Generate a random value between 1 and 100 for items with no value
-              believedValue = Math.floor(Math.random() * 100) + 1;
+      // Get loot items to be appraised
+      const lootToAppraiseResult = await client.query(`
+        SELECT l.id, l.value, l.itemid, l.modids, l.name, l.masterwork, l.charges
+        FROM loot l
+        LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1
+        WHERE (l.status IS NULL OR l.status = 'Pending Sale') 
+          AND (l.unidentified = false OR l.unidentified IS NULL) 
+          AND a.id IS NULL
+      `, [characterId]);
+
+      const lootToAppraise = lootToAppraiseResult.rows;
+
+      if (lootToAppraise.length === 0) {
+        return controllerFactory.sendSuccessResponse(res, [], 'No items available to appraise');
+      }
+
+      // Get all previous appraisals for the active character
+      const previousAppraisalsResult = await client.query(`
+        SELECT l.itemid, l.modids, l.masterwork, l.charges, l.value, a.believedvalue
+        FROM loot l
+        JOIN appraisal a ON a.lootid = l.id
+        WHERE a.characterid = $1
+      `, [characterId]);
+
+      const previousAppraisals = previousAppraisalsResult.rows;
+
+      // Appraise each item
+      const createdAppraisals = [];
+      for (const lootItem of lootToAppraise) {
+        const { id: lootId, value: lootValue, itemid, modids, masterwork, charges } = lootItem;
+
+        // Check for previous appraisals of similar items
+        let previousAppraisal = previousAppraisals.find(appraisal =>
+          appraisal.itemid === itemid &&
+          JSON.stringify(appraisal.modids) === JSON.stringify(modids) &&
+          appraisal.masterwork === masterwork &&
+          appraisal.charges === charges &&
+          Math.abs(appraisal.value - lootValue) < 0.01 // Compare with small epsilon for floating point
+        );
+
+        let believedValue = null;
+        let appraisalRoll = null;
+
+        if (previousAppraisal) {
+          // Use previous appraisal value for similar items
+          believedValue = previousAppraisal.believedvalue;
+        } else {
+          // Make a new appraisal roll
+          appraisalRoll = Math.floor(Math.random() * 20) + 1 + (appraisalBonus || 0);
+
+          // Calculate believed value based on roll
+          if (lootValue !== null && lootValue !== undefined) {
+            if (appraisalRoll >= 20) {
+              believedValue = lootValue;
+            } else if (appraisalRoll >= 15) {
+              believedValue = lootValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
             } else {
-              believedValue = lootValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
+              if (lootValue === 0) {
+                // Generate a random value between 1 and 100 for items with no value
+                believedValue = Math.floor(Math.random() * 100) + 1;
+              } else {
+                believedValue = lootValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
+              }
             }
-          }
 
-          believedValue = customRounding(believedValue);
+            believedValue = customRounding(believedValue);
+          }
+        }
+
+        if (believedValue !== null) {
+          const appraisalEntry = {
+            characterid: characterId,
+            lootid: lootId,
+            appraisalroll: appraisalRoll,
+            believedvalue: believedValue,
+          };
+
+          const createdAppraisal = await Appraisal.create(appraisalEntry);
+          createdAppraisals.push(createdAppraisal);
         }
       }
 
-      if (believedValue !== null) {
-        const appraisalEntry = {
-          characterid: characterId,
-          lootid: lootId,
-          appraisalroll: appraisalRoll,
-          believedvalue: believedValue,
-        };
+      logger.info(`${createdAppraisals.length} items appraised by character ${activeCharacter.name}`, {
+        userId,
+        characterId,
+        characterName: activeCharacter.name,
+        appraisalCount: createdAppraisals.length
+      });
 
-        const createdAppraisal = await Appraisal.create(appraisalEntry);
-        createdAppraisals.push(createdAppraisal);
-      }
-    }
-
-    return createdAppraisals;
-  }, 'Error appraising loot');
+      return controllerFactory.sendSuccessResponse(res, {
+        appraisals: createdAppraisals,
+        character: {
+          id: activeCharacter.id,
+          name: activeCharacter.name,
+          appraisal_bonus: activeCharacter.appraisal_bonus
+        },
+        count: createdAppraisals.length
+      }, `${createdAppraisals.length} items appraised successfully`);
+    });
+  } catch (error) {
+    logger.error('Error appraising loot:', error);
+    throw error;
+  }
 };
 /**
  * Parse item description using GPT
@@ -669,50 +917,63 @@ const parseItemDescription = async (req, res) => {
     throw controllerFactory.createValidationError('Item description is required');
   }
 
-  const parsedData = await parseItemDescriptionWithGPT(description);
+  try {
+    const parsedData = await parseItemDescriptionWithGPT(description);
 
-  // Fetch item from the database based on item name (using similarity)
-  const itemResult = await dbUtils.executeQuery(`
-    SELECT id, name, type, subtype, value 
-    FROM item 
-    WHERE SIMILARITY(name, $1) > 0.3
-    ORDER BY SIMILARITY(name, $1) DESC
-    LIMIT 1
-  `, [parsedData.item]);
-
-  if (itemResult.rows.length > 0) {
-    const item = itemResult.rows[0];
-    parsedData.itemId = item.id;
-    parsedData.itemType = item.type;
-    parsedData.itemSubtype = item.subtype;
-    parsedData.itemValue = item.value;
-  }
-
-  // Fetch mod IDs from the database based on mod names (using similarity)
-  const modNames = parsedData.mods || [];
-  const modIds = await Promise.all(modNames.map(async (mod) => {
-    const result = await dbUtils.executeQuery(`
-      SELECT id 
-      FROM mod 
+    // Fetch item from the database based on item name (using similarity)
+    const itemResult = await dbUtils.executeQuery(`
+      SELECT id, name, type, subtype, value 
+      FROM item 
       WHERE SIMILARITY(name, $1) > 0.3
-      AND (target = $2 OR target IS NULL)
-      AND (subtarget = $3 OR subtarget IS NULL)
-      ORDER BY 
-        CASE 
-          WHEN target = $2 AND subtarget = $3 THEN 1
-          WHEN target = $2 AND subtarget IS NULL THEN 2
-          WHEN target = $2 THEN 3
-          ELSE 4
-        END,
-        SIMILARITY(name, $1) DESC
+      ORDER BY SIMILARITY(name, $1) DESC
       LIMIT 1
-    `, [mod, parsedData.itemType, parsedData.itemSubtype]);
-    return result.rows[0] ? result.rows[0].id : null;
-  }));
+    `, [parsedData.item]);
 
-  parsedData.modIds = modIds.filter(id => id !== null);
+    if (itemResult.rows.length > 0) {
+      const item = itemResult.rows[0];
+      parsedData.itemId = item.id;
+      parsedData.itemType = item.type;
+      parsedData.itemSubtype = item.subtype;
+      parsedData.itemValue = item.value;
+    }
 
-  controllerFactory.sendSuccessResponse(res, parsedData);
+    // Fetch mod IDs from the database based on mod names (using similarity)
+    const modNames = parsedData.mods || [];
+    const modIds = await Promise.all(modNames.map(async (mod) => {
+      const result = await dbUtils.executeQuery(`
+        SELECT id 
+        FROM mod 
+        WHERE SIMILARITY(name, $1) > 0.3
+        AND (target = $2 OR target IS NULL)
+        AND (subtarget = $3 OR subtarget IS NULL)
+        ORDER BY 
+          CASE 
+            WHEN target = $2 AND subtarget = $3 THEN 1
+            WHEN target = $2 AND subtarget IS NULL THEN 2
+            WHEN target = $2 THEN 3
+            ELSE 4
+          END,
+          SIMILARITY(name, $1) DESC
+        LIMIT 1
+      `, [mod, parsedData.itemType, parsedData.itemSubtype]);
+      return result.rows[0] ? result.rows[0].id : null;
+    }));
+
+    parsedData.modIds = modIds.filter(id => id !== null);
+
+    // Log successful parsing for analytics
+    logger.info('Item description parsed successfully', {
+      userId: req.user.id,
+      descriptionLength: description.length,
+      foundItem: Boolean(parsedData.itemId),
+      modsCount: parsedData.modIds.length
+    });
+
+    controllerFactory.sendSuccessResponse(res, parsedData, 'Item description parsed successfully');
+  } catch (error) {
+    logger.error('Error parsing item description:', error);
+    throw error;
+  }
 };
 /**
  * Calculate item value
@@ -733,8 +994,17 @@ const calculateValue = async (req, res) => {
  * Get all mods
  */
 const getMods = async (req, res) => {
-  const result = await dbUtils.executeQuery('SELECT * FROM mod');
-  controllerFactory.sendSuccessResponse(res, result.rows);
+  try {
+    const result = await dbUtils.executeQuery('SELECT * FROM mod ORDER BY name');
+
+    controllerFactory.sendSuccessResponse(res, {
+      mods: result.rows,
+      count: result.rows.length
+    }, `${result.rows.length} mods retrieved`);
+  } catch (error) {
+    logger.error('Error fetching mods:', error);
+    throw error;
+  }
 };
 /**
  * Update item with DM privileges
@@ -747,10 +1017,20 @@ const dmUpdateItem = async (req, res) => {
     throw controllerFactory.createValidationError('Item ID is required');
   }
 
+  // Verify DM role
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can perform this operation');
+  }
+
   return await dbUtils.executeTransaction(async (client) => {
     // Get original item to check if value has changed
     const originalItemResult = await client.query('SELECT * FROM loot WHERE id = $1', [id]);
     const originalItem = originalItemResult.rows[0];
+
+    if (!originalItem) {
+      throw controllerFactory.createNotFoundError(`Item with ID ${id} not found`);
+    }
+
     const originalValue = originalItem ? originalItem.value : null;
 
     const allowedFields = [
@@ -773,8 +1053,8 @@ const dmUpdateItem = async (req, res) => {
           filteredUpdateData.session_date = new Date(filteredUpdateData.session_date);
         }
       } catch (error) {
-        console.error('Error parsing session_date:', error);
-        throw new Error('Invalid session_date format');
+        logger.error('Error parsing session_date:', error);
+        throw controllerFactory.createValidationError('Invalid session_date format');
       }
     }
 
@@ -795,7 +1075,7 @@ const dmUpdateItem = async (req, res) => {
     // Make sure we have at least one field to update
     if (updateParams.length === 1) {
       // Only lastupdate is being updated, no real changes
-      return originalItem;
+      return controllerFactory.sendSuccessResponse(res, originalItem, 'No changes to apply');
     }
 
     // Add the ID as the last parameter
@@ -864,15 +1144,29 @@ const dmUpdateItem = async (req, res) => {
       await updateAppraisalsOnValueChange(id, updatedItem.value);
     }
 
-    return updatedItem;
-  }, 'Error updating item');
+    logger.info(`Item ${id} updated by DM ${req.user.id}`, {
+      dmId: req.user.id,
+      itemId: id,
+      fields: Object.keys(filteredUpdateData),
+      valueChanged: originalValue !== updatedItem.value
+    });
+
+    controllerFactory.sendSuccessResponse(res, updatedItem, 'Item updated successfully');
+  });
 };
 /**
  * Get count of unprocessed loot items
  */
 const getUnprocessedCount = async (req, res) => {
-  const result = await dbUtils.executeQuery('SELECT COUNT(*) FROM loot WHERE status IS NULL');
-  controllerFactory.sendSuccessResponse(res, { count: parseInt(result.rows[0].count) });
+  try {
+    const result = await dbUtils.executeQuery('SELECT COUNT(*) FROM loot WHERE status IS NULL');
+    const count = parseInt(result.rows[0].count);
+
+    controllerFactory.sendSuccessResponse(res, { count }, `${count} unprocessed items found`);
+  } catch (error) {
+    logger.error('Error getting unprocessed count:', error);
+    throw error;
+  }
 };
 /**
  * Identify items
@@ -886,106 +1180,175 @@ const identifyItems = async (req, res) => {
 
   return await dbUtils.executeTransaction(async (client) => {
     const updatedItems = [];
+    const failedItems = [];
 
     for (let i = 0; i < items.length; i++) {
-      const itemId = items[i];
-      const spellcraftRoll = spellcraftRolls[i];
+      try {
+        const itemId = items[i];
+        const spellcraftRoll = spellcraftRolls[i];
 
-      // Fetch the loot item details
-      const lootResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
-      const lootItem = lootResult.rows[0];
+        // Fetch the loot item details
+        const lootResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
+        const lootItem = lootResult.rows[0];
 
-      if (!lootItem) {
-        console.error(`Loot item with id ${itemId} not found`);
-        continue;
+        if (!lootItem) {
+          throw new Error(`Loot item with id ${itemId} not found`);
+        }
+
+        // Fetch the associated item details
+        const itemResult = await client.query('SELECT * FROM item WHERE id = $1', [lootItem.itemid]);
+        const item = itemResult.rows[0];
+
+        if (!item) {
+          throw new Error(`Item with id ${lootItem.itemid} not found`);
+        }
+
+        // Fetch the associated mods
+        const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [lootItem.modids]);
+        const mods = modsResult.rows.map(row => row.name);
+
+        // Sort mods, prioritizing those starting with '+'
+        mods.sort((a, b) => {
+          if (a.startsWith('+') && !b.startsWith('+')) return -1;
+          if (!a.startsWith('+') && b.startsWith('+')) return 1;
+          return 0;
+        });
+
+        // Construct the new name
+        let newName = mods.join(' ') + ' ' + item.name;
+        newName = newName.trim();
+
+        // Update the loot item
+        await client.query(
+          'UPDATE loot SET name = $1, unidentified = false WHERE id = $2',
+          [newName, itemId]
+        );
+
+        // Record the identification in the identify table
+        // If spellcraftRoll is 99, it's a DM identification
+        const identifyCharacterId = spellcraftRoll === 99 ? null : characterId;
+        await client.query(
+          'INSERT INTO identify (lootid, characterid, spellcraft_roll) VALUES ($1, $2, $3)',
+          [itemId, identifyCharacterId, spellcraftRoll]
+        );
+
+        // Add the updated item to the list
+        updatedItems.push({
+          id: itemId,
+          oldName: lootItem.name,
+          newName,
+          spellcraftRoll
+        });
+      } catch (error) {
+        logger.error(`Error identifying item ${items[i]}: ${error.message}`);
+        failedItems.push({
+          id: items[i],
+          error: error.message
+        });
       }
-
-      // Fetch the associated item details
-      const itemResult = await client.query('SELECT * FROM item WHERE id = $1', [lootItem.itemid]);
-      const item = itemResult.rows[0];
-
-      if (!item) {
-        console.error(`Item with id ${lootItem.itemid} not found`);
-        continue;
-      }
-
-      // Fetch the associated mods
-      const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [lootItem.modids]);
-      const mods = modsResult.rows.map(row => row.name);
-
-      // Sort mods, prioritizing those starting with '+'
-      mods.sort((a, b) => {
-        if (a.startsWith('+') && !b.startsWith('+')) return -1;
-        if (!a.startsWith('+') && b.startsWith('+')) return 1;
-        return 0;
-      });
-
-      // Construct the new name
-      let newName = mods.join(' ') + ' ' + item.name;
-      newName = newName.trim();
-
-      // Update the loot item
-      await client.query(
-        'UPDATE loot SET name = $1, unidentified = false WHERE id = $2',
-        [newName, itemId]
-      );
-
-      // Record the identification in the identify table
-      // If spellcraftRoll is 99, it's a DM identification
-      const identifyCharacterId = spellcraftRoll === 99 ? null : characterId;
-      await client.query(
-        'INSERT INTO identify (lootid, characterid, spellcraft_roll) VALUES ($1, $2, $3)',
-        [itemId, identifyCharacterId, spellcraftRoll]
-      );
-
-      // Add the updated item to the list
-      updatedItems.push({...lootItem, name: newName, unidentified: false});
     }
 
-    return { message: 'Items identified successfully', updatedItems };
-  }, 'Error identifying items');
+    if (updatedItems.length === 0 && failedItems.length > 0) {
+      throw controllerFactory.createValidationError(`Failed to identify any items: ${failedItems[0].error}`);
+    }
+
+    const characterName = characterId ?
+      (await client.query('SELECT name FROM characters WHERE id = $1', [characterId])).rows[0]?.name :
+      'DM';
+
+    logger.info(`${updatedItems.length} items identified by ${characterName}`, {
+      characterId,
+      characterName,
+      identifiedCount: updatedItems.length,
+      failedCount: failedItems.length
+    });
+
+    return controllerFactory.sendSuccessResponse(res, {
+      identified: updatedItems,
+      failed: failedItems.length > 0 ? failedItems : undefined,
+      count: {
+        success: updatedItems.length,
+        failed: failedItems.length,
+        total: items.length
+      }
+    }, `${updatedItems.length} items identified successfully${failedItems.length > 0 ? ` (${failedItems.length} failed)` : ''}`);
+  });
 };
 /**
  * Get character loot ledger
  */
 const getCharacterLedger = async (req, res) => {
-  const ledgerQuery = `
-    SELECT 
-      c.name AS character,
-      c.active,
-      COALESCE(SUM(l.value), 0) AS lootValue,
-      COALESCE(SUM(
-        CASE 
-          WHEN g.transaction_type = 'Party Payment' 
-          THEN (g.copper::decimal / 100 + g.silver::decimal / 10 + g.gold::decimal + g.platinum::decimal * 10)
-          ELSE 0 
-        END
-      ), 0) AS payments
-    FROM 
-      characters c
-    LEFT JOIN 
-      loot l ON c.id = l.whohas AND l.status = 'Kept Self'
-    LEFT JOIN 
-      gold g ON c.id = g.character_id AND g.transaction_type = 'Party Payment'
-    GROUP BY 
-      c.id, c.name, c.active
-  `;
+  try {
+    const ledgerQuery = `
+      SELECT 
+        c.name AS character,
+        c.active,
+        COALESCE(SUM(l.value), 0) AS lootValue,
+        COALESCE(SUM(
+          CASE 
+            WHEN g.transaction_type = 'Party Payment' 
+            THEN (g.copper::decimal / 100 + g.silver::decimal / 10 + g.gold::decimal + g.platinum::decimal * 10)
+            ELSE 0 
+          END
+        ), 0) AS payments
+      FROM 
+        characters c
+      LEFT JOIN 
+        loot l ON c.id = l.whohas AND l.status = 'Kept Self'
+      LEFT JOIN 
+        gold g ON c.id = g.character_id AND g.transaction_type = 'Party Payment'
+      GROUP BY 
+        c.id, c.name, c.active
+      ORDER BY
+        c.active DESC, c.name ASC
+    `;
 
-  const result = await dbUtils.executeQuery(ledgerQuery);
-  controllerFactory.sendSuccessResponse(res, result.rows);
+    const result = await dbUtils.executeQuery(ledgerQuery);
+
+    // Calculate total loot value and payments
+    const totals = result.rows.reduce((acc, row) => {
+      acc.lootValue += parseFloat(row.lootvalue || 0);
+      acc.payments += parseFloat(row.payments || 0);
+      return acc;
+    }, { lootValue: 0, payments: 0 });
+
+    controllerFactory.sendSuccessResponse(res, {
+      characters: result.rows,
+      totals: {
+        lootValue: parseFloat(totals.lootValue.toFixed(2)),
+        payments: parseFloat(totals.payments.toFixed(2)),
+        balance: parseFloat((totals.lootValue - totals.payments).toFixed(2))
+      },
+      count: result.rows.length
+    }, 'Character loot ledger retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching character ledger:', error);
+    throw error;
+  }
 };
 /**
  * Get unidentified items
  */
 const getUnidentifiedItems = async (req, res) => {
-  const query = `
-    SELECT l.*, i.name as real_item_name
-    FROM loot l
-    LEFT JOIN item i ON l.itemid = i.id
-    WHERE l.unidentified = true
-  `;
-  const result = await dbUtils.executeQuery(query);
-  controllerFactory.sendSuccessResponse(res, result.rows);
+  try {
+    const query = `
+      SELECT l.*, i.name as real_item_name, i.casterlevel
+      FROM loot l
+      LEFT JOIN item i ON l.itemid = i.id
+      WHERE l.unidentified = true
+      ORDER BY l.session_date DESC
+    `;
+
+    const result = await dbUtils.executeQuery(query);
+
+    controllerFactory.sendSuccessResponse(res, {
+      items: result.rows,
+      count: result.rows.length
+    }, `${result.rows.length} unidentified items found`);
+  } catch (error) {
+    logger.error('Error fetching unidentified items:', error);
+    throw error;
+  }
 };
 /**
  * Get items by ID
@@ -997,21 +1360,30 @@ const getItemsById = async (req, res) => {
     throw controllerFactory.createValidationError('Item IDs are required');
   }
 
-  // Parse the comma-separated list of IDs
-  const itemIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+  try {
+    // Parse the comma-separated list of IDs
+    const itemIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
 
-  if (itemIds.length === 0) {
-    throw controllerFactory.createValidationError('No valid item IDs provided');
+    if (itemIds.length === 0) {
+      throw controllerFactory.createValidationError('No valid item IDs provided');
+    }
+
+    // Query the database for these specific items
+    const result = await dbUtils.executeQuery(`
+      SELECT id, name, type, subtype, value, weight, casterlevel
+      FROM item
+      WHERE id = ANY($1)
+    `, [itemIds]);
+
+    controllerFactory.sendSuccessResponse(res, {
+      items: result.rows,
+      count: result.rows.length,
+      requested: itemIds.length
+    }, `${result.rows.length} items retrieved`);
+  } catch (error) {
+    logger.error('Error fetching items by ID:', error);
+    throw error;
   }
-
-  // Query the database for these specific items
-  const result = await dbUtils.executeQuery(`
-    SELECT id, name, type, subtype, value, weight, casterlevel
-    FROM item
-    WHERE id = ANY($1)
-  `, [itemIds]);
-
-  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 /**
  * Get mods by ID
@@ -1023,32 +1395,46 @@ const getModsById = async (req, res) => {
     throw controllerFactory.createValidationError('Mod IDs are required');
   }
 
-  // Parse the comma-separated list of IDs
-  const modIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+  try {
+    // Parse the comma-separated list of IDs
+    const modIds = ids.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
 
-  if (modIds.length === 0) {
-    throw controllerFactory.createValidationError('No valid mod IDs provided');
+    if (modIds.length === 0) {
+      throw controllerFactory.createValidationError('No valid mod IDs provided');
+    }
+
+    // Query the database for these specific mods
+    const result = await dbUtils.executeQuery(`
+      SELECT id, name, plus, valuecalc, target, subtarget
+      FROM mod
+      WHERE id = ANY($1)
+    `, [modIds]);
+
+    controllerFactory.sendSuccessResponse(res, {
+      mods: result.rows,
+      count: result.rows.length,
+      requested: modIds.length
+    }, `${result.rows.length} mods retrieved`);
+  } catch (error) {
+    logger.error('Error fetching mods by ID:', error);
+    throw error;
   }
-
-  // Query the database for these specific mods
-  const result = await dbUtils.executeQuery(`
-    SELECT id, name, plus, valuecalc, target, subtarget
-    FROM mod
-    WHERE id = ANY($1)
-  `, [modIds]);
-
-  controllerFactory.sendSuccessResponse(res, result.rows);
 };
 /**
  * Confirm sale of pending items
  */
 const confirmSale = async (req, res) => {
+  // Verify DM role
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can confirm sales');
+  }
+
   return await dbUtils.executeTransaction(async (client) => {
     const pendingSaleItemsResult = await client.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
     const allPendingItems = pendingSaleItemsResult.rows;
 
     if (allPendingItems.length === 0) {
-      return { message: 'No items to sell' };
+      return controllerFactory.sendSuccessResponse(res, { message: 'No items to sell' }, 'No items to sell');
     }
 
     // Filter out unidentified items and items with null values
@@ -1071,12 +1457,21 @@ const confirmSale = async (req, res) => {
     const validItemIds = validItems.map(item => item.id);
 
     // Record each valid item as sold
+    const soldItems = [];
     for (const item of validItems) {
-      await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
-        item.id,
-        calculateItemSaleValue(item),
-        new Date(),
-      ]);
+      const saleValue = calculateItemSaleValue(item);
+
+      const soldResult = await client.query(
+        'INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3) RETURNING *',
+        [item.id, saleValue, new Date()]
+      );
+
+      soldItems.push({
+        id: item.id,
+        name: item.name,
+        value: item.value,
+        soldFor: saleValue
+      });
     }
 
     // Update only the valid items to sold status
@@ -1093,23 +1488,32 @@ const confirmSale = async (req, res) => {
       notes: `Sale of ${validItems.length} items`
     };
 
-    await client.query(
-      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    const goldResult = await client.query(
+      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
       [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
     );
 
-    // Prepare the response message
-    let message = `Sale confirmed: ${validItems.length} items sold for ${totalSold.toFixed(2)} gold`;
-    if (invalidItems.length > 0) {
-      message += `. ${invalidItems.length} item(s) were not sold because they are either unidentified or have no value`;
-    }
+    logger.info(`${validItems.length} items sold for ${totalSold.toFixed(2)} gold by DM ${req.user.id}`, {
+      dmId: req.user.id,
+      itemCount: validItems.length,
+      totalValue: totalSold.toFixed(2),
+      skippedItems: invalidItems.length
+    });
 
-    return {
-      message,
-      validItemsSold: validItems.length,
-      invalidItemsSkipped: invalidItems.length
-    };
-  }, 'Error confirming sale');
+    return controllerFactory.sendSuccessResponse(res, {
+      sold: {
+        items: soldItems,
+        count: validItems.length,
+        total: parseFloat(totalSold.toFixed(2))
+      },
+      skipped: {
+        items: invalidItems.map(item => ({ id: item.id, name: item.name })),
+        count: invalidItems.length,
+        reason: 'Items are either unidentified or have no value'
+      },
+      gold: goldResult.rows[0]
+    }, `Sale completed: ${validItems.length} items sold for ${totalSold.toFixed(2)} gold${invalidItems.length > 0 ? `, ${invalidItems.length} items skipped` : ''}`);
+  });
 };
 /**
  * Sell selected items
@@ -1117,8 +1521,13 @@ const confirmSale = async (req, res) => {
 const sellSelected = async (req, res) => {
   const { itemsToSell } = req.body;
 
-  if (!itemsToSell || itemsToSell.length === 0) {
+  if (!itemsToSell || !Array.isArray(itemsToSell) || itemsToSell.length === 0) {
     throw controllerFactory.createValidationError('No items selected to sell');
+  }
+
+  // Verify DM role
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can sell items');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -1147,13 +1556,23 @@ const sellSelected = async (req, res) => {
     // Use the utility function to calculate the total sale value
     const totalSold = calculateTotalSaleValue(validItems);
 
-    // Record each valid item as sold in the sold table
+    // Record each valid item as sold in the sold table and collect details
+    const soldItems = [];
     for (const item of validItems) {
+      const saleValue = calculateItemSaleValue(item);
+
       await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
         item.id,
-        calculateItemSaleValue(item),
+        saleValue,
         new Date(),
       ]);
+
+      soldItems.push({
+        id: item.id,
+        name: item.name,
+        value: parseFloat(item.value),
+        soldFor: parseFloat(saleValue.toFixed(2))
+      });
     }
 
     // Update the status of the sold items
@@ -1173,23 +1592,31 @@ const sellSelected = async (req, res) => {
       notes: `Sale of ${validItems.length} selected items`
     };
 
-    await client.query(
-      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    const goldResult = await client.query(
+      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
       [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
     );
 
-    // Prepare the response message
-    let message = `Sold ${validItems.length} items for ${totalSold.toFixed(2)} gold`;
-    if (invalidItems.length > 0) {
-      message += `. ${invalidItems.length} item(s) were not sold because they are either unidentified or have no value`;
-    }
+    logger.info(`${validItems.length} selected items sold for ${totalSold.toFixed(2)} gold by DM ${req.user.id}`, {
+      dmId: req.user.id,
+      itemCount: validItems.length,
+      totalValue: totalSold.toFixed(2),
+      invalidCount: invalidItems.length
+    });
 
-    return {
-      message,
-      validItemsSold: validItems.length,
-      invalidItemsSkipped: invalidItems.length
-    };
-  }, 'Error selling selected items');
+    return controllerFactory.sendSuccessResponse(res, {
+      sold: {
+        items: soldItems,
+        count: validItems.length,
+        total: parseFloat(totalSold.toFixed(2))
+      },
+      skipped: {
+        items: invalidItems.map(item => ({ id: item.id, name: item.name })),
+        count: invalidItems.length
+      },
+      gold: goldResult.rows[0]
+    }, `${validItems.length} items sold for ${totalSold.toFixed(2)} gold${invalidItems.length > 0 ? `, ${invalidItems.length} items skipped` : ''}`);
+  });
 };
 /**
  * Sell all items except selected ones
@@ -1199,6 +1626,11 @@ const sellAllExcept = async (req, res) => {
 
   if (!itemsToKeep || !Array.isArray(itemsToKeep)) {
     throw controllerFactory.createValidationError('Items to keep array is required');
+  }
+
+  // Verify DM role
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can sell items');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -1232,13 +1664,23 @@ const sellAllExcept = async (req, res) => {
     // Use the utility function to calculate total sale value
     const totalSold = calculateTotalSaleValue(validItemsToSell);
 
-    // Record each valid item as sold in the sold table
+    // Record each valid item as sold in the sold table and collect details
+    const soldItems = [];
     for (const item of validItemsToSell) {
+      const saleValue = calculateItemSaleValue(item);
+
       await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
         item.id,
-        calculateItemSaleValue(item),
+        saleValue,
         new Date(),
       ]);
+
+      soldItems.push({
+        id: item.id,
+        name: item.name,
+        value: parseFloat(item.value),
+        soldFor: parseFloat(saleValue.toFixed(2))
+      });
     }
 
     await client.query(
@@ -1253,26 +1695,39 @@ const sellAllExcept = async (req, res) => {
       gold: Math.floor(totalSold),
       silver: Math.floor((totalSold % 1) * 10),
       copper: Math.floor(((totalSold * 10) % 1) * 10),
-      notes: `Sale of ${validItemIds.length} items`
+      notes: `Sale of ${validItemsToSell.length} items (kept ${itemsToKeep.length})`
     };
 
-    await client.query(
-      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    const goldResult = await client.query(
+      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
       [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
     );
 
-    // Prepare the response message
-    let message = `Sold ${validItemsToSell.length} items for ${totalSold.toFixed(2)} gold`;
-    if (invalidItems.length > 0) {
-      message += `. ${invalidItems.length} item(s) were not sold because they are either unidentified or have no value`;
-    }
+    logger.info(`${validItemsToSell.length} items sold (keeping ${itemsToKeep.length}) for ${totalSold.toFixed(2)} gold by DM ${req.user.id}`, {
+      dmId: req.user.id,
+      itemCount: validItemsToSell.length,
+      keptCount: itemsToKeep.length,
+      totalValue: totalSold.toFixed(2),
+      invalidCount: invalidItems.length
+    });
 
-    return {
-      message,
-      validItemsSold: validItemsToSell.length,
-      invalidItemsSkipped: invalidItems.length
-    };
-  }, 'Error selling all items except selected');
+    return controllerFactory.sendSuccessResponse(res, {
+      sold: {
+        items: soldItems,
+        count: validItemsToSell.length,
+        total: parseFloat(totalSold.toFixed(2))
+      },
+      kept: {
+        ids: itemsToKeep,
+        count: itemsToKeep.length
+      },
+      skipped: {
+        items: invalidItems.map(item => ({ id: item.id, name: item.name })),
+        count: invalidItems.length
+      },
+      gold: goldResult.rows[0]
+    }, `${validItemsToSell.length} items sold for ${totalSold.toFixed(2)} gold, kept ${itemsToKeep.length} items${invalidItems.length > 0 ? `, skipped ${invalidItems.length} invalid items` : ''}`);
+  });
 };
 /**
  * Sell up to a specified amount
@@ -1282,6 +1737,11 @@ const sellUpTo = async (req, res) => {
 
   if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
     throw controllerFactory.createValidationError('Valid amount is required');
+  }
+
+  // Verify DM role
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can sell items');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -1308,7 +1768,10 @@ const sellUpTo = async (req, res) => {
 
       if (totalSold + saleValue <= amount) {
         itemsSold.push(item.id);
-        itemsToSell.push(item);
+        itemsToSell.push({
+          ...item,
+          saleValue
+        });
         totalSold += saleValue;
       } else {
         break;
@@ -1319,13 +1782,21 @@ const sellUpTo = async (req, res) => {
       throw controllerFactory.createValidationError('No items could be sold up to the specified amount');
     }
 
-    // Record each item as sold in the sold table
+    // Record each item as sold in the sold table and collect details
+    const soldItems = [];
     for (const item of itemsToSell) {
       await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
         item.id,
-        calculateItemSaleValue(item),
+        item.saleValue,
         new Date(),
       ]);
+
+      soldItems.push({
+        id: item.id,
+        name: item.name,
+        value: parseFloat(item.value),
+        soldFor: parseFloat(item.saleValue.toFixed(2))
+      });
     }
 
     await client.query(
@@ -1340,29 +1811,44 @@ const sellUpTo = async (req, res) => {
       gold: Math.floor(totalSold),
       silver: Math.floor((totalSold % 1) * 10),
       copper: Math.floor(((totalSold * 10) % 1) * 10),
-      notes: `Sale of ${itemsSold.length} items`
+      notes: `Sale of ${itemsSold.length} items up to ${parseFloat(amount).toFixed(2)} gold`
     };
 
-    await client.query(
-      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    const goldResult = await client.query(
+      'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
       [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
     );
 
     // Count how many items were skipped due to being invalid
     const invalidItemsCount = allPendingItems.length - validPendingItems.length;
+    const remainingItemsCount = validPendingItems.length - itemsSold.length;
 
-    // Prepare response message
-    let message = `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold`;
-    if (invalidItemsCount > 0) {
-      message += `. ${invalidItemsCount} item(s) were skipped because they are either unidentified or have no value`;
-    }
+    logger.info(`${itemsSold.length} items sold for ${totalSold.toFixed(2)} gold up to limit of ${parseFloat(amount).toFixed(2)} by DM ${req.user.id}`, {
+      dmId: req.user.id,
+      itemCount: itemsSold.length,
+      totalValue: totalSold.toFixed(2),
+      amountLimit: parseFloat(amount).toFixed(2),
+      invalidCount: invalidItemsCount,
+      remainingCount: remainingItemsCount
+    });
 
-    return {
-      message,
-      validItemsSold: itemsSold.length,
-      invalidItemsSkipped: invalidItemsCount
-    };
-  }, 'Error selling items up to amount');
+    return controllerFactory.sendSuccessResponse(res, {
+      sold: {
+        items: soldItems,
+        count: itemsSold.length,
+        total: parseFloat(totalSold.toFixed(2))
+      },
+      remaining: {
+        count: remainingItemsCount,
+        total: validPendingItems.length - itemsSold.length
+      },
+      invalid: {
+        count: invalidItemsCount
+      },
+      limit: parseFloat(amount),
+      gold: goldResult.rows[0]
+    }, `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold (limit: ${parseFloat(amount).toFixed(2)})`);
+  });
 };
 // Define validation rules for controller functions
 const createLootValidation = {
