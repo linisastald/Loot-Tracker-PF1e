@@ -54,8 +54,14 @@ const SoldLoot = () => {
     if (!soldDetails[date]) {
       const fetchSoldDetails = async () => {
         try {
-          // Format the date as YYYY-MM-DD to avoid timestamp issues
-          const formattedDate = date.split('T')[0];
+          // Convert the date string to a Date object and format it as YYYY-MM-DD
+          const dateObj = new Date(date);
+          const year = dateObj.getFullYear();
+          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const day = String(dateObj.getDate()).padStart(2, '0');
+          const formattedDate = `${year}-${month}-${day}`;
+
+          console.log(`Fetching details for date: ${formattedDate}`);
           const response = await api.get(`/sold/${formattedDate}`);
 
           // Handle different response formats
