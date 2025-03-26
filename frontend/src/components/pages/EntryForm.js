@@ -59,7 +59,7 @@ const EntryForm = ({ entry, index, itemOptions, onRemove, onChange }) => {
           type="date"
           fullWidth
           InputLabelProps={{ shrink: true }}
-          value={localEntry.sessionDate ? localEntry.sessionDate.split('T')[0] : new Date().toISOString().split('T')[0]}
+          value={localEntry.sessionDate ? (typeof localEntry.sessionDate === 'string' ? localEntry.sessionDate.split('T')[0] : new Date(localEntry.sessionDate).toISOString().split('T')[0]) : new Date().toISOString().split('T')[0]}
           onChange={(e) => handleChange('sessionDate', e.target.value)}
         />
       </Grid>
@@ -198,7 +198,7 @@ const EntryForm = ({ entry, index, itemOptions, onRemove, onChange }) => {
           type="date"
           fullWidth
           InputLabelProps={{ shrink: true }}
-          value={localEntry.sessionDate ? localEntry.sessionDate.split('T')[0] : new Date().toISOString().split('T')[0]}
+          value={localEntry.sessionDate ? (typeof localEntry.sessionDate === 'string' ? localEntry.sessionDate.split('T')[0] : new Date(localEntry.sessionDate).toISOString().split('T')[0]) : new Date().toISOString().split('T')[0]}
           onChange={(e) => handleChange('sessionDate', e.target.value)}
         />
       </Grid>
