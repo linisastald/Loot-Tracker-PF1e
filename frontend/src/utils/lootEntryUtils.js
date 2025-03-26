@@ -25,12 +25,27 @@ export const fetchItemNames = async (query = '') => {
     const response = await api.get(`/loot/items`, { params });
 
     // Ensure we always return an array of objects with name and id
-    return response.data.map(item => ({
+    const items = response.data.map(item => ({
       name: item.name,
       id: item.id,
       type: item.type,
-      value: item.value
+      value: item.value || null
     }));
+
+    // Sort items to prioritize matches by item name
+    if (query.trim()) {
+      const lowerQuery = query.toLowerCase();
+      items.sort((a, b) => {
+        const aStartsWith = a.name.toLowerCase().startsWith(lowerQuery);
+        const bStartsWith = b.name.toLowerCase().startsWith(lowerQuery);
+
+        if (aStartsWith && !bStartsWith) return -1;
+        if (!aStartsWith && bStartsWith) return 1;
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
+    }
+
+    return items;
   } catch (error) {
     console.error('Error fetching item names:', error);
     return [];

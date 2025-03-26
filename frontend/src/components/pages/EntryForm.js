@@ -90,31 +90,47 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
       </Grid>
       <Grid item xs={12} md={6}>
           <Autocomplete
+          freeSolo
           options={itemSuggestions}
-          value={localEntry.name || null}
+          value={localEntry.name || ''}
           inputValue={localEntry.name || ''}
           onInputChange={(event, newInputValue) => {
             handleChange('name', newInputValue);
           }}
           onChange={(event, newValue) => {
-              if (newValue) {
-                  handleChange('name', typeof newValue === 'string' ? newValue : newValue.name);
-                  handleChange('itemId', typeof newValue === 'object' ? newValue.id : null);
-                  handleChange('type', typeof newValue === 'object' ? newValue.type : '');
-                  handleChange('value', typeof newValue === 'object' ? newValue.value : null);
+            if (newValue) {
+              const selectedItem = typeof newValue === 'string'
+                ? itemSuggestions.find(item => item.name.toLowerCase() === newValue.toLowerCase())
+                : newValue;
+
+              if (selectedItem) {
+                handleChange('name', selectedItem.name);
+                handleChange('itemId', selectedItem.id);
+                handleChange('type', selectedItem.type || '');
+                handleChange('value', selectedItem.value || null);
               } else {
-                  handleChange('name', '');
-                  handleChange('itemId', null);
-                  handleChange('type', '');
-                  handleChange('value', null);
+                handleChange('name', typeof newValue === 'string' ? newValue : '');
+                handleChange('itemId', null);
+                handleChange('type', '');
+                handleChange('value', null);
               }
+            } else {
+              handleChange('name', '');
+              handleChange('itemId', null);
+              handleChange('type', '');
+              handleChange('value', null);
+            }
           }}
-          filterOptions={(options, {inputValue}) =>
-              options.filter(option =>
-                  option.name.toLowerCase().includes(inputValue.toLowerCase())
-              )
+          filterOptions={(options, { inputValue }) =>
+            options.filter(option =>
+              option.name.toLowerCase().includes(inputValue.toLowerCase())
+            )
           }
-          getOptionLabel={(option) => option.name}
+          getOptionLabel={(option) =>
+            typeof option === 'string'
+              ? option
+              : option.name || ''
+          }
           renderInput={(params) => (
             <TextField
               {...params}
