@@ -1,9 +1,10 @@
 // src/utils/controllerFactory.js
 const logger = require('./logger');
+const ApiResponse = require('./apiResponse');
 
 /**
- * Factory for creating controller handlers with built-in error handling,
- * validation, and standardized response formatting
+ * Factory for creating controller handlers with standardized error handling,
+ * validation, and response formatting
  */
 const controllerFactory = {
   /**
@@ -32,19 +33,19 @@ const controllerFactory = {
 
         // Return appropriate status code based on error type
         if (error.name === 'ValidationError') {
-          return res.status(400).json({ error: error.message });
+          return res.validationError(error.message);
         }
 
         if (error.name === 'NotFoundError') {
-          return res.status(404).json({ error: error.message });
+          return res.notFound(error.message);
         }
 
         if (error.name === 'AuthorizationError') {
-          return res.status(403).json({ error: error.message });
+          return res.forbidden(error.message);
         }
 
         // Default server error
-        res.status(500).json({ error: 'Internal server error' });
+        res.error('Internal server error');
       }
     };
   },
@@ -69,7 +70,7 @@ const controllerFactory = {
       handlers.create = this.createHandler(
         async (req, res) => {
           const entity = await model.create(req.body);
-          this.sendCreatedResponse(res, entity);
+          this.sendCreatedResponse(res, entity, `${entityName} created successfully`);
         },
         {
           errorMessage: `Error creating ${entityName}`,
@@ -114,7 +115,7 @@ const controllerFactory = {
             throw this.createNotFoundError(`${entityName} not found`);
           }
 
-          this.sendSuccessResponse(res, updated);
+          this.sendSuccessResponse(res, updated, `${entityName} updated successfully`);
         },
         {
           errorMessage: `Error updating ${entityName}`,
@@ -149,10 +150,20 @@ const controllerFactory = {
    * @throws {ValidationError} If any required field is missing
    */
   validateRequiredFields(body, requiredFields) {
+    const missingFields = [];
+
     for (const field of requiredFields) {
       if (body[field] === undefined || body[field] === null || body[field] === '') {
-        throw this.createValidationError(`Field '${field}' is required`);
+        missingFields.push(field);
       }
+    }
+
+    if (missingFields.length > 0) {
+      const message = missingFields.length === 1
+        ? `Field '${missingFields[0]}' is required`
+        : `Fields ${missingFields.map(f => `'${f}'`).join(', ')} are required`;
+
+      throw this.createValidationError(message);
     }
   },
 
@@ -181,29 +192,29 @@ const controllerFactory = {
    * Standard response helper for successful operations
    * @param {Object} res - Express response object
    * @param {any} data - Data to return
-   * @param {number} status - HTTP status code
+   * @param {string} message - Optional success message
    */
-  sendSuccessResponse(res, data, status = 200) {
-    res.status(status).json(data);
+  sendSuccessResponse(res, data, message = 'Operation successful') {
+    res.success(data, message);
   },
 
   /**
    * Standard response for successful creation operations
    * @param {Object} res - Express response object
    * @param {any} data - Data to return
+   * @param {string} message - Optional success message
    */
-  sendCreatedResponse(res, data) {
-    this.sendSuccessResponse(res, data, 201);
+  sendCreatedResponse(res, data, message = 'Resource created successfully') {
+    res.created(data, message);
   },
 
   /**
-   * Send a success message response
+   * Send a success message response without data
    * @param {Object} res - Express response object
    * @param {string} message - Success message
-   * @param {number} status - HTTP status code
    */
-  sendSuccessMessage(res, message, status = 200) {
-    res.status(status).json({ message });
+  sendSuccessMessage(res, message) {
+    res.success(null, message);
   }
 };
 

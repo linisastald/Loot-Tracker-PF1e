@@ -2,6 +2,7 @@
  * Controller utility functions to reduce code duplication
  */
 const logger = require('./logger');
+const ApiResponse = require('./apiResponse');
 
 /**
  * Wraps a controller function with standard error handling
@@ -18,19 +19,19 @@ const withErrorHandling = (controllerFn, errorMessage = 'Controller error') => {
 
       // Return appropriate status code based on error type
       if (error.name === 'ValidationError') {
-        return res.status(400).json({ error: error.message });
+        return res.validationError(error.message);
       }
 
       if (error.name === 'NotFoundError') {
-        return res.status(404).json({ error: error.message });
+        return res.notFound(error.message);
       }
 
       if (error.name === 'AuthorizationError') {
-        return res.status(403).json({ error: error.message });
+        return res.forbidden(error.message);
       }
 
       // Default server error
-      res.status(500).json({ error: 'Internal server error' });
+      res.error('Internal server error');
     }
   };
 };
@@ -66,10 +67,20 @@ class AuthorizationError extends Error {
  * @throws {ValidationError} If any required field is missing
  */
 const validateRequiredFields = (body, requiredFields) => {
+  const missingFields = [];
+
   for (const field of requiredFields) {
     if (body[field] === undefined || body[field] === null || body[field] === '') {
-      throw new ValidationError(`Field '${field}' is required`);
+      missingFields.push(field);
     }
+  }
+
+  if (missingFields.length > 0) {
+    const message = missingFields.length === 1
+      ? `Field '${missingFields[0]}' is required`
+      : `Fields ${missingFields.map(f => `'${f}'`).join(', ')} are required`;
+
+    throw new ValidationError(message);
   }
 };
 
@@ -77,29 +88,29 @@ const validateRequiredFields = (body, requiredFields) => {
  * Standard response helper for successful operations
  * @param {Object} res - Express response object
  * @param {any} data - Data to return
- * @param {number} status - HTTP status code
+ * @param {string} message - Optional success message
  */
-const sendSuccessResponse = (res, data, status = 200) => {
-  res.status(status).json(data);
+const sendSuccessResponse = (res, data, message = 'Operation successful') => {
+  res.success(data, message);
 };
 
 /**
  * Standard response for successful creation operations
  * @param {Object} res - Express response object
  * @param {any} data - Data to return
+ * @param {string} message - Optional success message
  */
-const sendCreatedResponse = (res, data) => {
-  sendSuccessResponse(res, data, 201);
+const sendCreatedResponse = (res, data, message = 'Resource created successfully') => {
+  res.created(data, message);
 };
 
 /**
  * Send a success message response
  * @param {Object} res - Express response object
  * @param {string} message - Success message
- * @param {number} status - HTTP status code
  */
-const sendSuccessMessage = (res, message, status = 200) => {
-  res.status(status).json({ message });
+const sendSuccessMessage = (res, message) => {
+  res.success(null, message);
 };
 
 module.exports = {

@@ -1,3 +1,4 @@
+// backend/index.js
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -9,6 +10,7 @@ const { execSync } = require('child_process');
 const logger = require('./src/utils/logger');
 const dotenv = require('dotenv');
 const pool = require('./src/config/db');
+const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 
 // Load environment variables
 dotenv.config();
@@ -17,7 +19,7 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Configure CORS - Update this section to fix the CORS issues
+// Configure CORS
 app.use(cors({
   origin: ['http://192.168.0.64:3000', 'http://localhost:3000'],
   credentials: true,
@@ -51,24 +53,9 @@ const limiter = rateLimit({
   handler: (req, res) => {
     logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
-      error: 'Too many requests, please try again later.'
+      success: false,
+      message: 'Too many requests, please try again later.'
     });
-  }
-});
-app.use(limiter);
-
-// Apply middlewares
-app.use(bodyParser.json());
-app.use(cookieParser());
-
-// CSRF protection - Make it optional for dev environment
-const csrfProtection = csrf({
-  cookie: {
-    httpOnly: true,
-    sameSite: 'lax', // Changed from 'Strict' to 'lax' for development
-    // secure: process.env.NODE_ENV === 'production'
-  }
-});
 
 // Make the CSRF middleware configurable
 const optionalCsrfProtection = (req, res, next) => {
@@ -84,92 +71,30 @@ const optionalCsrfProtection = (req, res, next) => {
 
 // Basic route
 app.get('/', (req, res) => {
-  res.send('Welcome to the Pathfinder Loot Tracker API');
+  res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
 });
 
 // CSRF Token route - don't apply CSRF protection to the CSRF token route itself
 app.get('/api/csrf-token', (req, res) => {
   // Generate a token even without CSRF middleware for now
-  res.json({ csrfToken: 'temporary-token-for-development' });
+  res.success({ csrfToken: 'temporary-token-for-development' });
 });
-
-// Import routes
-const authRoutes = require('./src/api/routes/auth');
-const lootRoutes = require('./src/api/routes/loot');
-const goldRoutes = require('./src/api/routes/gold');
-const userRoutes = require('./src/api/routes/user');
-const soldRoutes = require('./src/api/routes/sold');
-const consumablesRoutes = require('./src/api/routes/consumables');
-const discordRoutes = require('./src/api/routes/discord');
-const settingsRoutes = require('./src/api/routes/settings');
-const calendarRoutes = require('./src/api/routes/calendar');
-
-// Register routes - use the optional CSRF protection
-app.use('/api/auth', authRoutes);
-app.use('/api/loot', lootRoutes);
-app.use('/api/gold', goldRoutes);
-app.use('/api/user', userRoutes);
-app.use('/api/sold', soldRoutes);
-app.use('/api/consumables', consumablesRoutes);
-app.use('/api/discord', discordRoutes);
-app.use('/api/calendar', calendarRoutes);
-app.use('/api/settings', settingsRoutes);
-
-// Global error handler
-app.use((err, req, res, next) => {
-  // Handle CSRF token errors
-  if (err.code === 'EBADCSRFTOKEN') {
-    logger.warn(`CSRF token validation failed for ${req.method} ${req.originalUrl} from ${req.ip}`);
-    return res.status(403).json({ error: 'Invalid CSRF token, form expired. Please refresh the page.' });
   }
-
-  // Handle other errors
-  const statusCode = err.statusCode || 500;
-  const errorMessage = err.message || 'Internal Server Error';
-
-  logger.error(`Unhandled error: ${errorMessage}`, {
-    stack: err.stack,
-    url: req.originalUrl,
-    method: req.method,
-    ip: req.ip
-  });
-
-  res.status(statusCode).json({
-    error: errorMessage,
-    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
-  });
 });
+app.use(limiter);
 
-// Options preflight handling for CORS
-app.options('*', cors({
-  origin: ['http://192.168.0.64:3000', 'http://localhost:3000'],
-  credentials: true
-}));
+// Apply middlewares
+app.use(bodyParser.json());
+app.use(cookieParser());
 
-// Database connection test before starting server
-pool.connect()
-  .then(client => {
-    client.release();
-    logger.info('Database connection successful');
+// Add API response middleware - adds standardized response methods to res object
+app.use(apiResponseMiddleware);
 
-    // Start server
-    app.listen(port, () => {
-      logger.info(`Server running on port ${port}`);
-    });
-  })
-  .catch(err => {
-    logger.error('Unable to connect to the database:', err);
-    process.exit(1);
-  });
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception:', error);
+// CSRF protection - Make it optional for dev environment
+const csrfProtection = csrf({
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax', // Changed from 'Strict' to 'lax' for development
+    // secure: process.env.NODE_ENV === 'production'
+  }
 });
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Promise Rejection:', reason);
-});
-
-module.exports = app;

@@ -1,6 +1,7 @@
 // src/controllers/goldController.js
 const Gold = require('../models/Gold');
 const dbUtils = require('../utils/dbUtils');
+const controllerFactory = require('../utils/controllerFactory');
 const jwt_decode = require('jwt-decode');
 
 /**
@@ -9,8 +10,8 @@ const jwt_decode = require('jwt-decode');
 const createGoldEntry = async (req, res) => {
   const { goldEntries } = req.body;
 
-  if (!goldEntries || !Array.isArray(goldEntries)) {
-    return res.status(400).json({ error: 'Gold entries array is required' });
+  if (!goldEntries || !Array.isArray(goldEntries) || goldEntries.length === 0) {
+    return res.validationError('Gold entries array is required');
   }
 
   const createdEntries = [];
@@ -32,11 +33,11 @@ const createGoldEntry = async (req, res) => {
       createdEntries.push(createdEntry);
     } catch (error) {
       console.error('Error creating gold entry:', error);
-      return res.status(500).json({ error: 'Error creating gold entry' });
+      return res.error('Error creating gold entry', 500);
     }
   }
 
-  return res.status(201).json(createdEntries);
+  return res.created(createdEntries, 'Gold entries created successfully');
 };
 
 /**
@@ -48,17 +49,11 @@ const getAllGoldEntries = async (req, res) => {
   const endDate = req.query.endDate || new Date(); // Default: current date
 
   try {
-    const query = `
-      SELECT * FROM gold
-      WHERE session_date BETWEEN $1 AND $2
-      ORDER BY session_date DESC
-    `;
-    const result = await dbUtils.executeQuery(query, [startDate, endDate]);
-
-    return res.status(200).json(result.rows);
+    const entries = await Gold.findAll({ startDate, endDate });
+    return res.success(entries, 'Gold entries retrieved successfully');
   } catch (error) {
     console.error('Error fetching gold entries:', error);
-    return res.status(500).json({ error: 'Error fetching gold entries' });
+    return res.error('Error fetching gold entries', 500);
   }
 };
 
@@ -78,7 +73,7 @@ const distributeAllGold = async (req, res) => {
     const activeCharacters = activeCharactersResult.rows;
 
     if (activeCharacters.length === 0) {
-      return res.status(400).json({ error: 'No active characters found' });
+      return res.validationError('No active characters found');
     }
 
     // Get total balance for each currency
@@ -100,7 +95,7 @@ const distributeAllGold = async (req, res) => {
     const distributeCopper = Math.floor(totalCopper / numCharacters);
 
     if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
-      return res.status(400).json({ error: 'No currency to distribute' });
+      return res.validationError('No currency to distribute');
     }
 
     const createdEntries = [];
@@ -139,10 +134,10 @@ const distributeAllGold = async (req, res) => {
       }
     });
 
-    return res.status(200).json(createdEntries);
+    return res.success(createdEntries, 'Gold distributed successfully');
   } catch (error) {
     console.error('Error distributing gold:', error);
-    return res.status(500).json({ error: 'Error distributing gold' });
+    return res.error('Error distributing gold', 500);
   }
 };
 
@@ -162,7 +157,7 @@ const distributePlusPartyLoot = async (req, res) => {
     const activeCharacters = activeCharactersResult.rows;
 
     if (activeCharacters.length === 0) {
-      return res.status(400).json({ error: 'No active characters found' });
+      return res.validationError('No active characters found');
     }
 
     // Get total balance for each currency
@@ -186,7 +181,7 @@ const distributePlusPartyLoot = async (req, res) => {
     const distributeCopper = Math.floor(totalCopper / shareDivisor);
 
     if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
-      return res.status(400).json({ error: 'No currency to distribute' });
+      return res.validationError('No currency to distribute');
     }
 
     const createdEntries = [];
@@ -225,10 +220,10 @@ const distributePlusPartyLoot = async (req, res) => {
       }
     });
 
-    return res.status(200).json(createdEntries);
+    return res.success(createdEntries, 'Gold distributed with party loot share');
   } catch (error) {
     console.error('Error distributing gold plus party loot:', error);
-    return res.status(500).json({ error: 'Error distributing gold plus party loot' });
+    return res.error('Error distributing gold with party loot share', 500);
   }
 };
 
@@ -276,7 +271,7 @@ const balance = async (req, res) => {
 
     // Only create a balance entry if there are actual changes
     if (balanceEntry.gold === 0 && balanceEntry.silver === 0 && balanceEntry.copper === 0) {
-      return res.status(200).json({ message: 'No balancing needed' });
+      return res.success(null, 'No balancing needed');
     }
 
     // Insert the balance entry
@@ -296,17 +291,35 @@ const balance = async (req, res) => {
       balanceEntry.notes
     ]);
 
-    return res.status(200).json(result.rows);
+    return res.success(result.rows[0], 'Currencies balanced successfully');
   } catch (error) {
     console.error('Error balancing currencies:', error);
-    return res.status(500).json({ error: 'Error balancing currencies' });
+    return res.error('Error balancing currencies', 500);
   }
 };
 
+// Define validation for each endpoint
+const createGoldEntryValidation = {
+  requiredFields: ['goldEntries']
+};
+
+// Use controllerFactory to create handler functions with standardized error handling
+// This will automatically validate required fields and handle errors
 module.exports = {
-  createGoldEntry,
-  getAllGoldEntries,
-  distributeAllGold,
-  distributePlusPartyLoot,
-  balance
+  createGoldEntry: controllerFactory.createHandler(createGoldEntry, {
+    errorMessage: 'Error creating gold entry',
+    validation: createGoldEntryValidation
+  }),
+  getAllGoldEntries: controllerFactory.createHandler(getAllGoldEntries, {
+    errorMessage: 'Error fetching gold entries'
+  }),
+  distributeAllGold: controllerFactory.createHandler(distributeAllGold, {
+    errorMessage: 'Error distributing gold'
+  }),
+  distributePlusPartyLoot: controllerFactory.createHandler(distributePlusPartyLoot, {
+    errorMessage: 'Error distributing gold with party loot share'
+  }),
+  balance: controllerFactory.createHandler(balance, {
+    errorMessage: 'Error balancing currencies'
+  })
 };
