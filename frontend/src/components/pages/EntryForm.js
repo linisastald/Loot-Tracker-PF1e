@@ -284,8 +284,12 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           label="Platinum"
           type="number"
           fullWidth
+          inputProps={{min: 0}}
           value={localEntry.platinum || ''}
-          onChange={(e) => handleChange('platinum', e.target.value)}
+          onChange={(e) => {
+              const value = Math.max(0, parseInt(e.target.value) || 0);
+              handleChange('platinum', value);
+          }}
         />
       </Grid>
       <Grid item xs={6} md={3}>
@@ -293,8 +297,12 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           label="Gold"
           type="number"
           fullWidth
+          inputProps={{min: 0}}
           value={localEntry.gold || ''}
-          onChange={(e) => handleChange('gold', e.target.value)}
+          onChange={(e) => {
+              const value = Math.max(0, parseInt(e.target.value) || 0);
+              handleChange('gold', value);
+          }}
         />
       </Grid>
       <Grid item xs={6} md={3}>
@@ -302,8 +310,12 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           label="Silver"
           type="number"
           fullWidth
+          inputProps={{min: 0}}
           value={localEntry.silver || ''}
-          onChange={(e) => handleChange('silver', e.target.value)}
+          onChange={(e) => {
+              const value = Math.max(0, parseInt(e.target.value) || 0);
+              handleChange('silver', value);
+          }}
         />
       </Grid>
       <Grid item xs={6} md={3}>
@@ -311,8 +323,12 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           label="Copper"
           type="number"
           fullWidth
+          inputProps={{min: 0}}
           value={localEntry.copper || ''}
-          onChange={(e) => handleChange('copper', e.target.value)}
+          onChange={(e) => {
+              const value = Math.max(0, parseInt(e.target.value) || 0);
+              handleChange('copper', value);
+          }}
         />
       </Grid>
       <Grid item xs={12}>
