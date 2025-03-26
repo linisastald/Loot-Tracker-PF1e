@@ -85,8 +85,18 @@ const GeneralItemManagement = () => {
       if (advancedSearch.value) params.append('value', advancedSearch.value);
 
       const response = await api.get(`/loot/search?${params.toString()}`);
-      setFilteredItems(response.data);
-      setError('');
+      console.log('Search response:', response);
+
+      // Check if the response has the expected structure
+      if (response.data && response.data.items) {
+        setFilteredItems(response.data.items);
+      } else if (Array.isArray(response.data)) {
+        setFilteredItems(response.data);
+      } else {
+        console.error('Unexpected response structure:', response.data);
+        setError('Unexpected response structure from server');
+        setFilteredItems([]);
+      }
     } catch (error) {
       console.error('Error searching items', error);
       setError('Error searching items');
