@@ -51,7 +51,7 @@ const SoldLoot = () => {
     }
   };
 
-  const totalSold = soldSummary.reduce((total, item) => total + parseFloat(item.total), 0);
+  const totalSold = Array.isArray(soldSummary) ? soldSummary.reduce((total, item) => total + parseFloat(item.total), 0) : 0;
 
   return (
     <Container component="main" sx={{ maxWidth: 'none', overflowX: 'auto' }}>
