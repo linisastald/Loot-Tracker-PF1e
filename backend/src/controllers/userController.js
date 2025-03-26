@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const User = require('../models/User');
+const logger = require('../utils/logger');
 
 /**
  * Change user password
@@ -29,6 +30,7 @@ const changePassword = async (req, res) => {
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   await dbUtils.executeQuery('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
 
+  logger.info(`Password changed for user ID ${userId}`);
   controllerFactory.sendSuccessMessage(res, 'Password changed successfully');
 };
 
@@ -37,16 +39,23 @@ const changePassword = async (req, res) => {
  */
 const getCharacters = async (req, res) => {
   const userId = req.user.id;
-  const result = await dbUtils.executeQuery('SELECT * FROM characters WHERE user_id = $1', [userId]);
-  controllerFactory.sendSuccessResponse(res, result.rows);
+  const result = await dbUtils.executeQuery(
+    'SELECT * FROM characters WHERE user_id = $1 ORDER BY active DESC, name ASC',
+    [userId]
+  );
+
+  controllerFactory.sendSuccessResponse(res, result.rows, 'Characters retrieved successfully');
 };
 
 /**
  * Get all active characters
  */
 const getActiveCharacters = async (req, res) => {
-  const result = await dbUtils.executeQuery('SELECT name, id FROM characters WHERE active IS true ORDER BY name DESC');
-  controllerFactory.sendSuccessResponse(res, result.rows);
+  const result = await dbUtils.executeQuery(
+    'SELECT id, name, user_id FROM characters WHERE active IS true ORDER BY name ASC'
+  );
+
+  controllerFactory.sendSuccessResponse(res, result.rows, 'Active characters retrieved successfully');
 };
 
 /**
@@ -56,12 +65,34 @@ const addCharacter = async (req, res) => {
   const { name, appraisal_bonus, birthday, deathday, active } = req.body;
   const userId = req.user.id;
 
-  const result = await dbUtils.executeQuery(
-    'INSERT INTO characters (user_id, name, appraisal_bonus, birthday, deathday, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-    [userId, name, appraisal_bonus, birthday || null, deathday || null, active]
+  // Check for name uniqueness
+  const existingNameCheck = await dbUtils.executeQuery(
+    'SELECT * FROM characters WHERE name = $1',
+    [name]
   );
 
-  controllerFactory.sendCreatedResponse(res, result.rows[0]);
+  if (existingNameCheck.rows.length > 0) {
+    throw controllerFactory.createValidationError('Character name already exists');
+  }
+
+  return await dbUtils.executeTransaction(async (client) => {
+    // If this character is being set as active, deactivate other characters
+    if (active) {
+      await client.query(
+        'UPDATE characters SET active = false WHERE user_id = $1',
+        [userId]
+      );
+    }
+
+    // Insert the new character
+    const result = await client.query(
+      'INSERT INTO characters (user_id, name, appraisal_bonus, birthday, deathday, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [userId, name, appraisal_bonus || 0, birthday || null, deathday || null, active]
+    );
+
+    logger.info(`New character "${name}" created for user ID ${userId}`);
+    controllerFactory.sendCreatedResponse(res, result.rows[0], 'Character created successfully');
+  });
 };
 
 /**
@@ -71,16 +102,54 @@ const updateCharacter = async (req, res) => {
   const { id, name, appraisal_bonus, birthday, deathday, active } = req.body;
   const userId = req.user.id;
 
-  const result = await dbUtils.executeQuery(
-    'UPDATE characters SET name = $1, appraisal_bonus = $2, birthday = $3, deathday = $4, active = $5 WHERE id = $6 AND user_id = $7 RETURNING *',
-    [name, appraisal_bonus, birthday || null, deathday || null, active, id, userId]
+  // Check if character exists and belongs to user
+  const characterCheck = await dbUtils.executeQuery(
+    'SELECT * FROM characters WHERE id = $1 AND user_id = $2',
+    [id, userId]
   );
 
-  if (result.rows.length === 0) {
+  if (characterCheck.rows.length === 0) {
     throw controllerFactory.createNotFoundError('Character not found or you do not have permission to update it');
   }
 
-  controllerFactory.sendSuccessResponse(res, result.rows[0]);
+  // Check for name uniqueness (excluding this character)
+  if (name && name !== characterCheck.rows[0].name) {
+    const existingNameCheck = await dbUtils.executeQuery(
+      'SELECT * FROM characters WHERE name = $1 AND id != $2',
+      [name, id]
+    );
+
+    if (existingNameCheck.rows.length > 0) {
+      throw controllerFactory.createValidationError('Character name already exists');
+    }
+  }
+
+  return await dbUtils.executeTransaction(async (client) => {
+    // If this character is being set as active, deactivate other characters
+    if (active) {
+      await client.query(
+        'UPDATE characters SET active = false WHERE user_id = $1 AND id != $2',
+        [userId, id]
+      );
+    }
+
+    // Update the character
+    const result = await client.query(
+      'UPDATE characters SET name = $1, appraisal_bonus = $2, birthday = $3, deathday = $4, active = $5 WHERE id = $6 AND user_id = $7 RETURNING *',
+      [
+        name || characterCheck.rows[0].name,
+        appraisal_bonus !== undefined ? appraisal_bonus : characterCheck.rows[0].appraisal_bonus,
+        birthday !== undefined ? birthday : characterCheck.rows[0].birthday,
+        deathday !== undefined ? deathday : characterCheck.rows[0].deathday,
+        active !== undefined ? active : characterCheck.rows[0].active,
+        id,
+        userId
+      ]
+    );
+
+    logger.info(`Character "${name}" updated for user ID ${userId}`);
+    controllerFactory.sendSuccessResponse(res, result.rows[0], 'Character updated successfully');
+  });
 };
 
 /**
@@ -94,17 +163,33 @@ const getUserById = async (req, res) => {
     throw controllerFactory.createValidationError('Invalid user ID');
   }
 
-  // Get the user
-  const user = await User.findById(userId);
-  if (!user) {
+  // Get the user (excluding password)
+  const userResult = await dbUtils.executeQuery(
+    'SELECT id, username, role, joined FROM users WHERE id = $1',
+    [userId]
+  );
+
+  if (userResult.rows.length === 0) {
     throw controllerFactory.createNotFoundError('User not found');
   }
 
-  // Get active character
-  const activeCharacterResult = await User.getActiveCharacter(user.id);
-  const activeCharacterId = activeCharacterResult ? activeCharacterResult.character_id : null;
+  const user = userResult.rows[0];
 
-  controllerFactory.sendSuccessResponse(res, { ...user, activeCharacterId });
+  // Get active character
+  const activeCharacterResult = await dbUtils.executeQuery(
+    'SELECT id as character_id FROM characters WHERE user_id = $1 AND active IS true',
+    [userId]
+  );
+
+  const activeCharacterId = activeCharacterResult.rows.length > 0
+    ? activeCharacterResult.rows[0].character_id
+    : null;
+
+  controllerFactory.sendSuccessResponse(
+    res,
+    { ...user, activeCharacterId },
+    'User retrieved successfully'
+  );
 };
 
 /**
@@ -112,7 +197,12 @@ const getUserById = async (req, res) => {
  */
 const deactivateAllCharacters = async (req, res) => {
   const userId = req.user.id;
-  await dbUtils.executeQuery('UPDATE characters SET active = false WHERE user_id = $1', [userId]);
+  await dbUtils.executeQuery(
+    'UPDATE characters SET active = false WHERE user_id = $1',
+    [userId]
+  );
+
+  logger.info(`All characters deactivated for user ID ${userId}`);
   controllerFactory.sendSuccessMessage(res, 'All characters deactivated');
 };
 
@@ -122,9 +212,28 @@ const deactivateAllCharacters = async (req, res) => {
 const resetPassword = async (req, res) => {
   const { userId, newPassword } = req.body;
 
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
-  await dbUtils.executeQuery('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
+  // Ensure DM permission (should be handled by middleware too)
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can reset passwords');
+  }
 
+  // Check if user exists
+  const userCheck = await dbUtils.executeQuery(
+    'SELECT * FROM users WHERE id = $1',
+    [userId]
+  );
+
+  if (userCheck.rows.length === 0) {
+    throw controllerFactory.createNotFoundError('User not found');
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  await dbUtils.executeQuery(
+    'UPDATE users SET password = $1 WHERE id = $2',
+    [hashedPassword, userId]
+  );
+
+  logger.info(`Password reset for user ID ${userId} by DM ${req.user.id}`);
   controllerFactory.sendSuccessMessage(res, 'Password reset successfully');
 };
 
@@ -134,8 +243,33 @@ const resetPassword = async (req, res) => {
 const deleteUser = async (req, res) => {
   const { userId } = req.body;
 
-  await dbUtils.executeQuery('UPDATE users SET role = $1 WHERE id = $2', ['deleted', userId]);
+  // Ensure DM permission (should be handled by middleware too)
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can delete users');
+  }
 
+  // Check if user exists
+  const userCheck = await dbUtils.executeQuery(
+    'SELECT * FROM users WHERE id = $1',
+    [userId]
+  );
+
+  if (userCheck.rows.length === 0) {
+    throw controllerFactory.createNotFoundError('User not found');
+  }
+
+  // Don't allow deleting yourself
+  if (userId === req.user.id) {
+    throw controllerFactory.createValidationError('You cannot delete your own account');
+  }
+
+  // Mark user as deleted by changing role
+  await dbUtils.executeQuery(
+    'UPDATE users SET role = $1 WHERE id = $2',
+    ['deleted', userId]
+  );
+
+  logger.info(`User ID ${userId} marked as deleted by DM ${req.user.id}`);
   controllerFactory.sendSuccessMessage(res, 'User deleted successfully');
 };
 
@@ -145,11 +279,17 @@ const deleteUser = async (req, res) => {
 const updateSetting = async (req, res) => {
   const { name, value } = req.body;
 
+  // Ensure DM permission (should be handled by middleware too)
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can update settings');
+  }
+
   await dbUtils.executeQuery(
     'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
     [name, value]
   );
 
+  logger.info(`Setting "${name}" updated to "${value}" by DM ${req.user.id}`);
   controllerFactory.sendSuccessMessage(res, 'Setting updated successfully');
 };
 
@@ -157,24 +297,50 @@ const updateSetting = async (req, res) => {
  * Get all settings (DM only)
  */
 const getSettings = async (req, res) => {
+  // Ensure DM permission (should be handled by middleware too)
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can view all settings');
+  }
+
   const result = await dbUtils.executeQuery('SELECT * FROM settings');
-  controllerFactory.sendSuccessResponse(res, result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows, 'Settings retrieved successfully');
 };
 
 /**
  * Get all users (DM only)
  */
 const getAllUsers = async (req, res) => {
-  const users = await dbUtils.executeQuery('SELECT id, username, role, joined FROM users WHERE role != $1', ['deleted']);
-  controllerFactory.sendSuccessResponse(res, users.rows);
+  // Ensure DM permission (should be handled by middleware too)
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can view all users');
+  }
+
+  const users = await dbUtils.executeQuery(
+    'SELECT id, username, role, joined FROM users WHERE role != $1 ORDER BY username',
+    ['deleted']
+  );
+
+  controllerFactory.sendSuccessResponse(res, users.rows, 'All users retrieved successfully');
 };
 
 /**
  * Get all characters (DM only)
  */
 const getAllCharacters = async (req, res) => {
-  const characters = await User.getAllCharacters();
-  controllerFactory.sendSuccessResponse(res, characters);
+  // Ensure DM permission (should be handled by middleware too)
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can view all characters');
+  }
+
+  const query = `
+    SELECT c.id, c.name, c.appraisal_bonus, c.birthday, c.deathday, c.active, c.user_id, u.username
+    FROM characters c
+    JOIN users u ON c.user_id = u.id
+    ORDER BY u.username, c.name
+  `;
+
+  const result = await dbUtils.executeQuery(query);
+  controllerFactory.sendSuccessResponse(res, result.rows, 'All characters retrieved successfully');
 };
 
 // Define validation rules
@@ -203,60 +369,62 @@ const updateSettingValidation = {
 };
 
 // Create handlers with validation and error handling
-exports.changePassword = controllerFactory.createHandler(changePassword, {
-  errorMessage: 'Error changing password',
-  validation: changePasswordValidation
-});
+module.exports = {
+  changePassword: controllerFactory.createHandler(changePassword, {
+    errorMessage: 'Error changing password',
+    validation: changePasswordValidation
+  }),
 
-exports.getCharacters = controllerFactory.createHandler(getCharacters, {
-  errorMessage: 'Error fetching characters'
-});
+  getCharacters: controllerFactory.createHandler(getCharacters, {
+    errorMessage: 'Error fetching characters'
+  }),
 
-exports.getActiveCharacters = controllerFactory.createHandler(getActiveCharacters, {
-  errorMessage: 'Error fetching active characters'
-});
+  getActiveCharacters: controllerFactory.createHandler(getActiveCharacters, {
+    errorMessage: 'Error fetching active characters'
+  }),
 
-exports.addCharacter = controllerFactory.createHandler(addCharacter, {
-  errorMessage: 'Error adding character',
-  validation: addCharacterValidation
-});
+  addCharacter: controllerFactory.createHandler(addCharacter, {
+    errorMessage: 'Error adding character',
+    validation: addCharacterValidation
+  }),
 
-exports.updateCharacter = controllerFactory.createHandler(updateCharacter, {
-  errorMessage: 'Error updating character',
-  validation: updateCharacterValidation
-});
+  updateCharacter: controllerFactory.createHandler(updateCharacter, {
+    errorMessage: 'Error updating character',
+    validation: updateCharacterValidation
+  }),
 
-exports.getUserById = controllerFactory.createHandler(getUserById, {
-  errorMessage: 'Error fetching user'
-});
+  getUserById: controllerFactory.createHandler(getUserById, {
+    errorMessage: 'Error fetching user'
+  }),
 
-exports.deactivateAllCharacters = controllerFactory.createHandler(deactivateAllCharacters, {
-  errorMessage: 'Error deactivating characters'
-});
+  deactivateAllCharacters: controllerFactory.createHandler(deactivateAllCharacters, {
+    errorMessage: 'Error deactivating characters'
+  }),
 
-exports.resetPassword = controllerFactory.createHandler(resetPassword, {
-  errorMessage: 'Error resetting password',
-  validation: resetPasswordValidation
-});
+  resetPassword: controllerFactory.createHandler(resetPassword, {
+    errorMessage: 'Error resetting password',
+    validation: resetPasswordValidation
+  }),
 
-exports.deleteUser = controllerFactory.createHandler(deleteUser, {
-  errorMessage: 'Error deleting user',
-  validation: deleteUserValidation
-});
+  deleteUser: controllerFactory.createHandler(deleteUser, {
+    errorMessage: 'Error deleting user',
+    validation: deleteUserValidation
+  }),
 
-exports.updateSetting = controllerFactory.createHandler(updateSetting, {
-  errorMessage: 'Error updating setting',
-  validation: updateSettingValidation
-});
+  updateSetting: controllerFactory.createHandler(updateSetting, {
+    errorMessage: 'Error updating setting',
+    validation: updateSettingValidation
+  }),
 
-exports.getSettings = controllerFactory.createHandler(getSettings, {
-  errorMessage: 'Error fetching settings'
-});
+  getSettings: controllerFactory.createHandler(getSettings, {
+    errorMessage: 'Error fetching settings'
+  }),
 
-exports.getAllUsers = controllerFactory.createHandler(getAllUsers, {
-  errorMessage: 'Error fetching all users'
-});
+  getAllUsers: controllerFactory.createHandler(getAllUsers, {
+    errorMessage: 'Error fetching all users'
+  }),
 
-exports.getAllCharacters = controllerFactory.createHandler(getAllCharacters, {
-  errorMessage: 'Error fetching all characters'
-});
+  getAllCharacters: controllerFactory.createHandler(getAllCharacters, {
+    errorMessage: 'Error fetching all characters'
+  })
+};

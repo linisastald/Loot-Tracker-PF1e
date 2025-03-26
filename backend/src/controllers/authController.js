@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
+const logger = require('../utils/logger');
 require('dotenv').config();
 
 /**
@@ -21,13 +22,24 @@ const registerUser = async (req, res) => {
     throw controllerFactory.createAuthorizationError('Registrations are currently closed');
   }
 
-  // Verify invite code
-  const inviteResult = await dbUtils.executeQuery(
-    'SELECT * FROM invites WHERE code = $1 AND is_used = FALSE',
-    [inviteCode]
+  // Verify invite code if required
+  if (inviteCode) {
+    const inviteResult = await dbUtils.executeQuery(
+      'SELECT * FROM invites WHERE code = $1 AND is_used = FALSE',
+      [inviteCode]
+    );
+    if (inviteResult.rows.length === 0) {
+      throw controllerFactory.createValidationError('Invalid or used invite code');
+    }
+  }
+
+  // Check if username already exists
+  const userCheck = await dbUtils.executeQuery(
+    'SELECT * FROM users WHERE username = $1',
+    [username]
   );
-  if (inviteResult.rows.length === 0) {
-    throw controllerFactory.createValidationError('Invalid or used invite code');
+  if (userCheck.rows.length > 0) {
+    throw controllerFactory.createValidationError('Username already exists');
   }
 
   // Create the user
@@ -37,25 +49,34 @@ const registerUser = async (req, res) => {
   return await dbUtils.executeTransaction(async (client) => {
     // Insert the user
     const result = await client.query(
-      'INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING *',
+      'INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING id, username, role, joined',
       [username, hashedPassword, userRole]
     );
     const user = result.rows[0];
 
-    // Mark invite as used
-    await client.query(
-      'UPDATE invites SET is_used = TRUE, used_by = $1 WHERE code = $2',
-      [user.id, inviteCode]
-    );
+    // Mark invite as used if provided
+    if (inviteCode) {
+      await client.query(
+        'UPDATE invites SET is_used = TRUE, used_by = $1 WHERE code = $2',
+        [user.id, inviteCode]
+      );
+    }
 
     // Generate JWT token
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: '7d' } // Token valid for 7 days
     );
 
-    controllerFactory.sendCreatedResponse(res, { token });
+    controllerFactory.sendCreatedResponse(res, {
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role
+      }
+    }, 'User registered successfully');
   });
 };
 
@@ -80,7 +101,10 @@ const loginUser = async (req, res) => {
 
   // Check if account is locked
   if (user.locked_until && new Date(user.locked_until) > new Date()) {
-    throw controllerFactory.createAuthorizationError('Account is locked. Please try again later.');
+    const remainingLockTime = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
+    throw controllerFactory.createAuthorizationError(
+      `Account is locked. Please try again in ${remainingLockTime} minute(s).`
+    );
   }
 
   // Check password
@@ -90,7 +114,7 @@ const loginUser = async (req, res) => {
     throw controllerFactory.createValidationError('Invalid username or password');
   }
 
-  // Check if user role is DM or Player
+  // Check if user role is valid
   if (user.role !== 'DM' && user.role !== 'Player') {
     throw controllerFactory.createAuthorizationError('Access denied. Invalid user role.');
   }
@@ -101,11 +125,23 @@ const loginUser = async (req, res) => {
     [user.id]
   );
 
+  // Get active character for player
+  let activeCharacterId = null;
+  if (user.role === 'Player') {
+    const characterResult = await dbUtils.executeQuery(
+      'SELECT id FROM characters WHERE user_id = $1 AND active = true',
+      [user.id]
+    );
+    if (characterResult.rows.length > 0) {
+      activeCharacterId = characterResult.rows[0].id;
+    }
+  }
+
   // Generate JWT token
   const token = jwt.sign(
     { id: user.id, username: user.username, role: user.role },
     process.env.JWT_SECRET,
-    { expiresIn: '365d' }
+    { expiresIn: '7d' } // Token valid for 7 days
   );
 
   // Set CORS headers
@@ -118,8 +154,13 @@ const loginUser = async (req, res) => {
 
   controllerFactory.sendSuccessResponse(res, {
     token,
-    user: { id: user.id, username: user.username, role: user.role }
-  });
+    user: {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      activeCharacterId
+    }
+  }, 'Login successful');
 };
 
 /**
@@ -137,11 +178,13 @@ const handleFailedLogin = async (user) => {
       'UPDATE users SET login_attempts = $1, locked_until = $2 WHERE id = $3',
       [newAttempts, new Date(Date.now() + LOCK_TIME), user.id]
     );
+    logger.warn(`Account ${user.username} locked after ${MAX_LOGIN_ATTEMPTS} failed attempts`);
   } else {
     await dbUtils.executeQuery(
       'UPDATE users SET login_attempts = $1 WHERE id = $2',
       [newAttempts, user.id]
     );
+    logger.info(`Failed login attempt ${newAttempts}/${MAX_LOGIN_ATTEMPTS} for user ${user.username}`);
   }
 };
 
@@ -164,45 +207,101 @@ const checkRegistrationStatus = async (req, res) => {
 };
 
 /**
- * Generate invite code
+ * Generate invite code (DM only)
  */
 const generateInviteCode = async (req, res) => {
+  // Generate a random invite code
   const inviteCode = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
   await dbUtils.executeQuery(
     'INSERT INTO invites (code, created_by) VALUES ($1, $2)',
     [inviteCode, req.user.id]
   );
-  controllerFactory.sendCreatedResponse(res, { inviteCode });
+
+  controllerFactory.sendCreatedResponse(res, { inviteCode }, 'Invite code generated successfully');
 };
 
-// Define validation rules
+/**
+ * Refresh token
+ */
+const refreshToken = async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    throw controllerFactory.createValidationError('Token is required');
+  }
+
+  try {
+    // Verify the existing token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Check if user still exists and is active
+    const userResult = await dbUtils.executeQuery(
+      'SELECT id, username, role FROM users WHERE id = $1 AND role NOT IN (\'deleted\')',
+      [decoded.id]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw controllerFactory.createAuthorizationError('User no longer exists or is inactive');
+    }
+
+    const user = userResult.rows[0];
+
+    // Generate a new token
+    const newToken = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    controllerFactory.sendSuccessResponse(res, { token: newToken }, 'Token refreshed successfully');
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      throw controllerFactory.createAuthorizationError('Invalid or expired token');
+    }
+    throw error;
+  }
+};
+
+// Define validation rules for each endpoint
 const loginValidation = {
   requiredFields: ['username', 'password']
 };
 
 const registerValidation = {
-  requiredFields: ['username', 'password', 'inviteCode']
+  requiredFields: ['username', 'password']
 };
 
-// Create handlers with validation and error handling
-exports.registerUser = controllerFactory.createHandler(registerUser, {
-  errorMessage: 'Error registering user',
-  validation: registerValidation
-});
+const refreshTokenValidation = {
+  requiredFields: ['token']
+};
 
-exports.loginUser = controllerFactory.createHandler(loginUser, {
-  errorMessage: 'Error logging in user',
-  validation: loginValidation
-});
+// Use controllerFactory to create handler functions with standardized error handling
+module.exports = {
+  registerUser: controllerFactory.createHandler(registerUser, {
+    errorMessage: 'Error registering user',
+    validation: registerValidation
+  }),
 
-exports.checkForDm = controllerFactory.createHandler(checkForDm, {
-  errorMessage: 'Error checking for DM'
-});
+  loginUser: controllerFactory.createHandler(loginUser, {
+    errorMessage: 'Error logging in user',
+    validation: loginValidation
+  }),
 
-exports.checkRegistrationStatus = controllerFactory.createHandler(checkRegistrationStatus, {
-  errorMessage: 'Error checking registration status'
-});
+  checkForDm: controllerFactory.createHandler(checkForDm, {
+    errorMessage: 'Error checking for DM'
+  }),
 
-exports.generateInviteCode = controllerFactory.createHandler(generateInviteCode, {
-  errorMessage: 'Error generating invite code'
-});
+  checkRegistrationStatus: controllerFactory.createHandler(checkRegistrationStatus, {
+    errorMessage: 'Error checking registration status'
+  }),
+
+  generateInviteCode: controllerFactory.createHandler(generateInviteCode, {
+    errorMessage: 'Error generating invite code'
+  }),
+
+  refreshToken: controllerFactory.createHandler(refreshToken, {
+    errorMessage: 'Error refreshing token',
+    validation: refreshTokenValidation
+  })
+};
