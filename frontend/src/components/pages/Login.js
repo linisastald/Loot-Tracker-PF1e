@@ -20,39 +20,56 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setError('');
     try {
+      // Log full request details for debugging
+      console.log('Login Request:', { username });
+
       const response = await api.post('/auth/login', { username, password });
 
-      // Log full response for debugging
-      console.log('Login Response:', response);
+      // Log full raw response for detailed inspection
+      console.log('Raw Login Response:', response);
 
-      // Check for expected response structure
-      if (!response || !response.data || !response.data.token) {
-        console.error('Unexpected login response structure:', response);
-        setError('Received an invalid response from the server');
+      // Very verbose error checking and logging
+      if (!response) {
+        console.error('No response received from server');
+        setError('No response from server');
         return;
       }
 
-      const { token, user } = response.data.data;
-
-      if (token && user) {
-        onLogin(token, user);
-        navigate('/loot-entry');
-      } else {
-        console.error('Missing token or user in response:', response);
-        setError('Invalid response from server');
+      // Check for expected response structure
+      if (response.success === false) {
+        console.error('Server returned a failure response:', response);
+        setError(response.message || 'Login failed');
+        return;
       }
+
+      // Extract token and user from the response
+      const { token, user } = response.data;
+
+      if (!token || !user) {
+        console.error('Missing token or user in response:', response);
+        setError('Invalid server response');
+        return;
+      }
+
+      // Perform login
+      onLogin(token, user);
+      navigate('/loot-entry');
+
     } catch (err) {
-      console.error('Login error:', err);
+      // Comprehensive error logging
+      console.error('Login Error:', err);
 
       // Check for different possible error formats
       if (err.response) {
         // Server responded with an error
-        const errorMessage = err.response.data.message ||
-                             err.response.data.error ||
+        console.error('Server Error Response:', err.response);
+        const errorMessage = err.response.data?.message ||
+                             err.response.data?.error ||
                              'Login failed';
         setError(errorMessage);
       } else if (err.message) {
         // Network error or other client-side error
+        console.error('Client Error:', err.message);
         setError(err.message);
       } else {
         setError('An unexpected error occurred');

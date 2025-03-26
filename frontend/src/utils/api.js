@@ -21,50 +21,89 @@ api.interceptors.request.use(
       config.headers['X-CSRF-Token'] = csrfToken;
     }
 
+    // Log outgoing request details
+    console.log('Outgoing Request:', {
+      url: config.url,
+      method: config.method,
+      headers: config.headers
+    });
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
+// Enhanced response interceptor
+api.interceptors.response.use(
+  (response) => {
+    // Log incoming response details
+    console.log('Incoming Response:', {
+      url: response.config.url,
+      method: response.config.method,
+      status: response.status,
+      data: response.data
+    });
+
+    // Normalize response to ensure consistent structure
+    if (response.data && response.data.success === true) {
+      return response.data;
+    }
+
+    // If response doesn't match expected structure, log and throw error
+    console.warn('Unexpected response structure:', response);
+    throw new Error('Unexpected server response');
+  },
+  (error) => {
+    // Log detailed error information
+    console.error('API Error:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+
+    // Provide more detailed error handling
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      const errorMessage = error.response.data?.message ||
+                           error.response.data?.error ||
+                           'An unexpected error occurred';
+
+      return Promise.reject({
+        ...error,
+        message: errorMessage,
+        status: error.response.status
+      });
+    } else if (error.request) {
+      // The request was made but no response was received
+      return Promise.reject({
+        message: 'No response received from server',
+        type: 'network'
+      });
+    } else {
+      // Something happened in setting up the request
+      return Promise.reject({
+        message: error.message || 'Error setting up the request',
+        type: 'unknown'
+      });
+    }
+  }
+);
+
 const fetchCsrfToken = async () => {
   try {
     console.log(`Attempting to fetch CSRF token from: ${API_URL}/csrf-token`);
-    const response = await api.get('/csrf-token', {
-      timeout: 5000 // Separate timeout for CSRF token request
-    });
-    localStorage.setItem('csrfToken', response.data.csrfToken || 'temporary-token-for-development');
+    const response = await api.get('/csrf-token');
+    localStorage.setItem('csrfToken', response.csrfToken || 'temporary-token-for-development');
     console.log('CSRF token fetched successfully');
   } catch (error) {
     console.error('Error fetching CSRF token:', error);
 
     // Provide a fallback token for development
     localStorage.setItem('csrfToken', 'temporary-token-for-development');
-
-    // Check if it's a network error
-    if (error.message === 'Network Error' || error.code === 'ERR_CONNECTION_REFUSED') {
-      console.warn('Unable to connect to backend. Ensure the backend server is running.');
-      console.warn(`Tried to connect to: ${API_URL}/csrf-token`);
-      console.warn('Possible causes:');
-      console.warn('1. Backend server is not running');
-      console.warn('2. Incorrect API_URL in .env file');
-      console.warn('3. Network/firewall issues');
-    }
   }
 };
 
 // Initialize CSRF token fetch
 fetchCsrfToken();
-
-// Add a custom error interceptor
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.message === 'Network Error' || error.code === 'ERR_CONNECTION_REFUSED') {
-      console.error('Network connection error:', error);
-      // You might want to add a global error notification here
-    }
-    return Promise.reject(error);
-  }
-);
 
 export default api;
