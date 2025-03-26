@@ -269,12 +269,9 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
             <MenuItem value="">Select Type</MenuItem>
             <MenuItem value="Deposit">Deposit</MenuItem>
             <MenuItem value="Withdrawal">Withdrawal</MenuItem>
-            <MenuItem value="Sale">Sale</MenuItem>
             <MenuItem value="Purchase">Purchase</MenuItem>
             <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
             <MenuItem value="Party Payment">Party Payment</MenuItem>
-            <MenuItem value="Tax">Tax</MenuItem>
-            <MenuItem value="Upkeep">Upkeep</MenuItem>
             <MenuItem value="Other">Other</MenuItem>
           </Select>
         </FormControl>
