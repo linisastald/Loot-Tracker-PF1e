@@ -98,9 +98,19 @@ const UnidentifiedItemsManagement = () => {
 
       // Create a map for easier lookups
       const newItemsMap = {};
-      response.data.forEach(item => {
-        newItemsMap[item.id] = item;
-      });
+
+      // Check if the data is in the expected format
+      if (response.data && response.data.items && Array.isArray(response.data.items)) {
+        response.data.items.forEach(item => {
+          newItemsMap[item.id] = item;
+        });
+      } else if (Array.isArray(response.data)) {
+        response.data.forEach(item => {
+          newItemsMap[item.id] = item;
+        });
+      } else {
+        console.error('Unexpected response format:', response.data);
+      }
 
       setItemsMap(newItemsMap);
     } catch (error) {
