@@ -266,12 +266,10 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
             onChange={(e) => handleChange('transactionType', e.target.value)}
             label="Transaction Type"
           >
-            <MenuItem value="">Select Type</MenuItem>
             <MenuItem value="Deposit">Deposit</MenuItem>
             <MenuItem value="Withdrawal">Withdrawal</MenuItem>
-            <MenuItem value="Purchase">Purchase</MenuItem>
             <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
-            <MenuItem value="Party Payment">Party Payment</MenuItem>
+            <MenuItem value="Party Payback">Party Payback</MenuItem>
             <MenuItem value="Other">Other</MenuItem>
           </Select>
         </FormControl>
