@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, TextField, Typography, Container, Paper, Alert } from '@mui/material';
-import api from '../../utils/api';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState('');
@@ -20,34 +22,28 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setError('');
     try {
-      // Log full request details for debugging
-      console.log('Login Request:', { username });
+      // Use raw axios for login to avoid CSRF/token requirements
+      const response = await axios.post(`${API_URL}/auth/login`,
+        { username, password },
+        { withCredentials: true }
+      );
 
-      const response = await api.post('/auth/login', { username, password });
+      // Extract data from response
+      const data = response.data;
 
-      // Log full raw response for detailed inspection
-      console.log('Raw Login Response:', response);
-
-      // Very verbose error checking and logging
-      if (!response) {
-        console.error('No response received from server');
-        setError('No response from server');
+      // Check if response is valid
+      if (!data || !data.success) {
+        console.error('Invalid login response format:', data);
+        setError('Login failed: Invalid server response');
         return;
       }
 
-      // Check for expected response structure
-      if (response.success === false) {
-        console.error('Server returned a failure response:', response);
-        setError(response.message || 'Login failed');
-        return;
-      }
-
-      // Extract token and user from the response
-      const { token, user } = response.data;
+      // Extract token and user
+      const { token, user } = data.data;
 
       if (!token || !user) {
-        console.error('Missing token or user in response:', response);
-        setError('Invalid server response');
+        console.error('Missing token or user in response:', data);
+        setError('Login failed: Missing authentication data');
         return;
       }
 
@@ -56,24 +52,15 @@ const Login = ({ onLogin }) => {
       navigate('/loot-entry');
 
     } catch (err) {
-      // Comprehensive error logging
       console.error('Login Error:', err);
 
-      // Check for different possible error formats
-      if (err.response) {
-        // Server responded with an error
-        console.error('Server Error Response:', err.response);
-        const errorMessage = err.response.data?.message ||
-                             err.response.data?.error ||
-                             'Login failed';
-        setError(errorMessage);
-      } else if (err.message) {
-        // Network error or other client-side error
-        console.error('Client Error:', err.message);
-        setError(err.message);
-      } else {
-        setError('An unexpected error occurred');
-      }
+      // Extract error message
+      const errorMessage = err.response?.data?.message ||
+                           err.response?.data?.error ||
+                           err.message ||
+                           'Login failed';
+
+      setError(errorMessage);
     }
   };
 

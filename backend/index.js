@@ -145,7 +145,7 @@ app.get('/', (req, res) => {
 
 // CSRF Token route
 app.get('/api/csrf-token', csrfProtection, (req, res) => {
-  res.success({ csrfToken: req.csrfToken() });
+  res.success({ csrfToken: req.csrfToken() }, 'CSRF token generated');
 });
 
 // Define routes that are exempt from CSRF protection

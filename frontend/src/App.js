@@ -35,20 +35,33 @@ function App() {
     // Check if user is authenticated by making an API call
     const checkAuthStatus = async () => {
       try {
-        const response = await api.get('/auth/status');
+        const token = localStorage.getItem('token');
+
+        // Don't attempt to check status if no token exists
+        if (!token) {
+          handleLogout();
+          return;
+        }
+
+        // Add authorization header for this specific request
+        const response = await api.get('/auth/status', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
         if (response.data && response.data.success) {
           setIsAuthenticated(true);
           setUser(response.data.user);
-      } else {
-        handleLogout();
-      }
+        } else {
+          handleLogout();
+        }
       } catch (error) {
+        console.log('Auth status check error:', error);
         handleLogout();
       }
     };
 
     checkAuthStatus();
-    fetchCsrfToken();
+    // No need to call fetchCsrfToken here, it's handled in the api.js
   }, []);
 
   const handleLogin = (token, user) => {
@@ -61,15 +74,23 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      // Add a logout endpoint that clears the cookie
-      await api.post('/auth/logout');
+      // Clean up the token first so future requests don't use it
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+
+      // Then try to logout from the server (but don't wait for it)
+      await api.post('/auth/logout').catch(err => {
+        // Silently handle errors during logout
+        console.log('Logout request failed, but user was logged out locally');
+      });
     } catch (error) {
       console.error('Error during logout:', error);
     }
 
-    // Just clean up the local state, no need to remove token from localStorage
+    // Update the local state
     setIsAuthenticated(false);
     setUser(null);
+    delete api.defaults.headers.common['Authorization'];
   };
 
   return (
