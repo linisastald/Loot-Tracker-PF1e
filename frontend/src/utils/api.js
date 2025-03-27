@@ -38,7 +38,8 @@ api.interceptors.request.use(
         config.url.includes('/auth/login') ||
         config.url.includes('/auth/register') ||
         config.url.includes('/auth/check-dm') ||
-        config.url.includes('/auth/check-registration-status'))) {
+        config.url.includes('/auth/check-registration-status') ||
+        config.url.includes('/auth/status'))) {
       return config;
     }
 
