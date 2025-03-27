@@ -1299,11 +1299,8 @@ const identifyItems = async (req, res) => {
       }
     }
 
-    if (updatedItems.length === 0 && failedItems.length > 0 && alreadyAttemptedItems.length === 0) {
-      throw controllerFactory.createValidationError(`Failed to identify any items: ${failedItems[0].error}`);
-    }
-
-    if (updatedItems.length === 0 && alreadyAttemptedItems.length > 0) {
+    // Only throw error for already attempted items
+    if (updatedItems.length === 0 && failedItems.length === 0 && alreadyAttemptedItems.length > 0) {
       throw controllerFactory.createValidationError(`All items have already been attempted today`);
     }
 
