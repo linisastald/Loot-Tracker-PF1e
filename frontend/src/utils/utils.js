@@ -1,5 +1,4 @@
 // src/utils/utils.js
-import axios from 'axios';
 import api from './api';
 
 export const fetchActiveUser = async () => {
@@ -103,19 +102,6 @@ export const handleUpdateChange = (e, setUpdatedEntry) => {
   }));
 };
 
-export const handleUpdate = async (id, updatedEntry, fetchLoot) => {
-  await api.put(`/loot/${id}`, { updatedEntry });
-  fetchLoot();
-};
-
-export const handleFilterChange = (event, setFilters) => {
-  const { name, value } = event.target;
-  setFilters((prevFilters) => ({
-    ...prevFilters,
-    [name]: value,
-  }));
-};
-
 export const applyFilters = (loot, filters) => {
   let filteredLoot = { ...loot };
 
@@ -147,28 +133,10 @@ export const formatDate = (dateString) => {
   return new Date(dateString).toLocaleDateString(undefined, options);
 };
 
-export const handleSplitChange = (index, value, splitEntries, setSplitEntries) => {
-  const updatedEntries = [...splitEntries];
-  updatedEntries[index] = value;
-  setSplitEntries(updatedEntries);
-};
-
-export const handleAddSplit = (splitEntries, setSplitEntries) => {
-  setSplitEntries([...splitEntries, { quantity: '' }]);
-};
-
 export const handleOpenSplitDialog = (item, setSplitItem, setSplitEntries, setSplitDialogOpen) => {
   setSplitItem(item);
   setSplitEntries([{ quantity: item.quantity }]);
   setSplitDialogOpen(true);
-};
-
-export const handleSort = (sortConfig, setSortConfig, key) => {
-  let direction = 'ascending';
-  if (sortConfig.key === key && sortConfig.direction === 'ascending') {
-    direction = 'descending';
-  }
-  setSortConfig({ key, direction });
 };
 
 export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems) => {
@@ -216,18 +184,6 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
     }
   } catch (error) {
     console.error('Error splitting loot item:', error);
-  }
-};
-
-export const fetchItemNames = async (query = '') => {
-  try {
-    const response = await api.get(`/loot/items`, {
-      params: { query }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching item names:', error);
-    return [];
   }
 };
 

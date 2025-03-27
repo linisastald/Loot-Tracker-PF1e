@@ -2,7 +2,6 @@
 const bcrypt = require('bcryptjs');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
-const User = require('../models/User');
 const logger = require('../utils/logger');
 
 /**
