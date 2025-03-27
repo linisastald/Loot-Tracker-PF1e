@@ -100,50 +100,57 @@ const Identify = () => {
       setError('');
       setSuccess('');
 
-      const identifyResults = await Promise.all(itemsToIdentify.map(async (itemId) => {
+      // Make sure we have valid items and a user with a character
+      if (!itemsToIdentify || itemsToIdentify.length === 0) {
+        setError('No items selected for identification');
+        return;
+      }
+
+      if (!isDMUser && (!activeUser || !activeUser.activeCharacterId)) {
+        setError('Active character required for identification');
+        return;
+      }
+
+      // Prepare identification data for each item
+      const identifyData = itemsToIdentify.map(itemId => {
         const lootItem = loot.individual.find(i => i.id === itemId);
         if (!lootItem) return null;
 
         const item = items.find(i => i.id === lootItem.itemid);
-        const casterLevel = lootItem.casterlevel || (item ? item.casterlevel : null) || 1;
 
+        // Handle DM identification (automatic success)
         if (isDMUser) {
-          return { itemId, success: true, spellcraftRoll: 99, oldName: lootItem.name };
+          return {
+            itemId,
+            spellcraftRoll: 99
+          };
         }
 
+        // Calculate spellcraft roll for players
+        const spellcraftBonus = parseInt(spellcraftValue || 0);
         let spellcraftRoll;
+
         if (takeTen) {
-          // Use "take 10" instead of random roll
-          spellcraftRoll = 10 + parseInt(spellcraftValue || 0);
+          spellcraftRoll = 10 + spellcraftBonus;
         } else {
-          // Traditional random roll
+          // Random roll
           const diceRoll = Math.floor(Math.random() * 20) + 1;
-          spellcraftRoll = diceRoll + parseInt(spellcraftValue || 0);
+          spellcraftRoll = diceRoll + spellcraftBonus;
         }
 
-        const success = spellcraftRoll >= 15 + Math.min(casterLevel, 20);
+        return {
+          itemId,
+          spellcraftRoll
+        };
+      }).filter(item => item !== null); // Remove any null entries
 
-        return { itemId, success, spellcraftRoll, oldName: lootItem.name };
-      }));
-
-      // Prepare data for sending to the server
-      const itemIds = identifyResults.map(result => result.itemId);
-      const spellcraftRolls = identifyResults.map(result => result.spellcraftRoll);
-
-      // Send all identification attempts to the server
+      // Send identification request to the server
       const response = await api.post('/loot/identify', {
-        items: itemIds,
+        items: identifyData.map(item => item.itemId),
         characterId: isDMUser ? null : activeUser.activeCharacterId,
-        spellcraftRolls: spellcraftRolls,
+        spellcraftRolls: identifyData.map(item => item.spellcraftRoll),
         takeTen: takeTen
       });
-
-      // Fetch updated loot data
-      await fetchLoot();
-
-      // Get the updated loot data
-      const updatedLootResponse = await api.get(`/loot`, { params: { isDM: isDMUser, activeCharacterId: activeUser?.activeCharacterId } });
-      const updatedLoot = updatedLootResponse.data;
 
       // Handle response for already-attempted items
       if (response.data && response.data.alreadyAttempted && response.data.alreadyAttempted.length > 0) {
@@ -152,7 +159,6 @@ const Identify = () => {
 
       // Process successful identifications
       if (response.data && response.data.identified && response.data.identified.length > 0) {
-        // Use the updated loot data to get the new names for successful identifications
         const successfulIdentifications = response.data.identified.map(item => {
           const originalItem = loot.individual.find(i => i.id === item.id);
           return {
@@ -175,7 +181,6 @@ const Identify = () => {
 
       // Process failed identifications
       if (response.data && response.data.failed && response.data.failed.length > 0) {
-        // Map failed items from the response
         const failedIdentifications = response.data.failed.map(item => {
           return {
             itemId: item.id,
@@ -193,6 +198,9 @@ const Identify = () => {
           return [...prev, ...newItems];
         });
       }
+
+      // Refresh loot data after identification attempts
+      await fetchLoot();
 
       // Set success message
       const successCount = response.data?.identified?.length || 0;
