@@ -151,6 +151,7 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           <Select
             value={localEntry.type || ''}
             onChange={(e) => handleChange('type', e.target.value)}
+            disabled={localEntry.itemId !== null && localEntry.itemId !== undefined}
             label="Type"
           >
             <MenuItem value="">None</MenuItem>
