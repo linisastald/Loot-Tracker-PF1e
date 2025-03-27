@@ -33,20 +33,32 @@ const Login = ({ onLogin }) => {
 
       console.log('Login response:', response);
 
-      // Extract data - server is returning data inside data property
-      if (response.data && response.data.success) {
-        const userData = response.data.data;
+      // Axios puts the actual response in the data property
+      const responseData = response.data;
+
+      // Extract the token and user from the response
+      if (responseData && responseData.success && responseData.data) {
+        const userData = responseData.data;
 
         if (userData && userData.user) {
+          // Make sure token exists
+          if (!userData.token) {
+            console.error('Token missing in response:', responseData);
+            setError('Login failed: Authentication token missing');
+            return;
+          }
+
+          console.log('Login successful, token received');
+
           // Perform login with the token and user object
           onLogin(userData.token, userData.user);
           navigate('/loot-entry');
         } else {
-          console.error('User data missing in response:', response.data);
+          console.error('User data missing in response:', responseData);
           setError('Login failed: User data missing in response');
         }
       } else {
-        console.error('Invalid response format:', response.data);
+        console.error('Invalid response format:', responseData);
         setError('Login failed: Invalid server response');
       }
 
