@@ -135,10 +135,8 @@ app.get('/', (req, res) => {
 });
 
 // Get CSRF token without protection
-app.get('/api/csrf-token', (req, res) => {
-  // Create a proper CSRF token via the middleware
-  const token = req.csrfToken ? req.csrfToken() : crypto.randomBytes(18).toString('base64');
-  res.success({ csrfToken: token }, 'CSRF token generated');
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.success({ csrfToken: req.csrfToken() }, 'CSRF token generated');
 });
 
 // Route imports
