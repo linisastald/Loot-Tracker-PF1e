@@ -2,7 +2,7 @@
 const Gold = require('../models/Gold');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
-const jwt_decode = require('jwt-decode');
+const logger = require('../utils/logger');
 
 /**
  * Create a new gold entry
@@ -62,9 +62,8 @@ const getAllGoldEntries = async (req, res) => {
  */
 const distributeAllGold = async (req, res) => {
   try {
-    const token = req.headers.authorization.split(' ')[1];
-    const decodedToken = jwt_decode(token);
-    const userId = decodedToken.id;
+    // Get user ID from the req.user object (added by verifyToken middleware)
+    const userId = req.user.id;
 
     // Get active characters
     const activeCharactersResult = await dbUtils.executeQuery(
@@ -146,9 +145,8 @@ const distributeAllGold = async (req, res) => {
  */
 const distributePlusPartyLoot = async (req, res) => {
   try {
-    const token = req.headers.authorization.split(' ')[1];
-    const decodedToken = jwt_decode(token);
-    const userId = decodedToken.id;
+    // Get user ID from the req.user object (added by verifyToken middleware)
+    const userId = req.user.id;
 
     // Get active characters
     const activeCharactersResult = await dbUtils.executeQuery(
@@ -232,9 +230,8 @@ const distributePlusPartyLoot = async (req, res) => {
  */
 const balance = async (req, res) => {
   try {
-    const token = req.headers.authorization.split(' ')[1];
-    const decodedToken = jwt_decode(token);
-    const userId = decodedToken.id;
+    // Get user ID from req.user
+    const userId = req.user.id;
 
     // Get total copper and silver
     const totalResult = await dbUtils.executeQuery(
