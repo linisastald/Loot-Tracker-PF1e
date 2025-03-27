@@ -159,9 +159,8 @@ const loginUser = async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
   });
 
-  // IMPORTANT: Also include the token in the response for client-side storage
+  // Only return user info, token is already in HTTP-only cookie
   controllerFactory.sendSuccessResponse(res, {
-    token: token, // Add this line to return the token
     user: {
       id: user.id,
       username: user.username,

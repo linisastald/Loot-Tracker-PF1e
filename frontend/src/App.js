@@ -64,14 +64,13 @@ function App() {
     // No need to call fetchCsrfToken here, it's handled in the api.js
   }, []);
 
-  const handleLogin = (token, user) => {
-    localStorage.setItem('token', token);
+  const handleLogin = (user) => {
+    // Only store user info, token is in HTTP-only cookie
     localStorage.setItem('user', JSON.stringify(user));
     setIsAuthenticated(true);
     setUser(user);
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    // No need to set Authorization header, cookie will be sent automatically
   };
-
   const handleLogout = async () => {
     try {
       // Clean up the token first so future requests don't use it

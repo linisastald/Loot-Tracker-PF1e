@@ -12,8 +12,9 @@ const Login = ({ onLogin }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
+    // Check if user is already logged in
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
       navigate('/loot-entry');
     }
   }, [navigate]);
@@ -36,22 +37,15 @@ const Login = ({ onLogin }) => {
       // Axios puts the actual response in the data property
       const responseData = response.data;
 
-      // Extract the token and user from the response
+      // Extract the user from the response (token is now in HTTP-only cookie)
       if (responseData && responseData.success && responseData.data) {
         const userData = responseData.data;
 
         if (userData && userData.user) {
-          // Make sure token exists
-          if (!userData.token) {
-            console.error('Token missing in response:', responseData);
-            setError('Login failed: Authentication token missing');
-            return;
-          }
+          console.log('Login successful, using HTTP-only cookie for authentication');
 
-          console.log('Login successful, token received');
-
-          // Perform login with the token and user object
-          onLogin(userData.token, userData.user);
+          // Perform login with just the user object (no token needed)
+          onLogin(userData.user);
           navigate('/loot-entry');
         } else {
           console.error('User data missing in response:', responseData);
