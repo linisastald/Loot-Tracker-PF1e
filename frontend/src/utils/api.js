@@ -79,13 +79,12 @@ api.interceptors.response.use(
     // Handle CSRF token errors
     if (error.response?.status === 403 &&
         (error.response?.data?.error === 'invalid csrf token' ||
-        error.response?.data?.message === 'invalid csrf token')) {
+         error.response?.data?.message === 'invalid csrf token')) {
 
       console.log('CSRF token error detected, fetching new token');
       localStorage.removeItem('csrfToken');
-      await fetchCsrfToken();
+      const newToken = await fetchCsrfToken();
 
-      const newToken = localStorage.getItem('csrfToken');
       if (newToken && error.config) {
         // Retry the request with new token
         error.config.headers['X-CSRF-Token'] = newToken;

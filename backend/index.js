@@ -125,7 +125,8 @@ const csrfProtection = csrf({
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production'
-  }
+  },
+  ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
 });
 
 // Routes
@@ -135,9 +136,9 @@ app.get('/', (req, res) => {
 
 // Get CSRF token without protection
 app.get('/api/csrf-token', (req, res) => {
-  // Generate a token but don't verify on this endpoint
-  req.csrfToken = () => crypto.randomBytes(18).toString('base64');
-  res.success({ csrfToken: req.csrfToken() }, 'CSRF token generated');
+  // Create a proper CSRF token via the middleware
+  const token = req.csrfToken ? req.csrfToken() : crypto.randomBytes(18).toString('base64');
+  res.success({ csrfToken: token }, 'CSRF token generated');
 });
 
 // Route imports
