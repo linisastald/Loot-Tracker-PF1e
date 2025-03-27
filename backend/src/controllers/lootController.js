@@ -363,6 +363,11 @@ const updateLootStatus = async (req, res) => {
     throw controllerFactory.createValidationError('Status is required');
   }
 
+  if (!userId) {
+    // If userId is not in the request body, try to get it from req.user
+    req.body.userId = req.user?.id;
+  }
+
   // Validate status value
   const validStatuses = ['Kept Party', 'Kept Self', 'Trashed', 'Pending Sale', 'Sold'];
   if (!validStatuses.includes(status)) {

@@ -4,10 +4,7 @@ import api from './api';
 
 export const fetchActiveUser = async () => {
   try {
-    // Instead of decoding the token, make an API call to get user data
     const response = await api.get(`/auth/status`);
-
-    // Check if the response contains user data
     if (response && response.data && response.data.user) {
       return response.data.user;
     }
@@ -29,9 +26,11 @@ export const handleSelectItem = (id, setSelectedItems) => {
 
 export const handleSell = async (selectedItems, fetchLoot) => {
   try {
+    const user = await fetchActiveUser();
     await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Pending Sale',
+      userId: user?.id
     });
     fetchLoot();
   } catch (error) {
@@ -41,9 +40,11 @@ export const handleSell = async (selectedItems, fetchLoot) => {
 
 export const handleTrash = async (selectedItems, fetchLoot) => {
   try {
+    const user = await fetchActiveUser();
     await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Trashed',
+      userId: user?.id
     });
     fetchLoot();
   } catch (error) {
@@ -53,10 +54,12 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
 
 export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
   try {
+    const user = await fetchActiveUser();
     await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Kept Self',
       whohas: activeUser.activeCharacterId,
+      userId: user?.id
     });
     fetchLoot();
   } catch (error) {
@@ -66,9 +69,11 @@ export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
 
 export const handleKeepParty = async (selectedItems, fetchLoot) => {
   try {
+    const user = await fetchActiveUser();
     await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Kept Party',
+      userId: user?.id
     });
     fetchLoot();
   } catch (error) {
