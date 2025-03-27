@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
-import { isAuthenticated } from '../../utils/auth';
+import api from '../../utils/api';
 
 const ProtectedRoute = ({ children }) => {
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
 
   useEffect(() => {
-    // Check authentication status and update state
+    // Check authentication status by making API call
     const checkAuth = async () => {
       try {
-        const authed = await isAuthenticated();
-        setIsAuthed(authed);
+        const response = await api.get('/auth/status');
+        setIsAuthed(response.data && response.data.success);
       } catch (error) {
         console.error('Auth check failed:', error);
         setIsAuthed(false);

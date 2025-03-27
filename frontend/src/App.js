@@ -35,22 +35,15 @@ function App() {
     // Check if user is authenticated by making an API call
     const checkAuthStatus = async () => {
       try {
-        const token = localStorage.getItem('token');
-
-        // Don't attempt to check status if no token exists
-        if (!token) {
-          handleLogout();
-          return;
-        }
-
-        // Add authorization header for this specific request
-        const response = await api.get('/auth/status', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        // Don't check for token in localStorage - let the cookie be sent automatically
+        const response = await api.get('/auth/status');
 
         if (response.data && response.data.success) {
           setIsAuthenticated(true);
           setUser(response.data.user);
+
+          // Store user info but not token (token is in HTTP-only cookie)
+          localStorage.setItem('user', JSON.stringify(response.data.user));
         } else {
           handleLogout();
         }
@@ -59,7 +52,6 @@ function App() {
         handleLogout();
       }
     };
-
     checkAuthStatus();
     // No need to call fetchCsrfToken here, it's handled in the api.js
   }, []);
@@ -73,13 +65,11 @@ function App() {
   };
   const handleLogout = async () => {
     try {
-      // Clean up the token first so future requests don't use it
-      localStorage.removeItem('token');
+      // Clear local storage
       localStorage.removeItem('user');
 
-      // Then try to logout from the server (but don't wait for it)
+      // Log out from server to clear the HTTP-only cookie
       await api.post('/auth/logout').catch(err => {
-        // Silently handle errors during logout
         console.log('Logout request failed, but user was logged out locally');
       });
     } catch (error) {
@@ -89,7 +79,6 @@ function App() {
     // Update the local state
     setIsAuthenticated(false);
     setUser(null);
-    delete api.defaults.headers.common['Authorization'];
   };
 
   return (
