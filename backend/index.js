@@ -154,14 +154,23 @@ const csrfExemptRoutes = [
   '/api/auth/register',
   '/api/auth/logout',
   '/api/auth/check-dm',
-  '/api/auth/check-registration-status'
+  '/api/auth/check-registration-status',
+  '/api/auth/status',
+  '/api/auth/refresh-token',
+  '/api/csrf-token'  // The CSRF token endpoint itself should be exempt
 ];
 
 // Middleware to check if a route should be CSRF protected
 const csrfProtectionMiddleware = (req, res, next) => {
-  // Skip CSRF for exempt routes
-  if (csrfExemptRoutes.includes(req.path)) {
-    return next();
+  // Log the current path for debugging
+  logger.debug(`Checking CSRF for path: ${req.path}, method: ${req.method}`);
+
+  // Skip CSRF for exempt routes - use more robust matching
+  for (const exemptRoute of csrfExemptRoutes) {
+    if (req.path === exemptRoute || req.path.startsWith(`${exemptRoute}/`)) {
+      logger.debug(`CSRF exempted for route: ${req.path}`);
+      return next();
+    }
   }
 
   // Skip CSRF for OPTIONS requests (important for CORS preflight)

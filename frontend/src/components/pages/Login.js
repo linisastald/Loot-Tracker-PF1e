@@ -22,6 +22,8 @@ const Login = ({ onLogin }) => {
     e.preventDefault();
     setError('');
     try {
+      console.log('Sending login request to:', `${API_URL}/auth/login`);
+      console.log('Login request payload:', { username, password: '***' });
       // Use raw axios for login to avoid CSRF/token requirements
       const response = await axios.post(`${API_URL}/auth/login`,
         { username, password },
@@ -30,6 +32,7 @@ const Login = ({ onLogin }) => {
 
       // Extract data from response
       const data = response.data;
+      console.log('Login response:', response.data);
 
       // Check if response is valid
       if (!data || !data.success) {
