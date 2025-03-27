@@ -144,89 +144,124 @@ const Identify = () => {
         };
       }).filter(item => item !== null); // Remove any null entries
 
-      // Send identification request to the server
-      const response = await api.post('/loot/identify', {
+      // Collect all items to identify
+      if (identifyData.length === 0) {
+        setError('No valid items to identify');
+        return;
+      }
+
+      // Log data being sent for debugging
+      console.log('Sending identification data:', {
         items: identifyData.map(item => item.itemId),
         characterId: isDMUser ? null : activeUser.activeCharacterId,
         spellcraftRolls: identifyData.map(item => item.spellcraftRoll),
-        takeTen: takeTen
+        takeTen
       });
 
-      // Handle response for already-attempted items
-      if (response.data && response.data.alreadyAttempted && response.data.alreadyAttempted.length > 0) {
-        setError(`You've already attempted to identify ${response.data.alreadyAttempted.length} item(s) today.`);
-      }
-
-      // Process successful identifications
-      if (response.data && response.data.identified && response.data.identified.length > 0) {
-        const successfulIdentifications = response.data.identified.map(item => {
-          const originalItem = loot.individual.find(i => i.id === item.id);
-          return {
-            itemId: item.id,
-            oldName: item.oldName || (originalItem ? originalItem.name : 'Unknown'),
-            newName: item.newName,
-            spellcraftRoll: item.spellcraftRoll,
-            requiredDC: item.requiredDC
-          };
+      try {
+        // Send identification request to the server
+        const response = await api.post('/loot/identify', {
+          items: identifyData.map(item => item.itemId),
+          characterId: isDMUser ? null : activeUser.activeCharacterId,
+          spellcraftRolls: identifyData.map(item => item.spellcraftRoll),
+          takeTen: takeTen
         });
 
-        // Update identifiedItems state, avoiding duplicates
-        setIdentifiedItems(prev => {
-          const newItems = successfulIdentifications.filter(
-            newItem => !prev.some(existingItem => existingItem.itemId === newItem.itemId)
-          );
-          return [...prev, ...newItems];
-        });
-      }
-
-      // Process failed identifications
-      if (response.data && response.data.failed && response.data.failed.length > 0) {
-        const failedIdentifications = response.data.failed.map(item => {
-          return {
-            itemId: item.id,
-            name: item.name,
-            spellcraftRoll: item.spellcraftRoll,
-            requiredDC: item.requiredDC
-          };
-        });
-
-        // Update failedItems state, avoiding duplicates
-        setFailedItems(prev => {
-          const newItems = failedIdentifications.filter(
-            newItem => !prev.some(existingItem => existingItem.itemId === newItem.itemId)
-          );
-          return [...prev, ...newItems];
-        });
-      }
-
-      // Refresh loot data after identification attempts
-      await fetchLoot();
-
-      // Set success message
-      const successCount = response.data?.identified?.length || 0;
-      const failCount = response.data?.failed?.length || 0;
-      if (successCount > 0 || failCount > 0) {
-        let message = '';
-        if (successCount > 0) {
-          message += `Successfully identified ${successCount} item(s).`;
+        // Handle response for already-attempted items
+        if (response.data && response.data.alreadyAttempted && response.data.alreadyAttempted.length > 0) {
+          setError(`You've already attempted to identify ${response.data.alreadyAttempted.length} item(s) today.`);
         }
-        if (failCount > 0) {
-          if (message) message += ' ';
-          message += `Failed to identify ${failCount} item(s).`;
+
+        // Process successful identifications
+        if (response.data && response.data.identified && response.data.identified.length > 0) {
+          const successfulIdentifications = response.data.identified.map(item => {
+            const originalItem = loot.individual.find(i => i.id === item.id);
+            return {
+              itemId: item.id,
+              oldName: item.oldName || (originalItem ? originalItem.name : 'Unknown'),
+              newName: item.newName,
+              spellcraftRoll: item.spellcraftRoll,
+              requiredDC: item.requiredDC
+            };
+          });
+
+          // Update identifiedItems state, avoiding duplicates
+          setIdentifiedItems(prev => {
+            const newItems = successfulIdentifications.filter(
+              newItem => !prev.some(existingItem => existingItem.itemId === newItem.itemId)
+            );
+            return [...prev, ...newItems];
+          });
         }
-        setSuccess(message);
+
+        // Process failed identifications
+        if (response.data && response.data.failed && response.data.failed.length > 0) {
+          const failedIdentifications = response.data.failed.map(item => {
+            return {
+              itemId: item.id,
+              name: item.name,
+              spellcraftRoll: item.spellcraftRoll,
+              requiredDC: item.requiredDC
+            };
+          });
+
+          // Update failedItems state, avoiding duplicates
+          setFailedItems(prev => {
+            const newItems = failedIdentifications.filter(
+              newItem => !prev.some(existingItem => existingItem.itemId === newItem.itemId)
+            );
+            return [...prev, ...newItems];
+          });
+        }
+
+        // Refresh loot data after identification attempts
+        await fetchLoot();
+
+        // Set success message
+        const successCount = response.data?.identified?.length || 0;
+        const failCount = response.data?.failed?.length || 0;
+        if (successCount > 0 || failCount > 0) {
+          let message = '';
+          if (successCount > 0) {
+            message += `Successfully identified ${successCount} item(s).`;
+          }
+          if (failCount > 0) {
+            if (message) message += ' ';
+            message += `Failed to identify ${failCount} item(s).`;
+          }
+          setSuccess(message);
+        }
+      } catch (apiError) {
+        // Handle API errors explicitly
+        console.error('API error during identification:', apiError);
+
+        if (apiError.response && apiError.response.data) {
+          const errorData = apiError.response.data;
+          if (errorData.message && errorData.message.includes('already attempted today')) {
+            setError('You have already attempted to identify these items today.');
+          } else if (errorData.message) {
+            setError(errorData.message);
+          } else {
+            setError('Error identifying items. Please try again.');
+          }
+        } else {
+          setError('Server error during identification. Please try again.');
+        }
       }
 
       setSelectedItems([]);
     } catch (error) {
       console.error('Error identifying items:', error);
 
-      // Handle error message for already-attempted items
-      if (error.response && error.response.data && error.response.data.message) {
-        if (error.response.data.message.includes('already attempted today')) {
-          setError('You have already attempted to identify these items today.');
+      // Clear selected items to prevent retrying with the same bad data
+      setSelectedItems([]);
+
+      // Handle error response from API
+      if (error.response && error.response.data) {
+        if (error.response.data.message) {
+          setError(error.response.data.message);
         } else {
-          setError(error.response.data.message || 'Error identifying items. Please try again.');
+          setError('Failed to identify items. Please try again.');
         }
       } else {
         setError('Error identifying items. Please try again.');

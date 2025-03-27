@@ -1249,9 +1249,8 @@ const identifyItems = async (req, res) => {
         const identifyCharacterId = isDMIdentification ? null : characterId;
         await client.query(
           'INSERT INTO identify (lootid, characterid, spellcraft_roll, golarion_date, success) VALUES ($1, $2, $3, $4, $5)',
-          [itemId, identifyCharacterId, spellcraftRoll, golarionDateStr, isSuccessful]
+          [itemId, identifyCharacterId, spellcraftRoll, golarionDateStr, true]
         );
-
         if (isSuccessful) {
           // Fetch the associated mods
           const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [lootItem.modids]);
