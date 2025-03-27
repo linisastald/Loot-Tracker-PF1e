@@ -126,14 +126,15 @@ const Identify = () => {
         return { itemId, success, spellcraftRoll, oldName: lootItem.name };
       }));
 
-      const successfulIdentifications = identifyResults.filter(result => result && result.success);
+      // Prepare data for sending to the server
+      const itemIds = identifyResults.map(result => result.itemId);
+      const spellcraftRolls = identifyResults.map(result => result.spellcraftRoll);
 
       // Send all identification attempts to the server
-      const itemsToIdentify = identifyResults.map(result => result.itemId);
       const response = await api.post('/loot/identify', {
-        items: itemsToIdentify,
+        items: itemIds,
         characterId: isDMUser ? null : activeUser.activeCharacterId,
-        spellcraftRolls: identifyResults.map(result => result.spellcraftRoll),
+        spellcraftRolls: spellcraftRolls,
         takeTen: takeTen
       });
 
