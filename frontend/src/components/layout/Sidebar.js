@@ -11,7 +11,9 @@ import {
   Box,
   ListItemButton,
   Badge,
-  Button,
+  Divider,
+  Tooltip,
+  Avatar,
 } from '@mui/material';
 import {
   ExpandLess,
@@ -32,15 +34,15 @@ import {
   Person4,
   Sell,
   Delete,
-  AccountBalance
+  AccountBalance,
+  Logout,
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
-import '../../styles/Sidebar.css';
 import api from '../../utils/api';
 
-const Sidebar = () => {
+const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [openLootViews, setOpenLootViews] = useState(false);
   const [openGold, setOpenGold] = useState(false);
   const [openBeta, setOpenBeta] = useState(false);
@@ -48,22 +50,21 @@ const Sidebar = () => {
   const [openDMSettings, setOpenDMSettings] = useState(false);
   const [openSessionTools, setOpenSessionTools] = useState(false);
   const [isDM, setIsDM] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
   const [groupName, setGroupName] = useState('Loot Tracker');
+  const [username, setUsername] = useState('');
   const location = useLocation();
-
-  const menuTitle = `${groupName} Loot Menu`;
 
   const handleToggle = (setter) => () => setter(prev => !prev);
 
-useEffect(() => {
-    // Get user role from localStorage
+  useEffect(() => {
+    // Get user role and name from localStorage
     const userStr = localStorage.getItem('user');
     if (userStr) {
       try {
         const userData = JSON.parse(userStr);
         setIsDM(userData.role === 'DM');
+        setUsername(userData.username || '');
       } catch (e) {
         console.error('Error parsing user data:', e);
       }
@@ -91,11 +92,18 @@ useEffect(() => {
   };
 
   const isActiveRoute = (route) => {
-    return location.pathname === route ? 'active' : '';
+    return location.pathname === route;
   };
 
   const toggleSidebar = () => {
     setIsCollapsed(!isCollapsed);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    if (onLogout) onLogout();
+    window.location.href = '/login';
   };
 
   const MenuItem = ({ to, primary, icon, onClick, open, children, badge, isCategory }) => {
@@ -110,17 +118,22 @@ useEffect(() => {
           onClick={onClick}
           sx={{
             pl: isCategory ? 2 : 4,
-            bgcolor: isCategory ? 'rgba(0, 0, 0, 0.04)' : (active ? 'rgba(0, 0, 0, 0.08)' : 'inherit'),
+            py: 1.5,
+            mb: 0.5,
+            borderRadius: isCollapsed ? 0 : '0 20px 20px 0',
+            mr: 1,
+            bgcolor: active ? 'rgba(144, 202, 249, 0.16)' : 'transparent',
             '&:hover': {
-              bgcolor: active ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)',
+              bgcolor: active ? 'rgba(144, 202, 249, 0.2)' : 'rgba(255, 255, 255, 0.08)',
             },
             '& .MuiListItemIcon-root': {
-              color: active ? '#1976d2' : 'inherit',
-              minWidth: isCollapsed ? 'auto' : 56,
+              color: active ? 'primary.main' : 'text.secondary',
+              minWidth: isCollapsed ? 'auto' : 40,
             },
             '& .MuiListItemText-primary': {
-              color: active ? '#1976d2' : 'inherit',
-              fontWeight: active ? 'bold' : 'normal',
+              color: active ? 'primary.main' : 'text.primary',
+              fontWeight: active ? 600 : 400,
+              fontSize: '0.875rem',
             },
           }}
         >
@@ -149,27 +162,46 @@ useEffect(() => {
     <Drawer
       variant="permanent"
       sx={{
-        width: isCollapsed ? 60 : 240,
+        width: isCollapsed ? 64 : 240,
         flexShrink: 0,
         '& .MuiDrawer-paper': {
-          width: isCollapsed ? 60 : 240,
+          width: isCollapsed ? 64 : 240,
           boxSizing: 'border-box',
           transition: 'width 0.2s',
           display: 'flex',
           flexDirection: 'column',
+          borderRight: '1px solid',
+          borderColor: 'divider',
+          backgroundColor: 'background.paper',
+          overflow: 'hidden',
         },
       }}
     >
-      <Box sx={{ p: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        {!isCollapsed && <Typography variant="h6">{menuTitle}</Typography>}
-        <IconButton onClick={toggleSidebar}>
+      <Box
+        sx={{
+          p: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          minHeight: 64
+        }}
+      >
+        {!isCollapsed && (
+          <Typography variant="h6" color="primary" noWrap sx={{ fontWeight: 600 }}>
+            {groupName}
+          </Typography>
+        )}
+        <IconButton onClick={toggleSidebar} color="primary">
           {isCollapsed ? <MenuIcon /> : <ChevronLeft />}
         </IconButton>
       </Box>
 
-      <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
-        <List>
+      <Box sx={{ flexGrow: 1, overflow: 'auto', px: 1, py: 2 }}>
+        <List component="nav" disablePadding>
           <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
+
           <MenuItem
             primary="Loot"
             icon={<ViewList />}
@@ -188,6 +220,7 @@ useEffect(() => {
             <MenuItem to="/sold-loot" primary="Sold" icon={<Sell />} />
             <MenuItem to="/given-away-or-trashed" primary="Trashed" icon={<Delete />} />
           </MenuItem>
+
           <MenuItem
             primary="Gold"
             icon={<AttachMoney/>}
@@ -198,6 +231,7 @@ useEffect(() => {
             <MenuItem to="/gold-transactions" primary="Transactions" icon={<AccountBalance />} />
             <MenuItem to="/character-loot-ledger" primary="Loot Ledger" icon={<AccountBalanceWallet />} />
           </MenuItem>
+
           <MenuItem
             primary="Session Tools"
             icon={<AutoStoriesIcon/>}
@@ -209,6 +243,7 @@ useEffect(() => {
             <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
             <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
           </MenuItem>
+
           <MenuItem
             primary="Settings"
             icon={<Settings/>}
@@ -216,8 +251,9 @@ useEffect(() => {
             open={openSettings}
             isCategory
           >
-            <MenuItem to="/user-settings" primary="User Settings"/>
+            <MenuItem to="/user-settings" primary="User Settings" icon={<Person4 />} />
           </MenuItem>
+
           <MenuItem
             primary="Beta"
             icon={<Construction/>}
@@ -227,6 +263,7 @@ useEffect(() => {
           >
             <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
           </MenuItem>
+
           {isDM && (
             <MenuItem
               primary="DM Settings"
@@ -235,33 +272,46 @@ useEffect(() => {
               open={openDMSettings}
               isCategory
             >
-              <MenuItem to="/character-user-management" primary="Gen Management" />
+              <MenuItem to="/character-user-management" primary="Gen Management" icon={<Groups2 />} />
               <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
             </MenuItem>
           )}
         </List>
       </Box>
 
+      <Divider />
+
       <Box sx={{
-        p: 1,
-        borderTop: 1,
-        borderColor: 'divider',
+        p: 2,
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        justifyContent: isCollapsed ? 'center' : 'space-between',
       }}>
-        <Typography variant="caption">v0.5.0</Typography>
-        <Button
-            onClick={() => {
-              localStorage.removeItem('token');
-              localStorage.removeItem('user');
-              window.location.href = '/login';
-            }}
-            size="small"
-            color="error"
-        >
-          Logout
-        </Button>
+        {!isCollapsed && (
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Avatar
+              sx={{
+                width: 32,
+                height: 32,
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+                fontSize: '0.875rem',
+                mr: 1
+              }}
+            >
+              {username.charAt(0).toUpperCase()}
+            </Avatar>
+            <Typography variant="body2" noWrap>
+              {username}
+            </Typography>
+          </Box>
+        )}
+
+        <Tooltip title="Logout">
+          <IconButton onClick={handleLogout} color="inherit" size="small">
+            <Logout />
+          </IconButton>
+        </Tooltip>
       </Box>
     </Drawer>
   );
