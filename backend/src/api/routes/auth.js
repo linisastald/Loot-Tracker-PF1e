@@ -46,5 +46,7 @@ router.post('/register', [
 
 router.get('/check-dm', authController.checkForDm);
 router.get('/check-registration-status', authController.checkRegistrationStatus);
+router.get('/status', verifyToken, authController.getUserStatus);
+router.post('/logout', authController.logoutUser);
 
 module.exports = router;

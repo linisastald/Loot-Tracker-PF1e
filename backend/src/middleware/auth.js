@@ -12,12 +12,12 @@ require('dotenv').config();
  */
 const verifyToken = (req, res, next) => {
   try {
-    // Extract token from Authorization header
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    // Extract token from cookie instead of Authorization header
+    const token = req.cookies.authToken;
 
     if (!token) {
       logger.warn('Authentication failed: No token provided');
-      return res.status(401).json({ error: 'No token provided' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     // Verify token using JWT secret
@@ -25,7 +25,6 @@ const verifyToken = (req, res, next) => {
 
     // Add user data to request object
     req.user = decoded;
-
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {

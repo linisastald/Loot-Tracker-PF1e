@@ -32,35 +32,22 @@ function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (token) {
-      setIsAuthenticated(true);
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
-        } catch (error) {
-          console.error('Failed to parse user data:', error);
-          handleLogout();
-        }
+    // Check if user is authenticated by making an API call
+    const checkAuthStatus = async () => {
+      try {
+        const response = await api.get('/auth/status');
+        if (response.data && response.data.success) {
+          setIsAuthenticated(true);
+          setUser(response.data.user);
       } else {
         handleLogout();
       }
-    }
-
-    const fetchCsrfToken = async () => {
-      try {
-        const response = await api.get('/csrf-token');
-        localStorage.setItem('csrfToken', response.data.csrfToken);
       } catch (error) {
-        console.error('Error fetching CSRF token:', error);
+        handleLogout();
       }
     };
 
+    checkAuthStatus();
     fetchCsrfToken();
   }, []);
 
@@ -72,12 +59,17 @@ function App() {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const handleLogout = async () => {
+    try {
+      // Add a logout endpoint that clears the cookie
+      await api.post('/auth/logout');
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
+
+    // Just clean up the local state, no need to remove token from localStorage
     setIsAuthenticated(false);
     setUser(null);
-    delete api.defaults.headers.common['Authorization'];
   };
 
   return (

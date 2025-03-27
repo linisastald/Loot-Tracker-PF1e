@@ -66,11 +66,18 @@ const registerUser = async (req, res) => {
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' } // Token valid for 7 days
+      { expiresIn: '24h' } // Token valid for 24 hours
     );
 
+    // Set token in HTTP-only cookie
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // Only use secure in production
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+    });
+
     controllerFactory.sendCreatedResponse(res, {
-      token,
       user: {
         id: user.id,
         username: user.username,
@@ -141,8 +148,16 @@ const loginUser = async (req, res) => {
   const token = jwt.sign(
     { id: user.id, username: user.username, role: user.role },
     process.env.JWT_SECRET,
-    { expiresIn: '7d' } // Token valid for 7 days
+    { expiresIn: '24h' } // Token valid for 24 hours
   );
+
+  // Set token in HTTP-only cookie
+  res.cookie('authToken', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production', // Only use secure in production
+    sameSite: 'strict',
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+  });
 
   // Set CORS headers
   const origin = req.headers.origin;
@@ -153,7 +168,6 @@ const loginUser = async (req, res) => {
   res.header('Access-Control-Allow-Credentials', 'true');
 
   controllerFactory.sendSuccessResponse(res, {
-    token,
     user: {
       id: user.id,
       username: user.username,
@@ -186,6 +200,49 @@ const handleFailedLogin = async (user) => {
     );
     logger.info(`Failed login attempt ${newAttempts}/${MAX_LOGIN_ATTEMPTS} for user ${user.username}`);
   }
+};
+
+/**
+ * Get current user's authentication status
+ */
+const getUserStatus = async (req, res) => {
+  // This endpoint is protected by verifyToken middleware
+  // If we get here, the user is authenticated
+
+  // Get active character for player
+  let activeCharacterId = null;
+  if (req.user.role === 'Player') {
+    const characterResult = await dbUtils.executeQuery(
+      'SELECT id FROM characters WHERE user_id = $1 AND active = true',
+      [req.user.id]
+    );
+    if (characterResult.rows.length > 0) {
+      activeCharacterId = characterResult.rows[0].id;
+    }
+  }
+
+  controllerFactory.sendSuccessResponse(res, {
+    user: {
+      id: req.user.id,
+      username: req.user.username,
+      role: req.user.role,
+      activeCharacterId
+    }
+  }, 'User is authenticated');
+};
+
+/**
+ * Logout user
+ */
+const logoutUser = async (req, res) => {
+  // Clear the auth cookie
+  res.clearCookie('authToken', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  });
+  
+  controllerFactory.sendSuccessMessage(res, 'Logged out successfully');
 };
 
 /**
@@ -225,13 +282,14 @@ const generateInviteCode = async (req, res) => {
  * Refresh token
  */
 const refreshToken = async (req, res) => {
-  const { token } = req.body;
-
-  if (!token) {
-    throw controllerFactory.createValidationError('Token is required');
-  }
-
   try {
+    // Extract token from cookie
+    const token = req.cookies.authToken;
+
+    if (!token) {
+      throw controllerFactory.createValidationError('Authentication required');
+    }
+
     // Verify the existing token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
@@ -251,10 +309,18 @@ const refreshToken = async (req, res) => {
     const newToken = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '24h' }
     );
 
-    controllerFactory.sendSuccessResponse(res, { token: newToken }, 'Token refreshed successfully');
+    // Set the new token in a cookie
+    res.cookie('authToken', newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+    });
+
+    controllerFactory.sendSuccessMessage(res, 'Token refreshed successfully');
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
       throw controllerFactory.createAuthorizationError('Invalid or expired token');
@@ -272,10 +338,6 @@ const registerValidation = {
   requiredFields: ['username', 'password']
 };
 
-const refreshTokenValidation = {
-  requiredFields: ['token']
-};
-
 // Use controllerFactory to create handler functions with standardized error handling
 module.exports = {
   registerUser: controllerFactory.createHandler(registerUser, {
@@ -286,6 +348,14 @@ module.exports = {
   loginUser: controllerFactory.createHandler(loginUser, {
     errorMessage: 'Error logging in user',
     validation: loginValidation
+  }),
+
+  getUserStatus: controllerFactory.createHandler(getUserStatus, {
+    errorMessage: 'Error getting user status'
+  }),
+
+  logoutUser: controllerFactory.createHandler(logoutUser, {
+    errorMessage: 'Error logging out user'
   }),
 
   checkForDm: controllerFactory.createHandler(checkForDm, {
@@ -301,7 +371,6 @@ module.exports = {
   }),
 
   refreshToken: controllerFactory.createHandler(refreshToken, {
-    errorMessage: 'Error refreshing token',
-    validation: refreshTokenValidation
+    errorMessage: 'Error refreshing token'
   })
 };
