@@ -23,45 +23,41 @@ const Login = ({ onLogin }) => {
     setError('');
     try {
       console.log('Sending login request to:', `${API_URL}/auth/login`);
-      console.log('Login request payload:', { username, password: '***' });
+      console.log('Login request payload:', {username, password: '***'});
+
       // Use raw axios for login to avoid CSRF/token requirements
       const response = await axios.post(`${API_URL}/auth/login`,
-        { username, password },
-        { withCredentials: true }
+          {username, password},
+          {withCredentials: true}
       );
 
-      // Extract data from response
-      const data = response.data;
-      console.log('Login response:', response.data);
+      console.log('Login response:', response);
 
-      // Check if response is valid
-      if (!data || !data.success) {
-        console.error('Invalid login response format:', data);
+      // Extract data - server is returning data inside data property
+      if (response.data && response.data.success) {
+        const userData = response.data.data;
+
+        if (userData && userData.user) {
+          // Perform login with the token and user object
+          onLogin(userData.token, userData.user);
+          navigate('/loot-entry');
+        } else {
+          console.error('User data missing in response:', response.data);
+          setError('Login failed: User data missing in response');
+        }
+      } else {
+        console.error('Invalid response format:', response.data);
         setError('Login failed: Invalid server response');
-        return;
       }
-
-      // Extract token and user
-      const { token, user } = data.data;
-
-      if (!token || !user) {
-        console.error('Missing token or user in response:', data);
-        setError('Login failed: Missing authentication data');
-        return;
-      }
-
-      // Perform login
-      onLogin(token, user);
-      navigate('/loot-entry');
 
     } catch (err) {
       console.error('Login Error:', err);
 
       // Extract error message
       const errorMessage = err.response?.data?.message ||
-                           err.response?.data?.error ||
-                           err.message ||
-                           'Login failed';
+          err.response?.data?.error ||
+          err.message ||
+          'Login failed';
 
       setError(errorMessage);
     }
