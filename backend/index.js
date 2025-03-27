@@ -73,7 +73,7 @@ const corsOptions = {
   origin: ['http://localhost:3000', 'http://192.168.0.64:3000', 'http://192.168.0.64:4004', 'http://192.168.0.64:4007'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'Cache-Control']
 };
 app.use(cors(corsOptions));
 
