@@ -2,12 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import api from '../../utils/api';
 
-const ProtectedRoute = ({ children }) => {
-  const [authChecked, setAuthChecked] = useState(false);
-  const [isAuthed, setIsAuthed] = useState(false);
+const ProtectedRoute = ({ children, isAuthenticated: propIsAuthenticated }) => {
+  const [authChecked, setAuthChecked] = useState(propIsAuthenticated !== undefined);
+  const [isAuthed, setIsAuthed] = useState(propIsAuthenticated || false);
 
   useEffect(() => {
-    // Check authentication status by making API call
+    // Skip API call if authentication status is already provided via props
+    if (propIsAuthenticated !== undefined) {
+      return;
+    }
+
+    // Only check authentication if not provided by parent
     const checkAuth = async () => {
       try {
         const response = await api.get('/auth/status');
@@ -21,7 +26,7 @@ const ProtectedRoute = ({ children }) => {
     };
 
     checkAuth();
-  }, []);
+  }, [propIsAuthenticated]); // Add propIsAuthenticated as dependency
 
   // Show nothing while checking authentication
   if (!authChecked) {
