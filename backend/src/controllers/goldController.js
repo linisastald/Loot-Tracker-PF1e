@@ -50,6 +50,7 @@ const getAllGoldEntries = async (req, res) => {
 
   try {
     const entries = await Gold.findAll({ startDate, endDate });
+    entries.sort((a, b) => new Date(b.session_date) - new Date(a.session_date));
     return res.success(entries, 'Gold entries retrieved successfully');
   } catch (error) {
     console.error('Error fetching gold entries:', error);

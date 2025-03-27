@@ -39,8 +39,14 @@ const GoldTransactions = () => {
       const response = await api.get(`/gold`, {
         params: { startDate, endDate }
       });
-      setGoldEntries(response.data);
-      calculateTotals(response.data);
+
+      // Sort entries by complete session_date timestamp (not just the date part)
+      const sortedEntries = [...response.data].sort((a, b) => {
+        return new Date(b.session_date) - new Date(a.session_date);
+      });
+
+      setGoldEntries(sortedEntries);
+      calculateTotals(sortedEntries);
     } catch (error) {
       console.error('Error fetching gold entries:', error);
       setError('Failed to fetch gold entries.');
