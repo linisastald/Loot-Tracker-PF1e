@@ -11,6 +11,7 @@ const logger = require('./src/utils/logger');
 const dotenv = require('dotenv');
 const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
+const crypto = require('crypto');
 
 // Enhanced error handling
 process.on('uncaughtException', (error) => {
@@ -127,6 +128,18 @@ const csrfProtection = csrf({
   }
 });
 
+// Routes
+app.get('/', (req, res) => {
+  res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
+});
+
+// Get CSRF token without protection
+app.get('/api/csrf-token', (req, res) => {
+  // Generate a token but don't verify on this endpoint
+  req.csrfToken = () => crypto.randomBytes(18).toString('base64');
+  res.success({ csrfToken: req.csrfToken() }, 'CSRF token generated');
+});
+
 // Route imports
 const authRoutes = require('./src/api/routes/auth');
 const lootRoutes = require('./src/api/routes/loot');
@@ -138,65 +151,19 @@ const consumablesRoutes = require('./src/api/routes/consumables');
 const calendarRoutes = require('./src/api/routes/calendar');
 const soldRoutes = require('./src/api/routes/sold');
 
-// Routes
-app.get('/', (req, res) => {
-  res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
-});
-
-// CSRF Token route
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
-  res.success({ csrfToken: req.csrfToken() }, 'CSRF token generated');
-});
-
-// Define routes that are exempt from CSRF protection
-const csrfExemptRoutes = [
-  '/api/auth/login',
-  '/api/auth/register',
-  '/api/auth/logout',
-  '/api/auth/check-dm',
-  '/api/auth/check-registration-status',
-  '/api/auth/status',
-  '/api/auth/refresh-token',
-  '/api/csrf-token'  // The CSRF token endpoint itself should be exempt
-];
-
-// Middleware to check if a route should be CSRF protected
-const csrfProtectionMiddleware = (req, res, next) => {
-  // Log the current path for debugging
-  logger.debug(`Checking CSRF for path: ${req.path}, method: ${req.method}`);
-
-  // Skip CSRF for exempt routes - use more robust matching
-  for (const exemptRoute of csrfExemptRoutes) {
-    if (req.path === exemptRoute || req.path.startsWith(`${exemptRoute}/`)) {
-      logger.debug(`CSRF exempted for route: ${req.path}`);
-      return next();
-    }
-  }
-
-  // Skip CSRF for OPTIONS requests (important for CORS preflight)
-  if (req.method === 'OPTIONS') {
-    return next();
-  }
-
-  // Apply CSRF protection to other routes
-  return csrfProtection(req, res, next);
-};
-
-// Apply CSRF protection to all API routes, with exemptions
-app.use('/api', csrfProtectionMiddleware);
-
-// Configure routes
+// Set up routes with appropriate protection
+// Auth routes WITHOUT CSRF protection
 app.use('/api/auth', authRoutes);
 
-// Protected API Routes
-app.use('/api/loot', lootRoutes);
-app.use('/api/user', userRoutes);
-app.use('/api/gold', goldRoutes);
-app.use('/api/discord', discordRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/consumables', consumablesRoutes);
-app.use('/api/calendar', calendarRoutes);
-app.use('/api/sold', soldRoutes);
+// Apply CSRF protection to all other API routes
+app.use('/api/loot', csrfProtection, lootRoutes);
+app.use('/api/user', csrfProtection, userRoutes);
+app.use('/api/gold', csrfProtection, goldRoutes);
+app.use('/api/discord', csrfProtection, discordRoutes);
+app.use('/api/settings', csrfProtection, settingsRoutes);
+app.use('/api/consumables', csrfProtection, consumablesRoutes);
+app.use('/api/calendar', csrfProtection, calendarRoutes);
+app.use('/api/sold', csrfProtection, soldRoutes);
 
 // Global error handler
 app.use(errorHandler);
