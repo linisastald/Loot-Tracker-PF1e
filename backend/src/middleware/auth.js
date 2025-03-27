@@ -12,8 +12,17 @@ require('dotenv').config();
  */
 const verifyToken = (req, res, next) => {
   try {
-    // Extract token from cookie instead of Authorization header
-    const token = req.cookies.authToken;
+    // Extract token from authorization header
+    const authHeader = req.headers.authorization;
+    let token;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      // Extract token from Authorization header (for compatibility)
+      token = authHeader.split(' ')[1];
+    } else {
+      // Extract token from cookie
+      token = req.cookies.authToken;
+    }
 
     if (!token) {
       logger.warn('Authentication failed: No token provided');
@@ -39,5 +48,4 @@ const verifyToken = (req, res, next) => {
     }
   }
 };
-
 module.exports = verifyToken;
