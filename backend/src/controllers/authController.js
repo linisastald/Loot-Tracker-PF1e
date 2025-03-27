@@ -159,15 +159,9 @@ const loginUser = async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
   });
 
-  // Set CORS headers
-  const origin = req.headers.origin;
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(',');
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  res.header('Access-Control-Allow-Credentials', 'true');
-
+  // IMPORTANT: Also include the token in the response for client-side storage
   controllerFactory.sendSuccessResponse(res, {
+    token: token, // Add this line to return the token
     user: {
       id: user.id,
       username: user.username,
