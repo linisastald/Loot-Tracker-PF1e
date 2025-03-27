@@ -32,26 +32,44 @@ function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Check if user is authenticated by making an API call
+    // First check localStorage for user data
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        setIsAuthenticated(true);
+        setUser(userData);
+      } catch (e) {
+        console.error('Error parsing stored user data:', e);
+        localStorage.removeItem('user');
+      }
+    }
+
+    // Then verify with server that the token is still valid
     const checkAuthStatus = async () => {
       try {
-        // Don't check for token in localStorage - let the cookie be sent automatically
         const response = await api.get('/auth/status');
 
         if (response.data && response.data.success) {
           setIsAuthenticated(true);
           setUser(response.data.user);
-
-          // Store user info but not token (token is in HTTP-only cookie)
           localStorage.setItem('user', JSON.stringify(response.data.user));
         } else {
-          handleLogout();
+          // Only log out if we get an explicit authentication failure
+          console.warn('Auth check returned unsuccessful');
+          if (!storedUser) {
+            handleLogout();
+          }
         }
       } catch (error) {
-        console.log('Auth status check error:', error);
-        handleLogout();
+        console.warn('Auth status check error:', error);
+        // Only log out on 401 status
+        if (error.response && error.response.status === 401) {
+          handleLogout();
+        }
       }
     };
+
     checkAuthStatus();
     // No need to call fetchCsrfToken here, it's handled in the api.js
   }, []);

@@ -12,14 +12,34 @@ const ProtectedRoute = ({ children, isAuthenticated: propIsAuthenticated }) => {
       return;
     }
 
-    // Only check authentication if not provided by parent
+    // Check local storage first for a quick initial check
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      setIsAuthed(true);
+    }
+
+    // Then verify with server that the token is still valid
     const checkAuth = async () => {
       try {
         const response = await api.get('/auth/status');
-        setIsAuthed(response.data && response.data.success);
+        if (response?.data?.success) {
+          setIsAuthed(true);
+          // Update user in localStorage if it has changed
+          if (response.data.user) {
+            localStorage.setItem('user', JSON.stringify(response.data.user));
+          }
+        } else {
+          // Only set to false if we get an explicit failure
+          console.warn('Auth check returned unsuccessful');
+          setIsAuthed(false);
+        }
       } catch (error) {
         console.error('Auth check failed:', error);
-        setIsAuthed(false);
+        // Only set to false on 401 status
+        if (error.response && error.response.status === 401) {
+          setIsAuthed(false);
+          localStorage.removeItem('user');
+        }
       } finally {
         setAuthChecked(true);
       }
