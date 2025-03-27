@@ -35,7 +35,6 @@ const useLootManagement = (statusToFetch) => {
   // Fetch data based on the status
   const fetchLoot = async () => {
     try {
-      const token = localStorage.getItem('token');
       let endpoint;
 
       if (!statusToFetch) {
@@ -123,7 +122,7 @@ const useLootManagement = (statusToFetch) => {
       splitQuantities,
       selectedItems,
       splitItem?.quantity || 0,
-      activeUser?.id,
+      null,
       fetchLoot,
       setOpenSplitDialog,
       setSelectedItems
@@ -137,7 +136,7 @@ const useLootManagement = (statusToFetch) => {
   // Special function for handling appraise in UnprocessedLoot
   const handleAppraise = async () => {
     try {
-      await api.post(`/loot/appraise`, { userId: activeUser.id });
+      await api.post(`/loot/appraise`, {});
       fetchLoot();
     } catch (error) {
       console.error('Error appraising loot:', error);

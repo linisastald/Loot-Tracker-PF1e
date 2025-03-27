@@ -1,5 +1,4 @@
 import api from './api';
-import jwt_decode from 'jwt-decode';
 
 export const fetchInitialData = async (setItemOptions, setActiveCharacterId) => {
   try {
@@ -94,10 +93,7 @@ export const validateLootEntries = (entries) => {
 };
 
 export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
-  const token = localStorage.getItem('token');
-  const userId = jwt_decode(token).id;
-
-  let data = {...entry.data, whoupdated: userId, session_date: entry.data.sessionDate};
+  let data = {...entry.data, session_date: entry.data.sessionDate};
 
   if (entry.type === 'gold') {
     const {transactionType, platinum, gold, silver, copper} = data;

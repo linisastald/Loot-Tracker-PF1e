@@ -21,7 +21,6 @@ import {
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import jwt_decode from 'jwt-decode';
 
 const GoldTransactions = () => {
   const [goldEntries, setGoldEntries] = useState([]);
@@ -42,7 +41,6 @@ const GoldTransactions = () => {
 
   const fetchGoldEntries = async () => {
     try {
-      const token = localStorage.getItem('token');
       const response = await api.get(`/gold`, {
         params: { startDate, endDate }
       });
@@ -56,11 +54,10 @@ const GoldTransactions = () => {
 
   const fetchUserRole = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const decodedToken = jwt_decode(token);
-      const userId = decodedToken.id;
-      const response = await api.get(`/user/${userId}`);
-      setUserRole(response.data.role);
+      const response = await api.get(`/auth/status`);
+      if (response.data && response.data.user) {
+        setUserRole(response.data.user.role);
+      }
     } catch (error) {
       console.error('Error fetching user role:', error);
       setError('Failed to fetch user role.');
@@ -84,7 +81,6 @@ const GoldTransactions = () => {
 
   const handleDistributeAll = async () => {
     try {
-      const token = localStorage.getItem('token');
       await api.post(`/gold/distribute-all`, {});
       fetchGoldEntries(); // Refresh the gold entries after distribution
     } catch (error) {
@@ -95,7 +91,6 @@ const GoldTransactions = () => {
 
   const handleDistributePlusPartyLoot = async () => {
     try {
-      const token = localStorage.getItem('token');
       await api.post(`/gold/distribute-plus-party-loot`, {});
       fetchGoldEntries(); // Refresh the gold entries after distribution
     } catch (error) {
@@ -106,7 +101,6 @@ const GoldTransactions = () => {
 
   const handleBalance = async () => {
     try {
-      const token = localStorage.getItem('token');
       await api.post(`/gold/balance`, {});
       fetchGoldEntries(); // Refresh the gold entries after balancing
     } catch (error) {
@@ -158,14 +152,6 @@ const GoldTransactions = () => {
         <Button variant="contained" color="primary" onClick={handleDistributePlusPartyLoot} sx={{ mr: 2 }}>
           Distribute + Party Loot
         </Button>
-        {/* Hidden button for Define Party Loot Distribute */}
-        {/* <Button variant="contained" color="primary" onClick={() => setOpenPartyLootDialog(true)} sx={{ mr: 2 }}>
-          Define Party Loot Distribute
-        </Button> */}
-        {/* Hidden button for Define Character Distribute */}
-        {/* <Button variant="contained" color="primary" onClick={() => setOpenCharacterDistributeDialog(true)} sx={{ mr: 2 }}>
-          Define Character Distribute
-        </Button> */}
         {userRole === 'DM' && (
           <Button variant="contained" color="primary" onClick={handleBalance}>
             Balance
@@ -240,52 +226,6 @@ const GoldTransactions = () => {
           </TableBody>
         </Table>
       </TableContainer>
-
-      {/* Define Party Loot Distribute Dialog */}
-       {/* <Dialog open={openPartyLootDialog} onClose={() => setOpenPartyLootDialog(false)}>
-        <DialogTitle>Define Party Loot Distribute</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Enter the amount to leave in party loot:
-          </DialogContentText>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Party Loot Amount"
-            type="number"
-            fullWidth
-            value={partyLootAmount}
-            onChange={(e) => setPartyLootAmount(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenPartyLootDialog(false)}>Cancel</Button>
-          <Button onClick={handleDefinePartyLootDistribute}>Distribute</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Define Character Distribute Dialog
-      <Dialog open={openCharacterDistributeDialog} onClose={() => setOpenCharacterDistributeDialog(false)}>
-        <DialogTitle>Define Character Distribute</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Enter the amount to give to each active character:
-          </DialogContentText>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Character Distribute Amount"
-            type="number"
-            fullWidth
-            value={characterDistributeAmount}
-            onChange={(e) => setCharacterDistributeAmount(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenCharacterDistributeDialog(false)}>Cancel</Button>
-          <Button onClick={handleDefineCharacterDistribute}>Distribute</Button>
-        </DialogActions>
-      </Dialog> */}
     </Container>
   );
 };

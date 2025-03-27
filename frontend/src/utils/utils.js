@@ -1,33 +1,18 @@
 // src/utils/utils.js
 import axios from 'axios';
-import jwt_decode from 'jwt-decode';
 import api from './api';
 
 export const fetchActiveUser = async () => {
   try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.error('No token found in localStorage');
-      throw new Error('No token found');
+    // Instead of decoding the token, make an API call to get user data
+    const response = await api.get(`/auth/status`);
+
+    // Check if the response contains user data
+    if (response && response.data && response.data.user) {
+      return response.data.user;
     }
 
-    let decoded;
-    try {
-      decoded = jwt_decode(token);
-    } catch (error) {
-      console.error('Token decoding failed', error);
-      throw new Error('Invalid token decoding');
-    }
-
-    const userId = decoded.id;
-    if (!userId) {
-      console.error('No user ID in token');
-      throw new Error('Invalid token user ID');
-    }
-
-    const response = await api.get(`/user/${userId}`);
-
-    return response.data;
+    return null;
   } catch (error) {
     console.error('Error fetching active user:', error.message);
     return null;
@@ -44,14 +29,9 @@ export const handleSelectItem = (id, setSelectedItems) => {
 
 export const handleSell = async (selectedItems, fetchLoot) => {
   try {
-    const token = localStorage.getItem('token');
-    const decodedToken = jwt_decode(token);
-    const userId = decodedToken.id;
-
     await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Pending Sale',
-      userId,
     });
     fetchLoot();
   } catch (error) {
@@ -61,14 +41,9 @@ export const handleSell = async (selectedItems, fetchLoot) => {
 
 export const handleTrash = async (selectedItems, fetchLoot) => {
   try {
-    const token = localStorage.getItem('token');
-    const decodedToken = jwt_decode(token);
-    const userId = decodedToken.id;
-
     await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Trashed',
-      userId,
     });
     fetchLoot();
   } catch (error) {
@@ -78,14 +53,9 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
 
 export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
   try {
-    const token = localStorage.getItem('token');
-    const decodedToken = jwt_decode(token);
-    const userId = decodedToken.id;
-
     await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Kept Self',
-      userId,
       whohas: activeUser.activeCharacterId,
     });
     fetchLoot();
@@ -96,14 +66,9 @@ export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
 
 export const handleKeepParty = async (selectedItems, fetchLoot) => {
   try {
-    const token = localStorage.getItem('token');
-    const decodedToken = jwt_decode(token);
-    const userId = decodedToken.id;
-
     await api.put(`/loot/update-status`, {
       ids: selectedItems,
       status: 'Kept Party',
-      userId,
     });
     fetchLoot();
   } catch (error) {
@@ -134,9 +99,7 @@ export const handleUpdateChange = (e, setUpdatedEntry) => {
 };
 
 export const handleUpdate = async (id, updatedEntry, fetchLoot) => {
-  const token = localStorage.getItem('token');
   await api.put(`/loot/${id}`, { updatedEntry });
-
   fetchLoot();
 };
 
@@ -205,7 +168,6 @@ export const handleSort = (sortConfig, setSortConfig, key) => {
 
 export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems) => {
   try {
-    const token = localStorage.getItem('token');
     await api.put(`/loot/update-entry/${updatedEntry.id}`, {
       session_date: updatedEntry.session_date,
       quantity: updatedEntry.quantity,
@@ -235,12 +197,10 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
   }
 
   try {
-    const token = localStorage.getItem('token');
     const itemId = selectedItems[0];
     const response = await api.post(`/loot/split-stack`, {
       id: itemId,
       splits: splitQuantities,
-      userId,
     });
     if (response.status === 200) {
       await fetchLoot();
