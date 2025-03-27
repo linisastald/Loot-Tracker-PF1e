@@ -1218,7 +1218,7 @@ const identifyItems = async (req, res) => {
           throw new Error(`Item with id ${lootItem.itemid} not found`);
         }
 
-        // Check if this is a DM identification (roll 99) or if takeTen is true
+        // Check if this is a DM identification (roll 99)
         const isDMIdentification = spellcraftRoll === 99;
 
         // If not a DM identification, check if the character has already attempted to identify this item today
@@ -1240,41 +1240,57 @@ const identifyItems = async (req, res) => {
           }
         }
 
-        // Fetch the associated mods
-        const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [lootItem.modids]);
-        const mods = modsResult.rows.map(row => row.name);
+        // For DM or successful rolls, update the item
+        const casterLevel = item.casterlevel || 1;
+        const requiredDC = 15 + Math.min(casterLevel, 20);
+        const isSuccessful = isDMIdentification || spellcraftRoll >= requiredDC;
 
-        // Sort mods, prioritizing those starting with '+'
-        mods.sort((a, b) => {
-          if (a.startsWith('+') && !b.startsWith('+')) return -1;
-          if (!a.startsWith('+') && b.startsWith('+')) return 1;
-          return 0;
-        });
-
-        // Construct the new name
-        let newName = mods.join(' ') + ' ' + item.name;
-        newName = newName.trim();
-
-        // Update the loot item
-        await client.query(
-          'UPDATE loot SET name = $1, unidentified = false WHERE id = $2',
-          [newName, itemId]
-        );
-
-        // Record the identification in the identify table with Golarion date
+        // Record the identification attempt in the identify table with Golarion date and success status
         const identifyCharacterId = isDMIdentification ? null : characterId;
         await client.query(
-          'INSERT INTO identify (lootid, characterid, spellcraft_roll, golarion_date) VALUES ($1, $2, $3, $4)',
-          [itemId, identifyCharacterId, spellcraftRoll, golarionDateStr]
+          'INSERT INTO identify (lootid, characterid, spellcraft_roll, golarion_date, success) VALUES ($1, $2, $3, $4, $5)',
+          [itemId, identifyCharacterId, spellcraftRoll, golarionDateStr, isSuccessful]
         );
 
-        // Add the updated item to the list
-        updatedItems.push({
-          id: itemId,
-          oldName: lootItem.name,
-          newName,
-          spellcraftRoll
-        });
+        if (isSuccessful) {
+          // Fetch the associated mods
+          const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [lootItem.modids]);
+          const mods = modsResult.rows.map(row => row.name);
+
+          // Sort mods, prioritizing those starting with '+'
+          mods.sort((a, b) => {
+            if (a.startsWith('+') && !b.startsWith('+')) return -1;
+            if (!a.startsWith('+') && b.startsWith('+')) return 1;
+            return 0;
+          });
+
+          // Construct the new name
+          let newName = mods.join(' ') + ' ' + item.name;
+          newName = newName.trim();
+
+          // Update the loot item
+          await client.query(
+            'UPDATE loot SET name = $1, unidentified = false WHERE id = $2',
+            [newName, itemId]
+          );
+
+          // Add the updated item to the list
+          updatedItems.push({
+            id: itemId,
+            oldName: lootItem.name,
+            newName,
+            spellcraftRoll,
+            requiredDC
+          });
+        } else {
+          // Record the failed identification attempt
+          failedItems.push({
+            id: itemId,
+            name: lootItem.name,
+            spellcraftRoll,
+            requiredDC
+          });
+        }
       } catch (error) {
         logger.error(`Error identifying item ${items[i]}: ${error.message}`);
         failedItems.push({
@@ -1296,7 +1312,7 @@ const identifyItems = async (req, res) => {
       (await client.query('SELECT name FROM characters WHERE id = $1', [characterId])).rows[0]?.name :
       'DM';
 
-    logger.info(`${updatedItems.length} items identified by ${characterName}`, {
+    logger.info(`${updatedItems.length} items identified by ${characterName}, ${failedItems.length} failed`, {
       characterId,
       characterName,
       identifiedCount: updatedItems.length,
@@ -1306,7 +1322,7 @@ const identifyItems = async (req, res) => {
 
     return controllerFactory.sendSuccessResponse(res, {
       identified: updatedItems,
-      failed: failedItems.length > 0 ? failedItems : undefined,
+      failed: failedItems,
       alreadyAttempted: alreadyAttemptedItems.length > 0 ? alreadyAttemptedItems : undefined,
       count: {
         success: updatedItems.length,
@@ -1314,7 +1330,7 @@ const identifyItems = async (req, res) => {
         alreadyAttempted: alreadyAttemptedItems.length,
         total: items.length
       }
-    }, `${updatedItems.length} items identified successfully${failedItems.length > 0 ? ` (${failedItems.length} failed)` : ''}${alreadyAttemptedItems.length > 0 ? ` (${alreadyAttemptedItems.length} already attempted today)` : ''}`);
+    }, `${updatedItems.length} items identified successfully${failedItems.length > 0 ? `, ${failedItems.length} failed identification attempts` : ''}${alreadyAttemptedItems.length > 0 ? ` (${alreadyAttemptedItems.length} already attempted today)` : ''}`);
   });
 };
 /**

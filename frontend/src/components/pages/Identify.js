@@ -31,6 +31,7 @@ const Identify = () => {
   const [isDMUser, setIsDMUser] = useState(false);
   const [items, setItems] = useState([]);
   const [identifiedItems, setIdentifiedItems] = useState([]);
+  const [failedItems, setFailedItems] = useState([]);
   const [takeTen, setTakeTen] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -127,46 +128,84 @@ const Identify = () => {
 
       const successfulIdentifications = identifyResults.filter(result => result && result.success);
 
-      if (successfulIdentifications.length > 0) {
-        const response = await api.post('/loot/identify', {
-          items: successfulIdentifications.map(result => result.itemId),
-          characterId: isDMUser ? null : activeUser.activeCharacterId,
-          spellcraftRolls: successfulIdentifications.map(result => result.spellcraftRoll),
-          takeTen: takeTen
-        });
+      // Send all identification attempts to the server
+      const itemsToIdentify = identifyResults.map(result => result.itemId);
+      const response = await api.post('/loot/identify', {
+        items: itemsToIdentify,
+        characterId: isDMUser ? null : activeUser.activeCharacterId,
+        spellcraftRolls: identifyResults.map(result => result.spellcraftRoll),
+        takeTen: takeTen
+      });
 
-        // Fetch updated loot data
-        await fetchLoot();
+      // Fetch updated loot data
+      await fetchLoot();
 
-        // Get the updated loot data
-        const updatedLootResponse = await api.get(`/loot`, { params: { isDM: isDMUser, activeCharacterId: activeUser?.activeCharacterId } });
-        const updatedLoot = updatedLootResponse.data;
+      // Get the updated loot data
+      const updatedLootResponse = await api.get(`/loot`, { params: { isDM: isDMUser, activeCharacterId: activeUser?.activeCharacterId } });
+      const updatedLoot = updatedLootResponse.data;
 
-        // Handle response for already-attempted items
-        if (response.data && response.data.alreadyAttempted && response.data.alreadyAttempted.length > 0) {
-          setError(`You've already attempted to identify ${response.data.alreadyAttempted.length} item(s) today.`);
-        }
+      // Handle response for already-attempted items
+      if (response.data && response.data.alreadyAttempted && response.data.alreadyAttempted.length > 0) {
+        setError(`You've already attempted to identify ${response.data.alreadyAttempted.length} item(s) today.`);
+      }
 
-        // Now use the updated loot data to get the new names
-        const updatedIdentifications = successfulIdentifications.map(result => {
-          const updatedLootItem = updatedLoot.individual.find(i => i.id === result.itemId);
+      // Process successful identifications
+      if (response.data && response.data.identified && response.data.identified.length > 0) {
+        // Use the updated loot data to get the new names for successful identifications
+        const successfulIdentifications = response.data.identified.map(item => {
+          const originalItem = loot.individual.find(i => i.id === item.id);
           return {
-            ...result,
-            newName: updatedLootItem ? updatedLootItem.name : 'Unknown'
+            itemId: item.id,
+            oldName: item.oldName || (originalItem ? originalItem.name : 'Unknown'),
+            newName: item.newName,
+            spellcraftRoll: item.spellcraftRoll,
+            requiredDC: item.requiredDC
           };
         });
 
         // Update identifiedItems state, avoiding duplicates
         setIdentifiedItems(prev => {
-          const newItems = updatedIdentifications.filter(
+          const newItems = successfulIdentifications.filter(
             newItem => !prev.some(existingItem => existingItem.itemId === newItem.itemId)
           );
           return [...prev, ...newItems];
         });
+      }
 
-        if (successfulIdentifications.length > 0) {
-          setSuccess(`Successfully identified ${successfulIdentifications.length} item(s).`);
+      // Process failed identifications
+      if (response.data && response.data.failed && response.data.failed.length > 0) {
+        // Map failed items from the response
+        const failedIdentifications = response.data.failed.map(item => {
+          return {
+            itemId: item.id,
+            name: item.name,
+            spellcraftRoll: item.spellcraftRoll,
+            requiredDC: item.requiredDC
+          };
+        });
+
+        // Update failedItems state, avoiding duplicates
+        setFailedItems(prev => {
+          const newItems = failedIdentifications.filter(
+            newItem => !prev.some(existingItem => existingItem.itemId === newItem.itemId)
+          );
+          return [...prev, ...newItems];
+        });
+      }
+
+      // Set success message
+      const successCount = response.data?.identified?.length || 0;
+      const failCount = response.data?.failed?.length || 0;
+      if (successCount > 0 || failCount > 0) {
+        let message = '';
+        if (successCount > 0) {
+          message += `Successfully identified ${successCount} item(s).`;
         }
+        if (failCount > 0) {
+          if (message) message += ' ';
+          message += `Failed to identify ${failCount} item(s).`;
+        }
+        setSuccess(message);
       }
 
       setSelectedItems([]);
@@ -235,7 +274,7 @@ const Identify = () => {
 
       {identifiedItems.length > 0 && (
         <Paper sx={{ p: 2, mt: 2, mb: 2 }}>
-          <Typography variant="h6">Recently Identified Items</Typography>
+          <Typography variant="h6">Successfully Identified Items</Typography>
           <TableContainer>
             <Table>
               <TableHead>
@@ -243,6 +282,7 @@ const Identify = () => {
                   <TableCell>Old Name</TableCell>
                   <TableCell>New Name</TableCell>
                   <TableCell>Spellcraft Roll</TableCell>
+                  <TableCell>Required DC</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -251,6 +291,35 @@ const Identify = () => {
                     <TableCell>{item.oldName}</TableCell>
                     <TableCell>{item.newName}</TableCell>
                     <TableCell>{item.spellcraftRoll}</TableCell>
+                    <TableCell>{item.requiredDC || 'Unknown'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
+
+      {failedItems.length > 0 && (
+        <Paper sx={{ p: 2, mt: 2, mb: 2 }}>
+          <Typography variant="h6">Failed Identification Attempts</Typography>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Item Name</TableCell>
+                  <TableCell>Spellcraft Roll</TableCell>
+                  <TableCell>Required DC</TableCell>
+                  <TableCell>Result</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {failedItems.map((item, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.spellcraftRoll}</TableCell>
+                    <TableCell>{item.requiredDC || 'Unknown'}</TableCell>
+                    <TableCell>Failed (roll too low)</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
