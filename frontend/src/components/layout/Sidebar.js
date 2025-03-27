@@ -57,11 +57,16 @@ const Sidebar = () => {
 
   const handleToggle = (setter) => () => setter(prev => !prev);
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      setIsDM(payload.role === 'DM');
+useEffect(() => {
+    // Get user role from localStorage
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const userData = JSON.parse(userStr);
+        setIsDM(userData.role === 'DM');
+      } catch (e) {
+        console.error('Error parsing user data:', e);
+      }
     }
     fetchUnprocessedLootCount();
     fetchGroupName();
