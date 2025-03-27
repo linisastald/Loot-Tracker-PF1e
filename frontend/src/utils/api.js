@@ -5,17 +5,53 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  withCredentials: true,
+  withCredentials: true, // Important for cookies including CSRF token
   timeout: 10000, // 10 second timeout
 });
 
+// Keep track of if we've fetched a CSRF token yet
+let csrfTokenFetched = false;
+
+// Function to fetch CSRF token
+const fetchCsrfToken = async () => {
+  try {
+    if (csrfTokenFetched) return; // Only fetch once per session
+
+    console.log(`Fetching CSRF token from: ${API_URL}/csrf-token`);
+    const response = await axios.get(`${API_URL}/csrf-token`, { withCredentials: true });
+
+    if (response.data && response.data.data && response.data.data.csrfToken) {
+      localStorage.setItem('csrfToken', response.data.data.csrfToken);
+      csrfTokenFetched = true;
+      console.log('CSRF token fetched successfully');
+    } else {
+      console.error('Invalid CSRF token response:', response.data);
+    }
+  } catch (error) {
+    console.error('Error fetching CSRF token:', error);
+  }
+};
+
+// Request interceptor
 api.interceptors.request.use(
   async (config) => {
-    const token = localStorage.getItem('token');
+    // For auth routes, no need to add csrf token except for status check
+    if (config.url && (
+        config.url.includes('/auth/login') ||
+        config.url.includes('/auth/register') ||
+        config.url.includes('/auth/check-dm') ||
+        config.url.includes('/auth/check-registration-status'))) {
+      return config;
+    }
+
+    // For all other routes, ensure we have a CSRF token
+    await fetchCsrfToken();
+
     const csrfToken = localStorage.getItem('csrfToken');
     if (csrfToken) {
       config.headers['X-CSRF-Token'] = csrfToken;
     }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -24,22 +60,23 @@ api.interceptors.request.use(
 // Enhanced response interceptor
 api.interceptors.response.use(
   (response) => {
-    // Log incoming response details
-    console.log('Incoming Response:', {
-      url: response.config.url,
-      method: response.config.method,
-      status: response.status,
-      data: response.data
-    });
+    // Log incoming response details (in dev mode only)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('API Response:', {
+        url: response.config.url,
+        method: response.config.method,
+        status: response.status
+      });
+    }
 
     // Normalize response to ensure consistent structure
     if (response.data && response.data.success === true) {
       return response.data;
+    } else if (response.data) {
+      return response.data;
     }
 
-    // If response doesn't match expected structure, log and throw error
-    console.warn('Unexpected response structure:', response);
-    throw new Error('Unexpected server response');
+    return response;
   },
   (error) => {
     // Log detailed error information
@@ -48,6 +85,16 @@ api.interceptors.response.use(
       response: error.response?.data,
       status: error.response?.status
     });
+
+    // Handle CSRF token errors by fetching a new token
+    if (error.response && error.response.status === 403 &&
+        error.response.data &&
+        (error.response.data.message === 'invalid csrf token' ||
+         error.response.data.error === 'invalid csrf token')) {
+      console.log('CSRF token error detected, will fetch new token on next request');
+      csrfTokenFetched = false;
+      localStorage.removeItem('csrfToken');
+    }
 
     // Provide more detailed error handling
     if (error.response) {
@@ -77,21 +124,7 @@ api.interceptors.response.use(
   }
 );
 
-const fetchCsrfToken = async () => {
-  try {
-    console.log(`Attempting to fetch CSRF token from: ${API_URL}/csrf-token`);
-    const response = await api.get('/csrf-token');
-    localStorage.setItem('csrfToken', response.csrfToken || 'temporary-token-for-development');
-    console.log('CSRF token fetched successfully');
-  } catch (error) {
-    console.error('Error fetching CSRF token:', error);
-
-    // Provide a fallback token for development
-    localStorage.setItem('csrfToken', 'temporary-token-for-development');
-  }
-};
-
-// Initialize CSRF token fetch
+// Initialize CSRF token fetch on module load
 fetchCsrfToken();
 
 export default api;

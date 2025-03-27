@@ -148,19 +148,30 @@ app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.success({ csrfToken: req.csrfToken() });
 });
 
-// Apply CSRF protection to state-changing routes
-const csrfProtectedRoutes = [
-  { method: 'post', path: '/api/*' },
-  { method: 'put', path: '/api/*' },
-  { method: 'delete', path: '/api/*' }
+// Define routes that are exempt from CSRF protection
+const csrfExemptRoutes = [
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/logout',
+  '/api/auth/check-dm',
+  '/api/auth/check-registration-status'
 ];
 
-csrfProtectedRoutes.forEach(route => {
-  app[route.method](route.path, csrfProtection);
-});
+// Middleware to check if a route should be CSRF protected
+const csrfProtectionMiddleware = (req, res, next) => {
+  // Skip CSRF for exempt routes
+  if (csrfExemptRoutes.includes(req.path)) {
+    return next();
+  }
 
-// Auth routes exempt from CSRF (for login/registration)
-// We'll handle CSRF exemptions in auth routes specifically
+  // Apply CSRF protection to other routes
+  return csrfProtection(req, res, next);
+};
+
+// Apply CSRF protection to all API routes, with exemptions
+app.use('/api', csrfProtectionMiddleware);
+
+// Configure routes
 app.use('/api/auth', authRoutes);
 
 // Protected API Routes
