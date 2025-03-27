@@ -13,6 +13,9 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  FormControlLabel,
+  Checkbox,
+  Alert,
 } from '@mui/material';
 import { fetchActiveUser } from '../../utils/utils';
 import CustomLootTable from '../common/CustomLootTable';
@@ -28,6 +31,9 @@ const Identify = () => {
   const [isDMUser, setIsDMUser] = useState(false);
   const [items, setItems] = useState([]);
   const [identifiedItems, setIdentifiedItems] = useState([]);
+  const [takeTen, setTakeTen] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     fetchActiveUserDetails();
@@ -66,6 +72,7 @@ const Identify = () => {
       setLoot(response.data);
     } catch (error) {
       console.error('Error fetching loot:', error);
+      setError('Error fetching loot. Please try again later.');
     }
   };
 
@@ -75,6 +82,7 @@ const Identify = () => {
       setItems(response.data);
     } catch (error) {
       console.error('Error fetching items:', error);
+      setError('Error fetching items. Please try again later.');
     }
   };
 
@@ -87,64 +95,96 @@ const Identify = () => {
   };
 
   const handleIdentify = async (itemsToIdentify) => {
-  try {
-    const identifyResults = await Promise.all(itemsToIdentify.map(async (itemId) => {
-      const lootItem = loot.individual.find(i => i.id === itemId);
-      if (!lootItem) return null;
+    try {
+      setError('');
+      setSuccess('');
 
-      const item = items.find(i => i.id === lootItem.itemid);
-      const casterLevel = lootItem.casterlevel || (item ? item.casterlevel : null) || 1;
+      const identifyResults = await Promise.all(itemsToIdentify.map(async (itemId) => {
+        const lootItem = loot.individual.find(i => i.id === itemId);
+        if (!lootItem) return null;
 
-      if (isDMUser) {
-        return { itemId, success: true, spellcraftRoll: 99, oldName: lootItem.name };
+        const item = items.find(i => i.id === lootItem.itemid);
+        const casterLevel = lootItem.casterlevel || (item ? item.casterlevel : null) || 1;
+
+        if (isDMUser) {
+          return { itemId, success: true, spellcraftRoll: 99, oldName: lootItem.name };
+        }
+
+        let spellcraftRoll;
+        if (takeTen) {
+          // Use "take 10" instead of random roll
+          spellcraftRoll = 10 + parseInt(spellcraftValue || 0);
+        } else {
+          // Traditional random roll
+          const diceRoll = Math.floor(Math.random() * 20) + 1;
+          spellcraftRoll = diceRoll + parseInt(spellcraftValue || 0);
+        }
+
+        const success = spellcraftRoll >= 15 + Math.min(casterLevel, 20);
+
+        return { itemId, success, spellcraftRoll, oldName: lootItem.name };
+      }));
+
+      const successfulIdentifications = identifyResults.filter(result => result && result.success);
+
+      if (successfulIdentifications.length > 0) {
+        const response = await api.post('/loot/identify', {
+          items: successfulIdentifications.map(result => result.itemId),
+          characterId: isDMUser ? null : activeUser.activeCharacterId,
+          spellcraftRolls: successfulIdentifications.map(result => result.spellcraftRoll),
+          takeTen: takeTen
+        });
+
+        // Fetch updated loot data
+        await fetchLoot();
+
+        // Get the updated loot data
+        const updatedLootResponse = await api.get(`/loot`, { params: { isDM: isDMUser, activeCharacterId: activeUser?.activeCharacterId } });
+        const updatedLoot = updatedLootResponse.data;
+
+        // Handle response for already-attempted items
+        if (response.data && response.data.alreadyAttempted && response.data.alreadyAttempted.length > 0) {
+          setError(`You've already attempted to identify ${response.data.alreadyAttempted.length} item(s) today.`);
+        }
+
+        // Now use the updated loot data to get the new names
+        const updatedIdentifications = successfulIdentifications.map(result => {
+          const updatedLootItem = updatedLoot.individual.find(i => i.id === result.itemId);
+          return {
+            ...result,
+            newName: updatedLootItem ? updatedLootItem.name : 'Unknown'
+          };
+        });
+
+        // Update identifiedItems state, avoiding duplicates
+        setIdentifiedItems(prev => {
+          const newItems = updatedIdentifications.filter(
+            newItem => !prev.some(existingItem => existingItem.itemId === newItem.itemId)
+          );
+          return [...prev, ...newItems];
+        });
+
+        if (successfulIdentifications.length > 0) {
+          setSuccess(`Successfully identified ${successfulIdentifications.length} item(s).`);
+        }
       }
 
-      const diceRoll = Math.floor(Math.random() * 20) + 1;
-      const totalRoll = diceRoll + parseInt(spellcraftValue);
-      const success = totalRoll >= 15 + Math.min(casterLevel, 20);
+      setSelectedItems([]);
+    } catch (error) {
+      console.error('Error identifying items:', error);
 
-      return { itemId, success, spellcraftRoll: totalRoll, oldName: lootItem.name };
-    }));
-
-    const successfulIdentifications = identifyResults.filter(result => result && result.success);
-
-    if (successfulIdentifications.length > 0) {
-      await api.post('/loot/identify', {
-        items: successfulIdentifications.map(result => result.itemId),
-        characterId: isDMUser ? null : activeUser.activeCharacterId,
-        spellcraftRolls: successfulIdentifications.map(result => result.spellcraftRoll)
-      });
-
-      // Fetch updated loot data
-      await fetchLoot();
-
-      // Get the updated loot data
-      const updatedLootResponse = await api.get(`/loot`, { params: { isDM: isDMUser, activeCharacterId: activeUser?.activeCharacterId } });
-      const updatedLoot = updatedLootResponse.data;
-
-      // Now use the updated loot data to get the new names
-      const updatedIdentifications = successfulIdentifications.map(result => {
-        const updatedLootItem = updatedLoot.individual.find(i => i.id === result.itemId);
-        return {
-          ...result,
-          newName: updatedLootItem ? updatedLootItem.name : 'Unknown'
-        };
-      });
-
-      // Update identifiedItems state, avoiding duplicates
-      setIdentifiedItems(prev => {
-        const newItems = updatedIdentifications.filter(
-          newItem => !prev.some(existingItem => existingItem.itemId === newItem.itemId)
-        );
-        return [...prev, ...newItems];
-      });
+      // Handle error message for already-attempted items
+      if (error.response && error.response.data && error.response.data.message) {
+        if (error.response.data.message.includes('already attempted today')) {
+          setError('You have already attempted to identify these items today.');
+        } else {
+          setError(error.response.data.message || 'Error identifying items. Please try again.');
+        }
+      } else {
+        setError('Error identifying items. Please try again.');
+      }
     }
-
-    setSelectedItems([]);
-  } catch (error) {
-    console.error('Error identifying items:', error);
-  }
-};
+  };
 
   const filteredLoot = {
     summary: loot.summary.filter(item => item.unidentified === true && item.itemid !== null),
@@ -156,6 +196,9 @@ const Identify = () => {
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">Identify Unidentified Items</Typography>
       </Paper>
+
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
       <CustomLootTable
         loot={filteredLoot.summary}
@@ -233,13 +276,24 @@ const Identify = () => {
         }}
       >
         {!isDMUser && (
-          <TextField
-            label="Spellcraft"
-            type="number"
-            value={spellcraftValue}
-            onChange={(e) => setSpellcraftValue(e.target.value)}
-            sx={{ width: '150px' }}
-          />
+          <>
+            <TextField
+              label="Spellcraft"
+              type="number"
+              value={spellcraftValue}
+              onChange={(e) => setSpellcraftValue(e.target.value)}
+              sx={{ width: '150px' }}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={takeTen}
+                  onChange={(e) => setTakeTen(e.target.checked)}
+                />
+              }
+              label="Take 10"
+            />
+          </>
         )}
         <Button
           variant="contained"

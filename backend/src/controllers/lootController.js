@@ -1177,20 +1177,30 @@ const getUnprocessedCount = async (req, res) => {
  * Identify items
  */
 const identifyItems = async (req, res) => {
-  const { items, characterId, spellcraftRolls } = req.body;
+  const { items, characterId, spellcraftRolls, takeTen } = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     throw controllerFactory.createValidationError('Items array is required');
   }
 
   return await dbUtils.executeTransaction(async (client) => {
+    // Get current Golarion date
+    const dateResult = await client.query('SELECT * FROM golarion_current_date LIMIT 1');
+    if (dateResult.rows.length === 0) {
+      throw new Error('Golarion date not found');
+    }
+
+    const currentDate = dateResult.rows[0];
+    const golarionDateStr = `${currentDate.year}-${currentDate.month}-${currentDate.day}`;
+
     const updatedItems = [];
     const failedItems = [];
+    const alreadyAttemptedItems = [];
 
     for (let i = 0; i < items.length; i++) {
       try {
         const itemId = items[i];
-        const spellcraftRoll = spellcraftRolls[i];
+        let spellcraftRoll = spellcraftRolls[i];
 
         // Fetch the loot item details
         const lootResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
@@ -1206,6 +1216,28 @@ const identifyItems = async (req, res) => {
 
         if (!item) {
           throw new Error(`Item with id ${lootItem.itemid} not found`);
+        }
+
+        // Check if this is a DM identification (roll 99) or if takeTen is true
+        const isDMIdentification = spellcraftRoll === 99;
+
+        // If not a DM identification, check if the character has already attempted to identify this item today
+        if (!isDMIdentification && characterId) {
+          const attemptCheckQuery = `
+            SELECT * FROM identify 
+            WHERE lootid = $1 AND characterid = $2 AND golarion_date = $3
+          `;
+
+          const attemptCheckResult = await client.query(attemptCheckQuery, [itemId, characterId, golarionDateStr]);
+
+          if (attemptCheckResult.rows.length > 0) {
+            // Character has already attempted to identify this item today
+            alreadyAttemptedItems.push({
+              id: itemId,
+              message: 'Already attempted to identify this item today'
+            });
+            continue;
+          }
         }
 
         // Fetch the associated mods
@@ -1229,12 +1261,11 @@ const identifyItems = async (req, res) => {
           [newName, itemId]
         );
 
-        // Record the identification in the identify table
-        // If spellcraftRoll is 99, it's a DM identification
-        const identifyCharacterId = spellcraftRoll === 99 ? null : characterId;
+        // Record the identification in the identify table with Golarion date
+        const identifyCharacterId = isDMIdentification ? null : characterId;
         await client.query(
-          'INSERT INTO identify (lootid, characterid, spellcraft_roll) VALUES ($1, $2, $3)',
-          [itemId, identifyCharacterId, spellcraftRoll]
+          'INSERT INTO identify (lootid, characterid, spellcraft_roll, golarion_date) VALUES ($1, $2, $3, $4)',
+          [itemId, identifyCharacterId, spellcraftRoll, golarionDateStr]
         );
 
         // Add the updated item to the list
@@ -1253,8 +1284,12 @@ const identifyItems = async (req, res) => {
       }
     }
 
-    if (updatedItems.length === 0 && failedItems.length > 0) {
+    if (updatedItems.length === 0 && failedItems.length > 0 && alreadyAttemptedItems.length === 0) {
       throw controllerFactory.createValidationError(`Failed to identify any items: ${failedItems[0].error}`);
+    }
+
+    if (updatedItems.length === 0 && alreadyAttemptedItems.length > 0) {
+      throw controllerFactory.createValidationError(`All items have already been attempted today`);
     }
 
     const characterName = characterId ?
@@ -1265,18 +1300,21 @@ const identifyItems = async (req, res) => {
       characterId,
       characterName,
       identifiedCount: updatedItems.length,
-      failedCount: failedItems.length
+      failedCount: failedItems.length,
+      alreadyAttemptedCount: alreadyAttemptedItems.length
     });
 
     return controllerFactory.sendSuccessResponse(res, {
       identified: updatedItems,
       failed: failedItems.length > 0 ? failedItems : undefined,
+      alreadyAttempted: alreadyAttemptedItems.length > 0 ? alreadyAttemptedItems : undefined,
       count: {
         success: updatedItems.length,
         failed: failedItems.length,
+        alreadyAttempted: alreadyAttemptedItems.length,
         total: items.length
       }
-    }, `${updatedItems.length} items identified successfully${failedItems.length > 0 ? ` (${failedItems.length} failed)` : ''}`);
+    }, `${updatedItems.length} items identified successfully${failedItems.length > 0 ? ` (${failedItems.length} failed)` : ''}${alreadyAttemptedItems.length > 0 ? ` (${alreadyAttemptedItems.length} already attempted today)` : ''}`);
   });
 };
 /**
