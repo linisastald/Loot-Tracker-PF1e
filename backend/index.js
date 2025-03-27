@@ -68,8 +68,17 @@ try {
 process.env.HOST_IP = hostIp;
 
 // Configure CORS
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(',');
 const corsOptions = {
-  origin: ['http://192.168.0.64:3000', 'http://localhost:3000'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, etc)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
@@ -79,7 +88,20 @@ app.use(cors(corsOptions));
 // Security middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
-  contentSecurityPolicy: false
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://cdnjs.cloudflare.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "https://cdnjs.cloudflare.com"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      upgradeInsecureRequests: []
+    }
+  }
 }));
 
 // Rate limiting
@@ -105,11 +127,12 @@ app.use(cookieParser());
 // Add API response middleware
 app.use(apiResponseMiddleware);
 
-// CSRF configuration (optional for now)
+// CSRF configuration
 const csrfProtection = csrf({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production'
   }
 });
 
@@ -129,13 +152,27 @@ app.get('/', (req, res) => {
   res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
 });
 
-// CSRF Token route (simplified for now)
-app.get('/api/csrf-token', (req, res) => {
-  res.success({ csrfToken: 'temporary-token-for-development' });
+// CSRF Token route
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.success({ csrfToken: req.csrfToken() });
 });
 
-// API Routes
+// Apply CSRF protection to state-changing routes
+const csrfProtectedRoutes = [
+  { method: 'post', path: '/api/*' },
+  { method: 'put', path: '/api/*' },
+  { method: 'delete', path: '/api/*' }
+];
+
+csrfProtectedRoutes.forEach(route => {
+  app[route.method](route.path, csrfProtection);
+});
+
+// Auth routes exempt from CSRF (for login/registration)
+// We'll handle CSRF exemptions in auth routes specifically
 app.use('/api/auth', authRoutes);
+
+// Protected API Routes
 app.use('/api/loot', lootRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/gold', goldRoutes);
