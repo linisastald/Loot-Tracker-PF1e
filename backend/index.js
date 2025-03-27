@@ -164,6 +164,11 @@ const csrfProtectionMiddleware = (req, res, next) => {
     return next();
   }
 
+  // Skip CSRF for OPTIONS requests (important for CORS preflight)
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
   // Apply CSRF protection to other routes
   return csrfProtection(req, res, next);
 };
