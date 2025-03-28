@@ -323,9 +323,13 @@ const GolarionCalendar = () => {
                   const note = notes[dateKey];
                   const hasNote = Boolean(note);
 
-                  return (
-                    <TableCell key={dayIndex} padding="normal" style={{ width: '14.28%', maxWidth: '14.28%', height: '100px' }}>
-                      {isValidDay && (
+                  if (isValidDay) {
+                    // For valid days, get the moon phase
+                    const moonPhaseData = getMoonPhase({year: displayedDate.year, month: displayedDate.month, day});
+                    const moonEmoji = moonPhaseData.emoji;
+
+                    return (
+                      <TableCell key={dayIndex} padding="normal" style={{ width: '14.28%', maxWidth: '14.28%', height: '100px' }}>
                         <Tooltip title={note || 'Click to add a note'} arrow>
                           <StyledDay
                             onClick={() => handleDayClick(day)}
@@ -333,9 +337,14 @@ const GolarionCalendar = () => {
                             isSelected={isSelected}
                             elevation={isCurrentDay || isSelected ? 3 : 1}
                           >
-                            <DayNumber variant="body2" isCurrentDay={isCurrentDay}>
-                              {day}
-                            </DayNumber>
+                            <Box display="flex" justifyContent="space-between" alignItems="center" width="100%">
+                              <DayNumber variant="body2" isCurrentDay={isCurrentDay}>
+                                {day}
+                              </DayNumber>
+                              <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                                {moonEmoji}
+                              </Typography>
+                            </Box>
                             {note && (
                               <NotePreview isCurrentDay={isCurrentDay}>
                                 {note}
@@ -343,9 +352,15 @@ const GolarionCalendar = () => {
                             )}
                           </StyledDay>
                         </Tooltip>
-                      )}
-                    </TableCell>
-                  );
+                      </TableCell>
+                    );
+                  } else {
+                    // Empty cell for invalid days
+                    return (
+                      <TableCell key={dayIndex} padding="normal" style={{ width: '14.28%', maxWidth: '14.28%', height: '100px' }}>
+                      </TableCell>
+                    );
+                  }
                 })}
               </TableRow>
             ))}
@@ -464,13 +479,16 @@ const GolarionCalendar = () => {
                       <ListItemText
                         primary={<Typography variant="subtitle1">Moon Phase</Typography>}
                         secondary={
-                          <Chip
-                            label={getMoonPhase(selectedDate)}
-                            color="primary"
-                            variant="outlined"
-                            size="small"
-                            sx={{ mt: 0.5 }}
-                          />
+                          selectedDate && (
+                            <Chip
+                              icon={<span style={{ fontSize: '1.2rem' }}>{getMoonPhase(selectedDate).emoji}</span>}
+                              label={getMoonPhase(selectedDate).name}
+                              color="primary"
+                              variant="outlined"
+                              size="small"
+                              sx={{ mt: 0.5 }}
+                            />
+                          )
                         }
                       />
                     </ListItem>
