@@ -59,9 +59,13 @@ const getAllGoldEntries = async (req, res) => {
 };
 
 /**
- * Distribute all gold evenly among active characters
+ * Helper function to distribute gold
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {boolean} includePartyShare - Whether to include a share for party loot
+ * @returns {Promise<Object>} - Express response
  */
-const distributeAllGold = async (req, res) => {
+const distributeGold = async (req, res, includePartyShare) => {
   try {
     // Get user ID from the req.user object (added by verifyToken middleware)
     const userId = req.user.id;
@@ -87,91 +91,8 @@ const distributeAllGold = async (req, res) => {
     const totalCopper = parseFloat(totalResult.rows[0].total_copper) || 0;
 
     const numCharacters = activeCharacters.length;
-
-    // Calculate distribution amounts
-    const distributePlatinum = Math.floor(totalPlatinum / numCharacters);
-    const distributeGold = Math.floor(totalGold / numCharacters);
-    const distributeSilver = Math.floor(totalSilver / numCharacters);
-    const distributeCopper = Math.floor(totalCopper / numCharacters);
-
-    if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
-      return res.validationError('No currency to distribute');
-    }
-
-    const createdEntries = [];
-
-    // Execute in a transaction
-    await dbUtils.executeTransaction(async (client) => {
-      for (const character of activeCharacters) {
-        const entry = {
-          sessionDate: new Date(),
-          transactionType: 'Withdrawal',
-          platinum: -distributePlatinum,
-          gold: -distributeGold,
-          silver: -distributeSilver,
-          copper: -distributeCopper,
-          notes: `Distributed to ${character.name}`,
-          userId,
-        };
-
-        const insertQuery = `
-          INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-          RETURNING *
-        `;
-
-        const insertResult = await client.query(insertQuery, [
-          entry.sessionDate,
-          entry.transactionType,
-          entry.platinum,
-          entry.gold,
-          entry.silver,
-          entry.copper,
-          entry.notes
-        ]);
-
-        createdEntries.push(insertResult.rows[0]);
-      }
-    });
-
-    return res.success(createdEntries, 'Gold distributed successfully');
-  } catch (error) {
-    console.error('Error distributing gold:', error);
-    return res.error('Error distributing gold', 500);
-  }
-};
-
-/**
- * Distribute gold plus party loot (reserves one share for party loot)
- */
-const distributePlusPartyLoot = async (req, res) => {
-  try {
-    // Get user ID from the req.user object (added by verifyToken middleware)
-    const userId = req.user.id;
-
-    // Get active characters
-    const activeCharactersResult = await dbUtils.executeQuery(
-      'SELECT id, name FROM characters WHERE active = true'
-    );
-    const activeCharacters = activeCharactersResult.rows;
-
-    if (activeCharacters.length === 0) {
-      return res.validationError('No active characters found');
-    }
-
-    // Get total balance for each currency
-    const totalResult = await dbUtils.executeQuery(
-      'SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold'
-    );
-
-    const totalPlatinum = parseFloat(totalResult.rows[0].total_platinum) || 0;
-    const totalGold = parseFloat(totalResult.rows[0].total_gold) || 0;
-    const totalSilver = parseFloat(totalResult.rows[0].total_silver) || 0;
-    const totalCopper = parseFloat(totalResult.rows[0].total_copper) || 0;
-
-    const numCharacters = activeCharacters.length;
-    // numCharacters + 1 for party loot
-    const shareDivisor = numCharacters + 1;
+    // Calculate divisor based on whether to include a party share
+    const shareDivisor = includePartyShare ? numCharacters + 1 : numCharacters;
 
     // Calculate distribution amounts
     const distributePlatinum = Math.floor(totalPlatinum / shareDivisor);
@@ -219,11 +140,29 @@ const distributePlusPartyLoot = async (req, res) => {
       }
     });
 
-    return res.success(createdEntries, 'Gold distributed with party loot share');
+    const successMessage = includePartyShare
+      ? 'Gold distributed with party loot share'
+      : 'Gold distributed successfully';
+
+    return res.success(createdEntries, successMessage);
   } catch (error) {
-    console.error('Error distributing gold plus party loot:', error);
-    return res.error('Error distributing gold with party loot share', 500);
+    console.error(`Error distributing gold${includePartyShare ? ' plus party loot' : ''}:`, error);
+    return res.error(`Error distributing gold${includePartyShare ? ' with party loot share' : ''}`, 500);
   }
+};
+
+/**
+ * Distribute all gold evenly among active characters
+ */
+const distributeAllGold = async (req, res) => {
+  return distributeGold(req, res, false);
+};
+
+/**
+ * Distribute gold plus party loot (reserves one share for party loot)
+ */
+const distributePlusPartyLoot = async (req, res) => {
+  return distributeGold(req, res, true);
 };
 
 /**
