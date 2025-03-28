@@ -98,7 +98,7 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           <Autocomplete
           freeSolo
           options={itemSuggestions}
-          value={itemSuggestions.find(item => item.id === localEntry.itemId) || localEntry.name || ''}
+          value={itemSuggestions.find(item => item.id === localEntry.itemId) || null}
           inputValue={localEntry.name || ''}
           onInputChange={async (event, newInputValue) => {
             handleChange('name', newInputValue);
@@ -119,10 +119,14 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
               ? option
               : option.name || ''
           }
+          isOptionEqualToValue={(option, value) =>
+            (option.id && value.id && option.id === value.id) ||
+            (option.name && value.name && option.name === value.name)
+          }
           renderOption={(props, option) => (
-              <li {...props} key={option.id || option.name}>
-                  {option.name}
-              </li>
+            <li {...props} key={option.id || option.name}>
+              {option.name}
+            </li>
           )}
           renderInput={(params) => (
             <TextField
