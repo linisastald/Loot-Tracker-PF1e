@@ -98,7 +98,7 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           <Autocomplete
           freeSolo
           options={itemSuggestions}
-          value={localEntry.name || ''}
+          value={itemSuggestions.find(item => item.id === localEntry.itemId) || localEntry.name || ''}
           inputValue={localEntry.name || ''}
           onInputChange={async (event, newInputValue) => {
             handleChange('name', newInputValue);
@@ -108,30 +108,7 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
               setItemSuggestions(fetchedItems);
             }
           }}
-          onChange={(event, newValue) => {
-            if (newValue) {
-              const selectedItem = typeof newValue === 'string'
-                ? itemSuggestions.find(item => item.name.toLowerCase() === newValue.toLowerCase())
-                : newValue;
-
-              if (selectedItem) {
-                handleChange('name', selectedItem.name);
-                handleChange('itemId', selectedItem.id);
-                handleChange('type', selectedItem.type || '');
-                handleChange('value', selectedItem.value || null);
-              } else {
-                handleChange('name', typeof newValue === 'string' ? newValue : '');
-                handleChange('itemId', null);
-                handleChange('type', '');
-                handleChange('value', null);
-              }
-            } else {
-              handleChange('name', '');
-              handleChange('itemId', null);
-              handleChange('type', '');
-              handleChange('value', null);
-            }
-          }}
+          onChange={handleItemSelect}
           filterOptions={(options, { inputValue }) =>
             options.filter(option =>
               option.name.toLowerCase().includes(inputValue.toLowerCase())
@@ -142,6 +119,11 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
               ? option
               : option.name || ''
           }
+          renderOption={(props, option) => (
+              <li {...props} key={option.id || option.name}>
+                  {option.name}
+              </li>
+          )}
           renderInput={(params) => (
             <TextField
               {...params}
