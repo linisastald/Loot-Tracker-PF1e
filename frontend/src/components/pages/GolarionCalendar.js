@@ -54,7 +54,7 @@ const months = [
 
 const daysOfWeek = ['Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'];
 
-const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected, hasNote }) => ({
+const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected }) => ({
   height: '80px',
   display: 'flex',
   flexDirection: 'column',
@@ -62,21 +62,17 @@ const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected, hasNote }) =
   padding: theme.spacing(0.5),
   cursor: 'pointer',
   backgroundColor: isCurrentDay
-    ? theme.palette.primary.dark
-    : isSelected
-    ? theme.palette.primary.main
+    ? theme.palette.grey[800]
     : theme.palette.background.paper,
-  color: (isCurrentDay || isSelected)
+  color: isCurrentDay
     ? theme.palette.primary.contrastText
     : theme.palette.text.primary,
-  border: hasNote
-    ? `2px solid ${theme.palette.secondary.main}`
+  border: isSelected
+    ? `2px solid ${theme.palette.primary.main}`
     : 'none',
   '&:hover': {
     backgroundColor: isCurrentDay
-      ? theme.palette.primary.dark
-      : isSelected
-      ? theme.palette.primary.main
+      ? theme.palette.grey[800]
       : theme.palette.action.hover,
     boxShadow: theme.shadows[3],
     transform: 'translateY(-2px)',
@@ -88,13 +84,13 @@ const StyledDay = styled(Paper)(({ theme, isCurrentDay, isSelected, hasNote }) =
   borderRadius: theme.shape.borderRadius,
 }));
 
-const DayNumber = styled(Typography)(({ theme, isCurrentDay, isSelected }) => ({
+const DayNumber = styled(Typography)(({ theme, isCurrentDay }) => ({
   fontWeight: 'bold',
   marginBottom: '2px',
-  color: (isCurrentDay || isSelected) ? theme.palette.primary.contrastText : theme.palette.text.primary,
+  color: isCurrentDay ? theme.palette.primary.contrastText : theme.palette.text.primary,
 }));
 
-const NotePreview = styled(Typography)(({ theme, isCurrentDay, isSelected }) => ({
+const NotePreview = styled(Typography)(({ theme, isCurrentDay }) => ({
   fontSize: '0.7rem',
   lineHeight: 1.2,
   overflow: 'hidden',
@@ -103,7 +99,7 @@ const NotePreview = styled(Typography)(({ theme, isCurrentDay, isSelected }) => 
   '-webkit-line-clamp': 3,
   '-webkit-box-orient': 'vertical',
   width: '100%',
-  color: (isCurrentDay || isSelected) ? theme.palette.primary.contrastText : theme.palette.text.secondary,
+  color: isCurrentDay ? theme.palette.primary.contrastText : theme.palette.text.secondary,
 }));
 
 const NavButton = styled(Button)(({ theme }) => ({
@@ -331,14 +327,13 @@ const GolarionCalendar = () => {
                             onClick={() => handleDayClick(day)}
                             isCurrentDay={isCurrentDay}
                             isSelected={isSelected}
-                            hasNote={hasNote}
                             elevation={isCurrentDay || isSelected ? 3 : 1}
                           >
-                            <DayNumber variant="body2" isCurrentDay={isCurrentDay} isSelected={isSelected}>
+                            <DayNumber variant="body2" isCurrentDay={isCurrentDay}>
                               {day}
                             </DayNumber>
                             {note && (
-                              <NotePreview isCurrentDay={isCurrentDay} isSelected={isSelected}>
+                              <NotePreview isCurrentDay={isCurrentDay}>
                                 {note}
                               </NotePreview>
                             )}
