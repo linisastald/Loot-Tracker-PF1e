@@ -96,48 +96,60 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
       </Grid>
       <Grid item xs={12} md={6}>
           <Autocomplete
-              freeSolo
-              options={itemSuggestions}
-              getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
-              renderOption={(props, option) => (
-                  <li {...props} key={option.id || option.name}>
-                      {option.name}
-                  </li>
-              )}
-              value={localEntry.name || ''}
-              onChange={(event, newValue) => {
-                  if (!newValue) {
-                      handleChange('name', '');
-                      handleChange('itemId', null);
-                      handleChange('type', '');
-                      handleChange('value', null);
-                      return;
-                  }
+          freeSolo
+          options={itemSuggestions}
+          value={localEntry.name || ''}
+          inputValue={localEntry.name || ''}
+          onInputChange={async (event, newInputValue) => {
+            handleChange('name', newInputValue);
+            // Fetch items when typing
+            if (newInputValue.length >= 2) {
+              const fetchedItems = await fetchItemNames(newInputValue);
+              setItemSuggestions(fetchedItems);
+            }
+          }}
+          onChange={(event, newValue) => {
+            if (newValue) {
+              const selectedItem = typeof newValue === 'string'
+                ? itemSuggestions.find(item => item.name.toLowerCase() === newValue.toLowerCase())
+                : newValue;
 
-                  if (typeof newValue === 'string') {
-                      handleChange('name', newValue);
-                      handleChange('itemId', null);
-                  } else {
-                      handleChange('name', newValue.name);
-                      handleChange('itemId', newValue.id);
-                      handleChange('type', newValue.type || '');
-                      handleChange('value', newValue.value || null);
-                  }
-              }}
-              onInputChange={async (event, newInputValue) => {
-                  if (event) {
-                      handleChange('name', newInputValue);
-                      // Fetch items when typing
-                      if (newInputValue && newInputValue.length >= 2) {
-                          const fetchedItems = await fetchItemNames(newInputValue);
-                          setItemSuggestions(fetchedItems);
-                      }
-                  }
-              }}
-              renderInput={(params) => (
-                  <TextField {...params} label="Item Name" fullWidth/>
-              )}
-          />
+              if (selectedItem) {
+                handleChange('name', selectedItem.name);
+                handleChange('itemId', selectedItem.id);
+                handleChange('type', selectedItem.type || '');
+                handleChange('value', selectedItem.value || null);
+              } else {
+                handleChange('name', typeof newValue === 'string' ? newValue : '');
+                handleChange('itemId', null);
+                handleChange('type', '');
+                handleChange('value', null);
+              }
+            } else {
+              handleChange('name', '');
+              handleChange('itemId', null);
+              handleChange('type', '');
+              handleChange('value', null);
+            }
+          }}
+          filterOptions={(options, { inputValue }) =>
+            options.filter(option =>
+              option.name.toLowerCase().includes(inputValue.toLowerCase())
+            )
+          }
+          getOptionLabel={(option) =>
+            typeof option === 'string'
+              ? option
+              : option.name || ''
+          }
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Item Name"
+              fullWidth
+            />
+          )}
+        />
       </Grid>
       <Grid item xs={12} md={3}>
         <FormControl fullWidth>
