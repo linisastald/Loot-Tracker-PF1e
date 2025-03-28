@@ -200,7 +200,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
 
       <Box sx={{ flexGrow: 1, overflow: 'auto', px: 1, py: 2 }}>
         <List component="nav" disablePadding>
-          <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} />
+          <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} isCategory />
 
           <MenuItem
             primary="Loot"
