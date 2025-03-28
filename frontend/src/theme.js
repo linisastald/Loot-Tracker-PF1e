@@ -66,42 +66,25 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           textTransform: 'none',
-          fontWeight: 500,
-        },
-        // Style for outlined variant
-        outlined: {
-          borderColor: 'rgba(255, 255, 255, 0.23)',
-          color: 'rgba(255, 255, 255, 0.7)',
+          boxShadow: 'none',
           '&:hover': {
-            backgroundColor: 'rgba(255, 255, 255, 0.05)',
-            borderColor: 'rgba(255, 255, 255, 0.5)'
+            boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.2)',
+          },
+        },
+        contained: {
+          boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.12)',
+        },
+        outlined: {
+          borderColor: 'rgba(144, 202, 249, 0.5)',
+          color: 'text.secondary',
+          '&:hover': {
+            backgroundColor: 'rgba(144, 202, 249, 0.08)',
+            borderColor: 'rgba(144, 202, 249, 0.7)'
           },
           '&.Mui-disabled': {
             borderColor: 'rgba(255, 255, 255, 0.12)',
             color: 'rgba(255, 255, 255, 0.3)'
           }
-        },
-        // Style for primary outlined buttons
-        outlinedPrimary: {
-          borderColor: 'rgba(144, 202, 249, 0.5)',
-          color: 'rgba(255, 255, 255, 0.7)',
-          '&:hover': {
-            backgroundColor: 'rgba(144, 202, 249, 0.08)',
-            borderColor: 'rgba(144, 202, 249, 0.7)'
-          }
-        },
-        // Style for secondary outlined buttons
-        outlinedSecondary: {
-          borderColor: 'rgba(244, 143, 177, 0.5)',
-          color: 'rgba(255, 255, 255, 0.7)',
-          '&:hover': {
-            backgroundColor: 'rgba(244, 143, 177, 0.08)',
-            borderColor: 'rgba(244, 143, 177, 0.7)'
-          }
-        },
-        // Style for contained variant
-        contained: {
-          boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.12)',
         },
       },
     },
