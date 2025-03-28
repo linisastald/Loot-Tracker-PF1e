@@ -36,6 +36,11 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
   }, []);
 
   const handleChange = (field, value) => {
+      // If changing unidentified to true, disable Smart Item Detection
+    const updatedEntry = { ...localEntry, [field]: value };
+    if (field === 'unidentified' && value === true) {
+      updatedEntry.parseItem = false;
+    }
     setLocalEntry(prev => ({ ...prev, [field]: value }));
     onChange(index, { [field]: value });
   };
