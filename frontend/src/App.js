@@ -121,7 +121,6 @@ function App() {
             <Route path="/consumables" element={<Consumables />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/identify" element={<Identify />} />
-            <Route path="/character-loot-ledger" element={<CharacterLootLedger />} />
           </Route>
         </Routes>
       </Router>
