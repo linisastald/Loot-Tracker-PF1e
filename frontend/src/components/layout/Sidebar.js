@@ -227,6 +227,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             <MenuItem to="/golarion-calendar" primary="Calendar" icon={<DateRange />} />
             <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
             <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
+            <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
           </MenuItem>
 
           <MenuItem
@@ -246,7 +247,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             open={openBeta}
             isCategory
           >
-            <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
           </MenuItem>
 
           {isDM && (
