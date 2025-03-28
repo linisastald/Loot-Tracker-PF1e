@@ -1,5 +1,6 @@
 import { createTheme } from '@mui/material/styles';
 
+// Create a custom theme with the button styling from GoldTransactions
 const theme = createTheme({
   palette: {
     mode: 'dark',
@@ -15,10 +16,6 @@ const theme = createTheme({
       dark: '#c2185b',
       contrastText: '#121212',
     },
-    background: {
-      default: '#121212',
-      paper: '#1e1e1e',
-    },
     customColor1: {
       main: '#ff9800',
       contrastText: '#121212',
@@ -27,11 +24,21 @@ const theme = createTheme({
       main: '#4caf50',
       contrastText: '#121212',
     },
+    background: {
+      default: '#121212',
+      paper: '#1e1e1e',
+    },
     divider: 'rgba(255, 255, 255, 0.12)',
     text: {
       primary: '#ffffff',
       secondary: 'rgba(255, 255, 255, 0.7)',
       disabled: 'rgba(255, 255, 255, 0.5)',
+    },
+    action: {
+      hover: 'rgba(144, 202, 249, 0.08)',
+      selected: 'rgba(144, 202, 249, 0.16)',
+      disabled: 'rgba(255, 255, 255, 0.3)',
+      disabledBackground: 'rgba(255, 255, 255, 0.12)',
     },
   },
   typography: {
@@ -66,33 +73,37 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           textTransform: 'none',
-          boxShadow: 'none',
           fontWeight: 500,
+          boxShadow: 'none',
+        },
+        contained: {
+          boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.12)',
           '&:hover': {
             boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.2)',
           },
         },
-        contained: {
-          boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.12)',
-          '&.MuiButton-containedPrimary': {
-            color: '#121212',
-          },
-          '&.MuiButton-containedSecondary': {
-            color: '#121212',
-          },
-        },
         outlined: {
           borderColor: 'rgba(144, 202, 249, 0.5)',
-          color: 'text.secondary',
           '&:hover': {
             backgroundColor: 'rgba(144, 202, 249, 0.08)',
-            borderColor: 'rgba(144, 202, 249, 0.7)'
+            borderColor: 'rgba(144, 202, 249, 0.7)',
           },
-          '&.Mui-disabled': {
-            borderColor: 'rgba(255, 255, 255, 0.12)',
-            color: 'rgba(255, 255, 255, 0.3)'
-          }
         },
+        containedPrimary: {
+          color: '#121212',
+        },
+        containedSecondary: {
+          color: '#121212',
+        },
+        outlinedPrimary: {
+          color: 'rgba(255, 255, 255, 0.7)',
+        },
+        outlinedSecondary: {
+          color: 'rgba(255, 255, 255, 0.7)',
+        },
+      },
+      defaultProps: {
+        disableElevation: true,
       },
     },
     MuiPaper: {

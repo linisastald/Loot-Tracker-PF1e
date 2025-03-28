@@ -1,0 +1,30 @@
+/* Global button styles to ensure theme is applied */
+.MuiButton-root {
+  text-transform: none !important;
+  font-weight: 500 !important;
+}
+
+.MuiButton-contained {
+  box-shadow: 0px 1px 3px 0px rgba(0,0,0,0.12) !important;
+}
+
+.MuiButton-contained:hover {
+  box-shadow: 0px 2px 4px -1px rgba(0,0,0,0.2) !important;
+}
+
+.MuiButton-outlined {
+  border-color: rgba(144, 202, 249, 0.5) !important;
+}
+
+.MuiButton-outlined:hover {
+  background-color: rgba(144, 202, 249, 0.08) !important;
+  border-color: rgba(144, 202, 249, 0.7) !important;
+}
+
+.MuiButton-containedPrimary, .MuiButton-containedSecondary {
+  color: #121212 !important;
+}
+
+.MuiButton-outlinedPrimary, .MuiButton-outlinedSecondary {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
