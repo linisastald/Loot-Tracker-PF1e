@@ -63,60 +63,55 @@ const theme = createTheme({
   },
   components: {
     MuiButton: {
+      defaultProps: {
+        // This ensures all buttons use these props by default
+        disableElevation: false, // Enable elevation for hover effects
+      },
       styleOverrides: {
         root: {
           textTransform: 'none',
-          boxShadow: 'none',
           fontWeight: 500,
           borderRadius: 4,
-          transition: 'background-color 0.3s, transform 0.2s, box-shadow 0.2s, border-color 0.3s',
+          padding: '6px 16px',
+          transition: 'transform 0.2s, box-shadow 0.2s, background-color 0.2s',
           '&:hover': {
-            boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.2)',
             transform: 'translateY(-2px)',
+            boxShadow: '0px 3px 5px -1px rgba(0,0,0,0.2), 0px 6px 10px 0px rgba(0,0,0,0.14), 0px 1px 18px 0px rgba(0,0,0,0.12)',
           },
         },
-        // Style for standard buttons (outlined variant)
         outlined: {
           borderColor: 'rgba(255, 255, 255, 0.23)',
-          color: 'text.secondary',
-          boxShadow: 'none',
+          color: 'rgba(255, 255, 255, 0.7)', // text.secondary
           '&:hover': {
             backgroundColor: 'rgba(255, 255, 255, 0.05)',
             borderColor: 'rgba(255, 255, 255, 0.5)',
-            boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.1)',
           },
-          '&.Mui-disabled': {
-            borderColor: 'rgba(255, 255, 255, 0.12)',
-            color: 'rgba(255, 255, 255, 0.3)'
-          }
         },
-        // Style for primary buttons (contained variant with primary color)
-        containedPrimary: {
-          boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.12)',
-          borderColor: 'rgba(144, 202, 249, 0.5)',
-          '&:hover': {
-            backgroundColor: 'rgba(144, 202, 249, 0.08)',
-            borderColor: 'rgba(144, 202, 249, 0.7)',
-            boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.2)',
-          }
-        },
-        // Style for secondary buttons (contained variant with secondary color)
-        containedSecondary: {
-          boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.12)',
-          borderColor: 'rgba(244, 143, 177, 0.5)',
-          '&:hover': {
-            backgroundColor: 'rgba(244, 143, 177, 0.08)',
-            borderColor: 'rgba(244, 143, 177, 0.7)',
-            boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.2)',
-          }
-        },
-        // Style for contained (filled) buttons
         contained: {
           boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.12)',
-          fontWeight: 500,
           '&:hover': {
-            boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.2)'
-          }
+            boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.2), 0px 4px 5px 0px rgba(0,0,0,0.14), 0px 1px 10px 0px rgba(0,0,0,0.12)',
+          },
+        },
+        containedPrimary: {
+          backgroundColor: '#90caf9',
+          '&:hover': {
+            backgroundColor: '#42a5f5',
+          },
+        },
+        containedSecondary: {
+          backgroundColor: '#f48fb1',
+          '&:hover': {
+            backgroundColor: '#c2185b',
+          },
+        },
+        sizeSmall: {
+          padding: '4px 10px',
+          fontSize: '0.8125rem',
+        },
+        sizeLarge: {
+          padding: '8px 22px',
+          fontSize: '0.9375rem',
         },
       },
     },
