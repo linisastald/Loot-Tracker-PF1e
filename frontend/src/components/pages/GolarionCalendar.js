@@ -430,7 +430,7 @@ const GolarionCalendar = () => {
               InputProps={{ inputProps: { min: 1 } }}
             />
             <Button
-              variant="contained"
+              variant="outlined"
               color="primary"
               onClick={handleIncreaseDays}
               disabled={!daysToAdd}

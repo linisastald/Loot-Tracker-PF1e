@@ -82,7 +82,7 @@ const LootEntry = () => {
           <Typography variant="h6">Loot Entry</Typography>
           <Box>
             <Button
-              variant="contained"
+              variant="outlined"
               color="primary"
               onClick={() => handleAddEntry('item')}
               sx={{ mr: 2 }}
@@ -90,7 +90,7 @@ const LootEntry = () => {
               Add Item Entry
             </Button>
             <Button
-              variant="contained"
+              variant="outlined"
               color="secondary"
               onClick={() => handleAddEntry('gold')}
               sx={{ mr: 2 }}

@@ -248,7 +248,7 @@ const UserSettings = () => {
           </Button>
           {character.id && (
             <Button
-              variant="contained"
+              variant="outlined"
               color="secondary"
               sx={{ mt: 2, ml: 2 }}
               onClick={handleCancelEdit}
