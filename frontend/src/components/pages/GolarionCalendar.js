@@ -328,6 +328,22 @@ const GolarionCalendar = () => {
                     const moonPhaseData = getMoonPhase({year: displayedDate.year, month: displayedDate.month, day});
                     const moonEmoji = moonPhaseData.emoji;
 
+                    // Check if the phase changed from previous day
+                    const prevDay = day - 1;
+                    let showMoonPhase = false;
+
+                    if (prevDay > 0) {
+                      const prevPhase = getMoonPhase({year: displayedDate.year, month: displayedDate.month, day: prevDay});
+                      showMoonPhase = prevPhase.name !== moonPhaseData.name;
+                    } else if (day === 1) {
+                      // First day of month - check against last day of previous month
+                      const prevMonth = displayedDate.month > 0 ? displayedDate.month - 1 : 11;
+                      const prevYear = prevMonth === 11 ? displayedDate.year - 1 : displayedDate.year;
+                      const lastDayOfPrevMonth = months[prevMonth].days;
+                      const prevPhase = getMoonPhase({year: prevYear, month: prevMonth, day: lastDayOfPrevMonth});
+                      showMoonPhase = prevPhase.name !== moonPhaseData.name;
+                    }
+
                     return (
                       <TableCell key={dayIndex} padding="normal" style={{ width: '14.28%', maxWidth: '14.28%', height: '100px' }}>
                         <Tooltip title={note || 'Click to add a note'} arrow>
@@ -341,9 +357,11 @@ const GolarionCalendar = () => {
                               <DayNumber variant="body2" isCurrentDay={isCurrentDay}>
                                 {day}
                               </DayNumber>
-                              <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
-                                {moonEmoji}
-                              </Typography>
+                              {showMoonPhase && (
+                                <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                                  {moonEmoji}
+                                </Typography>
+                              )}
                             </Box>
                             {note && (
                               <NotePreview isCurrentDay={isCurrentDay}>
