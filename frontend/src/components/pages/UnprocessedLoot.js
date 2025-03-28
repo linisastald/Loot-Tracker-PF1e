@@ -44,9 +44,6 @@ const UnprocessedLoot = () => {
 
   return (
     <Container maxWidth={false} component="main" sx={{ pb: '80px' }}>
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Unprocessed Loot</Typography>
-      </Paper>
       <CustomLootTable
         loot={loot.summary}
         individualLoot={loot.individual}
