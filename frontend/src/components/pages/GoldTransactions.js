@@ -298,27 +298,27 @@ const GoldTransactions = () => {
               <Typography variant="h6" gutterBottom>Currency Summary</Typography>
               <Grid container spacing={3}>
                 <Grid item xs={6} sm={3}>
-                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default', borderLeft: '5px solid #E5E4E2' }}>
                     <Typography variant="subtitle2" color="text.secondary">Platinum</Typography>
-                    <Typography variant="h4">{totals.platinum}</Typography>
+                    <Typography variant="h4" sx={{ color: '#E5E4E2' }}>{totals.platinum}</Typography>
                   </Paper>
                 </Grid>
                 <Grid item xs={6} sm={3}>
-                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default', borderLeft: '5px solid #FFD700' }}>
                     <Typography variant="subtitle2" color="text.secondary">Gold</Typography>
-                    <Typography variant="h4">{totals.gold}</Typography>
+                    <Typography variant="h4" sx={{ color: '#FFD700' }}>{totals.gold}</Typography>
                   </Paper>
                 </Grid>
                 <Grid item xs={6} sm={3}>
-                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default', borderLeft: '5px solid #C0C0C0' }}>
                     <Typography variant="subtitle2" color="text.secondary">Silver</Typography>
-                    <Typography variant="h4">{totals.silver}</Typography>
+                    <Typography variant="h4" sx={{ color: '#C0C0C0' }}>{totals.silver}</Typography>
                   </Paper>
                 </Grid>
                 <Grid item xs={6} sm={3}>
-                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default', borderLeft: '5px solid #B87333' }}>
                     <Typography variant="subtitle2" color="text.secondary">Copper</Typography>
-                    <Typography variant="h4">{totals.copper}</Typography>
+                    <Typography variant="h4" sx={{ color: '#B87333' }}>{totals.copper}</Typography>
                   </Paper>
                 </Grid>
               </Grid>
