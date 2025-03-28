@@ -100,7 +100,7 @@ const Login = ({ onLogin }) => {
           <Button
             type="submit"
             fullWidth
-            variant="contained"
+            variant="outlined"
             color="primary"
             sx={{ mt: 3, mb: 2 }}
           >

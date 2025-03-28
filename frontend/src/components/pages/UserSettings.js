@@ -137,7 +137,7 @@ const UserSettings = () => {
           />
           <Button
             type="submit"
-            variant="contained"
+            variant="outlined"
             color="primary"
             sx={{ mt: 2 }}
           >
@@ -240,7 +240,7 @@ const UserSettings = () => {
           </Grid>
           <Button
             type="submit"
-            variant="contained"
+            variant="outlined"
             color="primary"
             sx={{ mt: 2 }}
           >

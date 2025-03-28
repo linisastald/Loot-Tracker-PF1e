@@ -129,7 +129,7 @@ const Consumables = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button onClick={() => handleUseConsumable(wand.id, wand.name)} variant="contained" color="primary">
+                      <Button onClick={() => handleUseConsumable(wand.id, wand.name)} variant="outlined" color="primary">
                         Use
                       </Button>
                     </TableCell>
@@ -165,7 +165,7 @@ const Consumables = () => {
                     <TableCell>{potion.quantity}</TableCell>
                     <TableCell>{potion.name}</TableCell>
                     <TableCell>
-                      <Button onClick={() => handleUseConsumable(potion.itemid, potion.name)} variant="contained" color="primary">
+                      <Button onClick={() => handleUseConsumable(potion.itemid, potion.name)} variant="outlined" color="primary">
                         Use
                       </Button>
                     </TableCell>
@@ -201,7 +201,7 @@ const Consumables = () => {
                     <TableCell>{scroll.quantity}</TableCell>
                     <TableCell>{scroll.name}</TableCell>
                     <TableCell>
-                      <Button onClick={() => handleUseConsumable(scroll.itemid, scroll.name)} variant="contained" color="primary">
+                      <Button onClick={() => handleUseConsumable(scroll.itemid, scroll.name)} variant="outlined" color="primary">
                         Use
                       </Button>
                     </TableCell>

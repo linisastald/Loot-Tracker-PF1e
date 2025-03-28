@@ -389,7 +389,7 @@ const GolarionCalendar = () => {
 
         <Box sx={{ mt: 3, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 1 }}>
           <Button
-            variant="contained"
+            variant="outlined"
             color="primary"
             onClick={handleNextDay}
             startIcon={<ArrowForwardIosIcon />}
@@ -409,7 +409,7 @@ const GolarionCalendar = () => {
           </Button>
 
           <Button
-            variant="contained"
+            variant="outlined"
             color="secondary"
             onClick={() => setConfirmDialogOpen(true)}
             disabled={!selectedDate}
@@ -512,7 +512,7 @@ const GolarionCalendar = () => {
 
                 <Box display="flex" justifyContent="flex-end">
                   <Button
-                    variant="contained"
+                    variant="outlined"
                     onClick={handleSaveNote}
                     color="secondary"
                     startIcon={<NoteAltIcon />}
@@ -553,7 +553,7 @@ const GolarionCalendar = () => {
           </Button>
           <Button
             onClick={handleSetCurrentDay}
-            variant="contained"
+            variant="outlined"
             color="primary"
             sx={{ fontWeight: 500, textTransform: 'none', boxShadow: 1 }}
           >

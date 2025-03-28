@@ -99,7 +99,7 @@ const LootEntry = () => {
             </Button>
             <Button
               type="submit"
-              variant="contained"
+              variant="outlined"
               color="primary"
               onClick={handleSubmit}
             >

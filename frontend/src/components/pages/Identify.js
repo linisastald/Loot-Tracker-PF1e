@@ -409,7 +409,7 @@ const Identify = () => {
           </>
         )}
         <Button
-          variant="contained"
+          variant="outlined"
           color="primary"
           onClick={() => handleIdentify(selectedItems)}
           disabled={selectedItems.length === 0}
@@ -417,7 +417,7 @@ const Identify = () => {
           Identify
         </Button>
         <Button
-          variant="contained"
+          variant="outlined"
           color="secondary"
           onClick={() => handleIdentify(filteredLoot.individual.map(item => item.id))}
           disabled={filteredLoot.individual.length === 0}

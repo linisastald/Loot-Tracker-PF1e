@@ -102,7 +102,7 @@ const Register = () => {
         {error && <Typography color="error">{error}</Typography>}
         <Button
           fullWidth
-          variant="contained"
+          variant="outlined"
           color="primary"
           sx={{ mt: 3, mb: 2 }}
           onClick={handleRegister}

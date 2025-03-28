@@ -303,7 +303,7 @@ const UnidentifiedItemsManagement = () => {
                     <Tooltip title="Mark as identified using linked item">
                       <span> {/* Wrapper to make tooltip work with disabled button */}
                         <Button
-                          variant="contained"
+                          variant="outlined"
                           size="small"
                           color="secondary"
                           onClick={(e) => {

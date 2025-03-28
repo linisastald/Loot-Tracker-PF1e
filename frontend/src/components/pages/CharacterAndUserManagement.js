@@ -228,7 +228,7 @@ const CharacterAndUserManagement = () => {
         </TableContainer>
         <Box mt={2} display="flex" justifyContent="space-between">
           <Button
-            variant="contained"
+            variant="outlined"
             color="primary"
             onClick={() => setResetPasswordDialogOpen(true)}
             disabled={selectedUsers.length !== 1}
@@ -236,7 +236,7 @@ const CharacterAndUserManagement = () => {
             Reset Password
           </Button>
           <Button
-            variant="contained"
+            variant="outlined"
             color="secondary"
             onClick={() => setDeleteUserDialogOpen(true)}
             disabled={selectedUsers.length === 0}
@@ -258,10 +258,10 @@ const CharacterAndUserManagement = () => {
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={handlePasswordReset} color="primary" variant="contained">
+            <Button onClick={handlePasswordReset} color="primary" variant="outlined">
               Reset Password
             </Button>
-            <Button onClick={() => setResetPasswordDialogOpen(false)} color="secondary" variant="contained">
+            <Button onClick={() => setResetPasswordDialogOpen(false)} color="secondary" variant="outlined">
               Cancel
             </Button>
           </DialogActions>
@@ -273,10 +273,10 @@ const CharacterAndUserManagement = () => {
             <Typography>Are you sure you want to delete the selected user(s)?</Typography>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleDeleteUser} color="primary" variant="contained">
+            <Button onClick={handleDeleteUser} color="primary" variant="outlined">
               Delete
             </Button>
-            <Button onClick={() => setDeleteUserDialogOpen(false)} color="secondary" variant="contained">
+            <Button onClick={() => setDeleteUserDialogOpen(false)} color="secondary" variant="outlined">
               Cancel
             </Button>
           </DialogActions>
@@ -423,10 +423,10 @@ const CharacterAndUserManagement = () => {
             </FormControl>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCharacterUpdateSubmit} color="primary" variant="contained">
+            <Button onClick={handleCharacterUpdateSubmit} color="primary" variant="outlined">
               Update
             </Button>
-            <Button onClick={() => setUpdateCharacterDialogOpen(false)} color="secondary" variant="contained">
+            <Button onClick={() => setUpdateCharacterDialogOpen(false)} color="secondary" variant="outlined">
               Cancel
             </Button>
           </DialogActions>

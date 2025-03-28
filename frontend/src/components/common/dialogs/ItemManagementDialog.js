@@ -343,10 +343,10 @@ const ItemManagementDialog = ({
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleSave} color="primary" variant="contained">
+        <Button onClick={handleSave} color="primary" variant="outlined">
           Save
         </Button>
-        <Button onClick={onClose} color="secondary" variant="contained">
+        <Button onClick={onClose} color="secondary" variant="outlined">
           Cancel
         </Button>
       </DialogActions>

@@ -324,7 +324,7 @@ const PendingSaleManagement = () => {
                   onChange={(e) => setSellUpToAmount(e.target.value)}
                 />
                 <Button
-                  variant="contained"
+                  variant="outlined"
                   color="primary"
                   onClick={handleSellUpTo}
                   disabled={loading || !sellUpToAmount}
@@ -332,7 +332,7 @@ const PendingSaleManagement = () => {
                   Sell Up To
                 </Button>
                 <Button
-                  variant="contained"
+                  variant="outlined"
                   color="primary"
                   onClick={handleConfirmSale}
                   disabled={loading || pendingSaleCount === 0}
@@ -340,7 +340,7 @@ const PendingSaleManagement = () => {
                   Sell All
                 </Button>
                 <Button
-                  variant="contained"
+                  variant="outlined"
                   color="primary"
                   onClick={handleSellAllExcept}
                   disabled={loading || selectedPendingItems.length === 0}
@@ -348,7 +348,7 @@ const PendingSaleManagement = () => {
                   Sell All Except Selected
                 </Button>
                 <Button
-                  variant="contained"
+                  variant="outlined"
                   color="primary"
                   onClick={handleSellSelected}
                   disabled={loading || selectedPendingItems.length === 0}
