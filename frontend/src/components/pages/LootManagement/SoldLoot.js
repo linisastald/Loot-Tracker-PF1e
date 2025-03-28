@@ -103,7 +103,7 @@ const SoldLoot = () => {
   return (
     <Container component="main" sx={{ maxWidth: 'none', overflowX: 'auto' }}>
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="subtitle1">Total Sold: {totalSold.toFixed(2)}</Typography>
+        <Typography variant="subtitle1">Total Sold: {totalSold.toFixed(2)} GP</Typography>
       </Paper>
 
       {!Array.isArray(soldSummary) ? (
