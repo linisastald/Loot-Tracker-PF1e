@@ -1,263 +1,329 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import {
-  TextField,
-  Button,
-  Typography,
   Container,
   Paper,
-  Checkbox,
-  FormControlLabel,
+  Typography,
+  Button,
+  TextField,
   Grid,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
+  Box,
+  Alert,
+  Tabs,
+  Tab,
+  Divider,
+  Switch,
+  FormControlLabel,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  Card,
+  CardContent,
 } from '@mui/material';
-import { styled } from '@mui/system';
+import PersonIcon from '@mui/icons-material/Person';
+import SecurityIcon from '@mui/icons-material/Security';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import CharacterTab from './UserSettings/CharacterTab';
+
+// Tab Panel component
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`settings-tabpanel-${index}`}
+      aria-labelledby={`settings-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
 
 const UserSettings = () => {
-  const today = new Date().toISOString().split('T')[0];
+  // Tab state
+  const [activeTab, setActiveTab] = useState(0);
+
+  // Account settings state
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [characters, setCharacters] = useState([]);
-  const [character, setCharacter] = useState({
-    id: null,
-    name: '',
-    appraisal_bonus: '',
-    birthday: today,
-    deathday: '',
-    active: true
-  });
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
+  // User preferences state
+  const [defaultLandingPage, setDefaultLandingPage] = useState('/loot-entry');
+  const [enableNotifications, setEnableNotifications] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [defaultTableView, setDefaultTableView] = useState('summary');
+
+  // Load user preferences on mount
   useEffect(() => {
-    const fetchCharacters = async () => {
+    // This would fetch user preferences from backend
+    const fetchUserPreferences = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const response = await api.get(`/user/characters`);
-        setCharacters(response.data);
+        const response = await api.get('/user/preferences');
+        if (response.data) {
+          setDefaultLandingPage(response.data.defaultLandingPage || '/loot-entry');
+          setEnableNotifications(response.data.enableNotifications || false);
+          setDarkMode(response.data.darkMode || false);
+          setDefaultTableView(response.data.defaultTableView || 'summary');
+        }
       } catch (error) {
-        console.error('Error fetching characters', error);
+        console.error('Error fetching user preferences:', error);
       }
     };
 
-    fetchCharacters();
+    fetchUserPreferences();
   }, []);
 
-  const handlePasswordChange = async (e) => {
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+  };
+
+  const handleChangePassword = async (e) => {
     e.preventDefault();
+
+    // Basic validation
+    if (newPassword !== confirmPassword) {
+      setError('New passwords do not match');
+      return;
+    }
+
     try {
-      const token = localStorage.getItem('token');
-      await api.put(
-          `/user/change-password`,
-          {oldPassword, newPassword}
-      );
+      await api.put('/user/change-password', { oldPassword, newPassword });
+
+      // Reset fields and show success message
       setOldPassword('');
       setNewPassword('');
-      alert('Password changed successfully');
+      setConfirmPassword('');
+      setError('');
+      setSuccess('Password changed successfully');
     } catch (err) {
-      setError('Error changing password');
+      setError(err.response?.data?.message || 'Error changing password');
+      setSuccess('');
     }
   };
 
-  const handleCharacterSubmit = async (e) => {
-    e.preventDefault();
+  const handleSavePreferences = async () => {
     try {
-      const payload = {
-        ...character,
-        birthday: character.birthday || null,
-        deathday: character.deathday || null
-      };
-      if (character.active) {
-        // Ensure only one character is active at a time
-        await api.put('/user/deactivate-all-characters', {});
-      }
-      const method = character.id ? 'put' : 'post';
-      await api[method]('/user/characters', payload);
-      setCharacter({id: null, name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true});
-      alert(`Character ${character.id ? 'updated' : 'added'} successfully`);
-      // Refresh the character list
-      const response = await api.get('/user/characters');
-      setCharacters(response.data);
-    } catch (error) {
-      setError('Error saving character');
+      await api.put('/user/preferences', {
+        defaultLandingPage,
+        enableNotifications,
+        darkMode,
+        defaultTableView
+      });
+
+      setSuccess('Preferences saved successfully');
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Error saving preferences');
+      setSuccess('');
     }
   };
-
-  const handleEditCharacter = (char) => {
-    setCharacter({
-      ...char,
-      birthday: char.birthday ? formatDate(char.birthday) : '',
-      deathday: char.deathday ? formatDate(char.deathday) : ''
-    });
-  };
-
-  const handleCancelEdit = () => {
-    setCharacter({ id: null, name: '', appraisal_bonus: '', birthday: today, deathday: '', active: true });
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toISOString().split('T')[0];
-  };
-
-  const StyledTableRow = styled(TableRow)(({ theme, active }) => ({
-    backgroundColor: active ? theme.palette.action.hover : 'inherit',
-  }));
-
-  // Sort characters with the active character on top
-  const sortedCharacters = [...characters].sort((a, b) => b.active - a.active);
 
   return (
     <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Change Password</Typography>
-        <form onSubmit={handlePasswordChange}>
-          <TextField
-            label="Old Password"
-            type="password"
-            fullWidth
-            value={oldPassword}
-            onChange={(e) => setOldPassword(e.target.value)}
-            margin="normal"
-            autoComplete="current-password"
-          />
-          <TextField
-            label="New Password"
-            type="password"
-            fullWidth
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            margin="normal"
-            autoComplete="new-password"
-          />
-          <Button
-            type="submit"
-            variant="outlined"
-            color="primary"
-            sx={{ mt: 2 }}
-          >
-            Change Password
-          </Button>
-        </form>
-        {error && <Typography color="error">{error}</Typography>}
-      </Paper>
+        <Typography variant="h6">User Settings</Typography>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Your Characters</Typography>
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Appraisal Bonus</TableCell>
-                <TableCell>Birthday</TableCell>
-                <TableCell>Deathday</TableCell>
-                <TableCell>Active</TableCell>
-                <TableCell>Edit</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {sortedCharacters.map((char) => (
-                <StyledTableRow key={char.id} active={char.active ? 1 : 0}>
-                  <TableCell>{char.name}</TableCell>
-                  <TableCell>{char.appraisal_bonus}</TableCell>
-                  <TableCell>{formatDate(char.birthday)}</TableCell>
-                  <TableCell>{formatDate(char.deathday)}</TableCell>
-                  <TableCell>{char.active ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>
-                    <Button variant="outlined" onClick={() => handleEditCharacter(char)}>
-                      Edit
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mt: 2 }}>
+          <Tabs value={activeTab} onChange={handleTabChange} aria-label="settings tabs">
+            <Tab label="Account" icon={<SecurityIcon />} iconPosition="start" />
+            <Tab label="Preferences" icon={<PersonIcon />} iconPosition="start" />
+            <Tab label="Characters" />
+          </Tabs>
+        </Box>
+
+        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+        {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
+
+        {/* Account Tab */}
+        <TabPanel value={activeTab} index={0}>
+          <Typography variant="h6" gutterBottom>Change Password</Typography>
+
+          <Grid container spacing={2} component="form" onSubmit={handleChangePassword}>
+            <Grid item xs={12}>
+              <TextField
+                label="Current Password"
+                type={showOldPassword ? 'text' : 'password'}
+                fullWidth
+                value={oldPassword}
+                onChange={(e) => setOldPassword(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <Button
+                      onClick={() => setShowOldPassword(!showOldPassword)}
+                      sx={{ minWidth: 'auto' }}
+                    >
+                      {showOldPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
                     </Button>
-                  </TableCell>
-                </StyledTableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
+                  ),
+                }}
+              />
+            </Grid>
 
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="h6">{character.id ? 'Edit Character' : 'Add Character'}</Typography>
-        <form onSubmit={handleCharacterSubmit}>
-          <Grid container spacing={2}>
             <Grid item xs={12}>
               <TextField
-                label="Character Name"
+                label="New Password"
+                type={showNewPassword ? 'text' : 'password'}
                 fullWidth
-                value={character.name || ''}
-                onChange={(e) => setCharacter({ ...character, name: e.target.value })}
-                margin="normal"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <Button
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      sx={{ minWidth: 'auto' }}
+                    >
+                      {showNewPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                    </Button>
+                  ),
+                }}
               />
             </Grid>
+
             <Grid item xs={12}>
               <TextField
-                label="Appraisal Bonus"
-                type="number"
+                label="Confirm New Password"
+                type="password"
                 fullWidth
-                value={character.appraisal_bonus || ''}
-                onChange={(e) => setCharacter({ ...character, appraisal_bonus: e.target.value })}
-                margin="normal"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
               />
             </Grid>
+
             <Grid item xs={12}>
-              <TextField
-                label="Birthday"
-                type="date"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={character.birthday || ''}
-                onChange={(e) => setCharacter({ ...character, birthday: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Deathday"
-                type="date"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={character.deathday || ''}
-                onChange={(e) => setCharacter({ ...character, deathday: e.target.value })}
-                margin="normal"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={character.active}
-                    onChange={(e) => setCharacter({ ...character, active: e.target.checked })}
-                  />
-                }
-                label="Active"
-              />
+              <Button
+                variant="outlined"
+                color="primary"
+                type="submit"
+                disabled={!oldPassword || !newPassword || !confirmPassword}
+              >
+                Change Password
+              </Button>
             </Grid>
           </Grid>
-          <Button
-            type="submit"
-            variant="outlined"
-            color="primary"
-            sx={{ mt: 2 }}
-          >
-            {character.id ? 'Update Character' : 'Add Character'}
-          </Button>
-          {character.id && (
-            <Button
-              variant="outlined"
-              color="secondary"
-              sx={{ mt: 2, ml: 2 }}
-              onClick={handleCancelEdit}
-            >
-              Cancel
-            </Button>
-          )}
-        </form>
-        {error && <Typography color="error">{error}</Typography>}
+
+          <Divider sx={{ my: 4 }} />
+
+          <Typography variant="h6" gutterBottom>Account Information</Typography>
+
+          <Card sx={{ mb: 2 }}>
+            <CardContent>
+              <Typography variant="subtitle1">Connected Sessions</Typography>
+              <Typography variant="body2" color="text.secondary">
+                You can view and manage your active sessions here. This feature will be available in a future update.
+              </Typography>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle1">Export Account Data</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                You can export all your account data in various formats for backup purposes.
+              </Typography>
+              <Button variant="outlined" size="small" disabled>
+                Export Data (Coming Soon)
+              </Button>
+            </CardContent>
+          </Card>
+        </TabPanel>
+
+        {/* Preferences Tab */}
+        <TabPanel value={activeTab} index={1}>
+          <Typography variant="h6" gutterBottom>User Preferences</Typography>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Default Landing Page</InputLabel>
+                <Select
+                  value={defaultLandingPage}
+                  label="Default Landing Page"
+                  onChange={(e) => setDefaultLandingPage(e.target.value)}
+                >
+                  <MenuItem value="/loot-entry">Loot Entry</MenuItem>
+                  <MenuItem value="/loot-management">Loot Management</MenuItem>
+                  <MenuItem value="/gold-transactions">Gold Transactions</MenuItem>
+                  <MenuItem value="/calendar">Calendar</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Default Table View</InputLabel>
+                <Select
+                  value={defaultTableView}
+                  label="Default Table View"
+                  onChange={(e) => setDefaultTableView(e.target.value)}
+                >
+                  <MenuItem value="summary">Summary View</MenuItem>
+                  <MenuItem value="detailed">Detailed View</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom>Display Settings</Typography>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={darkMode}
+                        onChange={(e) => setDarkMode(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Dark Mode"
+                  />
+
+                  <Divider sx={{ my: 2 }} />
+
+                  <Typography variant="subtitle1" gutterBottom>Notifications</Typography>
+
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={enableNotifications}
+                        onChange={(e) => setEnableNotifications(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Enable Discord Notifications"
+                  />
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Button
+                variant="outlined"
+                color="primary"
+                onClick={handleSavePreferences}
+              >
+                Save Preferences
+              </Button>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* Character Tab */}
+        <TabPanel value={activeTab} index={2}>
+          <CharacterTab />
+        </TabPanel>
       </Paper>
     </Container>
   );
