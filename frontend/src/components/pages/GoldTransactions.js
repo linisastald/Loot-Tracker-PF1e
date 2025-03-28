@@ -22,7 +22,8 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  CircularProgress
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -64,6 +65,8 @@ const GoldTransactions = () => {
   const [startDate, setStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 6)));
   const [endDate, setEndDate] = useState(new Date());
   const [activeTab, setActiveTab] = useState(0);
+  const [ledgerData, setLedgerData] = useState([]);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
 
   // New gold entry form state
   const [newEntry, setNewEntry] = useState({
@@ -79,6 +82,9 @@ const GoldTransactions = () => {
   useEffect(() => {
     fetchGoldEntries();
     fetchUserRole();
+
+    // Fetch ledger data when the component mounts
+    fetchLedgerData();
   }, [startDate, endDate]);
 
   const fetchGoldEntries = async () => {
@@ -231,9 +237,40 @@ const GoldTransactions = () => {
       });
 
       fetchGoldEntries();
+      // Also refresh ledger data if new entry affects character balances
+      if (newEntry.transactionType === 'Party Payment' || newEntry.transactionType === 'Party Payback') {
+        fetchLedgerData();
+      }
     } catch (error) {
       console.error('Error creating gold entry:', error);
       setError('Failed to create gold entry.');
+    }
+  };
+
+  // Function to fetch character loot ledger data
+  const fetchLedgerData = async () => {
+    try {
+      setLedgerLoading(true);
+      const response = await api.get('/loot/character-ledger');
+
+      if (response.data && Array.isArray(response.data.characters)) {
+        // Sort active characters first, then by name
+        const sortedData = response.data.characters
+          .sort((a, b) => {
+            if (a.active !== b.active) return b.active - a.active;
+            return a.character.localeCompare(b.character);
+          });
+
+        setLedgerData(sortedData);
+      } else {
+        console.error('Invalid ledger data format:', response.data);
+        setLedgerData([]);
+      }
+    } catch (error) {
+      console.error('Error fetching ledger data:', error);
+      setError('Failed to load ledger data. Please try again later.');
+    } finally {
+      setLedgerLoading(false);
     }
   };
 
@@ -250,6 +287,7 @@ const GoldTransactions = () => {
             <Tab label="Add Transaction" {...a11yProps(1)} />
             <Tab label="Transaction History" {...a11yProps(2)} />
             <Tab label="Management" {...a11yProps(3)} />
+            <Tab label="Character Ledger" {...a11yProps(4)} />
           </Tabs>
         </Box>
 
@@ -565,6 +603,91 @@ const GoldTransactions = () => {
                   </Grid>
                 )}
               </Grid>
+            </CardContent>
+          </Card>
+        </TabPanel>
+
+        {/* Character Ledger Tab */}
+        <TabPanel value={activeTab} index={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Character Loot Ledger</Typography>
+              <Typography variant="body2" paragraph>
+                This table shows the value of items kept by each character and payments made to them.
+                The balance column shows the difference between loot value and payments.
+              </Typography>
+
+              {ledgerLoading ? (
+                <Box display="flex" justifyContent="center" p={3}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Character</TableCell>
+                        <TableCell align="right">Value of Loot</TableCell>
+                        <TableCell align="right">Payments</TableCell>
+                        <TableCell align="right">Balance</TableCell>
+                        <TableCell align="center">Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {ledgerData.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} align="center">No ledger data available</TableCell>
+                        </TableRow>
+                      ) : (
+                        ledgerData.map((row) => {
+                          const balance = parseFloat(row.lootvalue) - parseFloat(row.payments);
+                          const isOverpaid = balance < 0;
+                          const isUnderpaid = balance > 0;
+
+                          return (
+                            <TableRow
+                              key={row.character}
+                              sx={{
+                                bgcolor: row.active ? 'rgba(144, 202, 249, 0.1)' : 'inherit',
+                                fontWeight: row.active ? 'bold' : 'normal'
+                              }}
+                            >
+                              <TableCell component="th" scope="row">
+                                {row.character} {row.active && '(Active)'}
+                              </TableCell>
+                              <TableCell align="right">{parseFloat(row.lootvalue).toFixed(2)}</TableCell>
+                              <TableCell align="right">{parseFloat(row.payments).toFixed(2)}</TableCell>
+                              <TableCell
+                                align="right"
+                                sx={{
+                                  color: isOverpaid ? 'error.main' : isUnderpaid ? 'warning.main' : 'inherit',
+                                  fontWeight: (isOverpaid || isUnderpaid) ? 'bold' : 'normal'
+                                }}
+                              >
+                                {balance.toFixed(2)}
+                              </TableCell>
+                              <TableCell align="center">
+                                {isOverpaid ? 'Overpaid' : isUnderpaid ? 'Underpaid' : 'Balanced'}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+
+              <Box mt={3} display="flex" justifyContent="center">
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={fetchLedgerData}
+                  disabled={ledgerLoading}
+                >
+                  Refresh Ledger Data
+                </Button>
+              </Box>
             </CardContent>
           </Card>
         </TabPanel>
