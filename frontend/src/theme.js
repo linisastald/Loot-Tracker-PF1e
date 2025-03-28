@@ -63,55 +63,45 @@ const theme = createTheme({
   },
   components: {
     MuiButton: {
-      defaultProps: {
-        // This ensures all buttons use these props by default
-        disableElevation: false, // Enable elevation for hover effects
-      },
       styleOverrides: {
         root: {
           textTransform: 'none',
           fontWeight: 500,
-          borderRadius: 4,
-          padding: '6px 16px',
-          transition: 'transform 0.2s, box-shadow 0.2s, background-color 0.2s',
-          '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: '0px 3px 5px -1px rgba(0,0,0,0.2), 0px 6px 10px 0px rgba(0,0,0,0.14), 0px 1px 18px 0px rgba(0,0,0,0.12)',
-          },
         },
+        // Style for outlined variant
         outlined: {
           borderColor: 'rgba(255, 255, 255, 0.23)',
-          color: 'rgba(255, 255, 255, 0.7)', // text.secondary
+          color: 'rgba(255, 255, 255, 0.7)',
           '&:hover': {
             backgroundColor: 'rgba(255, 255, 255, 0.05)',
-            borderColor: 'rgba(255, 255, 255, 0.5)',
+            borderColor: 'rgba(255, 255, 255, 0.5)'
           },
+          '&.Mui-disabled': {
+            borderColor: 'rgba(255, 255, 255, 0.12)',
+            color: 'rgba(255, 255, 255, 0.3)'
+          }
         },
+        // Style for primary outlined buttons
+        outlinedPrimary: {
+          borderColor: 'rgba(144, 202, 249, 0.5)',
+          color: 'rgba(255, 255, 255, 0.7)',
+          '&:hover': {
+            backgroundColor: 'rgba(144, 202, 249, 0.08)',
+            borderColor: 'rgba(144, 202, 249, 0.7)'
+          }
+        },
+        // Style for secondary outlined buttons
+        outlinedSecondary: {
+          borderColor: 'rgba(244, 143, 177, 0.5)',
+          color: 'rgba(255, 255, 255, 0.7)',
+          '&:hover': {
+            backgroundColor: 'rgba(244, 143, 177, 0.08)',
+            borderColor: 'rgba(244, 143, 177, 0.7)'
+          }
+        },
+        // Style for contained variant
         contained: {
           boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.12)',
-          '&:hover': {
-            boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.2), 0px 4px 5px 0px rgba(0,0,0,0.14), 0px 1px 10px 0px rgba(0,0,0,0.12)',
-          },
-        },
-        containedPrimary: {
-          backgroundColor: '#90caf9',
-          '&:hover': {
-            backgroundColor: '#42a5f5',
-          },
-        },
-        containedSecondary: {
-          backgroundColor: '#f48fb1',
-          '&:hover': {
-            backgroundColor: '#c2185b',
-          },
-        },
-        sizeSmall: {
-          padding: '4px 10px',
-          fontSize: '0.8125rem',
-        },
-        sizeLarge: {
-          padding: '8px 22px',
-          fontSize: '0.9375rem',
         },
       },
     },
