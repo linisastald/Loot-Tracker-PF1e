@@ -67,12 +67,19 @@ const theme = createTheme({
         root: {
           textTransform: 'none',
           boxShadow: 'none',
+          fontWeight: 500,
           '&:hover': {
             boxShadow: '0px 2px 4px -1px rgba(0,0,0,0.2)',
           },
         },
         contained: {
           boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.12)',
+          '&.MuiButton-containedPrimary': {
+            color: '#121212',
+          },
+          '&.MuiButton-containedSecondary': {
+            color: '#121212',
+          },
         },
         outlined: {
           borderColor: 'rgba(144, 202, 249, 0.5)',
