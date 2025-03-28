@@ -14,7 +14,7 @@ import UnprocessedLoot from './UnprocessedLoot';
 import KeptParty from './KeptParty';
 import KeptCharacter from './KeptCharacter';
 import SoldLoot from './SoldLoot';
-import GivenAwayOrTrashed from '../GivenAwayOrTrashed';
+import GivenAwayOrTrashed from './GivenAwayOrTrashed';
 
 const LootManagement = () => {
   const location = useLocation();

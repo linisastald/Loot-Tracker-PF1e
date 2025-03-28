@@ -4,8 +4,8 @@ import {
   Paper,
   Typography,
 } from '@mui/material';
-import CustomLootTable from '../common/CustomLootTable';
-import useLootManagement from '../../hooks/useLootManagement';
+import CustomLootTable from '../../common/CustomLootTable';
+import useLootManagement from '../../../hooks/useLootManagement';
 
 const GivenAwayOrTrashed = () => {
   const {
@@ -21,9 +21,6 @@ const GivenAwayOrTrashed = () => {
 
   return (
     <Container maxWidth={false} component="main">
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Trashed or Given Away Loot</Typography>
-      </Paper>
       <CustomLootTable
         loot={loot.summary}
         individualLoot={loot.individual}
