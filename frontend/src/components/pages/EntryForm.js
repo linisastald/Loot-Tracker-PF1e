@@ -96,46 +96,48 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
       </Grid>
       <Grid item xs={12} md={6}>
           <Autocomplete
-          freeSolo
-          options={itemSuggestions}
-          value={itemSuggestions.find(item => item.id === localEntry.itemId) || null}
-          inputValue={localEntry.name || ''}
-          onInputChange={async (event, newInputValue) => {
-            handleChange('name', newInputValue);
-            // Fetch items when typing
-            if (newInputValue.length >= 2) {
-              const fetchedItems = await fetchItemNames(newInputValue);
-              setItemSuggestions(fetchedItems);
-            }
-          }}
-          onChange={handleItemSelect}
-          filterOptions={(options, { inputValue }) =>
-            options.filter(option =>
-              option.name.toLowerCase().includes(inputValue.toLowerCase())
-            )
-          }
-          getOptionLabel={(option) =>
-            typeof option === 'string'
-              ? option
-              : option.name || ''
-          }
-          isOptionEqualToValue={(option, value) =>
-            (option.id && value.id && option.id === value.id) ||
-            (option.name && value.name && option.name === value.name)
-          }
-          renderOption={(props, option) => (
-            <li {...props} key={option.id || option.name}>
-              {option.name}
-            </li>
-          )}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Item Name"
-              fullWidth
-            />
-          )}
-        />
+              freeSolo
+              options={itemSuggestions}
+              getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
+              renderOption={(props, option) => (
+                  <li {...props} key={option.id || option.name}>
+                      {option.name}
+                  </li>
+              )}
+              value={localEntry.name || ''}
+              onChange={(event, newValue) => {
+                  if (!newValue) {
+                      handleChange('name', '');
+                      handleChange('itemId', null);
+                      handleChange('type', '');
+                      handleChange('value', null);
+                      return;
+                  }
+
+                  if (typeof newValue === 'string') {
+                      handleChange('name', newValue);
+                      handleChange('itemId', null);
+                  } else {
+                      handleChange('name', newValue.name);
+                      handleChange('itemId', newValue.id);
+                      handleChange('type', newValue.type || '');
+                      handleChange('value', newValue.value || null);
+                  }
+              }}
+              onInputChange={async (event, newInputValue) => {
+                  if (event) {
+                      handleChange('name', newInputValue);
+                      // Fetch items when typing
+                      if (newInputValue && newInputValue.length >= 2) {
+                          const fetchedItems = await fetchItemNames(newInputValue);
+                          setItemSuggestions(fetchedItems);
+                      }
+                  }
+              }}
+              renderInput={(params) => (
+                  <TextField {...params} label="Item Name" fullWidth/>
+              )}
+          />
       </Grid>
       <Grid item xs={12} md={3}>
         <FormControl fullWidth>
