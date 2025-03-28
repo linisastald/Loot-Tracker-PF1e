@@ -334,17 +334,55 @@ const GoldTransactions = () => {
               <Typography variant="h6" gutterBottom>Quick Actions</Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={4}>
-                  <Button variant="contained" color="primary" onClick={() => setActiveTab(1)} fullWidth>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    onClick={() => setActiveTab(1)}
+                    fullWidth
+                    sx={{
+                      borderColor: 'rgba(144, 202, 249, 0.5)',
+                      color: 'text.secondary',
+                      '&:hover': {
+                        backgroundColor: 'rgba(144, 202, 249, 0.08)',
+                        borderColor: 'rgba(144, 202, 249, 0.7)'
+                      }
+                    }}
+                  >
                     Add New Transaction
                   </Button>
                 </Grid>
                 <Grid item xs={12} sm={4}>
-                  <Button variant="contained" color="secondary" onClick={() => setActiveTab(3)} fullWidth>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={() => setActiveTab(3)}
+                    fullWidth
+                    sx={{
+                      borderColor: 'rgba(244, 143, 177, 0.5)',
+                      color: 'text.secondary',
+                      '&:hover': {
+                        backgroundColor: 'rgba(244, 143, 177, 0.08)',
+                        borderColor: 'rgba(244, 143, 177, 0.7)'
+                      }
+                    }}
+                  >
                     Manage Gold
                   </Button>
                 </Grid>
                 <Grid item xs={12} sm={4}>
-                  <Button variant="outlined" onClick={() => setActiveTab(2)} fullWidth>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setActiveTab(2)}
+                    fullWidth
+                    sx={{
+                      borderColor: 'rgba(255, 255, 255, 0.23)',
+                      color: 'text.secondary',
+                      '&:hover': {
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        borderColor: 'rgba(255, 255, 255, 0.5)'
+                      }
+                    }}
+                  >
                     View History
                   </Button>
                 </Grid>
@@ -446,7 +484,20 @@ const GoldTransactions = () => {
                     />
                   </Grid>
                   <Grid item xs={12}>
-                    <Button type="submit" variant="contained" color="primary" size="large">
+                    <Button
+                      type="submit"
+                      variant="outlined"
+                      color="primary"
+                      size="large"
+                      sx={{
+                        borderColor: 'rgba(144, 202, 249, 0.5)',
+                        color: 'text.secondary',
+                        '&:hover': {
+                          backgroundColor: 'rgba(144, 202, 249, 0.08)',
+                          borderColor: 'rgba(144, 202, 249, 0.7)'
+                        }
+                      }}
+                    >
                       Add Transaction
                     </Button>
                   </Grid>
@@ -480,23 +531,88 @@ const GoldTransactions = () => {
                     />
                   </Grid>
                   <Grid item xs={12} sm={4}>
-                    <Button variant="contained" color="primary" onClick={fetchGoldEntries} fullWidth>
+                    <Button
+                      variant="outlined"
+                      color="primary"
+                      onClick={fetchGoldEntries}
+                      fullWidth
+                      sx={{
+                        borderColor: 'rgba(144, 202, 249, 0.5)',
+                        color: 'text.secondary',
+                        '&:hover': {
+                          backgroundColor: 'rgba(144, 202, 249, 0.08)',
+                          borderColor: 'rgba(144, 202, 249, 0.7)'
+                        }
+                      }}
+                    >
                       Apply Filter
                     </Button>
                   </Grid>
                 </Grid>
               </LocalizationProvider>
               <Box sx={{ mt: 2 }}>
-                <Button variant="outlined" onClick={() => handleQuickFilter(1)} sx={{ mr: 1, mb: 1 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleQuickFilter(1)}
+                  sx={{
+                    mr: 1,
+                    mb: 1,
+                    borderColor: 'rgba(255, 255, 255, 0.23)',
+                    color: 'text.secondary',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      borderColor: 'rgba(255, 255, 255, 0.5)'
+                    }
+                  }}
+                >
                   Last Month
                 </Button>
-                <Button variant="outlined" onClick={() => handleQuickFilter(3)} sx={{ mr: 1, mb: 1 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleQuickFilter(3)}
+                  sx={{
+                    mr: 1,
+                    mb: 1,
+                    borderColor: 'rgba(255, 255, 255, 0.23)',
+                    color: 'text.secondary',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      borderColor: 'rgba(255, 255, 255, 0.5)'
+                    }
+                  }}
+                >
                   Last 3 Months
                 </Button>
-                <Button variant="outlined" onClick={() => handleQuickFilter(6)} sx={{ mr: 1, mb: 1 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleQuickFilter(6)}
+                  sx={{
+                    mr: 1,
+                    mb: 1,
+                    borderColor: 'rgba(255, 255, 255, 0.23)',
+                    color: 'text.secondary',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      borderColor: 'rgba(255, 255, 255, 0.5)'
+                    }
+                  }}
+                >
                   Last 6 Months
                 </Button>
-                <Button variant="outlined" onClick={() => handleQuickFilter(12)} sx={{ mr: 1, mb: 1 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleQuickFilter(12)}
+                  sx={{
+                    mr: 1,
+                    mb: 1,
+                    borderColor: 'rgba(255, 255, 255, 0.23)',
+                    color: 'text.secondary',
+                    '&:hover': {
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      borderColor: 'rgba(255, 255, 255, 0.5)'
+                    }
+                  }}
+                >
                   Last Year
                 </Button>
               </Box>
@@ -557,10 +673,18 @@ const GoldTransactions = () => {
                       Distribute all available gold equally among active characters.
                     </Typography>
                     <Button
-                      variant="contained"
+                      variant="outlined"
                       color="primary"
                       onClick={handleDistributeAll}
                       fullWidth
+                      sx={{
+                        borderColor: 'rgba(144, 202, 249, 0.5)',
+                        color: 'text.secondary',
+                        '&:hover': {
+                          backgroundColor: 'rgba(144, 202, 249, 0.08)',
+                          borderColor: 'rgba(144, 202, 249, 0.7)'
+                        }
+                      }}
                     >
                       Distribute All
                     </Button>
@@ -574,10 +698,18 @@ const GoldTransactions = () => {
                       Distribute gold with one share reserved for party loot.
                     </Typography>
                     <Button
-                      variant="contained"
+                      variant="outlined"
                       color="primary"
                       onClick={handleDistributePlusPartyLoot}
                       fullWidth
+                      sx={{
+                        borderColor: 'rgba(144, 202, 249, 0.5)',
+                        color: 'text.secondary',
+                        '&:hover': {
+                          backgroundColor: 'rgba(144, 202, 249, 0.08)',
+                          borderColor: 'rgba(144, 202, 249, 0.7)'
+                        }
+                      }}
                     >
                       Distribute + Party Loot
                     </Button>
@@ -592,10 +724,18 @@ const GoldTransactions = () => {
                         Convert smaller denominations to larger ones.
                       </Typography>
                       <Button
-                        variant="contained"
+                        variant="outlined"
                         color="primary"
                         onClick={handleBalance}
                         fullWidth
+                        sx={{
+                          borderColor: 'rgba(144, 202, 249, 0.5)',
+                          color: 'text.secondary',
+                          '&:hover': {
+                            backgroundColor: 'rgba(144, 202, 249, 0.08)',
+                            borderColor: 'rgba(144, 202, 249, 0.7)'
+                          }
+                        }}
                       >
                         Balance Currencies
                       </Button>
@@ -680,10 +820,22 @@ const GoldTransactions = () => {
 
               <Box mt={3} display="flex" justifyContent="center">
                 <Button
-                  variant="contained"
+                  variant="outlined"
                   color="primary"
                   onClick={fetchLedgerData}
                   disabled={ledgerLoading}
+                  sx={{
+                    borderColor: 'rgba(144, 202, 249, 0.5)',
+                    color: 'text.secondary',
+                    '&:hover': {
+                      backgroundColor: 'rgba(144, 202, 249, 0.08)',
+                      borderColor: 'rgba(144, 202, 249, 0.7)'
+                    },
+                    '&.Mui-disabled': {
+                      borderColor: 'rgba(255, 255, 255, 0.12)',
+                      color: 'rgba(255, 255, 255, 0.3)'
+                    }
+                  }}
                 >
                   Refresh Ledger Data
                 </Button>
