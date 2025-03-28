@@ -22,7 +22,6 @@ import ItemManagement from "./components/pages/ItemManagement";
 import GolarionCalendar from "./components/pages/GolarionCalendar";
 import Tasks from "./components/pages/Tasks";
 import Identify from './components/pages/Identify';
-import CharacterLootLedger from "./components/pages/CharacterLootLedger";
 
 import theme from './theme';
 import api from './utils/api';

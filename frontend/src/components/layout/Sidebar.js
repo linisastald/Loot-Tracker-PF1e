@@ -229,7 +229,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             isCategory
           >
             <MenuItem to="/gold-transactions" primary="Transactions" icon={<AccountBalance />} />
-            <MenuItem to="/character-loot-ledger" primary="Loot Ledger" icon={<AccountBalanceWallet />} />
           </MenuItem>
 
           <MenuItem
