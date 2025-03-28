@@ -203,23 +203,12 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
           <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} isCategory />
 
           <MenuItem
-            primary="Loot"
-            icon={<ViewList />}
-            onClick={handleToggle(setOpenLootViews)}
-            open={openLootViews}
-            isCategory
-          >
-            <MenuItem
-              to="/unprocessed-loot"
-              primary="Unprocessed"
-              icon={<AssignmentLateIcon />}
+              to="/loot-management"
+              primary="Loot Management"
+              icon={<ViewList/>}
               badge={unprocessedLootCount > 0 ? unprocessedLootCount : null}
-            />
-            <MenuItem to="/kept-party" primary="Party" icon={<Groups2 />} />
-            <MenuItem to="/kept-character" primary="Character" icon={<Person4 />} />
-            <MenuItem to="/sold-loot" primary="Sold" icon={<Sell />} />
-            <MenuItem to="/given-away-or-trashed" primary="Trashed" icon={<Delete />} />
-          </MenuItem>
+              isCategory
+          />
 
           <MenuItem
             primary="Gold"

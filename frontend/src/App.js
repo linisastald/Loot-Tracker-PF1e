@@ -7,13 +7,8 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Login from './components/pages/Login';
 import Register from './components/pages/Register';
 import LootEntry from './components/pages/LootEntry';
-import UnprocessedLoot from './components/pages/UnprocessedLoot';
 import GoldTransactions from './components/pages/GoldTransactions';
 import UserSettings from './components/pages/UserSettings';
-import KeptParty from './components/pages/KeptParty';
-import GivenAwayOrTrashed from './components/pages/GivenAwayOrTrashed';
-import KeptCharacter from './components/pages/KeptCharacter';
-import SoldLoot from './components/pages/SoldLoot';
 import MainLayout from './components/layout/MainLayout';
 import ProtectedRoute from './components/hoc/ProtectedRoute';
 import CharacterAndUserManagement from './components/pages/CharacterAndUserManagement';
@@ -22,6 +17,7 @@ import ItemManagement from "./components/pages/ItemManagement";
 import GolarionCalendar from "./components/pages/GolarionCalendar";
 import Tasks from "./components/pages/Tasks";
 import Identify from './components/pages/Identify';
+import LootManagement from './components/pages/LootManagement';
 
 import theme from './theme';
 import api from './utils/api';
@@ -108,13 +104,15 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route element={<ProtectedRoute isAuthenticated={isAuthenticated}><MainLayout onLogout={handleLogout} /></ProtectedRoute>}>
             <Route path="/loot-entry" element={<LootEntry />} />
-            <Route path="/unprocessed-loot" element={<UnprocessedLoot />} />
+            <Route path="/loot-management/*" element={<LootManagement />} />
+            {/* Redirects for old URLs */}
+            <Route path="/unprocessed-loot" element={<Navigate to="/loot-management/unprocessed" replace />} />
+            <Route path="/kept-party" element={<Navigate to="/loot-management/kept-party" replace />} />
+            <Route path="/kept-character" element={<Navigate to="/loot-management/kept-character" replace />} />
+            <Route path="/sold-loot" element={<Navigate to="/loot-management/sold" replace />} />
+            <Route path="/given-away-or-trashed" element={<Navigate to="/loot-management/trashed" replace />} />
             <Route path="/gold-transactions" element={<GoldTransactions />} />
             <Route path="/user-settings" element={<UserSettings />} />
-            <Route path="/given-away-or-trashed" element={<GivenAwayOrTrashed />} />
-            <Route path="/kept-party" element={<KeptParty />} />
-            <Route path="/kept-character" element={<KeptCharacter />} />
-            <Route path="/sold-loot" element={<SoldLoot />} />
             <Route path="/character-user-management" element={<CharacterAndUserManagement />} />
             <Route path="/item-management/*" element={<ItemManagement />} />
             <Route path="/golarion-calendar" element={<GolarionCalendar />} />

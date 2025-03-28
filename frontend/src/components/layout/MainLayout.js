@@ -12,27 +12,32 @@ const MainLayout = ({ onLogout }) => {
 
   // Get current page title based on route
   const getPageTitle = () => {
-    const path = location.pathname;
+      const path = location.pathname;
 
-    switch(path) {
-      case '/loot-entry': return 'Loot Entry';
-      case '/unprocessed-loot': return 'Unprocessed Loot';
-      case '/gold-transactions': return 'Gold Transactions';
-      case '/user-settings': return 'User Settings';
-      case '/kept-party': return 'Party Loot';
-      case '/kept-character': return 'Character Loot';
-      case '/sold-loot': return 'Sold Loot';
-      case '/given-away-or-trashed': return 'Trashed Loot';
-      case '/character-user-management': return 'Character & User Management';
-      case '/consumables': return 'Consumables';
-      case '/golarion-calendar': return 'Calendar';
-      case '/tasks': return 'Session Tasks';
-      case '/identify': return 'Identify Items';
-      case '/character-loot-ledger': return 'Character Loot Ledger';
-      default:
-        if (path.includes('/item-management')) return 'Item Management';
-        return 'Pathfinder Loot Tracker';
-    }
+      switch (path) {
+          case '/loot-entry':
+              return 'Loot Entry';
+          case '/gold-transactions':
+              return 'Gold Transactions';
+          case '/user-settings':
+              return 'User Settings';
+          case '/character-user-management':
+              return 'Character & User Management';
+          case '/consumables':
+              return 'Consumables';
+          case '/golarion-calendar':
+              return 'Calendar';
+          case '/tasks':
+              return 'Session Tasks';
+          case '/identify':
+              return 'Identify Items';
+          case '/character-loot-ledger':
+              return 'Character Loot Ledger';
+          default:
+              if (path.includes('/loot-management')) return 'Loot Management';
+              if (path.includes('/item-management')) return 'Item Management';
+              return 'Pathfinder Loot Tracker';
+      }
   };
 
   return (
