@@ -36,16 +36,13 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
   }, []);
 
   const handleChange = (field, value) => {
-    // If changing unidentified to true, disable Smart Item Detection
+      // If changing unidentified to true, disable Smart Item Detection
     const updatedEntry = { ...localEntry, [field]: value };
     if (field === 'unidentified' && value === true) {
       updatedEntry.parseItem = false;
-      // Also clear itemId if unidentified is checked
-      updatedEntry.itemId = null;
     }
-
     setLocalEntry(prev => ({ ...prev, [field]: value }));
-    onChange(index, updatedEntry);
+    onChange(index, { [field]: value });
   };
 
   const handleItemSelect = (event, newValue) => {
@@ -63,17 +60,10 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
       handleChange('name', newValue);
     } else {
       // Full item object from autocomplete
-      // Don't set itemId if unidentified is checked
-      if (localEntry.unidentified) {
-        handleChange('name', newValue.name);
-        handleChange('type', newValue.type || '');
-        // Explicitly don't set itemId or value for unidentified items
-      } else {
-        handleChange('name', newValue.name);
-        handleChange('itemId', newValue.id);
-        handleChange('type', newValue.type || '');
-        handleChange('value', newValue.value);
-      }
+      handleChange('name', newValue.name);
+      handleChange('itemId', newValue.id);
+      handleChange('type', newValue.type || '');
+      handleChange('value', newValue.value);
     }
   };
 
@@ -124,7 +114,10 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
                 : newValue;
 
               if (selectedItem) {
-                handleItemSelect(null, selectedItem);
+                handleChange('name', selectedItem.name);
+                handleChange('itemId', selectedItem.id);
+                handleChange('type', selectedItem.type || '');
+                handleChange('value', selectedItem.value || null);
               } else {
                 handleChange('name', typeof newValue === 'string' ? newValue : '');
                 handleChange('itemId', null);
@@ -246,16 +239,10 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
             <Switch
               checked={localEntry.parseItem || false}
               onChange={(e) => handleChange('parseItem', e.target.checked)}
-              disabled={localEntry.unidentified}
             />
           }
           label="Smart Item Detection"
         />
-        {localEntry.unidentified && (
-          <Typography variant="caption" color="error">
-            Not available for unidentified items
-          </Typography>
-        )}
       </Grid>
     </Grid>
   );
