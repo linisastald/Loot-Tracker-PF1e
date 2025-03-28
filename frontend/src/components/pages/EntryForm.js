@@ -36,14 +36,13 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
   }, []);
 
   const handleChange = (field, value) => {
-    // If changing unidentified to true, disable Smart Item Detection
+      // If changing unidentified to true, disable Smart Item Detection
     const updatedEntry = { ...localEntry, [field]: value };
     if (field === 'unidentified' && value === true) {
       updatedEntry.parseItem = false;
     }
-
-    setLocalEntry(updatedEntry);
-    onChange(index, updatedEntry);
+    setLocalEntry(prev => ({ ...prev, [field]: value }));
+    onChange(index, { [field]: value });
   };
 
   const handleItemSelect = (event, newValue) => {
@@ -115,46 +114,21 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
                 : newValue;
 
               if (selectedItem) {
-                const updates = {
-                  name: selectedItem.name,
-                  itemId: selectedItem.id,
-                  type: selectedItem.type || '',
-                  value: selectedItem.value || null
-                };
-
-                // Update local state first
-                setLocalEntry(prev => ({
-                  ...prev,
-                  ...updates
-                }));
-
-                // Then notify parent
-                Object.entries(updates).forEach(([key, value]) => {
-                  onChange(index, { ...localEntry, [key]: value });
-                });
+                handleChange('name', selectedItem.name);
+                handleChange('itemId', selectedItem.id);
+                handleChange('type', selectedItem.type || '');
+                handleChange('value', selectedItem.value || null);
               } else {
-                const name = typeof newValue === 'string' ? newValue : '';
-                setLocalEntry(prev => ({
-                  ...prev,
-                  name,
-                  itemId: null,
-                  type: '',
-                  value: null
-                }));
-                onChange(index, { ...localEntry, name, itemId: null, type: '', value: null });
+                handleChange('name', typeof newValue === 'string' ? newValue : '');
+                handleChange('itemId', null);
+                handleChange('type', '');
+                handleChange('value', null);
               }
             } else {
-              const updates = {
-                name: '',
-                itemId: null,
-                type: '',
-                value: null
-              };
-              setLocalEntry(prev => ({
-                ...prev,
-                ...updates
-              }));
-              onChange(index, { ...localEntry, ...updates });
+              handleChange('name', '');
+              handleChange('itemId', null);
+              handleChange('type', '');
+              handleChange('value', null);
             }
           }}
           filterOptions={(options, { inputValue }) =>
@@ -265,16 +239,10 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
             <Switch
               checked={localEntry.parseItem || false}
               onChange={(e) => handleChange('parseItem', e.target.checked)}
-              disabled={localEntry.unidentified}
             />
           }
           label="Smart Item Detection"
         />
-        {localEntry.unidentified && localEntry.parseItem && (
-          <Typography variant="caption" color="error">
-            Smart Item Detection is disabled for unidentified items
-          </Typography>
-        )}
       </Grid>
     </Grid>
   );
