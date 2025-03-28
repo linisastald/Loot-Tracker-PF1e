@@ -18,21 +18,42 @@ import {
   Tab,
   Card,
   CardContent,
-  CardHeader,
-  Divider,
+  Alert,
   FormControl,
   InputLabel,
   Select,
-  MenuItem,
-  Alert,
-  IconButton,
-  Collapse
+  MenuItem
 } from '@mui/material';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import AddIcon from '@mui/icons-material/Add';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+
+// Tab Panel component
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`gold-tabpanel-${index}`}
+      aria-labelledby={`gold-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+function a11yProps(index) {
+  return {
+    id: `gold-tab-${index}`,
+    'aria-controls': `gold-tabpanel-${index}`,
+  };
+}
 
 const GoldTransactions = () => {
   const [goldEntries, setGoldEntries] = useState([]);
@@ -43,7 +64,6 @@ const GoldTransactions = () => {
   const [startDate, setStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 6)));
   const [endDate, setEndDate] = useState(new Date());
   const [activeTab, setActiveTab] = useState(0);
-  const [entryFormOpen, setEntryFormOpen] = useState(false);
 
   // New gold entry form state
   const [newEntry, setNewEntry] = useState({
@@ -222,272 +242,333 @@ const GoldTransactions = () => {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
-      <Grid container spacing={2}>
-        {/* Summary Card */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardHeader title="Currency Summary" />
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Typography variant="h6">Gold Transactions</Typography>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2, mt: 2 }}>
+          <Tabs value={activeTab} onChange={handleTabChange} aria-label="gold management tabs">
+            <Tab label="Overview" {...a11yProps(0)} />
+            <Tab label="Add Transaction" {...a11yProps(1)} />
+            <Tab label="Transaction History" {...a11yProps(2)} />
+            <Tab label="Management" {...a11yProps(3)} />
+          </Tabs>
+        </Box>
+
+        {/* Overview Tab */}
+        <TabPanel value={activeTab} index={0}>
+          <Card sx={{ mb: 3 }}>
             <CardContent>
+              <Typography variant="h6" gutterBottom>Currency Summary</Typography>
+              <Grid container spacing={3}>
+                <Grid item xs={6} sm={3}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                    <Typography variant="subtitle2" color="text.secondary">Platinum</Typography>
+                    <Typography variant="h4">{totals.platinum}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                    <Typography variant="subtitle2" color="text.secondary">Gold</Typography>
+                    <Typography variant="h4">{totals.gold}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                    <Typography variant="subtitle2" color="text.secondary">Silver</Typography>
+                    <Typography variant="h4">{totals.silver}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={6} sm={3}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                    <Typography variant="subtitle2" color="text.secondary">Copper</Typography>
+                    <Typography variant="h4">{totals.copper}</Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+              <Paper sx={{ p: 3, mt: 3, textAlign: 'center', bgcolor: 'background.default' }}>
+                <Typography variant="subtitle1" color="text.secondary">Total Value (in Gold)</Typography>
+                <Typography variant="h3" color="primary">{totals.fullTotal.toFixed(2)} GP</Typography>
+              </Paper>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Quick Actions</Typography>
               <Grid container spacing={2}>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="subtitle2">Platinum</Typography>
-                  <Typography variant="h6">{totals.platinum}</Typography>
+                <Grid item xs={12} sm={4}>
+                  <Button variant="contained" color="primary" onClick={() => setActiveTab(1)} fullWidth>
+                    Add New Transaction
+                  </Button>
                 </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="subtitle2">Gold</Typography>
-                  <Typography variant="h6">{totals.gold}</Typography>
+                <Grid item xs={12} sm={4}>
+                  <Button variant="contained" color="secondary" onClick={() => setActiveTab(3)} fullWidth>
+                    Manage Gold
+                  </Button>
                 </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="subtitle2">Silver</Typography>
-                  <Typography variant="h6">{totals.silver}</Typography>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Typography variant="subtitle2">Copper</Typography>
-                  <Typography variant="h6">{totals.copper}</Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Divider sx={{ my: 1 }} />
-                  <Typography variant="subtitle2">Total Value (in Gold)</Typography>
-                  <Typography variant="h5">{totals.fullTotal.toFixed(2)} GP</Typography>
+                <Grid item xs={12} sm={4}>
+                  <Button variant="outlined" onClick={() => setActiveTab(2)} fullWidth>
+                    View History
+                  </Button>
                 </Grid>
               </Grid>
             </CardContent>
           </Card>
-        </Grid>
+        </TabPanel>
 
-        {/* Actions Card */}
-        <Grid item xs={12} md={6}>
+        {/* Add Transaction Tab */}
+        <TabPanel value={activeTab} index={1}>
           <Card>
-            <CardHeader title="Currency Actions" />
             <CardContent>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={4}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleDistributeAll}
-                    fullWidth
-                  >
-                    Distribute All
-                  </Button>
+              <Typography variant="h6" gutterBottom>Add New Gold Transaction</Typography>
+              <form onSubmit={handleSubmitEntry}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={4}>
+                    <LocalizationProvider dateAdapter={AdapterDateFns}>
+                      <DatePicker
+                        label="Session Date"
+                        value={newEntry.sessionDate}
+                        onChange={(date) => handleEntryChange('sessionDate', date)}
+                        renderInput={(params) => <TextField {...params} fullWidth />}
+                      />
+                    </LocalizationProvider>
+                  </Grid>
+                  <Grid item xs={12} md={8}>
+                    <FormControl fullWidth>
+                      <InputLabel>Transaction Type</InputLabel>
+                      <Select
+                        value={newEntry.transactionType}
+                        onChange={(e) => handleEntryChange('transactionType', e.target.value)}
+                        label="Transaction Type"
+                      >
+                        <MenuItem value="Deposit">Deposit</MenuItem>
+                        <MenuItem value="Withdrawal">Withdrawal</MenuItem>
+                        <MenuItem value="Sale">Sale</MenuItem>
+                        <MenuItem value="Purchase">Purchase</MenuItem>
+                        <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
+                        <MenuItem value="Party Payment">Party Payment</MenuItem>
+                        <MenuItem value="Party Payback">Party Payback</MenuItem>
+                        <MenuItem value="Balance">Balance</MenuItem>
+                        <MenuItem value="Other">Other</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle1" gutterBottom>Amount</Typography>
+                  </Grid>
+
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Platinum"
+                      type="number"
+                      fullWidth
+                      inputProps={{ min: 0 }}
+                      value={newEntry.platinum}
+                      onChange={(e) => handleEntryChange('platinum', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Gold"
+                      type="number"
+                      fullWidth
+                      inputProps={{ min: 0 }}
+                      value={newEntry.gold}
+                      onChange={(e) => handleEntryChange('gold', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Silver"
+                      type="number"
+                      fullWidth
+                      inputProps={{ min: 0 }}
+                      value={newEntry.silver}
+                      onChange={(e) => handleEntryChange('silver', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Copper"
+                      type="number"
+                      fullWidth
+                      inputProps={{ min: 0 }}
+                      value={newEntry.copper}
+                      onChange={(e) => handleEntryChange('copper', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Notes"
+                      fullWidth
+                      multiline
+                      rows={2}
+                      value={newEntry.notes}
+                      onChange={(e) => handleEntryChange('notes', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Button type="submit" variant="contained" color="primary" size="large">
+                      Add Transaction
+                    </Button>
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={4}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleDistributePlusPartyLoot}
-                    fullWidth
-                  >
-                    Distribute + Party Loot
-                  </Button>
-                </Grid>
-                {userRole === 'DM' && (
+              </form>
+            </CardContent>
+          </Card>
+        </TabPanel>
+
+        {/* Transaction History Tab */}
+        <TabPanel value={activeTab} index={2}>
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Filter Transactions</Typography>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <Grid container spacing={2} alignItems="center">
                   <Grid item xs={12} sm={4}>
+                    <DatePicker
+                      label="Start Date"
+                      value={startDate}
+                      onChange={(date) => setStartDate(date)}
+                      renderInput={(params) => <TextField {...params} fullWidth />}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <DatePicker
+                      label="End Date"
+                      value={endDate}
+                      onChange={(date) => setEndDate(date)}
+                      renderInput={(params) => <TextField {...params} fullWidth />}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Button variant="contained" color="primary" onClick={fetchGoldEntries} fullWidth>
+                      Apply Filter
+                    </Button>
+                  </Grid>
+                </Grid>
+              </LocalizationProvider>
+              <Box sx={{ mt: 2 }}>
+                <Button variant="outlined" onClick={() => handleQuickFilter(1)} sx={{ mr: 1, mb: 1 }}>
+                  Last Month
+                </Button>
+                <Button variant="outlined" onClick={() => handleQuickFilter(3)} sx={{ mr: 1, mb: 1 }}>
+                  Last 3 Months
+                </Button>
+                <Button variant="outlined" onClick={() => handleQuickFilter(6)} sx={{ mr: 1, mb: 1 }}>
+                  Last 6 Months
+                </Button>
+                <Button variant="outlined" onClick={() => handleQuickFilter(12)} sx={{ mr: 1, mb: 1 }}>
+                  Last Year
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Transaction History</Typography>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Session Date</TableCell>
+                      <TableCell>Transaction Type</TableCell>
+                      <TableCell align="right">Platinum</TableCell>
+                      <TableCell align="right">Gold</TableCell>
+                      <TableCell align="right">Silver</TableCell>
+                      <TableCell align="right">Copper</TableCell>
+                      <TableCell>Notes</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {goldEntries.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} align="center">No transactions found</TableCell>
+                      </TableRow>
+                    ) : (
+                      goldEntries.map((entry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell>{formatDate(entry.session_date)}</TableCell>
+                          <TableCell>{entry.transaction_type}</TableCell>
+                          <TableCell align="right">{entry.platinum}</TableCell>
+                          <TableCell align="right">{entry.gold}</TableCell>
+                          <TableCell align="right">{entry.silver}</TableCell>
+                          <TableCell align="right">{entry.copper}</TableCell>
+                          <TableCell>{entry.notes}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        </TabPanel>
+
+        {/* Management Tab */}
+        <TabPanel value={activeTab} index={3}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Gold Management</Typography>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={4}>
+                  <Paper sx={{ p: 3, textAlign: 'center', height: '100%' }}>
+                    <Typography variant="subtitle1" gutterBottom>Equal Distribution</Typography>
+                    <Typography variant="body2" sx={{ mb: 2 }}>
+                      Distribute all available gold equally among active characters.
+                    </Typography>
                     <Button
                       variant="contained"
                       color="primary"
-                      onClick={handleBalance}
+                      onClick={handleDistributeAll}
                       fullWidth
                     >
-                      Balance Currencies
+                      Distribute All
                     </Button>
+                  </Paper>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <Paper sx={{ p: 3, textAlign: 'center', height: '100%' }}>
+                    <Typography variant="subtitle1" gutterBottom>Party Loot Share</Typography>
+                    <Typography variant="body2" sx={{ mb: 2 }}>
+                      Distribute gold with one share reserved for party loot.
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={handleDistributePlusPartyLoot}
+                      fullWidth
+                    >
+                      Distribute + Party Loot
+                    </Button>
+                  </Paper>
+                </Grid>
+
+                {userRole === 'DM' && (
+                  <Grid item xs={12} md={4}>
+                    <Paper sx={{ p: 3, textAlign: 'center', height: '100%' }}>
+                      <Typography variant="subtitle1" gutterBottom>Balance Currency</Typography>
+                      <Typography variant="body2" sx={{ mb: 2 }}>
+                        Convert smaller denominations to larger ones.
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleBalance}
+                        fullWidth
+                      >
+                        Balance Currencies
+                      </Button>
+                    </Paper>
                   </Grid>
                 )}
               </Grid>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
-
-      {/* New Entry Form */}
-      <Card sx={{ mt: 2 }}>
-        <CardHeader
-          title="Add New Gold Entry"
-          action={
-            <IconButton onClick={() => setEntryFormOpen(!entryFormOpen)}>
-              {entryFormOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </IconButton>
-          }
-        />
-        <Collapse in={entryFormOpen}>
-          <CardContent>
-            <form onSubmit={handleSubmitEntry}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={4}>
-                  <LocalizationProvider dateAdapter={AdapterDateFns}>
-                    <DatePicker
-                      label="Session Date"
-                      value={newEntry.sessionDate}
-                      onChange={(date) => handleEntryChange('sessionDate', date)}
-                      renderInput={(params) => <TextField {...params} fullWidth />}
-                    />
-                  </LocalizationProvider>
-                </Grid>
-                <Grid item xs={12} md={8}>
-                  <FormControl fullWidth>
-                    <InputLabel>Transaction Type</InputLabel>
-                    <Select
-                      value={newEntry.transactionType}
-                      onChange={(e) => handleEntryChange('transactionType', e.target.value)}
-                      label="Transaction Type"
-                    >
-                      <MenuItem value="Deposit">Deposit</MenuItem>
-                      <MenuItem value="Withdrawal">Withdrawal</MenuItem>
-                      <MenuItem value="Sale">Sale</MenuItem>
-                      <MenuItem value="Purchase">Purchase</MenuItem>
-                      <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
-                      <MenuItem value="Party Payment">Party Payment</MenuItem>
-                      <MenuItem value="Party Payback">Party Payback</MenuItem>
-                      <MenuItem value="Balance">Balance</MenuItem>
-                      <MenuItem value="Other">Other</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <TextField
-                    label="Platinum"
-                    type="number"
-                    fullWidth
-                    inputProps={{ min: 0 }}
-                    value={newEntry.platinum}
-                    onChange={(e) => handleEntryChange('platinum', e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <TextField
-                    label="Gold"
-                    type="number"
-                    fullWidth
-                    inputProps={{ min: 0 }}
-                    value={newEntry.gold}
-                    onChange={(e) => handleEntryChange('gold', e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <TextField
-                    label="Silver"
-                    type="number"
-                    fullWidth
-                    inputProps={{ min: 0 }}
-                    value={newEntry.silver}
-                    onChange={(e) => handleEntryChange('silver', e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <TextField
-                    label="Copper"
-                    type="number"
-                    fullWidth
-                    inputProps={{ min: 0 }}
-                    value={newEntry.copper}
-                    onChange={(e) => handleEntryChange('copper', e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Notes"
-                    fullWidth
-                    multiline
-                    rows={2}
-                    value={newEntry.notes}
-                    onChange={(e) => handleEntryChange('notes', e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <Button type="submit" variant="contained" color="primary">
-                    Add Transaction
-                  </Button>
-                </Grid>
-              </Grid>
-            </form>
-          </CardContent>
-        </Collapse>
-      </Card>
-
-      {/* Filtering */}
-      <Card sx={{ mt: 2 }}>
-        <CardHeader title="Filter Transactions" />
-        <CardContent>
-          <LocalizationProvider dateAdapter={AdapterDateFns}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} sm={3}>
-                <DatePicker
-                  label="Start Date"
-                  value={startDate}
-                  onChange={(date) => setStartDate(date)}
-                  renderInput={(params) => <TextField {...params} fullWidth />}
-                />
-              </Grid>
-              <Grid item xs={12} sm={3}>
-                <DatePicker
-                  label="End Date"
-                  value={endDate}
-                  onChange={(date) => setEndDate(date)}
-                  renderInput={(params) => <TextField {...params} fullWidth />}
-                />
-              </Grid>
-              <Grid item xs={12} sm={3}>
-                <Button variant="contained" color="primary" onClick={fetchGoldEntries} fullWidth>
-                  Apply Filter
-                </Button>
-              </Grid>
-            </Grid>
-          </LocalizationProvider>
-          <Box sx={{ mt: 2 }}>
-            <Button variant="outlined" onClick={() => handleQuickFilter(1)} sx={{ mr: 1, mb: 1 }}>
-              Last Month
-            </Button>
-            <Button variant="outlined" onClick={() => handleQuickFilter(3)} sx={{ mr: 1, mb: 1 }}>
-              Last 3 Months
-            </Button>
-            <Button variant="outlined" onClick={() => handleQuickFilter(6)} sx={{ mr: 1, mb: 1 }}>
-              Last 6 Months
-            </Button>
-            <Button variant="outlined" onClick={() => handleQuickFilter(12)} sx={{ mr: 1, mb: 1 }}>
-              Last Year
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
-
-      {/* Transactions Table */}
-      <Card sx={{ mt: 2 }}>
-        <CardHeader title="Transactions History" />
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Session Date</TableCell>
-                <TableCell>Transaction Type</TableCell>
-                <TableCell align="right">Platinum</TableCell>
-                <TableCell align="right">Gold</TableCell>
-                <TableCell align="right">Silver</TableCell>
-                <TableCell align="right">Copper</TableCell>
-                <TableCell>Notes</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {goldEntries.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">No transactions found</TableCell>
-                </TableRow>
-              ) : (
-                goldEntries.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell>{formatDate(entry.session_date)}</TableCell>
-                    <TableCell>{entry.transaction_type}</TableCell>
-                    <TableCell align="right">{entry.platinum}</TableCell>
-                    <TableCell align="right">{entry.gold}</TableCell>
-                    <TableCell align="right">{entry.silver}</TableCell>
-                    <TableCell align="right">{entry.copper}</TableCell>
-                    <TableCell>{entry.notes}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Card>
+        </TabPanel>
+      </Paper>
     </Container>
   );
 };
