@@ -93,11 +93,11 @@ const UnprocessedLoot = () => {
           zIndex: 1000,
         }}
       >
-        <Button variant="contained" onClick={() => handleAction(handleSell)}>Sell</Button>
-        <Button variant="contained" color="secondary" onClick={() => handleAction(handleTrash)}>Trash</Button>
-        <Button variant="contained" color="primary" onClick={() => handleAction(handleKeepSelf)}>Keep Self</Button>
-        <Button variant="contained" color="primary" onClick={() => handleAction(handleKeepParty)}>Keep Party</Button>
-        <Button variant="contained" color="primary" onClick={handleAppraise}>Appraise</Button>
+        <Button variant="outlined" color="primary" onClick={() => handleAction(handleSell)}>Sell</Button>
+        <Button variant="outlined" color="secondary" onClick={() => handleAction(handleTrash)}>Trash</Button>
+        <Button variant="outlined" color="primary" onClick={() => handleAction(handleKeepSelf)}>Keep Self</Button>
+        <Button variant="outlined" color="primary" onClick={() => handleAction(handleKeepParty)}>Keep Party</Button>
+        <Button variant="outlined" color="primary" onClick={handleAppraise}>Appraise</Button>
         {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
           <Button variant="contained" color="primary" onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
             Split Stack
