@@ -281,10 +281,14 @@ const GolarionCalendar = () => {
   const getMoonPhase = (date) => {
     const totalDays = date.year * 365 + date.month * 30 + date.day;
     const phase = totalDays % 28;
-    if (phase < 7) return 'New Moon';
-    if (phase < 14) return 'First Quarter';
-    if (phase < 21) return 'Full Moon';
-    return 'Last Quarter';
+    if (phase < 3) return { name: 'New Moon', emoji: '🌑' };
+    if (phase < 7) return { name: 'Waxing Crescent', emoji: '🌒' };
+    if (phase < 10) return { name: 'First Quarter', emoji: '🌓' };
+    if (phase < 14) return { name: 'Waxing Gibbous', emoji: '🌔' };
+    if (phase < 17) return { name: 'Full Moon', emoji: '🌕' };
+    if (phase < 21) return { name: 'Waning Gibbous', emoji: '🌖' };
+    if (phase < 24) return { name: 'Last Quarter', emoji: '🌗' };
+    return { name: 'Waning Crescent', emoji: '🌘' };
   };
 
   const renderCalendar = () => {
