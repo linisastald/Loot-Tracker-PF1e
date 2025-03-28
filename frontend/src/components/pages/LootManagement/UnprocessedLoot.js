@@ -93,7 +93,7 @@ const UnprocessedLoot = () => {
           zIndex: 1000,
         }}
       >
-        <Button variant="outlined" color="primary" onClick={() => handleAction(handleSell)}>Sell</Button>
+        <Button variant="outlined" onClick={() => handleAction(handleSell)}>Sell</Button>
         <Button variant="outlined" color="secondary" onClick={() => handleAction(handleTrash)}>Trash</Button>
         <Button variant="outlined" color="primary" onClick={() => handleAction(handleKeepSelf)}>Keep Self</Button>
         <Button variant="outlined" color="primary" onClick={() => handleAction(handleKeepParty)}>Keep Party</Button>
