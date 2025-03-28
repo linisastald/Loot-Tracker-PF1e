@@ -70,8 +70,8 @@ const LootEntry = () => {
   };
 
   return (
-    <Container maxWidth={false} component="main" sx={{ pt: '100px' }}>
-      <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1100 }}>
+    <Container maxWidth={false} component="main">
+      <Box sx={{ position: 'sticky', top: 0, left: 0, right: 0, zIndex: 1100, backgroundColor: 'background.default', pb: 2, pt: 2 }}>
         <Paper sx={{
           p: 2,
           mb: 2,
@@ -108,6 +108,7 @@ const LootEntry = () => {
           </Box>
         </Paper>
       </Box>
+
 
       {error && <Alert severity="error" sx={{ mt: 2, mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mt: 2, mb: 2 }}>{success}</Alert>}
