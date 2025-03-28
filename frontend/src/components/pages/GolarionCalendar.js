@@ -105,10 +105,10 @@ const NotePreview = styled(Typography)(({ theme, isCurrentDay }) => ({
 const NavButton = styled(Button)(({ theme }) => ({
   minWidth: '40px',
   padding: theme.spacing(1),
-}));
-
-const ActionButton = styled(Button)(({ theme }) => ({
-  margin: theme.spacing(0.5),
+  borderRadius: theme.shape.borderRadius,
+  boxShadow: 'none',
+  textTransform: 'none',
+  fontWeight: 500,
 }));
 
 const CalendarHeader = styled(Box)(({ theme }) => ({
@@ -361,69 +361,83 @@ const GolarionCalendar = () => {
 
       <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }} elevation={3}>
         <CalendarHeader>
-          <NavButton onClick={handlePrevMonth} variant="outlined" startIcon={<ArrowBackIosNewIcon />}>
+          <Button
+            onClick={handlePrevMonth}
+            variant="outlined"
+            startIcon={<ArrowBackIosNewIcon />}
+            sx={{ fontWeight: 500, textTransform: 'none' }}
+          >
             Prev
-          </NavButton>
+          </Button>
 
           <CalendarTitle variant="h4">
             <EventIcon color="primary" />
             {months[displayedDate.month].name} {displayedDate.year}
           </CalendarTitle>
 
-          <NavButton onClick={handleNextMonth} variant="outlined" endIcon={<ArrowForwardIosIcon />}>
+          <Button
+            onClick={handleNextMonth}
+            variant="outlined"
+            endIcon={<ArrowForwardIosIcon />}
+            sx={{ fontWeight: 500, textTransform: 'none' }}
+          >
             Next
-          </NavButton>
+          </Button>
         </CalendarHeader>
 
         {renderCalendar()}
 
         <Box sx={{ mt: 3, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 1 }}>
-          <ActionButton
+          <Button
             variant="contained"
             color="primary"
             onClick={handleNextDay}
             startIcon={<ArrowForwardIosIcon />}
+            sx={{ fontWeight: 500, textTransform: 'none', boxShadow: 1, mx: 0.5 }}
           >
             Next Day
-          </ActionButton>
+          </Button>
 
-          <ActionButton
-            variant="contained"
-            color="secondary"
+          <Button
+            variant="outlined"
+            color="primary"
             onClick={handleGoToToday}
             startIcon={<CalendarTodayIcon />}
+            sx={{ fontWeight: 500, textTransform: 'none', mx: 0.5 }}
           >
             Go to Today
-          </ActionButton>
+          </Button>
 
-          <ActionButton
+          <Button
             variant="contained"
-            color="primary"
+            color="secondary"
             onClick={() => setConfirmDialogOpen(true)}
             disabled={!selectedDate}
             startIcon={<EventIcon />}
+            sx={{ fontWeight: 500, textTransform: 'none', boxShadow: 1, mx: 0.5 }}
           >
             Set Current Day
-          </ActionButton>
+          </Button>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mx: 0.5 }}>
             <TextField
               label="Days"
               type="number"
               value={daysToAdd}
               onChange={(e) => setDaysToAdd(e.target.value)}
               size="small"
-              sx={{ width: '80px' }}
+              sx={{ width: '80px', mr: 1 }}
               InputProps={{ inputProps: { min: 1 } }}
             />
-            <ActionButton
+            <Button
               variant="contained"
               color="primary"
               onClick={handleIncreaseDays}
               disabled={!daysToAdd}
+              sx={{ fontWeight: 500, textTransform: 'none', boxShadow: 1 }}
             >
               Add Days
-            </ActionButton>
+            </Button>
           </Box>
         </Box>
       </Paper>
@@ -502,6 +516,7 @@ const GolarionCalendar = () => {
                     onClick={handleSaveNote}
                     color="secondary"
                     startIcon={<NoteAltIcon />}
+                    sx={{ fontWeight: 500, textTransform: 'none', boxShadow: 1 }}
                   >
                     Save Note
                   </Button>
@@ -530,8 +545,18 @@ const GolarionCalendar = () => {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSetCurrentDay} variant="contained" color="primary">
+          <Button
+            onClick={() => setConfirmDialogOpen(false)}
+            sx={{ fontWeight: 500, textTransform: 'none' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSetCurrentDay}
+            variant="contained"
+            color="primary"
+            sx={{ fontWeight: 500, textTransform: 'none', boxShadow: 1 }}
+          >
             Confirm
           </Button>
         </DialogActions>
