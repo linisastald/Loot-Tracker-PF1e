@@ -242,14 +242,14 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             <MenuItem to="/user-settings" primary="User Settings" icon={<Person4 />} />
           </MenuItem>
 
-          <MenuItem
+{/*          <MenuItem
             primary="Beta"
             icon={<Construction/>}
             onClick={handleToggle(setOpenBeta)}
             open={openBeta}
             isCategory
           >
-          </MenuItem>
+          </MenuItem>*/}
 
           {isDM && (
             <MenuItem
