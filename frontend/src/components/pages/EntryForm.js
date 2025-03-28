@@ -36,8 +36,14 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
   }, []);
 
   const handleChange = (field, value) => {
-    setLocalEntry(prev => ({ ...prev, [field]: value }));
-    onChange(index, { [field]: value });
+    // If changing unidentified to true, disable Smart Item Detection
+    const updatedEntry = { ...localEntry, [field]: value };
+    if (field === 'unidentified' && value === true) {
+      updatedEntry.parseItem = false;
+    }
+
+    setLocalEntry(updatedEntry);
+    onChange(index, updatedEntry);
   };
 
   const handleItemSelect = (event, newValue) => {
@@ -234,10 +240,16 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
             <Switch
               checked={localEntry.parseItem || false}
               onChange={(e) => handleChange('parseItem', e.target.checked)}
+              disabled={localEntry.unidentified}
             />
           }
           label="Smart Item Detection"
         />
+        {localEntry.unidentified && localEntry.parseItem && (
+          <Typography variant="caption" color="error">
+            Smart Item Detection is disabled for unidentified items
+          </Typography>
+        )}
       </Grid>
     </Grid>
   );

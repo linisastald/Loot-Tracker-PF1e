@@ -120,12 +120,20 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
   } else {
     // Convert type to lowercase before submission
     data.type = data.type ? data.type.toLowerCase() : null;
-    data.itemId = data.itemId || null;
+
+    // If item is marked as unidentified, set itemId to null regardless of autofill
+    if (data.unidentified) {
+      data.itemId = null;
+    } else {
+      data.itemId = data.itemId || null;
+    }
+
     data.value = data.value || null;
     data.modids = data.modids || []; // Ensure modids is always an array
 
-    // Only parse if "Smart Item Detection" is checked and it's not autocompleted
-    if (data.parseItem) {
+    // Only parse if "Smart Item Detection" is checked and the item is not unidentified
+    // (parseItem should be false if unidentified is true - this is enforced in the UI)
+    if (data.parseItem && !data.unidentified) {
       try {
         const parseResponse = await api.post('/loot/parse-item', {description: data.name});
         if (parseResponse.data) {
