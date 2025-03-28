@@ -30,7 +30,7 @@ import {
 import {
   Add as AddIcon,
   Edit as EditIcon,
-  Delete as DeleteIcon,
+  Skull as SkullIcon,
   Check as CheckIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon
@@ -136,23 +136,32 @@ const CharacterTab = () => {
     }
   };
 
-  const handleDeleteCharacter = (character) => {
+  const handleKillCharacter = (character) => {
     setCharacterToDelete(character);
     setDeleteDialogOpen(true);
   };
 
-  const confirmDeleteCharacter = async () => {
+  const confirmKillCharacter = async () => {
     try {
-      // Note: Backend needs to provide this endpoint
-      await api.delete(`/user/characters/${characterToDelete.id}`);
-      setSuccess(`${characterToDelete.name} has been deleted`);
+      // Create today's date in ISO format
+      const today = new Date().toISOString().split('T')[0];
+
+      // Update character to mark as deceased
+      const updateData = {
+        id: characterToDelete.id,
+        deathday: today,
+        active: false // If they die, they're no longer active
+      };
+
+      await api.put('/user/characters', updateData);
+      setSuccess(`${characterToDelete.name} has fallen in battle. RIP.`);
       setError('');
       fetchCharacters();
       setDeleteDialogOpen(false);
       setCharacterToDelete(null);
     } catch (error) {
-      console.error('Error deleting character:', error);
-      setError('Failed to delete character');
+      console.error('Error updating character death:', error);
+      setError('Failed to update character death status');
       setSuccess('');
     }
   };
@@ -279,12 +288,13 @@ const CharacterTab = () => {
                         </IconButton>
                       </Tooltip>
 
-                      <Tooltip title="Delete Character">
+                      <Tooltip title="Kill Character">
                         <IconButton
                           color="error"
-                          onClick={() => handleDeleteCharacter(character)}
+                          onClick={() => handleKillCharacter(character)}
+                          disabled={character.deathday !== null && character.deathday !== ''}
                         >
-                          <DeleteIcon />
+                          <SkullIcon />
                         </IconButton>
                       </Tooltip>
                     </Box>
@@ -379,22 +389,28 @@ const CharacterTab = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Kill Character Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
-        <DialogTitle>Confirm Deletion</DialogTitle>
+        <DialogTitle>Confirm Character Death</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete {characterToDelete?.name}? This action cannot be undone.
+            Are you sure {characterToDelete?.name} has fallen in battle? This will mark the character as deceased with today's date.
           </Typography>
+          {characterToDelete?.active && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              This character is currently active. Another character will need to be set as active after confirming death.
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
           <Button
-            onClick={confirmDeleteCharacter}
+            onClick={confirmKillCharacter}
             variant="contained"
             color="error"
+            startIcon={<SkullIcon />}
           >
-            Delete
+            Confirm Death
           </Button>
         </DialogActions>
       </Dialog>
