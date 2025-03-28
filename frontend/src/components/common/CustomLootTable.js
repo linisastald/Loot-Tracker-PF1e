@@ -25,12 +25,43 @@ import { formatDate } from '../../utils/utils';
 import { styled } from '@mui/system';
 import api from '../../utils/api';
 
+// Styled components
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
   backgroundColor: theme.palette.action.hover,
   '& .MuiTableCell-root': {
-    padding: '0px', // Adjust padding to make the rows thinner
+    padding: '0px',
   },
 }));
+
+// Reusable components
+const FilterMenu = ({ anchorEl, open, onClose, title, filters, onChange }) => (
+  <Menu
+    anchorEl={anchorEl}
+    open={open}
+    onClose={onClose}
+  >
+    {Object.entries(filters).map(([key, checked]) => (
+      <MenuItem key={key}>
+        <FormControlLabel
+          control={<Checkbox checked={checked} onChange={() => onChange(key)} />}
+          label={key}
+        />
+      </MenuItem>
+    ))}
+  </Menu>
+);
+
+const SortableTableCell = ({ label, field, sortConfig, onSort }) => (
+  <TableCell>
+    <TableSortLabel
+      active={sortConfig.key === field}
+      direction={sortConfig.direction}
+      onClick={() => onSort(field)}
+    >
+      {label}
+    </TableSortLabel>
+  </TableCell>
+);
 
 const CustomLootTable = ({
   loot,
@@ -46,7 +77,7 @@ const CustomLootTable = ({
     select: true,
     unidentified: true,
     pendingSale: true,
-    whoHasIt: true, // Ensure the whoHasIt column is included by default
+    whoHasIt: true,
   },
   showFilters = {
     pendingSale: true,
@@ -56,10 +87,9 @@ const CustomLootTable = ({
     whoHas: true,
   },
 }) => {
+  // State for filters
   const [showPendingSales, setShowPendingSales] = useState(true);
   const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false);
-  const [anchorElType, setAnchorElType] = useState(null);
-  const [anchorElSize, setAnchorElSize] = useState(null);
   const [typeFilters, setTypeFilters] = useState({
     Weapon: true,
     Armor: true,
@@ -81,8 +111,13 @@ const CustomLootTable = ({
     Unknown: true,
   });
   const [whoHasFilters, setWhoHasFilters] = useState([]);
+
+  // Menu anchor states
+  const [anchorElType, setAnchorElType] = useState(null);
+  const [anchorElSize, setAnchorElSize] = useState(null);
   const [anchorElWhoHas, setAnchorElWhoHas] = useState(null);
 
+  // Fetch active characters for "who has" filters
   useEffect(() => {
     const fetchWhoHasFilters = async () => {
       try {
@@ -101,6 +136,7 @@ const CustomLootTable = ({
     fetchWhoHasFilters();
   }, []);
 
+  // Helper functions
   const handleToggleOpen = (name, unidentified, masterwork, type, size) => {
     setOpenItems((prevOpenItems) => ({
       ...prevOpenItems,
@@ -119,6 +155,7 @@ const CustomLootTable = ({
     );
   };
 
+  // Filter handlers
   const handleTypeFilterChange = (type) => {
     setTypeFilters((prevFilters) => ({
       ...prevFilters,
@@ -141,49 +178,16 @@ const CustomLootTable = ({
     );
   };
 
-  const handleTypeFilterMenuOpen = (event) => {
-    setAnchorElType(event.currentTarget);
+  // Menu handlers
+  const handleMenuOpen = (setter) => (event) => {
+    setter(event.currentTarget);
   };
 
-  const handleSizeFilterMenuOpen = (event) => {
-    setAnchorElSize(event.currentTarget);
+  const handleMenuClose = (setter) => () => {
+    setter(null);
   };
 
-  const handleWhoHasFilterMenuOpen = (event) => {
-    setAnchorElWhoHas(event.currentTarget);
-  };
-
-  const handleTypeFilterMenuClose = () => {
-    setAnchorElType(null);
-  };
-
-  const handleSizeFilterMenuClose = () => {
-    setAnchorElSize(null);
-  };
-
-  const handleWhoHasFilterMenuClose = () => {
-    setAnchorElWhoHas(null);
-  };
-
-  const filteredLoot = loot.filter((item) => {
-    const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
-    const passesTypeFilter = Object.keys(typeFilters).some(type => {
-      const itemType = (item.type || '').toLowerCase();
-      const filterType = type.toLowerCase();
-      return (
-        (filterType === 'other' && (!itemType || itemType === '') && typeFilters[type]) ||
-        (itemType === filterType && typeFilters[type])
-      );
-    });
-    const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && (!item.size || item.size === ''));
-    const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) ||
-      whoHasFilters.some((filter) => filter.checked && item.character_names && item.character_names.includes(filter.name));
-    const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
-
-    return passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
-           passesWhoHasFilter && passesPendingSaleFilter;
-  });
-
+  // Sort handler
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -192,94 +196,76 @@ const CustomLootTable = ({
     setSortConfig({ key, direction });
   };
 
-  const sortedLoot = [...filteredLoot].sort((a, b) => {
-    if (a[sortConfig.key] === b[sortConfig.key]) {
-      return 0;
-    }
+  // Apply filters to the data
+  const filteredLoot = useMemo(() => {
+    return loot.filter((item) => {
+      // Unidentified filter
+      const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
 
-    switch (sortConfig.key) {
-      case 'session_date':
-      case 'lastupdate':
-        return sortConfig.direction === 'asc'
-          ? new Date(a[sortConfig.key]) - new Date(b[sortConfig.key])
-          : new Date(b[sortConfig.key]) - new Date(a[sortConfig.key]);
-      case 'quantity':
-      case 'believedvalue':
-      case 'average_appraisal':
-        return sortConfig.direction === 'asc'
-          ? Number(a[sortConfig.key]) - Number(b[sortConfig.key])
-          : Number(b[sortConfig.key]) - Number(a[sortConfig.key]);
-      case 'unidentified':
-      case 'status':
-        return sortConfig.direction === 'asc'
-          ? (a[sortConfig.key] === b[sortConfig.key] ? 0 : a[sortConfig.key] ? -1 : 1)
-          : (a[sortConfig.key] === b[sortConfig.key] ? 0 : b[sortConfig.key] ? -1 : 1);
-      default:
-        return sortConfig.direction === 'asc'
-          ? String(a[sortConfig.key]).localeCompare(String(b[sortConfig.key]))
-          : String(b[sortConfig.key]).localeCompare(String(a[sortConfig.key]));
-    }
-  });
+      // Type filter
+      const passesTypeFilter = Object.keys(typeFilters).some(type => {
+        const itemType = (item.type || '').toLowerCase();
+        const filterType = type.toLowerCase();
+        return (
+          (filterType === 'other' && (!itemType || itemType === '') && typeFilters[type]) ||
+          (itemType === filterType && typeFilters[type])
+        );
+      });
 
+      // Size filter
+      const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && (!item.size || item.size === ''));
+
+      // Who has filter
+      const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) ||
+        whoHasFilters.some((filter) => filter.checked && item.character_names && item.character_names.includes(filter.name));
+
+      // Pending sale filter
+      const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
+
+      return passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
+             passesWhoHasFilter && passesPendingSaleFilter;
+    });
+  }, [loot, showOnlyUnidentified, typeFilters, sizeFilters, whoHasFilters, showPendingSales]);
+
+  // Sort the filtered data
+  const sortedLoot = useMemo(() => {
+    return [...filteredLoot].sort((a, b) => {
+      if (a[sortConfig.key] === b[sortConfig.key]) {
+        return 0;
+      }
+
+      switch (sortConfig.key) {
+        case 'session_date':
+        case 'lastupdate':
+          return sortConfig.direction === 'asc'
+            ? new Date(a[sortConfig.key]) - new Date(b[sortConfig.key])
+            : new Date(b[sortConfig.key]) - new Date(a[sortConfig.key]);
+        case 'quantity':
+        case 'believedvalue':
+        case 'average_appraisal':
+          return sortConfig.direction === 'asc'
+            ? Number(a[sortConfig.key]) - Number(b[sortConfig.key])
+            : Number(b[sortConfig.key]) - Number(a[sortConfig.key]);
+        case 'unidentified':
+        case 'status':
+          return sortConfig.direction === 'asc'
+            ? (a[sortConfig.key] === b[sortConfig.key] ? 0 : a[sortConfig.key] ? -1 : 1)
+            : (a[sortConfig.key] === b[sortConfig.key] ? 0 : b[sortConfig.key] ? -1 : 1);
+        default:
+          return sortConfig.direction === 'asc'
+            ? String(a[sortConfig.key]).localeCompare(String(b[sortConfig.key]))
+            : String(b[sortConfig.key]).localeCompare(String(a[sortConfig.key]));
+      }
+    });
+  }, [filteredLoot, sortConfig]);
+
+  // Cell styles
   const mainCellStyle = { padding: '16px' };
   const subCellStyle = { padding: '4px' };
 
-  console.log('Loot data:', loot);
-  console.log('Individual loot data:', individualLoot);
-
-   const aggregatedAppraisals = useMemo(() => {
-    const appraisalMap = new Map();
-
-    individualLoot.forEach(item => {
-      const key = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
-      if (!appraisalMap.has(key)) {
-        appraisalMap.set(key, []);
-      }
-      if (item.appraisals) {
-        appraisalMap.get(key).push(...item.appraisals);
-      }
-    });
-
-    return appraisalMap;
-  }, [individualLoot]);
-
-  const getAppraisals = (item) => {
-    // If the item has appraisals property and it's an array, use it directly
-    if (item.appraisals && Array.isArray(item.appraisals)) {
-      return item.appraisals;
-    }
-
-    // If the item doesn't have appraisals directly, check individual items
-    const key = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
-
-    // Find matching individual items
-    const matchingItems = individualLoot.filter(
-      indItem =>
-        indItem.name === item.name &&
-        indItem.unidentified === item.unidentified &&
-        indItem.masterwork === item.masterwork &&
-        indItem.type === item.type &&
-        indItem.size === item.size
-    );
-
-    // Collect unique appraisals from all matching items
-    const allAppraisals = [];
-    matchingItems.forEach(indItem => {
-      if (indItem.appraisals && Array.isArray(indItem.appraisals)) {
-        indItem.appraisals.forEach(appraisal => {
-          // Only add if not already in the list (check by character ID)
-          if (!allAppraisals.some(a => a.characterid === appraisal.characterid)) {
-            allAppraisals.push(appraisal);
-          }
-        });
-      }
-    });
-
-    return allAppraisals;
-  };
-
+  // Helper function to format appraisal details and render tooltips
   const formatAppraisalDetails = (item) => {
-    const appraisals = getAppraisals(item);
+    const appraisals = item.appraisals || [];
 
     if (!appraisals || appraisals.length === 0) {
       return 'No appraisals available';
@@ -293,7 +279,6 @@ const CustomLootTable = ({
   };
 
   const formatAverageAppraisal = (item) => {
-    // If the item has average_appraisal property, use it directly
     if (item.average_appraisal !== undefined && item.average_appraisal !== null) {
       const value = parseFloat(item.average_appraisal);
       const formattedValue = isNaN(value) ? '' : value.toFixed(2).replace(/\.0+$/, '');
@@ -304,34 +289,151 @@ const CustomLootTable = ({
         </Tooltip>
       );
     }
-
-    // Otherwise calculate from appraisals
-    const appraisals = getAppraisals(item);
-
-    if (!appraisals || appraisals.length === 0) {
-      return null;
-    }
-
-    const values = appraisals
-      .map(a => parseFloat(a.believedvalue))
-      .filter(v => !isNaN(v));
-
-    if (values.length === 0) {
-      return null;
-    }
-
-    const total = values.reduce((sum, val) => sum + val, 0);
-    const average = total / values.length;
-    const formattedValue = average.toFixed(2).replace(/\.0+$/, '');
-
-    return (
-      <Tooltip title={formatAppraisalDetails(item)} arrow>
-        <span>{formattedValue}</span>
-      </Tooltip>
-    );
+    return null;
   };
 
+  // Render table header cells based on showColumns configuration
+  const renderHeaderCells = () => {
+    const headerCells = [];
 
+    if (showColumns.select) {
+      headerCells.push(<TableCell key="select">Select</TableCell>);
+    }
+
+    if (showColumns.quantity) {
+      headerCells.push(
+        <SortableTableCell
+          key="quantity"
+          label="Quantity"
+          field="quantity"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.name) {
+      headerCells.push(
+        <SortableTableCell
+          key="name"
+          label="Name"
+          field="name"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.unidentified) {
+      headerCells.push(
+        <SortableTableCell
+          key="unidentified"
+          label="Unidentified"
+          field="unidentified"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.type) {
+      headerCells.push(
+        <SortableTableCell
+          key="type"
+          label="Type"
+          field="type"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.size) {
+      headerCells.push(
+        <SortableTableCell
+          key="size"
+          label="Size"
+          field="size"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.whoHasIt) {
+      headerCells.push(
+        <SortableTableCell
+          key="character_names"
+          label="Who Has It?"
+          field="character_names"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.believedValue) {
+      headerCells.push(
+        <SortableTableCell
+          key="believedvalue"
+          label="Believed Value"
+          field="believedvalue"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.averageAppraisal) {
+      headerCells.push(
+        <SortableTableCell
+          key="average_appraisal"
+          label="Average Appraisal"
+          field="average_appraisal"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.pendingSale) {
+      headerCells.push(
+        <SortableTableCell
+          key="status"
+          label="Pending Sale"
+          field="status"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.sessionDate) {
+      headerCells.push(
+        <SortableTableCell
+          key="session_date"
+          label="Session Date"
+          field="session_date"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    if (showColumns.lastUpdate) {
+      headerCells.push(
+        <SortableTableCell
+          key="lastupdate"
+          label="Last Update"
+          field="lastupdate"
+          sortConfig={sortConfig}
+          onSort={handleSort}
+        />
+      );
+    }
+
+    return headerCells;
+  };
 
   return (
     <Paper sx={{ p: 2 }}>
@@ -345,6 +447,7 @@ const CustomLootTable = ({
               />
             </Grid>
           )}
+
           {showFilters.unidentified && (
             <Grid item>
               <FormControlLabel
@@ -353,51 +456,42 @@ const CustomLootTable = ({
               />
             </Grid>
           )}
+
           {showFilters.type && (
             <Grid item>
-              <Button onClick={(e) => setAnchorElType(e.currentTarget)}>Type Filters</Button>
-              <Menu
+              <Button onClick={handleMenuOpen(setAnchorElType)}>Type Filters</Button>
+              <FilterMenu
                 anchorEl={anchorElType}
                 open={Boolean(anchorElType)}
-                onClose={() => setAnchorElType(null)}
-              >
-                {Object.entries(typeFilters).map(([type, checked]) => (
-                  <MenuItem key={type}>
-                    <FormControlLabel
-                      control={<Checkbox checked={checked} onChange={() => handleTypeFilterChange(type)} />}
-                      label={type}
-                    />
-                  </MenuItem>
-                ))}
-              </Menu>
+                onClose={handleMenuClose(setAnchorElType)}
+                title="Type Filters"
+                filters={typeFilters}
+                onChange={handleTypeFilterChange}
+              />
             </Grid>
           )}
+
           {showFilters.size && (
             <Grid item>
-              <Button onClick={(e) => setAnchorElSize(e.currentTarget)}>Size Filters</Button>
-              <Menu
+              <Button onClick={handleMenuOpen(setAnchorElSize)}>Size Filters</Button>
+              <FilterMenu
                 anchorEl={anchorElSize}
                 open={Boolean(anchorElSize)}
-                onClose={() => setAnchorElSize(null)}
-              >
-                {Object.entries(sizeFilters).map(([size, checked]) => (
-                  <MenuItem key={size}>
-                    <FormControlLabel
-                      control={<Checkbox checked={checked} onChange={() => handleSizeFilterChange(size)} />}
-                      label={size}
-                    />
-                  </MenuItem>
-                ))}
-              </Menu>
+                onClose={handleMenuClose(setAnchorElSize)}
+                title="Size Filters"
+                filters={sizeFilters}
+                onChange={handleSizeFilterChange}
+              />
             </Grid>
           )}
+
           {showFilters.whoHas && (
             <Grid item>
-              <Button onClick={(e) => setAnchorElWhoHas(e.currentTarget)}>Who Has Filters</Button>
+              <Button onClick={handleMenuOpen(setAnchorElWhoHas)}>Who Has Filters</Button>
               <Menu
                 anchorEl={anchorElWhoHas}
                 open={Boolean(anchorElWhoHas)}
-                onClose={() => setAnchorElWhoHas(null)}
+                onClose={handleMenuClose(setAnchorElWhoHas)}
               >
                 {whoHasFilters.map((filter) => (
                   <MenuItem key={filter.name}>
@@ -417,137 +511,18 @@ const CustomLootTable = ({
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              {showColumns.select && <TableCell>Select</TableCell>}
-              {showColumns.quantity && (
-                <TableCell>
-                  <TableSortLabel
-                    active={sortConfig.key === 'quantity'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('quantity')}
-                  >
-                    Quantity
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.name && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'name'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('name')}
-                  >
-                    Name
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.unidentified && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'unidentified'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('unidentified')}
-                  >
-                    Unidentified
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.type && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'type'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('type')}
-                  >
-                    Type
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.size && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'size'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('size')}
-                  >
-                    Size
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.whoHasIt && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'character_names'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('character_names')}
-                  >
-                    Who Has It?
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.believedValue && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'believedvalue'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('believedvalue')}
-                  >
-                    Believed Value
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.averageAppraisal && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'average_appraisal'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('average_appraisal')}
-                  >
-                    Average Appraisal
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.pendingSale && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'status'}
-                  direction={sortConfig.direction}
-                    onClick={() => handleSort('status')}
-                  >
-                    Pending Sale
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.sessionDate && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'session_date'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('session_date')}
-                  >
-                    Session Date
-                  </TableSortLabel>
-                </TableCell>
-              )}
-              {showColumns.lastUpdate && (
-                <TableCell style={mainCellStyle}>
-                  <TableSortLabel
-                    active={sortConfig.key === 'lastupdate'}
-                    direction={sortConfig.direction}
-                    onClick={() => handleSort('lastupdate')}
-                  >
-                    Last Update
-                  </TableSortLabel>
-                </TableCell>
-              )}
+              {renderHeaderCells()}
             </TableRow>
           </TableHead>
           <TableBody>
             {sortedLoot.map((item) => {
               const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
               const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
+              const itemKey = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
+              const isOpen = openItems[itemKey];
 
               return (
-                <React.Fragment key={`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`}>
+                <React.Fragment key={itemKey}>
                   <TableRow>
                     {showColumns.select && (
                       <TableCell style={mainCellStyle}>
@@ -561,7 +536,9 @@ const CustomLootTable = ({
                         />
                       </TableCell>
                     )}
+
                     {showColumns.quantity && <TableCell style={mainCellStyle}>{totalQuantity}</TableCell>}
+
                     {showColumns.name && (
                       <TableCell style={mainCellStyle}>
                         {individualItems.length > 1 && (
@@ -570,7 +547,7 @@ const CustomLootTable = ({
                             size="small"
                             onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type, item.size)}
                           >
-                            {openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                            {isOpen ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
                           </IconButton>
                         )}
                         <Tooltip title={item.notes || 'No notes'} arrow>
@@ -578,38 +555,45 @@ const CustomLootTable = ({
                         </Tooltip>
                       </TableCell>
                     )}
+
                     {showColumns.unidentified && (
-                        <TableCell style={mainCellStyle}>
-                          {item.unidentified === true
-                              ? <strong>Unidentified</strong>
-                              : item.unidentified === false
-                                  ? ''
-                                  : ''}
-                        </TableCell>
+                      <TableCell style={mainCellStyle}>
+                        {item.unidentified === true
+                          ? <strong>Unidentified</strong>
+                          : item.unidentified === false
+                            ? ''
+                            : ''}
+                      </TableCell>
                     )}
+
                     {showColumns.type && <TableCell style={mainCellStyle}>{item.type}</TableCell>}
                     {showColumns.size && <TableCell style={mainCellStyle}>{item.size}</TableCell>}
                     {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{item.character_names}</TableCell>}
                     {showColumns.believedValue && <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
+
                     {showColumns.averageAppraisal && (
                       <TableCell style={mainCellStyle}>
                         {formatAverageAppraisal(item)}
                       </TableCell>
                     )}
+
                     {showColumns.pendingSale && (
                       <TableCell style={mainCellStyle}>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                     )}
+
                     {showColumns.sessionDate && (
                       <TableCell style={mainCellStyle}>{item.session_date ? formatDate(item.session_date) : ''}</TableCell>
                     )}
+
                     {showColumns.lastUpdate && (
                       <TableCell style={mainCellStyle}>{item.lastupdate ? formatDate(item.lastupdate) : ''}</TableCell>
                     )}
                   </TableRow>
+
                   {individualItems.length > 1 && (
                     <TableRow>
                       <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={Object.values(showColumns).filter(Boolean).length}>
-                        <Collapse in={openItems[`${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`]} timeout="auto" unmountOnExit>
+                        <Collapse in={isOpen} timeout="auto" unmountOnExit>
                           <Table size="small">
                             <TableHead>
                               <TableRow>
