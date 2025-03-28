@@ -211,14 +211,11 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
           />
 
           <MenuItem
+            to="/gold-transactions"
             primary="Gold"
             icon={<AttachMoney/>}
-            onClick={handleToggle(setOpenGold)}
-            open={openGold}
             isCategory
-          >
-            <MenuItem to="/gold-transactions" primary="Transactions" icon={<AccountBalance />} />
-          </MenuItem>
+          />
 
           <MenuItem
             primary="Session Tools"
