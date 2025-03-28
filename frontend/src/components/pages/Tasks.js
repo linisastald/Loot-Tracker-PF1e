@@ -245,7 +245,7 @@ const Tasks = () => {
             />
           ))}
         </FormGroup>
-        <Button variant="contained" onClick={assignTasks} sx={{ mt: 2 }}>Assign Tasks and Send to Discord</Button>
+        <Button variant="outlined" onClick={assignTasks} sx={{ mt: 2 }}>Assign Tasks and Send to Discord</Button>
       </Paper>
 
       {assignedTasks && (

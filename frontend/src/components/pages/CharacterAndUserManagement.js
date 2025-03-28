@@ -194,7 +194,7 @@ const CharacterAndUserManagement = () => {
 
         {/* Registration Toggle */}
         <Box mt={2} mb={2}>
-          <Button variant="contained" color="primary" onClick={handleRegistrationToggle}>
+          <Button variant="outlined" color="primary" onClick={handleRegistrationToggle}>
             {registrationOpen ? 'Close Registration' : 'Open Registration'}
           </Button>
         </Box>

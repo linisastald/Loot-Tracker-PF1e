@@ -94,16 +94,16 @@ const KeptCharacter = () => {
           zIndex: 1000,
         }}
       >
-        <Button variant="contained" color="primary" onClick={() => handleAction(handleSell)}>Sell</Button>
-        <Button variant="contained" color="secondary" onClick={() => handleAction(handleTrash)}>Trash</Button>
-        <Button variant="contained" color="primary" onClick={() => handleAction(handleKeepParty)}>Keep Party</Button>
+        <Button variant="outlined" color="primary" onClick={() => handleAction(handleSell)}>Sell</Button>
+        <Button variant="outlined" color="secondary" onClick={() => handleAction(handleTrash)}>Trash</Button>
+        <Button variant="outlined" color="primary" onClick={() => handleAction(handleKeepParty)}>Keep Party</Button>
         {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-          <Button variant="contained" color="primary" onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
+          <Button variant="outlined" color="primary" onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
             Split Stack
           </Button>
         )}
         {selectedItems.length === 1 && (
-          <Button variant="contained" color="primary" onClick={handleUpdateDialogWrapper}>
+          <Button variant="outlined" color="primary" onClick={handleUpdateDialogWrapper}>
             Update
           </Button>
         )}

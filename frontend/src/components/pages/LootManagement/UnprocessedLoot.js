@@ -99,12 +99,12 @@ const UnprocessedLoot = () => {
         <Button variant="outlined" color="primary" onClick={() => handleAction(handleKeepParty)}>Keep Party</Button>
         <Button variant="outlined" color="primary" onClick={handleAppraise}>Appraise</Button>
         {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
-          <Button variant="contained" color="primary" onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
+          <Button variant="outlined" color="primary" onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
             Split Stack
           </Button>
         )}
         {selectedItems.length === 1 && (
-          <Button variant="contained" color="primary" onClick={handleUpdateDialogWrapper}>
+          <Button variant="outlined" color="primary" onClick={handleUpdateDialogWrapper}>
             Update
           </Button>
         )}

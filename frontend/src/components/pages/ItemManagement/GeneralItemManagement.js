@@ -287,10 +287,10 @@ const GeneralItemManagement = () => {
           </Grid>
           <Grid item xs={12} md={2}>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button variant="contained" color="primary" onClick={handleSearch} fullWidth>
+              <Button variant="outlined" color="primary" onClick={handleSearch} fullWidth>
                 Search
               </Button>
-              <Button variant="contained" color="secondary" onClick={handleClearSearch} fullWidth>
+              <Button variant="outlined" color="secondary" onClick={handleClearSearch} fullWidth>
                 Clear
               </Button>
             </Box>
