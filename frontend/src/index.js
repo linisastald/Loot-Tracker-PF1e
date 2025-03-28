@@ -1,23 +1,12 @@
+
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
 import App from './App';
 import './styles/globalStyles.css';
 
-
-
-
-const theme = createTheme({
-  palette: {
-    mode: 'dark', // Set to 'light' for light mode
-  },
-});
-
 ReactDOM.render(
-  <ThemeProvider theme={theme}>
-    <CssBaseline />
+  <React.StrictMode>
     <App />
-  </ThemeProvider>,
+  </React.StrictMode>,
   document.getElementById('root')
 );
