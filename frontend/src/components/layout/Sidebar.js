@@ -189,9 +189,11 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
         }}
       >
         {!isCollapsed && (
-          <Typography variant="h6" color="primary" noWrap sx={{ fontWeight: 600 }}>
-            {groupName}
-          </Typography>
+          <Tooltip title="v0.6.0" arrow placement="right">
+            <Typography variant="h6" color="primary" noWrap sx={{ fontWeight: 600 }}>
+              {groupName}
+            </Typography>
+          </Tooltip>
         )}
         <IconButton onClick={toggleSidebar} color="primary">
           {isCollapsed ? <MenuIcon /> : <ChevronLeft />}
