@@ -1,17 +1,16 @@
 import React from 'react';
 import {
-  Container,
-  Paper,
-  Typography,
-  Button,
-  Box,
+    Container,
+    Paper,
+    Typography,
+    Button, Box,
 } from '@mui/material';
-import CustomLootTable from '../common/CustomLootTable';
-import CustomSplitStackDialog from '../common/dialogs/CustomSplitStackDialog';
-import CustomUpdateDialog from '../common/dialogs/CustomUpdateDialog';
-import useLootManagement from '../../hooks/useLootManagement';
+import CustomLootTable from '../../common/CustomLootTable';
+import CustomSplitStackDialog from '../../common/dialogs/CustomSplitStackDialog';
+import CustomUpdateDialog from '../../common/dialogs/CustomUpdateDialog';
+import useLootManagement from '../../../hooks/useLootManagement';
 
-const UnprocessedLoot = () => {
+const KeptCharacter = () => {
   const {
     loot,
     selectedItems,
@@ -20,6 +19,8 @@ const UnprocessedLoot = () => {
     openSplitDialog,
     splitQuantities,
     updatedEntry,
+    filters,
+    setFilters,
     openItems,
     setOpenItems,
     sortConfig,
@@ -35,15 +36,13 @@ const UnprocessedLoot = () => {
     handleUpdateChange,
     handleSplitSubmitWrapper,
     handleUpdateSubmitWrapper,
-    handleAppraise,
     handleSell,
     handleTrash,
-    handleKeepSelf,
     handleKeepParty,
-  } = useLootManagement(); // No status for unprocessed loot
+  } = useLootManagement('Kept Self');
 
   return (
-    <Container maxWidth={false} component="main" sx={{ pb: '80px' }}>
+    <Container maxWidth={false} component="main">
       <CustomLootTable
         loot={loot.summary}
         individualLoot={loot.individual}
@@ -60,21 +59,23 @@ const UnprocessedLoot = () => {
           name: true,
           type: true,
           size: true,
-          whoHasIt: false,
+          whoHasIt: true,
           believedValue: true,
           averageAppraisal: true,
           sessionDate: true,
           lastUpdate: true,
-          unidentified: true,
-          pendingSale: true
+          unidentified: false,
+          pendingSale: false
         }}
         showFilters={{
-          pendingSale: true,
-          unidentified: true,
+          pendingSale: false,
+          unidentified: false,
           type: true,
           size: true,
-          whoHas: false,
+          whoHas: true,
         }}
+        filters={filters}
+        setFilters={setFilters}
       />
 
       {/* Floating button container */}
@@ -95,9 +96,7 @@ const UnprocessedLoot = () => {
       >
         <Button variant="contained" color="primary" onClick={() => handleAction(handleSell)}>Sell</Button>
         <Button variant="contained" color="secondary" onClick={() => handleAction(handleTrash)}>Trash</Button>
-        <Button variant="contained" color="primary" onClick={() => handleAction(handleKeepSelf)}>Keep Self</Button>
         <Button variant="contained" color="primary" onClick={() => handleAction(handleKeepParty)}>Keep Party</Button>
-        <Button variant="contained" color="primary" onClick={handleAppraise}>Appraise</Button>
         {selectedItems.length === 1 && loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1) && (
           <Button variant="contained" color="primary" onClick={() => handleOpenSplitDialogWrapper(loot.individual.find(item => item.id === selectedItems[0]))}>
             Split Stack
@@ -130,4 +129,4 @@ const UnprocessedLoot = () => {
   );
 };
 
-export default UnprocessedLoot;
+export default KeptCharacter;

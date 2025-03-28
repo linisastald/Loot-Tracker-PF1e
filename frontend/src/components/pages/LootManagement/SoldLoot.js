@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../../utils/api';
+import api from '../../../utils/api';
 import {
   Container,
   Paper,
@@ -14,7 +14,7 @@ import {
   Collapse,
 } from '@mui/material';
 import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import { formatDate } from '../../utils/utils';
+import { formatDate } from '../../../utils/utils';
 
 const SoldLoot = () => {
   const [soldSummary, setSoldSummary] = useState([]);
@@ -103,7 +103,6 @@ const SoldLoot = () => {
   return (
     <Container component="main" sx={{ maxWidth: 'none', overflowX: 'auto' }}>
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Sold Loot</Typography>
         <Typography variant="subtitle1">Total Sold: {totalSold.toFixed(2)}</Typography>
       </Paper>
 

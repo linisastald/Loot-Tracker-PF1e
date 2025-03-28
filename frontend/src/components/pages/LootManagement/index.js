@@ -10,10 +10,10 @@ import {
 } from '@mui/material';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 
-import UnprocessedLoot from '../UnprocessedLoot';
-import KeptParty from '../KeptParty';
-import KeptCharacter from '../KeptCharacter';
-import SoldLoot from '../SoldLoot';
+import UnprocessedLoot from './UnprocessedLoot';
+import KeptParty from './KeptParty';
+import KeptCharacter from './KeptCharacter';
+import SoldLoot from './SoldLoot';
 import GivenAwayOrTrashed from '../GivenAwayOrTrashed';
 
 const LootManagement = () => {

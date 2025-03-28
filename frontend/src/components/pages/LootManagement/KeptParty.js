@@ -5,10 +5,10 @@ import {
     Typography,
     Button, Box,
 } from '@mui/material';
-import CustomLootTable from '../common/CustomLootTable';
-import CustomSplitStackDialog from '../common/dialogs/CustomSplitStackDialog';
-import CustomUpdateDialog from '../common/dialogs/CustomUpdateDialog';
-import useLootManagement from '../../hooks/useLootManagement';
+import CustomLootTable from '../../common/CustomLootTable';
+import CustomSplitStackDialog from '../../common/dialogs/CustomSplitStackDialog';
+import CustomUpdateDialog from '../../common/dialogs/CustomUpdateDialog';
+import useLootManagement from '../../../hooks/useLootManagement';
 
 const KeptParty = () => {
   const {
@@ -41,9 +41,6 @@ const KeptParty = () => {
 
   return (
     <Container maxWidth={false} component="main">
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Loot Kept by the Party</Typography>
-      </Paper>
       <CustomLootTable
         loot={loot.summary}
         individualLoot={loot.individual}
