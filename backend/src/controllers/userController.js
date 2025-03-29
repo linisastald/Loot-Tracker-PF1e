@@ -215,11 +215,6 @@ const updateCharacter = async (req, res) => {
   });
 };
 
-// Updated validation rule
-const updateCharacterValidation = {
-  requiredFields: ['id']
-};
-
 /**
  * Get user by ID
  */
