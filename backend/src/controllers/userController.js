@@ -175,7 +175,7 @@ const updateCharacter = async (req, res) => {
     throw controllerFactory.createNotFoundError('Character not found or you do not have permission to update it');
   }
 
-  // Check for name uniqueness (excluding this character)
+  // Check for name uniqueness (excluding this character) only if name is provided
   if (name && name !== characterCheck.rows[0].name) {
     const existingNameCheck = await dbUtils.executeQuery(
       'SELECT * FROM characters WHERE name = $1 AND id != $2',
@@ -210,9 +210,14 @@ const updateCharacter = async (req, res) => {
       ]
     );
 
-    logger.info(`Character "${name}" updated for user ID ${userId}`);
+    logger.info(`Character ID ${id} updated for user ID ${userId}`);
     controllerFactory.sendSuccessResponse(res, result.rows[0], 'Character updated successfully');
   });
+};
+
+// Updated validation rule
+const updateCharacterValidation = {
+  requiredFields: ['id']
 };
 
 /**
@@ -434,7 +439,7 @@ const addCharacterValidation = {
 };
 
 const updateCharacterValidation = {
-  requiredFields: ['id', 'name']
+  requiredFields: ['id']
 };
 
 const resetPasswordValidation = {
