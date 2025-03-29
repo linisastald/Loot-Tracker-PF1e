@@ -30,11 +30,11 @@ import {
 import {
   Add as AddIcon,
   Edit as EditIcon,
-  Skull as SkullIcon,
   Check as CheckIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon
 } from '@mui/icons-material';
+import HeartBrokenIcon from '@mui/icons-material/HeartBroken';
 
 const CharacterTab = () => {
   const [characters, setCharacters] = useState([]);
@@ -294,7 +294,7 @@ const CharacterTab = () => {
                           onClick={() => handleKillCharacter(character)}
                           disabled={character.deathday !== null && character.deathday !== ''}
                         >
-                          <SkullIcon />
+                          <HeartBrokenIcon />
                         </IconButton>
                       </Tooltip>
                     </Box>
