@@ -408,7 +408,7 @@ const CharacterTab = () => {
             onClick={confirmKillCharacter}
             variant="contained"
             color="error"
-            startIcon={<SkullIcon />}
+            startIcon={<HeartBrokenIcon />}
           >
             Confirm Death
           </Button>
