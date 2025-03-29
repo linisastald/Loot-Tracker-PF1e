@@ -434,7 +434,11 @@ const Tasks = () => {
                   <Box display="flex" alignItems="center">
                     <Checkbox
                       checked={selectedCharacters[char.id] || false}
-                      onChange={() => handleToggle(char.id)}
+                      onChange={(e) => {
+                        e.stopPropagation();  // Prevent the click from bubbling to the parent
+                        handleToggle(char.id);
+                      }}
+                      onClick={(e) => e.stopPropagation()}  // Prevent the click from triggering the parent onClick
                       sx={{ p: 0.5, mr: 1 }}
                     />
                     {char.name}
