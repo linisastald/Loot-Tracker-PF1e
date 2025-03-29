@@ -11,10 +11,24 @@ import {
   FormGroup,
   FormControlLabel,
   Box,
-  Snackbar
+  Snackbar,
+  Alert,
+  Card,
+  CardContent,
+  Divider,
+  Grid,
+  Checkbox,
+  Chip,
+  Tooltip,
+  IconButton
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import PersonIcon from '@mui/icons-material/Person';
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
+import { grey } from '@mui/material/colors';
 
 const COLORS = {
   PRE_SESSION: 8311585,  // Purple
@@ -33,12 +47,68 @@ const CompactListItemText = styled(ListItemText)(({ theme }) => ({
   },
 }));
 
+const StyledCard = styled(Card)(({ theme }) => ({
+  marginBottom: theme.spacing(3),
+  borderRadius: theme.shape.borderRadius,
+  boxShadow: theme.shadows[3],
+  transition: 'transform 0.2s, box-shadow 0.2s',
+  overflow: 'hidden',
+  '&:hover': {
+    boxShadow: theme.shadows[6],
+    transform: 'translateY(-2px)',
+  },
+}));
+
+const StyledCardHeader = styled(Box)(({ theme, color }) => ({
+  padding: theme.spacing(2),
+  backgroundColor: color,
+  color: theme.palette.getContrastText(color),
+  display: 'flex',
+  alignItems: 'center',
+  '& svg': {
+    marginRight: theme.spacing(1),
+  },
+}));
+
+const CharacterSelector = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(1),
+  margin: theme.spacing(2, 0),
+}));
+
+const CharacterChip = styled(Box)(({ theme, selected, late }) => ({
+  padding: theme.spacing(1, 2),
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: selected
+    ? (late ? theme.palette.warning.light : theme.palette.primary.main)
+    : theme.palette.action.disabledBackground,
+  color: selected
+    ? theme.palette.primary.contrastText
+    : theme.palette.text.primary,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  cursor: 'pointer',
+  transition: 'background-color 0.3s, transform 0.2s',
+  '&:hover': {
+    backgroundColor: selected
+      ? (late ? theme.palette.warning.main : theme.palette.primary.dark)
+      : theme.palette.action.hover,
+    transform: 'translateY(-1px)',
+  },
+}));
+
 const Tasks = () => {
   const [activeCharacters, setActiveCharacters] = useState([]);
   const [selectedCharacters, setSelectedCharacters] = useState({});
+  const [lateArrivals, setLateArrivals] = useState({});
   const [assignedTasks, setAssignedTasks] = useState(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [alert, setAlert] = useState({ show: false, severity: 'info', message: '' });
+  const [discordSendFailed, setDiscordSendFailed] = useState(false);
+  const [lastTaskAssignment, setLastTaskAssignment] = useState(null);
 
   useEffect(() => {
     fetchActiveCharacters();
@@ -53,6 +123,11 @@ const Tasks = () => {
         return acc;
       }, {});
       setSelectedCharacters(initialSelectedState);
+      const initialLateState = response.data.reduce((acc, char) => {
+        acc[char.id] = false;
+        return acc;
+      }, {});
+      setLateArrivals(initialLateState);
     } catch (error) {
       console.error('Error fetching active characters:', error);
       showSnackbar('Error fetching active characters');
@@ -61,6 +136,10 @@ const Tasks = () => {
 
   const handleToggle = (id) => {
     setSelectedCharacters(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleToggleLateArrival = (id) => {
+    setLateArrivals(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const createEmbed = (title, description, fields, color) => ({
@@ -92,108 +171,176 @@ const Tasks = () => {
   };
 
   const assignTasks = async () => {
-    const selectedChars = activeCharacters.filter(char => selectedCharacters[char.id]);
+    try {
+      setDiscordSendFailed(false);
 
-    const preTasks = [
-      'Get Dice Trays',
-      'Put Initiative name tags on tracker',
-      'Wipe TV',
-      'Recap'
-    ];
-    if (selectedChars.length >= 6) {
-      preTasks.push('Bring in extra chairs if needed');
-    }
+      const selectedChars = activeCharacters.filter(char => selectedCharacters[char.id]);
 
-    const duringTasks = [
-      'Calendar Master',
-      'Loot Master',
-      'Lore Master',
-      'Battle Master',
-      'Rule Master',
-      'Inspiration Master'
-    ];
-
-    const postTasks = [
-      'Food, Drink, and Trash Clear Check',
-      'TV(s) off and windows shut and locked',
-      'Dice Trays and Books put away',
-      'Clean Initiative tracker and put away name labels',
-      'Chairs pushed in and extra chairs put back',
-      'Post Discord Reminders',
-      'Ensure no duplicate snacks for next session'
-    ];
-
-    const assignTasksToChars = (tasks, chars) => {
-      const charCount = chars.length;
-      let adjustedTasks = [...tasks];
-
-      if (tasks.length === charCount) {
-        adjustedTasks = shuffleArray(adjustedTasks);
-      } else if (tasks.length > charCount) {
-        while (adjustedTasks.length < charCount * 2) {
-          adjustedTasks.push('Free Space');
-        }
-        adjustedTasks = shuffleArray(adjustedTasks);
-      } else {
-        while (adjustedTasks.length < charCount) {
-          adjustedTasks.push('Free Space');
-        }
-        adjustedTasks = shuffleArray(adjustedTasks);
+      if (selectedChars.length === 0) {
+        setAlert({
+          show: true,
+          severity: 'warning',
+          message: 'Please select at least one character to assign tasks'
+        });
+        return;
       }
 
-      const assigned = {};
-      chars.forEach(char => {
-        assigned[char.name] = [];
+      // Get non-late arrivals for pre-session tasks
+      const onTimeChars = selectedChars.filter(char => !lateArrivals[char.id]);
+
+      const preTasks = [
+        'Get Dice Trays',
+        'Put Initiative name tags on tracker',
+        'Wipe TV',
+        'Recap'
+      ];
+      if (selectedChars.length >= 6) {
+        preTasks.push('Bring in extra chairs if needed');
+      }
+
+      const duringTasks = [
+        'Calendar Master',
+        'Loot Master',
+        'Lore Master',
+        'Battle Master',
+        'Rule Master',
+        'Inspiration Master'
+      ];
+
+      const postTasks = [
+        'Food, Drink, and Trash Clear Check',
+        'TV(s) off and windows shut and locked',
+        'Dice Trays and Books put away',
+        'Clean Initiative tracker and put away name labels',
+        'Chairs pushed in and extra chairs put back',
+        'Post Discord Reminders',
+        'Ensure no duplicate snacks for next session'
+      ];
+
+      const assignTasksToChars = (tasks, chars) => {
+        if (chars.length === 0) return {};
+
+        const charCount = chars.length;
+        let adjustedTasks = [...tasks];
+
+        if (tasks.length === charCount) {
+          adjustedTasks = shuffleArray(adjustedTasks);
+        } else if (tasks.length > charCount) {
+          while (adjustedTasks.length < charCount * 2) {
+            adjustedTasks.push('Free Space');
+          }
+          adjustedTasks = shuffleArray(adjustedTasks);
+        } else {
+          while (adjustedTasks.length < charCount) {
+            adjustedTasks.push('Free Space');
+          }
+          adjustedTasks = shuffleArray(adjustedTasks);
+        }
+
+        const assigned = {};
+        chars.forEach(char => {
+          assigned[char.name] = [];
+        });
+
+        adjustedTasks.forEach((task, index) => {
+          const charName = chars[index % charCount].name;
+          assigned[charName].push(task);
+        });
+
+        return assigned;
+      };
+
+      const postChars = [...selectedChars, { id: 'DM', name: 'DM' }];
+
+      const newAssignedTasks = {
+        pre: assignTasksToChars(preTasks, onTimeChars),
+        during: assignTasksToChars(duringTasks, selectedChars),
+        post: assignTasksToChars(postTasks, postChars)
+      };
+
+      setAssignedTasks(newAssignedTasks);
+      setLastTaskAssignment(newAssignedTasks);
+
+      // Send tasks to Discord
+      try {
+        const preSessionEmbed = createEmbed(
+          "Pre-Session Tasks:",
+          "",
+          formatTasksForEmbed(newAssignedTasks.pre),
+          COLORS.PRE_SESSION
+        );
+
+        const duringSessionEmbed = createEmbed(
+          "During Session Tasks:",
+          "",
+          formatTasksForEmbed(newAssignedTasks.during),
+          COLORS.DURING_SESSION
+        );
+
+        const postSessionEmbed = createEmbed(
+          "Post-Session Tasks:",
+          "",
+          formatTasksForEmbed(newAssignedTasks.post),
+          COLORS.POST_SESSION
+        );
+
+        const embeds = [preSessionEmbed, duringSessionEmbed, postSessionEmbed];
+
+        await api.post('/discord/send-message', { embeds });
+        showSnackbar('Tasks assigned and sent to Discord successfully!');
+        setDiscordSendFailed(false);
+      } catch (error) {
+        console.error('Error sending tasks to Discord:', error);
+        showSnackbar('Tasks assigned, but failed to send to Discord. You can try again.');
+        setDiscordSendFailed(true);
+      }
+    } catch (error) {
+      console.error('Error assigning tasks:', error);
+      setAlert({
+        show: true,
+        severity: 'error',
+        message: 'Error assigning tasks. Please try again.'
       });
+    }
+  };
 
-      adjustedTasks.forEach((task, index) => {
-        const charName = chars[index % charCount].name;
-        assigned[charName].push(task);
-      });
+  const retrySendToDiscord = async () => {
+    if (!lastTaskAssignment) {
+      showSnackbar('No tasks to send to Discord');
+      return;
+    }
 
-      return assigned;
-    };
-
-    const postChars = [...selectedChars, { id: 'DM', name: 'DM' }];
-
-    const newAssignedTasks = {
-      pre: assignTasksToChars(preTasks, selectedChars),
-      during: assignTasksToChars(duringTasks, selectedChars),
-      post: assignTasksToChars(postTasks, postChars)
-    };
-
-    setAssignedTasks(newAssignedTasks);
-
-    // Send tasks to Discord
     try {
       const preSessionEmbed = createEmbed(
         "Pre-Session Tasks:",
         "",
-        formatTasksForEmbed(newAssignedTasks.pre),
+        formatTasksForEmbed(lastTaskAssignment.pre),
         COLORS.PRE_SESSION
       );
 
       const duringSessionEmbed = createEmbed(
         "During Session Tasks:",
         "",
-        formatTasksForEmbed(newAssignedTasks.during),
+        formatTasksForEmbed(lastTaskAssignment.during),
         COLORS.DURING_SESSION
       );
 
       const postSessionEmbed = createEmbed(
         "Post-Session Tasks:",
         "",
-        formatTasksForEmbed(newAssignedTasks.post),
+        formatTasksForEmbed(lastTaskAssignment.post),
         COLORS.POST_SESSION
       );
 
       const embeds = [preSessionEmbed, duringSessionEmbed, postSessionEmbed];
 
       await api.post('/discord/send-message', { embeds });
-      showSnackbar('Tasks assigned and sent to Discord successfully!');
+      showSnackbar('Tasks sent to Discord successfully!');
+      setDiscordSendFailed(false);
     } catch (error) {
       console.error('Error sending tasks to Discord:', error);
-      showSnackbar('Tasks assigned, but failed to send to Discord. Please try again.');
+      showSnackbar('Failed to send to Discord. You can try again.');
+      setDiscordSendFailed(true);
     }
   };
 
@@ -232,39 +379,189 @@ const Tasks = () => {
     setSnackbarOpen(false);
   };
 
+  const handleAlertClose = () => {
+    setAlert({ ...alert, show: false });
+  };
+
+  const getCharacterCount = () => {
+    return activeCharacters.filter(char => selectedCharacters[char.id]).length;
+  };
+
+  const getLateArrivalsCount = () => {
+    return activeCharacters.filter(char => selectedCharacters[char.id] && lateArrivals[char.id]).length;
+  };
+
   return (
-    <Container maxWidth={false} component="main">
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6">Task Assignment</Typography>
-        <FormGroup>
-          {activeCharacters.map((char) => (
-            <FormControlLabel
-              key={char.id}
-              control={<Switch checked={selectedCharacters[char.id] || false} onChange={() => handleToggle(char.id)} />}
-              label={char.name}
-            />
-          ))}
-        </FormGroup>
-        <Button variant="outlined" onClick={assignTasks} sx={{ mt: 2 }}>Assign Tasks and Send to Discord</Button>
+    <Container maxWidth="lg" component="main">
+      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }} elevation={3}>
+        <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', mb: 2, fontWeight: 'bold' }}>
+          <FormatListBulletedIcon sx={{ mr: 1 }} color="primary" />
+          Session Task Assignments
+        </Typography>
+
+        {alert.show && (
+          <Alert
+            severity={alert.severity}
+            sx={{ mb: 2 }}
+            onClose={handleAlertClose}
+          >
+            {alert.message}
+          </Alert>
+        )}
+
+        <Typography variant="body1" paragraph>
+          Select which characters will be present for the session. You can mark players who will arrive late
+          to exclude them from pre-session tasks.
+        </Typography>
+
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <CharacterSelector>
+              <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <PersonIcon sx={{ mr: 1 }} color="primary" />
+                Characters ({getCharacterCount()} selected, {getLateArrivalsCount()} arriving late)
+              </Typography>
+
+              {activeCharacters.map((char) => (
+                <CharacterChip
+                  key={char.id}
+                  selected={selectedCharacters[char.id]}
+                  late={lateArrivals[char.id] && selectedCharacters[char.id]}
+                  onClick={() => handleToggle(char.id)}
+                >
+                  <Box display="flex" alignItems="center">
+                    <Checkbox
+                      checked={selectedCharacters[char.id] || false}
+                      onChange={() => handleToggle(char.id)}
+                      sx={{ p: 0.5, mr: 1 }}
+                    />
+                    {char.name}
+                    {selectedCharacters[char.id] && lateArrivals[char.id] && (
+                      <Chip
+                        size="small"
+                        icon={<AccessTimeIcon />}
+                        label="Late"
+                        sx={{ ml: 1 }}
+                        color="warning"
+                      />
+                    )}
+                  </Box>
+                  {selectedCharacters[char.id] && (
+                    <Tooltip title="Mark as arriving late">
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={lateArrivals[char.id] || false}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleToggleLateArrival(char.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        }
+                        label={<Typography variant="caption">Late</Typography>}
+                        sx={{ m: 0 }}
+                      />
+                    </Tooltip>
+                  )}
+                </CharacterChip>
+              ))}
+            </CharacterSelector>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                justifyContent: 'center',
+                alignItems: 'center',
+                p: 3,
+                backgroundColor: grey[900],
+                borderRadius: 2
+              }}
+            >
+              <Typography variant="h6" gutterBottom>
+                Ready to assign tasks?
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary" paragraph sx={{ textAlign: 'center' }}>
+                Tasks will be randomly assigned to selected characters.
+                Late arrivals will not receive pre-session tasks.
+              </Typography>
+
+              <Button
+                variant="contained"
+                color="primary"
+                fullWidth
+                size="large"
+                onClick={assignTasks}
+                sx={{ mt: 2, py: 1.5, fontWeight: 'bold' }}
+              >
+                Assign Tasks and Send to Discord
+              </Button>
+
+              {discordSendFailed && (
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  fullWidth
+                  size="large"
+                  onClick={retrySendToDiscord}
+                  startIcon={<RefreshIcon />}
+                  sx={{ mt: 2 }}
+                >
+                  Retry Sending to Discord
+                </Button>
+              )}
+            </Box>
+          </Grid>
+        </Grid>
       </Paper>
 
       {assignedTasks && (
-        <>
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Typography variant="h6">Pre-Session Tasks</Typography>
-            {renderTaskList(assignedTasks.pre)}
-          </Paper>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={4}>
+            <StyledCard>
+              <StyledCardHeader color="#673AB7">
+                <Typography variant="h6">Pre-Session Tasks</Typography>
+              </StyledCardHeader>
+              <CardContent>
+                {Object.keys(assignedTasks.pre).length > 0 ? (
+                  renderTaskList(assignedTasks.pre)
+                ) : (
+                  <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                    No pre-session tasks assigned. All selected players are marked as arriving late.
+                  </Typography>
+                )}
+              </CardContent>
+            </StyledCard>
+          </Grid>
 
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Typography variant="h6">During Session Tasks</Typography>
-            {renderTaskList(assignedTasks.during)}
-          </Paper>
+          <Grid item xs={12} md={4}>
+            <StyledCard>
+              <StyledCardHeader color="#FFC107">
+                <Typography variant="h6">During Session Tasks</Typography>
+              </StyledCardHeader>
+              <CardContent>
+                {renderTaskList(assignedTasks.during)}
+              </CardContent>
+            </StyledCard>
+          </Grid>
 
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Typography variant="h6">Post-Session Tasks</Typography>
-            {renderTaskList(assignedTasks.post)}
-          </Paper>
-        </>
+          <Grid item xs={12} md={4}>
+            <StyledCard>
+              <StyledCardHeader color="#F44336">
+                <Typography variant="h6">Post-Session Tasks</Typography>
+              </StyledCardHeader>
+              <CardContent>
+                {renderTaskList(assignedTasks.post)}
+              </CardContent>
+            </StyledCard>
+          </Grid>
+        </Grid>
       )}
 
       <Snackbar
