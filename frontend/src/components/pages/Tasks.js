@@ -493,7 +493,7 @@ const Tasks = () => {
               </Typography>
 
               <Button
-                variant="contained"
+                variant="outlined"
                 color="primary"
                 fullWidth
                 size="large"
