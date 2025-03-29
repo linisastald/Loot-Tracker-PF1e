@@ -62,7 +62,7 @@ def connect_to_db(port):
 
 
 def get_db_structure(conn):
-    structure = {'tables': {}, 'indexes': {}}
+    structure = {'tables': {}, 'indexes': {}, 'column_details': {}}
 
     try:
         with conn.cursor() as cur:
@@ -76,7 +76,9 @@ def get_db_structure(conn):
             for table, column, data_type in cur.fetchall():
                 if table not in structure['tables']:
                     structure['tables'][table] = []
+                    structure['column_details'][table] = {}
                 structure['tables'][table].append((column, data_type))
+                structure['column_details'][table][column] = data_type
 
             # Get indexes
             cur.execute("""
@@ -109,20 +111,32 @@ def compare_structures(master, copy):
     # Check for missing columns
     for table in master['tables']:
         if table in copy['tables']:
-            master_columns = set(master['tables'][table])
-            copy_columns = set(copy['tables'][table])
-            missing_columns = master_columns - copy_columns
-            if missing_columns:
-                differences['missing_columns'][table] = list(missing_columns)
+            master_columns = set(col for col, _ in master['tables'][table])
+            copy_columns = set(col for col, _ in copy['tables'][table])
+            missing_column_names = master_columns - copy_columns
+            if missing_column_names:
+                differences['missing_columns'][table] = []
+                for col_name in missing_column_names:
+                    # Find the data type for this column
+                    for col, data_type in master['tables'][table]:
+                        if col == col_name:
+                            differences['missing_columns'][table].append((col, data_type))
+                            break
 
     # Check for missing indexes
     for table in master['indexes']:
         if table in copy['indexes']:
-            master_indexes = set(master['indexes'][table])
-            copy_indexes = set(copy['indexes'][table])
-            missing_indexes = master_indexes - copy_indexes
-            if missing_indexes:
-                differences['missing_indexes'][table] = list(missing_indexes)
+            master_indexes = set(idx_name for idx_name, _ in master['indexes'][table])
+            copy_indexes = set(idx_name for idx_name, _ in copy['indexes'][table])
+            missing_index_names = master_indexes - copy_indexes
+            if missing_index_names:
+                differences['missing_indexes'][table] = []
+                for idx_name in missing_index_names:
+                    # Find the index definition for this index
+                    for name, defn in master['indexes'][table]:
+                        if name == idx_name:
+                            differences['missing_indexes'][table].append((name, defn))
+                            break
         elif table not in differences['missing_tables']:
             differences['missing_indexes'][table] = master['indexes'][table]
 
@@ -162,13 +176,58 @@ def generate_update_sql(differences, master_structure):
         for column, data_type in columns:
             # Fix array type notation for column additions too
             fixed_data_type = fix_array_datatype(data_type)
-            sql_statements.append(f"ALTER TABLE {table} ADD COLUMN {column} {fixed_data_type};")
+            sql_statements.append(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {fixed_data_type};")
 
     for table, indexes in differences['missing_indexes'].items():
-        for _, indexdef in indexes:
-            sql_statements.append(indexdef + ";")
+        for index_name, indexdef in indexes:
+            # For indexes, we'll check if they exist first to avoid errors
+            sql_statements.append(f"""
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes 
+        WHERE schemaname = 'public' 
+        AND indexname = '{index_name}'
+    ) THEN
+        {indexdef};
+    END IF;
+END
+$$;
+""")
 
     return "\n".join(sql_statements)
+
+
+def execute_sql_statements(conn, sql):
+    """
+    Execute SQL statements one by one with proper error handling
+    """
+    errors = []
+    with conn.cursor() as cur:
+        statements = [s.strip() for s in sql.split(';') if s.strip()]
+
+        for i, statement in enumerate(statements):
+            try:
+                print(f"Executing statement {i + 1}/{len(statements)}")
+                cur.execute(statement + ';')
+            except psycopg2.Error as e:
+                print(f"Error executing: {statement}")
+                print(f"Error message: {e}")
+                errors.append((statement, str(e)))
+                # Don't break on error, continue with next statement
+
+    if not errors:
+        conn.commit()
+        print("All statements executed successfully.")
+        return True
+    else:
+        conn.rollback()
+        print(f"Encountered {len(errors)} errors. Rolling back.")
+        for stmt, err in errors:
+            print(f"Statement: {stmt}")
+            print(f"Error: {err}")
+            print("-" * 50)
+        return False
 
 
 def main():
@@ -211,16 +270,11 @@ def main():
 
             confirm = input(f"\nDo you want to apply these changes to the copy database ({container_name})? (y/n): ")
             if confirm.lower() == 'y':
-                try:
-                    with copy_conn.cursor() as cur:
-                        for sql_statement in update_sql.split(';'):
-                            if sql_statement.strip():
-                                cur.execute(sql_statement + ';')
-                    copy_conn.commit()
+                success = execute_sql_statements(copy_conn, update_sql)
+                if success:
                     print("Changes applied successfully.")
-                except psycopg2.Error as e:
-                    print(f"Error applying changes: {e}")
-                    copy_conn.rollback()
+                else:
+                    print("Some errors occurred while applying changes. Please check the output above.")
             else:
                 print("Changes not applied.")
 
