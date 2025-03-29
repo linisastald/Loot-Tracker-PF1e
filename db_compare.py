@@ -71,10 +71,10 @@ def get_docker_container_ids(config):
                         containers.append((container_id, name))
         return containers
     except subprocess.CalledProcessError as e:
-        logger.error(f"Error running docker command: {e}")
+        logger.error("Error running docker command: {}".format(e))
         return []
     except Exception as e:
-        logger.error(f"Unexpected error in get_docker_container_ids: {e}")
+        logger.error("Unexpected error in get_docker_container_ids: {}".format(e))
         return []
 
 
@@ -94,15 +94,16 @@ def get_container_port(container_id):
                     return port_match.group(1)
 
             if attempt < max_retries - 1:
-                logger.warning(f"Retry {attempt + 1}/{max_retries} getting port for container {container_id}")
+                logger.warning(
+                    "Retry {}/{} getting port for container {}".format(attempt + 1, max_retries, container_id))
                 time.sleep(retry_delay)
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error getting port for container {container_id}: {e}")
+            logger.error("Error getting port for container {}: {}".format(container_id, e))
             if attempt < max_retries - 1:
-                logger.warning(f"Retry {attempt + 1}/{max_retries}")
+                logger.warning("Retry {}/{}".format(attempt + 1, max_retries))
                 time.sleep(retry_delay)
         except Exception as e:
-            logger.error(f"Unexpected error in get_container_port: {e}")
+            logger.error("Unexpected error in get_container_port: {}".format(e))
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
 
@@ -125,23 +126,24 @@ def db_connection(host, port, dbname, user, password, connection_name="DB"):
                 user=user,
                 password=password
             )
-            logger.info(f"Connected to {connection_name} on port {port}")
+            logger.info("Connected to {} on port {}".format(connection_name, port))
             break
         except psycopg2.Error as e:
-            logger.error(f"Attempt {attempt + 1}/{max_retries}: Unable to connect to {connection_name}: {e}")
+            logger.error(
+                "Attempt {}/{}: Unable to connect to {}: {}".format(attempt + 1, max_retries, connection_name, e))
             if attempt < max_retries - 1:
-                logger.info(f"Retrying in {retry_delay} seconds...")
+                logger.info("Retrying in {} seconds...".format(retry_delay))
                 time.sleep(retry_delay)
 
     if conn is None:
-        logger.error(f"Failed to connect to {connection_name} after {max_retries} attempts")
+        logger.error("Failed to connect to {} after {} attempts".format(connection_name, max_retries))
         yield None
     else:
         try:
             yield conn
         finally:
             conn.close()
-            logger.debug(f"Closed connection to {connection_name}")
+            logger.debug("Closed connection to {}".format(connection_name))
 
 
 def get_db_structure(conn):
@@ -175,7 +177,7 @@ def get_db_structure(conn):
                     structure['indexes'][table] = []
                 structure['indexes'][table].append((index, indexdef))
     except psycopg2.Error as e:
-        logger.error(f"Error fetching database structure: {e}")
+        logger.error("Error fetching database structure: {}".format(e))
 
     return structure
 
@@ -244,7 +246,7 @@ def fix_array_datatype(data_type):
         match = re.match(r'(.+)\s+ARRAY$', data_type)
         if match:
             base_type = match.group(1)
-            return f"{base_type}[]"
+            return "{}[]".format(base_type)
         elif '[' not in data_type:
             # Convert "type ARRAY" to "type[]"
             return data_type.replace('ARRAY', '[]')
@@ -255,7 +257,7 @@ def quote_identifier(identifier):
     """Safely quote a SQL identifier without needing a connection"""
     # This is a simplified version - PostgreSQL actually has more complex rules
     # but this covers most cases
-    return f'"{identifier.replace("\"", "\"\"")}"'
+    return '"' + identifier.replace('"', '""') + '"'
 
 
 def generate_update_sql(differences, master_structure):
@@ -272,11 +274,11 @@ def generate_update_sql(differences, master_structure):
             fixed_data_type = fix_array_datatype(data_type)
             # Properly quote column name
             quoted_column = quote_identifier(column)
-            column_definitions.append(f"{quoted_column} {fixed_data_type}")
+            column_definitions.append("{} {}".format(quoted_column, fixed_data_type))
 
         # Properly quote table name
         quoted_table = quote_identifier(table)
-        sql_statements.append(f"CREATE TABLE {quoted_table} ({', '.join(column_definitions)});")
+        sql_statements.append("CREATE TABLE {} ({});".format(quoted_table, ', '.join(column_definitions)))
 
     # Add missing columns
     for table, columns in differences['missing_columns'].items():
@@ -287,7 +289,7 @@ def generate_update_sql(differences, master_structure):
             quoted_table = quote_identifier(table)
             quoted_column = quote_identifier(column)
             sql_statements.append(
-                f"ALTER TABLE {quoted_table} ADD COLUMN IF NOT EXISTS {quoted_column} {fixed_data_type};")
+                "ALTER TABLE {} ADD COLUMN IF NOT EXISTS {} {};".format(quoted_table, quoted_column, fixed_data_type))
 
     # Create missing indexes
     for table, indexes in differences['missing_indexes'].items():
@@ -297,11 +299,11 @@ def generate_update_sql(differences, master_structure):
             if 'CREATE INDEX' in indexdef:
                 # Convert to CREATE INDEX IF NOT EXISTS
                 indexdef = indexdef.replace('CREATE INDEX', 'CREATE INDEX IF NOT EXISTS')
-                sql_statements.append(f"{indexdef};")
+                sql_statements.append("{};".format(indexdef))
             elif 'CREATE UNIQUE INDEX' in indexdef:
                 # Convert to CREATE UNIQUE INDEX IF NOT EXISTS
                 indexdef = indexdef.replace('CREATE UNIQUE INDEX', 'CREATE UNIQUE INDEX IF NOT EXISTS')
-                sql_statements.append(f"{indexdef};")
+                sql_statements.append("{};".format(indexdef))
 
     return sql_statements
 
@@ -319,24 +321,24 @@ def execute_sql_statements(conn, sql_statements):
             with conn.cursor() as cur:
                 for i, statement in enumerate(sql_statements):
                     try:
-                        logger.info(f"Executing statement {i + 1}/{len(sql_statements)}")
-                        logger.debug(f"SQL: {statement}")
+                        logger.info("Executing statement {}/{}".format(i + 1, len(sql_statements)))
+                        logger.debug("SQL: {}".format(statement))
                         cur.execute(statement)
                         executed += 1
                     except psycopg2.Error as e:
-                        logger.error(f"Error executing: {statement}")
-                        logger.error(f"Error message: {e}")
+                        logger.error("Error executing: {}".format(statement))
+                        logger.error("Error message: {}".format(e))
                         errors.append((statement, str(e)))
                         # We'll continue with the next statement, but the transaction will be rolled back later
                         raise
 
-        logger.info(f"All {executed} statements executed successfully.")
+        logger.info("All {} statements executed successfully.".format(executed))
         return True
     except Exception:
-        logger.error(f"Encountered errors. Transaction rolled back. {executed} statements were attempted.")
+        logger.error("Encountered errors. Transaction rolled back. {} statements were attempted.".format(executed))
         for stmt, err in errors:
-            logger.error(f"Statement: {stmt}")
-            logger.error(f"Error: {err}")
+            logger.error("Statement: {}".format(stmt))
+            logger.error("Error: {}".format(err))
             logger.error("-" * 50)
         return False
 
@@ -373,20 +375,21 @@ def main():
             sys.exit(0)
 
         for container_id, container_name in containers:
-            logger.info(f"\nProcessing container: {container_name}")
+            logger.info("\nProcessing container: {}".format(container_name))
             container_port = get_container_port(container_id)
 
             if not container_port:
-                logger.error(f"Unable to get port for container {container_name}. Skipping.")
+                logger.error("Unable to get port for container {}. Skipping.".format(container_name))
                 continue
 
             # Connect to copy database
             with db_connection(config['DB_HOST'], container_port, config['DB_NAME'],
-                               config['DB_USER'], config['DB_PASSWORD'], f"Copy DB ({container_name})") as copy_conn:
+                               config['DB_USER'], config['DB_PASSWORD'],
+                               "Copy DB ({})".format(container_name)) as copy_conn:
                 if not copy_conn:
                     continue
 
-                logger.info(f"Fetching structure for copy database in container {container_name}...")
+                logger.info("Fetching structure for copy database in container {}...".format(container_name))
                 copy_structure = get_db_structure(copy_conn)
 
                 logger.info("Comparing database structures...")
@@ -397,13 +400,13 @@ def main():
                 else:
                     logger.info("Differences found:")
                     if differences['missing_tables']:
-                        logger.info(f"Missing tables: {', '.join(differences['missing_tables'])}")
+                        logger.info("Missing tables: {}".format(', '.join(differences['missing_tables'])))
                     if differences['missing_columns']:
                         for table, cols in differences['missing_columns'].items():
-                            logger.info(f"Missing columns in {table}: {', '.join(col for col, _ in cols)}")
+                            logger.info("Missing columns in {}: {}".format(table, ', '.join(col for col, _ in cols)))
                     if differences['missing_indexes']:
                         for table, idxs in differences['missing_indexes'].items():
-                            logger.info(f"Missing indexes in {table}: {', '.join(idx for idx, _ in idxs)}")
+                            logger.info("Missing indexes in {}: {}".format(table, ', '.join(idx for idx, _ in idxs)))
 
                     sql_statements = generate_update_sql(differences, master_structure)
 
@@ -415,7 +418,8 @@ def main():
                         logger.info("Dry run mode - SQL not executed.")
                     else:
                         confirm = input(
-                            f"\nDo you want to apply these changes to the copy database ({container_name})? (y/n): ")
+                            "\nDo you want to apply these changes to the copy database ({})? (y/n): ".format(
+                                container_name))
                         if confirm.lower() == 'y':
                             success = execute_sql_statements(copy_conn, sql_statements)
                             if success:
