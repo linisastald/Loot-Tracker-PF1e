@@ -5,6 +5,57 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 
 /**
+ * Change user email
+ */
+const changeEmail = async (req, res) => {
+  const { email, password } = req.body;
+  const userId = req.user.id;
+
+  // Get the user
+  const result = await dbUtils.executeQuery('SELECT * FROM users WHERE id = $1', [userId]);
+  const user = result.rows[0];
+
+  if (!user) {
+    throw controllerFactory.createNotFoundError('User not found');
+  }
+
+  // Validate email
+  if (!email) {
+    throw controllerFactory.createValidationError('Email is required');
+  }
+
+  // Validate email format
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  if (!emailRegex.test(email)) {
+    throw controllerFactory.createValidationError('Please enter a valid email address');
+  }
+
+  // Check if email already exists (for other users)
+  const emailCheck = await dbUtils.executeQuery(
+    'SELECT * FROM users WHERE email = $1 AND id != $2',
+    [email, userId]
+  );
+  if (emailCheck.rows.length > 0) {
+    throw controllerFactory.createValidationError('Email already in use');
+  }
+
+  // Normalize the provided password before checking
+  const normalizedPassword = password.normalize('NFC');
+
+  // Check if password is correct
+  const isMatch = await bcrypt.compare(normalizedPassword, user.password);
+  if (!isMatch) {
+    throw controllerFactory.createValidationError('Current password is incorrect');
+  }
+
+  // Update the email
+  await dbUtils.executeQuery('UPDATE users SET email = $1 WHERE id = $2', [email, userId]);
+
+  logger.info(`Email changed for user ID ${userId}`);
+  controllerFactory.sendSuccessMessage(res, 'Email changed successfully');
+};
+
+/**
  * Change user password
  */
 const changePassword = async (req, res) => {
@@ -177,7 +228,7 @@ const getUserById = async (req, res) => {
 
   // Get the user (excluding password)
   const userResult = await dbUtils.executeQuery(
-    'SELECT id, username, role, joined FROM users WHERE id = $1',
+    'SELECT id, username, role, joined, email FROM users WHERE id = $1',
     [userId]
   );
 
@@ -342,7 +393,7 @@ const getAllUsers = async (req, res) => {
   }
 
   const users = await dbUtils.executeQuery(
-    'SELECT id, username, role, joined FROM users WHERE role != $1 ORDER BY username',
+    'SELECT id, username, role, joined, email FROM users WHERE role != $1 ORDER BY username',
     ['deleted']
   );
 
@@ -374,6 +425,10 @@ const changePasswordValidation = {
   requiredFields: ['oldPassword', 'newPassword']
 };
 
+const changeEmailValidation = {
+  requiredFields: ['email', 'password']
+};
+
 const addCharacterValidation = {
   requiredFields: ['name']
 };
@@ -396,6 +451,11 @@ const updateSettingValidation = {
 
 // Create handlers with validation and error handling
 module.exports = {
+  changeEmail: controllerFactory.createHandler(changeEmail, {
+    errorMessage: 'Error changing email',
+    validation: changeEmailValidation
+  }),
+
   changePassword: controllerFactory.createHandler(changePassword, {
     errorMessage: 'Error changing password',
     validation: changePasswordValidation

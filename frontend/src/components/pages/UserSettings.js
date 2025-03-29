@@ -4,30 +4,19 @@ import {
   Container,
   Paper,
   Typography,
-  Button,
   TextField,
-  Grid,
+  Button,
   Box,
-  Alert,
   Tabs,
   Tab,
-  Divider,
-  Switch,
-  FormControlLabel,
-  Select,
-  MenuItem,
-  InputLabel,
-  FormControl,
-  Card,
-  CardContent,
+  Alert,
+  Grid,
+  IconButton,
+  InputAdornment,
 } from '@mui/material';
-import PersonIcon from '@mui/icons-material/Person';
-import SecurityIcon from '@mui/icons-material/Security';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import CharacterTab from './UserSettings/CharacterTab';
 
-// Tab Panel component
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
 
@@ -35,100 +24,135 @@ function TabPanel(props) {
     <div
       role="tabpanel"
       hidden={value !== index}
-      id={`settings-tabpanel-${index}`}
-      aria-labelledby={`settings-tab-${index}`}
+      id={`simple-tabpanel-${index}`}
+      aria-labelledby={`simple-tab-${index}`}
       {...other}
     >
-      {value === index && (
-        <Box sx={{ p: 3 }}>
-          {children}
-        </Box>
-      )}
+      {value === index && <Box p={3}>{children}</Box>}
     </div>
   );
 }
 
 const UserSettings = () => {
-  // Tab state
-  const [activeTab, setActiveTab] = useState(0);
-
-  // Account settings state
+  const [user, setUser] = useState(null);
+  const [tabValue, setTabValue] = useState(0);
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // User preferences state
-  const [defaultLandingPage, setDefaultLandingPage] = useState('/loot-entry');
-  const [enableNotifications, setEnableNotifications] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-  const [defaultTableView, setDefaultTableView] = useState('summary');
+  // New state for email change form
+  const [currentEmail, setCurrentEmail] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [showEmailPassword, setShowEmailPassword] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [emailSuccess, setEmailSuccess] = useState('');
 
-  // Load user preferences on mount
   useEffect(() => {
-    // This would fetch user preferences from backend
-    const fetchUserPreferences = async () => {
-      try {
-        const response = await api.get('/user/preferences');
-        if (response.data) {
-          setDefaultLandingPage(response.data.defaultLandingPage || '/loot-entry');
-          setEnableNotifications(response.data.enableNotifications || false);
-          setDarkMode(response.data.darkMode || false);
-          setDefaultTableView(response.data.defaultTableView || 'summary');
-        }
-      } catch (error) {
-        console.error('Error fetching user preferences:', error);
-      }
-    };
-
-    fetchUserPreferences();
+    fetchUserData();
   }, []);
 
+  const fetchUserData = async () => {
+    try {
+      const response = await api.get('/auth/status');
+      if (response.data && response.data.user) {
+        setUser(response.data.user);
+        setCurrentEmail(response.data.user.email || '');
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    }
+  };
+
   const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
+    setTabValue(newValue);
   };
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
 
-    // Basic validation
+    if (!oldPassword) {
+      setPasswordError('Current password is required');
+      return;
+    }
+
+    if (!newPassword) {
+      setPasswordError('New password is required');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters long');
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match');
+      setPasswordError('New passwords do not match');
       return;
     }
 
     try {
-      await api.put('/user/change-password', { oldPassword, newPassword });
+      await api.put('/user/change-password', {
+        oldPassword,
+        newPassword
+      });
 
-      // Reset fields and show success message
+      setPasswordSuccess('Password changed successfully');
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setError('');
-      setSuccess('Password changed successfully');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Error changing password');
-      setSuccess('');
+    } catch (error) {
+      console.error('Error changing password:', error);
+      setPasswordError(error.response?.data?.message || 'Error changing password');
     }
   };
 
-  const handleSavePreferences = async () => {
+  // New function to handle email change
+  const handleChangeEmail = async (e) => {
+    e.preventDefault();
+    setEmailError('');
+    setEmailSuccess('');
+
+    // Validate email format
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!newEmail) {
+      setEmailError('New email is required');
+      return;
+    }
+
+    if (!emailRegex.test(newEmail)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    if (!emailPassword) {
+      setEmailError('Password is required to change email');
+      return;
+    }
+
     try {
-      await api.put('/user/preferences', {
-        defaultLandingPage,
-        enableNotifications,
-        darkMode,
-        defaultTableView
+      await api.put('/user/change-email', {
+        email: newEmail,
+        password: emailPassword
       });
 
-      setSuccess('Preferences saved successfully');
-      setError('');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Error saving preferences');
-      setSuccess('');
+      setEmailSuccess('Email changed successfully');
+      setCurrentEmail(newEmail);
+      setNewEmail('');
+      setEmailPassword('');
+
+      // Refresh user data to get updated email
+      fetchUserData();
+    } catch (error) {
+      console.error('Error changing email:', error);
+      setEmailError(error.response?.data?.message || 'Error changing email');
     }
   };
 
@@ -136,192 +160,185 @@ const UserSettings = () => {
     <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="h6">User Settings</Typography>
-
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mt: 2 }}>
-          <Tabs value={activeTab} onChange={handleTabChange} aria-label="settings tabs">
-            <Tab label="Account" icon={<SecurityIcon />} iconPosition="start" />
-            <Tab label="Preferences" icon={<PersonIcon />} iconPosition="start" />
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', width: '100%' }}>
+          <Tabs value={tabValue} onChange={handleTabChange} aria-label="user settings tabs">
+            <Tab label="Account Settings" />
             <Tab label="Characters" />
           </Tabs>
         </Box>
 
-        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
-
-        {/* Account Tab */}
-        <TabPanel value={activeTab} index={0}>
-          <Typography variant="h6" gutterBottom>Change Password</Typography>
-
-          <Grid container spacing={2} component="form" onSubmit={handleChangePassword}>
-            <Grid item xs={12}>
-              <TextField
-                label="Current Password"
-                type={showOldPassword ? 'text' : 'password'}
-                fullWidth
-                value={oldPassword}
-                onChange={(e) => setOldPassword(e.target.value)}
-                InputProps={{
-                  endAdornment: (
-                    <Button
-                      onClick={() => setShowOldPassword(!showOldPassword)}
-                      sx={{ minWidth: 'auto' }}
-                    >
-                      {showOldPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                    </Button>
-                  ),
-                }}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                label="New Password"
-                type={showNewPassword ? 'text' : 'password'}
-                fullWidth
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                InputProps={{
-                  endAdornment: (
-                    <Button
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      sx={{ minWidth: 'auto' }}
-                    >
-                      {showNewPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                    </Button>
-                  ),
-                }}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                label="Confirm New Password"
-                type="password"
-                fullWidth
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Button
-                variant="outlined"
-                color="primary"
-                type="submit"
-                disabled={!oldPassword || !newPassword || !confirmPassword}
-              >
-                Change Password
-              </Button>
-            </Grid>
-          </Grid>
-
-          <Divider sx={{ my: 4 }} />
-
-          <Typography variant="h6" gutterBottom>Account Information</Typography>
-
-          <Card sx={{ mb: 2 }}>
-            <CardContent>
-              <Typography variant="subtitle1">Connected Sessions</Typography>
-              <Typography variant="body2" color="text.secondary">
-                You can view and manage your active sessions here. This feature will be available in a future update.
-              </Typography>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <Typography variant="subtitle1">Export Account Data</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                You can export all your account data in various formats for backup purposes.
-              </Typography>
-              <Button variant="outlined" size="small" disabled>
-                Export Data (Coming Soon)
-              </Button>
-            </CardContent>
-          </Card>
-        </TabPanel>
-
-        {/* Preferences Tab */}
-        <TabPanel value={activeTab} index={1}>
-          <Typography variant="h6" gutterBottom>User Preferences</Typography>
-
-          <Grid container spacing={3}>
+        <TabPanel value={tabValue} index={0}>
+          <Grid container spacing={4}>
+            {/* Change Password Section */}
             <Grid item xs={12} md={6}>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel>Default Landing Page</InputLabel>
-                <Select
-                  value={defaultLandingPage}
-                  label="Default Landing Page"
-                  onChange={(e) => setDefaultLandingPage(e.target.value)}
-                >
-                  <MenuItem value="/loot-entry">Loot Entry</MenuItem>
-                  <MenuItem value="/loot-management">Loot Management</MenuItem>
-                  <MenuItem value="/gold-transactions">Gold Transactions</MenuItem>
-                  <MenuItem value="/calendar">Calendar</MenuItem>
-                </Select>
-              </FormControl>
-
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel>Default Table View</InputLabel>
-                <Select
-                  value={defaultTableView}
-                  label="Default Table View"
-                  onChange={(e) => setDefaultTableView(e.target.value)}
-                >
-                  <MenuItem value="summary">Summary View</MenuItem>
-                  <MenuItem value="detailed">Detailed View</MenuItem>
-                </Select>
-              </FormControl>
+              <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Change Password
+                </Typography>
+                {passwordError && <Alert severity="error" sx={{ mb: 2 }}>{passwordError}</Alert>}
+                {passwordSuccess && <Alert severity="success" sx={{ mb: 2 }}>{passwordSuccess}</Alert>}
+                <form onSubmit={handleChangePassword}>
+                  <TextField
+                    margin="normal"
+                    required
+                    fullWidth
+                    label="Current Password"
+                    type={showOldPassword ? 'text' : 'password'}
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            aria-label="toggle old password visibility"
+                            onClick={() => setShowOldPassword(!showOldPassword)}
+                            edge="end"
+                          >
+                            {showOldPassword ? <VisibilityOff /> : <Visibility />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <TextField
+                    margin="normal"
+                    required
+                    fullWidth
+                    label="New Password"
+                    type={showNewPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            aria-label="toggle new password visibility"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            edge="end"
+                          >
+                            {showNewPassword ? <VisibilityOff /> : <Visibility />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <TextField
+                    margin="normal"
+                    required
+                    fullWidth
+                    label="Confirm New Password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            aria-label="toggle confirm password visibility"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            edge="end"
+                          >
+                            {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <Button
+                    type="submit"
+                    variant="outlined"
+                    color="primary"
+                    sx={{ mt: 2 }}
+                  >
+                    Change Password
+                  </Button>
+                </form>
+              </Paper>
             </Grid>
 
+            {/* Change Email Section */}
             <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="subtitle1" gutterBottom>Display Settings</Typography>
-
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={darkMode}
-                        onChange={(e) => setDarkMode(e.target.checked)}
-                        color="primary"
-                      />
-                    }
-                    label="Dark Mode"
+              <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Change Email
+                </Typography>
+                {emailError && <Alert severity="error" sx={{ mb: 2 }}>{emailError}</Alert>}
+                {emailSuccess && <Alert severity="success" sx={{ mb: 2 }}>{emailSuccess}</Alert>}
+                <form onSubmit={handleChangeEmail}>
+                  <TextField
+                    margin="normal"
+                    fullWidth
+                    label="Current Email"
+                    value={currentEmail}
+                    disabled
                   />
-
-                  <Divider sx={{ my: 2 }} />
-
-                  <Typography variant="subtitle1" gutterBottom>Notifications</Typography>
-
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={enableNotifications}
-                        onChange={(e) => setEnableNotifications(e.target.checked)}
-                        color="primary"
-                      />
-                    }
-                    label="Enable Discord Notifications"
+                  <TextField
+                    margin="normal"
+                    required
+                    fullWidth
+                    label="New Email"
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
                   />
-                </CardContent>
-              </Card>
+                  <TextField
+                    margin="normal"
+                    required
+                    fullWidth
+                    label="Enter Password to Confirm"
+                    type={showEmailPassword ? 'text' : 'password'}
+                    value={emailPassword}
+                    onChange={(e) => setEmailPassword(e.target.value)}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            aria-label="toggle password visibility"
+                            onClick={() => setShowEmailPassword(!showEmailPassword)}
+                            edge="end"
+                          >
+                            {showEmailPassword ? <VisibilityOff /> : <Visibility />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <Button
+                    type="submit"
+                    variant="outlined"
+                    color="primary"
+                    sx={{ mt: 2 }}
+                  >
+                    Change Email
+                  </Button>
+                </form>
+              </Paper>
             </Grid>
 
+            {/* Account Information Section */}
             <Grid item xs={12}>
-              <Button
-                variant="outlined"
-                color="primary"
-                onClick={handleSavePreferences}
-              >
-                Save Preferences
-              </Button>
+              <Paper elevation={2} sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Account Information
+                </Typography>
+                {user && (
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle1">Username</Typography>
+                      <Typography variant="body1">{user.username}</Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle1">Role</Typography>
+                      <Typography variant="body1">{user.role}</Typography>
+                    </Grid>
+                  </Grid>
+                )}
+              </Paper>
             </Grid>
           </Grid>
         </TabPanel>
 
-        {/* Character Tab */}
-        <TabPanel value={activeTab} index={2}>
+        <TabPanel value={tabValue} index={1}>
           <CharacterTab />
         </TabPanel>
       </Paper>

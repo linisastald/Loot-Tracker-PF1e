@@ -10,7 +10,7 @@ require('dotenv').config();
  * Register a new user
  */
 const registerUser = async (req, res) => {
-  const { username, password, inviteCode } = req.body;
+  const { username, password, inviteCode, email } = req.body;
 
   // Check if registrations are open
   const regOpenResult = await dbUtils.executeQuery(
@@ -42,6 +42,26 @@ const registerUser = async (req, res) => {
     throw controllerFactory.createValidationError('Username already exists');
   }
 
+  // Validate email
+  if (!email) {
+    throw controllerFactory.createValidationError('Email is required');
+  }
+
+  // Validate email format
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  if (!emailRegex.test(email)) {
+    throw controllerFactory.createValidationError('Please enter a valid email address');
+  }
+
+  // Check if email already exists
+  const emailCheck = await dbUtils.executeQuery(
+    'SELECT * FROM users WHERE email = $1',
+    [email]
+  );
+  if (emailCheck.rows.length > 0) {
+    throw controllerFactory.createValidationError('Email already in use');
+  }
+
   // Validate password length
   if (!password || password.length < 8) {
     throw controllerFactory.createValidationError('Password must be at least 8 characters long');
@@ -64,8 +84,8 @@ const registerUser = async (req, res) => {
   return await dbUtils.executeTransaction(async (client) => {
     // Insert the user
     const result = await client.query(
-      'INSERT INTO users (username, password, role) VALUES ($1, $2, $3) RETURNING id, username, role, joined',
-      [username, hashedPassword, userRole]
+      'INSERT INTO users (username, password, role, email) VALUES ($1, $2, $3, $4) RETURNING id, username, role, joined, email',
+      [username, hashedPassword, userRole, email]
     );
     const user = result.rows[0];
 
@@ -96,7 +116,8 @@ const registerUser = async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        email: user.email
       }
     }, 'User registered successfully');
   });
@@ -184,6 +205,7 @@ const loginUser = async (req, res) => {
       id: user.id,
       username: user.username,
       role: user.role,
+      email: user.email,
       activeCharacterId
     }
   }, 'Login successful');
@@ -233,11 +255,20 @@ const getUserStatus = async (req, res) => {
     }
   }
 
+  // Get user details including email
+  const userResult = await dbUtils.executeQuery(
+    'SELECT id, username, role, email FROM users WHERE id = $1',
+    [req.user.id]
+  );
+
+  const userData = userResult.rows[0] || {};
+
   controllerFactory.sendSuccessResponse(res, {
     user: {
       id: req.user.id,
       username: req.user.username,
       role: req.user.role,
+      email: userData.email,
       activeCharacterId
     }
   }, 'User is authenticated');
@@ -253,7 +284,7 @@ const logoutUser = async (req, res) => {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict'
   });
-  
+
   controllerFactory.sendSuccessMessage(res, 'Logged out successfully');
 };
 
@@ -307,7 +338,7 @@ const refreshToken = async (req, res) => {
 
     // Check if user still exists and is active
     const userResult = await dbUtils.executeQuery(
-      'SELECT id, username, role FROM users WHERE id = $1 AND role NOT IN (\'deleted\')',
+      'SELECT id, username, role, email FROM users WHERE id = $1 AND role NOT IN (\'deleted\')',
       [decoded.id]
     );
 
@@ -347,7 +378,7 @@ const loginValidation = {
 };
 
 const registerValidation = {
-  requiredFields: ['username', 'password']
+  requiredFields: ['username', 'password', 'email']
 };
 
 // Use controllerFactory to create handler functions with standardized error handling

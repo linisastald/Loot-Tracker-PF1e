@@ -19,6 +19,7 @@ import { Visibility, VisibilityOff } from '@mui/icons-material';
 
 const Register = () => {
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('Player');
@@ -50,11 +51,27 @@ const Register = () => {
     checkRegistrationStatus();
   }, []);
 
+  // Email validation function
+  const validateEmail = (email) => {
+    const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return re.test(email);
+  };
+
   const handleRegister = async () => {
     try {
       // Basic validation
       if (!username) {
         setError('Username is required');
+        return;
+      }
+
+      if (!email) {
+        setError('Email is required');
+        return;
+      }
+
+      if (!validateEmail(email)) {
+        setError('Please enter a valid email address');
         return;
       }
 
@@ -73,7 +90,7 @@ const Register = () => {
         return;
       }
 
-      const response = await api.post(`/auth/register`, { username, password, role });
+      const response = await api.post(`/auth/register`, { username, email, password, role });
       localStorage.setItem('token', response.data.token);
       navigate('/user-settings');
     } catch (err) {
@@ -120,6 +137,17 @@ const Register = () => {
           autoFocus
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+        <TextField
+          variant="outlined"
+          margin="normal"
+          required
+          fullWidth
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           onKeyDown={handleKeyDown}
         />
         <TextField
