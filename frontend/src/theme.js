@@ -16,34 +16,34 @@ const theme = createTheme({
     primary: {
       main: '#5c8db8', // Muted blue
       light: '#829ebd',
-      dark: '#012d53',
+      dark: '#3a6991',
       contrastText: '#121212',
     },
     secondary: {
       main: '#c77a9e', // Muted pink
       light: '#d297b4',
-      dark: '#42001d',
+      dark: '#a55a7e',
       contrastText: '#121212',
     },
     error: {
       main: '#f44336',
       light: '#e57373',
-      dark: '#8c0000',
+      dark: '#d32f2f',
     },
     warning: {
       main: '#ff9800',
       light: '#ffb74d',
-      dark: '#6c3600',
+      dark: '#f57c00',
     },
     info: {
       main: '#2196f3',
       light: '#64b5f6',
-      dark: '#21303c',
+      dark: '#1976d2',
     },
     success: {
       main: '#4caf50',
       light: '#81c784',
-      dark: '#1f4220',
+      dark: '#388e3c',
     },
     background: {
       default: '#121212',
