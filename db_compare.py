@@ -55,7 +55,6 @@ def load_config():
     return config
 
 
-@contextmanager
 def get_docker_container_ids(config):
     """Get IDs of all running containers matching the filter"""
     try:
@@ -70,13 +69,13 @@ def get_docker_container_ids(config):
                     container_id, name = parts[0], parts[1]
                     if config['CONTAINER_FILTER'] in name:
                         containers.append((container_id, name))
-        yield containers
+        return containers
     except subprocess.CalledProcessError as e:
         logger.error(f"Error running docker command: {e}")
-        yield []
+        return []
     except Exception as e:
         logger.error(f"Unexpected error in get_docker_container_ids: {e}")
-        yield []
+        return []
 
 
 def get_container_port(container_id):
@@ -252,6 +251,13 @@ def fix_array_datatype(data_type):
     return data_type
 
 
+def quote_identifier(identifier):
+    """Safely quote a SQL identifier without needing a connection"""
+    # This is a simplified version - PostgreSQL actually has more complex rules
+    # but this covers most cases
+    return f'"{identifier.replace("\"", "\"\"")}"'
+
+
 def generate_update_sql(differences, master_structure):
     """Generate SQL statements to update the copy database"""
     sql_statements = []
@@ -265,11 +271,11 @@ def generate_update_sql(differences, master_structure):
             # Fix array type notation
             fixed_data_type = fix_array_datatype(data_type)
             # Properly quote column name
-            quoted_column = sql.Identifier(column).as_string(None)
+            quoted_column = quote_identifier(column)
             column_definitions.append(f"{quoted_column} {fixed_data_type}")
 
         # Properly quote table name
-        quoted_table = sql.Identifier(table).as_string(None)
+        quoted_table = quote_identifier(table)
         sql_statements.append(f"CREATE TABLE {quoted_table} ({', '.join(column_definitions)});")
 
     # Add missing columns
@@ -278,8 +284,8 @@ def generate_update_sql(differences, master_structure):
             # Fix array type notation for column additions too
             fixed_data_type = fix_array_datatype(data_type)
             # Properly quote table and column names
-            quoted_table = sql.Identifier(table).as_string(None)
-            quoted_column = sql.Identifier(column).as_string(None)
+            quoted_table = quote_identifier(table)
+            quoted_column = quote_identifier(column)
             sql_statements.append(
                 f"ALTER TABLE {quoted_table} ADD COLUMN IF NOT EXISTS {quoted_column} {fixed_data_type};")
 
@@ -361,64 +367,63 @@ def main():
         master_structure = get_db_structure(master_conn)
 
         # Get Docker containers
-        with get_docker_container_ids(config) as containers:
-            if not containers:
-                logger.warning("No matching Docker containers found.")
-                sys.exit(0)
+        containers = get_docker_container_ids(config)
+        if not containers:
+            logger.warning("No matching Docker containers found.")
+            sys.exit(0)
 
-            for container_id, container_name in containers:
-                logger.info(f"\nProcessing container: {container_name}")
-                container_port = get_container_port(container_id)
+        for container_id, container_name in containers:
+            logger.info(f"\nProcessing container: {container_name}")
+            container_port = get_container_port(container_id)
 
-                if not container_port:
-                    logger.error(f"Unable to get port for container {container_name}. Skipping.")
+            if not container_port:
+                logger.error(f"Unable to get port for container {container_name}. Skipping.")
+                continue
+
+            # Connect to copy database
+            with db_connection(config['DB_HOST'], container_port, config['DB_NAME'],
+                               config['DB_USER'], config['DB_PASSWORD'], f"Copy DB ({container_name})") as copy_conn:
+                if not copy_conn:
                     continue
 
-                # Connect to copy database
-                with db_connection(config['DB_HOST'], container_port, config['DB_NAME'],
-                                   config['DB_USER'], config['DB_PASSWORD'],
-                                   f"Copy DB ({container_name})") as copy_conn:
-                    if not copy_conn:
-                        continue
+                logger.info(f"Fetching structure for copy database in container {container_name}...")
+                copy_structure = get_db_structure(copy_conn)
 
-                    logger.info(f"Fetching structure for copy database in container {container_name}...")
-                    copy_structure = get_db_structure(copy_conn)
+                logger.info("Comparing database structures...")
+                differences = compare_structures(master_structure, copy_structure)
 
-                    logger.info("Comparing database structures...")
-                    differences = compare_structures(master_structure, copy_structure)
+                if not any(differences.values()):
+                    logger.info("No differences found between master and copy databases.")
+                else:
+                    logger.info("Differences found:")
+                    if differences['missing_tables']:
+                        logger.info(f"Missing tables: {', '.join(differences['missing_tables'])}")
+                    if differences['missing_columns']:
+                        for table, cols in differences['missing_columns'].items():
+                            logger.info(f"Missing columns in {table}: {', '.join(col for col, _ in cols)}")
+                    if differences['missing_indexes']:
+                        for table, idxs in differences['missing_indexes'].items():
+                            logger.info(f"Missing indexes in {table}: {', '.join(idx for idx, _ in idxs)}")
 
-                    if not any(differences.values()):
-                        logger.info("No differences found between master and copy databases.")
+                    sql_statements = generate_update_sql(differences, master_structure)
+
+                    logger.info("\nGenerated SQL to update the copy database:")
+                    for stmt in sql_statements:
+                        logger.info(stmt)
+
+                    if args.dry_run:
+                        logger.info("Dry run mode - SQL not executed.")
                     else:
-                        logger.info("Differences found:")
-                        if differences['missing_tables']:
-                            logger.info(f"Missing tables: {', '.join(differences['missing_tables'])}")
-                        if differences['missing_columns']:
-                            for table, cols in differences['missing_columns'].items():
-                                logger.info(f"Missing columns in {table}: {', '.join(col for col, _ in cols)}")
-                        if differences['missing_indexes']:
-                            for table, idxs in differences['missing_indexes'].items():
-                                logger.info(f"Missing indexes in {table}: {', '.join(idx for idx, _ in idxs)}")
-
-                        sql_statements = generate_update_sql(differences, master_structure)
-
-                        logger.info("\nGenerated SQL to update the copy database:")
-                        for stmt in sql_statements:
-                            logger.info(stmt)
-
-                        if args.dry_run:
-                            logger.info("Dry run mode - SQL not executed.")
-                        else:
-                            confirm = input(
-                                f"\nDo you want to apply these changes to the copy database ({container_name})? (y/n): ")
-                            if confirm.lower() == 'y':
-                                success = execute_sql_statements(copy_conn, sql_statements)
-                                if success:
-                                    logger.info("Changes applied successfully.")
-                                else:
-                                    logger.error("Errors occurred while applying changes. Please check the logs.")
+                        confirm = input(
+                            f"\nDo you want to apply these changes to the copy database ({container_name})? (y/n): ")
+                        if confirm.lower() == 'y':
+                            success = execute_sql_statements(copy_conn, sql_statements)
+                            if success:
+                                logger.info("Changes applied successfully.")
                             else:
-                                logger.info("Changes not applied.")
+                                logger.error("Errors occurred while applying changes. Please check the logs.")
+                        else:
+                            logger.info("Changes not applied.")
 
 
 if __name__ == "__main__":
