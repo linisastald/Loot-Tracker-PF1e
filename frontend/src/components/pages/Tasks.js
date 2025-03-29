@@ -80,22 +80,24 @@ const CharacterSelector = styled(Box)(({ theme }) => ({
 const CharacterChip = styled(Box)(({ theme, selected, late }) => ({
   padding: theme.spacing(1, 2),
   borderRadius: theme.shape.borderRadius,
-  backgroundColor: selected
-    ? (late ? theme.palette.warning.light : theme.palette.primary.main)
-    : theme.palette.action.disabledBackground,
-  color: selected
-    ? theme.palette.primary.contrastText
-    : theme.palette.text.primary,
+  backgroundColor: theme.palette.background.paper,
+  color: theme.palette.text.primary,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
   cursor: 'pointer',
-  transition: 'background-color 0.3s, transform 0.2s',
+  border: '1px solid',
+  borderColor: selected
+    ? (late ? theme.palette.warning.main : theme.palette.primary.main)
+    : theme.palette.divider,
+  boxShadow: selected ? `0 0 0 1px ${late ? theme.palette.warning.main : theme.palette.primary.main}` : 'none',
+  transition: 'all 0.2s',
   '&:hover': {
-    backgroundColor: selected
-      ? (late ? theme.palette.warning.main : theme.palette.primary.dark)
-      : theme.palette.action.hover,
+    backgroundColor: theme.palette.action.hover,
     transform: 'translateY(-1px)',
+    boxShadow: selected
+      ? `0 2px 4px 0 ${late ? theme.palette.warning.main + '40' : theme.palette.primary.main + '40'}`
+      : theme.shadows[1],
   },
 }));
 
@@ -441,7 +443,8 @@ const Tasks = () => {
                         size="small"
                         icon={<AccessTimeIcon />}
                         label="Late"
-                        sx={{ ml: 1 }}
+                        sx={{ ml: 1, borderColor: theme => theme.palette.warning.main }}
+                        variant="outlined"
                         color="warning"
                       />
                     )}
