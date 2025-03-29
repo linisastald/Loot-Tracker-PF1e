@@ -123,15 +123,29 @@ def compare_structures(master, copy):
 
     return differences
 
-def generate_update_sql(differences):
+
+def generate_update_sql(differences, master_structure):
     sql_statements = []
 
     for table in differences['missing_tables']:
-        sql_statements.append(f"-- Create table {table}")
-        sql_statements.append(f"CREATE TABLE {table} (/* Add column definitions here */);")
+        columns = master_structure['tables'].get(table, [])
+        column_definitions = []
+
+        for column, data_type in columns:
+            # Fix for PostgreSQL array types
+            if data_type == 'ARRAY':
+                # Assuming the element type is character varying by default
+                # You might need to adjust this based on your actual schema
+                data_type = 'character varying[]'
+            column_definitions.append(f"{column} {data_type}")
+
+        sql_statements.append(f"CREATE TABLE {table} ({', '.join(column_definitions)});")
 
     for table, columns in differences['missing_columns'].items():
         for column, data_type in columns:
+            # Fix for PostgreSQL array types in column additions too
+            if data_type == 'ARRAY':
+                data_type = 'character varying[]'
             sql_statements.append(f"ALTER TABLE {table} ADD COLUMN {column} {data_type};")
 
     for table, indexes in differences['missing_indexes'].items():
