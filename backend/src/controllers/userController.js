@@ -19,14 +19,27 @@ const changePassword = async (req, res) => {
     throw controllerFactory.createNotFoundError('User not found');
   }
 
+  // Validate new password length
+  if (!newPassword || newPassword.length < 8) {
+    throw controllerFactory.createValidationError('Password must be at least 8 characters long');
+  }
+
+  if (newPassword.length > 64) {
+    throw controllerFactory.createValidationError('Password cannot exceed 64 characters');
+  }
+
+  // Normalize passwords (Unicode normalization)
+  const normalizedOldPassword = oldPassword.normalize('NFC');
+  const normalizedNewPassword = newPassword.normalize('NFC');
+
   // Check if old password is correct
-  const isMatch = await bcrypt.compare(oldPassword, user.password);
+  const isMatch = await bcrypt.compare(normalizedOldPassword, user.password);
   if (!isMatch) {
-    throw controllerFactory.createValidationError('Old password is incorrect');
+    throw controllerFactory.createValidationError('Current password is incorrect');
   }
 
   // Hash and update the new password
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  const hashedPassword = await bcrypt.hash(normalizedNewPassword, 10);
   await dbUtils.executeQuery('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
 
   logger.info(`Password changed for user ID ${userId}`);
@@ -216,6 +229,15 @@ const resetPassword = async (req, res) => {
     throw controllerFactory.createAuthorizationError('Only DMs can reset passwords');
   }
 
+  // Validate password length
+  if (!newPassword || newPassword.length < 8) {
+    throw controllerFactory.createValidationError('Password must be at least 8 characters long');
+  }
+
+  if (newPassword.length > 64) {
+    throw controllerFactory.createValidationError('Password cannot exceed 64 characters');
+  }
+
   // Check if user exists
   const userCheck = await dbUtils.executeQuery(
     'SELECT * FROM users WHERE id = $1',
@@ -226,7 +248,12 @@ const resetPassword = async (req, res) => {
     throw controllerFactory.createNotFoundError('User not found');
   }
 
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  // Normalize the password (Unicode normalization)
+  const normalizedPassword = newPassword.normalize('NFC');
+
+  // Hash the new password
+  const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
+
   await dbUtils.executeQuery(
     'UPDATE users SET password = $1 WHERE id = $2',
     [hashedPassword, userId]

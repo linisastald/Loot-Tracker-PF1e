@@ -42,8 +42,23 @@ const registerUser = async (req, res) => {
     throw controllerFactory.createValidationError('Username already exists');
   }
 
+  // Validate password length
+  if (!password || password.length < 8) {
+    throw controllerFactory.createValidationError('Password must be at least 8 characters long');
+  }
+
+  // Check if password exceeds maximum length
+  if (password.length > 64) {
+    throw controllerFactory.createValidationError('Password cannot exceed 64 characters');
+  }
+
   // Create the user
-  const hashedPassword = await bcrypt.hash(password, 10);
+  // Normalize the password (Unicode normalization)
+  const normalizedPassword = password.normalize('NFC');
+
+  // Add salt and hash the password with bcrypt (cost factor 10)
+  const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
+
   const userRole = 'Player'; // Default role for invited users
 
   return await dbUtils.executeTransaction(async (client) => {
@@ -114,13 +129,17 @@ const loginUser = async (req, res) => {
     );
   }
 
+  // Normalize the provided password before checking
+  const normalizedPassword = password.normalize('NFC');
+
   // Check password
-  const isMatch = await bcrypt.compare(password, user.password);
+  const isMatch = await bcrypt.compare(normalizedPassword, user.password);
   if (!isMatch) {
     await handleFailedLogin(user);
     throw controllerFactory.createValidationError('Invalid username or password');
   }
 
+  // Rest of the function remains the same...
   // Check if user role is valid
   if (user.role !== 'DM' && user.role !== 'Player') {
     throw controllerFactory.createAuthorizationError('Access denied. Invalid user role.');

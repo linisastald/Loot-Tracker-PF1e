@@ -1,13 +1,26 @@
-// Register.js
+// frontend/src/components/pages/Register.js
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
-import { Button, TextField, Typography, Container, Paper, MenuItem } from '@mui/material';
+import {
+  Button,
+  TextField,
+  Typography,
+  Container,
+  Paper,
+  MenuItem,
+  IconButton,
+  InputAdornment,
+  FormHelperText,
+  Box
+} from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 
 const Register = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('Player');
   const [error, setError] = useState('');
   const [dmExists, setDmExists] = useState(false);
@@ -39,11 +52,44 @@ const Register = () => {
 
   const handleRegister = async () => {
     try {
+      // Basic validation
+      if (!username) {
+        setError('Username is required');
+        return;
+      }
+
+      if (!password) {
+        setError('Password is required');
+        return;
+      }
+
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters long');
+        return;
+      }
+
+      if (password.length > 64) {
+        setError('Password cannot exceed 64 characters');
+        return;
+      }
+
       const response = await api.post(`/auth/register`, { username, password, role });
       localStorage.setItem('token', response.data.token);
       navigate('/user-settings');
     } catch (err) {
-      setError(err.response.data.error || 'Registration failed');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Registration failed');
+    }
+  };
+
+  // Handle toggle password visibility
+  const handleTogglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
+  // Handle Enter key press for form submission
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleRegister();
     }
   };
 
@@ -74,6 +120,7 @@ const Register = () => {
           autoFocus
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          onKeyDown={handleKeyDown}
         />
         <TextField
           variant="outlined"
@@ -81,10 +128,29 @@ const Register = () => {
           required
           fullWidth
           label="Password"
-          type="password"
+          type={showPassword ? 'text' : 'password'}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={handleKeyDown}
+          InputProps={{
+            // Add eye icon to toggle password visibility
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  aria-label="toggle password visibility"
+                  onClick={handleTogglePasswordVisibility}
+                  edge="end"
+                >
+                  {showPassword ? <VisibilityOff /> : <Visibility />}
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
         />
+        <FormHelperText>
+          Password must be at least 8 characters long. Use a mix of words, numbers,
+          or symbols for increased security.
+        </FormHelperText>
         <TextField
           select
           variant="outlined"
@@ -109,6 +175,17 @@ const Register = () => {
         >
           Register
         </Button>
+
+        <Box mt={2}>
+          <Typography variant="body2" color="textSecondary">
+            Strong password tips:
+            <ul>
+              <li>Use longer phrases that are easy for you to remember</li>
+              <li>Include a mix of words, spaces, and characters</li>
+              <li>Avoid reusing passwords from other sites</li>
+            </ul>
+          </Typography>
+        </Box>
       </Paper>
     </Container>
   );

@@ -38,6 +38,8 @@ const CharacterAndUserManagement = () => {
   const [updateCharacterDialogOpen, setUpdateCharacterDialogOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
   const [selectedCharacter, setSelectedCharacter] = useState(null);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
   const [updateCharacter, setUpdateCharacter] = useState({
     name: '',
     appraisal_bonus: '',
@@ -76,16 +78,6 @@ const CharacterAndUserManagement = () => {
     setSortConfig({ key: columnKey, direction });
   };
 
-  const sortedCharacters = [...characters].sort((a, b) => {
-    if (a[sortConfig.key] < b[sortConfig.key]) {
-      return sortConfig.direction === 'asc' ? -1 : 1;
-    }
-    if (a[sortConfig.key] > b[sortConfig.key]) {
-      return sortConfig.direction === 'asc' ? 1 : -1;
-    }
-    return 0;
-  });
-
   const handleRegistrationToggle = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -102,18 +94,34 @@ const CharacterAndUserManagement = () => {
 
   const handlePasswordReset = async () => {
     try {
-      const token = localStorage.getItem('token');
+      // Validate password length
+      if (!newPassword) {
+        setPasswordError('Password is required');
+        return;
+      }
+
+      if (newPassword.length < 8) {
+        setPasswordError('Password must be at least 8 characters long');
+        return;
+      }
+
+      if (newPassword.length > 64) {
+        setPasswordError('Password cannot exceed 64 characters');
+        return;
+      }
+
       await api.put(
-        `/user/reset-password`,
-        { userId: selectedUsers[0], newPassword }
+          `/user/reset-password`,
+          {userId: selectedUsers[0], newPassword}
       );
       setNewPassword('');
       setSelectedUsers([]);
       setSuccess('Password reset successfully');
       setError('');
+      setPasswordError('');
       setResetPasswordDialogOpen(false);
     } catch (err) {
-      setError('Error resetting password');
+      setPasswordError(err.response?.data?.error || err.response?.data?.message || 'Error resetting password');
       setSuccess('');
     }
   };
@@ -249,20 +257,38 @@ const CharacterAndUserManagement = () => {
           <DialogTitle>Reset Password</DialogTitle>
           <DialogContent>
             <TextField
-              label="New Password"
-              type="password"
-              fullWidth
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              margin="normal"
+                label="New Password"
+                type={showNewPassword ? 'text' : 'password'}
+                fullWidth
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                margin="normal"
+                InputProps={{
+                  endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                            aria-label="toggle password visibility"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            edge="end"
+                        >
+                          {showNewPassword ? <VisibilityOff/> : <Visibility/>}
+                        </IconButton>
+                      </InputAdornment>
+                  ),
+                }}
             />
+            <FormHelperText>
+              Password must be at least 8 characters long. For better security, use longer phrases
+              that are easy to remember.
+            </FormHelperText>
+            {passwordError && <Typography color="error">{passwordError}</Typography>}
           </DialogContent>
           <DialogActions>
-            <Button onClick={handlePasswordReset} color="primary" variant="outlined">
-              Reset Password
-            </Button>
             <Button onClick={() => setResetPasswordDialogOpen(false)} color="secondary" variant="outlined">
               Cancel
+            </Button>
+            <Button onClick={handlePasswordReset} color="primary" variant="outlined">
+              Reset Password
             </Button>
           </DialogActions>
         </Dialog>
