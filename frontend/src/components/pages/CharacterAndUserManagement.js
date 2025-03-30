@@ -30,8 +30,27 @@ import {
   Tabs,
   Tab,
   Alert,
+  Card,
+  CardContent,
+  CardHeader,
+  Grid,
+  Switch,
+  Divider,
+  CircularProgress,
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import {
+  Visibility,
+  VisibilityOff,
+  Backup,
+  RestoreOutlined,
+  Download,
+  Settings as SettingsIcon,
+  CloudDownload,
+  CloudUpload,
+  Discord as DiscordIcon,
+  DarkMode,
+  LightMode
+} from '@mui/icons-material';
 
 // Tab panel component
 function TabPanel(props) {
@@ -88,17 +107,48 @@ const CharacterAndUserManagement = () => {
   });
   const [tabValue, setTabValue] = useState(0); // For tabs
 
+  // Discord integration settings
+  const [discordSettings, setDiscordSettings] = useState({
+    botToken: '',
+    channelId: '',
+    enabled: false
+  });
+  const [isLoadingDiscord, setIsLoadingDiscord] = useState(false);
+
+  // Backup/restore state
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [backupFile, setBackupFile] = useState(null);
+
+  // General settings
+  const [theme, setTheme] = useState('dark');
+  const [defaultSettings, setDefaultSettings] = useState({
+    defaultBrowserQuantity: 1,
+    autoAppraisalEnabled: true,
+    autoSplitStacksEnabled: false
+  });
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [usersResponse, charactersResponse, settingsResponse, campaignResponse] = await Promise.all([
+        const [
+          usersResponse,
+          charactersResponse,
+          settingsResponse,
+          campaignResponse,
+          discordResponse
+        ] = await Promise.all([
           api.get(`/user/all`),
           api.get(`/user/all-characters`),
           api.get(`/user/settings`),
-          api.get('/settings/campaign-name')
+          api.get('/settings/campaign-name'),
+          api.get('/settings/discord')
         ]);
+
         setUsers(usersResponse.data);
         setCharacters(charactersResponse.data);
+
+        // Handle registration setting
         const registrationSetting = settingsResponse.data.find(setting => setting.name === 'registrations open');
         setRegistrationOpen(registrationSetting?.value === 1);
 
@@ -106,8 +156,35 @@ const CharacterAndUserManagement = () => {
         if (campaignResponse.data && campaignResponse.data.value) {
           setCampaignName(campaignResponse.data.value);
         }
+
+        // Set Discord settings
+        if (discordResponse.data) {
+          setDiscordSettings({
+            botToken: discordResponse.data.discord_bot_token || '',
+            channelId: discordResponse.data.discord_channel_id || '',
+            enabled: discordResponse.data.discord_integration_enabled === '1'
+          });
+        }
+
+        // Load other settings
+        const themeSettings = settingsResponse.data.find(setting => setting.name === 'theme');
+        if (themeSettings) {
+          setTheme(themeSettings.value || 'dark');
+        }
+
+        // Load default settings
+        const defaultQuantity = settingsResponse.data.find(setting => setting.name === 'default_browser_quantity');
+        const autoAppraisal = settingsResponse.data.find(setting => setting.name === 'auto_appraisal_enabled');
+        const autoSplitStacks = settingsResponse.data.find(setting => setting.name === 'auto_split_stacks_enabled');
+
+        setDefaultSettings({
+          defaultBrowserQuantity: defaultQuantity ? parseInt(defaultQuantity.value) || 1 : 1,
+          autoAppraisalEnabled: autoAppraisal ? autoAppraisal.value === '1' : true,
+          autoSplitStacksEnabled: autoSplitStacks ? autoSplitStacks.value === '1' : false
+        });
       } catch (error) {
         console.error('Error fetching data', error);
+        setError('Error loading settings data. Please try again.');
       }
     };
 
@@ -266,6 +343,144 @@ const CharacterAndUserManagement = () => {
     }
   };
 
+  // Discord settings handlers
+  const handleSaveDiscordSettings = async () => {
+    try {
+      setIsLoadingDiscord(true);
+      await api.put('/user/update-setting', {
+        name: 'discord_bot_token',
+        value: discordSettings.botToken
+      });
+
+      await api.put('/user/update-setting', {
+        name: 'discord_channel_id',
+        value: discordSettings.channelId
+      });
+
+      await api.put('/user/update-setting', {
+        name: 'discord_integration_enabled',
+        value: discordSettings.enabled ? '1' : '0'
+      });
+
+      setSuccess('Discord settings updated successfully');
+      setError('');
+    } catch (err) {
+      setError('Error updating Discord settings');
+      setSuccess('');
+    } finally {
+      setIsLoadingDiscord(false);
+    }
+  };
+
+  // General settings handler
+  const handleSaveGeneralSettings = async () => {
+    try {
+      // Save theme
+      await api.put('/user/update-setting', {
+        name: 'theme',
+        value: theme
+      });
+
+      // Save default browser quantity
+      await api.put('/user/update-setting', {
+        name: 'default_browser_quantity',
+        value: defaultSettings.defaultBrowserQuantity.toString()
+      });
+
+      // Save auto-appraisal setting
+      await api.put('/user/update-setting', {
+        name: 'auto_appraisal_enabled',
+        value: defaultSettings.autoAppraisalEnabled ? '1' : '0'
+      });
+
+      // Save auto-split stacks setting
+      await api.put('/user/update-setting', {
+        name: 'auto_split_stacks_enabled',
+        value: defaultSettings.autoSplitStacksEnabled ? '1' : '0'
+      });
+
+      setSuccess('General settings updated successfully');
+      setError('');
+    } catch (err) {
+      setError('Error updating general settings');
+      setSuccess('');
+    }
+  };
+
+  // Database backup and restore handlers
+  const handleBackupDatabase = async () => {
+    try {
+      setIsBackingUp(true);
+
+      // Define tables to exclude
+      const excludeTables = ['min_caster_levels', 'min_costs', 'mod', 'spells', 'item'];
+
+      // Call API endpoint to get database backup
+      const response = await api.post('/admin/backup-database', { excludeTables }, {
+        responseType: 'blob'
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response]));
+      const link = document.createElement('a');
+      const date = new Date().toISOString().split('T')[0];
+      link.href = url;
+      link.setAttribute('download', `pathfinder_loot_backup_${date}.sql`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setSuccess('Database backup created successfully');
+      setError('');
+    } catch (err) {
+      setError('Error creating database backup');
+      setSuccess('');
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleFileSelect = (event) => {
+    if (event.target.files && event.target.files[0]) {
+      setBackupFile(event.target.files[0]);
+    }
+  };
+
+  const handleRestoreDatabase = async () => {
+    if (!backupFile) return;
+
+    // Show a confirmation dialog
+    if (!window.confirm('Warning: This will overwrite your current database with the backup. All unsaved changes will be lost. Continue?')) {
+      return;
+    }
+
+    try {
+      setIsRestoring(true);
+
+      const formData = new FormData();
+      formData.append('backupFile', backupFile);
+
+      await api.post('/admin/restore-database', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      setSuccess('Database restored successfully. The application will reload in 5 seconds.');
+      setError('');
+
+      // Reload after a short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 5000);
+    } catch (err) {
+      setError('Error restoring database: ' + (err.response?.data?.message || err.message));
+      setSuccess('');
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
   // Sort characters based on current sort configuration
   const sortedCharacters = [...characters].sort((a, b) => {
     let aValue = a[sortConfig.key];
@@ -322,18 +537,207 @@ const CharacterAndUserManagement = () => {
         <TabPanel value={tabValue} index={0}>
           <Typography variant="h6" gutterBottom>System Settings</Typography>
 
-          <Box mt={2} mb={2}>
-            <Typography variant="body1" gutterBottom>Registration Status: {registrationOpen ? 'Open' : 'Closed'}</Typography>
-            <Button
-              variant="outlined"
-              color={registrationOpen ? "secondary" : "primary"}
-              onClick={handleRegistrationToggle}
-            >
-              {registrationOpen ? 'Close Registration' : 'Open Registration'}
-            </Button>
-          </Box>
+          <Grid container spacing={3}>
+            {/* Registration Settings */}
+            <Grid item xs={12} md={4}>
+              <Card variant="outlined">
+                <CardHeader title="Registration Settings" />
+                <CardContent>
+                  <Typography variant="body1" gutterBottom>Registration Status: {registrationOpen ? 'Open' : 'Closed'}</Typography>
+                  <Button
+                    variant="outlined"
+                    color={registrationOpen ? "secondary" : "primary"}
+                    onClick={handleRegistrationToggle}
+                    fullWidth
+                  >
+                    {registrationOpen ? 'Close Registration' : 'Open Registration'}
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
 
-          {/* Additional system settings can be added here */}
+            {/* Discord Integration Settings */}
+            <Grid item xs={12} md={4}>
+              <Card variant="outlined">
+                <CardHeader title="Discord Integration" avatar={<DiscordIcon />} />
+                <CardContent>
+                  <TextField
+                    label="Bot Token"
+                    type="password"
+                    value={discordSettings.botToken}
+                    onChange={(e) => setDiscordSettings({...discordSettings, botToken: e.target.value})}
+                    fullWidth
+                    margin="normal"
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton onClick={() => {}}>
+                            <Visibility />
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <TextField
+                    label="Channel ID"
+                    value={discordSettings.channelId}
+                    onChange={(e) => setDiscordSettings({...discordSettings, channelId: e.target.value})}
+                    fullWidth
+                    margin="normal"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={discordSettings.enabled}
+                        onChange={(e) => setDiscordSettings({...discordSettings, enabled: e.target.checked})}
+                      />
+                    }
+                    label="Enable Discord Integration"
+                  />
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    onClick={handleSaveDiscordSettings}
+                    disabled={isLoadingDiscord}
+                  >
+                    {isLoadingDiscord ? <CircularProgress size={24} /> : 'Save Discord Settings'}
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* General Settings */}
+            <Grid item xs={12} md={4}>
+              <Card variant="outlined">
+                <CardHeader title="General Settings" avatar={<SettingsIcon />} />
+                <CardContent>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Interface Theme</Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={theme === 'dark'}
+                          onChange={(e) => setTheme(e.target.checked ? 'dark' : 'light')}
+                        />
+                      }
+                      label={theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
+                    />
+                  </Box>
+
+                  <Divider sx={{ my: 2 }} />
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>Default Item Quantity</Typography>
+                    <TextField
+                      type="number"
+                      value={defaultSettings.defaultBrowserQuantity}
+                      onChange={(e) => setDefaultSettings({...defaultSettings, defaultBrowserQuantity: parseInt(e.target.value) || 1})}
+                      inputProps={{ min: 1 }}
+                      fullWidth
+                      size="small"
+                    />
+                  </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={defaultSettings.autoAppraisalEnabled}
+                          onChange={(e) => setDefaultSettings({...defaultSettings, autoAppraisalEnabled: e.target.checked})}
+                        />
+                      }
+                      label="Auto-Appraisal"
+                    />
+                  </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={defaultSettings.autoSplitStacksEnabled}
+                          onChange={(e) => setDefaultSettings({...defaultSettings, autoSplitStacksEnabled: e.target.checked})}
+                        />
+                      }
+                      label="Auto-Split Stacks"
+                    />
+                  </Box>
+
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    fullWidth
+                    onClick={handleSaveGeneralSettings}
+                  >
+                    Save General Settings
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Database Backup & Restore */}
+            <Grid item xs={12}>
+              <Card variant="outlined">
+                <CardHeader title="Database Backup & Restore" />
+                <CardContent>
+                  <Typography variant="body2" gutterBottom color="text.secondary">
+                    Backup and restore your database. The backup will exclude the following system tables:
+                    min_caster_levels, min_costs, mod, spells, and item.
+                  </Typography>
+
+                  <Grid container spacing={2} sx={{ mt: 1 }}>
+                    <Grid item xs={12} md={6}>
+                      <Button
+                        variant="outlined"
+                        color="primary"
+                        startIcon={<CloudDownload />}
+                        fullWidth
+                        onClick={handleBackupDatabase}
+                        disabled={isBackingUp}
+                      >
+                        {isBackingUp ? <CircularProgress size={24} /> : 'Backup Database'}
+                      </Button>
+                    </Grid>
+
+                    <Grid item xs={12} md={6}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Button
+                          variant="contained"
+                          component="label"
+                          color="secondary"
+                          sx={{ flex: 1 }}
+                        >
+                          Select Backup File
+                          <input
+                            type="file"
+                            accept=".sql,.dump"
+                            hidden
+                            onChange={handleFileSelect}
+                          />
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          color="secondary"
+                          startIcon={<CloudUpload />}
+                          disabled={!backupFile || isRestoring}
+                          onClick={handleRestoreDatabase}
+                          sx={{ flex: 1 }}
+                        >
+                          {isRestoring ? <CircularProgress size={24} /> : 'Restore'}
+                        </Button>
+                      </Box>
+                      {backupFile && (
+                        <Typography variant="body2" sx={{ mt: 1 }}>
+                          Selected file: {backupFile.name}
+                        </Typography>
+                      )}
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
         </TabPanel>
 
         {/* User Management Tab */}
