@@ -47,7 +47,7 @@ import {
   Settings as SettingsIcon,
   CloudDownload,
   CloudUpload,
-  Discord as DiscordIcon,
+  ChatIcon as DiscordIcon,
   DarkMode,
   LightMode
 } from '@mui/icons-material';
