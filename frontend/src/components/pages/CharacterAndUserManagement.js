@@ -47,10 +47,10 @@ import {
   Settings as SettingsIcon,
   CloudDownload,
   CloudUpload,
-  ChatIcon,
   DarkMode,
   LightMode
 } from '@mui/icons-material';
+import ChatIcon from '@mui/icons-material/Chat';
 
 // Tab panel component
 function TabPanel(props) {
