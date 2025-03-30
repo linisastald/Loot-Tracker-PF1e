@@ -104,25 +104,32 @@ function App() {
       <Router>
         <Routes>
           <Route path="/" element={isAuthenticated ? <Navigate to="/loot-entry" /> : <Navigate to="/login" />} />
-          <Route path="/login" element={<Login onLogin={handleLogin} />} />
+          <Route path="/login" element={
+            // If already authenticated, redirect to main page
+            isAuthenticated ?
+              <Navigate to="/loot-entry" replace /> :
+              <Login onLogin={handleLogin} />
+          } />
           <Route path="/register" element={<Register />} />
-          <Route element={<ProtectedRoute isAuthenticated={isAuthenticated}><MainLayout onLogout={handleLogout} /></ProtectedRoute>}>
-            <Route path="/loot-entry" element={<LootEntry />} />
-            <Route path="/loot-management/*" element={<LootManagement />} />
+
+          {/* Protected routes using the ProtectedRoute component */}
+          <Route path="/" element={<ProtectedRoute><MainLayout onLogout={handleLogout} /></ProtectedRoute>}>
+            <Route path="loot-entry" element={<LootEntry />} />
+            <Route path="loot-management/*" element={<LootManagement />} />
             {/* Redirects for old URLs */}
-            <Route path="/unprocessed-loot" element={<Navigate to="/loot-management/unprocessed" replace />} />
-            <Route path="/kept-party" element={<Navigate to="/loot-management/kept-party" replace />} />
-            <Route path="/kept-character" element={<Navigate to="/loot-management/kept-character" replace />} />
-            <Route path="/sold-loot" element={<Navigate to="/loot-management/sold" replace />} />
-            <Route path="/given-away-or-trashed" element={<Navigate to="/loot-management/trashed" replace />} />
-            <Route path="/gold-transactions" element={<GoldTransactions />} />
-            <Route path="/user-settings" element={<UserSettings />} />
-            <Route path="/character-user-management" element={<CharacterAndUserManagement />} />
-            <Route path="/item-management/*" element={<ItemManagement />} />
-            <Route path="/golarion-calendar" element={<GolarionCalendar />} />
-            <Route path="/consumables" element={<Consumables />} />
-            <Route path="/tasks" element={<Tasks />} />
-            <Route path="/identify" element={<Identify />} />
+            <Route path="unprocessed-loot" element={<Navigate to="/loot-management/unprocessed" replace />} />
+            <Route path="kept-party" element={<Navigate to="/loot-management/kept-party" replace />} />
+            <Route path="kept-character" element={<Navigate to="/loot-management/kept-character" replace />} />
+            <Route path="sold-loot" element={<Navigate to="/loot-management/sold" replace />} />
+            <Route path="given-away-or-trashed" element={<Navigate to="/loot-management/trashed" replace />} />
+            <Route path="gold-transactions" element={<GoldTransactions />} />
+            <Route path="user-settings" element={<UserSettings />} />
+            <Route path="character-user-management" element={<CharacterAndUserManagement />} />
+            <Route path="item-management/*" element={<ItemManagement />} />
+            <Route path="golarion-calendar" element={<GolarionCalendar />} />
+            <Route path="consumables" element={<Consumables />} />
+            <Route path="tasks" element={<Tasks />} />
+            <Route path="identify" element={<Identify />} />
           </Route>
         </Routes>
       </Router>
