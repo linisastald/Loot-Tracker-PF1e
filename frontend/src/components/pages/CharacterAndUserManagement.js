@@ -23,7 +23,11 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  InputAdornment,
+  FormHelperText,
+  IconButton,
 } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 
 const CharacterAndUserManagement = () => {
   const [users, setUsers] = useState([]);
