@@ -48,9 +48,9 @@ import {
   CloudDownload,
   CloudUpload,
   DarkMode,
-  LightMode
+  LightMode,
+  Message as ChatIcon
 } from '@mui/icons-material';
-import ChatIcon from '@mui/icons-material/Chat';
 
 // Tab panel component
 function TabPanel(props) {
