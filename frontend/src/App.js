@@ -124,7 +124,7 @@ function App() {
             <Route path="given-away-or-trashed" element={<Navigate to="/loot-management/trashed" replace />} />
             <Route path="gold-transactions" element={<GoldTransactions />} />
             <Route path="user-settings" element={<UserSettings />} />
-            <Route path="character-user-management" element={<CharacterAndUserManagement />} />
+            <Route path="character-user-management/*" element={<CharacterAndUserManagement />} />
             <Route path="item-management/*" element={<ItemManagement />} />
             <Route path="golarion-calendar" element={<GolarionCalendar />} />
             <Route path="consumables" element={<Consumables />} />
