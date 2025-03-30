@@ -51,8 +51,8 @@ function App() {
         // Check if the response contains success flag
         if (response && response.success) {
           setIsAuthenticated(true);
-          setUser(response.user);
-          localStorage.setItem('user', JSON.stringify(response.user));
+          setUser(response.data.user);
+          localStorage.setItem('user', JSON.stringify(response.data.user));
           console.log('Authentication verified successfully');
         } else {
           // Only log out if we get an explicit authentication failure and there's no stored user

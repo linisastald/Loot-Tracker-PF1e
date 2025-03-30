@@ -28,8 +28,8 @@ const ProtectedRoute = ({ children, isAuthenticated: propIsAuthenticated }) => {
         if (response && response.success) {
           setIsAuthed(true);
           // Update user in localStorage if it has changed
-          if (response.user) {
-            localStorage.setItem('user', JSON.stringify(response.user));
+          if (response.data && response.data.user) {
+            localStorage.setItem('user', JSON.stringify(response.data.user));
           }
         } else {
           // Only set to false if we get an explicit failure and no stored user
