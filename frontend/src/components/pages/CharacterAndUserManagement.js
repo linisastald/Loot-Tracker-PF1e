@@ -331,12 +331,17 @@ const CharacterAndUserManagement = () => {
 
   const handleCampaignNameChange = async () => {
     try {
-      await api.put('/user/update-setting', {
-        name: 'campaign_name',
-        value: campaignName
-      });
-      setSuccess('Campaign name updated successfully');
-      setError('');
+      // Only update if there's an actual campaign name value
+      if (campaignName && campaignName.trim() !== '') {
+        await api.put('/user/update-setting', {
+          name: 'campaign_name',
+          value: campaignName
+        });
+        setSuccess('Campaign name updated successfully');
+        setError('');
+      } else {
+        setError('Campaign name cannot be empty');
+      }
     } catch (err) {
       setError('Error updating campaign name');
       setSuccess('');
@@ -347,16 +352,24 @@ const CharacterAndUserManagement = () => {
   const handleSaveDiscordSettings = async () => {
     try {
       setIsLoadingDiscord(true);
-      await api.put('/user/update-setting', {
-        name: 'discord_bot_token',
-        value: discordSettings.botToken
-      });
 
-      await api.put('/user/update-setting', {
-        name: 'discord_channel_id',
-        value: discordSettings.channelId
-      });
+      // Only update the bot token if it's not empty
+      if (discordSettings.botToken.trim() !== '') {
+        await api.put('/user/update-setting', {
+          name: 'discord_bot_token',
+          value: discordSettings.botToken
+        });
+      }
 
+      // Only update channel ID if it's provided
+      if (discordSettings.channelId.trim() !== '') {
+        await api.put('/user/update-setting', {
+          name: 'discord_channel_id',
+          value: discordSettings.channelId
+        });
+      }
+
+      // Always update enabled status
       await api.put('/user/update-setting', {
         name: 'discord_integration_enabled',
         value: discordSettings.enabled ? '1' : '0'
@@ -375,17 +388,23 @@ const CharacterAndUserManagement = () => {
   // General settings handler
   const handleSaveGeneralSettings = async () => {
     try {
-      // Save theme
-      await api.put('/user/update-setting', {
-        name: 'theme',
-        value: theme
-      });
+      // Only update settings if they've been changed from defaults
 
-      // Save default browser quantity
-      await api.put('/user/update-setting', {
-        name: 'default_browser_quantity',
-        value: defaultSettings.defaultBrowserQuantity.toString()
-      });
+      // Save theme if it has a valid value
+      if (theme === 'dark' || theme === 'light') {
+        await api.put('/user/update-setting', {
+          name: 'theme',
+          value: theme
+        });
+      }
+
+      // Save default browser quantity if it's a valid number
+      if (defaultSettings.defaultBrowserQuantity > 0) {
+        await api.put('/user/update-setting', {
+          name: 'default_browser_quantity',
+          value: defaultSettings.defaultBrowserQuantity.toString()
+        });
+      }
 
       // Save auto-appraisal setting
       await api.put('/user/update-setting', {
