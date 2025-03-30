@@ -25,6 +25,7 @@ import {
 
 const SystemSettings = () => {
   const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [inviteRequired, setInviteRequired] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [theme, setTheme] = useState('dark');
@@ -83,6 +84,10 @@ const SystemSettings = () => {
         // Handle registration setting
         const registrationSetting = settingsResponse.data.find(setting => setting.name === 'registrations open');
         setRegistrationOpen(registrationSetting?.value === 1);
+
+        // Handle invite required setting
+        const inviteRequiredSetting = settingsResponse.data.find(setting => setting.name === 'invite_required');
+        setInviteRequired(inviteRequiredSetting?.value === 1);
 
         // Set Discord settings
         if (discordResponse.data) {
@@ -144,6 +149,23 @@ const SystemSettings = () => {
     } catch (error) {
       console.error('Error updating registration setting', error);
       setError('Error updating registration setting');
+      setSuccess('');
+    }
+  };
+
+  const handleInviteRequiredToggle = async () => {
+    try {
+      const newValue = inviteRequired ? 0 : 1;
+      await api.put(
+        `/user/update-setting`,
+        { name: 'invite_required', value: newValue }
+      );
+      setInviteRequired(!inviteRequired);
+      setSuccess(`Invite requirement ${!inviteRequired ? 'enabled' : 'disabled'} successfully`);
+      setError('');
+    } catch (error) {
+      console.error('Error updating invite required setting', error);
+      setError('Error updating invite required setting');
       setSuccess('');
     }
   };
@@ -336,6 +358,18 @@ const SystemSettings = () => {
                 fullWidth
               >
                 {registrationOpen ? 'Close Registration' : 'Open Registration'}
+              </Button>
+
+              <Divider sx={{ my: 2 }} />
+
+              <Typography variant="body1" gutterBottom>Invite Required: {inviteRequired ? 'Yes' : 'No'}</Typography>
+              <Button
+                variant="outlined"
+                color={inviteRequired ? "secondary" : "primary"}
+                onClick={handleInviteRequiredToggle}
+                fullWidth
+              >
+                {inviteRequired ? 'Make Registration Public' : 'Require Invitation Code'}
               </Button>
             </CardContent>
           </Card>

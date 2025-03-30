@@ -21,11 +21,13 @@ const Register = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('Player');
   const [error, setError] = useState('');
   const [dmExists, setDmExists] = useState(false);
   const [registrationsOpen, setRegistrationsOpen] = useState(false);
+  const [inviteRequired, setInviteRequired] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -47,8 +49,18 @@ const Register = () => {
       }
     };
 
+    const checkInviteRequired = async () => {
+      try {
+        const response = await api.get(`/auth/check-invite-required`);
+        setInviteRequired(response.data.isRequired);
+      } catch (error) {
+        console.error('Error checking invite requirement', error);
+      }
+    };
+
     checkForDm();
     checkRegistrationStatus();
+    checkInviteRequired();
   }, []);
 
   // Email validation function
@@ -90,7 +102,20 @@ const Register = () => {
         return;
       }
 
-      const response = await api.post(`/auth/register`, { username, email, password, role });
+      // Check for invite code if required
+      if (inviteRequired && !inviteCode) {
+        setError('Invitation code is required for registration');
+        return;
+      }
+
+      const response = await api.post(`/auth/register`, {
+        username,
+        email,
+        password,
+        role,
+        inviteCode: inviteCode || undefined
+      });
+
       localStorage.setItem('token', response.data.token);
       navigate('/user-settings');
     } catch (err) {
@@ -179,6 +204,20 @@ const Register = () => {
           Password must be at least 8 characters long. Use a mix of words, numbers,
           or symbols for increased security.
         </FormHelperText>
+
+        {inviteRequired && (
+          <TextField
+            variant="outlined"
+            margin="normal"
+            required
+            fullWidth
+            label="Invitation Code"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        )}
+
         <TextField
           select
           variant="outlined"

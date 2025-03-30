@@ -22,7 +22,17 @@ const registerUser = async (req, res) => {
     throw controllerFactory.createAuthorizationError('Registrations are currently closed');
   }
 
+  // Check if invite code is required
+  const inviteRequiredResult = await dbUtils.executeQuery(
+    "SELECT value FROM settings WHERE name = 'invite_required'"
+  );
+  const isInviteRequired = inviteRequiredResult.rows[0] && inviteRequiredResult.rows[0].value === 1;
+
   // Verify invite code if required
+  if (isInviteRequired && !inviteCode) {
+    throw controllerFactory.createValidationError('Invitation code is required for registration');
+  }
+
   if (inviteCode) {
     const inviteResult = await dbUtils.executeQuery(
       'SELECT * FROM invites WHERE code = $1 AND is_used = FALSE',
@@ -307,6 +317,17 @@ const checkRegistrationStatus = async (req, res) => {
 };
 
 /**
+ * Check if invite is required for registration
+ */
+const checkInviteRequired = async (req, res) => {
+  const inviteRequiredResult = await dbUtils.executeQuery(
+    "SELECT value FROM settings WHERE name = 'invite_required'"
+  );
+  const isRequired = inviteRequiredResult.rows[0] && inviteRequiredResult.rows[0].value === 1;
+  controllerFactory.sendSuccessResponse(res, { isRequired });
+};
+
+/**
  * Generate invite code (DM only)
  */
 const generateInviteCode = async (req, res) => {
@@ -370,50 +391,4 @@ const refreshToken = async (req, res) => {
     }
     throw error;
   }
-};
-
-// Define validation rules for each endpoint
-const loginValidation = {
-  requiredFields: ['username', 'password']
-};
-
-const registerValidation = {
-  requiredFields: ['username', 'password', 'email']
-};
-
-// Use controllerFactory to create handler functions with standardized error handling
-module.exports = {
-  registerUser: controllerFactory.createHandler(registerUser, {
-    errorMessage: 'Error registering user',
-    validation: registerValidation
-  }),
-
-  loginUser: controllerFactory.createHandler(loginUser, {
-    errorMessage: 'Error logging in user',
-    validation: loginValidation
-  }),
-
-  getUserStatus: controllerFactory.createHandler(getUserStatus, {
-    errorMessage: 'Error getting user status'
-  }),
-
-  logoutUser: controllerFactory.createHandler(logoutUser, {
-    errorMessage: 'Error logging out user'
-  }),
-
-  checkForDm: controllerFactory.createHandler(checkForDm, {
-    errorMessage: 'Error checking for DM'
-  }),
-
-  checkRegistrationStatus: controllerFactory.createHandler(checkRegistrationStatus, {
-    errorMessage: 'Error checking registration status'
-  }),
-
-  generateInviteCode: controllerFactory.createHandler(generateInviteCode, {
-    errorMessage: 'Error generating invite code'
-  }),
-
-  refreshToken: controllerFactory.createHandler(refreshToken, {
-    errorMessage: 'Error refreshing token'
-  })
 };
