@@ -407,7 +407,18 @@ const CharacterAndUserManagement = () => {
             </TableHead>
             <TableBody>
               {sortedCharacters.map((char) => (
-                <TableRow key={char.id} onClick={() => handleUpdateCharacter(char)} style={{ cursor: 'pointer' }}>
+                <TableRow
+                  key={char.id}
+                  onClick={() => handleUpdateCharacter(char)}
+                  style={{
+                    cursor: 'pointer',
+                    ...(char.active && {
+                      outline: '2px solid #4caf50', // Green outline for active characters
+                      boxShadow: '0 0 10px rgba(76, 175, 80, 0.3)',
+                      backgroundColor: 'rgba(76, 175, 80, 0.05)'
+                    })
+                  }}
+                >
                   <TableCell>{char.name}</TableCell>
                   <TableCell>{char.username}</TableCell>
                   <TableCell>{char.active ? 'Yes' : 'No'}</TableCell>
