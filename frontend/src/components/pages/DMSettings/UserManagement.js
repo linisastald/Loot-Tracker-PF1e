@@ -1,4 +1,4 @@
-// frontend/src/components/pages/CharacterAndUserManagement/UserManagement.js
+// frontend/src/components/pages/DMSettings/UserManagement.js
 import React, { useState, useEffect } from 'react';
 import api from '../../../utils/api';
 import {

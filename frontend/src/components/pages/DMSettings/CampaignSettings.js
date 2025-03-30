@@ -1,4 +1,4 @@
-// frontend/src/components/pages/CharacterAndUserManagement/CampaignSettings.js
+// frontend/src/components/pages/DMSettings/CampaignSettings.js
 import React, { useState, useEffect } from 'react';
 import api from '../../../utils/api';
 import {

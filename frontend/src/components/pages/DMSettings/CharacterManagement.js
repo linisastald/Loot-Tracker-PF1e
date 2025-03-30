@@ -1,4 +1,4 @@
-// frontend/src/components/pages/CharacterAndUserManagement/CharacterManagement.js
+// frontend/src/components/pages/DMSettings/CharacterManagement.js
 import React, { useState, useEffect } from 'react';
 import api from '../../../utils/api';
 import {

@@ -1,4 +1,4 @@
-// frontend/src/components/pages/CharacterAndUserManagement.js
+// frontend/src/components/pages/DMSettings.js
 import React, { useState } from 'react';
 import {
   Container,
@@ -10,10 +10,10 @@ import {
 } from '@mui/material';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 
-import SystemSettings from './CharacterAndUserManagement/SystemSettings';
-import UserManagement from './CharacterAndUserManagement/UserManagement';
-import CharacterManagement from './CharacterAndUserManagement/CharacterManagement';
-import CampaignSettings from './CharacterAndUserManagement/CampaignSettings';
+import SystemSettings from './DMSettings/SystemSettings';
+import UserManagement from './DMSettings/UserManagement';
+import CharacterManagement from './DMSettings/CharacterManagement';
+import CampaignSettings from './DMSettings/CampaignSettings';
 
 const CharacterAndUserManagement = () => {
   const location = useLocation();
