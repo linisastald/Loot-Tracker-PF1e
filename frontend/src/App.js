@@ -44,14 +44,18 @@ function App() {
     // Then verify with server that the token is still valid
     const checkAuthStatus = async () => {
       try {
+        console.log('Checking auth status...');
         const response = await api.get('/auth/status');
+        console.log('Auth status full response:', response);
 
-        if (response.data && response.data.success) {
+        // Check if the response contains success flag
+        if (response && response.success) {
           setIsAuthenticated(true);
-          setUser(response.data.user);
-          localStorage.setItem('user', JSON.stringify(response.data.user));
+          setUser(response.user);
+          localStorage.setItem('user', JSON.stringify(response.user));
+          console.log('Authentication verified successfully');
         } else {
-          // Only log out if we get an explicit authentication failure
+          // Only log out if we get an explicit authentication failure and there's no stored user
           console.warn('Auth check returned unsuccessful');
           if (!storedUser) {
             handleLogout();
@@ -67,7 +71,6 @@ function App() {
     };
 
     checkAuthStatus();
-    // No need to call fetchCsrfToken here, it's handled in the api.js
   }, []);
 
   const handleLogin = (user) => {

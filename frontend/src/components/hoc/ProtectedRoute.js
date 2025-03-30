@@ -21,20 +21,25 @@ const ProtectedRoute = ({ children, isAuthenticated: propIsAuthenticated }) => {
     // Then verify with server that the token is still valid
     const checkAuth = async () => {
       try {
+        console.log('ProtectedRoute: Checking auth status');
         const response = await api.get('/auth/status');
-        if (response?.data?.success) {
+        console.log('ProtectedRoute auth response:', response);
+
+        if (response && response.success) {
           setIsAuthed(true);
           // Update user in localStorage if it has changed
-          if (response.data.user) {
-            localStorage.setItem('user', JSON.stringify(response.data.user));
+          if (response.user) {
+            localStorage.setItem('user', JSON.stringify(response.user));
           }
         } else {
-          // Only set to false if we get an explicit failure
-          console.warn('Auth check returned unsuccessful');
-          setIsAuthed(false);
+          // Only set to false if we get an explicit failure and no stored user
+          console.warn('ProtectedRoute: Auth check returned unsuccessful');
+          if (!userStr) {
+            setIsAuthed(false);
+          }
         }
       } catch (error) {
-        console.error('Auth check failed:', error);
+        console.error('ProtectedRoute: Auth check failed:', error);
         // Only set to false on 401 status
         if (error.response && error.response.status === 401) {
           setIsAuthed(false);
