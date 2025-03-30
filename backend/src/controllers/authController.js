@@ -392,3 +392,42 @@ const refreshToken = async (req, res) => {
     throw error;
   }
 };
+module.exports = {
+  registerUser: controllerFactory.createHandler(registerUser, {
+    errorMessage: 'Error registering user',
+    validation: registerValidation
+  }),
+
+  loginUser: controllerFactory.createHandler(loginUser, {
+    errorMessage: 'Error logging in user',
+    validation: loginValidation
+  }),
+
+  getUserStatus: controllerFactory.createHandler(getUserStatus, {
+    errorMessage: 'Error getting user status'
+  }),
+
+  logoutUser: controllerFactory.createHandler(logoutUser, {
+    errorMessage: 'Error logging out user'
+  }),
+
+  checkForDm: controllerFactory.createHandler(checkForDm, {
+    errorMessage: 'Error checking for DM'
+  }),
+
+  checkRegistrationStatus: controllerFactory.createHandler(checkRegistrationStatus, {
+    errorMessage: 'Error checking registration status'
+  }),
+
+  checkInviteRequired: controllerFactory.createHandler(checkInviteRequired, {
+    errorMessage: 'Error checking invite requirement'
+  }),
+
+  generateInviteCode: controllerFactory.createHandler(generateInviteCode, {
+    errorMessage: 'Error generating invite code'
+  }),
+
+  refreshToken: controllerFactory.createHandler(refreshToken, {
+    errorMessage: 'Error refreshing token'
+  })
+};
