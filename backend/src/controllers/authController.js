@@ -392,15 +392,26 @@ const refreshToken = async (req, res) => {
     throw error;
   }
 };
+
+// Define validation rules for each endpoint
+const loginValidationRules = {
+  requiredFields: ['username', 'password']
+};
+
+const registerValidationRules = {
+  requiredFields: ['username', 'password', 'email']
+};
+
+// Use controllerFactory to create handler functions with standardized error handling
 module.exports = {
   registerUser: controllerFactory.createHandler(registerUser, {
     errorMessage: 'Error registering user',
-    validation: registerValidation
+    validation: registerValidationRules
   }),
 
   loginUser: controllerFactory.createHandler(loginUser, {
     errorMessage: 'Error logging in user',
-    validation: loginValidation
+    validation: loginValidationRules
   }),
 
   getUserStatus: controllerFactory.createHandler(getUserStatus, {
