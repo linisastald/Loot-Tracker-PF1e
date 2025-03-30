@@ -47,7 +47,7 @@ import {
   Settings as SettingsIcon,
   CloudDownload,
   CloudUpload,
-  ChatIcon as DiscordIcon,
+  ChatIcon,
   DarkMode,
   LightMode
 } from '@mui/icons-material';
@@ -559,7 +559,7 @@ const CharacterAndUserManagement = () => {
             {/* Discord Integration Settings */}
             <Grid item xs={12} md={4}>
               <Card variant="outlined">
-                <CardHeader title="Discord Integration" avatar={<DiscordIcon />} />
+                <CardHeader title="Discord Integration" avatar={<ChatIcon />} />
                 <CardContent>
                   <TextField
                     label="Bot Token"
