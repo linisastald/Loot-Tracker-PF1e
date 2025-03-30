@@ -33,6 +33,7 @@ const SystemSettings = () => {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [backupFile, setBackupFile] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Discord integration settings
   const [discordSettings, setDiscordSettings] = useState({
@@ -71,70 +72,75 @@ const SystemSettings = () => {
   }, [maskedToken, discordSettings.botToken]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [
-          settingsResponse,
-          discordResponse
-        ] = await Promise.all([
-          api.get(`/user/settings`),
-          api.get('/settings/discord')
-        ]);
-
-        // Handle registration setting
-        const registrationSetting = settingsResponse.data.find(setting => setting.name === 'registrations open');
-        setRegistrationOpen(registrationSetting?.value === 1);
-
-        // Handle invite required setting
-        const inviteRequiredSetting = settingsResponse.data.find(setting => setting.name === 'invite_required');
-        setInviteRequired(inviteRequiredSetting?.value === 1);
-
-        // Set Discord settings
-        if (discordResponse.data) {
-          const botToken = discordResponse.data.discord_bot_token || '';
-          const channelId = discordResponse.data.discord_channel_id || '';
-          const enabled = discordResponse.data.discord_integration_enabled === '1';
-
-          setDiscordSettings({
-            botToken: botToken ? maskedToken : '',
-            channelId: channelId,
-            enabled: enabled,
-            originalBotToken: botToken
-          });
-
-          setOriginalSettings({
-            botToken: botToken,
-            channelId: channelId,
-            enabled: enabled
-          });
-        }
-
-        // Load other settings
-        const themeSettings = settingsResponse.data.find(setting => setting.name === 'theme');
-        if (themeSettings) {
-          setTheme(themeSettings.value || 'dark');
-        }
-
-        // Load default settings
-        const defaultQuantity = settingsResponse.data.find(setting => setting.name === 'default_browser_quantity');
-        const defaultQuantityEnabled = settingsResponse.data.find(setting => setting.name === 'default_quantity_enabled');
-        const autoAppraisal = settingsResponse.data.find(setting => setting.name === 'auto_appraisal_enabled');
-        const autoSplitStacks = settingsResponse.data.find(setting => setting.name === 'auto_split_stacks_enabled');
-
-        setDefaultSettings({
-          defaultBrowserQuantity: defaultQuantity ? parseInt(defaultQuantity.value) || 1 : 1,
-          defaultQuantityEnabled: defaultQuantityEnabled ? defaultQuantityEnabled.value === '1' : false,
-          autoAppraisalEnabled: autoAppraisal ? autoAppraisal.value === '1' : true,
-          autoSplitStacksEnabled: autoSplitStacks ? autoSplitStacks.value === '1' : false
-        });
-      } catch (error) {
-        console.error('Error fetching data', error);
-        setError('Error loading settings data. Please try again.');
-      }
-    };
-
     fetchData();
   }, []);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [
+        settingsResponse,
+        discordResponse
+      ] = await Promise.all([
+        api.get(`/user/settings`),
+        api.get('/settings/discord')
+      ]);
+
+      // Handle registration setting
+      const registrationSetting = settingsResponse.data.find(setting => setting.name === 'registrations open');
+      console.log('Registration setting:', registrationSetting);
+      setRegistrationOpen(registrationSetting?.value === '1' || registrationSetting?.value === 1);
+
+      // Handle invite required setting
+      const inviteRequiredSetting = settingsResponse.data.find(setting => setting.name === 'invite_required');
+      console.log('Invite required setting:', inviteRequiredSetting);
+      setInviteRequired(inviteRequiredSetting?.value === '1' || inviteRequiredSetting?.value === 1);
+
+      // Set Discord settings
+      if (discordResponse.data) {
+        const botToken = discordResponse.data.discord_bot_token || '';
+        const channelId = discordResponse.data.discord_channel_id || '';
+        const enabled = discordResponse.data.discord_integration_enabled === '1';
+
+        setDiscordSettings({
+          botToken: botToken ? maskedToken : '',
+          channelId: channelId,
+          enabled: enabled,
+          originalBotToken: botToken
+        });
+
+        setOriginalSettings({
+          botToken: botToken,
+          channelId: channelId,
+          enabled: enabled
+        });
+      }
+
+      // Load other settings
+      const themeSettings = settingsResponse.data.find(setting => setting.name === 'theme');
+      if (themeSettings) {
+        setTheme(themeSettings.value || 'dark');
+      }
+
+      // Load default settings
+      const defaultQuantity = settingsResponse.data.find(setting => setting.name === 'default_browser_quantity');
+      const defaultQuantityEnabled = settingsResponse.data.find(setting => setting.name === 'default_quantity_enabled');
+      const autoAppraisal = settingsResponse.data.find(setting => setting.name === 'auto_appraisal_enabled');
+      const autoSplitStacks = settingsResponse.data.find(setting => setting.name === 'auto_split_stacks_enabled');
+
+      setDefaultSettings({
+        defaultBrowserQuantity: defaultQuantity ? parseInt(defaultQuantity.value) || 1 : 1,
+        defaultQuantityEnabled: defaultQuantityEnabled ? defaultQuantityEnabled.value === '1' : false,
+        autoAppraisalEnabled: autoAppraisal ? autoAppraisal.value === '1' : true,
+        autoSplitStacksEnabled: autoSplitStacks ? autoSplitStacks.value === '1' : false
+      });
+    } catch (error) {
+      console.error('Error fetching data', error);
+      setError('Error loading settings data. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleRegistrationToggle = async () => {
     try {
@@ -337,6 +343,15 @@ const SystemSettings = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" height="300px">
+        <CircularProgress />
+        <Typography variant="body1" sx={{ ml: 2 }}>Loading settings...</Typography>
+      </Box>
+    );
+  }
+
   return (
     <div>
       <Typography variant="h6" gutterBottom>System Settings</Typography>
@@ -371,6 +386,12 @@ const SystemSettings = () => {
               >
                 {inviteRequired ? 'Make Registration Public' : 'Require Invitation Code'}
               </Button>
+
+              <Box mt={2}>
+                <Typography variant="body2" color="textSecondary">
+                  Current settings: Registration is {registrationOpen ? 'open' : 'closed'} and invites are {inviteRequired ? 'required' : 'not required'}
+                </Typography>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
