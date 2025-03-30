@@ -129,6 +129,25 @@ const CharacterAndUserManagement = () => {
   });
 
   useEffect(() => {
+    // When Discord settings are loaded, handle masking the token
+    if (discordSettings.botToken && discordSettings.botToken !== maskedToken) {
+      // If it's a real token (not the mask), we should mask it for display
+      setDiscordSettings(prev => ({
+        ...prev,
+        originalBotToken: prev.botToken, // Store the original
+        botToken: maskedToken // Display the mask
+      }));
+    }
+  }, [maskedToken]);
+
+  // Set original values for comparison later
+  const [originalSettings, setOriginalSettings] = useState({
+    botToken: '',
+    channelId: '',
+    enabled: false
+  });
+
+  useEffect(() => {
     const fetchData = async () => {
       try {
         const [
@@ -159,10 +178,21 @@ const CharacterAndUserManagement = () => {
 
         // Set Discord settings
         if (discordResponse.data) {
+          const botToken = discordResponse.data.discord_bot_token || '';
+          const channelId = discordResponse.data.discord_channel_id || '';
+          const enabled = discordResponse.data.discord_integration_enabled === '1';
+
           setDiscordSettings({
-            botToken: discordResponse.data.discord_bot_token || '',
-            channelId: discordResponse.data.discord_channel_id || '',
-            enabled: discordResponse.data.discord_integration_enabled === '1'
+            botToken: botToken ? maskedToken : '',
+            channelId: channelId,
+            enabled: enabled,
+            originalBotToken: botToken
+          });
+
+          setOriginalSettings({
+            botToken: botToken,
+            channelId: channelId,
+            enabled: enabled
           });
         }
 
@@ -353,26 +383,35 @@ const CharacterAndUserManagement = () => {
     try {
       setIsLoadingDiscord(true);
 
-      // Only update the bot token if it's not empty
-      if (discordSettings.botToken.trim() !== '') {
+      // Only update token if it's changed and not the masked value
+      if (discordSettings.botToken !== maskedToken && discordSettings.botToken.trim() !== '') {
         await api.put('/user/update-setting', {
           name: 'discord_bot_token',
           value: discordSettings.botToken
         });
       }
 
-      // Only update channel ID if it's provided
-      if (discordSettings.channelId.trim() !== '') {
+      // Only update channel ID if it's changed
+      if (discordSettings.channelId !== originalSettings.channelId) {
         await api.put('/user/update-setting', {
           name: 'discord_channel_id',
           value: discordSettings.channelId
         });
       }
 
-      // Always update enabled status
-      await api.put('/user/update-setting', {
-        name: 'discord_integration_enabled',
-        value: discordSettings.enabled ? '1' : '0'
+      // Only update enabled status if it's changed
+      if (discordSettings.enabled !== originalSettings.enabled) {
+        await api.put('/user/update-setting', {
+          name: 'discord_integration_enabled',
+          value: discordSettings.enabled ? '1' : '0'
+        });
+      }
+
+      // Update original settings for next comparison
+      setOriginalSettings({
+        botToken: discordSettings.botToken !== maskedToken ? discordSettings.botToken : originalSettings.botToken,
+        channelId: discordSettings.channelId,
+        enabled: discordSettings.enabled
       });
 
       setSuccess('Discord settings updated successfully');
@@ -587,15 +626,8 @@ const CharacterAndUserManagement = () => {
                     onChange={(e) => setDiscordSettings({...discordSettings, botToken: e.target.value})}
                     fullWidth
                     margin="normal"
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton onClick={() => {}}>
-                            <Visibility />
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
+                    placeholder="Enter Discord Bot Token"
+                    helperText="Only enter a value if you want to change the existing token"
                   />
                   <TextField
                     label="Channel ID"
@@ -603,6 +635,8 @@ const CharacterAndUserManagement = () => {
                     onChange={(e) => setDiscordSettings({...discordSettings, channelId: e.target.value})}
                     fullWidth
                     margin="normal"
+                    placeholder="Discord Channel ID"
+                    helperText="Leave unchanged to keep current value"
                   />
                   <FormControlLabel
                     control={
