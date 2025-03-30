@@ -125,6 +125,7 @@ const CharacterAndUserManagement = () => {
   const [theme, setTheme] = useState('dark');
   const [defaultSettings, setDefaultSettings] = useState({
     defaultBrowserQuantity: 1,
+    defaultQuantityEnabled: false,
     autoAppraisalEnabled: true,
     autoSplitStacksEnabled: false
   });
@@ -205,11 +206,13 @@ const CharacterAndUserManagement = () => {
 
         // Load default settings
         const defaultQuantity = settingsResponse.data.find(setting => setting.name === 'default_browser_quantity');
+        const defaultQuantityEnabled = settingsResponse.data.find(setting => setting.name === 'default_quantity_enabled');
         const autoAppraisal = settingsResponse.data.find(setting => setting.name === 'auto_appraisal_enabled');
         const autoSplitStacks = settingsResponse.data.find(setting => setting.name === 'auto_split_stacks_enabled');
 
         setDefaultSettings({
           defaultBrowserQuantity: defaultQuantity ? parseInt(defaultQuantity.value) || 1 : 1,
+          defaultQuantityEnabled: defaultQuantityEnabled ? defaultQuantityEnabled.value === '1' : false,
           autoAppraisalEnabled: autoAppraisal ? autoAppraisal.value === '1' : true,
           autoSplitStacksEnabled: autoSplitStacks ? autoSplitStacks.value === '1' : false
         });
@@ -438,8 +441,14 @@ const CharacterAndUserManagement = () => {
         });
       }
 
-      // Save default browser quantity if it's a valid number
-      if (defaultSettings.defaultBrowserQuantity > 0) {
+      // Save default quantity enabled setting
+      await api.put('/user/update-setting', {
+        name: 'default_quantity_enabled',
+        value: defaultSettings.defaultQuantityEnabled ? '1' : '0'
+      });
+
+      // Only save default browser quantity if enabled and valid
+      if (defaultSettings.defaultQuantityEnabled && defaultSettings.defaultBrowserQuantity > 0) {
         await api.put('/user/update-setting', {
           name: 'default_browser_quantity',
           value: defaultSettings.defaultBrowserQuantity.toString()
@@ -684,14 +693,34 @@ const CharacterAndUserManagement = () => {
 
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="subtitle2" gutterBottom>Default Item Quantity</Typography>
-                    <TextField
-                      type="number"
-                      value={defaultSettings.defaultBrowserQuantity}
-                      onChange={(e) => setDefaultSettings({...defaultSettings, defaultBrowserQuantity: parseInt(e.target.value) || 1})}
-                      inputProps={{ min: 1 }}
-                      fullWidth
-                      size="small"
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={defaultSettings.defaultQuantityEnabled}
+                          onChange={(e) => setDefaultSettings({
+                            ...defaultSettings,
+                            defaultQuantityEnabled: e.target.checked
+                          })}
+                        />
+                      }
+                      label="Enable Default Quantity"
                     />
+
+                    {defaultSettings.defaultQuantityEnabled && (
+                      <TextField
+                        type="number"
+                        value={defaultSettings.defaultBrowserQuantity}
+                        onChange={(e) => setDefaultSettings({
+                          ...defaultSettings,
+                          defaultBrowserQuantity: parseInt(e.target.value) || 1
+                        })}
+                        inputProps={{ min: 1 }}
+                        fullWidth
+                        size="small"
+                        sx={{ mt: 1 }}
+                        label="Default Quantity"
+                      />
+                    )}
                   </Box>
 
                   <Box sx={{ mb: 2 }}>
