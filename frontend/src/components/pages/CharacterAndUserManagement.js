@@ -114,6 +114,7 @@ const CharacterAndUserManagement = () => {
     enabled: false
   });
   const [isLoadingDiscord, setIsLoadingDiscord] = useState(false);
+  const [maskedToken, setMaskedToken] = useState('********');
 
   // Backup/restore state
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -128,6 +129,13 @@ const CharacterAndUserManagement = () => {
     autoSplitStacksEnabled: false
   });
 
+  // Set original values for comparison later
+  const [originalSettings, setOriginalSettings] = useState({
+    botToken: '',
+    channelId: '',
+    enabled: false
+  });
+
   useEffect(() => {
     // When Discord settings are loaded, handle masking the token
     if (discordSettings.botToken && discordSettings.botToken !== maskedToken) {
@@ -138,14 +146,7 @@ const CharacterAndUserManagement = () => {
         botToken: maskedToken // Display the mask
       }));
     }
-  }, [maskedToken]);
-
-  // Set original values for comparison later
-  const [originalSettings, setOriginalSettings] = useState({
-    botToken: '',
-    channelId: '',
-    enabled: false
-  });
+  }, [maskedToken, discordSettings.botToken]);
 
   useEffect(() => {
     const fetchData = async () => {
