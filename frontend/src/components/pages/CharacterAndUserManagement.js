@@ -199,6 +199,35 @@ const CharacterAndUserManagement = () => {
     }
   };
 
+  // Sort characters based on current sort configuration
+  const sortedCharacters = [...characters].sort((a, b) => {
+    let aValue = a[sortConfig.key];
+    let bValue = b[sortConfig.key];
+
+    // Handle special cases
+    if (sortConfig.key === 'username') {
+      aValue = a.username || '';
+      bValue = b.username || '';
+    } else if (sortConfig.key === 'active') {
+      return sortConfig.direction === 'asc'
+        ? (a.active === b.active ? 0 : a.active ? -1 : 1)
+        : (a.active === b.active ? 0 : a.active ? 1 : -1);
+    }
+
+    // Null checks
+    if (aValue === null) aValue = '';
+    if (bValue === null) bValue = '';
+
+    // Compare the values
+    if (aValue < bValue) {
+      return sortConfig.direction === 'asc' ? -1 : 1;
+    }
+    if (aValue > bValue) {
+      return sortConfig.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
+
   return (
     <Container maxWidth={false} component="main">
       <Paper sx={{ p: 2, mb: 2 }}>
