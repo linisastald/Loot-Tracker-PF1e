@@ -15,17 +15,17 @@ import {
   Divider,
   Alert,
   CircularProgress,
-  IconButton
+  IconButton,
+  Tooltip,
+  Snackbar
 } from '@mui/material';
 import {
   CloudDownload,
   CloudUpload,
   Settings as SettingsIcon,
-  Message as ChatIcon
+  Message as ChatIcon,
+  FileCopy as FileCopyIcon
 } from '@mui/icons-material';
-import FileCopyIcon from '@mui/icons-material/FileCopy';
-import Tooltip from '@mui/material/Tooltip';
-import Snackbar from '@mui/material/Snackbar';
 
 const SystemSettings = () => {
   const [registrationOpen, setRegistrationOpen] = useState(false);
@@ -373,13 +373,36 @@ const SystemSettings = () => {
   const handleCopyInviteCode = () => {
     if (!quickInviteData || !quickInviteData.code) return;
 
-    navigator.clipboard.writeText(quickInviteData.code).then(() => {
-      setSnackbarMessage('Invite code copied to clipboard');
-      setSnackbarOpen(true);
-    }).catch(() => {
-      setSnackbarMessage('Failed to copy invite code');
-      setSnackbarOpen(true);
-    });
+    // Check if navigator.clipboard is available
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(quickInviteData.code)
+        .then(() => {
+          setSnackbarMessage('Invite code copied to clipboard');
+          setSnackbarOpen(true);
+        })
+        .catch(() => {
+          setSnackbarMessage('Failed to copy invite code');
+          setSnackbarOpen(true);
+        });
+    } else {
+      // Fallback method for browsers that don't support clipboard API
+      const textArea = document.createElement('textarea');
+      textArea.value = quickInviteData.code;
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      try {
+        const successful = document.execCommand('copy');
+        setSnackbarMessage(successful ? 'Invite code copied to clipboard' : 'Failed to copy invite code');
+        setSnackbarOpen(true);
+      } catch (err) {
+        setSnackbarMessage('Failed to copy invite code');
+        setSnackbarOpen(true);
+      }
+
+      document.body.removeChild(textArea);
+    }
   };
 
   const handleSnackbarClose = () => {
