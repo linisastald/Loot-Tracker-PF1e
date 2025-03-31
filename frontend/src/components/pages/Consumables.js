@@ -125,7 +125,17 @@ const Consumables = () => {
     return 'error';
   };
 
-  // Render charge progress bar
+  // Get background color for charge row
+  const getChargeBackgroundColor = (charges) => {
+    if (charges === null || charges === undefined) return 'transparent';
+
+    const percentage = (charges / MAX_WAND_CHARGES) * 100;
+    if (percentage > 75) return 'rgba(76, 175, 80, 0.1)'; // subtle green
+    if (percentage > 25) return 'rgba(255, 152, 0, 0.1)'; // subtle yellow/orange
+    return 'rgba(244, 67, 54, 0.1)'; // subtle red
+  };
+
+  // Render charge indicator with text only
   const renderChargeProgress = (charges) => {
     if (charges === null || charges === undefined) return null;
 
@@ -133,20 +143,13 @@ const Consumables = () => {
     const color = getChargeProgressColor(charges);
 
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-        <Box sx={{ width: '100%', mr: 1 }}>
-          <LinearProgress
-            variant="determinate"
-            value={percentage}
-            color={color}
-            sx={{ height: 10, borderRadius: 5 }}
-          />
-        </Box>
-        <Box sx={{ minWidth: 35 }}>
-          <Typography variant="body2" color="text.secondary">
-            {charges}/{MAX_WAND_CHARGES}
-          </Typography>
-        </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        <Typography variant="body2" color={`${color}.main`} fontWeight="medium">
+          {Math.round(percentage)}%
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {charges}/{MAX_WAND_CHARGES}
+        </Typography>
       </Box>
     );
   };
