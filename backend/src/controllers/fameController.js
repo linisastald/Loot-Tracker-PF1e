@@ -40,7 +40,7 @@ const getCharacterFame = async (req, res) => {
             throw controllerFactory.createAuthorizationError('Fame system is not enabled');
         }
 
-        // Check if the character exists and get their current fame
+        // Get the character details
         const characterQuery = `
             SELECT c.id, c.name, COALESCE(f.points, 0) as fame_points
             FROM characters c
@@ -65,12 +65,17 @@ const getCharacterFame = async (req, res) => {
         `;
         const historyResult = await dbUtils.executeQuery(historyQuery, [characterId]);
 
+        // Calculate prestige points (Fame / 10, rounded down)
+        const famePoints = parseInt(character.fame_points) || 0;
+        const prestigePoints = Math.floor(famePoints / 10);
+
         controllerFactory.sendSuccessResponse(res, {
             character: {
                 id: character.id,
                 name: character.name
             },
-            points: parseInt(character.fame_points) || 0,
+            points: famePoints,
+            prestige: prestigePoints,
             history: historyResult.rows
         }, 'Character fame retrieved');
     } catch (error) {
@@ -80,11 +85,11 @@ const getCharacterFame = async (req, res) => {
 };
 
 /**
- * Add fame points to a character (DM only)
+ * Add fame points to a character (can be done by player or DM)
  */
 const addPoints = async (req, res) => {
-    const { characterId, points, reason } = req.body;
-    const dmUserId = req.user.id;
+    const { characterId, points, reason, event } = req.body;
+    const userId = req.user.id;
 
     try {
         // Validate inputs
@@ -108,7 +113,7 @@ const addPoints = async (req, res) => {
         const fameSystem = fameSystemSetting.rows[0].value;
 
         // Verify character exists
-        const characterQuery = `SELECT id, name FROM characters WHERE id = $1`;
+        const characterQuery = `SELECT c.id, c.name, c.user_id FROM characters WHERE c.id = $1`;
         const characterResult = await dbUtils.executeQuery(characterQuery, [characterId]);
 
         if (characterResult.rows.length === 0) {
@@ -116,6 +121,13 @@ const addPoints = async (req, res) => {
         }
 
         const character = characterResult.rows[0];
+
+        // Check if the user has permission to add points to this character
+        // DMs can add points to any character, players can only add to their own
+        if (req.user.role !== 'DM' && character.user_id !== userId) {
+            throw controllerFactory.createAuthorizationError('You can only add fame points to your own character');
+        }
+
         const pointsToAdd = parseInt(points);
 
         return await dbUtils.executeTransaction(async (client) => {
@@ -130,8 +142,8 @@ const addPoints = async (req, res) => {
 
             const newPoints = currentPoints + pointsToAdd;
 
-            // Don't allow negative total
-            if (newPoints < 0) {
+            // Don't allow negative total for fame (unlike infamy which can go negative)
+            if (fameSystem === 'fame' && newPoints < 0) {
                 throw controllerFactory.createValidationError('Cannot reduce fame points below 0');
             }
 
@@ -150,10 +162,13 @@ const addPoints = async (req, res) => {
 
             // Record in history
             await client.query(
-                `INSERT INTO fame_history (character_id, points, reason, added_by)
-                 VALUES ($1, $2, $3, $4)`,
-                [characterId, pointsToAdd, reason || null, dmUserId]
+                `INSERT INTO fame_history (character_id, points, reason, event, added_by)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [characterId, pointsToAdd, reason || null, event || null, userId]
             );
+
+            // Calculate prestige/disrepute
+            const prestigePoints = Math.floor(newPoints / 10);
 
             controllerFactory.sendSuccessResponse(res, {
                 character: {
@@ -163,6 +178,7 @@ const addPoints = async (req, res) => {
                 previousPoints: currentPoints,
                 pointsAdded: pointsToAdd,
                 newTotal: newPoints,
+                prestige: prestigePoints,
                 fameSystem
             }, `${Math.abs(pointsToAdd)} ${fameSystem} points ${pointsToAdd >= 0 ? 'added to' : 'removed from'} ${character.name}`);
         });
@@ -197,9 +213,9 @@ const getFameHistory = async (req, res) => {
             throw controllerFactory.createNotFoundError('Character not found');
         }
 
-        // Get fame history with DM names
+        // Get fame history with user names
         const historyQuery = `
-            SELECT fh.id, fh.points, fh.reason, fh.created_at,
+            SELECT fh.id, fh.points, fh.reason, fh.event, fh.created_at,
                    u.username as added_by_name
             FROM fame_history fh
             LEFT JOIN users u ON fh.added_by = u.id
@@ -237,6 +253,67 @@ const getFameHistory = async (req, res) => {
     }
 };
 
+/**
+ * Get fame events list
+ */
+const getFameEvents = async (req, res) => {
+    try {
+        // Check if fame is enabled
+        const fameSystemSetting = await dbUtils.executeQuery(
+            "SELECT value FROM settings WHERE name = 'fame_system'"
+        );
+
+        if (fameSystemSetting.rows.length === 0 || fameSystemSetting.rows[0].value === 'disabled') {
+            throw controllerFactory.createAuthorizationError('Fame system is not enabled');
+        }
+
+        const fameSystem = fameSystemSetting.rows[0].value;
+        const isInfamy = fameSystem === 'infamy';
+
+        // These would typically come from a database, but for simplicity we'll hardcode them
+        const events = [
+            { id: 'acquire_treasure', name: 'Acquire a noteworthy treasure from a worthy foe', points: 1 },
+            { id: 'critical_hits', name: 'Confirm two successive critical hits in a CR-appropriate encounter', points: 1 },
+            { id: 'consecrate_temple', name: 'Consecrate a temple to your deity', points: 1 },
+            { id: 'craft_magic_item', name: 'Craft a powerful magic item', points: 1 },
+            { id: 'gain_level', name: 'Gain a level in a PC class', points: 1 },
+            { id: 'disarm_traps', name: 'Locate and disarm three or more CR-appropriate traps in a row', points: 1 },
+            { id: 'discovery', name: 'Make a noteworthy historical, scientific, or magical discovery', points: 1 },
+            { id: 'legendary_item', name: 'Own a legendary item or artifact', points: 1 },
+            { id: 'medal', name: 'Receive a medal or similar honor from a public figure', points: 1 },
+            { id: 'return_relic', name: 'Return a significant magic item or relic to its owner', points: 1 },
+            { id: 'sack_stronghold', name: 'Sack the stronghold of a powerful noble', points: 1 },
+            { id: 'defeat_higher_cr', name: 'Single-handedly defeat an opponent with a CR higher than your level', points: 1 },
+            { id: 'win_tough_combat', name: 'Win a combat encounter with a CR of your APL +3 or more', points: 1 },
+            { id: 'defeat_defamer', name: 'Defeat in combat a person who publicly defamed you', points: 2 },
+            { id: 'craft_masterwork', name: 'Succeed at a DC 30 or higher Craft check to create a work of art or masterwork item', points: 2 },
+            { id: 'public_diplomacy', name: 'Succeed at a DC 30 or higher public Diplomacy or Intimidate check', points: 2 },
+            { id: 'public_perform', name: 'Succeed at a DC 30 or higher public Perform check', points: 2 },
+            { id: 'complete_adventure', name: 'Complete an adventure with a CR appropriate for your APL', points: 3 },
+            { id: 'earn_title', name: 'Earn a formal title (lady, lord, knight, and so on)', points: 3 },
+            { id: 'defeat_rival', name: 'Defeat a key rival in combat', points: 5 },
+            // Negative events
+            { id: 'petty_crime', name: 'Be convicted of a petty crime', points: -1 },
+            { id: 'disreputable_company', name: 'Keep company with someone of disreputable character', points: -1 },
+            { id: 'nonviolent_crime', name: 'Be convicted of a serious nonviolent crime', points: -2 },
+            { id: 'flee_encounter', name: 'Publicly flee an encounter of a CR lower than your APL', points: -3 },
+            { id: 'attack_innocents', name: 'Attack innocent people', points: -5 },
+            { id: 'violent_crime', name: 'Be convicted of a serious violent crime', points: -5 },
+            { id: 'public_defeat', name: 'Publicly lose an encounter of a CR equal to or lower than your APL', points: -5 },
+            { id: 'murder', name: 'Be convicted of murder', points: -8 },
+            { id: 'treason', name: 'Be convicted of treason', points: -10 }
+        ];
+
+        controllerFactory.sendSuccessResponse(res, {
+            events,
+            fameSystem
+        }, 'Fame events retrieved');
+    } catch (error) {
+        logger.error('Error fetching fame events:', error);
+        throw error;
+    }
+};
+
 // Define validation rules
 const addPointsValidation = {
     requiredFields: ['characterId', 'points']
@@ -259,5 +336,9 @@ module.exports = {
 
     getFameHistory: controllerFactory.createHandler(getFameHistory, {
         errorMessage: 'Error getting fame history'
+    }),
+
+    getFameEvents: controllerFactory.createHandler(getFameEvents, {
+        errorMessage: 'Error fetching fame events'
     })
 };
