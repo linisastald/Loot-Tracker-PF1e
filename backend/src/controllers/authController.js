@@ -464,18 +464,10 @@ const deactivateInvite = async (req, res) => {
   }
 
   try {
-    // Get current username
-    const userResult = await dbUtils.executeQuery(
-        'SELECT username FROM users WHERE id = $1',
-        [req.user.id]
-    );
-
-    const username = userResult.rows[0]?.username || 'Unknown';
-    const deactivationNote = `deactivated by ${username}`;
-
+    // For deactivation we use the DM's user ID as the used_by field since it's an integer column
     const result = await dbUtils.executeQuery(
-        'UPDATE invites SET is_used = TRUE, used_by = $1, used_at = NOW() WHERE id = $2 RETURNING *',
-        [deactivationNote, inviteId]
+      'UPDATE invites SET is_used = TRUE, used_by = $1, used_at = NOW() WHERE id = $2 RETURNING *',
+      [req.user.id, inviteId]
     );
 
     if (result.rows.length === 0) {
