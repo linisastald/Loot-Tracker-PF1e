@@ -13,6 +13,7 @@ import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 import GeneralItemManagement from './ItemManagement/GeneralItemManagement';
 import UnidentifiedItemsManagement from './ItemManagement/UnidentifiedItemsManagement';
 import PendingSaleManagement from './ItemManagement/PendingSaleManagement';
+import AddItemMod from './ItemManagement/AddItemMod';
 
 const ItemManagement = () => {
   const location = useLocation();
@@ -22,6 +23,7 @@ const ItemManagement = () => {
     const path = location.pathname;
     if (path.includes('/unidentified')) return 1;
     if (path.includes('/pending-sale')) return 2;
+    if (path.includes('/add-item-mod')) return 3;
     return 0;
   });
 
@@ -37,6 +39,9 @@ const ItemManagement = () => {
       case 2:
         navigate('/item-management/pending-sale');
         break;
+      case 3:
+        navigate('/item-management/add-item-mod');
+        break;
       default:
         navigate('/item-management');
     }
@@ -51,6 +56,7 @@ const ItemManagement = () => {
             <Tab label="General" />
             <Tab label="Unidentified Items" />
             <Tab label="Pending Sale" />
+            <Tab label="Add Item/Mod" />
           </Tabs>
         </Box>
 
@@ -58,6 +64,7 @@ const ItemManagement = () => {
           <Route path="/" element={<GeneralItemManagement />} />
           <Route path="/unidentified" element={<UnidentifiedItemsManagement />} />
           <Route path="/pending-sale" element={<PendingSaleManagement />} />
+          <Route path="/add-item-mod" element={<AddItemMod />} />
         </Routes>
       </Paper>
     </Container>

@@ -161,6 +161,7 @@ const settingsRoutes = require('./src/api/routes/settings');
 const consumablesRoutes = require('./src/api/routes/consumables');
 const calendarRoutes = require('./src/api/routes/calendar');
 const soldRoutes = require('./src/api/routes/sold');
+const adminRoutes = require('./src/api/routes/admin');
 
 // Set up routes with appropriate protection
 // Auth routes WITHOUT CSRF protection
@@ -175,6 +176,7 @@ app.use('/api/settings', csrfProtection, settingsRoutes);
 app.use('/api/consumables', csrfProtection, consumablesRoutes);
 app.use('/api/calendar', csrfProtection, calendarRoutes);
 app.use('/api/sold', csrfProtection, soldRoutes);
+app.use('/api/admin', csrfProtection, adminRoutes);
 
 // Global error handler
 app.use(errorHandler);
