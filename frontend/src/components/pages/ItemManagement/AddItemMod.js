@@ -567,10 +567,7 @@ const AddItemMod = () => {
                     >
                       <MenuItem value="">Select Type</MenuItem>
                       <MenuItem value="Material">Material</MenuItem>
-                      <MenuItem value="Enhancement">Enhancement</MenuItem>
-                      <MenuItem value="Special">Special</MenuItem>
-                      <MenuItem value="Property">Property</MenuItem>
-                      <MenuItem value="Other">Other</MenuItem>
+                      <MenuItem value="Power">Enhancement</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -607,21 +604,29 @@ const AddItemMod = () => {
                       <MenuItem value="">Select Target</MenuItem>
                       <MenuItem value="weapon">Weapon</MenuItem>
                       <MenuItem value="armor">Armor</MenuItem>
-                      <MenuItem value="magic">Magic</MenuItem>
-                      <MenuItem value="gear">Gear</MenuItem>
-                      <MenuItem value="other">Other</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <TextField
-                    label="Subtarget"
-                    name="subtarget"
-                    value={modForm.subtarget}
-                    onChange={handleModFormChange}
-                    fullWidth
-                    margin="normal"
-                  />
+                  <FormControl fullWidth margin="normal" required>
+                    <InputLabel>Subtarget</InputLabel>
+                    <Select
+                      name="subtarget"
+                      value={modForm.subtarget}
+                      onChange={handleModFormChange}
+                      label="Subtarget"
+                    >
+                      <MenuItem value="">Select Target</MenuItem>
+                      <MenuItem value="one handed">One Handed Weapon</MenuItem>
+                      <MenuItem value="two handed">Two Handed Weapon</MenuItem>
+                      <MenuItem value="ammunition">Ammunition</MenuItem>
+                      <MenuItem value="light">Light Weapon</MenuItem>
+                      <MenuItem value="light">Light Armor</MenuItem>
+                      <MenuItem value="medium">Medium Armor</MenuItem>
+                      <MenuItem value="heavy">Heavy Armor</MenuItem>
+                      <MenuItem value="shield">Shield</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Grid>
                 <Grid item xs={12}>
                   <Box display="flex" justifyContent="space-between" mt={2}>
