@@ -26,20 +26,17 @@ import {
   InputLabel,
   Select as SelectField,
   MenuItem,
+  CircularProgress,
   Tooltip,
   Snackbar
 } from '@mui/material';
 import {
   Visibility,
-  VisibilityOff,
-  FileCopyIcon,
-  DeleteIcon,
-  AddIcon
+  VisibilityOff
 } from '@mui/icons-material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import FileCopyIcon from '@mui/icons-material/FileCopy';
-import Tooltip from '@mui/material/Tooltip';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
