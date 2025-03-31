@@ -46,13 +46,13 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [openLootViews, setOpenLootViews] = useState(false);
   const [openGold, setOpenGold] = useState(false);
   const [openBeta, setOpenBeta] = useState(false);
-  const [openSettings, setOpenSettings] = useState(false);
-  const [openDMSettings, setOpenDMSettings] = useState(false);
   const [openSessionTools, setOpenSessionTools] = useState(false);
+  const [openDMSettings, setOpenDMSettings] = useState(false);
   const [isDM, setIsDM] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
   const [groupName, setGroupName] = useState('Loot Tracker');
   const [username, setUsername] = useState('');
+  const [activeCharacter, setActiveCharacter] = useState(null);
   const location = useLocation();
 
   const handleToggle = (setter) => () => setter(prev => !prev);
@@ -71,6 +71,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     }
     fetchUnprocessedLootCount();
     fetchGroupName();
+    fetchActiveCharacter();
   }, []);
 
   const fetchUnprocessedLootCount = async () => {
@@ -88,6 +89,17 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
       setGroupName(response.data.value);
     } catch (error) {
       console.error('Error fetching campaign name:', error);
+    }
+  };
+
+  const fetchActiveCharacter = async () => {
+    try {
+      const response = await api.get('/auth/status');
+      if (response.data && response.data.user && response.data.user.activeCharacter) {
+        setActiveCharacter(response.data.user.activeCharacter);
+      }
+    } catch (error) {
+      console.error('Error fetching active character:', error);
     }
   };
 
@@ -232,25 +244,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
           </MenuItem>
 
-          <MenuItem
-            primary="Settings"
-            icon={<Settings/>}
-            onClick={handleToggle(setOpenSettings)}
-            open={openSettings}
-            isCategory
-          >
-            <MenuItem to="/user-settings" primary="User Settings" icon={<Person4 />} />
-          </MenuItem>
-
-{/*          <MenuItem
-            primary="Beta"
-            icon={<Construction/>}
-            onClick={handleToggle(setOpenBeta)}
-            open={openBeta}
-            isCategory
-          >
-          </MenuItem>*/}
-
           {isDM && (
             <MenuItem
               primary="DM Settings"
@@ -271,11 +264,28 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
       <Box sx={{
         p: 2,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: isCollapsed ? 'center' : 'flex-start',
         justifyContent: isCollapsed ? 'center' : 'space-between',
+        flexDirection: isCollapsed ? 'row' : 'column',
       }}>
         {!isCollapsed && (
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Box
+            component={Link}
+            to="/user-settings"
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              textDecoration: 'none',
+              color: 'inherit',
+              mb: 1,
+              '&:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                borderRadius: 1,
+              },
+              p: 1,
+              width: '100%',
+            }}
+          >
             <Avatar
               sx={{
                 width: 32,
@@ -288,14 +298,26 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             >
               {username.charAt(0).toUpperCase()}
             </Avatar>
-            <Typography variant="body2" noWrap>
-              {username}
-            </Typography>
+            <Box sx={{ overflow: 'hidden' }}>
+              <Typography variant="body2" noWrap>
+                {username}
+              </Typography>
+              {activeCharacter && (
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {activeCharacter.name}
+                </Typography>
+              )}
+            </Box>
           </Box>
         )}
 
         <Tooltip title="Logout">
-          <IconButton onClick={handleLogout} color="inherit" size="small">
+          <IconButton
+            onClick={handleLogout}
+            color="inherit"
+            size="small"
+            sx={{ alignSelf: isCollapsed ? 'center' : 'flex-end' }}
+          >
             <Logout />
           </IconButton>
         </Tooltip>
