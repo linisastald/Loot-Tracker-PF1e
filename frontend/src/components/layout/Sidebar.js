@@ -1,45 +1,37 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, {useEffect, useState} from 'react';
+import {Link, useLocation} from 'react-router-dom';
 import {
-  Drawer,
-  List,
-  ListItemText,
-  Typography,
-  Collapse,
-  ListItemIcon,
-  IconButton,
-  Box,
-  ListItemButton,
-  Badge,
-  Divider,
-  Tooltip,
   Avatar,
+  Badge,
+  Box,
+  Collapse,
+  Divider,
+  Drawer,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
+  AddBox,
+  AttachMoney,
+  ChevronLeft,
+  DateRange,
   ExpandLess,
   ExpandMore,
-  Menu as MenuIcon,
-  ChevronLeft,
-  AddBox,
-  ViewList,
-  AttachMoney,
-  Settings,
-  SupervisorAccount,
-  Inventory,
-  DateRange,
-  Construction,
-  PsychologyAlt,
-  AccountBalanceWallet,
   Groups2,
-  Person4,
-  Sell,
-  Delete,
-  AccountBalance,
+  Inventory,
   Logout,
+  Menu as MenuIcon,
+  PsychologyAlt,
+  SupervisorAccount,
+  ViewList,
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
-import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
 import api from '../../utils/api';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {

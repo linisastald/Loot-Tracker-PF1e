@@ -1,26 +1,26 @@
 // src/components/Consumables.js
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import api from '../../utils/api';
 import {
+  Button,
+  Collapse,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
   Paper,
-  Typography,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   TextField,
-  Collapse,
-  IconButton,
+  Typography,
 } from '@mui/material';
-import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import {KeyboardArrowDown, KeyboardArrowUp} from '@mui/icons-material';
 
 const Consumables = () => {
   const [wands, setWands] = useState([]);

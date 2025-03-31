@@ -1,21 +1,21 @@
 // frontend/src/components/pages/Register.js
 
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, {useEffect, useState} from 'react';
+import {useNavigate} from 'react-router-dom';
 import api from '../../utils/api';
 import {
+  Box,
   Button,
-  TextField,
-  Typography,
   Container,
-  Paper,
-  MenuItem,
+  FormHelperText,
   IconButton,
   InputAdornment,
-  FormHelperText,
-  Box
+  MenuItem,
+  Paper,
+  TextField,
+  Typography
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import {Visibility, VisibilityOff} from '@mui/icons-material';
 
 const Register = () => {
   const [username, setUsername] = useState('');

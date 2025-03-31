@@ -1,22 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import {
-  TextField,
-  Typography,
-  Paper,
-  Grid,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  FormControlLabel,
-  Switch,
-  Checkbox,
-  Box,
-  IconButton,
-  Autocomplete,
+    Autocomplete,
+    Box,
+    Checkbox,
+    FormControl,
+    FormControlLabel,
+    Grid,
+    IconButton,
+    InputLabel,
+    MenuItem,
+    Paper,
+    Select,
+    Switch,
+    TextField,
+    Typography,
 } from '@mui/material';
-import { Delete as DeleteIcon } from '@mui/icons-material';
-import { fetchItemNames } from '../../utils/lootEntryUtils';
+import {Delete as DeleteIcon} from '@mui/icons-material';
+import {fetchItemNames} from '../../utils/lootEntryUtils';
 
 const EntryForm = ({ entry, index, onRemove, onChange }) => {
   const [localEntry, setLocalEntry] = useState(entry.data);

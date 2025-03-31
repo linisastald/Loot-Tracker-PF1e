@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
 import {
+  Collapse,
   Container,
+  IconButton,
   Paper,
-  Typography,
-  TableContainer,
   Table,
+  TableBody,
+  TableCell,
+  TableContainer,
   TableHead,
   TableRow,
-  TableCell,
-  TableBody,
-  IconButton,
-  Collapse,
+  Typography,
 } from '@mui/material';
-import { KeyboardArrowUp, KeyboardArrowDown } from '@mui/icons-material';
-import { formatDate } from '../../../utils/utils';
+import {KeyboardArrowDown, KeyboardArrowUp} from '@mui/icons-material';
+import {formatDate} from '../../../utils/utils';
 
 const SoldLoot = () => {
   const [soldSummary, setSoldSummary] = useState([]);

@@ -1,22 +1,22 @@
-import { useState, useEffect } from 'react';
+import {useEffect, useState} from 'react';
 import api from '../utils/api';
 import {
-  fetchActiveUser,
   applyFilters,
+  fetchActiveUser,
+  handleKeepParty,
+  handleKeepSelf,
+  handleOpenSplitDialog,
+  handleOpenUpdateDialog,
   handleSelectItem,
   handleSell,
-  handleTrash,
-  handleKeepSelf,
-  handleKeepParty,
-  handleSplitSubmit,
-  handleOpenUpdateDialog,
-  handleOpenSplitDialog,
-  handleUpdateDialogClose,
   handleSplitDialogClose,
+  handleSplitSubmit,
+  handleTrash,
   handleUpdateChange,
+  handleUpdateDialogClose,
   handleUpdateSubmit,
 } from '../utils/utils';
-import { isDM } from '../utils/auth';
+import {isDM} from '../utils/auth';
 
 const useLootManagement = (statusToFetch) => {
   // Common state

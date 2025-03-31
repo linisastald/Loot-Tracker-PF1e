@@ -1,14 +1,7 @@
 // frontend/src/components/pages/DMSettings.js
-import React, { useState } from 'react';
-import {
-  Container,
-  Paper,
-  Typography,
-  Tabs,
-  Tab,
-  Box
-} from '@mui/material';
-import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import React, {useState} from 'react';
+import {Box, Container, Paper, Tab, Tabs, Typography} from '@mui/material';
+import {Route, Routes, useLocation, useNavigate} from 'react-router-dom';
 
 import SystemSettings from './DMSettings/SystemSettings';
 import UserManagement from './DMSettings/UserManagement';

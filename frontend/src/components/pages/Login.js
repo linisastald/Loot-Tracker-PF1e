@@ -1,20 +1,10 @@
 // frontend/src/components/pages/Login.js
 
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, {useState} from 'react';
+import {useNavigate} from 'react-router-dom';
 import api from '../../utils/api';
-import {
-  Button,
-  TextField,
-  Typography,
-  Container,
-  Paper,
-  IconButton,
-  InputAdornment,
-  Box,
-  Link
-} from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import {Box, Button, Container, IconButton, InputAdornment, Link, Paper, TextField, Typography} from '@mui/material';
+import {Visibility, VisibilityOff} from '@mui/icons-material';
 
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState('');

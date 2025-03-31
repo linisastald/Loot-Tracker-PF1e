@@ -1,10 +1,5 @@
 import React from 'react';
-import {
-    Container,
-    Paper,
-    Typography,
-    Button, Box,
-} from '@mui/material';
+import {Box, Button, Container,} from '@mui/material';
 import CustomLootTable from '../../common/CustomLootTable';
 import CustomSplitStackDialog from '../../common/dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from '../../common/dialogs/CustomUpdateDialog';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@mui/material';
+import {Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField} from '@mui/material';
 
 const CustomSplitStackDialog = ({ open, handleClose, splitQuantities, handleSplitChange, handleAddSplit, handleSplitSubmit }) => {
   return (

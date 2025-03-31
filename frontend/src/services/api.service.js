@@ -1,6 +1,6 @@
 // src/services/api.service.js
 import axios from 'axios';
-import { toast } from 'react-toastify'; // Assuming you're using react-toastify for notifications
+import {toast} from 'react-toastify'; // Assuming you're using react-toastify for notifications
 
 /**
  * Base API URL from environment

@@ -1,8 +1,8 @@
 // src/App.js
 import CssBaseline from '@mui/material/CssBaseline';
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import { ThemeProvider } from '@mui/material/styles';
+import React, {useEffect, useState} from 'react';
+import {BrowserRouter as Router, Navigate, Route, Routes} from 'react-router-dom';
+import {ThemeProvider} from '@mui/material/styles';
 
 
 import Login from './components/pages/Login';

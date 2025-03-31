@@ -1,4 +1,4 @@
-import { createTheme } from '@mui/material/styles';
+import {createTheme} from '@mui/material/styles';
 
 /**
  * Comprehensive consolidated theme for the Pathfinder Loot Tracker application.

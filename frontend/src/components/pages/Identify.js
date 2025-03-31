@@ -1,25 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import api from '../../utils/api';
 import {
-  Container,
-  Paper,
-  Typography,
-  Button,
+  Alert,
   Box,
-  TextField,
+  Button,
+  Checkbox,
+  Container,
+  FormControlLabel,
+  Paper,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  FormControlLabel,
-  Checkbox,
-  Alert,
+  TextField,
+  Typography,
 } from '@mui/material';
-import { fetchActiveUser } from '../../utils/utils';
+import {fetchActiveUser} from '../../utils/utils';
 import CustomLootTable from '../common/CustomLootTable';
-import { isDM } from "../../utils/auth";
+import {isDM} from "../../utils/auth";
 
 const Identify = () => {
   const [loot, setLoot] = useState({ summary: [], individual: [] });

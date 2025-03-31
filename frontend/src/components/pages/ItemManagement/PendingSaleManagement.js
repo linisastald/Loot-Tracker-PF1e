@@ -1,30 +1,26 @@
 // frontend/src/components/pages/ItemManagement/PendingSaleManagement.js
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
-import { calculateItemSaleValue, calculateTotalSaleValue } from '../../../utils/saleValueCalculator';
+import {calculateItemSaleValue, calculateTotalSaleValue} from '../../../utils/saleValueCalculator';
+import {formatDate, formatItemNameWithMods, updateItemAsDM} from '../../../utils/utils';
 import {
-  formatDate,
-  updateItemAsDM,
-  formatItemNameWithMods
-} from '../../../utils/utils';
-import {
-  Typography,
-  TableContainer,
-  Table,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-  Paper,
-  Button,
+  Alert,
   Box,
-  TextField,
+  Button,
   Card,
   CardContent,
-  Grid,
   Checkbox,
-  Alert,
   CircularProgress,
+  Grid,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
 } from '@mui/material';
 import ItemManagementDialog from '../../common/dialogs/ItemManagementDialog';
 

@@ -1,39 +1,36 @@
 // frontend/src/components/pages/DMSettings/UserManagement.js
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
 import {
-  Typography,
-  Button,
+  Alert,
   Box,
+  Button,
+  Checkbox,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormHelperText,
+  IconButton,
+  InputAdornment,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select as SelectField,
+  Snackbar,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Checkbox,
-  Paper,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   TextField,
-  InputAdornment,
-  IconButton,
-  FormHelperText,
-  Alert,
-  FormControl,
-  InputLabel,
-  Select as SelectField,
-  MenuItem,
-  CircularProgress,
   Tooltip,
-  Snackbar
+  Typography
 } from '@mui/material';
-import {
-  Visibility,
-  VisibilityOff
-} from '@mui/icons-material';
+import {Visibility, VisibilityOff} from '@mui/icons-material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import FileCopyIcon from '@mui/icons-material/FileCopy';

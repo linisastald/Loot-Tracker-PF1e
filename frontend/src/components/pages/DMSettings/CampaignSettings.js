@@ -1,13 +1,7 @@
 // frontend/src/components/pages/DMSettings/CampaignSettings.js
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
-import {
-  Typography,
-  Box,
-  TextField,
-  Button,
-  Alert
-} from '@mui/material';
+import {Alert, Box, Button, TextField, Typography} from '@mui/material';
 
 const CampaignSettings = () => {
   const [campaignName, setCampaignName] = useState('');

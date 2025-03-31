@@ -1,34 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import {
-  Container,
-  Paper,
-  Typography,
-  Switch,
+  Alert,
+  Box,
   Button,
+  Card,
+  CardContent,
+  Checkbox,
+  Chip,
+  Container,
+  FormControlLabel,
+  Grid,
   List,
   ListItem,
   ListItemText,
-  FormGroup,
-  FormControlLabel,
-  Box,
+  Paper,
   Snackbar,
-  Alert,
-  Card,
-  CardContent,
-  Divider,
-  Grid,
-  Checkbox,
-  Chip,
   Tooltip,
-  IconButton
+  Typography
 } from '@mui/material';
-import { styled } from '@mui/material/styles';
+import {styled} from '@mui/material/styles';
 import api from '../../utils/api';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
-import { grey } from '@mui/material/colors';
+import {grey} from '@mui/material/colors';
 
 const COLORS = {
   PRE_SESSION: 8311585,  // Purple

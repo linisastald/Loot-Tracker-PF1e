@@ -1,20 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import api from '../../utils/api';
-import {
-  validateLootEntries,
-  prepareEntryForSubmission,
-  fetchInitialData,
-  fetchItemNames
-} from '../../utils/lootEntryUtils';
+import React, {useEffect, useState} from 'react';
+import {fetchInitialData, prepareEntryForSubmission, validateLootEntries} from '../../utils/lootEntryUtils';
 import useLootEntryForm from '../../hooks/useLootEntryForm';
-import {
-  Container,
-  Paper,
-  Typography,
-  Button,
-  Box,
-  Alert
-} from '@mui/material';
+import {Alert, Box, Button, Container, Paper, Typography} from '@mui/material';
 import EntryForm from './EntryForm';
 
 const LootEntry = () => {

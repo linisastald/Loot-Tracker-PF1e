@@ -1,9 +1,5 @@
 import React from 'react';
-import {
-  Container,
-  Paper,
-  Typography,
-} from '@mui/material';
+import {Container,} from '@mui/material';
 import CustomLootTable from '../../common/CustomLootTable';
 import useLootManagement from '../../../hooks/useLootManagement';
 

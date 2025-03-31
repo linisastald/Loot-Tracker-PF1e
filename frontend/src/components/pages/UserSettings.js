@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import api from '../../utils/api';
 import {
-  Container,
-  Paper,
-  Typography,
-  TextField,
-  Button,
-  Box,
-  Tabs,
-  Tab,
   Alert,
+  Box,
+  Button,
+  Container,
   Grid,
   IconButton,
   InputAdornment,
+  Paper,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import {Visibility, VisibilityOff} from '@mui/icons-material';
 import CharacterTab from './UserSettings/CharacterTab';
 
 function TabPanel(props) {

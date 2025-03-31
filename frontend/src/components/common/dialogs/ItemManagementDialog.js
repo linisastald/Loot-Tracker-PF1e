@@ -1,18 +1,17 @@
 // frontend/src/components/common/dialogs/ItemManagementDialog.js
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Autocomplete,
   Button,
-  TextField,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
-  Select,
   MenuItem,
-  Autocomplete,
-  Grid
+  Select,
+  TextField
 } from '@mui/material';
 import api from '../../../utils/api';
 

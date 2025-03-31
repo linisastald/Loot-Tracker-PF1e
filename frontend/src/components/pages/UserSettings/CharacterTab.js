@@ -1,11 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
 import {
-  Typography,
-  Button,
+  Alert,
   Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
   Grid,
+  IconButton,
   Paper,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -13,27 +23,10 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Switch,
-  FormControlLabel,
-  Card,
-  CardContent,
-  Divider,
-  Alert,
-  IconButton,
   Tooltip,
-  Chip
+  Typography
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Check as CheckIcon,
-  Star as StarIcon,
-  StarBorder as StarBorderIcon
-} from '@mui/icons-material';
+import {Add as AddIcon, Edit as EditIcon, Star as StarIcon, StarBorder as StarBorderIcon} from '@mui/icons-material';
 import HeartBrokenIcon from '@mui/icons-material/HeartBroken';
 
 const CharacterTab = () => {
