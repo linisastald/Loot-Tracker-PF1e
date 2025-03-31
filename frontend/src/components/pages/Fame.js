@@ -260,21 +260,27 @@ const Fame = () => {
 
     const getFameTitle = () => {
         if (fameSystem === 'fame') {
-            if (famePoints <= 0) return 'Fame';
-            if (famePoints < 10) return 'Disgraceful';
-            if (famePoints < 20) return 'Despicable';
-            if (famePoints < 30) return 'Notorious';
-            if (famePoints < 40) return 'Loathsome';
-            return 'Vile';
+            if (famePoints <= -55) return 'Vile';
+            if (famePoints < -40) return 'Loathsome';
+            if (famePoints < -30) return 'Notorious';
+            if (famePoints < -20) return 'Despicable';
+            if (famePoints < -10) return 'Disgraceful';
+            if (famePoints <= 0) return '';
+            if (famePoints < 10) return 'Unknown';
+            if (famePoints < 20) return 'Noticed';
+            if (famePoints < 30) return 'Respected';
+            if (famePoints < 40) return 'Local Hero';
+            if (famePoints < 55) return 'Celebrity';
+            return 'Idolized';
         } else {
             // Infamy titles
-            if (famePoints <= 0) return 'Unknown';
-            if (famePoints < 10) return 'Sailor';
-            if (famePoints < 20) return 'Smuggler';
-            if (famePoints < 30) return 'Buccaneer';
-            if (famePoints < 40) return 'Pirate';
-            if (famePoints < 50) return 'Scourge';
-            return 'Dread Pirate';
+            if (famePoints <= 10) return 'Unknown';
+            if (famePoints > 10) return 'Disgraceful';
+            if (famePoints > 20) return 'Despicable';
+            if (famePoints > 30) return 'Notorious';
+            if (famePoints > 40) return 'Loathsome';
+            if (famePoints >= 55) return 'Vile';
+            return 'Vile';
         }
     };
 
@@ -309,9 +315,6 @@ const Fame = () => {
                     </Typography>
                     <Typography variant="body1" paragraph>
                         <strong>Infamy Points:</strong> Your ship earns these by plundering, performing daring deeds, defeating worthy foes, and building your pirate legend.
-                    </Typography>
-                    <Typography variant="body1" paragraph>
-                        <strong>Disrepute:</strong> For every 10 Infamy points, you gain 1 Disrepute point, which can be spent on special rewards and favors from other pirates.
                     </Typography>
                     <Typography variant="body1" paragraph>
                         <strong>Sphere of Influence:</strong> Your reputation extends in a {sphereOfInfluence} mile radius around you. Outside this area, your Infamy is considered to be 0.
