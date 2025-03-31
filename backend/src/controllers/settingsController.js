@@ -165,6 +165,21 @@ const maskSensitiveValue = (value) => {
     return value.substring(0, 4) + '...' + value.substring(value.length - 4);
 };
 
+/**
+ * Get fame system setting
+ */
+const getFameSystem = async (req, res) => {
+    try {
+        const settings = await fetchSettingsByNames(['fame_system']);
+        const fameSystem = settings.fame_system || 'disabled';
+
+        controllerFactory.sendSuccessResponse(res, {value: fameSystem}, 'Fame system setting retrieved');
+    } catch (error) {
+        logger.error('Error fetching fame system setting:', error);
+        throw error;
+    }
+};
+
 // Define validation rules
 const updateSettingValidation = {
     requiredFields: ['name', 'value']
@@ -191,5 +206,9 @@ module.exports = {
 
     deleteSetting: controllerFactory.createHandler(deleteSetting, {
         errorMessage: 'Error deleting setting'
+    }),
+
+    getFameSystem: controllerFactory.createHandler(getFameSystem, {
+        errorMessage: 'Error fetching fame system setting'
     })
 };

@@ -19,6 +19,7 @@ import GolarionCalendar from "./components/pages/GolarionCalendar";
 import Tasks from "./components/pages/Tasks";
 import Identify from './components/pages/Identify';
 import LootManagement from './components/pages/LootManagement';
+import Fame from './components/pages/Fame';
 
 import theme from './theme';
 import api from './utils/api';
@@ -130,6 +131,7 @@ function App() {
             <Route path="consumables" element={<Consumables />} />
             <Route path="tasks" element={<Tasks />} />
             <Route path="identify" element={<Identify />} />
+            <Route path="fame" element={<Fame />} />
           </Route>
         </Routes>
       </Router>

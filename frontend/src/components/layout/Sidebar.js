@@ -29,6 +29,7 @@ import {
   PsychologyAlt,
   SupervisorAccount,
   ViewList,
+  EmojiEvents,
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -45,6 +46,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [groupName, setGroupName] = useState('Loot Tracker');
   const [username, setUsername] = useState('');
   const [activeCharacter, setActiveCharacter] = useState(null);
+  const [fameSystem, setFameSystem] = useState(null);
   const location = useLocation();
 
   const handleToggle = (setter) => () => setter(prev => !prev);
@@ -64,6 +66,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     fetchUnprocessedLootCount();
     fetchGroupName();
     fetchActiveCharacter();
+    fetchFameSystem();
   }, []);
 
   const fetchUnprocessedLootCount = async () => {
@@ -92,6 +95,21 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
       }
     } catch (error) {
       console.error('Error fetching active character:', error);
+    }
+  };
+
+  // Add function to fetch fame system setting
+  const fetchFameSystem = async () => {
+    try {
+      const response = await api.get('/settings/fame-system');
+      if (response.data && response.data.value && response.data.value !== 'disabled') {
+        setFameSystem(response.data.value);
+      } else {
+        setFameSystem(null);
+      }
+    } catch (error) {
+      console.error('Error fetching fame system setting:', error);
+      setFameSystem(null);
     }
   };
 
@@ -222,6 +240,16 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             icon={<AttachMoney/>}
             isCategory
           />
+
+          {/* Add Fame/Infamy menu item when enabled */}
+          {fameSystem && (
+            <MenuItem
+              to="/fame"
+              primary={fameSystem === 'fame' ? 'Fame' : 'Infamy'}
+              icon={<EmojiEvents />}
+              isCategory
+            />
+          )}
 
           <MenuItem
             primary="Session Tools"
