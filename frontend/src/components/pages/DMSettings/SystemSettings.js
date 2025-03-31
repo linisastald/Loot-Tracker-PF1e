@@ -37,6 +37,10 @@ const SystemSettings = () => {
   const [isRestoring, setIsRestoring] = useState(false);
   const [backupFile, setBackupFile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [quickInviteData, setQuickInviteData] = useState(null);
+  const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
 
   // Discord integration settings
   const [discordSettings, setDiscordSettings] = useState({
