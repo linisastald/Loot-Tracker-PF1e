@@ -312,7 +312,7 @@ const checkForDm = async (req, res) => {
  */
 const checkRegistrationStatus = async (req, res) => {
   const result = await dbUtils.executeQuery("SELECT value FROM settings WHERE name = 'registrations open'");
-  const isOpen = result.rows[0] && result.rows[0].value === 1;
+  const isOpen = result.rows[0] && (result.rows[0].value === 1 || result.rows[0].value === '1');
   controllerFactory.sendSuccessResponse(res, { isOpen });
 };
 
@@ -323,7 +323,7 @@ const checkInviteRequired = async (req, res) => {
   const inviteRequiredResult = await dbUtils.executeQuery(
     "SELECT value FROM settings WHERE name = 'invite_required'"
   );
-  const isRequired = inviteRequiredResult.rows[0] && inviteRequiredResult.rows[0].value === 1;
+  const isRequired = inviteRequiredResult.rows[0] && (inviteRequiredResult.rows[0].value === 1 || inviteRequiredResult.rows[0].value === '1');
   controllerFactory.sendSuccessResponse(res, { isRequired });
 };
 
