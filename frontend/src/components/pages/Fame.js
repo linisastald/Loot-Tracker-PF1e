@@ -71,6 +71,7 @@ const Fame = () => {
     const [pointsToAdd, setPointsToAdd] = useState(0);
     const [reason, setReason] = useState('');
     const [selectedEvent, setSelectedEvent] = useState('');
+    const [port, setPort] = useState('');
 
     // For sphere of influence
     const [sphereOfInfluence, setSphereOfInfluence] = useState(100); // Base 100 miles
@@ -184,38 +185,47 @@ const Fame = () => {
             setError('');
             setSuccess('');
 
-            if (!characterToModify) {
+            if (fameSystem === 'fame' && !characterToModify) {
                 setError('Please select a character');
                 return;
             }
 
-            if (!pointsToAdd || pointsToAdd === 0) {
-                setError('Please enter a non-zero value');
+            if (!pointsToAdd || pointsToAdd <= 0) {
+                setError('Please enter a positive value');
                 return;
             }
 
-            // Get event details if an event was selected
+            if (fameSystem === 'infamy' && !port) {
+                setError('Please enter a port name');
+                return;
+            }
+
+            // Get event details if an event was selected (only for fame system)
             let eventDetails = null;
-            if (selectedEvent) {
+            if (fameSystem === 'fame' && selectedEvent) {
                 eventDetails = fameEvents.find(e => e.id === selectedEvent);
             }
 
             await api.post('/fame/add-points', {
-                characterId: characterToModify,
+                characterId: fameSystem === 'fame' ? characterToModify : null,
                 points: parseInt(pointsToAdd, 10),
-                reason: reason,
-                event: eventDetails ? eventDetails.name : null
+                reason: fameSystem === 'fame' ? reason : `${port}: ${reason}`,
+                event: fameSystem === 'fame' && eventDetails ? eventDetails.name : null,
+                port: fameSystem === 'infamy' ? port : null
             });
 
-            setSuccess(`Successfully ${pointsToAdd > 0 ? 'added' : 'removed'} ${Math.abs(pointsToAdd)} ${fameSystem === 'fame' ? 'Fame' : 'Infamy'} points`);
+            setSuccess(`Successfully added ${pointsToAdd} ${fameSystem === 'fame' ? 'Fame' : 'Infamy'} points`);
 
             // Reset form
             setPointsToAdd(0);
             setReason('');
             setSelectedEvent('');
+            setPort('');
 
             // Refresh data if needed
-            if (characterToModify === activeCharacterId) {
+            if (fameSystem === 'fame' && characterToModify === activeCharacterId) {
+                fetchFamePoints(activeCharacterId);
+            } else if (fameSystem === 'infamy' && activeCharacterId) {
                 fetchFamePoints(activeCharacterId);
             }
         } catch (error) {
@@ -235,7 +245,7 @@ const Fame = () => {
         if (selectedEventId) {
             const eventDetails = fameEvents.find(e => e.id === selectedEventId);
             if (eventDetails) {
-                setPointsToAdd(eventDetails.points);
+                setPointsToAdd(eventDetails.points > 0 ? eventDetails.points : 0);
             }
         }
     };
@@ -249,14 +259,23 @@ const Fame = () => {
     };
 
     const getFameTitle = () => {
-        const title = fameSystem === 'fame' ? 'Fame' : 'Infamy';
-
-        if (famePoints <= 0) return title;
-        if (famePoints < 10) return 'Disgraceful';
-        if (famePoints < 20) return 'Despicable';
-        if (famePoints < 30) return 'Notorious';
-        if (famePoints < 40) return 'Loathsome';
-        return 'Vile';
+        if (fameSystem === 'fame') {
+            if (famePoints <= 0) return 'Fame';
+            if (famePoints < 10) return 'Disgraceful';
+            if (famePoints < 20) return 'Despicable';
+            if (famePoints < 30) return 'Notorious';
+            if (famePoints < 40) return 'Loathsome';
+            return 'Vile';
+        } else {
+            // Infamy titles
+            if (famePoints <= 0) return 'Unknown';
+            if (famePoints < 10) return 'Sailor';
+            if (famePoints < 20) return 'Smuggler';
+            if (famePoints < 30) return 'Buccaneer';
+            if (famePoints < 40) return 'Pirate';
+            if (famePoints < 50) return 'Scourge';
+            return 'Dread Pirate';
+        }
     };
 
     const getFameRules = () => {
@@ -286,10 +305,10 @@ const Fame = () => {
                 <Box mt={2}>
                     <Typography variant="h6">Infamy Rules (Skull & Shackles)</Typography>
                     <Typography variant="body1" paragraph>
-                        Infamy represents your reputation as a fearsome pirate in the Shackles and beyond.
+                        Infamy represents your ship's reputation as fearsome pirates in the Shackles and beyond.
                     </Typography>
                     <Typography variant="body1" paragraph>
-                        <strong>Infamy Points:</strong> You earn these by plundering, performing daring deeds, defeating worthy foes, and building your pirate legend.
+                        <strong>Infamy Points:</strong> Your ship earns these by plundering, performing daring deeds, defeating worthy foes, and building your pirate legend.
                     </Typography>
                     <Typography variant="body1" paragraph>
                         <strong>Disrepute:</strong> For every 10 Infamy points, you gain 1 Disrepute point, which can be spent on special rewards and favors from other pirates.
@@ -347,7 +366,7 @@ const Fame = () => {
                     <Grid item xs={12} md={6}>
                         <Card elevation={3}>
                             <CardHeader
-                                title={activeCharacter ? activeCharacter.name : "Your Character"}
+                                title={fameSystem === 'fame' ? (activeCharacter ? activeCharacter.name : "Your Character") : "Ship Infamy"}
                                 subheader={`${fameSystem === 'fame' ? 'Fame' : 'Infamy'} Profile`}
                             />
                             <CardContent>
@@ -417,9 +436,12 @@ const Fame = () => {
             </Paper>
 
             <Paper sx={{ p: 3, mb: 3 }}>
-                <Typography variant="h6" gutterBottom>Add/Modify {fameSystem === 'fame' ? 'Fame' : 'Infamy'} Points</Typography>
+                <Typography variant="h6" gutterBottom>
+                    {fameSystem === 'fame' ? 'Add/Modify Fame Points' : 'Add Infamy Points'}
+                </Typography>
                 <Box mt={2} component="form" noValidate>
-                    {isDMUser && (
+                    {/* Character selection dropdown (Fame system only) */}
+                    {fameSystem === 'fame' && isDMUser && (
                         <Box mb={2}>
                             <FormControl fullWidth>
                                 <InputLabel id="character-select-label">Character</InputLabel>
@@ -440,40 +462,56 @@ const Fame = () => {
                         </Box>
                     )}
 
+                    {/* Event selection for Fame system, Port entry for Infamy system */}
                     <Box mb={2}>
-                        <FormControl fullWidth>
-                            <InputLabel id="event-select-label">Select an Event</InputLabel>
-                            <Select
-                                labelId="event-select-label"
-                                value={selectedEvent}
-                                onChange={handleEventSelect}
-                                label="Select an Event"
-                            >
-                                <MenuItem value="">Custom Entry</MenuItem>
-                                <MenuItem disabled divider>--- Positive Events ---</MenuItem>
-                                {getPositiveEvents().map((event) => (
-                                    <MenuItem key={event.id} value={event.id}>
-                                        {event.name} (+{event.points})
-                                    </MenuItem>
-                                ))}
-                                <MenuItem disabled divider>--- Negative Events ---</MenuItem>
-                                {getNegativeEvents().map((event) => (
-                                    <MenuItem key={event.id} value={event.id}>
-                                        {event.name} ({event.points})
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
+                        {fameSystem === 'fame' ? (
+                            <FormControl fullWidth>
+                                <InputLabel id="event-select-label">Select an Event</InputLabel>
+                                <Select
+                                    labelId="event-select-label"
+                                    value={selectedEvent}
+                                    onChange={handleEventSelect}
+                                    label="Select an Event"
+                                >
+                                    <MenuItem value="">Custom Entry</MenuItem>
+                                    <MenuItem disabled divider>--- Positive Events ---</MenuItem>
+                                    {getPositiveEvents().map((event) => (
+                                        <MenuItem key={event.id} value={event.id}>
+                                            {event.name} (+{event.points})
+                                        </MenuItem>
+                                    ))}
+                                    <MenuItem disabled divider>--- Negative Events ---</MenuItem>
+                                    {getNegativeEvents().map((event) => (
+                                        <MenuItem key={event.id} value={event.id}>
+                                            {event.name} ({event.points})
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        ) : (
+                            <TextField
+                                fullWidth
+                                label="Port"
+                                value={port}
+                                onChange={(e) => setPort(e.target.value)}
+                                helperText="Enter the name of the port where the infamy was earned"
+                            />
+                        )}
                     </Box>
 
                     <Box mb={2}>
                         <TextField
                             fullWidth
-                            label={`Points to ${pointsToAdd > 0 ? 'add' : 'remove'}`}
+                            label={fameSystem === 'fame' ? `Points to ${pointsToAdd > 0 ? 'add' : 'remove'}` : "Infamy Points to Add"}
                             type="number"
                             value={pointsToAdd}
                             onChange={(e) => setPointsToAdd(e.target.value)}
-                            helperText="Use negative values to remove points"
+                            helperText={fameSystem === 'fame' ? "Use negative values to remove points" : "Enter a positive value to add infamy points"}
+                            InputProps={{
+                                inputProps: {
+                                    min: fameSystem === 'infamy' ? 1 : undefined
+                                }
+                            }}
                         />
                     </Box>
 
@@ -485,7 +523,9 @@ const Fame = () => {
                             onChange={(e) => setReason(e.target.value)}
                             multiline
                             rows={2}
-                            helperText="Provide details about why points are being added or removed"
+                            helperText={fameSystem === 'fame'
+                                ? "Provide details about why points are being added or removed"
+                                : "Describe how the infamy was earned at this port"}
                         />
                     </Box>
 
@@ -493,10 +533,15 @@ const Fame = () => {
                         variant="contained"
                         color="primary"
                         onClick={handleAddPoints}
-                        disabled={!characterToModify || pointsToAdd === 0}
-                        startIcon={pointsToAdd > 0 ? <AddIcon /> : <RemoveIcon />}
+                        disabled={
+                            (fameSystem === 'fame' && (!characterToModify || pointsToAdd === 0)) ||
+                            (fameSystem === 'infamy' && (!port || pointsToAdd <= 0))
+                        }
+                        startIcon={<AddIcon />}
                     >
-                        {pointsToAdd > 0 ? 'Add' : 'Remove'} Points
+                        {fameSystem === 'fame'
+                            ? (pointsToAdd > 0 ? 'Add' : 'Remove') + ' Points'
+                            : 'Add Infamy Points'}
                     </Button>
                 </Box>
             </Paper>
