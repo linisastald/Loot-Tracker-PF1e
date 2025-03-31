@@ -13,11 +13,11 @@ const getCurrentDate = async (req, res) => {
   if (result.rows.length === 0) {
     // Initialize the current date if it doesn't exist
     await dbUtils.executeQuery(
-      'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
-      [4722, 0, 1]
+        'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
+        [4722, 0, 1]
     );
 
-    controllerFactory.sendSuccessResponse(res, { year: 4722, month: 0, day: 1 }, 'Default date initialized');
+    controllerFactory.sendSuccessResponse(res, {year: 4722, month: 0, day: 1}, 'Default date initialized');
   } else {
     controllerFactory.sendSuccessResponse(res, result.rows[0], 'Current date retrieved');
   }
@@ -27,7 +27,7 @@ const getCurrentDate = async (req, res) => {
  * Set the current date in the Golarion calendar
  */
 const setCurrentDate = async (req, res) => {
-  const { year, month, day } = req.body;
+  const {year, month, day} = req.body;
 
   // Validate the date values
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
@@ -51,18 +51,18 @@ const setCurrentDate = async (req, res) => {
     if (exists) {
       // Update existing record
       await client.query(
-        'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
-        [year, month, day]
+          'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
+          [year, month, day]
       );
     } else {
       // Create new record
       await client.query(
-        'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
-        [year, month, day]
+          'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
+          [year, month, day]
       );
     }
 
-    controllerFactory.sendSuccessResponse(res, { year, month, day }, 'Current date set successfully');
+    controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Current date set successfully');
   });
 };
 
@@ -77,15 +77,15 @@ const advanceDay = async (req, res) => {
     if (result.rows.length === 0) {
       // Initialize if not exists
       await client.query(
-        'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
-        [4722, 0, 1]
+          'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
+          [4722, 0, 1]
       );
 
-      controllerFactory.sendSuccessResponse(res, { year: 4722, month: 0, day: 1 }, 'Initial date set');
+      controllerFactory.sendSuccessResponse(res, {year: 4722, month: 0, day: 1}, 'Initial date set');
       return;
     }
 
-    let { year, month, day } = result.rows[0];
+    let {year, month, day} = result.rows[0];
 
     // Advance by one day
     day++;
@@ -105,11 +105,11 @@ const advanceDay = async (req, res) => {
 
     // Update the date
     await client.query(
-      'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
-      [year, month, day]
+        'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
+        [year, month, day]
     );
 
-    controllerFactory.sendSuccessResponse(res, { year, month, day }, 'Date advanced successfully');
+    controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Date advanced successfully');
   });
 };
 
@@ -132,7 +132,7 @@ const getNotes = async (req, res) => {
  * Save a note for a specific date
  */
 const saveNote = async (req, res) => {
-  const { date, note } = req.body;
+  const {date, note} = req.body;
 
   if (!date || !date.year || date.month === undefined || !date.day) {
     throw controllerFactory.createValidationError('Valid date object with year, month, and day is required');
@@ -154,13 +154,13 @@ const saveNote = async (req, res) => {
 
   // Use upsert to save or update the note
   await dbUtils.executeQuery(
-    `INSERT INTO golarion_calendar_notes (year, month, day, note) 
-     VALUES ($1, $2, $3, $4) 
-     ON CONFLICT (year, month, day) DO UPDATE SET note = EXCLUDED.note`,
-    [date.year, date.month, date.day, note]
+      `INSERT INTO golarion_calendar_notes (year, month, day, note)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (year, month, day) DO UPDATE SET note = EXCLUDED.note`,
+      [date.year, date.month, date.day, note]
   );
 
-  controllerFactory.sendSuccessResponse(res, { date, note }, 'Note saved successfully');
+  controllerFactory.sendSuccessResponse(res, {date, note}, 'Note saved successfully');
 };
 
 /**

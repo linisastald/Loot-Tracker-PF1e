@@ -20,8 +20,8 @@ export const fetchInitialData = async (setItemOptions, setActiveCharacterId) => 
 export const fetchItemNames = async (query = '') => {
   try {
     // If query is empty, return all items
-    const params = query.trim() ? { query } : {};
-    const response = await api.get(`/loot/items`, { params });
+    const params = query.trim() ? {query} : {};
+    const response = await api.get(`/loot/items`, {params});
 
     // Ensure we always return an array of objects with name and id
     const items = response.data.map(item => ({
@@ -72,10 +72,10 @@ export const validateLootEntries = (entries) => {
         isValid = false;
         entryError = 'Transaction type is required';
       } else if (
-        !entry.data.platinum &&
-        !entry.data.gold &&
-        !entry.data.silver &&
-        !entry.data.copper
+          !entry.data.platinum &&
+          !entry.data.gold &&
+          !entry.data.silver &&
+          !entry.data.copper
       ) {
         isValid = false;
         entryError = 'At least one currency amount is required';
@@ -89,7 +89,7 @@ export const validateLootEntries = (entries) => {
     }
   });
 
-  return { validEntries, invalidEntries };
+  return {validEntries, invalidEntries};
 };
 
 export const prepareEntryForSubmission = async (entry, activeCharacterId) => {

@@ -12,17 +12,21 @@ const getConsumables = async (req, res) => {
     const wandsQuery = `
       SELECT l.id, l.quantity, l.name, l.charges
       FROM loot l
-      JOIN item i ON l.itemid = i.id
-      WHERE i.name ILIKE '%wand of%' AND l.status = 'Kept Party'
+             JOIN item i ON l.itemid = i.id
+      WHERE i.name ILIKE '%wand of%'
+        AND l.status = 'Kept Party'
     `;
 
     // Get all potions and scrolls
     const potionsScrollsQuery = `
-      SELECT i.id as itemid, SUM(l.quantity) as quantity, i.name, 
+      SELECT i.id            as itemid,
+             SUM(l.quantity) as quantity,
+             i.name,
              CASE WHEN i.name ILIKE '%potion of%' THEN 'potion' ELSE 'scroll' END as type
       FROM loot l
-      JOIN item i ON l.itemid = i.id
-      WHERE (i.name ILIKE '%potion of%' OR i.name ILIKE '%scroll of%') AND l.status = 'Kept Party'
+             JOIN item i ON l.itemid = i.id
+      WHERE (i.name ILIKE '%potion of%' OR i.name ILIKE '%scroll of%')
+        AND l.status = 'Kept Party'
       GROUP BY i.id, i.name
     `;
 
@@ -47,7 +51,7 @@ const getConsumables = async (req, res) => {
  * Use a consumable (wand, potion, or scroll)
  */
 const useConsumable = async (req, res) => {
-  const { itemid, type } = req.body;
+  const {itemid, type} = req.body;
 
   return await dbUtils.executeTransaction(async (client) => {
     let updateQuery;
@@ -57,19 +61,18 @@ const useConsumable = async (req, res) => {
         UPDATE loot
         SET charges = charges - 1,
             status = CASE WHEN charges = 1 THEN 'Trashed' ELSE status END
-        WHERE id = $1 AND charges > 0
+        WHERE id = $1
+          AND charges > 0
         RETURNING *
       `;
     } else {
       updateQuery = `
-        WITH updated_row AS (
-          SELECT id
-          FROM loot
-          WHERE itemid = $1 AND quantity > 0
-          ORDER BY id
-          LIMIT 1
-          FOR UPDATE
-        )
+        WITH updated_row AS (SELECT id
+                             FROM loot
+                             WHERE itemid = $1
+                               AND quantity > 0
+                             ORDER BY id
+                             LIMIT 1 FOR UPDATE)
         UPDATE loot
         SET quantity = quantity - 1,
             status = CASE WHEN quantity - 1 = 0 THEN 'Trashed' ELSE status END
@@ -92,8 +95,8 @@ const useConsumable = async (req, res) => {
     await client.query(insertUseQuery, [result.rows[0].id, req.user.id]);
 
     controllerFactory.sendSuccessResponse(res,
-      result.rows[0],
-      `${type === 'wand' ? 'Wand charge used' : type + ' consumed'} successfully`
+        result.rows[0],
+        `${type === 'wand' ? 'Wand charge used' : type + ' consumed'} successfully`
     );
   });
 };
@@ -102,7 +105,7 @@ const useConsumable = async (req, res) => {
  * Update wand charges
  */
 const updateWandCharges = async (req, res) => {
-  const { id, charges } = req.body;
+  const {id, charges} = req.body;
 
   // Validate charges range
   if (charges < 1 || charges > 50) {
@@ -112,7 +115,8 @@ const updateWandCharges = async (req, res) => {
   const updateQuery = `
     UPDATE loot
     SET charges = $1
-    WHERE id = $2 AND status = 'Kept Party'
+    WHERE id = $2
+      AND status = 'Kept Party'
     RETURNING *
   `;
 
@@ -129,7 +133,7 @@ const updateWandCharges = async (req, res) => {
  * Get consumable use history
  */
 const getConsumableUseHistory = async (req, res) => {
-  const { limit = 100 } = req.query;
+  const {limit = 100} = req.query;
 
   // Ensure limit is a number and within reasonable bounds
   const parsedLimit = Math.min(Math.max(parseInt(limit) || 100, 10), 500);
@@ -137,8 +141,8 @@ const getConsumableUseHistory = async (req, res) => {
   const historyQuery = `
     SELECT cu.id, cu.time, l.name as item_name, c.name as character_name
     FROM consumableuse cu
-    JOIN loot l ON cu.lootid = l.id
-    JOIN characters c ON cu.who = c.id
+           JOIN loot l ON cu.lootid = l.id
+           JOIN characters c ON cu.who = c.id
     ORDER BY cu.time DESC
     LIMIT $1
   `;
@@ -152,17 +156,16 @@ const getConsumableUseHistory = async (req, res) => {
  */
 const getConsumableStats = async (req, res) => {
   const statsQuery = `
-    SELECT 
-      CASE 
-        WHEN l.name ILIKE '%wand of%' THEN 'wand'
-        WHEN l.name ILIKE '%potion of%' THEN 'potion'
-        WHEN l.name ILIKE '%scroll of%' THEN 'scroll'
-        ELSE 'other'
-      END as type,
-      COUNT(cu.id) as use_count,
-      COUNT(DISTINCT cu.who) as unique_users
+    SELECT CASE
+             WHEN l.name ILIKE '%wand of%' THEN 'wand'
+             WHEN l.name ILIKE '%potion of%' THEN 'potion'
+             WHEN l.name ILIKE '%scroll of%' THEN 'scroll'
+             ELSE 'other'
+             END                  as type,
+           COUNT(cu.id)           as use_count,
+           COUNT(DISTINCT cu.who) as unique_users
     FROM consumableuse cu
-    JOIN loot l ON cu.lootid = l.id
+           JOIN loot l ON cu.lootid = l.id
     GROUP BY type
     ORDER BY use_count DESC
   `;

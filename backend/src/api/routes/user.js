@@ -23,16 +23,16 @@ const checkRole = (roles) => (req, res, next) => {
     const userRole = req.user?.role;
 
     if (!userRole) {
-      return res.status(403).json({ message: 'Access denied: User role not found' });
+      return res.status(403).json({message: 'Access denied: User role not found'});
     }
 
     if (allowedRoles.includes(userRole)) {
       next();
     } else {
-      res.status(403).json({ message: 'Access denied: Insufficient permissions' });
+      res.status(403).json({message: 'Access denied: Insufficient permissions'});
     }
   } catch (error) {
-    res.status(500).json({ message: 'Internal server error during authorization' });
+    res.status(500).json({message: 'Internal server error during authorization'});
   }
 };
 

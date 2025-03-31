@@ -7,24 +7,24 @@ const logger = require('../utils/logger');
  * Get Discord settings
  */
 const getDiscordSettings = async (req, res) => {
-  const settings = await fetchSettingsByNames(['discord_bot_token', 'discord_channel_id', 'discord_integration_enabled']);
+    const settings = await fetchSettingsByNames(['discord_bot_token', 'discord_channel_id', 'discord_integration_enabled']);
 
-  // Mask the bot token for security if it exists
-  if (settings.discord_bot_token) {
-    settings.discord_bot_token = maskSensitiveValue(settings.discord_bot_token);
-  }
+    // Mask the bot token for security if it exists
+    if (settings.discord_bot_token) {
+        settings.discord_bot_token = maskSensitiveValue(settings.discord_bot_token);
+    }
 
-  controllerFactory.sendSuccessResponse(res, settings, 'Discord settings retrieved');
+    controllerFactory.sendSuccessResponse(res, settings, 'Discord settings retrieved');
 };
 
 /**
  * Get campaign name
  */
 const getCampaignName = async (req, res) => {
-  const settings = await fetchSettingsByNames(['campaign_name']);
-  const campaignName = settings.campaign_name || 'Loot Tracker';
+    const settings = await fetchSettingsByNames(['campaign_name']);
+    const campaignName = settings.campaign_name || 'Loot Tracker';
 
-  controllerFactory.sendSuccessResponse(res, { value: campaignName }, 'Campaign name retrieved');
+    controllerFactory.sendSuccessResponse(res, {value: campaignName}, 'Campaign name retrieved');
 };
 
 /**
@@ -32,20 +32,20 @@ const getCampaignName = async (req, res) => {
  * Only accessible by DM
  */
 const getAllSettings = async (req, res) => {
-  // This should be protected by middleware to ensure only DMs can access
-  if (req.user.role !== 'DM') {
-    throw controllerFactory.createAuthorizationError('Only DMs can access all settings');
-  }
+    // This should be protected by middleware to ensure only DMs can access
+    if (req.user.role !== 'DM') {
+        throw controllerFactory.createAuthorizationError('Only DMs can access all settings');
+    }
 
-  const result = await dbUtils.executeQuery('SELECT * FROM settings ORDER BY name');
+    const result = await dbUtils.executeQuery('SELECT * FROM settings ORDER BY name');
 
-  // Convert to a more usable format
-  const settings = {};
-  result.rows.forEach(row => {
-    settings[row.name] = row.value;
-  });
+    // Convert to a more usable format
+    const settings = {};
+    result.rows.forEach(row => {
+        settings[row.name] = row.value;
+    });
 
-  controllerFactory.sendSuccessResponse(res, settings, 'All settings retrieved');
+    controllerFactory.sendSuccessResponse(res, settings, 'All settings retrieved');
 };
 
 /**
@@ -53,37 +53,37 @@ const getAllSettings = async (req, res) => {
  * Only accessible by DM
  */
 const updateSetting = async (req, res) => {
-  const { name, value } = req.body;
+    const {name, value} = req.body;
 
-  // Validate user has DM permissions
-  if (req.user.role !== 'DM') {
-    throw controllerFactory.createAuthorizationError('Only DMs can update settings');
-  }
+    // Validate user has DM permissions
+    if (req.user.role !== 'DM') {
+        throw controllerFactory.createAuthorizationError('Only DMs can update settings');
+    }
 
-  if (!name) {
-    throw controllerFactory.createValidationError('Setting name is required');
-  }
+    if (!name) {
+        throw controllerFactory.createValidationError('Setting name is required');
+    }
 
-  // Validate setting name using allowed pattern
-  const validSettingNamePattern = /^[a-z0-9_]+$/;
-  if (!validSettingNamePattern.test(name)) {
-    throw controllerFactory.createValidationError('Setting name must contain only lowercase letters, numbers, and underscores');
-  }
+    // Validate setting name using allowed pattern
+    const validSettingNamePattern = /^[a-z0-9_]+$/;
+    if (!validSettingNamePattern.test(name)) {
+        throw controllerFactory.createValidationError('Setting name must contain only lowercase letters, numbers, and underscores');
+    }
 
-  try {
-    await dbUtils.executeQuery(
-      'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
-      [name, value]
-    );
+    try {
+        await dbUtils.executeQuery(
+            'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
+            [name, value]
+        );
 
-    // Log the setting change
-    logger.info(`Setting updated: ${name}=${value}`, { userId: req.user.id });
+        // Log the setting change
+        logger.info(`Setting updated: ${name}=${value}`, {userId: req.user.id});
 
-    controllerFactory.sendSuccessResponse(res, { name, value }, 'Setting updated successfully');
-  } catch (error) {
-    logger.error(`Error updating setting ${name}:`, error);
-    throw error;
-  }
+        controllerFactory.sendSuccessResponse(res, {name, value}, 'Setting updated successfully');
+    } catch (error) {
+        logger.error(`Error updating setting ${name}:`, error);
+        throw error;
+    }
 };
 
 /**
@@ -91,48 +91,48 @@ const updateSetting = async (req, res) => {
  * Only accessible by DM
  */
 const deleteSetting = async (req, res) => {
-  const { name } = req.params;
+    const {name} = req.params;
 
-  // Validate user has DM permissions
-  if (req.user.role !== 'DM') {
-    throw controllerFactory.createAuthorizationError('Only DMs can delete settings');
-  }
-
-  if (!name) {
-    throw controllerFactory.createValidationError('Setting name is required');
-  }
-
-  // Check if this is a protected setting that cannot be deleted
-  const protectedSettings = [
-    'campaign_name',
-    'registrations_open',
-    'discord_bot_token',
-    'discord_channel_id',
-    'discord_integration_enabled'
-  ];
-
-  if (protectedSettings.includes(name)) {
-    throw controllerFactory.createValidationError(`Cannot delete protected setting: ${name}`);
-  }
-
-  try {
-    const result = await dbUtils.executeQuery('DELETE FROM settings WHERE name = $1 RETURNING *', [name]);
-
-    if (result.rows.length === 0) {
-      throw controllerFactory.createNotFoundError(`Setting not found: ${name}`);
+    // Validate user has DM permissions
+    if (req.user.role !== 'DM') {
+        throw controllerFactory.createAuthorizationError('Only DMs can delete settings');
     }
 
-    // Log the setting deletion
-    logger.info(`Setting deleted: ${name}`, { userId: req.user.id });
-
-    controllerFactory.sendSuccessMessage(res, `Setting ${name} deleted successfully`);
-  } catch (error) {
-    if (error.name === 'NotFoundError') {
-      throw error;
+    if (!name) {
+        throw controllerFactory.createValidationError('Setting name is required');
     }
-    logger.error(`Error deleting setting ${name}:`, error);
-    throw error;
-  }
+
+    // Check if this is a protected setting that cannot be deleted
+    const protectedSettings = [
+        'campaign_name',
+        'registrations_open',
+        'discord_bot_token',
+        'discord_channel_id',
+        'discord_integration_enabled'
+    ];
+
+    if (protectedSettings.includes(name)) {
+        throw controllerFactory.createValidationError(`Cannot delete protected setting: ${name}`);
+    }
+
+    try {
+        const result = await dbUtils.executeQuery('DELETE FROM settings WHERE name = $1 RETURNING *', [name]);
+
+        if (result.rows.length === 0) {
+            throw controllerFactory.createNotFoundError(`Setting not found: ${name}`);
+        }
+
+        // Log the setting deletion
+        logger.info(`Setting deleted: ${name}`, {userId: req.user.id});
+
+        controllerFactory.sendSuccessMessage(res, `Setting ${name} deleted successfully`);
+    } catch (error) {
+        if (error.name === 'NotFoundError') {
+            throw error;
+        }
+        logger.error(`Error deleting setting ${name}:`, error);
+        throw error;
+    }
 };
 
 /**
@@ -141,17 +141,17 @@ const deleteSetting = async (req, res) => {
  * @returns {Object} - Object with setting names as keys and values as values
  */
 const fetchSettingsByNames = async (names) => {
-  const result = await dbUtils.executeQuery(
-    'SELECT name, value FROM settings WHERE name = ANY($1)',
-    [names]
-  );
+    const result = await dbUtils.executeQuery(
+        'SELECT name, value FROM settings WHERE name = ANY($1)',
+        [names]
+    );
 
-  const settings = {};
-  result.rows.forEach(row => {
-    settings[row.name] = row.value;
-  });
+    const settings = {};
+    result.rows.forEach(row => {
+        settings[row.name] = row.value;
+    });
 
-  return settings;
+    return settings;
 };
 
 /**
@@ -160,36 +160,36 @@ const fetchSettingsByNames = async (names) => {
  * @returns {string} - Masked value
  */
 const maskSensitiveValue = (value) => {
-  if (!value || value.length < 8) return '***';
+    if (!value || value.length < 8) return '***';
 
-  return value.substring(0, 4) + '...' + value.substring(value.length - 4);
+    return value.substring(0, 4) + '...' + value.substring(value.length - 4);
 };
 
 // Define validation rules
 const updateSettingValidation = {
-  requiredFields: ['name', 'value']
+    requiredFields: ['name', 'value']
 };
 
 // Create handlers with validation and error handling
 module.exports = {
-  getDiscordSettings: controllerFactory.createHandler(getDiscordSettings, {
-    errorMessage: 'Error fetching Discord settings'
-  }),
+    getDiscordSettings: controllerFactory.createHandler(getDiscordSettings, {
+        errorMessage: 'Error fetching Discord settings'
+    }),
 
-  getCampaignName: controllerFactory.createHandler(getCampaignName, {
-    errorMessage: 'Error fetching campaign name'
-  }),
+    getCampaignName: controllerFactory.createHandler(getCampaignName, {
+        errorMessage: 'Error fetching campaign name'
+    }),
 
-  getAllSettings: controllerFactory.createHandler(getAllSettings, {
-    errorMessage: 'Error fetching all settings'
-  }),
+    getAllSettings: controllerFactory.createHandler(getAllSettings, {
+        errorMessage: 'Error fetching all settings'
+    }),
 
-  updateSetting: controllerFactory.createHandler(updateSetting, {
-    errorMessage: 'Error updating setting',
-    validation: updateSettingValidation
-  }),
+    updateSetting: controllerFactory.createHandler(updateSetting, {
+        errorMessage: 'Error updating setting',
+        validation: updateSettingValidation
+    }),
 
-  deleteSetting: controllerFactory.createHandler(deleteSetting, {
-    errorMessage: 'Error deleting setting'
-  })
+    deleteSetting: controllerFactory.createHandler(deleteSetting, {
+        errorMessage: 'Error deleting setting'
+    })
 };

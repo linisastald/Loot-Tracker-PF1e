@@ -8,7 +8,7 @@ const logger = require('../utils/logger');
  */
 const createItem = async (req, res) => {
   try {
-    const { name, type, subtype, value, weight, casterlevel } = req.body;
+    const {name, type, subtype, value, weight, casterlevel} = req.body;
 
     // Validate required fields
     if (!name || !type || (value === undefined || value === null)) {
@@ -34,7 +34,7 @@ const createItem = async (req, res) => {
     const result = await dbUtils.executeQuery(query, values, 'Error creating item');
 
     // Log the operation
-    logger.info(`Item created: ${name}`, { userId: req.user.id });
+    logger.info(`Item created: ${name}`, {userId: req.user.id});
 
     return res.success(result.rows[0], 'Item created successfully');
   } catch (error) {
@@ -48,8 +48,8 @@ const createItem = async (req, res) => {
  */
 const updateItem = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { name, type, subtype, value, weight, casterlevel } = req.body;
+    const {id} = req.params;
+    const {name, type, subtype, value, weight, casterlevel} = req.body;
 
     // Validate required fields
     if (!name || !type || (value === undefined || value === null)) {
@@ -67,7 +67,12 @@ const updateItem = async (req, res) => {
     // Prepare query
     const query = `
       UPDATE item
-      SET name = $1, type = $2, subtype = $3, value = $4, weight = $5, casterlevel = $6
+      SET name        = $1,
+          type        = $2,
+          subtype     = $3,
+          value       = $4,
+          weight      = $5,
+          casterlevel = $6
       WHERE id = $7
       RETURNING *
     `;
@@ -85,7 +90,7 @@ const updateItem = async (req, res) => {
     const result = await dbUtils.executeQuery(query, values, 'Error updating item');
 
     // Log the operation
-    logger.info(`Item updated: ${name} (ID: ${id})`, { userId: req.user.id });
+    logger.info(`Item updated: ${name} (ID: ${id})`, {userId: req.user.id});
 
     return res.success(result.rows[0], 'Item updated successfully');
   } catch (error) {
@@ -99,7 +104,7 @@ const updateItem = async (req, res) => {
  */
 const createMod = async (req, res) => {
   try {
-    const { name, plus, type, valuecalc, target, subtarget } = req.body;
+    const {name, plus, type, valuecalc, target, subtarget} = req.body;
 
     // Validate required fields
     if (!name || !type || !target) {
@@ -125,7 +130,7 @@ const createMod = async (req, res) => {
     const result = await dbUtils.executeQuery(query, values, 'Error creating mod');
 
     // Log the operation
-    logger.info(`Mod created: ${name}`, { userId: req.user.id });
+    logger.info(`Mod created: ${name}`, {userId: req.user.id});
 
     return res.success(result.rows[0], 'Mod created successfully');
   } catch (error) {
@@ -139,8 +144,8 @@ const createMod = async (req, res) => {
  */
 const updateMod = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { name, plus, type, valuecalc, target, subtarget } = req.body;
+    const {id} = req.params;
+    const {name, plus, type, valuecalc, target, subtarget} = req.body;
 
     // Validate required fields
     if (!name || !type || !target) {
@@ -158,7 +163,12 @@ const updateMod = async (req, res) => {
     // Prepare query
     const query = `
       UPDATE mod
-      SET name = $1, plus = $2, type = $3, valuecalc = $4, target = $5, subtarget = $6
+      SET name      = $1,
+          plus      = $2,
+          type      = $3,
+          valuecalc = $4,
+          target    = $5,
+          subtarget = $6
       WHERE id = $7
       RETURNING *
     `;
@@ -176,7 +186,7 @@ const updateMod = async (req, res) => {
     const result = await dbUtils.executeQuery(query, values, 'Error updating mod');
 
     // Log the operation
-    logger.info(`Mod updated: ${name} (ID: ${id})`, { userId: req.user.id });
+    logger.info(`Mod updated: ${name} (ID: ${id})`, {userId: req.user.id});
 
     return res.success(result.rows[0], 'Mod updated successfully');
   } catch (error) {

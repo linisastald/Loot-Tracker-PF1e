@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { body, validationResult } = require('express-validator');
+const {body, validationResult} = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const authController = require('../../controllers/authController');
 const verifyToken = require('../../middleware/auth');
@@ -23,24 +23,24 @@ router.post('/login', [
 ], (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    return res.status(400).json({errors: errors.array()});
   }
   next();
 }, authController.loginUser);
 
 // Register route with validation
 router.post('/register', [
-  body('username').isLength({ min: 5 }).trim().escape()
-    .withMessage('Username must be at least 5 characters long'),
-  body('password').isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters long'),
+  body('username').isLength({min: 5}).trim().escape()
+      .withMessage('Username must be at least 5 characters long'),
+  body('password').isLength({min: 8})
+      .withMessage('Password must be at least 8 characters long'),
   body('inviteCode').if(body('inviteCode').exists())
-    .isLength({ min: 6 }).trim().escape()
-    .withMessage('Invite code must be at least 6 characters long')
+      .isLength({min: 6}).trim().escape()
+      .withMessage('Invite code must be at least 6 characters long')
 ], (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    return res.status(400).json({errors: errors.array()});
   }
   next();
 }, authController.registerUser);
