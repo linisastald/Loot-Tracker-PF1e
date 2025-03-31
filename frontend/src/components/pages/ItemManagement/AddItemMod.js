@@ -79,7 +79,7 @@ const AddItemMod = () => {
       setModsLoading(true);
       const response = await api.get('/loot/mods');
 
-        if (response.data && Array.isArray(response.data.mods)) {
+      if (response.data && Array.isArray(response.data.mods)) {
         setMods(response.data.mods);
       } else if (Array.isArray(response.data)) {
         setMods(response.data);
@@ -88,7 +88,7 @@ const AddItemMod = () => {
         setMods([]);
       }
 
-        setModsLoading(false);
+      setModsLoading(false);
     } catch (error) {
       console.error('Error fetching mods:', error);
       setError('Failed to load mods');
@@ -122,8 +122,8 @@ const AddItemMod = () => {
     setModsLoading(true);
     try {
       // Filter mods locally since there's no dedicated mod search endpoint
-        const filteredMods = mods.filter(mod =>
-            mod.name.toLowerCase().includes(searchText.toLowerCase())
+      const filteredMods = mods.filter(mod =>
+        mod.name.toLowerCase().includes(searchText.toLowerCase())
       );
       setModOptions(filteredMods);
     } catch (error) {
@@ -185,7 +185,7 @@ const AddItemMod = () => {
     if (!itemForm.type.trim()) return 'Item type is required';
     if (!itemForm.value && itemForm.value !== 0) return 'Item value is required';
 
-      return null; // No validation errors
+    return null; // No validation errors
   };
 
   const validateModForm = () => {
@@ -194,7 +194,7 @@ const AddItemMod = () => {
     if (!modForm.type.trim()) return 'Mod type is required';
     if (!modForm.target.trim()) return 'Target is required';
 
-      return null; // No validation errors
+    return null; // No validation errors
   };
 
   const handleSubmitItem = async () => {
@@ -231,7 +231,7 @@ const AddItemMod = () => {
       // Reset form
       resetItemForm();
 
-        // Refresh items list
+      // Refresh items list
       fetchItems();
     } catch (error) {
       console.error('Error saving item:', error);
@@ -271,7 +271,7 @@ const AddItemMod = () => {
       // Reset form
       resetModForm();
 
-        // Refresh mods list
+      // Refresh mods list
       fetchMods();
     } catch (error) {
       console.error('Error saving mod:', error);
@@ -280,33 +280,77 @@ const AddItemMod = () => {
   };
 
   const handleItemSelect = (event, value) => {
-    if (value) {
-      setItemForm({
-          id: value.id || '',
-          name: value.name || '',
-        type: value.type || '',
-        subtype: value.subtype || '',
-          value: value.value !== null && value.value !== undefined ? value.value.toString() : '',
-          weight: value.weight !== null && value.weight !== undefined ? value.weight.toString() : '',
-          casterlevel: value.casterlevel !== null && value.casterlevel !== undefined ? value.casterlevel.toString() : ''
-      });
-    } else {
+    if (!value) {
+      resetItemForm();
+      return;
+    }
+
+    try {
+      // Create a safe object with default values
+      const safeItem = {
+        id: '',
+        name: '',
+        type: '',
+        subtype: '',
+        value: '',
+        weight: '',
+        casterlevel: ''
+      };
+
+      // Only update properties that exist and are not null/undefined
+      if (value.id !== undefined && value.id !== null) safeItem.id = value.id;
+      if (value.name !== undefined && value.name !== null) safeItem.name = value.name;
+      if (value.type !== undefined && value.type !== null) safeItem.type = value.type;
+      if (value.subtype !== undefined && value.subtype !== null) safeItem.subtype = value.subtype;
+
+      // Handle numeric values with extra care
+      if (value.value !== undefined && value.value !== null) {
+        safeItem.value = String(value.value);
+      }
+      if (value.weight !== undefined && value.weight !== null) {
+        safeItem.weight = String(value.weight);
+      }
+      if (value.casterlevel !== undefined && value.casterlevel !== null) {
+        safeItem.casterlevel = String(value.casterlevel);
+      }
+
+      setItemForm(safeItem);
+    } catch (error) {
+      console.error('Error in handleItemSelect:', error);
       resetItemForm();
     }
   };
 
   const handleModSelect = (event, value) => {
-    if (value) {
-      setModForm({
-          id: value.id || '',
-          name: value.name || '',
-        plus: value.plus || '',
-        type: value.type || '',
-        valuecalc: value.valuecalc || '',
-        target: value.target || '',
-        subtarget: value.subtarget || ''
-      });
-    } else {
+    if (!value) {
+      resetModForm();
+      return;
+    }
+
+    try {
+      // Create a safe object with default values
+      const safeMod = {
+        id: '',
+        name: '',
+        plus: '',
+        type: '',
+        valuecalc: '',
+        target: '',
+        subtarget: ''
+      };
+
+      // Only update properties that exist and are not null/undefined
+      if (value.id !== undefined && value.id !== null) safeMod.id = value.id;
+      if (value.name !== undefined && value.name !== null) safeMod.name = value.name;
+      if (value.plus !== undefined && value.plus !== null) safeMod.plus = value.plus;
+      if (value.type !== undefined && value.type !== null) safeMod.type = value.type;
+      if (value.valuecalc !== undefined && value.valuecalc !== null) safeMod.valuecalc = value.valuecalc;
+      if (value.target !== undefined && value.target !== null) safeMod.target = value.target;
+      if (value.subtarget !== undefined && value.subtarget !== null) safeMod.subtarget = value.subtarget;
+
+      setModForm(safeMod);
+    } catch (error) {
+      console.error('Error in handleModSelect:', error);
       resetModForm();
     }
   };
@@ -315,7 +359,7 @@ const AddItemMod = () => {
     <>
       <Typography variant="h6" gutterBottom>Add or Edit Items & Mods</Typography>
 
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
       <Paper sx={{ p: 2, mb: 2 }}>
@@ -331,7 +375,7 @@ const AddItemMod = () => {
                 {itemForm.id ? 'Edit Item' : 'Add New Item'}
               </Typography>
 
-                <Box mb={2}>
+              <Box mb={2}>
                 <Autocomplete
                   options={itemOptions}
                   getOptionLabel={(option) => option.name || ''}
@@ -353,7 +397,7 @@ const AddItemMod = () => {
                 />
               </Box>
 
-                <Divider sx={{ my: 2 }} />
+              <Divider sx={{ my: 2 }} />
 
               <Grid container spacing={2}>
                 <Grid item xs={12} md={4}>
@@ -467,7 +511,7 @@ const AddItemMod = () => {
                 {modForm.id ? 'Edit Mod' : 'Add New Mod'}
               </Typography>
 
-                <Box mb={2}>
+              <Box mb={2}>
                 <Autocomplete
                   options={modOptions}
                   getOptionLabel={(option) => option.name || ''}
@@ -489,7 +533,7 @@ const AddItemMod = () => {
                 />
               </Box>
 
-                <Divider sx={{ my: 2 }} />
+              <Divider sx={{ my: 2 }} />
 
               <Grid container spacing={2}>
                 <Grid item xs={12} md={4}>
