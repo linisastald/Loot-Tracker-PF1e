@@ -504,20 +504,4 @@ const Fame = () => {
     );
 };
 
-export default Fame;                </Box>
-
-                                <Box display="flex" alignItems="center" mb={2}>
-                                    <EmojiEventsIcon fontSize="large" color="primary" />
-                                    <Box ml={1}>
-                                        <Typography variant="h4">{prestige}</Typography>
-                                        <Typography variant="subtitle1">{getPrestigeTitle()} Points</Typography>
-                                        <Typography variant="caption">Earned from {famePoints} {fameSystem === 'fame' ? 'Fame' : 'Infamy'}</Typography>
-                                    </Box>
-                                </Box>
-
-                                <Box display="flex" alignItems="center">
-                                    <InfoIcon fontSize="large" color="primary" />
-                                    <Box ml={1}>
-                                        <Typography variant="h6">{sphereOfInfluence} miles</Typography>
-                                        <Typography variant="subtitle1">Sphere of Influence</Typography>
-                                    </Box>
+export default Fame;
