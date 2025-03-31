@@ -41,6 +41,12 @@ const Identify = () => {
         fetchLoot();
         fetchItems();
         setIsDMUser(isDM());
+
+        // Load saved spellcraft bonus from localStorage
+        const savedSpellcraft = localStorage.getItem('spellcraftBonus');
+        if (savedSpellcraft) {
+            setSpellcraftValue(savedSpellcraft);
+        }
     }, []);
 
     const fetchActiveUserDetails = async () => {
@@ -93,6 +99,12 @@ const Identify = () => {
                 ? prevSelectedItems.filter(item => item !== id)
                 : [...prevSelectedItems, id]
         );
+    };
+
+    const handleSpellcraftChange = (value) => {
+        setSpellcraftValue(value);
+        // Save to localStorage whenever the value changes
+        localStorage.setItem('spellcraftBonus', value);
     };
 
     const handleIdentify = async (itemsToIdentify) => {
@@ -394,7 +406,7 @@ const Identify = () => {
                             label="Spellcraft"
                             type="number"
                             value={spellcraftValue}
-                            onChange={(e) => setSpellcraftValue(e.target.value)}
+                            onChange={(e) => handleSpellcraftChange(e.target.value)}
                             sx={{width: '150px'}}
                         />
                         <FormControlLabel
