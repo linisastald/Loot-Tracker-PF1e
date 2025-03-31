@@ -35,10 +35,24 @@ const registerUser = async (req, res) => {
 
   if (inviteCode) {
     const inviteResult = await dbUtils.executeQuery(
-      'SELECT * FROM invites WHERE code = $1 AND is_used = FALSE',
+      `SELECT * FROM invites 
+       WHERE code = $1 
+         AND is_used = FALSE 
+         AND (expires_at IS NULL OR expires_at > NOW())`,
       [inviteCode]
     );
+
     if (inviteResult.rows.length === 0) {
+      // Check if the invite exists but is expired
+      const expiredInviteResult = await dbUtils.executeQuery(
+        'SELECT expires_at FROM invites WHERE code = $1 AND is_used = FALSE AND expires_at <= NOW()',
+        [inviteCode]
+      );
+
+      if (expiredInviteResult.rows.length > 0) {
+        throw controllerFactory.createValidationError('This invitation code has expired');
+      }
+
       throw controllerFactory.createValidationError('Invalid or used invite code');
     }
   }
@@ -102,7 +116,7 @@ const registerUser = async (req, res) => {
     // Mark invite as used if provided
     if (inviteCode) {
       await client.query(
-        'UPDATE invites SET is_used = TRUE, used_by = $1 WHERE code = $2',
+        'UPDATE invites SET is_used = TRUE, used_by = $1, used_at = NOW() WHERE code = $2',
         [user.id, inviteCode]
       );
     }
@@ -328,18 +342,146 @@ const checkInviteRequired = async (req, res) => {
 };
 
 /**
- * Generate invite code (DM only)
+ * Generate quick invite code (4 hour expiration)
  */
-const generateInviteCode = async (req, res) => {
-  // Generate a random invite code
-  const inviteCode = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+const generateQuickInvite = async (req, res) => {
+  // Ensure DM permission
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can generate invite codes');
+  }
 
-  await dbUtils.executeQuery(
-    'INSERT INTO invites (code, created_by) VALUES ($1, $2)',
-    [inviteCode, req.user.id]
+  // Generate a random invite code
+  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  // Set expiration to 4 hours from now
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 4);
+
+  const result = await dbUtils.executeQuery(
+    'INSERT INTO invites (code, created_by, expires_at) VALUES ($1, $2, $3) RETURNING code, expires_at',
+    [inviteCode, req.user.id, expiresAt]
   );
 
-  controllerFactory.sendCreatedResponse(res, { inviteCode }, 'Invite code generated successfully');
+  controllerFactory.sendCreatedResponse(res, result.rows[0], 'Quick invite code generated successfully');
+};
+
+/**
+ * Generate custom invite code with specified expiration
+ */
+const generateCustomInvite = async (req, res) => {
+  const { expirationPeriod } = req.body;
+
+  // Ensure DM permission
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can generate invite codes');
+  }
+
+  if (!expirationPeriod) {
+    throw controllerFactory.createValidationError('Expiration period is required');
+  }
+
+  // Generate a random invite code
+  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  // Calculate expiration date based on the provided period
+  let expiresAt;
+
+  switch (expirationPeriod) {
+    case '4h':
+      expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 4);
+      break;
+    case '12h':
+      expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 12);
+      break;
+    case '1d':
+      expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 1);
+      break;
+    case '3d':
+      expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 3);
+      break;
+    case '7d':
+      expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+      break;
+    case '1m':
+      expiresAt = new Date();
+      expiresAt.setMonth(expiresAt.getMonth() + 1);
+      break;
+    case 'never':
+      expiresAt = new Date(9999, 11, 31); // Set to year 9999
+      break;
+    default:
+      throw controllerFactory.createValidationError('Invalid expiration period');
+  }
+
+  const result = await dbUtils.executeQuery(
+    'INSERT INTO invites (code, created_by, expires_at) VALUES ($1, $2, $3) RETURNING code, expires_at',
+    [inviteCode, req.user.id, expiresAt]
+  );
+
+  controllerFactory.sendCreatedResponse(res, result.rows[0], 'Custom invite code generated successfully');
+};
+
+/**
+ * Get all active invite codes
+ */
+const getActiveInvites = async (req, res) => {
+  // Ensure DM permission
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can view invite codes');
+  }
+
+  const result = await dbUtils.executeQuery(
+    `SELECT i.id, i.code, i.created_by, i.used_by, i.created_at, i.used_at, i.expires_at, i.is_used, 
+            u.username as created_by_username
+     FROM invites i
+     LEFT JOIN users u ON i.created_by = u.id
+     WHERE i.is_used = FALSE AND (i.expires_at IS NULL OR i.expires_at > NOW())
+     ORDER BY i.created_at DESC`,
+    []
+  );
+
+  controllerFactory.sendSuccessResponse(res, result.rows, 'Active invite codes retrieved successfully');
+};
+
+/**
+ * Deactivate an invite code
+ */
+const deactivateInvite = async (req, res) => {
+  const { inviteId } = req.body;
+
+  // Ensure DM permission
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can deactivate invite codes');
+  }
+
+  if (!inviteId) {
+    throw controllerFactory.createValidationError('Invite ID is required');
+  }
+
+  // Get current username
+  const userResult = await dbUtils.executeQuery(
+    'SELECT username FROM users WHERE id = $1',
+    [req.user.id]
+  );
+
+  const username = userResult.rows[0]?.username || 'Unknown';
+  const deactivationNote = `deactivated by ${username}`;
+
+  const result = await dbUtils.executeQuery(
+    'UPDATE invites SET is_used = TRUE, used_by = $1, used_at = NOW() WHERE id = $2 RETURNING *',
+    [deactivationNote, inviteId]
+  );
+
+  if (result.rows.length === 0) {
+    throw controllerFactory.createNotFoundError('Invite code not found');
+  }
+
+  controllerFactory.sendSuccessResponse(res, result.rows[0], 'Invite code deactivated successfully');
 };
 
 /**
@@ -434,8 +576,26 @@ module.exports = {
     errorMessage: 'Error checking invite requirement'
   }),
 
-  generateInviteCode: controllerFactory.createHandler(generateInviteCode, {
-    errorMessage: 'Error generating invite code'
+  generateQuickInvite: controllerFactory.createHandler(generateQuickInvite, {
+    errorMessage: 'Error generating quick invite code'
+  }),
+
+  generateCustomInvite: controllerFactory.createHandler(generateCustomInvite, {
+    errorMessage: 'Error generating custom invite code',
+    validation: {
+      requiredFields: ['expirationPeriod']
+    }
+  }),
+
+  getActiveInvites: controllerFactory.createHandler(getActiveInvites, {
+    errorMessage: 'Error fetching active invite codes'
+  }),
+
+  deactivateInvite: controllerFactory.createHandler(deactivateInvite, {
+    errorMessage: 'Error deactivating invite code',
+    validation: {
+      requiredFields: ['inviteId']
+    }
   }),
 
   refreshToken: controllerFactory.createHandler(refreshToken, {

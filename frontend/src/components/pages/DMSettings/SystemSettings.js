@@ -22,6 +22,9 @@ import {
   Settings as SettingsIcon,
   Message as ChatIcon
 } from '@mui/icons-material';
+import FileCopyIcon from '@mui/icons-material/FileCopy';
+import Tooltip from '@mui/material/Tooltip';
+import Snackbar from '@mui/material/Snackbar';
 
 const SystemSettings = () => {
   const [registrationOpen, setRegistrationOpen] = useState(false);
@@ -343,6 +346,48 @@ const SystemSettings = () => {
     }
   };
 
+  const handleGenerateQuickInvite = async () => {
+    try {
+      setIsGeneratingInvite(true);
+      setQuickInviteData(null);
+
+      const response = await api.post('/auth/generate-quick-invite');
+      if (response && response.data) {
+        setQuickInviteData(response.data);
+        setSuccess('Quick invite code generated successfully');
+        setError('');
+      }
+    } catch (err) {
+      setError('Error generating quick invite code');
+      setSuccess('');
+    } finally {
+      setIsGeneratingInvite(false);
+    }
+  };
+
+  const handleCopyInviteCode = () => {
+    if (!quickInviteData || !quickInviteData.code) return;
+
+    navigator.clipboard.writeText(quickInviteData.code).then(() => {
+      setSnackbarMessage('Invite code copied to clipboard');
+      setSnackbarOpen(true);
+    }).catch(() => {
+      setSnackbarMessage('Failed to copy invite code');
+      setSnackbarOpen(true);
+    });
+  };
+
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
+  };
+
+  const formatExpirationDate = (dateString) => {
+    if (!dateString) return '';
+
+    const date = new Date(dateString);
+    return date.toLocaleString();
+  };
+
   if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="300px">
@@ -363,33 +408,85 @@ const SystemSettings = () => {
         {/* Registration Settings */}
         <Grid item xs={12} md={4}>
           <Card variant="outlined">
-            <CardHeader title="Registration Settings" />
+            <CardHeader title="Registration Settings"/>
             <CardContent>
-              <Typography variant="body1" gutterBottom>Registration Status: {registrationOpen ? 'Open' : 'Closed'}</Typography>
+              <Typography variant="body1" gutterBottom>Registration
+                Status: {registrationOpen ? 'Open' : 'Closed'}</Typography>
               <Button
-                variant="outlined"
-                color={registrationOpen ? "secondary" : "primary"}
-                onClick={handleRegistrationToggle}
-                fullWidth
+                  variant="outlined"
+                  color={registrationOpen ? "secondary" : "primary"}
+                  onClick={handleRegistrationToggle}
+                  fullWidth
               >
                 {registrationOpen ? 'Close Registration' : 'Open Registration'}
               </Button>
 
-              <Divider sx={{ my: 2 }} />
+              <Divider sx={{my: 2}}/>
 
               <Typography variant="body1" gutterBottom>Invite Required: {inviteRequired ? 'Yes' : 'No'}</Typography>
               <Button
-                variant="outlined"
-                color={inviteRequired ? "secondary" : "primary"}
-                onClick={handleInviteRequiredToggle}
-                fullWidth
+                  variant="outlined"
+                  color={inviteRequired ? "secondary" : "primary"}
+                  onClick={handleInviteRequiredToggle}
+                  fullWidth
               >
                 {inviteRequired ? 'Make Registration Public' : 'Require Invitation Code'}
               </Button>
 
+              {inviteRequired && (
+                  <>
+                    <Divider sx={{my: 2}}/>
+
+                    <Typography variant="body1" gutterBottom>Generate Quick Invite (expires in 4 hours)</Typography>
+                    <Button
+                        variant="outlined"
+                        color="primary"
+                        onClick={handleGenerateQuickInvite}
+                        disabled={isGeneratingInvite}
+                        fullWidth
+                        sx={{mb: 2}}
+                    >
+                      {isGeneratingInvite ? <CircularProgress size={24}/> : 'Generate Quick Invite'}
+                    </Button>
+
+                    {quickInviteData && (
+                        <Box sx={{
+                          mt: 2,
+                          p: 2,
+                          backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                          borderRadius: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}>
+                          <Box>
+                            <Typography variant="subtitle2">Code:</Typography>
+                            <Typography
+                                variant="body1"
+                                fontWeight="bold"
+                                fontFamily="monospace"
+                                fontSize="1.1rem"
+                            >
+                              {quickInviteData.code}
+                            </Typography>
+                            <Typography variant="caption" display="block" sx={{mt: 1}}>
+                              Expires: {formatExpirationDate(quickInviteData.expires_at)}
+                            </Typography>
+                          </Box>
+                          <Tooltip title="Copy code">
+                            <IconButton onClick={handleCopyInviteCode} size="small">
+                              <FileCopyIcon/>
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                    )}
+                  </>
+              )}
+
               <Box mt={2}>
                 <Typography variant="body2" color="textSecondary">
-                  Current settings: Registration is {registrationOpen ? 'open' : 'closed'} and invites are {inviteRequired ? 'required' : 'not required'}
+                  Current settings: Registration is {registrationOpen ? 'open' : 'closed'} and invites
+                  are {inviteRequired ? 'required' : 'not required'}
                 </Typography>
               </Box>
             </CardContent>
@@ -593,6 +690,12 @@ const SystemSettings = () => {
           </Card>
         </Grid>
       </Grid>
+      <Snackbar
+          open={snackbarOpen}
+          autoHideDuration={3000}
+          onClose={handleSnackbarClose}
+          message={snackbarMessage}
+      />
     </div>
   );
 };

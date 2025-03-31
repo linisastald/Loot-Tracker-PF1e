@@ -119,7 +119,14 @@ const Register = () => {
       localStorage.setItem('token', response.data.token);
       navigate('/user-settings');
     } catch (err) {
+      // Enhanced error handling for invite codes
+      if (err.response?.data?.message?.includes('Invalid or used invite code')) {
+        setError('The invite code is invalid, has already been used, or has expired');
+      } else if (err.response?.data?.message?.includes('expired')) {
+        setError('This invitation code has expired');
+      } else {
       setError(err.response?.data?.error || err.response?.data?.message || 'Registration failed');
+    }
     }
   };
 

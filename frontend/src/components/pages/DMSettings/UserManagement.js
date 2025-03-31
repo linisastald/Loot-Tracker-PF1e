@@ -21,9 +21,25 @@ import {
   InputAdornment,
   IconButton,
   FormHelperText,
-  Alert
+  Alert,
+  FormControl,
+  InputLabel,
+  Select as SelectField,
+  MenuItem,
+  Tooltip,
+  Snackbar
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import {
+  Visibility,
+  VisibilityOff,
+  FileCopyIcon,
+  DeleteIcon,
+  AddIcon
+} from '@mui/icons-material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
+import FileCopyIcon from '@mui/icons-material/FileCopy';
+import Tooltip from '@mui/material/Tooltip';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -36,17 +52,47 @@ const UserManagement = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
 
+  // Invite management states
+  const [activeInvites, setActiveInvites] = useState([]);
+  const [createInviteDialogOpen, setCreateInviteDialogOpen] = useState(false);
+  const [selectedExpirationPeriod, setSelectedExpirationPeriod] = useState('1d');
+  const [isLoadingInvites, setIsLoadingInvites] = useState(false);
+  const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+  const [selectedInviteToDeactivate, setSelectedInviteToDeactivate] = useState(null);
+
   useEffect(() => {
-    fetchUsers();
+    fetchData();
+    fetchActiveInvites();
   }, []);
 
-  const fetchUsers = async () => {
+  const fetchData = async () => {
     try {
       const response = await api.get(`/user/all`);
       setUsers(response.data);
     } catch (error) {
       console.error('Error fetching users', error);
       setError('Error loading users. Please try again.');
+    }
+  };
+
+  const fetchActiveInvites = async () => {
+    try {
+      setIsLoadingInvites(true);
+      const response = await api.get('/auth/active-invites');
+
+      if (response && response.data) {
+        setActiveInvites(response.data);
+      } else {
+        setActiveInvites([]);
+      }
+    } catch (error) {
+      console.error('Error fetching active invites', error);
+      setError('Error loading active invites. Please try again.');
+    } finally {
+      setIsLoadingInvites(false);
     }
   };
 
@@ -108,11 +154,82 @@ const UserManagement = () => {
       setDeleteUserDialogOpen(false);
 
       // Refresh users list
-      fetchUsers();
+      fetchData();
     } catch (err) {
       setError('Error deleting user(s)');
       setSuccess('');
     }
+  };
+
+  // Invite management functions
+  const handleGenerateCustomInvite = async () => {
+    try {
+      setIsGeneratingInvite(true);
+
+      const response = await api.post('/auth/generate-custom-invite', {
+        expirationPeriod: selectedExpirationPeriod
+      });
+
+      if (response && response.data) {
+        setSuccess('Custom invite code generated successfully');
+        setError('');
+        // Refresh the list
+        fetchActiveInvites();
+      }
+    } catch (err) {
+      setError('Error generating custom invite code');
+      setSuccess('');
+    } finally {
+      setIsGeneratingInvite(false);
+      setCreateInviteDialogOpen(false);
+    }
+  };
+
+  const handleDeactivateInvite = async () => {
+    if (!selectedInviteToDeactivate) return;
+
+    try {
+      await api.post('/auth/deactivate-invite', {
+        inviteId: selectedInviteToDeactivate.id
+      });
+
+      setSuccess('Invite code deactivated successfully');
+      setError('');
+      // Refresh the list
+      fetchActiveInvites();
+      setDeactivateDialogOpen(false);
+      setSelectedInviteToDeactivate(null);
+    } catch (err) {
+      setError('Error deactivating invite code');
+      setSuccess('');
+    }
+  };
+
+  const handleCopyInviteCode = (code) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setSnackbarMessage('Invite code copied to clipboard');
+      setSnackbarOpen(true);
+    }).catch(() => {
+      setSnackbarMessage('Failed to copy invite code');
+      setSnackbarOpen(true);
+    });
+  };
+
+  const formatExpirationDate = (dateString) => {
+    if (!dateString) return 'Never';
+
+    const date = new Date(dateString);
+
+    // Special case for "never" (year 9999)
+    if (date.getFullYear() >= 9000) {
+      return 'Never';
+    }
+
+    return date.toLocaleString();
+  };
+
+  const handleSnackbarClose = () => {
+    setSnackbarOpen(false);
   };
 
   return (
@@ -168,6 +285,86 @@ const UserManagement = () => {
           Delete User
         </Button>
       </Box>
+
+      {/* Invite Management Section */}
+      <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Invite Management</Typography>
+
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button
+          variant="outlined"
+          color="primary"
+          startIcon={<AddIcon />}
+          onClick={() => setCreateInviteDialogOpen(true)}
+        >
+          Create New Invite
+        </Button>
+      </Box>
+
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Code</TableCell>
+              <TableCell>Created By</TableCell>
+              <TableCell>Created At</TableCell>
+              <TableCell>Expires At</TableCell>
+              <TableCell>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {isLoadingInvites ? (
+              <TableRow>
+                <TableCell colSpan={5} align="center">
+                  <CircularProgress size={24} />
+                </TableCell>
+              </TableRow>
+            ) : activeInvites.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} align="center">
+                  No active invite codes found
+                </TableCell>
+              </TableRow>
+            ) : (
+              activeInvites.map((invite) => (
+                <TableRow key={invite.id}>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Typography fontFamily="monospace" fontWeight="bold">
+                        {invite.code}
+                      </Typography>
+                      <Tooltip title="Copy code">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleCopyInviteCode(invite.code)}
+                          sx={{ ml: 1 }}
+                        >
+                          <FileCopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                  <TableCell>{invite.created_by_username || 'Unknown'}</TableCell>
+                  <TableCell>{new Date(invite.created_at).toLocaleString()}</TableCell>
+                  <TableCell>{formatExpirationDate(invite.expires_at)}</TableCell>
+                  <TableCell>
+                    <Tooltip title="Deactivate invite">
+                      <IconButton
+                        color="error"
+                        onClick={() => {
+                          setSelectedInviteToDeactivate(invite);
+                          setDeactivateDialogOpen(true);
+                        }}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
       {/* Password Reset Dialog */}
       <Dialog open={resetPasswordDialogOpen} onClose={() => setResetPasswordDialogOpen(false)}>
@@ -225,6 +422,73 @@ const UserManagement = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Create Invite Dialog */}
+      <Dialog open={createInviteDialogOpen} onClose={() => setCreateInviteDialogOpen(false)}>
+        <DialogTitle>Create New Invite</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel id="expiration-period-label">Expiration Period</InputLabel>
+            <SelectField
+              labelId="expiration-period-label"
+              value={selectedExpirationPeriod}
+              label="Expiration Period"
+              onChange={(e) => setSelectedExpirationPeriod(e.target.value)}
+            >
+              <MenuItem value="4h">4 Hours</MenuItem>
+              <MenuItem value="12h">12 Hours</MenuItem>
+              <MenuItem value="1d">1 Day</MenuItem>
+              <MenuItem value="3d">3 Days</MenuItem>
+              <MenuItem value="7d">7 Days</MenuItem>
+              <MenuItem value="1m">1 Month</MenuItem>
+              <MenuItem value="never">Never</MenuItem>
+            </SelectField>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateInviteDialogOpen(false)} color="secondary" variant="outlined">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleGenerateCustomInvite}
+            color="primary"
+            variant="outlined"
+            disabled={isGeneratingInvite}
+          >
+            {isGeneratingInvite ? <CircularProgress size={24} /> : 'Generate Invite'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Deactivate Invite Confirmation Dialog */}
+      <Dialog open={deactivateDialogOpen} onClose={() => setDeactivateDialogOpen(false)}>
+        <DialogTitle>Confirm Deactivation</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to deactivate invite code:
+            <Box component="span" sx={{ display: 'block', fontWeight: 'bold', my: 1 }}>
+              {selectedInviteToDeactivate?.code}
+            </Box>
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeactivateDialogOpen(false)} color="secondary" variant="outlined">
+            Cancel
+          </Button>
+          <Button onClick={handleDeactivateInvite} color="error" variant="outlined">
+            Deactivate
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={3000}
+        onClose={handleSnackbarClose}
+        message={snackbarMessage}
+      />
     </div>
   );
 };

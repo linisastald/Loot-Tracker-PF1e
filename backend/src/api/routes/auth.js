@@ -50,5 +50,9 @@ router.get('/check-registration-status', authController.checkRegistrationStatus)
 router.get('/check-invite-required', authController.checkInviteRequired);
 router.get('/status', verifyToken, authController.getUserStatus);
 router.post('/logout', authController.logoutUser);
+router.post('/generate-quick-invite', verifyToken, authController.generateQuickInvite);
+router.post('/generate-custom-invite', verifyToken, authController.generateCustomInvite);
+router.get('/active-invites', verifyToken, authController.getActiveInvites);
+router.post('/deactivate-invite', verifyToken, authController.deactivateInvite);
 
 module.exports = router;
