@@ -14,7 +14,8 @@ import {
   Switch,
   Divider,
   Alert,
-  CircularProgress
+  CircularProgress,
+  IconButton
 } from '@mui/material';
 import {
   CloudDownload,
