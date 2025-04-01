@@ -696,6 +696,14 @@ const searchItems = async (req, res) => {
                 sqlQuery += ` AND itemid IS NULL`;
             } else if (itemid === 'notnull') {
                 sqlQuery += ` AND itemid IS NOT NULL`;
+            } else {
+                // Check if itemid is a number
+                const numericId = parseInt(itemid);
+                if (!isNaN(numericId)) {
+                    sqlQuery += ` AND itemid = $${paramCount}`;
+                    queryParams.push(numericId);
+                    paramCount++;
+                }
             }
         }
 
