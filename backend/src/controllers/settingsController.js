@@ -166,16 +166,16 @@ const maskSensitiveValue = (value) => {
 };
 
 /**
- * Get fame system setting
+ * Get infamy system setting
  */
-const getFameSystem = async (req, res) => {
+const getInfamySystem = async (req, res) => {
     try {
-        const settings = await fetchSettingsByNames(['fame_system']);
-        const fameSystem = settings.fame_system || 'disabled';
+        const settings = await fetchSettingsByNames(['infamy_system']);
+        const infamySystem = settings.infamy_system || 'disabled';
 
-        controllerFactory.sendSuccessResponse(res, {value: fameSystem}, 'Fame system setting retrieved');
+        controllerFactory.sendSuccessResponse(res, {value: infamySystem}, 'Infamy system setting retrieved');
     } catch (error) {
-        logger.error('Error fetching fame system setting:', error);
+        logger.error('Error fetching infamy system setting:', error);
         throw error;
     }
 };
@@ -208,7 +208,7 @@ module.exports = {
         errorMessage: 'Error deleting setting'
     }),
 
-    getFameSystem: controllerFactory.createHandler(getFameSystem, {
-        errorMessage: 'Error fetching fame system setting'
+    getInfamySystem: controllerFactory.createHandler(getInfamySystem, {
+        errorMessage: 'Error fetching infamy system setting'
     })
 };

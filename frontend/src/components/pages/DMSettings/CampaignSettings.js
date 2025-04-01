@@ -20,9 +20,9 @@ const CampaignSettings = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
-    // Fame system states
-    const [fameSystem, setFameSystem] = useState('disabled');
-    const [fameEnabled, setFameEnabled] = useState(false);
+    // Infamy system states
+    const [infamySystem, setInfamySystem] = useState('disabled');
+    const [infamyEnabled, setInfamyEnabled] = useState(false);
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -33,12 +33,12 @@ const CampaignSettings = () => {
                     setCampaignName(campaignResponse.data.value);
                 }
 
-                // Fetch fame system settings
-                const fameResponse = await api.get('/settings/fame-system');
-                if (fameResponse.data && fameResponse.data.value) {
-                    const fameValue = fameResponse.data.value;
-                    setFameSystem(fameValue);
-                    setFameEnabled(fameValue !== 'disabled');
+                // Fetch infamy system settings
+                const infamyResponse = await api.get('/settings/infamy-system');
+                if (infamyResponse.data && infamyResponse.data.value) {
+                    const infamyValue = infamyResponse.data.value;
+                    setInfamySystem(infamyValue);
+                    setInfamyEnabled(infamyValue !== 'disabled');
                 }
             } catch (error) {
                 console.error('Error fetching settings', error);
@@ -68,45 +68,45 @@ const CampaignSettings = () => {
         }
     };
 
-    const handleFameSystemChange = async (event) => {
+    const handleInfamySystemChange = async (event) => {
         try {
             const isEnabled = event.target.checked;
-            setFameEnabled(isEnabled);
+            setInfamyEnabled(isEnabled);
 
             // If turning off, set to disabled
-            // If turning on, set to "fame" by default
-            const newValue = isEnabled ? 'fame' : 'disabled';
-            setFameSystem(newValue);
+            // If turning on, set to "infamy" by default
+            const newValue = isEnabled ? 'infamy' : 'disabled';
+            setInfamySystem(newValue);
 
             await api.put('/user/update-setting', {
-                name: 'fame_system',
+                name: 'infamy_system',
                 value: newValue
             });
 
-            setSuccess(`Fame system ${isEnabled ? 'enabled' : 'disabled'} successfully`);
+            setSuccess(`Infamy system ${isEnabled ? 'enabled' : 'disabled'} successfully`);
             setError('');
         } catch (err) {
-            console.error('Error updating fame system setting', err);
-            setError('Error updating fame system setting');
+            console.error('Error updating infamy system setting', err);
+            setError('Error updating infamy system setting');
             setSuccess('');
         }
     };
 
-    const handleFameTypeChange = async (event) => {
+    const handleInfamyTypeChange = async (event) => {
         try {
             const newValue = event.target.value;
-            setFameSystem(newValue);
+            setInfamySystem(newValue);
 
             await api.put('/user/update-setting', {
-                name: 'fame_system',
+                name: 'infamy_system',
                 value: newValue
             });
 
-            setSuccess(`Fame system type updated to ${newValue}`);
+            setSuccess(`Infamy system type updated to ${newValue}`);
             setError('');
         } catch (err) {
-            console.error('Error updating fame system type', err);
-            setError('Error updating fame system type');
+            console.error('Error updating infamy system type', err);
+            setError('Error updating infamy system type');
             setSuccess('');
         }
     };
@@ -137,33 +137,33 @@ const CampaignSettings = () => {
             </Box>
 
             <Box mt={4} mb={2} sx={{maxWidth: 500}}>
-                <Typography variant="h6" gutterBottom>Fame System</Typography>
+                <Typography variant="h6" gutterBottom>Infamy System</Typography>
 
                 <FormControlLabel
                     control={
                         <Switch
-                            checked={fameEnabled}
-                            onChange={handleFameSystemChange}
+                            checked={infamyEnabled}
+                            onChange={handleInfamySystemChange}
                             color="primary"
                         />
                     }
-                    label="Enable Fame System"
+                    label="Enable Infamy System"
                 />
 
-                {fameEnabled && (
+                {infamyEnabled && (
                     <Box mt={2} ml={2}>
                         <FormControl component="fieldset">
                             <RadioGroup
-                                aria-label="fame-type"
-                                name="fame-type-group"
-                                value={fameSystem}
-                                onChange={handleFameTypeChange}
+                                aria-label="infamy-type"
+                                name="infamy-type-group"
+                                value={infamySystem}
+                                onChange={handleInfamyTypeChange}
                             >
-                                <FormControlLabel value="fame" control={<Radio />} label="Fame (Standard)" />
+                                <FormControlLabel value="infamy" control={<Radio />} label="Infamy (Standard)" />
                                 <FormControlLabel value="infamy" control={<Radio />} label="Infamy (Skull & Shackles)" />
                             </RadioGroup>
                             <FormHelperText>
-                                Select the appropriate fame system for your campaign
+                                Select the appropriate infamy system for your campaign
                             </FormHelperText>
                         </FormControl>
                     </Box>
