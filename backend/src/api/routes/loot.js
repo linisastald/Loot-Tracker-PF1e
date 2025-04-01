@@ -19,7 +19,7 @@ router.get('/unprocessed-count', lootController.getUnprocessedCount);
 router.get('/items-by-id', verifyToken, lootController.getItemsById);
 router.get('/mods-by-id', verifyToken, lootController.getModsById);
 router.get('/pending-sale', verifyToken, checkRole('DM'), lootController.getPendingSaleItems);
-router.get('/search', verifyToken, checkRole('DM'), lootController.searchItems);
+router.get('/search', verifyToken, lootController.searchItems);
 router.put('/confirm-sale', verifyToken, checkRole('DM'), lootController.confirmSale);
 router.put('/update-entry/:id', verifyToken, lootController.updateItem);
 router.post('/appraise', verifyToken, lootController.appraiseLoot);
