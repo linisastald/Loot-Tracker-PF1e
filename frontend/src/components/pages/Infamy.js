@@ -56,8 +56,8 @@ import {
     Sailing as SailingIcon,
     Public as PublicIcon,
     Bolt as BoltIcon,
-    Skull as SkullIcon,
 } from '@mui/icons-material';
+import SailingIcon from '@mui/icons-material/Sailing';
 import api from '../../utils/api';
 import { fetchActiveUser } from '../../utils/utils';
 
@@ -407,7 +407,7 @@ const Infamy = () => {
                     <Chip
                         label={infamyStatus.threshold}
                         color={infamyStatus.infamy < 10 ? "default" : "primary"}
-                        icon={<SkullIcon />}
+                        icon={<SailingIcon />}
                     />
                 </Box>
 
@@ -641,7 +641,7 @@ const Infamy = () => {
                                         color="error"
                                         fullWidth
                                         onClick={() => setSacrificeDialogOpen(true)}
-                                        startIcon={<SkullIcon />}
+                                        startIcon={<SailingIcon />}
                                     >
                                         Sacrifice Crew
                                     </Button>
