@@ -88,7 +88,7 @@ const getCharacterFame = async (req, res) => {
  * Add fame points to a character (can be done by player or DM)
  */
 const addPoints = async (req, res) => {
-    const { characterId, points, reason, event } = req.body;
+    const { characterId, points, reason, event, port } = req.body;
     const userId = req.user.id;
 
     try {
@@ -113,10 +113,14 @@ const addPoints = async (req, res) => {
             throw controllerFactory.createValidationError('Character ID is required for Fame system');
         }
 
-        // Handle differently based on fame system type
+        const pointsToAdd = parseInt(points);
+
+        // Handle fame and infamy systems differently
         if (fameSystem === 'fame') {
+            // Fame system: Points are associated with individual characters
+
             // Verify character exists
-            const characterQuery = `SELECT c.id, c.name, c.user_id FROM characters WHERE c.id = $1`;
+            const characterQuery = `SELECT c.id, c.name, c.user_id FROM characters c WHERE c.id = $1`;
             const characterResult = await dbUtils.executeQuery(characterQuery, [characterId]);
 
             if (characterResult.rows.length === 0) {
@@ -131,8 +135,6 @@ const addPoints = async (req, res) => {
                 throw controllerFactory.createAuthorizationError('You can only add fame points to your own character');
             }
 
-            const pointsToAdd = parseInt(points);
-
             return await dbUtils.executeTransaction(async (client) => {
                 // Check if character has a fame record
                 const fameQuery = `SELECT * FROM fame WHERE character_id = $1`;
@@ -145,8 +147,8 @@ const addPoints = async (req, res) => {
 
                 const newPoints = currentPoints + pointsToAdd;
 
-                // Don't allow negative total for fame (unlike infamy which can go negative)
-                if (fameSystem === 'fame' && newPoints < 0) {
+                // Don't allow negative total for fame
+                if (newPoints < 0) {
                     throw controllerFactory.createValidationError('Cannot reduce fame points below 0');
                 }
 
@@ -170,7 +172,7 @@ const addPoints = async (req, res) => {
                     [characterId, pointsToAdd, reason || null, event || null, userId]
                 );
 
-                // Calculate prestige/disrepute
+                // Calculate prestige
                 const prestigePoints = Math.floor(newPoints / 10);
 
                 controllerFactory.sendSuccessResponse(res, {
@@ -183,46 +185,98 @@ const addPoints = async (req, res) => {
                     newTotal: newPoints,
                     prestige: prestigePoints,
                     fameSystem
-                }, `${Math.abs(pointsToAdd)} ${fameSystem} points ${pointsToAdd >= 0 ? 'added to' : 'removed from'} ${character.name}`);
+                }, `${Math.abs(pointsToAdd)} Fame points ${pointsToAdd >= 0 ? 'added to' : 'removed from'} ${character.name}`);
             });
         } else if (fameSystem === 'infamy') {
-            // For Infamy, we use a ship-based approach rather than character-based
-            const pointsToAdd = parseInt(points);
+            // Infamy system: Ship-based instead of character-based
 
             return await dbUtils.executeTransaction(async (client) => {
-                // Get current ship infamy - use a special record with character_id = 0
-                const shipId = 0; // Special ID for the ship
-                const fameQuery = `SELECT * FROM fame WHERE character_id = $1`;
-                const fameResult = await client.query(fameQuery, [shipId]);
+                // First, find a DM user to attach the ship character to
+                const dmQuery = `SELECT id FROM users WHERE role = 'DM' LIMIT 1`;
+                const dmResult = await client.query(dmQuery);
+
+                if (dmResult.rows.length === 0) {
+                    throw controllerFactory.createValidationError('No DM user found to manage ship infamy');
+                }
+
+                const dmUserId = dmResult.rows[0].id;
+
+                // Check for existing ship character attached to a DM
+                const shipCharacterQuery = `
+                    SELECT id, name FROM characters 
+                    WHERE name = 'Ship' AND user_id = $1 
+                    LIMIT 1
+                `;
+                let shipCharacterResult = await client.query(shipCharacterQuery, [dmUserId]);
+
+                let shipCharacterId;
+
+                if (shipCharacterResult.rows.length === 0) {
+                    // Create a ship character attached to the DM
+                    const createShipQuery = `
+                        INSERT INTO characters (name, user_id, active, appraisal_bonus)
+                        VALUES ('Ship', $1, false, 0)
+                        RETURNING id
+                    `;
+                    try {
+                        const createResult = await client.query(createShipQuery, [dmUserId]);
+                        shipCharacterId = createResult.rows[0].id;
+                        logger.info(`Created Ship character with ID ${shipCharacterId} attached to DM ${dmUserId}`);
+                    } catch (err) {
+                        logger.error('Failed to create Ship character:', err);
+
+                        // Try to find any existing character we can use
+                        const fallbackQuery = `SELECT id FROM characters LIMIT 1`;
+                        const fallbackResult = await client.query(fallbackQuery);
+
+                        if (fallbackResult.rows.length === 0) {
+                            throw controllerFactory.createValidationError('No characters exist in the system for infamy tracking');
+                        }
+
+                        shipCharacterId = fallbackResult.rows[0].id;
+                        logger.warn(`Using fallback character ID ${shipCharacterId} for infamy tracking`);
+                    }
+                } else {
+                    shipCharacterId = shipCharacterResult.rows[0].id;
+                }
+
+                // Now use this ship character for infamy records
+                const infamyQuery = `
+                    SELECT * FROM fame WHERE character_id = $1
+                `;
+                const infamyResult = await client.query(infamyQuery, [shipCharacterId]);
 
                 let currentPoints = 0;
-                if (fameResult.rows.length > 0) {
-                    currentPoints = parseInt(fameResult.rows[0].points) || 0;
+                if (infamyResult.rows.length > 0) {
+                    currentPoints = parseInt(infamyResult.rows[0].points) || 0;
                 }
 
                 const newPoints = currentPoints + pointsToAdd;
 
-                // Insert or update fame record
-                if (fameResult.rows.length === 0) {
+                // Insert or update infamy record
+                if (infamyResult.rows.length === 0) {
                     await client.query(
                         `INSERT INTO fame (character_id, points) VALUES ($1, $2)`,
-                        [shipId, newPoints]
+                        [shipCharacterId, newPoints]
                     );
                 } else {
                     await client.query(
                         `UPDATE fame SET points = $1 WHERE character_id = $2`,
-                        [newPoints, shipId]
+                        [newPoints, shipCharacterId]
                     );
                 }
 
-                // Record in history
+                // Format the reason to include port information
+                const infamyReason = port ? `${port}: ${reason || ''}` : reason;
+
+                // Record in history, marking it as ship infamy
                 await client.query(
                     `INSERT INTO fame_history (character_id, points, reason, event, added_by)
                      VALUES ($1, $2, $3, $4, $5)`,
-                    [shipId, pointsToAdd, reason || null, event || null, userId]
+                    [shipCharacterId, pointsToAdd, infamyReason, 'Ship Infamy', userId]
                 );
 
-                // Calculate disrepute (Infamy / 10)
+                // Calculate disrepute
                 const disrepute = Math.floor(newPoints / 10);
 
                 controllerFactory.sendSuccessResponse(res, {
