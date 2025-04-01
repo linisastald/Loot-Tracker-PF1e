@@ -87,13 +87,23 @@ const getCharacterFame = async (req, res) => {
 /**
  * Add fame points to a character (can be done by player or DM)
  */
+/**
+ * Add fame points to a character (can be done by player or DM)
+ */
 const addPoints = async (req, res) => {
     const { characterId, points, reason, event } = req.body;
     const userId = req.user.id;
 
     try {
         // Validate inputs
-        if (!characterId) {
+        // For fame system, character ID is always required
+        // For infamy system, it's optional since it applies to the whole ship
+        const fameSystemSetting = await dbUtils.executeQuery(
+            "SELECT value FROM settings WHERE name = 'fame_system'"
+        );
+        const fameSystem = fameSystemSetting.rows.length > 0 ? fameSystemSetting.rows[0].value : 'fame';
+
+        if (fameSystem === 'fame' && !characterId) {
             throw controllerFactory.createValidationError('Character ID is required');
         }
 
@@ -102,86 +112,131 @@ const addPoints = async (req, res) => {
         }
 
         // Check if fame is enabled
-        const fameSystemSetting = await dbUtils.executeQuery(
-            "SELECT value FROM settings WHERE name = 'fame_system'"
-        );
-
         if (fameSystemSetting.rows.length === 0 || fameSystemSetting.rows[0].value === 'disabled') {
             throw controllerFactory.createAuthorizationError('Fame system is not enabled');
         }
 
-        const fameSystem = fameSystemSetting.rows[0].value;
+        // Handle differently based on fame system type
+        if (fameSystem === 'fame') {
+            // Verify character exists
+            const characterQuery = `SELECT c.id, c.name, c.user_id FROM characters c WHERE c.id = $1`;
+            const characterResult = await dbUtils.executeQuery(characterQuery, [characterId]);
 
-        // Verify character exists
-        const characterQuery = `SELECT c.id, c.name, c.user_id FROM characters WHERE c.id = $1`;
-        const characterResult = await dbUtils.executeQuery(characterQuery, [characterId]);
-
-        if (characterResult.rows.length === 0) {
-            throw controllerFactory.createNotFoundError('Character not found');
-        }
-
-        const character = characterResult.rows[0];
-
-        // Check if the user has permission to add points to this character
-        // DMs can add points to any character, players can only add to their own
-        if (req.user.role !== 'DM' && character.user_id !== userId) {
-            throw controllerFactory.createAuthorizationError('You can only add fame points to your own character');
-        }
-
-        const pointsToAdd = parseInt(points);
-
-        return await dbUtils.executeTransaction(async (client) => {
-            // Check if character has a fame record
-            const fameQuery = `SELECT * FROM fame WHERE character_id = $1`;
-            const fameResult = await client.query(fameQuery, [characterId]);
-
-            let currentPoints = 0;
-            if (fameResult.rows.length > 0) {
-                currentPoints = parseInt(fameResult.rows[0].points) || 0;
+            if (characterResult.rows.length === 0) {
+                throw controllerFactory.createNotFoundError('Character not found');
             }
 
-            const newPoints = currentPoints + pointsToAdd;
+            const character = characterResult.rows[0];
 
-            // Don't allow negative total for fame (unlike infamy which can go negative)
-            if (fameSystem === 'fame' && newPoints < 0) {
-                throw controllerFactory.createValidationError('Cannot reduce fame points below 0');
+            // Check if the user has permission to add points to this character
+            // DMs can add points to any character, players can only add to their own
+            if (req.user.role !== 'DM' && character.user_id !== userId) {
+                throw controllerFactory.createAuthorizationError('You can only add fame points to your own character');
             }
 
-            // Insert or update fame record
-            if (fameResult.rows.length === 0) {
+            const pointsToAdd = parseInt(points);
+
+            return await dbUtils.executeTransaction(async (client) => {
+                // Check if character has a fame record
+                const fameQuery = `SELECT * FROM fame WHERE character_id = $1`;
+                const fameResult = await client.query(fameQuery, [characterId]);
+
+                let currentPoints = 0;
+                if (fameResult.rows.length > 0) {
+                    currentPoints = parseInt(fameResult.rows[0].points) || 0;
+                }
+
+                const newPoints = currentPoints + pointsToAdd;
+
+                // Don't allow negative total for fame (unlike infamy which can go negative)
+                if (fameSystem === 'fame' && newPoints < 0) {
+                    throw controllerFactory.createValidationError('Cannot reduce fame points below 0');
+                }
+
+                // Insert or update fame record
+                if (fameResult.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO fame (character_id, points) VALUES ($1, $2)`,
+                        [characterId, newPoints]
+                    );
+                } else {
+                    await client.query(
+                        `UPDATE fame SET points = $1 WHERE character_id = $2`,
+                        [newPoints, characterId]
+                    );
+                }
+
+                // Record in history
                 await client.query(
-                    `INSERT INTO fame (character_id, points) VALUES ($1, $2)`,
-                    [characterId, newPoints]
+                    `INSERT INTO fame_history (character_id, points, reason, event, added_by)
+                    VALUES ($1, $2, $3, $4, $5)`,
+                    [characterId, pointsToAdd, reason || null, event || null, userId]
                 );
-            } else {
+
+                // Calculate prestige/disrepute
+                const prestigePoints = Math.floor(newPoints / 10);
+
+                controllerFactory.sendSuccessResponse(res, {
+                    character: {
+                        id: character.id,
+                        name: character.name
+                    },
+                    previousPoints: currentPoints,
+                    pointsAdded: pointsToAdd,
+                    newTotal: newPoints,
+                    prestige: prestigePoints,
+                    fameSystem
+                }, `${Math.abs(pointsToAdd)} ${fameSystem} points ${pointsToAdd >= 0 ? 'added to' : 'removed from'} ${character.name}`);
+            });
+        } else if (fameSystem === 'infamy') {
+            // For Infamy, we use a ship-based approach rather than character-based
+            const pointsToAdd = parseInt(points);
+
+            return await dbUtils.executeTransaction(async (client) => {
+                // Get current ship infamy - use a special record with character_id = 0
+                const shipId = 0; // Special ID for the ship
+                const fameQuery = `SELECT * FROM fame WHERE character_id = $1`;
+                const fameResult = await client.query(fameQuery, [shipId]);
+
+                let currentPoints = 0;
+                if (fameResult.rows.length > 0) {
+                    currentPoints = parseInt(fameResult.rows[0].points) || 0;
+                }
+
+                const newPoints = currentPoints + pointsToAdd;
+
+                // Insert or update fame record
+                if (fameResult.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO fame (character_id, points) VALUES ($1, $2)`,
+                        [shipId, newPoints]
+                    );
+                } else {
+                    await client.query(
+                        `UPDATE fame SET points = $1 WHERE character_id = $2`,
+                        [newPoints, shipId]
+                    );
+                }
+
+                // Record in history
                 await client.query(
-                    `UPDATE fame SET points = $1 WHERE character_id = $2`,
-                    [newPoints, characterId]
+                    `INSERT INTO fame_history (character_id, points, reason, event, added_by)
+                    VALUES ($1, $2, $3, $4, $5)`,
+                    [shipId, pointsToAdd, reason || null, event || null, userId]
                 );
-            }
 
-            // Record in history
-            await client.query(
-                `INSERT INTO fame_history (character_id, points, reason, event, added_by)
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [characterId, pointsToAdd, reason || null, event || null, userId]
-            );
+                // Calculate disrepute (Infamy / 10)
+                const disrepute = Math.floor(newPoints / 10);
 
-            // Calculate prestige/disrepute
-            const prestigePoints = Math.floor(newPoints / 10);
-
-            controllerFactory.sendSuccessResponse(res, {
-                character: {
-                    id: character.id,
-                    name: character.name
-                },
-                previousPoints: currentPoints,
-                pointsAdded: pointsToAdd,
-                newTotal: newPoints,
-                prestige: prestigePoints,
-                fameSystem
-            }, `${Math.abs(pointsToAdd)} ${fameSystem} points ${pointsToAdd >= 0 ? 'added to' : 'removed from'} ${character.name}`);
-        });
+                controllerFactory.sendSuccessResponse(res, {
+                    previousPoints: currentPoints,
+                    pointsAdded: pointsToAdd,
+                    newTotal: newPoints,
+                    disrepute: disrepute,
+                    fameSystem
+                }, `${Math.abs(pointsToAdd)} Infamy points added to ship`);
+            });
+        }
     } catch (error) {
         logger.error('Error adding fame points:', error);
         throw error;

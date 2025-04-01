@@ -207,7 +207,7 @@ const Fame = () => {
             }
 
             await api.post('/fame/add-points', {
-                characterId: fameSystem === 'fame' ? characterToModify : (activeCharacterId || 0),
+                characterId: fameSystem === 'fame' ? characterToModify : undefined,
                 points: parseInt(pointsToAdd, 10),
                 reason: fameSystem === 'fame' ? reason : `${port}: ${reason}`,
                 event: fameSystem === 'fame' && eventDetails ? eventDetails.name : null,
