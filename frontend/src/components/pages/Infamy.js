@@ -42,6 +42,7 @@ import {
     Accordion,
     AccordionDetails,
     AccordionSummary,
+    IconButton
 } from '@mui/material';
 import {
     Add as AddIcon,
@@ -87,6 +88,7 @@ const Infamy = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [tabValue, setTabValue] = useState(0);
+    const [isDM, setIsDM] = useState(false);
 
     // Infamy data
     const [infamyStatus, setInfamyStatus] = useState({
@@ -123,6 +125,13 @@ const Infamy = () => {
     const [skillUsed, setSkillUsed] = useState('Intimidate');
     const [plunderSpent, setPlunderSpent] = useState(0);
     const [rerollWithPlunder, setRerollWithPlunder] = useState(false);
+    const [availablePlunder, setAvailablePlunder] = useState(0);
+
+    // DM Adjustment
+    const [infamyChange, setInfamyChange] = useState(0);
+    const [disreputeChange, setDisreputeChange] = useState(0);
+    const [adjustmentReason, setAdjustmentReason] = useState('');
+    const [adjusting, setAdjusting] = useState(false);
 
     // Imposition purchase
     const [selectedImposition, setSelectedImposition] = useState(null);
@@ -138,8 +147,19 @@ const Infamy = () => {
 
     // Load data on component mount
     useEffect(() => {
+        fetchUserRole();
         fetchData();
+        fetchAvailablePlunder();
     }, []);
+
+    const fetchUserRole = async () => {
+        try {
+            const user = await fetchActiveUser();
+            setIsDM(user?.role === 'DM');
+        } catch (error) {
+            console.error('Error fetching user role:', error);
+        }
+    };
 
     // Main data fetch function
     const fetchData = async () => {
@@ -173,6 +193,27 @@ const Infamy = () => {
             console.error('Error fetching infamy data:', error);
             setError('Failed to load infamy data. Please try again.');
             setLoading(false);
+        }
+    };
+
+    // Fetch available plunder
+    const fetchAvailablePlunder = async () => {
+        try {
+            const response = await api.get('/loot', { params: { isDM: isDM } });
+
+            if (response && response.data && response.data.individual) {
+                // Count available plunder in unprocessed loot
+                let plunderCount = 0;
+                response.data.individual.forEach(item => {
+                    if (item.name === 'Plunder' && !item.status) {
+                        plunderCount += parseInt(item.quantity) || 0;
+                    }
+                });
+
+                setAvailablePlunder(plunderCount);
+            }
+        } catch (error) {
+            console.error('Error fetching plunder count:', error);
         }
     };
 
@@ -228,6 +269,11 @@ const Infamy = () => {
                 return;
             }
 
+            if (plunderSpent > availablePlunder) {
+                setError(`Not enough plunder available. You have ${availablePlunder} but tried to spend ${plunderSpent}.`);
+                return;
+            }
+
             const response = await api.post('/infamy/gain', {
                 port: selectedPort,
                 skillCheck: parseInt(skillCheck) || 0,
@@ -250,12 +296,54 @@ const Infamy = () => {
 
             // Refresh data
             fetchData();
+            fetchAvailablePlunder();
         } catch (error) {
             console.error('Error gaining infamy:', error);
             if (error.response && error.response.data && error.response.data.message) {
                 setError(error.response.data.message);
             } else {
                 setError('Failed to gain infamy. Please try again.');
+            }
+        }
+    };
+
+    // Handle DM adjustment of infamy/disrepute
+    const handleAdjustInfamy = async () => {
+        if (!adjustmentReason) {
+            setError('Please provide a reason for this adjustment');
+            return;
+        }
+
+        // Both values can't be zero
+        if (infamyChange === 0 && disreputeChange === 0) {
+            setError('Please specify an amount to change Infamy or Disrepute');
+            return;
+        }
+
+        try {
+            setAdjusting(true);
+
+            const response = await api.post('/infamy/adjust', {
+                infamyChange,
+                disreputeChange,
+                reason: adjustmentReason
+            });
+
+            setAdjusting(false);
+            setInfamyChange(0);
+            setDisreputeChange(0);
+            setAdjustmentReason('');
+
+            setSuccess(`Infamy ${infamyChange >= 0 ? 'increased' : 'decreased'} by ${Math.abs(infamyChange)} and Disrepute ${disreputeChange >= 0 ? 'increased' : 'decreased'} by ${Math.abs(disreputeChange)}`);
+
+            // Refresh data
+            fetchData();
+        } catch (error) {
+            setAdjusting(false);
+            if (error.response && error.response.data && error.response.data.message) {
+                setError(error.response.data.message);
+            } else {
+                setError('Error adjusting infamy/disrepute');
             }
         }
     };
@@ -567,6 +655,7 @@ const Infamy = () => {
                                     <Typography variant="subtitle2" gutterBottom>Spend Plunder for Bonus</Typography>
                                     <Typography variant="body2" paragraph>
                                         Every point of plunder spent adds a +2 bonus to your skill check.
+                                        Available plunder: <strong>{availablePlunder}</strong>
                                     </Typography>
 
                                     <Box sx={{ width: '100%', display: 'flex', alignItems: 'center' }}>
@@ -576,9 +665,10 @@ const Infamy = () => {
                                             onChange={(e, newValue) => setPlunderSpent(newValue)}
                                             step={1}
                                             min={0}
-                                            max={10}
+                                            max={Math.min(10, availablePlunder)}
                                             valueLabelDisplay="auto"
                                             sx={{ flexGrow: 1 }}
+                                            disabled={availablePlunder === 0}
                                         />
                                         <Typography variant="body2" sx={{ ml: 2, minWidth: 40 }}>{plunderSpent}</Typography>
                                     </Box>
@@ -597,6 +687,7 @@ const Infamy = () => {
                                                         type="checkbox"
                                                         checked={rerollWithPlunder}
                                                         onChange={(e) => setRerollWithPlunder(e.target.checked)}
+                                                        disabled={availablePlunder < 3}
                                                     />
                                                     <Typography variant="body2" component="span" sx={{ ml: 1 }}>
                                                         Spend 3 Plunder to reroll if failed (requires at least 3 plunder)
@@ -624,6 +715,83 @@ const Infamy = () => {
                         </Grid>
                     </Paper>
 
+                    {/* DM Controls */}
+                    {isDM && (
+                        <Paper sx={{ p: 3, mt: 3, borderLeft: '4px solid #c62828' }}>
+                            <Typography variant="h6" color="error" gutterBottom>
+                                DM Controls
+                            </Typography>
+
+                            <Grid container spacing={3}>
+                                <Grid item xs={12} md={6}>
+                                    <TextField
+                                        fullWidth
+                                        label="Infamy Change"
+                                        type="number"
+                                        value={infamyChange}
+                                        onChange={(e) => setInfamyChange(parseInt(e.target.value) || 0)}
+                                        InputProps={{
+                                            startAdornment: (
+                                                <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
+                                                    <IconButton size="small" onClick={() => setInfamyChange(prev => prev - 1)}>
+                                                        <RemoveIcon fontSize="small" />
+                                                    </IconButton>
+                                                    <IconButton size="small" onClick={() => setInfamyChange(prev => prev + 1)}>
+                                                        <AddIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Box>
+                                            )
+                                        }}
+                                    />
+                                </Grid>
+
+                                <Grid item xs={12} md={6}>
+                                    <TextField
+                                        fullWidth
+                                        label="Disrepute Change"
+                                        type="number"
+                                        value={disreputeChange}
+                                        onChange={(e) => setDisreputeChange(parseInt(e.target.value) || 0)}
+                                        InputProps={{
+                                            startAdornment: (
+                                                <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
+                                                    <IconButton size="small" onClick={() => setDisreputeChange(prev => prev - 1)}>
+                                                        <RemoveIcon fontSize="small" />
+                                                    </IconButton>
+                                                    <IconButton size="small" onClick={() => setDisreputeChange(prev => prev + 1)}>
+                                                        <AddIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Box>
+                                            )
+                                        }}
+                                    />
+                                </Grid>
+
+                                <Grid item xs={12}>
+                                    <TextField
+                                        fullWidth
+                                        label="Reason for Adjustment"
+                                        value={adjustmentReason}
+                                        onChange={(e) => setAdjustmentReason(e.target.value)}
+                                        required
+                                    />
+                                </Grid>
+
+                                <Grid item xs={12}>
+                                    <Button
+                                        variant="contained"
+                                        color="error"
+                                        fullWidth
+                                        disabled={adjusting}
+                                        onClick={handleAdjustInfamy}
+                                    >
+                                        {adjusting ? <CircularProgress size={24} /> : 'Adjust Infamy/Disrepute'}
+                                    </Button>
+                                </Grid>
+                            </Grid>
+                        </Paper>
+                    )}
+
                     {infamyStatus.infamy >= 20 && (
                         <Paper sx={{ p: 3, mt: 3 }}>
                             <Grid container spacing={2} alignItems="center">
@@ -640,6 +808,7 @@ const Infamy = () => {
                                         color="error"
                                         fullWidth
                                         onClick={() => setSacrificeDialogOpen(true)}
+                                        startIcon={<SailingIcon/>}
                                         startIcon={<SailingIcon />}
                                     >
                                         Sacrifice Crew

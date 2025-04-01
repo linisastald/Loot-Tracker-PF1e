@@ -180,6 +180,21 @@ const getInfamySystem = async (req, res) => {
     }
 };
 
+/**
+ * Get average party level
+ */
+const getAveragePartyLevel = async (req, res) => {
+    try {
+        const settings = await fetchSettingsByNames(['average_party_level']);
+        const apl = settings.average_party_level || '5';
+
+        controllerFactory.sendSuccessResponse(res, {value: apl}, 'Average party level retrieved');
+    } catch (error) {
+        logger.error('Error fetching average party level setting:', error);
+        throw error;
+    }
+};
+
 // Define validation rules
 const updateSettingValidation = {
     requiredFields: ['name', 'value']
@@ -210,5 +225,9 @@ module.exports = {
 
     getInfamySystem: controllerFactory.createHandler(getInfamySystem, {
         errorMessage: 'Error fetching infamy system setting'
-    })
+    }),
+
+    getAveragePartyLevel: controllerFactory.createHandler(getAveragePartyLevel, {
+    errorMessage: 'Error fetching average party level setting'
+})
 };

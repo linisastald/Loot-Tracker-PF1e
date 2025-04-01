@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const infamyController = require('../../controllers/infamyController');
 const verifyToken = require('../../middleware/auth');
+const checkRole = require('../../middleware/checkRole');
 
 // Get infamy status (all users)
 router.get('/status', verifyToken, infamyController.getInfamyStatus);
@@ -12,6 +13,9 @@ router.get('/impositions', verifyToken, infamyController.getAvailableImpositions
 
 // Gain infamy at a port
 router.post('/gain', verifyToken, infamyController.gainInfamy);
+
+// Adjust infamy (DM only)
+router.post('/adjust', verifyToken, checkRole('DM'), infamyController.adjustInfamy);
 
 // Purchase an imposition
 router.post('/purchase', verifyToken, infamyController.purchaseImposition);
