@@ -56,7 +56,6 @@ import {
     Sailing as SailingIcon,
     Public as PublicIcon,
     Bolt as BoltIcon,
-    Sailing as SailingIcon,
 } from '@mui/icons-material';
 import api from '../../utils/api';
 import { fetchActiveUser } from '../../utils/utils';
