@@ -87,39 +87,36 @@ const getCharacterFame = async (req, res) => {
 /**
  * Add fame points to a character (can be done by player or DM)
  */
-/**
- * Add fame points to a character (can be done by player or DM)
- */
 const addPoints = async (req, res) => {
     const { characterId, points, reason, event } = req.body;
     const userId = req.user.id;
 
     try {
         // Validate inputs
-        // For fame system, character ID is always required
-        // For infamy system, it's optional since it applies to the whole ship
-        const fameSystemSetting = await dbUtils.executeQuery(
-            "SELECT value FROM settings WHERE name = 'fame_system'"
-        );
-        const fameSystem = fameSystemSetting.rows.length > 0 ? fameSystemSetting.rows[0].value : 'fame';
-
-        if (fameSystem === 'fame' && !characterId) {
-            throw controllerFactory.createValidationError('Character ID is required');
-        }
-
         if (!points || isNaN(parseInt(points))) {
             throw controllerFactory.createValidationError('Valid points value is required');
         }
 
-        // Check if fame is enabled
+        // Check if fame is enabled and which system is being used
+        const fameSystemSetting = await dbUtils.executeQuery(
+            "SELECT value FROM settings WHERE name = 'fame_system'"
+        );
+
         if (fameSystemSetting.rows.length === 0 || fameSystemSetting.rows[0].value === 'disabled') {
             throw controllerFactory.createAuthorizationError('Fame system is not enabled');
+        }
+
+        const fameSystem = fameSystemSetting.rows[0].value;
+
+        // For fame system, character ID is required
+        if (fameSystem === 'fame' && !characterId) {
+            throw controllerFactory.createValidationError('Character ID is required for Fame system');
         }
 
         // Handle differently based on fame system type
         if (fameSystem === 'fame') {
             // Verify character exists
-            const characterQuery = `SELECT c.id, c.name, c.user_id FROM characters c WHERE c.id = $1`;
+            const characterQuery = `SELECT c.id, c.name, c.user_id FROM characters WHERE c.id = $1`;
             const characterResult = await dbUtils.executeQuery(characterQuery, [characterId]);
 
             if (characterResult.rows.length === 0) {
@@ -169,7 +166,7 @@ const addPoints = async (req, res) => {
                 // Record in history
                 await client.query(
                     `INSERT INTO fame_history (character_id, points, reason, event, added_by)
-                    VALUES ($1, $2, $3, $4, $5)`,
+                     VALUES ($1, $2, $3, $4, $5)`,
                     [characterId, pointsToAdd, reason || null, event || null, userId]
                 );
 
@@ -221,7 +218,7 @@ const addPoints = async (req, res) => {
                 // Record in history
                 await client.query(
                     `INSERT INTO fame_history (character_id, points, reason, event, added_by)
-                    VALUES ($1, $2, $3, $4, $5)`,
+                     VALUES ($1, $2, $3, $4, $5)`,
                     [shipId, pointsToAdd, reason || null, event || null, userId]
                 );
 
@@ -371,7 +368,7 @@ const getFameEvents = async (req, res) => {
 
 // Define validation rules
 const addPointsValidation = {
-    requiredFields: ['characterId', 'points']
+    requiredFields: ['points'] // characterId is only required for fame system, handled in controller
 };
 
 // Create handlers with validation and error handling
