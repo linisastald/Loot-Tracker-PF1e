@@ -63,7 +63,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     fetchUnprocessedLootCount();
     fetchGroupName();
     fetchActiveCharacter();
-    fetchFameSystem();
   }, []);
 
   const fetchUnprocessedLootCount = async () => {
