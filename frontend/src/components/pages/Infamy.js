@@ -647,7 +647,7 @@ const Infamy = () => {
                                     type="number"
                                     value={skillCheck}
                                     onChange={(e) => setSkillCheck(e.target.value)}
-                                    helperText="Enter the total result of your Bluff, Intimidate, or Perform check"
+                                    helperText="Enter the total result of your Bluff, Intimidate, or Perform check including bonuses on this page"
                                 />
                             </Grid>
 
