@@ -19,6 +19,7 @@ import GolarionCalendar from "./components/pages/GolarionCalendar";
 import Tasks from "./components/pages/Tasks";
 import Identify from './components/pages/Identify';
 import LootManagement from './components/pages/LootManagement';
+import Infamy from './components/pages/Infamy';
 
 
 import theme from './theme';
@@ -131,6 +132,7 @@ function App() {
             <Route path="consumables" element={<Consumables />} />
             <Route path="tasks" element={<Tasks />} />
             <Route path="identify" element={<Identify />} />
+            <Route path="infamy" element={<Infamy />} />
           </Route>
         </Routes>
       </Router>

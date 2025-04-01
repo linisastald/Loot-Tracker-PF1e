@@ -30,6 +30,7 @@ import {
   SupervisorAccount,
   ViewList,
   EmojiEvents,
+  Sailing as SailingIcon,
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -44,6 +45,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [groupName, setGroupName] = useState('Loot Tracker');
   const [username, setUsername] = useState('');
   const [activeCharacter, setActiveCharacter] = useState(null);
+  const [infamyEnabled, setInfamyEnabled] = useState(false);
   const location = useLocation();
 
   const handleToggle = (setter) => () => setter(prev => !prev);
@@ -63,6 +65,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     fetchUnprocessedLootCount();
     fetchGroupName();
     fetchActiveCharacter();
+    fetchInfamyStatus();
   }, []);
 
   const fetchUnprocessedLootCount = async () => {
@@ -91,6 +94,17 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
       }
     } catch (error) {
       console.error('Error fetching active character:', error);
+    }
+  };
+
+  const fetchInfamyStatus = async () => {
+    try {
+      const response = await api.get('/settings/infamy-system');
+      if (response.data && response.data.value) {
+        setInfamyEnabled(response.data.value !== 'disabled');
+      }
+    } catch (error) {
+      console.error('Error fetching infamy system status:', error);
     }
   };
 
@@ -222,6 +236,15 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             icon={<AttachMoney/>}
             isCategory
           />
+
+          {infamyEnabled && (
+            <MenuItem
+              to="/infamy"
+              primary="Infamy"
+              icon={<SailingIcon/>}
+              isCategory
+            />
+          )}
 
           <MenuItem
             primary="Session Tools"
