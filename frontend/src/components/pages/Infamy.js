@@ -1,65 +1,62 @@
 // frontend/src/components/pages/Infamy.js
-import React, { useEffect, useState } from 'react';
+import React, {useEffect, useState} from 'react';
 import {
+    Accordion,
+    AccordionDetails,
+    AccordionSummary,
     Alert,
     Box,
     Button,
     Card,
     CardContent,
     CardHeader,
+    Chip,
     CircularProgress,
     Container,
-    Divider,
-    FormControl,
-    Grid,
-    InputLabel,
-    MenuItem,
-    Paper,
-    Select,
-    Slider,
-    Stack,
-    Tab,
-    Tabs,
-    TextField,
-    Typography,
-    Chip,
     Dialog,
     DialogActions,
     DialogContent,
     DialogContentText,
     DialogTitle,
+    Divider,
+    FormControl,
+    Grid,
+    IconButton,
+    InputLabel,
+    List,
+    ListItem,
+    ListItemIcon,
+    ListItemText,
+    MenuItem,
+    Paper,
+    Select,
+    Slider,
+    Tab,
     Table,
     TableBody,
     TableCell,
     TableContainer,
     TableHead,
     TableRow,
+    Tabs,
+    TextField,
     Tooltip,
-    List,
-    ListItem,
-    ListItemIcon,
-    ListItemText,
-    Accordion,
-    AccordionDetails,
-    AccordionSummary,
-    IconButton
+    Typography
 } from '@mui/material';
 import {
     Add as AddIcon,
-    Remove as RemoveIcon,
-    ExpandMore as ExpandMoreIcon,
-    Star as StarIcon,
-    Warning as WarningIcon,
-    LocationOn as LocationOnIcon,
-    History as HistoryIcon,
-    ShoppingCart as ShoppingCartIcon,
     EmojiEvents as EmojiEventsIcon,
-    Sailing as SailingIcon,
+    ExpandMore as ExpandMoreIcon,
+    History as HistoryIcon,
+    LocationOn as LocationOnIcon,
     Public as PublicIcon,
-    Bolt as BoltIcon,
+    Remove as RemoveIcon,
+    Sailing as SailingIcon,
+    ShoppingCart as ShoppingCartIcon,
+    Warning as WarningIcon,
 } from '@mui/icons-material';
 import api from '../../utils/api';
-import { fetchActiveUser } from '../../utils/utils';
+import {fetchActiveUser} from '../../utils/utils';
 
 // Tab panel component for tab layout
 function TabPanel(props) {
@@ -199,24 +196,28 @@ const Infamy = () => {
     // Fetch available plunder
     const fetchAvailablePlunder = async () => {
         try {
-            const response = await api.get('/loot', { params: { isDM: isDM } });
+            // Search for plunder items by itemid
+            const plunderItems = await api.get('/loot/search', {
+                params: {
+                    itemid: '7807'
+                }
+            });
 
-            if (response && response.data && response.data.individual) {
-                // Count available plunder in unprocessed loot
-                let plunderCount = 0;
-                response.data.individual.forEach(item => {
-                    if (item.name === 'Plunder' && !item.status) {
+            let plunderCount = 0;
+            if (plunderItems && plunderItems.data && plunderItems.data.items) {
+                plunderItems.data.items.forEach(item => {
+                    // Only count items that are not sold or trashed
+                    if (item.status !== 'Sold' && item.status !== 'Trashed') {
                         plunderCount += parseInt(item.quantity) || 0;
                     }
                 });
-
-                setAvailablePlunder(plunderCount);
             }
+
+            setAvailablePlunder(plunderCount);
         } catch (error) {
             console.error('Error fetching plunder count:', error);
         }
     };
-
     // Handle tab change
     const handleTabChange = (event, newValue) => {
         setTabValue(newValue);
