@@ -134,6 +134,9 @@ const getAvailableImpositions = async (req, res) => {
     }
 };
 
+/**
+ * Gain infamy at a port
+ */
 const gainInfamy = async (req, res) => {
     const { port, skillCheck, skillUsed, plunderSpent, reroll } = req.body;
     const userId = req.user.id;
@@ -306,12 +309,17 @@ const gainInfamy = async (req, res) => {
 
         // If failed and using reroll with plunder
         if (firstRollFailed && reroll && plunderSpent >= 3) {
-            // Remove additional 3 plunder for reroll
-            // This part will be handled by the front-end which should
-            // include the reroll cost in the total plunderSpent value
+            // The front-end checkbox for reroll doesn't actually trigger a second request,
+            // it just indicates that the user wants to use the reroll option if the first roll fails
 
-            const rerollPlunderBonus = (plunderSpent - 3) * 2;
+            // Calculate the plunder bonus for the reroll
+            // The 3 plunder for reroll doesn't contribute to the check bonus
+            const effectivePlunderForBonus = plunderSpent - 3;
+            const rerollPlunderBonus = effectivePlunderForBonus * 2;
             const rerollCheck = (skillCheck || 0) + rerollPlunderBonus + favoredBonus;
+
+            // Log for debugging
+            logger.debug(`Reroll attempt: skill ${skillCheck}, plunder bonus ${rerollPlunderBonus}, favored ${favoredBonus}, total ${rerollCheck} vs DC ${dc}`);
 
             if (rerollCheck >= dc + 10) {
                 infamyGained = 3;
