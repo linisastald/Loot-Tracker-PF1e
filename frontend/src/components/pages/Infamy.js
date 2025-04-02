@@ -254,59 +254,65 @@ const Infamy = () => {
         return portName;
     };
 
-    // Handle gaining infamy at a port
-    const handleGainInfamy = async () => {
-        try {
-            setError('');
-            setSuccess('');
+// Fixed handleGainInfamy function for frontend
+const handleGainInfamy = async () => {
+    try {
+        setError('');
+        setSuccess('');
 
-            if (!selectedPort) {
-                setError('Please select a port');
-                return;
-            }
-
-            if (!skillCheck && plunderSpent === 0) {
-                setError('Please enter a skill check result or spend plunder');
-                return;
-            }
-
-            if (plunderSpent > availablePlunder) {
-                setError(`Not enough plunder available. You have ${availablePlunder} but tried to spend ${plunderSpent}.`);
-                return;
-            }
-
-            const response = await api.post('/infamy/gain', {
-                port: selectedPort,
-                skillCheck: parseInt(skillCheck) || 0,
-                skillUsed,
-                plunderSpent: parseInt(plunderSpent) || 0,
-                reroll: rerollWithPlunder
-            });
-
-            setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}`);
-
-            // If a new threshold was reached
-            if (response.data.newThreshold) {
-                setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}! You have reached the ${response.data.newThreshold} threshold!`);
-            }
-
-            // Reset form
-            setSkillCheck('');
-            setPlunderSpent(0);
-            setRerollWithPlunder(false);
-
-            // Refresh data
-            fetchData();
-            fetchAvailablePlunder();
-        } catch (error) {
-            console.error('Error gaining infamy:', error);
-            if (error.response && error.response.data && error.response.data.message) {
-                setError(error.response.data.message);
-            } else {
-                setError('Failed to gain infamy. Please try again.');
-            }
+        if (!selectedPort) {
+            setError('Please select a port');
+            return;
         }
-    };
+
+        if (!skillCheck && plunderSpent === 0) {
+            setError('Please enter a skill check result or spend plunder');
+            return;
+        }
+
+        // Ensure at least 3 plunder is spent when reroll is selected
+        let effectivePlunderSpent = parseInt(plunderSpent) || 0;
+        if (rerollWithPlunder && effectivePlunderSpent < 3) {
+            effectivePlunderSpent = 3; // Force minimum plunder to 3 for reroll
+        }
+
+        if (effectivePlunderSpent > availablePlunder) {
+            setError(`Not enough plunder available. You have ${availablePlunder} but tried to spend ${effectivePlunderSpent}.`);
+            return;
+        }
+
+        const response = await api.post('/infamy/gain', {
+            port: selectedPort,
+            skillCheck: parseInt(skillCheck) || 0,
+            skillUsed,
+            plunderSpent: effectivePlunderSpent, // Use effective plunder amount
+            reroll: rerollWithPlunder
+        });
+
+        setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}`);
+
+        // If a new threshold was reached
+        if (response.data.newThreshold) {
+            setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}! You have reached the ${response.data.newThreshold} threshold!`);
+        }
+
+        // Reset form
+        setSkillCheck('');
+        setPlunderSpent(0);
+        setRerollWithPlunder(false);
+
+        // Refresh data
+        fetchData();
+        fetchAvailablePlunder();
+    } catch (error) {
+        console.error('Error gaining infamy:', error);
+        if (error.response && error.response.data && error.response.data.message) {
+            setError(error.response.data.message);
+        } else {
+            setError('Failed to gain infamy. Please try again.');
+        }
+    }
+};
 
     // Handle DM adjustment of infamy/disrepute
     const handleAdjustInfamy = async () => {
