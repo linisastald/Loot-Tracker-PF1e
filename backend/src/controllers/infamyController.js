@@ -191,13 +191,18 @@ const gainInfamy = async (req, res) => {
                 throw controllerFactory.createValidationError('You failed to gain Infamy today. You may try again with the reroll option by spending 3 plunder.');
             }
 
-            // Check if has enough plunder for reroll
-            if (plunderSpent < 3) {
-                throw controllerFactory.createValidationError('Reroll requires at least 3 plunder to be spent.');
-            }
+            // This is a reroll attempt - ensure 3 plunder is spent for the reroll
+            if (reroll) {
+                // Deduct 3 plunder automatically for the reroll
+                // Note: Frontend should handle this in the UI, but we ensure it here as well
+                if (plunderSpent < 3) {
+                    throw controllerFactory.createValidationError('Reroll requires at least 3 plunder to be spent.');
+                }
 
-            // This is a reroll attempt
-            logger.info(`Processing reroll attempt for user ${userId} at port ${port}`);
+                logger.info(`Processing reroll attempt for user ${userId} at port ${port} with ${plunderSpent} plunder`);
+            } else {
+                throw controllerFactory.createValidationError('You failed to gain Infamy today. You may try again with the reroll option by spending 3 plunder.');
+            }
         } else if (reroll) {
             // If they try to use reroll on first attempt, reject
             throw controllerFactory.createValidationError('You cannot use the reroll option on your first attempt. Make a regular attempt first.');
