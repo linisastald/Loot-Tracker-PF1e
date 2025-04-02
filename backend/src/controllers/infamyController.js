@@ -134,9 +134,6 @@ const getAvailableImpositions = async (req, res) => {
     }
 };
 
-/**
- * Gain infamy at a port
- */
 const gainInfamy = async (req, res) => {
     const { port, skillCheck, skillUsed, plunderSpent, reroll } = req.body;
     const userId = req.user.id;
@@ -295,6 +292,7 @@ const gainInfamy = async (req, res) => {
 
         // Determine how much infamy is gained
         let infamyGained = 0;
+        let firstRollFailed = false;
 
         if (totalCheck >= dc + 10) {
             infamyGained = 3;
@@ -302,10 +300,12 @@ const gainInfamy = async (req, res) => {
             infamyGained = 2;
         } else if (totalCheck >= dc) {
             infamyGained = 1;
+        } else {
+            firstRollFailed = true;
         }
 
         // If failed and using reroll with plunder
-        if (infamyGained === 0 && reroll && plunderSpent >= 3) {
+        if (firstRollFailed && reroll && plunderSpent >= 3) {
             // Remove additional 3 plunder for reroll
             // This part will be handled by the front-end which should
             // include the reroll cost in the total plunderSpent value
@@ -322,36 +322,39 @@ const gainInfamy = async (req, res) => {
             }
         }
 
-        // If still failed, return error
+        // Record in history regardless of success or failure
+        await dbUtils.executeQuery(
+            'INSERT INTO infamy_history (infamy_change, reason, port, user_id, golarion_date) VALUES ($1, $2, $3, $4, $5)',
+            [infamyGained, 'Boasting at port', port, userId, golarionDateStr]
+        );
+
+        // If failed, return error but the attempt is still recorded
         if (infamyGained === 0) {
             throw controllerFactory.createValidationError(
-                'Failed to gain Infamy at this port. Try spending more plunder or using a different skill.'
+                'Failed to gain Infamy at this port. The attempt has been recorded for today.'
             );
         }
 
         // Ensure we don't exceed the 5 infamy per port limit
         infamyGained = Math.min(infamyGained, 5 - totalGained);
 
-        // Update infamy and disrepute
-        const newInfamy = currentInfamy + infamyGained;
-        const newDisrepute = currentDisrepute + infamyGained;
+        // Only update infamy/disrepute and record port visit if points were gained
+        if (infamyGained > 0) {
+            // Update infamy and disrepute
+            const newInfamy = currentInfamy + infamyGained;
+            const newDisrepute = currentDisrepute + infamyGained;
 
-        await dbUtils.executeQuery(
-            'UPDATE ship_infamy SET infamy = $1, disrepute = $2 WHERE id = 1',
-            [newInfamy, newDisrepute]
-        );
+            await dbUtils.executeQuery(
+                'UPDATE ship_infamy SET infamy = $1, disrepute = $2 WHERE id = 1',
+                [newInfamy, newDisrepute]
+            );
 
-        // Record the port visit
-        await dbUtils.executeQuery(
-            'INSERT INTO port_visits (port_name, threshold, infamy_gained, skill_used, plunder_spent, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
-            [port, currentThreshold, infamyGained, skillUsed, plunderSpent, userId]
-        );
-
-        // Record in history - NOW INCLUDING GOLARION DATE
-        await dbUtils.executeQuery(
-            'INSERT INTO infamy_history (infamy_change, reason, port, user_id, golarion_date) VALUES ($1, $2, $3, $4, $5)',
-            [infamyGained, 'Boasting at port', port, userId, golarionDateStr]
-        );
+            // Record the port visit
+            await dbUtils.executeQuery(
+                'INSERT INTO port_visits (port_name, threshold, infamy_gained, skill_used, plunder_spent, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
+                [port, currentThreshold, infamyGained, skillUsed, plunderSpent, userId]
+            );
+        }
 
         // Check if a new threshold was reached
         let newThreshold = null;
