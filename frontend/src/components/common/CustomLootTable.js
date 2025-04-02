@@ -33,12 +33,40 @@ const SubItemTableRow = styled(TableRow)(({theme}) => ({
     },
 }));
 
-// Normalization function to handle case and whitespace
+// Helper function to normalize item properties for consistent keys
 const normalizeItemProperty = (value) => {
-  if (typeof value === 'string') {
-    return value.trim().toLowerCase();
-  }
-  return value;
+    // Convert to string and normalize case
+    return String(value || '').trim().toLowerCase();
+};
+
+// Function to generate unique keys for items
+const generateUniqueKeys = (items) => {
+    // Create a map to track counts of similar items
+    const keyCountMap = {};
+
+    // Create a new array with unique keys
+    return items.map(item => {
+        const normalizedName = normalizeItemProperty(item.name);
+        const normalizedType = normalizeItemProperty(item.type || '');
+        const normalizedSize = normalizeItemProperty(item.size || '');
+
+        // Create the base key
+        const baseKey = `${normalizedName}-${item.unidentified}-${item.masterwork}-${normalizedType}-${normalizedSize}`;
+
+        // If this is the first time we see this key, initialize counter
+        if (!keyCountMap[baseKey]) {
+            keyCountMap[baseKey] = 0;
+        }
+
+        // Increment the counter for this key
+        keyCountMap[baseKey]++;
+
+        // Create a unique key by appending the counter
+        const uniqueKey = `${baseKey}-${keyCountMap[baseKey]}`;
+
+        // Return the item with its unique key
+        return { ...item, _uniqueKey: uniqueKey };
+    });
 };
 
 // Reusable components
@@ -146,29 +174,20 @@ const CustomLootTable = ({
 
     // Helper functions
     const handleToggleOpen = (name, unidentified, masterwork, type, size) => {
-        const normalizedName = normalizeItemProperty(name);
-        const normalizedType = normalizeItemProperty(type);
-        const normalizedSize = normalizeItemProperty(size);
-
         setOpenItems((prevOpenItems) => ({
             ...prevOpenItems,
-            [`${normalizedName}-${unidentified}-${masterwork}-${normalizedType}-${normalizedSize}`]:
-                !prevOpenItems[`${normalizedName}-${unidentified}-${masterwork}-${normalizedType}-${normalizedSize}`],
+            [`${name}-${unidentified}-${masterwork}-${type}-${size}`]: !prevOpenItems[`${name}-${unidentified}-${masterwork}-${type}-${size}`],
         }));
     };
 
     const getIndividualItems = (name, unidentified, masterwork, type, size) => {
-        const normalizedName = normalizeItemProperty(name);
-        const normalizedType = normalizeItemProperty(type);
-        const normalizedSize = normalizeItemProperty(size);
-
         return individualLoot.filter(
             (item) =>
-                normalizeItemProperty(item.name) === normalizedName &&
+                item.name === name &&
                 item.unidentified === unidentified &&
                 item.masterwork === masterwork &&
-                normalizeItemProperty(item.type) === normalizedType &&
-                normalizeItemProperty(item.size) === normalizedSize
+                item.type === type &&
+                item.size === size
         );
     };
 
@@ -275,6 +294,9 @@ const CustomLootTable = ({
             }
         });
     }, [filteredLoot, sortConfig]);
+
+    // Generate unique keys for items
+    const itemsWithUniqueKeys = generateUniqueKeys(sortedLoot);
 
     // Cell styles
     const mainCellStyle = {padding: '16px'};
@@ -535,17 +557,17 @@ const CustomLootTable = ({
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {sortedLoot.map((item) => {
+                        {itemsWithUniqueKeys.map((item) => {
                             const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
                             const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
                             const normalizedName = normalizeItemProperty(item.name);
-                            const normalizedType = normalizeItemProperty(item.type);
-                            const normalizedSize = normalizeItemProperty(item.size);
+                            const normalizedType = normalizeItemProperty(item.type || '');
+                            const normalizedSize = normalizeItemProperty(item.size || '');
                             const itemKey = `${normalizedName}-${item.unidentified}-${item.masterwork}-${normalizedType}-${normalizedSize}`;
                             const isOpen = openItems[itemKey];
 
                             return (
-                                <React.Fragment key={itemKey}>
+                                <React.Fragment key={item._uniqueKey}>
                                     <TableRow>
                                         {showColumns.select && (
                                             <TableCell style={mainCellStyle}>
