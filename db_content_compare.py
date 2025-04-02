@@ -12,7 +12,6 @@ import configparser
 from contextlib import contextmanager
 import time
 import json
-from tabulate import tabulate
 
 # Setup logging
 logging.basicConfig(
@@ -78,10 +77,10 @@ def get_docker_container_ids(config):
                         containers.append((container_id, name))
         return containers
     except subprocess.CalledProcessError as e:
-        logger.error(f"Error running docker command: {e}")
+        logger.error("Error running docker command: {}".format(e))
         return []
     except Exception as e:
-        logger.error(f"Unexpected error in get_docker_container_ids: {e}")
+        logger.error("Unexpected error in get_docker_container_ids: {}".format(e))
         return []
 
 
@@ -96,21 +95,21 @@ def get_container_port(container_id):
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     universal_newlines=True, check=True)
             if result.stdout:
-                port_match = re.search(r':(\d+)$', result.stdout.strip())
+                port_match = re.search(r':(\d+)', result.stdout.strip())
                 if port_match:
                     return port_match.group(1)
 
             if attempt < max_retries - 1:
                 logger.warning(
-                    f"Retry {attempt + 1}/{max_retries} getting port for container {container_id}")
+                    "Retry {}/{} getting port for container {}".format(attempt + 1, max_retries, container_id))
                 time.sleep(retry_delay)
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error getting port for container {container_id}: {e}")
+            logger.error("Error getting port for container {}: {}".format(container_id, e))
             if attempt < max_retries - 1:
-                logger.warning(f"Retry {attempt + 1}/{max_retries}")
+                logger.warning("Retry {}/{}".format(attempt + 1, max_retries))
                 time.sleep(retry_delay)
         except Exception as e:
-            logger.error(f"Unexpected error in get_container_port: {e}")
+            logger.error("Unexpected error in get_container_port: {}".format(e))
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
 
@@ -133,24 +132,24 @@ def db_connection(host, port, dbname, user, password, connection_name="DB"):
                 user=user,
                 password=password
             )
-            logger.info(f"Connected to {connection_name} on port {port}")
+            logger.info("Connected to {} on port {}".format(connection_name, port))
             break
         except psycopg2.Error as e:
             logger.error(
-                f"Attempt {attempt + 1}/{max_retries}: Unable to connect to {connection_name}: {e}")
+                "Attempt {}/{}: Unable to connect to {}: {}".format(attempt + 1, max_retries, connection_name, e))
             if attempt < max_retries - 1:
-                logger.info(f"Retrying in {retry_delay} seconds...")
+                logger.info("Retrying in {} seconds...".format(retry_delay))
                 time.sleep(retry_delay)
 
     if conn is None:
-        logger.error(f"Failed to connect to {connection_name} after {max_retries} attempts")
+        logger.error("Failed to connect to {} after {} attempts".format(connection_name, max_retries))
         yield None
     else:
         try:
             yield conn
         finally:
             conn.close()
-            logger.debug(f"Closed connection to {connection_name}")
+            logger.debug("Closed connection to {}".format(connection_name))
 
 
 def get_table_primary_keys(conn, tables):
@@ -183,7 +182,7 @@ def get_table_primary_keys(conn, tables):
 
         return primary_keys
     except psycopg2.Error as e:
-        logger.error(f"Error fetching primary keys: {e}")
+        logger.error("Error fetching primary keys: {}".format(e))
         return {}
 
 
@@ -204,7 +203,7 @@ def get_table_columns(conn, table):
 
         return columns
     except psycopg2.Error as e:
-        logger.error(f"Error fetching columns for table {table}: {e}")
+        logger.error("Error fetching columns for table {}: {}".format(table, e))
         return []
 
 
@@ -236,7 +235,7 @@ def get_table_data(conn, table, columns):
 
         return data
     except psycopg2.Error as e:
-        logger.error(f"Error fetching data for table {table}: {e}")
+        logger.error("Error fetching data for table {}: {}".format(table, e))
         return {}
 
 
@@ -276,9 +275,13 @@ def generate_insert_sql(table, columns, row_data):
         else:
             # Escape single quotes in string values
             s = str(val).replace("'", "''")
-            values.append(f"'{s}'")
+            values.append("'{}'".format(s))
 
-    return f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(values)});"
+    return "INSERT INTO {} ({}) VALUES ({});".format(
+        table,
+        ', '.join(columns),
+        ', '.join(values)
+    )
 
 
 def generate_update_sql(table, columns, pk_columns, row_data):
@@ -289,32 +292,36 @@ def generate_update_sql(table, columns, pk_columns, row_data):
         if col not in pk_columns:  # Don't update primary key
             val = row_data.get(col)
             if val is None:
-                set_clauses.append(f"{col} = NULL")
+                set_clauses.append("{} = NULL".format(col))
             elif isinstance(val, (int, float)):
-                set_clauses.append(f"{col} = {val}")
+                set_clauses.append("{} = {}".format(col, val))
             elif isinstance(val, bool):
-                set_clauses.append(f"{col} = {val}")
+                set_clauses.append("{} = {}".format(col, val))
             else:
                 # Escape single quotes in string values
                 s = str(val).replace("'", "''")
-                set_clauses.append(f"{col} = '{s}'")
+                set_clauses.append("{} = '{}'".format(col, s))
 
     # Build WHERE clause
     where_clauses = []
     for pk in pk_columns:
         val = row_data.get(pk)
         if val is None:
-            where_clauses.append(f"{pk} IS NULL")
+            where_clauses.append("{} IS NULL".format(pk))
         elif isinstance(val, (int, float)):
-            where_clauses.append(f"{pk} = {val}")
+            where_clauses.append("{} = {}".format(pk, val))
         elif isinstance(val, bool):
-            where_clauses.append(f"{pk} = {val}")
+            where_clauses.append("{} = {}".format(pk, val))
         else:
             # Escape single quotes in string values
             s = str(val).replace("'", "''")
-            where_clauses.append(f"{pk} = '{s}'")
+            where_clauses.append("{} = '{}'".format(pk, s))
 
-    return f"UPDATE {table} SET {', '.join(set_clauses)} WHERE {' AND '.join(where_clauses)};"
+    return "UPDATE {} SET {} WHERE {};".format(
+        table,
+        ', '.join(set_clauses),
+        ' AND '.join(where_clauses)
+    )
 
 
 def generate_update_sqls(differences, table, columns, primary_keys):
@@ -336,28 +343,28 @@ def generate_update_sqls(differences, table, columns, primary_keys):
 def display_differences(differences, table):
     """Display the differences in a readable format"""
     if not differences['missing_in_copy'] and not differences['different_in_copy']:
-        logger.info(f"No differences found in table {table}")
+        logger.info("No differences found in table {}".format(table))
         return
 
-    logger.info(f"Differences in table {table}:")
+    logger.info("Differences in table {}:".format(table))
 
     if differences['missing_in_copy']:
-        logger.info(f"  - Missing rows: {len(differences['missing_in_copy'])}")
+        logger.info("  - Missing rows: {}".format(len(differences['missing_in_copy'])))
         # Display some sample missing rows (limited to avoid flooding the console)
         sample_size = min(3, len(differences['missing_in_copy']))
         for i in range(sample_size):
             row = differences['missing_in_copy'][i]
-            logger.info(f"    Sample {i + 1}: {row}")
+            logger.info("    Sample {}: {}".format(i + 1, row))
 
     if differences['different_in_copy']:
-        logger.info(f"  - Different rows: {len(differences['different_in_copy'])}")
+        logger.info("  - Different rows: {}".format(len(differences['different_in_copy'])))
         # Display some sample different rows
         sample_size = min(3, len(differences['different_in_copy']))
         for i in range(sample_size):
             diff = differences['different_in_copy'][i]
-            logger.info(f"    Sample {i + 1}:")
-            logger.info(f"      Master: {diff['master']}")
-            logger.info(f"      Copy:   {diff['copy']}")
+            logger.info("    Sample {}:".format(i + 1))
+            logger.info("      Master: {}".format(diff['master']))
+            logger.info("      Copy:   {}".format(diff['copy']))
 
 
 def execute_sql_statements(conn, sql_statements):
@@ -373,24 +380,24 @@ def execute_sql_statements(conn, sql_statements):
             with conn.cursor() as cur:
                 for i, statement in enumerate(sql_statements):
                     try:
-                        logger.info(f"Executing statement {i + 1}/{len(sql_statements)}")
-                        logger.debug(f"SQL: {statement}")
+                        logger.info("Executing statement {}/{}".format(i + 1, len(sql_statements)))
+                        logger.debug("SQL: {}".format(statement))
                         cur.execute(statement)
                         executed += 1
                     except psycopg2.Error as e:
-                        logger.error(f"Error executing: {statement}")
-                        logger.error(f"Error message: {e}")
+                        logger.error("Error executing: {}".format(statement))
+                        logger.error("Error message: {}".format(e))
                         errors.append((statement, str(e)))
                         # We'll continue with the next statement, but the transaction will be rolled back later
                         raise
 
-        logger.info(f"All {executed} statements executed successfully.")
+        logger.info("All {} statements executed successfully.".format(executed))
         return True
     except Exception:
-        logger.error(f"Encountered errors. Transaction rolled back. {executed} statements were attempted.")
+        logger.error("Encountered errors. Transaction rolled back. {} statements were attempted.".format(executed))
         for stmt, err in errors:
-            logger.error(f"Statement: {stmt}")
-            logger.error(f"Error: {err}")
+            logger.error("Statement: {}".format(stmt))
+            logger.error("Error: {}".format(err))
             logger.error("-" * 50)
         return False
 
@@ -415,7 +422,7 @@ def main():
     if args.tables:
         config['TABLES_TO_COMPARE'] = [t.strip() for t in args.tables.split(',')]
 
-    logger.info(f"Tables to compare: {', '.join(config['TABLES_TO_COMPARE'])}")
+    logger.info("Tables to compare: {}".format(', '.join(config['TABLES_TO_COMPARE'])))
 
     # Connect to master database
     with db_connection(config['DB_HOST'], args.master_port, config['DB_NAME'],
@@ -435,17 +442,17 @@ def main():
             sys.exit(0)
 
         for container_id, container_name in containers:
-            logger.info(f"\nProcessing container: {container_name}")
+            logger.info("\nProcessing container: {}".format(container_name))
             container_port = get_container_port(container_id)
 
             if not container_port:
-                logger.error(f"Unable to get port for container {container_name}. Skipping.")
+                logger.error("Unable to get port for container {}. Skipping.".format(container_name))
                 continue
 
             # Connect to copy database
             with db_connection(config['DB_HOST'], container_port, config['DB_NAME'],
                                config['DB_USER'], config['DB_PASSWORD'],
-                               f"Copy DB ({container_name})") as copy_conn:
+                               "Copy DB ({})".format(container_name)) as copy_conn:
                 if not copy_conn:
                     continue
 
@@ -454,12 +461,12 @@ def main():
 
                 # Compare each table
                 for table in config['TABLES_TO_COMPARE']:
-                    logger.info(f"Comparing table: {table}")
+                    logger.info("Comparing table: {}".format(table))
 
                     # Get columns for the table
                     columns = get_table_columns(master_conn, table)
                     if not columns:
-                        logger.warning(f"No columns found for table {table}. Skipping.")
+                        logger.warning("No columns found for table {}. Skipping.".format(table))
                         continue
 
                     # Get data from both databases
@@ -467,7 +474,7 @@ def main():
                     copy_data = get_table_data(copy_conn, table, columns)
 
                     if not master_data:
-                        logger.warning(f"No data found in master database for table {table}. Skipping.")
+                        logger.warning("No data found in master database for table {}. Skipping.".format(table))
                         continue
 
                     # Compare data
@@ -482,12 +489,12 @@ def main():
                         sql_statements = generate_update_sqls(differences, table, columns, primary_keys)
                         all_sql_statements.extend(sql_statements)
 
-                        logger.info(f"Generated {len(sql_statements)} SQL statements for table {table}")
+                        logger.info("Generated {} SQL statements for table {}".format(len(sql_statements), table))
 
                 if not differences_found:
                     logger.info("No differences found between master and copy databases for the specified tables.")
                 else:
-                    logger.info(f"\nGenerated a total of {len(all_sql_statements)} SQL statements")
+                    logger.info("\nGenerated a total of {} SQL statements".format(len(all_sql_statements)))
 
                     if args.verbose:
                         logger.info("SQL statements:")
@@ -498,7 +505,8 @@ def main():
                         logger.info("Dry run mode - SQL not executed.")
                     else:
                         confirm = input(
-                            f"\nDo you want to apply these changes to the copy database ({container_name})? (y/n): ")
+                            "\nDo you want to apply these changes to the copy database ({})? (y/n): ".format(
+                                container_name))
                         if confirm.lower() == 'y':
                             success = execute_sql_statements(copy_conn, all_sql_statements)
                             if success:
