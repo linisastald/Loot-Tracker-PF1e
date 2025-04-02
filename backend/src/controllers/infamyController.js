@@ -146,7 +146,7 @@ const gainInfamy = async (req, res) => {
             throw controllerFactory.createValidationError('Port name is required');
         }
 
-        if (!skillCheck && !plunderSpent) {
+        if (!skillCheck && plunderSpent === 0) {
             throw controllerFactory.createValidationError('Skill check result or plunder spent is required');
         }
 
@@ -167,8 +167,40 @@ const gainInfamy = async (req, res) => {
         `;
 
         const todayCheckResult = await dbUtils.executeQuery(todayCheckQuery, [golarionDateStr]);
+
+        // Check if a reroll was already used today
+        const todayRerollQuery = `
+            SELECT * FROM infamy_history 
+            WHERE reason = 'Reroll for Infamy' 
+            AND golarion_date = $1
+        `;
+
+        const todayRerollResult = await dbUtils.executeQuery(todayRerollQuery, [golarionDateStr]);
+        const hasRerollToday = todayRerollResult.rows.length > 0;
+
+        // If there's a failed attempt but no reroll yet, allow a reroll attempt
         if (todayCheckResult.rows.length > 0) {
-            throw controllerFactory.createValidationError('You have already attempted to gain Infamy today. Try again tomorrow (in-game).');
+            // If the previous attempt was successful or a reroll was already used, no more attempts
+            const previousAttempt = todayCheckResult.rows[0];
+            if (previousAttempt.infamy_change > 0 || hasRerollToday) {
+                throw controllerFactory.createValidationError('You have already gained Infamy today or used your reroll. Try again tomorrow (in-game).');
+            }
+
+            // If requesting a reroll, allow it; otherwise reject
+            if (!reroll) {
+                throw controllerFactory.createValidationError('You failed to gain Infamy today. You may try again with the reroll option by spending 3 plunder.');
+            }
+
+            // Check if has enough plunder for reroll
+            if (plunderSpent < 3) {
+                throw controllerFactory.createValidationError('Reroll requires at least 3 plunder to be spent.');
+            }
+
+            // This is a reroll attempt
+            logger.info(`Processing reroll attempt for user ${userId} at port ${port}`);
+        } else if (reroll) {
+            // If they try to use reroll on first attempt, reject
+            throw controllerFactory.createValidationError('You cannot use the reroll option on your first attempt. Make a regular attempt first.');
         }
 
         // Get the APL setting or default to 5
@@ -282,87 +314,70 @@ const gainInfamy = async (req, res) => {
         // Calculate DC for the check: 15 + 2 × APL
         const dc = 15 + (2 * apl);
 
-        // Calculate total check result (skill check + plunder bonus)
-        const plunderBonus = plunderSpent ? plunderSpent * 2 : 0;
-        let totalCheck = (skillCheck || 0) + plunderBonus;
-
         // Get bonuses from favored ports
         const favoredPortQuery = 'SELECT bonus FROM favored_ports WHERE port_name = $1';
         const favoredPortResult = await dbUtils.executeQuery(favoredPortQuery, [port]);
         const favoredBonus = favoredPortResult.rows[0]?.bonus || 0;
 
-        totalCheck += favoredBonus;
+        // Calculate skill check
+        const plunderBonus = plunderSpent * 2;
+        const totalCheck = (parseInt(skillCheck) || 0) + plunderBonus + favoredBonus;
 
         // Determine how much infamy is gained
         let infamyGained = 0;
-        let firstRollFailed = false;
+        let successLevel = null;
+        const isRerollAttempt = reroll && todayCheckResult.rows.length > 0;
+        const historyReason = isRerollAttempt ? 'Reroll for Infamy' : 'Boasting at port';
 
         if (totalCheck >= dc + 10) {
             infamyGained = 3;
+            successLevel = "Success by 10+";
         } else if (totalCheck >= dc + 5) {
             infamyGained = 2;
+            successLevel = "Success by 5+";
         } else if (totalCheck >= dc) {
             infamyGained = 1;
-        } else {
-            firstRollFailed = true;
-        }
-
-        // If failed and using reroll with plunder
-        if (firstRollFailed && reroll && plunderSpent >= 3) {
-            // The front-end checkbox for reroll doesn't actually trigger a second request,
-            // it just indicates that the user wants to use the reroll option if the first roll fails
-
-            // Calculate the plunder bonus for the reroll
-            // The 3 plunder for reroll doesn't contribute to the check bonus
-            const effectivePlunderForBonus = plunderSpent - 3;
-            const rerollPlunderBonus = effectivePlunderForBonus * 2;
-            const rerollCheck = (skillCheck || 0) + rerollPlunderBonus + favoredBonus;
-
-            // Log for debugging
-            logger.debug(`Reroll attempt: skill ${skillCheck}, plunder bonus ${rerollPlunderBonus}, favored ${favoredBonus}, total ${rerollCheck} vs DC ${dc}`);
-
-            if (rerollCheck >= dc + 10) {
-                infamyGained = 3;
-            } else if (rerollCheck >= dc + 5) {
-                infamyGained = 2;
-            } else if (rerollCheck >= dc) {
-                infamyGained = 1;
-            }
-        }
-
-        // Record in history regardless of success or failure
-        await dbUtils.executeQuery(
-            'INSERT INTO infamy_history (infamy_change, reason, port, user_id, golarion_date) VALUES ($1, $2, $3, $4, $5)',
-            [infamyGained, 'Boasting at port', port, userId, golarionDateStr]
-        );
-
-        // If failed, return error but the attempt is still recorded
-        if (infamyGained === 0) {
-            throw controllerFactory.createValidationError(
-                'Failed to gain Infamy at this port. The attempt has been recorded for today.'
-            );
+            successLevel = "Success";
         }
 
         // Ensure we don't exceed the 5 infamy per port limit
-        infamyGained = Math.min(infamyGained, 5 - totalGained);
-
-        // Only update infamy/disrepute and record port visit if points were gained
         if (infamyGained > 0) {
-            // Update infamy and disrepute
-            const newInfamy = currentInfamy + infamyGained;
-            const newDisrepute = currentDisrepute + infamyGained;
-
-            await dbUtils.executeQuery(
-                'UPDATE ship_infamy SET infamy = $1, disrepute = $2 WHERE id = 1',
-                [newInfamy, newDisrepute]
-            );
-
-            // Record the port visit
-            await dbUtils.executeQuery(
-                'INSERT INTO port_visits (port_name, threshold, infamy_gained, skill_used, plunder_spent, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
-                [port, currentThreshold, infamyGained, skillUsed, plunderSpent, userId]
-            );
+            infamyGained = Math.min(infamyGained, 5 - totalGained);
         }
+
+        // Record the attempt in history regardless of success
+        await dbUtils.executeQuery(
+            'INSERT INTO infamy_history (infamy_change, reason, port, user_id, golarion_date) VALUES ($1, $2, $3, $4, $5)',
+            [infamyGained, historyReason, port, userId, golarionDateStr]
+        );
+
+        // If no infamy gained, return error but the attempt is still recorded
+        if (infamyGained === 0) {
+            if (isRerollAttempt) {
+                throw controllerFactory.createValidationError(
+                    'Your reroll attempt failed. You have used all your attempts for today (in-game).'
+                );
+            } else {
+                throw controllerFactory.createValidationError(
+                    'Failed to gain Infamy at this port. The attempt has been recorded, but you may try a reroll by spending 3 plunder.'
+                );
+            }
+        }
+
+        // Update infamy and disrepute
+        const newInfamy = currentInfamy + infamyGained;
+        const newDisrepute = currentDisrepute + infamyGained;
+
+        await dbUtils.executeQuery(
+            'UPDATE ship_infamy SET infamy = $1, disrepute = $2 WHERE id = 1',
+            [newInfamy, newDisrepute]
+        );
+
+        // Record the port visit
+        await dbUtils.executeQuery(
+            'INSERT INTO port_visits (port_name, threshold, infamy_gained, skill_used, plunder_spent, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
+            [port, currentThreshold, infamyGained, skillUsed, plunderSpent, userId]
+        );
 
         // Check if a new threshold was reached
         let newThreshold = null;
@@ -378,8 +393,9 @@ const gainInfamy = async (req, res) => {
             newDisrepute,
             newThreshold,
             skillCheck: totalCheck,
-            dc
-        }, `Gained ${infamyGained} Infamy at ${port}`);
+            dc,
+            isRerollAttempt
+        }, `${isRerollAttempt ? 'Reroll successful! ' : ''}Gained ${infamyGained} Infamy at ${port}`);
     } catch (error) {
         logger.error('Error gaining infamy:', error);
         throw error;
