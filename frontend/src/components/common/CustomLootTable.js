@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import {
   Box,
   Button,
@@ -20,10 +20,11 @@ import {
   TableSortLabel,
   Tooltip,
 } from '@mui/material';
-import {KeyboardArrowDown, KeyboardArrowUp} from '@mui/icons-material';
-import {formatDate} from '../../utils/utils';
-import {styled} from '@mui/system';
+import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import { formatDate } from '../../utils/utils';
+import { styled } from '@mui/system';
 import api from '../../utils/api';
+import PropTypes from 'prop-types';
 
 // Styled components
 const SubItemTableRow = styled(TableRow)(({theme}) => ({
@@ -33,44 +34,8 @@ const SubItemTableRow = styled(TableRow)(({theme}) => ({
     },
 }));
 
-// Helper function to normalize item properties for consistent keys
-const normalizeItemProperty = (value) => {
-    // Convert to string and normalize case
-    return String(value || '').trim().toLowerCase();
-};
-
-// Function to generate unique keys for items
-const generateUniqueKeys = (items) => {
-    // Create a map to track counts of similar items
-    const keyCountMap = {};
-
-    // Create a new array with unique keys
-    return items.map(item => {
-        const normalizedName = normalizeItemProperty(item.name);
-        const normalizedType = normalizeItemProperty(item.type || '');
-        const normalizedSize = normalizeItemProperty(item.size || '');
-
-        // Create the base key
-        const baseKey = `${normalizedName}-${item.unidentified}-${item.masterwork}-${normalizedType}-${normalizedSize}`;
-
-        // If this is the first time we see this key, initialize counter
-        if (!keyCountMap[baseKey]) {
-            keyCountMap[baseKey] = 0;
-        }
-
-        // Increment the counter for this key
-        keyCountMap[baseKey]++;
-
-        // Create a unique key by appending the counter
-        const uniqueKey = `${baseKey}-${keyCountMap[baseKey]}`;
-
-        // Return the item with its unique key
-        return { ...item, _uniqueKey: uniqueKey };
-    });
-};
-
 // Reusable components
-const FilterMenu = ({anchorEl, open, onClose, title, filters, onChange}) => (
+const FilterMenu = React.memo(({anchorEl, open, onClose, title, filters, onChange}) => (
     <Menu
         anchorEl={anchorEl}
         open={open}
@@ -85,102 +50,558 @@ const FilterMenu = ({anchorEl, open, onClose, title, filters, onChange}) => (
             </MenuItem>
         ))}
     </Menu>
-);
+));
 
-const SortableTableCell = ({label, field, sortConfig, onSort}) => (
+const SortableTableCell = React.memo(({label, field, sortConfig, onSort}) => (
     <TableCell>
         <TableSortLabel
             active={sortConfig.key === field}
-            direction={sortConfig.direction}
+            direction={sortConfig.direction || 'asc'}
             onClick={() => onSort(field)}
         >
             {label}
         </TableSortLabel>
     </TableCell>
-);
+));
 
+// Helper function to safely normalize item properties for consistent keys
+const normalizeItemProperty = (value) => {
+    if (value === null || value === undefined) return '';
+    return String(value).trim().toLowerCase();
+};
+
+// Custom hook for character data
+const useCharacterData = () => {
+    const [characters, setCharacters] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const fetchCharacters = async () => {
+            try {
+                setIsLoading(true);
+                const response = await api.get('/user/active-characters');
+                const characterFilters = response.data.map(character => ({
+                    name: character.name,
+                    id: character.id,
+                    checked: false
+                }));
+                setCharacters(characterFilters);
+                setError(null);
+            } catch (err) {
+                console.error('Error fetching characters:', err);
+                setError(err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchCharacters();
+    }, []);
+
+    return { characters, isLoading, error };
+};
+
+// Accessible tooltip component
+const AccessibleTooltip = React.memo(({ title, children }) => {
+    if (!title) return children;
+
+    return (
+        <Tooltip
+            title={title}
+            arrow
+            enterDelay={500}
+            leaveDelay={200}
+        >
+            <span
+                tabIndex={0}
+                role="button"
+                aria-label={`${children} (press for details)`}
+                style={{ display: 'inline-block' }}
+            >
+                {children}
+            </span>
+        </Tooltip>
+    );
+});
+
+// Table row component
+const LootTableRow = React.memo(({
+    item,
+    isOpen,
+    onToggleOpen,
+    individualItems,
+    selectedItems,
+    onSelectItem,
+    showColumns,
+    totalQuantity,
+    baseKey,
+}) => {
+    // Safe date formatter
+    const safeFormatDate = useCallback((dateString) => {
+        if (!dateString) return '';
+        try {
+            return formatDate(dateString);
+        } catch (error) {
+            console.error('Error formatting date:', error);
+            return 'Invalid date';
+        }
+    }, []);
+
+    // Format appraisal details for tooltip
+    const formatAppraisalDetails = useCallback((item) => {
+        const appraisals = item.appraisals || [];
+        if (!appraisals || appraisals.length === 0) {
+            return 'No appraisals available';
+        }
+        return appraisals.map(appraisal => {
+            const characterName = appraisal.character_name || 'Unknown';
+            const value = parseFloat(appraisal.believedvalue);
+            return `${characterName}: ${isNaN(value) ? '?' : value.toFixed(2)}`;
+        }).join('\n');
+    }, []);
+
+    // Format average appraisal with tooltip
+    const formatAverageAppraisal = useCallback((item) => {
+        if (item.average_appraisal !== undefined && item.average_appraisal !== null) {
+            const value = parseFloat(item.average_appraisal);
+            const formattedValue = isNaN(value) ? '' : value.toFixed(2).replace(/\.0+$/, '');
+
+            return (
+                <AccessibleTooltip title={formatAppraisalDetails(item)}>
+                    <span>{formattedValue}</span>
+                </AccessibleTooltip>
+            );
+        }
+        return null;
+    }, [formatAppraisalDetails]);
+
+    // Handle keyboard actions
+    const handleKeyDown = useCallback((e, callback) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            callback();
+        }
+    }, []);
+
+    const mainCellStyle = { padding: '16px' };
+    const subCellStyle = { padding: '4px' };
+
+    return (
+        <React.Fragment>
+            <TableRow>
+                {showColumns.select && (
+                    <TableCell style={mainCellStyle}>
+                        <Checkbox
+                            checked={individualItems.every((item) => selectedItems.includes(item.id))}
+                            indeterminate={
+                                individualItems.some((item) => selectedItems.includes(item.id)) &&
+                                !individualItems.every((item) => selectedItems.includes(item.id))
+                            }
+                            onChange={() => individualItems.forEach((item) => onSelectItem(item.id))}
+                            inputProps={{ 'aria-label': `Select ${item.name}` }}
+                        />
+                    </TableCell>
+                )}
+
+                {showColumns.quantity && <TableCell style={mainCellStyle}>{totalQuantity}</TableCell>}
+
+                {showColumns.name && (
+                    <TableCell style={mainCellStyle}>
+                        {individualItems.length > 1 && (
+                            <IconButton
+                                aria-label={isOpen ? "collapse row" : "expand row"}
+                                size="small"
+                                onClick={() => onToggleOpen(baseKey)}
+                                onKeyDown={(e) => handleKeyDown(e, () => onToggleOpen(baseKey))}
+                            >
+                                {isOpen ? <KeyboardArrowUp/> : <KeyboardArrowDown/>}
+                            </IconButton>
+                        )}
+                        <AccessibleTooltip title={item.notes || ''}>
+                            <span>{item.name || 'Unknown Item'}</span>
+                        </AccessibleTooltip>
+                    </TableCell>
+                )}
+
+                {showColumns.unidentified && (
+                    <TableCell style={mainCellStyle}>
+                        {item.unidentified === true
+                            ? <strong>Unidentified</strong>
+                            : item.unidentified === false
+                                ? ''
+                                : ''}
+                    </TableCell>
+                )}
+
+                {showColumns.type && <TableCell style={mainCellStyle}>{item.type || ''}</TableCell>}
+                {showColumns.size && <TableCell style={mainCellStyle}>{item.size || ''}</TableCell>}
+                {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{item.character_names || ''}</TableCell>}
+                {showColumns.believedValue && <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
+
+                {showColumns.averageAppraisal && (
+                    <TableCell style={mainCellStyle}>
+                        {formatAverageAppraisal(item)}
+                    </TableCell>
+                )}
+
+                {showColumns.pendingSale && (
+                    <TableCell style={mainCellStyle}>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
+                )}
+
+                {showColumns.sessionDate && (
+                    <TableCell style={mainCellStyle}>{safeFormatDate(item.session_date)}</TableCell>
+                )}
+
+                {showColumns.lastUpdate && (
+                    <TableCell style={mainCellStyle}>{safeFormatDate(item.lastupdate)}</TableCell>
+                )}
+            </TableRow>
+
+            {individualItems.length > 1 && (
+                <TableRow>
+                    <TableCell style={{paddingBottom: 0, paddingTop: 0}}
+                               colSpan={Object.values(showColumns).filter(Boolean).length}>
+                        <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        {showColumns.select && <TableCell style={subCellStyle}>Select</TableCell>}
+                                        <TableCell style={subCellStyle}>Quantity</TableCell>
+                                        {showColumns.size && <TableCell style={subCellStyle}>Size</TableCell>}
+                                        {showColumns.whoHasIt && <TableCell style={subCellStyle}>Who Has It?</TableCell>}
+                                        <TableCell style={subCellStyle}>Notes</TableCell>
+                                        {showColumns.sessionDate && <TableCell style={subCellStyle}>Session Date</TableCell>}
+                                        {showColumns.lastUpdate && <TableCell style={subCellStyle}>Last Update</TableCell>}
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {individualItems.map((subItem) => (
+                                        <SubItemTableRow key={subItem.id || `subitem-${baseKey}-${subItem.quantity}`}>
+                                            {showColumns.select && (
+                                                <TableCell style={subCellStyle}>
+                                                    <Checkbox
+                                                        checked={selectedItems.includes(subItem.id)}
+                                                        onChange={() => onSelectItem(subItem.id)}
+                                                        inputProps={{ 'aria-label': `Select ${subItem.name}` }}
+                                                    />
+                                                </TableCell>
+                                            )}
+                                            <TableCell style={subCellStyle}>{subItem.quantity || 0}</TableCell>
+                                            {showColumns.size && <TableCell style={subCellStyle}>{subItem.size || ''}</TableCell>}
+                                            {showColumns.whoHasIt && <TableCell style={subCellStyle}>{subItem.character_name || ''}</TableCell>}
+                                            <TableCell style={subCellStyle}>
+                                                {subItem.notes ? (
+                                                    <AccessibleTooltip title={subItem.notes}>
+                                                        <span>View Notes</span>
+                                                    </AccessibleTooltip>
+                                                ) : ''}
+                                            </TableCell>
+                                            {showColumns.sessionDate &&
+                                                <TableCell style={subCellStyle}>{safeFormatDate(subItem.session_date)}</TableCell>}
+                                            {showColumns.lastUpdate &&
+                                                <TableCell style={subCellStyle}>{safeFormatDate(subItem.lastupdate)}</TableCell>}
+                                        </SubItemTableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </Collapse>
+                    </TableCell>
+                </TableRow>
+            )}
+        </React.Fragment>
+    );
+});
+
+// The main component
 const CustomLootTable = ({
-                             loot,
-                             individualLoot,
-                             selectedItems,
-                             setSelectedItems,
-                             openItems,
-                             setOpenItems,
-                             handleSelectItem,
-                             sortConfig,
-                             setSortConfig,
-                             showColumns = {
-                                 select: true,
-                                 unidentified: true,
-                                 pendingSale: true,
-                                 whoHasIt: true,
-                             },
-                             showFilters = {
-                                 pendingSale: true,
-                                 unidentified: true,
-                                 type: true,
-                                 size: true,
-                                 whoHas: true,
-                             },
-                         }) => {
-    // State for filters
-    const [showPendingSales, setShowPendingSales] = useState(true);
-    const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false);
-    const [typeFilters, setTypeFilters] = useState({
-        Weapon: true,
-        Armor: true,
-        Magic: true,
-        Gear: true,
-        'Trade Good': true,
-        Other: true,
+    loot = [],
+    individualLoot = [],
+    selectedItems = [],
+    setSelectedItems,
+    openItems = {},
+    setOpenItems,
+    handleSelectItem,
+    sortConfig = { key: '', direction: 'asc' },
+    setSortConfig,
+    showColumns = {
+        select: true,
+        quantity: true,
+        name: true,
+        type: true,
+        size: true,
+        whoHasIt: true,
+        believedValue: true,
+        averageAppraisal: true,
+        sessionDate: true,
+        lastUpdate: true,
+        unidentified: true,
+        pendingSale: true
+    },
+    showFilters = {
+        pendingSale: true,
+        unidentified: true,
+        type: true,
+        size: true,
+        whoHas: true,
+    },
+}) => {
+    // Get character data with custom hook
+    const { characters } = useCharacterData();
+
+    // Use a single state for all filters
+    const [filters, setFilters] = useState({
+        showPendingSales: true,
+        showOnlyUnidentified: false,
+        types: {
+            Weapon: true,
+            Armor: true,
+            Magic: true,
+            Gear: true,
+            'Trade Good': true,
+            Other: true,
+        },
+        sizes: {
+            Fine: true,
+            Diminutive: true,
+            Tiny: true,
+            Small: true,
+            Medium: true,
+            Large: true,
+            Huge: true,
+            Gargantuan: true,
+            Colossal: true,
+            Unknown: true,
+        },
+        whoHas: []
     });
-    const [sizeFilters, setSizeFilters] = useState({
-        Fine: true,
-        Diminutive: true,
-        Tiny: true,
-        Small: true,
-        Medium: true,
-        Large: true,
-        Huge: true,
-        Gargantuan: true,
-        Colossal: true,
-        Unknown: true,
-    });
-    const [whoHasFilters, setWhoHasFilters] = useState([]);
+
+    // Initialize character filters when characters data loads
+    useEffect(() => {
+        if (characters.length > 0) {
+            setFilters(prev => ({
+                ...prev,
+                whoHas: characters
+            }));
+        }
+    }, [characters]);
+
+    // Derive filter options from data - run once on component mount
+    useEffect(() => {
+        const typeOptions = { ...filters.types };
+        const sizeOptions = { ...filters.sizes };
+
+        // Extract unique types and sizes
+        loot.forEach(item => {
+            if (item.type && !typeOptions[item.type]) {
+                typeOptions[item.type] = true;
+            }
+            if (item.size && !sizeOptions[item.size]) {
+                sizeOptions[item.size] = true;
+            }
+        });
+
+        setFilters(prev => ({
+            ...prev,
+            types: typeOptions,
+            sizes: sizeOptions
+        }));
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Menu anchor states
     const [anchorElType, setAnchorElType] = useState(null);
     const [anchorElSize, setAnchorElSize] = useState(null);
     const [anchorElWhoHas, setAnchorElWhoHas] = useState(null);
 
-    // Fetch active characters for "who has" filters
-    useEffect(() => {
-        const fetchWhoHasFilters = async () => {
-            try {
-                const response = await api.get(`/user/active-characters`);
-                const characters = response.data;
-                const filters = characters.map((character) => ({
-                    name: character.name,
-                    checked: false,
-                }));
-                setWhoHasFilters(filters);
-            } catch (error) {
-                console.error('Error fetching characters:', error);
-            }
-        };
-
-        fetchWhoHasFilters();
+    // Filter handlers with useCallback
+    const handleTogglePendingSales = useCallback(() => {
+        setFilters(prev => ({
+            ...prev,
+            showPendingSales: !prev.showPendingSales
+        }));
     }, []);
 
-    // Helper functions
-    const handleToggleOpen = (name, unidentified, masterwork, type, size) => {
+    const handleToggleUnidentified = useCallback(() => {
+        setFilters(prev => ({
+            ...prev,
+            showOnlyUnidentified: !prev.showOnlyUnidentified
+        }));
+    }, []);
+
+    const handleTypeFilterChange = useCallback((type) => {
+        setFilters(prev => ({
+            ...prev,
+            types: {
+                ...prev.types,
+                [type]: !prev.types[type]
+            }
+        }));
+    }, []);
+
+    const handleSizeFilterChange = useCallback((size) => {
+        setFilters(prev => ({
+            ...prev,
+            sizes: {
+                ...prev.sizes,
+                [size]: !prev.sizes[size]
+            }
+        }));
+    }, []);
+
+    const handleWhoHasFilterChange = useCallback((name) => {
+        setFilters(prev => ({
+            ...prev,
+            whoHas: prev.whoHas.map(filter =>
+                filter.name === name ? {...filter, checked: !filter.checked} : filter
+            )
+        }));
+    }, []);
+
+    // Menu handlers
+    const handleMenuOpen = useCallback((setter) => (event) => {
+        setter(event.currentTarget);
+    }, []);
+
+    const handleMenuClose = useCallback((setter) => () => {
+        setter(null);
+    }, []);
+
+    // Toggle item expansion
+    const handleToggleOpen = useCallback((key) => {
         setOpenItems((prevOpenItems) => ({
             ...prevOpenItems,
-            [`${name}-${unidentified}-${masterwork}-${type}-${size}`]: !prevOpenItems[`${name}-${unidentified}-${masterwork}-${type}-${size}`],
+            [key]: !prevOpenItems[key]
         }));
-    };
+    }, [setOpenItems]);
 
-    const getIndividualItems = (name, unidentified, masterwork, type, size) => {
+    // Sort handler
+    const handleSort = useCallback((key) => {
+        setSortConfig(prevConfig => ({
+            key,
+            direction: prevConfig.key === key && prevConfig.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    }, [setSortConfig]);
+
+    // Apply filters to the data - memoized
+    const filteredLoot = useMemo(() => {
+        if (!loot || !Array.isArray(loot)) return [];
+
+        return loot.filter((item) => {
+            // Early return for simple cases
+            if (filters.showOnlyUnidentified && item.unidentified !== true) {
+                return false;
+            }
+
+            if (!filters.showPendingSales && item.status === 'Pending Sale') {
+                return false;
+            }
+
+            // Type filter
+            const itemType = (item.type || '').toLowerCase();
+            let typeFilterPassed = false;
+
+            if (!itemType && filters.types['Other']) {
+                typeFilterPassed = true;
+            } else if (itemType && filters.types[item.type]) {
+                typeFilterPassed = true;
+            }
+
+            if (!typeFilterPassed) {
+                return false;
+            }
+
+            // Size filter
+            const sizeFilterPassed =
+                (item.size && filters.sizes[item.size]) ||
+                (!item.size && filters.sizes['Unknown']);
+
+            if (!sizeFilterPassed) {
+                return false;
+            }
+
+            // Who has filter - only check if any filter is active
+            const activeWhoHasFilters = filters.whoHas.filter(f => f.checked);
+            if (activeWhoHasFilters.length > 0) {
+                if (!item.character_names) {
+                    return false;
+                }
+
+                const whoHasFilterPassed = activeWhoHasFilters.some(filter =>
+                    item.character_names.includes(filter.name)
+                );
+
+                if (!whoHasFilterPassed) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }, [loot, filters]);
+
+    // Sort the filtered data - memoized
+    const sortedLoot = useMemo(() => {
+        if (!filteredLoot.length) return [];
+
+        return [...filteredLoot].sort((a, b) => {
+            // Handle null/undefined values
+            const valueA = a[sortConfig.key];
+            const valueB = b[sortConfig.key];
+
+            if (valueA === valueB) return 0;
+            if (valueA === undefined || valueA === null) return 1;
+            if (valueB === undefined || valueB === null) return -1;
+
+            const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
+            switch (sortConfig.key) {
+                case 'session_date':
+                case 'lastupdate':
+                    return direction * (new Date(valueA) - new Date(valueB));
+                case 'quantity':
+                case 'believedvalue':
+                case 'average_appraisal':
+                    return direction * (Number(valueA) - Number(valueB));
+                case 'unidentified':
+                case 'status':
+                    // Boolean sort
+                    return direction * (valueA === valueB ? 0 : valueA ? -1 : 1);
+                default:
+                    // String sort
+                    return direction * String(valueA).localeCompare(String(valueB));
+            }
+        });
+    }, [filteredLoot, sortConfig]);
+
+    // Process individual items - memoized
+    const processedItems = useMemo(() => {
+        const itemsMap = new Map();
+
+        // Group by key attributes
+        sortedLoot.forEach(item => {
+            const normalizedName = normalizeItemProperty(item.name);
+            const normalizedType = normalizeItemProperty(item.type);
+            const normalizedSize = normalizeItemProperty(item.size);
+            const key = `${normalizedName}-${item.unidentified}-${item.masterwork}-${normalizedType}-${normalizedSize}`;
+
+            if (!itemsMap.has(key)) {
+                itemsMap.set(key, {
+                    key,
+                    item,
+                    items: [],
+                });
+            }
+
+            // Add this item to its group
+            itemsMap.get(key).items.push(item);
+        });
+
+        // Convert map to array
+        return Array.from(itemsMap.values());
+    }, [sortedLoot]);
+
+    // Get individual items matching the given criteria
+    const getIndividualItems = useCallback((name, unidentified, masterwork, type, size) => {
         return individualLoot.filter(
             (item) =>
                 item.name === name &&
@@ -189,150 +610,10 @@ const CustomLootTable = ({
                 item.type === type &&
                 item.size === size
         );
-    };
+    }, [individualLoot]);
 
-    // Filter handlers
-    const handleTypeFilterChange = (type) => {
-        setTypeFilters((prevFilters) => ({
-            ...prevFilters,
-            [type]: !prevFilters[type],
-        }));
-    };
-
-    const handleSizeFilterChange = (size) => {
-        setSizeFilters((prevFilters) => ({
-            ...prevFilters,
-            [size]: !prevFilters[size],
-        }));
-    };
-
-    const handleWhoHasFilterChange = (name) => {
-        setWhoHasFilters((prevFilters) =>
-            prevFilters.map((filter) =>
-                filter.name === name ? {...filter, checked: !filter.checked} : filter
-            )
-        );
-    };
-
-    // Menu handlers
-    const handleMenuOpen = (setter) => (event) => {
-        setter(event.currentTarget);
-    };
-
-    const handleMenuClose = (setter) => () => {
-        setter(null);
-    };
-
-    // Sort handler
-    const handleSort = (key) => {
-        let direction = 'asc';
-        if (sortConfig.key === key && sortConfig.direction === 'asc') {
-            direction = 'desc';
-        }
-        setSortConfig({key, direction});
-    };
-
-    // Apply filters to the data
-    const filteredLoot = useMemo(() => {
-        return loot.filter((item) => {
-            // Unidentified filter
-            const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
-
-            // Type filter
-            const passesTypeFilter = Object.keys(typeFilters).some(type => {
-                const itemType = (item.type || '').toLowerCase();
-                const filterType = type.toLowerCase();
-                return (
-                    (filterType === 'other' && (!itemType || itemType === '') && typeFilters[type]) ||
-                    (itemType === filterType && typeFilters[type])
-                );
-            });
-
-            // Size filter
-            const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && (!item.size || item.size === ''));
-
-            // Who has filter
-            const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) ||
-                whoHasFilters.some((filter) => filter.checked && item.character_names && item.character_names.includes(filter.name));
-
-            // Pending sale filter
-            const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
-
-            return passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
-                passesWhoHasFilter && passesPendingSaleFilter;
-        });
-    }, [loot, showOnlyUnidentified, typeFilters, sizeFilters, whoHasFilters, showPendingSales]);
-
-    // Sort the filtered data
-    const sortedLoot = useMemo(() => {
-        return [...filteredLoot].sort((a, b) => {
-            if (a[sortConfig.key] === b[sortConfig.key]) {
-                return 0;
-            }
-
-            switch (sortConfig.key) {
-                case 'session_date':
-                case 'lastupdate':
-                    return sortConfig.direction === 'asc'
-                        ? new Date(a[sortConfig.key]) - new Date(b[sortConfig.key])
-                        : new Date(b[sortConfig.key]) - new Date(a[sortConfig.key]);
-                case 'quantity':
-                case 'believedvalue':
-                case 'average_appraisal':
-                    return sortConfig.direction === 'asc'
-                        ? Number(a[sortConfig.key]) - Number(b[sortConfig.key])
-                        : Number(b[sortConfig.key]) - Number(a[sortConfig.key]);
-                case 'unidentified':
-                case 'status':
-                    return sortConfig.direction === 'asc'
-                        ? (a[sortConfig.key] === b[sortConfig.key] ? 0 : a[sortConfig.key] ? -1 : 1)
-                        : (a[sortConfig.key] === b[sortConfig.key] ? 0 : b[sortConfig.key] ? -1 : 1);
-                default:
-                    return sortConfig.direction === 'asc'
-                        ? String(a[sortConfig.key]).localeCompare(String(b[sortConfig.key]))
-                        : String(b[sortConfig.key]).localeCompare(String(a[sortConfig.key]));
-            }
-        });
-    }, [filteredLoot, sortConfig]);
-
-    // Generate unique keys for items
-    const itemsWithUniqueKeys = generateUniqueKeys(sortedLoot);
-
-    // Cell styles
-    const mainCellStyle = {padding: '16px'};
-    const subCellStyle = {padding: '4px'};
-
-    // Helper function to format appraisal details and render tooltips
-    const formatAppraisalDetails = (item) => {
-        const appraisals = item.appraisals || [];
-
-        if (!appraisals || appraisals.length === 0) {
-            return 'No appraisals available';
-        }
-
-        return appraisals.map(appraisal => {
-            const characterName = appraisal.character_name || 'Unknown';
-            const value = parseFloat(appraisal.believedvalue);
-            return `${characterName}: ${isNaN(value) ? '?' : value.toFixed(2)}`;
-        }).join('\n');
-    };
-
-    const formatAverageAppraisal = (item) => {
-        if (item.average_appraisal !== undefined && item.average_appraisal !== null) {
-            const value = parseFloat(item.average_appraisal);
-            const formattedValue = isNaN(value) ? '' : value.toFixed(2).replace(/\.0+$/, '');
-
-            return (
-                <Tooltip title={formatAppraisalDetails(item)} arrow>
-                    <span>{formattedValue}</span>
-                </Tooltip>
-            );
-        }
-        return null;
-    };
-
-    // Render table header cells based on showColumns configuration
-    const renderHeaderCells = () => {
+    // Render header cells based on showColumns configuration
+    const renderHeaderCells = useCallback(() => {
         const headerCells = [];
 
         if (showColumns.select) {
@@ -472,7 +753,7 @@ const CustomLootTable = ({
         }
 
         return headerCells;
-    };
+    }, [sortConfig, showColumns, handleSort]);
 
     return (
         <Paper sx={{p: 2}}>
@@ -481,8 +762,8 @@ const CustomLootTable = ({
                     {showFilters.pendingSale && (
                         <Grid item>
                             <FormControlLabel
-                                control={<Switch checked={showPendingSales}
-                                                 onChange={() => setShowPendingSales(!showPendingSales)}/>}
+                                control={<Switch checked={filters.showPendingSales}
+                                                 onChange={handleTogglePendingSales}/>}
                                 label="Show Pending Sales"
                             />
                         </Grid>
@@ -491,8 +772,8 @@ const CustomLootTable = ({
                     {showFilters.unidentified && (
                         <Grid item>
                             <FormControlLabel
-                                control={<Switch checked={showOnlyUnidentified}
-                                                 onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)}/>}
+                                control={<Switch checked={filters.showOnlyUnidentified}
+                                                 onChange={handleToggleUnidentified}/>}
                                 label="Show Only Unidentified"
                             />
                         </Grid>
@@ -506,7 +787,7 @@ const CustomLootTable = ({
                                 open={Boolean(anchorElType)}
                                 onClose={handleMenuClose(setAnchorElType)}
                                 title="Type Filters"
-                                filters={typeFilters}
+                                filters={filters.types}
                                 onChange={handleTypeFilterChange}
                             />
                         </Grid>
@@ -520,7 +801,7 @@ const CustomLootTable = ({
                                 open={Boolean(anchorElSize)}
                                 onClose={handleMenuClose(setAnchorElSize)}
                                 title="Size Filters"
-                                filters={sizeFilters}
+                                filters={filters.sizes}
                                 onChange={handleSizeFilterChange}
                             />
                         </Grid>
@@ -534,12 +815,12 @@ const CustomLootTable = ({
                                 open={Boolean(anchorElWhoHas)}
                                 onClose={handleMenuClose(setAnchorElWhoHas)}
                             >
-                                {whoHasFilters.map((filter) => (
-                                    <MenuItem key={filter.name}>
+                                {filters.whoHas.map((filter) => (
+                                    <MenuItem key={filter.name || filter.id}>
                                         <FormControlLabel
-                                            control={<Checkbox checked={filter.checked}
+                                            control={<Checkbox checked={!!filter.checked}
                                                                onChange={() => handleWhoHasFilterChange(filter.name)}/>}
-                                            label={filter.name}
+                                            label={filter.name || ''}
                                         />
                                     </MenuItem>
                                 ))}
@@ -557,152 +838,33 @@ const CustomLootTable = ({
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {itemsWithUniqueKeys.map((item) => {
-                            const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
-                            const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
-                            const normalizedName = normalizeItemProperty(item.name);
-                            const normalizedType = normalizeItemProperty(item.type || '');
-                            const normalizedSize = normalizeItemProperty(item.size || '');
-                            const itemKey = `${normalizedName}-${item.unidentified}-${item.masterwork}-${normalizedType}-${normalizedSize}`;
-                            const isOpen = openItems[itemKey];
+                        {processedItems.map(({ key, item, items }) => {
+                            const individualItems = getIndividualItems(
+                                item.name,
+                                item.unidentified,
+                                item.masterwork,
+                                item.type,
+                                item.size
+                            );
+                            const totalQuantity = individualItems.reduce(
+                                (sum, item) => sum + (parseInt(item.quantity) || 0),
+                                0
+                            );
+                            const isOpen = !!openItems[key];
 
                             return (
-                                <React.Fragment key={item._uniqueKey}>
-                                    <TableRow>
-                                        {showColumns.select && (
-                                            <TableCell style={mainCellStyle}>
-                                                <Checkbox
-                                                    checked={individualItems.every((item) => selectedItems.includes(item.id))}
-                                                    indeterminate={
-                                                        individualItems.some((item) => selectedItems.includes(item.id)) &&
-                                                        !individualItems.every((item) => selectedItems.includes(item.id))
-                                                    }
-                                                    onChange={() => individualItems.forEach((item) => handleSelectItem(item.id, setSelectedItems))}
-                                                />
-                                            </TableCell>
-                                        )}
-
-                                        {showColumns.quantity &&
-                                            <TableCell style={mainCellStyle}>{totalQuantity}</TableCell>}
-
-                                        {showColumns.name && (
-                                            <TableCell style={mainCellStyle}>
-                                                {individualItems.length > 1 && (
-                                                    <IconButton
-                                                        aria-label="expand row"
-                                                        size="small"
-                                                        onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type, item.size)}
-                                                    >
-                                                        {isOpen ? <KeyboardArrowUp/> : <KeyboardArrowDown/>}
-                                                    </IconButton>
-                                                )}
-                                                <Tooltip title={item.notes || 'No notes'} arrow>
-                                                    <span>{item.name}</span>
-                                                </Tooltip>
-                                            </TableCell>
-                                        )}
-
-                                        {showColumns.unidentified && (
-                                            <TableCell style={mainCellStyle}>
-                                                {item.unidentified === true
-                                                    ? <strong>Unidentified</strong>
-                                                    : item.unidentified === false
-                                                        ? ''
-                                                        : ''}
-                                            </TableCell>
-                                        )}
-
-                                        {showColumns.type && <TableCell style={mainCellStyle}>{item.type}</TableCell>}
-                                        {showColumns.size && <TableCell style={mainCellStyle}>{item.size}</TableCell>}
-                                        {showColumns.whoHasIt &&
-                                            <TableCell style={mainCellStyle}>{item.character_names}</TableCell>}
-                                        {showColumns.believedValue &&
-                                            <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
-
-                                        {showColumns.averageAppraisal && (
-                                            <TableCell style={mainCellStyle}>
-                                                {formatAverageAppraisal(item)}
-                                            </TableCell>
-                                        )}
-
-                                        {showColumns.pendingSale && (
-                                            <TableCell
-                                                style={mainCellStyle}>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
-                                        )}
-
-                                        {showColumns.sessionDate && (
-                                            <TableCell
-                                                style={mainCellStyle}>{item.session_date ? formatDate(item.session_date) : ''}</TableCell>
-                                        )}
-
-                                        {showColumns.lastUpdate && (
-                                            <TableCell
-                                                style={mainCellStyle}>{item.lastupdate ? formatDate(item.lastupdate) : ''}</TableCell>
-                                        )}
-                                    </TableRow>
-
-                                    {individualItems.length > 1 && (
-                                        <TableRow>
-                                            <TableCell style={{paddingBottom: 0, paddingTop: 0}}
-                                                       colSpan={Object.values(showColumns).filter(Boolean).length}>
-                                                <Collapse in={isOpen} timeout="auto" unmountOnExit>
-                                                    <Table size="small">
-                                                        <TableHead>
-                                                            <TableRow>
-                                                                {showColumns.select &&
-                                                                    <TableCell style={subCellStyle}>Select</TableCell>}
-                                                                <TableCell style={subCellStyle}>Quantity</TableCell>
-                                                                {showColumns.size &&
-                                                                    <TableCell style={subCellStyle}>Size</TableCell>}
-                                                                {showColumns.whoHasIt &&
-                                                                    <TableCell style={subCellStyle}>Who Has
-                                                                        It?</TableCell>}
-                                                                <TableCell style={subCellStyle}>Notes</TableCell>
-                                                                {showColumns.sessionDate &&
-                                                                    <TableCell style={subCellStyle}>Session
-                                                                        Date</TableCell>}
-                                                                {showColumns.lastUpdate &&
-                                                                    <TableCell style={subCellStyle}>Last
-                                                                        Update</TableCell>}
-                                                            </TableRow>
-                                                        </TableHead>
-                                                        <TableBody>
-                                                            {individualItems.map((subItem) => (
-                                                                <SubItemTableRow key={subItem.id}>
-                                                                    {showColumns.select && (
-                                                                        <TableCell style={subCellStyle}>
-                                                                            <Checkbox
-                                                                                checked={selectedItems.includes(subItem.id)}
-                                                                                onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
-                                                                            />
-                                                                        </TableCell>
-                                                                    )}
-                                                                    <TableCell
-                                                                        style={subCellStyle}>{subItem.quantity}</TableCell>
-                                                                    {showColumns.size && <TableCell
-                                                                        style={subCellStyle}>{subItem.size}</TableCell>}
-                                                                    {showColumns.whoHasIt && <TableCell
-                                                                        style={subCellStyle}>{subItem.character_name}</TableCell>}
-                                                                    <TableCell style={subCellStyle}>
-                                                                        {subItem.notes ? (
-                                                                            <Tooltip title={subItem.notes} arrow>
-                                                                                <span>Hover for Notes</span>
-                                                                            </Tooltip>
-                                                                        ) : ''}
-                                                                    </TableCell>
-                                                                    {showColumns.sessionDate && <TableCell
-                                                                        style={subCellStyle}>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>}
-                                                                    {showColumns.lastUpdate && <TableCell
-                                                                        style={subCellStyle}>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>}
-                                                                </SubItemTableRow>
-                                                            ))}
-                                                        </TableBody>
-                                                    </Table>
-                                                </Collapse>
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                </React.Fragment>
+                                <LootTableRow
+                                    key={key}
+                                    item={item}
+                                    isOpen={isOpen}
+                                    onToggleOpen={handleToggleOpen}
+                                    individualItems={individualItems}
+                                    selectedItems={selectedItems}
+                                    onSelectItem={handleSelectItem}
+                                    showColumns={showColumns}
+                                    totalQuantity={totalQuantity}
+                                    baseKey={key}
+                                />
                             );
                         })}
                     </TableBody>
@@ -712,4 +874,22 @@ const CustomLootTable = ({
     );
 };
 
-export default CustomLootTable;
+// Prop types
+CustomLootTable.propTypes = {
+    loot: PropTypes.array,
+    individualLoot: PropTypes.array,
+    selectedItems: PropTypes.array,
+    setSelectedItems: PropTypes.func.isRequired,
+    openItems: PropTypes.object,
+    setOpenItems: PropTypes.func.isRequired,
+    handleSelectItem: PropTypes.func.isRequired,
+    sortConfig: PropTypes.shape({
+        key: PropTypes.string,
+        direction: PropTypes.oneOf(['asc', 'desc'])
+    }),
+    setSortConfig: PropTypes.func.isRequired,
+    showColumns: PropTypes.object,
+    showFilters: PropTypes.object
+};
+
+export default React.memo(CustomLootTable);
