@@ -1244,7 +1244,7 @@ const identifyItems = async (req, res) => {
                         // Character has already attempted to identify this item today
                         alreadyAttemptedItems.push({
                             id: itemId,
-                            message: 'Already attempted to identify this item today'
+                            message: 'Already attempted to identify this item today (in-game)'
                         });
                         continue;
                     }
@@ -1261,6 +1261,7 @@ const identifyItems = async (req, res) => {
                     'INSERT INTO identify (lootid, characterid, spellcraft_roll, golarion_date, success) VALUES ($1, $2, $3, $4, $5)',
                     [itemId, identifyCharacterId, spellcraftRoll, golarionDateStr, isSuccessful]
                 );
+
                 if (isSuccessful) {
                     // Fetch the associated mods
                     const modsResult = await client.query('SELECT name FROM mod WHERE id = ANY($1)', [lootItem.modids]);
@@ -1311,7 +1312,7 @@ const identifyItems = async (req, res) => {
 
         // Only throw error for already attempted items
         if (updatedItems.length === 0 && failedItems.length === 0 && alreadyAttemptedItems.length > 0) {
-            throw controllerFactory.createValidationError(`All items have already been attempted today`);
+            throw controllerFactory.createValidationError(`All items have already been attempted today (in-game)`);
         }
 
         const characterName = characterId ?

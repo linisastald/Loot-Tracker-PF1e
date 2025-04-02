@@ -159,16 +159,16 @@ const gainInfamy = async (req, res) => {
         const currentDate = currentDateResult.rows[0];
         const golarionDateStr = `${currentDate.year}-${currentDate.month}-${currentDate.day}`;
 
-        // Check for previous infamy check today
+        // Check for previous infamy check today using Golarion date
         const todayCheckQuery = `
             SELECT * FROM infamy_history 
             WHERE reason = 'Boasting at port' 
-            AND TO_CHAR(created_at, 'YYYY-MM-DD') = TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')
+            AND golarion_date = $1
         `;
 
-        const todayCheckResult = await dbUtils.executeQuery(todayCheckQuery);
+        const todayCheckResult = await dbUtils.executeQuery(todayCheckQuery, [golarionDateStr]);
         if (todayCheckResult.rows.length > 0) {
-            throw controllerFactory.createValidationError('You have already attempted to gain Infamy today. Try again tomorrow.');
+            throw controllerFactory.createValidationError('You have already attempted to gain Infamy today. Try again tomorrow (in-game).');
         }
 
         // Get the APL setting or default to 5
@@ -347,10 +347,10 @@ const gainInfamy = async (req, res) => {
             [port, currentThreshold, infamyGained, skillUsed, plunderSpent, userId]
         );
 
-        // Record in history
+        // Record in history - NOW INCLUDING GOLARION DATE
         await dbUtils.executeQuery(
-            'INSERT INTO infamy_history (infamy_change, reason, port, user_id) VALUES ($1, $2, $3, $4)',
-            [infamyGained, 'Boasting at port', port, userId]
+            'INSERT INTO infamy_history (infamy_change, reason, port, user_id, golarion_date) VALUES ($1, $2, $3, $4, $5)',
+            [infamyGained, 'Boasting at port', port, userId, golarionDateStr]
         );
 
         // Check if a new threshold was reached
@@ -675,18 +675,33 @@ const sacrificeCrew = async (req, res) => {
             );
         }
 
+        // Get current Golarion date
+        const currentDateResult = await dbUtils.executeQuery('SELECT * FROM golarion_current_date LIMIT 1');
+        if (currentDateResult.rows.length === 0) {
+            throw controllerFactory.createValidationError('Calendar system not initialized');
+        }
+
+        const currentDate = currentDateResult.rows[0];
+        const currentGolarionDate = new Date(currentDate.year, currentDate.month, currentDate.day);
+        const oneWeekAgo = new Date(currentGolarionDate);
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+        // Format dates for checking DB (simpler to compare as strings)
+        const oneWeekAgoStr = `${oneWeekAgo.getFullYear()}-${oneWeekAgo.getMonth()}-${oneWeekAgo.getDate()}`;
+        const golarionDateStr = `${currentDate.year}-${currentDate.month}-${currentDate.day}`;
+
         // Check when they last used this feature (can only be used once per week)
         const lastSacrificeQuery = `
             SELECT * FROM infamy_history 
             WHERE reason LIKE 'Sacrificed crew member%' 
-            AND created_at > NOW() - INTERVAL '1 week'
+            AND golarion_date > $1
         `;
 
-        const lastSacrificeResult = await dbUtils.executeQuery(lastSacrificeQuery);
+        const lastSacrificeResult = await dbUtils.executeQuery(lastSacrificeQuery, [oneWeekAgoStr]);
 
         if (lastSacrificeResult.rows.length > 0) {
             throw controllerFactory.createValidationError(
-                'This feature can only be used once per week'
+                'This feature can only be used once per week (in-game time)'
             );
         }
 
@@ -702,8 +717,8 @@ const sacrificeCrew = async (req, res) => {
 
         // Record in history
         await dbUtils.executeQuery(
-            'INSERT INTO infamy_history (infamy_change, disrepute_change, reason, user_id) VALUES ($1, $2, $3, $4)',
-            [0, disreputeGain, `Sacrificed crew member: ${crewName}`, userId]
+            'INSERT INTO infamy_history (infamy_change, disrepute_change, reason, user_id, golarion_date) VALUES ($1, $2, $3, $4, $5)',
+            [0, disreputeGain, `Sacrificed crew member: ${crewName}`, userId, golarionDateStr]
         );
 
         controllerFactory.sendSuccessResponse(res, {
