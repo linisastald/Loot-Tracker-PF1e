@@ -272,6 +272,21 @@ def generate_insert_sql(table, columns, row_data):
             values.append(str(val))
         elif isinstance(val, bool):
             values.append("TRUE" if val else "FALSE")
+        elif isinstance(val, list):
+            # Handle PostgreSQL array format
+            array_elements = []
+            for element in val:
+                if element is None:
+                    array_elements.append("NULL")
+                elif isinstance(element, (int, float)):
+                    array_elements.append(str(element))
+                elif isinstance(element, bool):
+                    array_elements.append("TRUE" if element else "FALSE")
+                else:
+                    # Escape single quotes in string values
+                    s = str(element).replace("'", "''")
+                    array_elements.append('"{}"'.format(s))
+            values.append("ARRAY[{}]".format(', '.join(array_elements)))
         else:
             # Escape single quotes in string values
             s = str(val).replace("'", "''")
@@ -297,6 +312,21 @@ def generate_update_sql(table, columns, pk_columns, row_data):
                 set_clauses.append("{} = {}".format(col, val))
             elif isinstance(val, bool):
                 set_clauses.append("{} = {}".format(col, val))
+            elif isinstance(val, list):
+                # Handle PostgreSQL array format
+                array_elements = []
+                for element in val:
+                    if element is None:
+                        array_elements.append("NULL")
+                    elif isinstance(element, (int, float)):
+                        array_elements.append(str(element))
+                    elif isinstance(element, bool):
+                        array_elements.append("TRUE" if element else "FALSE")
+                    else:
+                        # Escape single quotes in string values
+                        s = str(element).replace("'", "''")
+                        array_elements.append('"{}"'.format(s))
+                set_clauses.append("{} = ARRAY[{}]".format(col, ', '.join(array_elements)))
             else:
                 # Escape single quotes in string values
                 s = str(val).replace("'", "''")
@@ -312,6 +342,21 @@ def generate_update_sql(table, columns, pk_columns, row_data):
             where_clauses.append("{} = {}".format(pk, val))
         elif isinstance(val, bool):
             where_clauses.append("{} = {}".format(pk, val))
+        elif isinstance(val, list):
+            # Handle PostgreSQL array format in WHERE clause
+            array_elements = []
+            for element in val:
+                if element is None:
+                    array_elements.append("NULL")
+                elif isinstance(element, (int, float)):
+                    array_elements.append(str(element))
+                elif isinstance(element, bool):
+                    array_elements.append("TRUE" if element else "FALSE")
+                else:
+                    # Escape single quotes in string values
+                    s = str(element).replace("'", "''")
+                    array_elements.append('"{}"'.format(s))
+            where_clauses.append("{} = ARRAY[{}]".format(pk, ', '.join(array_elements)))
         else:
             # Escape single quotes in string values
             s = str(val).replace("'", "''")
