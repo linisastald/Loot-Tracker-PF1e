@@ -33,6 +33,14 @@ const SubItemTableRow = styled(TableRow)(({theme}) => ({
     },
 }));
 
+// Normalization function to handle case and whitespace
+const normalizeItemProperty = (value) => {
+  if (typeof value === 'string') {
+    return value.trim().toLowerCase();
+  }
+  return value;
+};
+
 // Reusable components
 const FilterMenu = ({anchorEl, open, onClose, title, filters, onChange}) => (
     <Menu
@@ -138,20 +146,29 @@ const CustomLootTable = ({
 
     // Helper functions
     const handleToggleOpen = (name, unidentified, masterwork, type, size) => {
+        const normalizedName = normalizeItemProperty(name);
+        const normalizedType = normalizeItemProperty(type);
+        const normalizedSize = normalizeItemProperty(size);
+
         setOpenItems((prevOpenItems) => ({
             ...prevOpenItems,
-            [`${name}-${unidentified}-${masterwork}-${type}-${size}`]: !prevOpenItems[`${name}-${unidentified}-${masterwork}-${type}-${size}`],
+            [`${normalizedName}-${unidentified}-${masterwork}-${normalizedType}-${normalizedSize}`]:
+                !prevOpenItems[`${normalizedName}-${unidentified}-${masterwork}-${normalizedType}-${normalizedSize}`],
         }));
     };
 
     const getIndividualItems = (name, unidentified, masterwork, type, size) => {
+        const normalizedName = normalizeItemProperty(name);
+        const normalizedType = normalizeItemProperty(type);
+        const normalizedSize = normalizeItemProperty(size);
+
         return individualLoot.filter(
             (item) =>
-                item.name === name &&
+                normalizeItemProperty(item.name) === normalizedName &&
                 item.unidentified === unidentified &&
                 item.masterwork === masterwork &&
-                item.type === type &&
-                item.size === size
+                normalizeItemProperty(item.type) === normalizedType &&
+                normalizeItemProperty(item.size) === normalizedSize
         );
     };
 
@@ -521,7 +538,10 @@ const CustomLootTable = ({
                         {sortedLoot.map((item) => {
                             const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
                             const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
-                            const itemKey = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
+                            const normalizedName = normalizeItemProperty(item.name);
+                            const normalizedType = normalizeItemProperty(item.type);
+                            const normalizedSize = normalizeItemProperty(item.size);
+                            const itemKey = `${normalizedName}-${item.unidentified}-${item.masterwork}-${normalizedType}-${normalizedSize}`;
                             const isOpen = openItems[itemKey];
 
                             return (
