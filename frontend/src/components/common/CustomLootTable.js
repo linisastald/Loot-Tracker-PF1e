@@ -388,6 +388,8 @@ const CustomLootTable = ({
 
     // Derive filter options from data - run once on component mount
     useEffect(() => {
+        if (!loot || !loot.length) return;
+
         const typeOptions = { ...filters.types };
         const sizeOptions = { ...filters.sizes };
 
@@ -406,7 +408,7 @@ const CustomLootTable = ({
             types: typeOptions,
             sizes: sizeOptions
         }));
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [loot, filters.types, filters.sizes]);
 
     // Menu anchor states
     const [anchorElType, setAnchorElType] = useState(null);
