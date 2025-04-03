@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -99,53 +99,57 @@ const CustomLootTable = ({
     const handleSizeMenuOpen = (event) => setAnchorElSize(event.currentTarget);
     const handleSizeMenuClose = () => setAnchorElSize(null);
 
-    // Apply filtering logic
-    let filteredData = [...loot];
+    // Memoize the filtered data calculation to prevent infinite re-renders
+    const filteredData = useMemo(() => {
+        let result = [...loot];
 
-    // Only apply filters if needed to avoid unnecessary processing
-    if (showOnlyUnidentified) {
-        filteredData = filteredData.filter(item => item.unidentified === true);
-    }
+        // Only apply filters if needed to avoid unnecessary processing
+        if (showOnlyUnidentified) {
+            result = result.filter(item => item.unidentified === true);
+        }
 
-    if (!showPendingSales) {
-        filteredData = filteredData.filter(item => item.status !== 'Pending Sale');
-    }
+        if (!showPendingSales) {
+            result = result.filter(item => item.status !== 'Pending Sale');
+        }
 
-    // Type filters
-    filteredData = filteredData.filter(item => {
-        if (!item.type && typeFilters['Other']) return true;
-        return item.type && typeFilters[item.type];
-    });
-
-    // Size filters
-    filteredData = filteredData.filter(item => {
-        if (!item.size && sizeFilters['Unknown']) return true;
-        return item.size && sizeFilters[item.size];
-    });
-
-    // Apply sorting
-    if (sortConfig.key) {
-        filteredData.sort((a, b) => {
-            // Handle null values
-            if (a[sortConfig.key] === null) return 1;
-            if (b[sortConfig.key] === null) return -1;
-            if (a[sortConfig.key] === undefined) return 1;
-            if (b[sortConfig.key] === undefined) return -1;
-
-            // Sort based on type
-            const direction = sortConfig.direction === 'asc' ? 1 : -1;
-
-            if (sortConfig.key === 'session_date' || sortConfig.key === 'lastupdate') {
-                return direction * (new Date(a[sortConfig.key]) - new Date(b[sortConfig.key]));
-            }
-
-            if (typeof a[sortConfig.key] === 'number') {
-                return direction * (a[sortConfig.key] - b[sortConfig.key]);
-            }
-
-            return direction * String(a[sortConfig.key]).localeCompare(String(b[sortConfig.key]));
+        // Type filters
+        result = result.filter(item => {
+            if (!item.type && typeFilters['Other']) return true;
+            return item.type && typeFilters[item.type];
         });
-    }
+
+        // Size filters
+        result = result.filter(item => {
+            if (!item.size && sizeFilters['Unknown']) return true;
+            return item.size && sizeFilters[item.size];
+        });
+
+        // Apply sorting
+        if (sortConfig.key) {
+            result.sort((a, b) => {
+                // Handle null values
+                if (a[sortConfig.key] === null) return 1;
+                if (b[sortConfig.key] === null) return -1;
+                if (a[sortConfig.key] === undefined) return 1;
+                if (b[sortConfig.key] === undefined) return -1;
+
+                // Sort based on type
+                const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
+                if (sortConfig.key === 'session_date' || sortConfig.key === 'lastupdate') {
+                    return direction * (new Date(a[sortConfig.key]) - new Date(b[sortConfig.key]));
+                }
+
+                if (typeof a[sortConfig.key] === 'number') {
+                    return direction * (a[sortConfig.key] - b[sortConfig.key]);
+                }
+
+                return direction * String(a[sortConfig.key]).localeCompare(String(b[sortConfig.key]));
+            });
+        }
+
+        return result;
+    }, [loot, showOnlyUnidentified, showPendingSales, typeFilters, sizeFilters, sortConfig]);
 
     // Get items that match the main item's properties
     const getMatchingItems = (item) => {
