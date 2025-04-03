@@ -579,17 +579,33 @@ const CustomLootTable = ({
     const processedItems = useMemo(() => {
         const itemsMap = new Map();
 
-        // Group by key attributes
+        // Group by key attributes - more consistent handling of case and null/undefined values
         sortedLoot.forEach(item => {
-            const normalizedName = normalizeItemProperty(item.name);
+            // Handle masterwork renaming for "Well Made" prefix in display name
+            const displayName = item.masterwork && (!item.modids || item.modids.length === 0)
+                ? `Well Made ${item.name}`
+                : item.name;
+
+            const normalizedName = normalizeItemProperty(displayName);
             const normalizedType = normalizeItemProperty(item.type);
             const normalizedSize = normalizeItemProperty(item.size);
-            const key = `${normalizedName}-${item.unidentified}-${item.masterwork}-${normalizedType}-${normalizedSize}`;
+            const itemMasterwork = !!item.masterwork;
+            const itemUnidentified = !!item.unidentified;
+
+            const key = `${normalizedName}-${itemUnidentified}-${itemMasterwork}-${normalizedType}-${normalizedSize}`;
 
             if (!itemsMap.has(key)) {
+                // Create a safe copy of the item with proper name display
+                const itemCopy = {
+                    ...item,
+                    name: displayName,
+                    unidentified: itemUnidentified,
+                    masterwork: itemMasterwork
+                };
+
                 itemsMap.set(key, {
                     key,
-                    item,
+                    item: itemCopy,
                     items: [],
                 });
             }
@@ -606,11 +622,11 @@ const CustomLootTable = ({
     const getIndividualItems = useCallback((name, unidentified, masterwork, type, size) => {
         return individualLoot.filter(
             (item) =>
-                item.name === name &&
+                (item.name.toLowerCase() === name.toLowerCase()) &&
                 item.unidentified === unidentified &&
                 item.masterwork === masterwork &&
-                item.type === type &&
-                item.size === size
+                (item.type || '') === (type || '') &&
+                (item.size || '') === (size || '')
         );
     }, [individualLoot]);
 
