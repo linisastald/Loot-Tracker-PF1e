@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {
   Box,
   Button,
@@ -20,9 +20,10 @@ import {
   TableSortLabel,
   Tooltip,
 } from '@mui/material';
-import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
-import { formatDate } from '../../utils/utils';
-import { styled } from '@mui/system';
+import {KeyboardArrowDown, KeyboardArrowUp} from '@mui/icons-material';
+import {formatDate} from '../../utils/utils';
+import {styled} from '@mui/system';
+import api from '../../utils/api';
 
 // Styled components
 const SubItemTableRow = styled(TableRow)(({theme}) => ({
@@ -32,40 +33,61 @@ const SubItemTableRow = styled(TableRow)(({theme}) => ({
     },
 }));
 
-// Main component without optimization techniques that might cause issues
+// Reusable components
+const FilterMenu = ({anchorEl, open, onClose, title, filters, onChange}) => (
+    <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={onClose}
+    >
+        {Object.entries(filters).map(([key, checked]) => (
+            <MenuItem key={key}>
+                <FormControlLabel
+                    control={<Checkbox checked={checked} onChange={() => onChange(key)}/>}
+                    label={key}
+                />
+            </MenuItem>
+        ))}
+    </Menu>
+);
+
+const SortableTableCell = ({label, field, sortConfig, onSort}) => (
+    <TableCell>
+        <TableSortLabel
+            active={sortConfig.key === field}
+            direction={sortConfig.direction}
+            onClick={() => onSort(field)}
+        >
+            {label}
+        </TableSortLabel>
+    </TableCell>
+);
+
 const CustomLootTable = ({
-    loot = [],
-    individualLoot = [],
-    selectedItems = [],
-    setSelectedItems,
-    openItems = {},
-    setOpenItems,
-    handleSelectItem,
-    sortConfig = { key: '', direction: 'asc' },
-    setSortConfig,
-    showColumns = {
-        select: true,
-        quantity: true,
-        name: true,
-        type: true,
-        size: true,
-        whoHasIt: true,
-        believedValue: true,
-        averageAppraisal: true,
-        sessionDate: true,
-        lastUpdate: true,
-        unidentified: true,
-        pendingSale: true
-    },
-    showFilters = {
-        pendingSale: true,
-        unidentified: true,
-        type: true,
-        size: true,
-        whoHas: true,
-    },
-}) => {
-    // Basic filter states without complex interactions
+                             loot,
+                             individualLoot,
+                             selectedItems,
+                             setSelectedItems,
+                             openItems,
+                             setOpenItems,
+                             handleSelectItem,
+                             sortConfig,
+                             setSortConfig,
+                             showColumns = {
+                                 select: true,
+                                 unidentified: true,
+                                 pendingSale: true,
+                                 whoHasIt: true,
+                             },
+                             showFilters = {
+                                 pendingSale: true,
+                                 unidentified: true,
+                                 type: true,
+                                 size: true,
+                                 whoHas: true,
+                             },
+                         }) => {
+    // State for filters
     const [showPendingSales, setShowPendingSales] = useState(true);
     const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false);
     const [typeFilters, setTypeFilters] = useState({
@@ -88,114 +110,340 @@ const CustomLootTable = ({
         Colossal: true,
         Unknown: true,
     });
+    const [whoHasFilters, setWhoHasFilters] = useState([]);
 
     // Menu anchor states
     const [anchorElType, setAnchorElType] = useState(null);
     const [anchorElSize, setAnchorElSize] = useState(null);
+    const [anchorElWhoHas, setAnchorElWhoHas] = useState(null);
 
-    // Simple handler functions without dependencies
-    const handleTypeMenuOpen = (event) => setAnchorElType(event.currentTarget);
-    const handleTypeMenuClose = () => setAnchorElType(null);
-    const handleSizeMenuOpen = (event) => setAnchorElSize(event.currentTarget);
-    const handleSizeMenuClose = () => setAnchorElSize(null);
+    // Fetch active characters for "who has" filters
+    useEffect(() => {
+        const fetchWhoHasFilters = async () => {
+            try {
+                const response = await api.get(`/user/active-characters`);
+                const characters = response.data;
+                const filters = characters.map((character) => ({
+                    name: character.name,
+                    checked: false,
+                }));
+                setWhoHasFilters(filters);
+            } catch (error) {
+                console.error('Error fetching characters:', error);
+            }
+        };
 
-    // Memoize the filtered data calculation to prevent infinite re-renders
-    const filteredData = useMemo(() => {
-        let result = [...loot];
+        fetchWhoHasFilters();
+    }, []);
 
-        // Only apply filters if needed to avoid unnecessary processing
-        if (showOnlyUnidentified) {
-            result = result.filter(item => item.unidentified === true);
-        }
+    // Helper functions
+    const handleToggleOpen = (name, unidentified, masterwork, type, size) => {
+        setOpenItems((prevOpenItems) => ({
+            ...prevOpenItems,
+            [`${name}-${unidentified}-${masterwork}-${type}-${size}`]: !prevOpenItems[`${name}-${unidentified}-${masterwork}-${type}-${size}`],
+        }));
+    };
 
-        if (!showPendingSales) {
-            result = result.filter(item => item.status !== 'Pending Sale');
-        }
-
-        // Type filters
-        result = result.filter(item => {
-            if (!item.type && typeFilters['Other']) return true;
-            return item.type && typeFilters[item.type];
-        });
-
-        // Size filters
-        result = result.filter(item => {
-            if (!item.size && sizeFilters['Unknown']) return true;
-            return item.size && sizeFilters[item.size];
-        });
-
-        // Apply sorting
-        if (sortConfig.key) {
-            result.sort((a, b) => {
-                // Handle null values
-                if (a[sortConfig.key] === null) return 1;
-                if (b[sortConfig.key] === null) return -1;
-                if (a[sortConfig.key] === undefined) return 1;
-                if (b[sortConfig.key] === undefined) return -1;
-
-                // Sort based on type
-                const direction = sortConfig.direction === 'asc' ? 1 : -1;
-
-                if (sortConfig.key === 'session_date' || sortConfig.key === 'lastupdate') {
-                    return direction * (new Date(a[sortConfig.key]) - new Date(b[sortConfig.key]));
-                }
-
-                if (typeof a[sortConfig.key] === 'number') {
-                    return direction * (a[sortConfig.key] - b[sortConfig.key]);
-                }
-
-                return direction * String(a[sortConfig.key]).localeCompare(String(b[sortConfig.key]));
-            });
-        }
-
-        return result;
-    }, [loot, showOnlyUnidentified, showPendingSales, typeFilters, sizeFilters, sortConfig]);
-
-    // Get items that match the main item's properties
-    const getMatchingItems = (item) => {
-        return individualLoot.filter(i =>
-            i.name === item.name &&
-            i.unidentified === item.unidentified &&
-            i.masterwork === item.masterwork &&
-            i.type === item.type &&
-            i.size === item.size
+    const getIndividualItems = (name, unidentified, masterwork, type, size) => {
+        return individualLoot.filter(
+            (item) =>
+                item.name === name &&
+                item.unidentified === unidentified &&
+                item.masterwork === masterwork &&
+                item.type === type &&
+                item.size === size
         );
     };
 
-    // Simple toggle function
-    const toggleItemOpen = (item) => {
-        const key = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
-        setOpenItems({
-            ...openItems,
-            [key]: !openItems[key]
-        });
+    // Filter handlers
+    const handleTypeFilterChange = (type) => {
+        setTypeFilters((prevFilters) => ({
+            ...prevFilters,
+            [type]: !prevFilters[type],
+        }));
     };
 
-    // Format for tooltips
-    const formatAppraisalInfo = (item) => {
-        if (!item.appraisals || item.appraisals.length === 0) {
-            return 'No appraisals';
+    const handleSizeFilterChange = (size) => {
+        setSizeFilters((prevFilters) => ({
+            ...prevFilters,
+            [size]: !prevFilters[size],
+        }));
+    };
+
+    const handleWhoHasFilterChange = (name) => {
+        setWhoHasFilters((prevFilters) =>
+            prevFilters.map((filter) =>
+                filter.name === name ? {...filter, checked: !filter.checked} : filter
+            )
+        );
+    };
+
+    // Menu handlers
+    const handleMenuOpen = (setter) => (event) => {
+        setter(event.currentTarget);
+    };
+
+    const handleMenuClose = (setter) => () => {
+        setter(null);
+    };
+
+    // Sort handler
+    const handleSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({key, direction});
+    };
+
+    // Apply filters to the data
+    const filteredLoot = useMemo(() => {
+        return loot.filter((item) => {
+            // Unidentified filter
+            const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
+
+            // Type filter
+            const passesTypeFilter = Object.keys(typeFilters).some(type => {
+                const itemType = (item.type || '').toLowerCase();
+                const filterType = type.toLowerCase();
+                return (
+                    (filterType === 'other' && (!itemType || itemType === '') && typeFilters[type]) ||
+                    (itemType === filterType && typeFilters[type])
+                );
+            });
+
+            // Size filter
+            const passesSizeFilter = sizeFilters[item.size] || (sizeFilters['Unknown'] && (!item.size || item.size === ''));
+
+            // Who has filter
+            const passesWhoHasFilter = whoHasFilters.every((filter) => !filter.checked) ||
+                whoHasFilters.some((filter) => filter.checked && item.character_names && item.character_names.includes(filter.name));
+
+            // Pending sale filter
+            const passesPendingSaleFilter = showPendingSales || item.status !== 'Pending Sale';
+
+            return passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
+                passesWhoHasFilter && passesPendingSaleFilter;
+        });
+    }, [loot, showOnlyUnidentified, typeFilters, sizeFilters, whoHasFilters, showPendingSales]);
+
+    // Sort the filtered data
+    const sortedLoot = useMemo(() => {
+        return [...filteredLoot].sort((a, b) => {
+            if (a[sortConfig.key] === b[sortConfig.key]) {
+                return 0;
+            }
+
+            switch (sortConfig.key) {
+                case 'session_date':
+                case 'lastupdate':
+                    return sortConfig.direction === 'asc'
+                        ? new Date(a[sortConfig.key]) - new Date(b[sortConfig.key])
+                        : new Date(b[sortConfig.key]) - new Date(a[sortConfig.key]);
+                case 'quantity':
+                case 'believedvalue':
+                case 'average_appraisal':
+                    return sortConfig.direction === 'asc'
+                        ? Number(a[sortConfig.key]) - Number(b[sortConfig.key])
+                        : Number(b[sortConfig.key]) - Number(a[sortConfig.key]);
+                case 'unidentified':
+                case 'status':
+                    return sortConfig.direction === 'asc'
+                        ? (a[sortConfig.key] === b[sortConfig.key] ? 0 : a[sortConfig.key] ? -1 : 1)
+                        : (a[sortConfig.key] === b[sortConfig.key] ? 0 : b[sortConfig.key] ? -1 : 1);
+                default:
+                    return sortConfig.direction === 'asc'
+                        ? String(a[sortConfig.key]).localeCompare(String(b[sortConfig.key]))
+                        : String(b[sortConfig.key]).localeCompare(String(a[sortConfig.key]));
+            }
+        });
+    }, [filteredLoot, sortConfig]);
+
+    // Cell styles
+    const mainCellStyle = {padding: '16px'};
+    const subCellStyle = {padding: '4px'};
+
+    // Helper function to format appraisal details and render tooltips
+    const formatAppraisalDetails = (item) => {
+        const appraisals = item.appraisals || [];
+
+        if (!appraisals || appraisals.length === 0) {
+            return 'No appraisals available';
         }
 
-        return item.appraisals
-            .map(a => `${a.character_name || 'Unknown'}: ${parseFloat(a.believedvalue || 0).toFixed(2)}`)
-            .join('\n');
+        return appraisals.map(appraisal => {
+            const characterName = appraisal.character_name || 'Unknown';
+            const value = parseFloat(appraisal.believedvalue);
+            return `${characterName}: ${isNaN(value) ? '?' : value.toFixed(2)}`;
+        }).join('\n');
+    };
+
+    const formatAverageAppraisal = (item) => {
+        if (item.average_appraisal !== undefined && item.average_appraisal !== null) {
+            const value = parseFloat(item.average_appraisal);
+            const formattedValue = isNaN(value) ? '' : value.toFixed(2).replace(/\.0+$/, '');
+
+            return (
+                <Tooltip title={formatAppraisalDetails(item)} arrow>
+                    <span>{formattedValue}</span>
+                </Tooltip>
+            );
+        }
+        return null;
+    };
+
+    // Render table header cells based on showColumns configuration
+    const renderHeaderCells = () => {
+        const headerCells = [];
+
+        if (showColumns.select) {
+            headerCells.push(<TableCell key="select">Select</TableCell>);
+        }
+
+        if (showColumns.quantity) {
+            headerCells.push(
+                <SortableTableCell
+                    key="quantity"
+                    label="Quantity"
+                    field="quantity"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.name) {
+            headerCells.push(
+                <SortableTableCell
+                    key="name"
+                    label="Name"
+                    field="name"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.unidentified) {
+            headerCells.push(
+                <SortableTableCell
+                    key="unidentified"
+                    label="Unidentified"
+                    field="unidentified"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.type) {
+            headerCells.push(
+                <SortableTableCell
+                    key="type"
+                    label="Type"
+                    field="type"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.size) {
+            headerCells.push(
+                <SortableTableCell
+                    key="size"
+                    label="Size"
+                    field="size"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.whoHasIt) {
+            headerCells.push(
+                <SortableTableCell
+                    key="character_names"
+                    label="Who Has It?"
+                    field="character_names"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.believedValue) {
+            headerCells.push(
+                <SortableTableCell
+                    key="believedvalue"
+                    label="Believed Value"
+                    field="believedvalue"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.averageAppraisal) {
+            headerCells.push(
+                <SortableTableCell
+                    key="average_appraisal"
+                    label="Average Appraisal"
+                    field="average_appraisal"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.pendingSale) {
+            headerCells.push(
+                <SortableTableCell
+                    key="status"
+                    label="Pending Sale"
+                    field="status"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.sessionDate) {
+            headerCells.push(
+                <SortableTableCell
+                    key="session_date"
+                    label="Session Date"
+                    field="session_date"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        if (showColumns.lastUpdate) {
+            headerCells.push(
+                <SortableTableCell
+                    key="lastupdate"
+                    label="Last Update"
+                    field="lastupdate"
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                />
+            );
+        }
+
+        return headerCells;
     };
 
     return (
         <Paper sx={{p: 2}}>
-            {/* Filter controls */}
-            <Box sx={{mb: 2}}>
-                <Grid container spacing={2}>
+            <Box sx={{position: 'sticky', top: 0, backgroundColor: 'background.paper', zIndex: 1}}>
+                <Grid container spacing={2} sx={{mb: 2}}>
                     {showFilters.pendingSale && (
                         <Grid item>
                             <FormControlLabel
-                                control={
-                                    <Switch
-                                        checked={showPendingSales}
-                                        onChange={() => setShowPendingSales(!showPendingSales)}
-                                    />
-                                }
+                                control={<Switch checked={showPendingSales}
+                                                 onChange={() => setShowPendingSales(!showPendingSales)}/>}
                                 label="Show Pending Sales"
                             />
                         </Grid>
@@ -204,12 +452,8 @@ const CustomLootTable = ({
                     {showFilters.unidentified && (
                         <Grid item>
                             <FormControlLabel
-                                control={
-                                    <Switch
-                                        checked={showOnlyUnidentified}
-                                        onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)}
-                                    />
-                                }
+                                control={<Switch checked={showOnlyUnidentified}
+                                                 onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)}/>}
                                 label="Show Only Unidentified"
                             />
                         </Grid>
@@ -217,57 +461,46 @@ const CustomLootTable = ({
 
                     {showFilters.type && (
                         <Grid item>
-                            <Button onClick={handleTypeMenuOpen}>Type Filters</Button>
-                            <Menu
+                            <Button onClick={handleMenuOpen(setAnchorElType)}>Type Filters</Button>
+                            <FilterMenu
                                 anchorEl={anchorElType}
                                 open={Boolean(anchorElType)}
-                                onClose={handleTypeMenuClose}
-                            >
-                                {Object.entries(typeFilters).map(([type, checked]) => (
-                                    <MenuItem key={type}>
-                                        <FormControlLabel
-                                            control={
-                                                <Checkbox
-                                                    checked={checked}
-                                                    onChange={() => {
-                                                        setTypeFilters({
-                                                            ...typeFilters,
-                                                            [type]: !checked
-                                                        });
-                                                    }}
-                                                />
-                                            }
-                                            label={type}
-                                        />
-                                    </MenuItem>
-                                ))}
-                            </Menu>
+                                onClose={handleMenuClose(setAnchorElType)}
+                                title="Type Filters"
+                                filters={typeFilters}
+                                onChange={handleTypeFilterChange}
+                            />
                         </Grid>
                     )}
 
                     {showFilters.size && (
                         <Grid item>
-                            <Button onClick={handleSizeMenuOpen}>Size Filters</Button>
-                            <Menu
+                            <Button onClick={handleMenuOpen(setAnchorElSize)}>Size Filters</Button>
+                            <FilterMenu
                                 anchorEl={anchorElSize}
                                 open={Boolean(anchorElSize)}
-                                onClose={handleSizeMenuClose}
+                                onClose={handleMenuClose(setAnchorElSize)}
+                                title="Size Filters"
+                                filters={sizeFilters}
+                                onChange={handleSizeFilterChange}
+                            />
+                        </Grid>
+                    )}
+
+                    {showFilters.whoHas && (
+                        <Grid item>
+                            <Button onClick={handleMenuOpen(setAnchorElWhoHas)}>Who Has Filters</Button>
+                            <Menu
+                                anchorEl={anchorElWhoHas}
+                                open={Boolean(anchorElWhoHas)}
+                                onClose={handleMenuClose(setAnchorElWhoHas)}
                             >
-                                {Object.entries(sizeFilters).map(([size, checked]) => (
-                                    <MenuItem key={size}>
+                                {whoHasFilters.map((filter) => (
+                                    <MenuItem key={filter.name}>
                                         <FormControlLabel
-                                            control={
-                                                <Checkbox
-                                                    checked={checked}
-                                                    onChange={() => {
-                                                        setSizeFilters({
-                                                            ...sizeFilters,
-                                                            [size]: !checked
-                                                        });
-                                                    }}
-                                                />
-                                            }
-                                            label={size}
+                                            control={<Checkbox checked={filter.checked}
+                                                               onChange={() => handleWhoHasFilterChange(filter.name)}/>}
+                                            label={filter.name}
                                         />
                                     </MenuItem>
                                 ))}
@@ -277,193 +510,152 @@ const CustomLootTable = ({
                 </Grid>
             </Box>
 
-            {/* Table */}
             <TableContainer sx={{maxHeight: 'calc(100vh - 300px)', overflow: 'auto'}}>
                 <Table stickyHeader>
                     <TableHead>
                         <TableRow>
-                            {/* Header cells */}
-                            {showColumns.select && <TableCell>Select</TableCell>}
-
-                            {showColumns.quantity && (
-                                <TableCell>
-                                    <TableSortLabel
-                                        active={sortConfig.key === 'quantity'}
-                                        direction={sortConfig.direction || 'asc'}
-                                        onClick={() => setSortConfig({
-                                            key: 'quantity',
-                                            direction: sortConfig.key === 'quantity' && sortConfig.direction === 'asc' ? 'desc' : 'asc'
-                                        })}
-                                    >
-                                        Quantity
-                                    </TableSortLabel>
-                                </TableCell>
-                            )}
-
-                            {showColumns.name && (
-                                <TableCell>
-                                    <TableSortLabel
-                                        active={sortConfig.key === 'name'}
-                                        direction={sortConfig.direction || 'asc'}
-                                        onClick={() => setSortConfig({
-                                            key: 'name',
-                                            direction: sortConfig.key === 'name' && sortConfig.direction === 'asc' ? 'desc' : 'asc'
-                                        })}
-                                    >
-                                        Name
-                                    </TableSortLabel>
-                                </TableCell>
-                            )}
-
-                            {showColumns.unidentified && <TableCell>Unidentified</TableCell>}
-                            {showColumns.type && <TableCell>Type</TableCell>}
-                            {showColumns.size && <TableCell>Size</TableCell>}
-                            {showColumns.whoHasIt && <TableCell>Who Has It?</TableCell>}
-                            {showColumns.believedValue && <TableCell>Believed Value</TableCell>}
-                            {showColumns.averageAppraisal && <TableCell>Average Appraisal</TableCell>}
-                            {showColumns.pendingSale && <TableCell>Pending Sale</TableCell>}
-                            {showColumns.sessionDate && <TableCell>Session Date</TableCell>}
-                            {showColumns.lastUpdate && <TableCell>Last Update</TableCell>}
+                            {renderHeaderCells()}
                         </TableRow>
                     </TableHead>
-
                     <TableBody>
-                        {filteredData.map(item => {
-                            const matchingItems = getMatchingItems(item);
-                            const totalQuantity = matchingItems.reduce((sum, i) => {
-                                const qty = parseInt(i.quantity, 10);
-                                return sum + (isNaN(qty) ? 0 : qty);
-                            }, 0);
-
-                            const key = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
-                            const isOpen = Boolean(openItems[key]);
+                        {sortedLoot.map((item) => {
+                            const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
+                            const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
+                            const itemKey = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
+                            const isOpen = openItems[itemKey];
 
                             return (
-                                <React.Fragment key={key}>
-                                    {/* Main row */}
+                                <React.Fragment key={itemKey}>
                                     <TableRow>
                                         {showColumns.select && (
-                                            <TableCell>
+                                            <TableCell style={mainCellStyle}>
                                                 <Checkbox
-                                                    checked={matchingItems.every(i => selectedItems.includes(i.id))}
+                                                    checked={individualItems.every((item) => selectedItems.includes(item.id))}
                                                     indeterminate={
-                                                        matchingItems.some(i => selectedItems.includes(i.id)) &&
-                                                        !matchingItems.every(i => selectedItems.includes(i.id))
+                                                        individualItems.some((item) => selectedItems.includes(item.id)) &&
+                                                        !individualItems.every((item) => selectedItems.includes(item.id))
                                                     }
-                                                    onChange={() => {
-                                                        matchingItems.forEach(i => handleSelectItem(i.id));
-                                                    }}
+                                                    onChange={() => individualItems.forEach((item) => handleSelectItem(item.id, setSelectedItems))}
                                                 />
                                             </TableCell>
                                         )}
 
-                                        {showColumns.quantity && <TableCell>{totalQuantity}</TableCell>}
+                                        {showColumns.quantity &&
+                                            <TableCell style={mainCellStyle}>{totalQuantity}</TableCell>}
 
                                         {showColumns.name && (
-                                            <TableCell>
-                                                {matchingItems.length > 1 && (
-                                                    <IconButton size="small" onClick={() => toggleItemOpen(item)}>
-                                                        {isOpen ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                                            <TableCell style={mainCellStyle}>
+                                                {individualItems.length > 1 && (
+                                                    <IconButton
+                                                        aria-label="expand row"
+                                                        size="small"
+                                                        onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type, item.size)}
+                                                    >
+                                                        {isOpen ? <KeyboardArrowUp/> : <KeyboardArrowDown/>}
                                                     </IconButton>
                                                 )}
-                                                <Tooltip title={item.notes || ''}>
+                                                <Tooltip title={item.notes || 'No notes'} arrow>
                                                     <span>{item.name}</span>
                                                 </Tooltip>
                                             </TableCell>
                                         )}
 
                                         {showColumns.unidentified && (
-                                            <TableCell>
-                                                {item.unidentified === true ? <strong>Unidentified</strong> : ''}
+                                            <TableCell style={mainCellStyle}>
+                                                {item.unidentified === true
+                                                    ? <strong>Unidentified</strong>
+                                                    : item.unidentified === false
+                                                        ? ''
+                                                        : ''}
                                             </TableCell>
                                         )}
 
-                                        {showColumns.type && <TableCell>{item.type || ''}</TableCell>}
-                                        {showColumns.size && <TableCell>{item.size || ''}</TableCell>}
-                                        {showColumns.whoHasIt && <TableCell>{item.character_names || ''}</TableCell>}
-                                        {showColumns.believedValue && <TableCell>{item.believedvalue || ''}</TableCell>}
+                                        {showColumns.type && <TableCell style={mainCellStyle}>{item.type}</TableCell>}
+                                        {showColumns.size && <TableCell style={mainCellStyle}>{item.size}</TableCell>}
+                                        {showColumns.whoHasIt &&
+                                            <TableCell style={mainCellStyle}>{item.character_names}</TableCell>}
+                                        {showColumns.believedValue &&
+                                            <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
 
                                         {showColumns.averageAppraisal && (
-                                            <TableCell>
-                                                {item.average_appraisal && (
-                                                    <Tooltip title={formatAppraisalInfo(item)}>
-                                                        <span>{parseFloat(item.average_appraisal).toFixed(2)}</span>
-                                                    </Tooltip>
-                                                )}
+                                            <TableCell style={mainCellStyle}>
+                                                {formatAverageAppraisal(item)}
                                             </TableCell>
                                         )}
 
                                         {showColumns.pendingSale && (
-                                            <TableCell>{item.status === 'Pending Sale' ? '✓' : ''}</TableCell>
+                                            <TableCell
+                                                style={mainCellStyle}>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                                         )}
 
                                         {showColumns.sessionDate && (
-                                            <TableCell>
-                                                {item.session_date ? formatDate(item.session_date) : ''}
-                                            </TableCell>
+                                            <TableCell
+                                                style={mainCellStyle}>{item.session_date ? formatDate(item.session_date) : ''}</TableCell>
                                         )}
 
                                         {showColumns.lastUpdate && (
-                                            <TableCell>
-                                                {item.lastupdate ? formatDate(item.lastupdate) : ''}
-                                            </TableCell>
+                                            <TableCell
+                                                style={mainCellStyle}>{item.lastupdate ? formatDate(item.lastupdate) : ''}</TableCell>
                                         )}
                                     </TableRow>
 
-                                    {/* Expandable section for items with multiple entries */}
-                                    {matchingItems.length > 1 && (
+                                    {individualItems.length > 1 && (
                                         <TableRow>
-                                            <TableCell padding="0" colSpan={Object.values(showColumns).filter(Boolean).length}>
+                                            <TableCell style={{paddingBottom: 0, paddingTop: 0}}
+                                                       colSpan={Object.values(showColumns).filter(Boolean).length}>
                                                 <Collapse in={isOpen} timeout="auto" unmountOnExit>
-                                                    <Box p={1}>
-                                                        <Table size="small">
-                                                            <TableHead>
-                                                                <TableRow>
-                                                                    {showColumns.select && <TableCell>Select</TableCell>}
-                                                                    <TableCell>Quantity</TableCell>
-                                                                    {showColumns.size && <TableCell>Size</TableCell>}
-                                                                    {showColumns.whoHasIt && <TableCell>Who Has It?</TableCell>}
-                                                                    <TableCell>Notes</TableCell>
-                                                                    {showColumns.sessionDate && <TableCell>Session Date</TableCell>}
-                                                                    {showColumns.lastUpdate && <TableCell>Last Update</TableCell>}
-                                                                </TableRow>
-                                                            </TableHead>
-                                                            <TableBody>
-                                                                {matchingItems.map(subItem => (
-                                                                    <SubItemTableRow key={`subitem-${subItem.id}`}>
-                                                                        {showColumns.select && (
-                                                                            <TableCell>
-                                                                                <Checkbox
-                                                                                    checked={selectedItems.includes(subItem.id)}
-                                                                                    onChange={() => handleSelectItem(subItem.id)}
-                                                                                />
-                                                                            </TableCell>
-                                                                        )}
-                                                                        <TableCell>{subItem.quantity || ''}</TableCell>
-                                                                        {showColumns.size && <TableCell>{subItem.size || ''}</TableCell>}
-                                                                        {showColumns.whoHasIt && <TableCell>{subItem.character_name || ''}</TableCell>}
-                                                                        <TableCell>
-                                                                            {subItem.notes ? (
-                                                                                <Tooltip title={subItem.notes}>
-                                                                                    <span>View Notes</span>
-                                                                                </Tooltip>
-                                                                            ) : ''}
+                                                    <Table size="small">
+                                                        <TableHead>
+                                                            <TableRow>
+                                                                {showColumns.select &&
+                                                                    <TableCell style={subCellStyle}>Select</TableCell>}
+                                                                <TableCell style={subCellStyle}>Quantity</TableCell>
+                                                                {showColumns.size &&
+                                                                    <TableCell style={subCellStyle}>Size</TableCell>}
+                                                                {showColumns.whoHasIt &&
+                                                                    <TableCell style={subCellStyle}>Who Has
+                                                                        It?</TableCell>}
+                                                                <TableCell style={subCellStyle}>Notes</TableCell>
+                                                                {showColumns.sessionDate &&
+                                                                    <TableCell style={subCellStyle}>Session
+                                                                        Date</TableCell>}
+                                                                {showColumns.lastUpdate &&
+                                                                    <TableCell style={subCellStyle}>Last
+                                                                        Update</TableCell>}
+                                                            </TableRow>
+                                                        </TableHead>
+                                                        <TableBody>
+                                                            {individualItems.map((subItem) => (
+                                                                <SubItemTableRow key={subItem.id}>
+                                                                    {showColumns.select && (
+                                                                        <TableCell style={subCellStyle}>
+                                                                            <Checkbox
+                                                                                checked={selectedItems.includes(subItem.id)}
+                                                                                onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
+                                                                            />
                                                                         </TableCell>
-                                                                        {showColumns.sessionDate && (
-                                                                            <TableCell>
-                                                                                {subItem.session_date ? formatDate(subItem.session_date) : ''}
-                                                                            </TableCell>
-                                                                        )}
-                                                                        {showColumns.lastUpdate && (
-                                                                            <TableCell>
-                                                                                {subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}
-                                                                            </TableCell>
-                                                                        )}
-                                                                    </SubItemTableRow>
-                                                                ))}
-                                                            </TableBody>
-                                                        </Table>
-                                                    </Box>
+                                                                    )}
+                                                                    <TableCell
+                                                                        style={subCellStyle}>{subItem.quantity}</TableCell>
+                                                                    {showColumns.size && <TableCell
+                                                                        style={subCellStyle}>{subItem.size}</TableCell>}
+                                                                    {showColumns.whoHasIt && <TableCell
+                                                                        style={subCellStyle}>{subItem.character_name}</TableCell>}
+                                                                    <TableCell style={subCellStyle}>
+                                                                        {subItem.notes ? (
+                                                                            <Tooltip title={subItem.notes} arrow>
+                                                                                <span>Hover for Notes</span>
+                                                                            </Tooltip>
+                                                                        ) : ''}
+                                                                    </TableCell>
+                                                                    {showColumns.sessionDate && <TableCell
+                                                                        style={subCellStyle}>{subItem.session_date ? formatDate(subItem.session_date) : ''}</TableCell>}
+                                                                    {showColumns.lastUpdate && <TableCell
+                                                                        style={subCellStyle}>{subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}</TableCell>}
+                                                                </SubItemTableRow>
+                                                            ))}
+                                                        </TableBody>
+                                                    </Table>
                                                 </Collapse>
                                             </TableCell>
                                         </TableRow>
