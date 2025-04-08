@@ -403,7 +403,9 @@ const PendingSaleManagement = () => {
                                         <TableCell>{item.type}</TableCell>
                                         <TableCell>{getRealItemName(item)}</TableCell>
                                         <TableCell>{item.value}</TableCell>
-                                        <TableCell>{saleValue.toFixed(2)}</TableCell>
+                                        <TableCell>{typeof saleValue === 'number' && !isNaN(saleValue)
+                                            ? saleValue.toFixed(2)
+                                            : '0.00'}</TableCell>
                                         <TableCell>{item.notes}</TableCell>
                                     </TableRow>
                                 );

@@ -18,8 +18,14 @@
 export const calculateItemSaleValue = (item) => {
   if (!item || item.value === null || item.value === undefined) return 0;
 
+  // Ensure value is treated as a number
+  const numericValue = parseFloat(item.value);
+
+  // If conversion failed, return 0
+  if (isNaN(numericValue)) return 0;
+
   // Trade goods sell for full value, other items for half value
-  return item.type === 'trade good' ? item.value : item.value / 2;
+  return item.type === 'trade good' ? numericValue : numericValue / 2;
 };
 
 /**

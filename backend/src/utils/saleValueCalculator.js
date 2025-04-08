@@ -23,11 +23,20 @@ const calculateItemSaleValue = (item) => {
       return 0;
     }
 
+    // Ensure value is treated as a number
+    const numericValue = parseFloat(item.value);
+
+    // If conversion failed, return 0
+    if (isNaN(numericValue)) {
+      logger.debug(`Item value "${item.value}" is not a valid number, returning 0`);
+      return 0;
+    }
+
     // Trade goods sell for full value, other items for half value
     const multiplier = item.type === 'trade good' ? 1 : 0.5;
-    const saleValue = item.value * multiplier;
+    const saleValue = numericValue * multiplier;
 
-    logger.debug(`Calculated sale value for ${item.name || 'item'} (${item.type}): ${item.value} × ${multiplier} = ${saleValue}`);
+    logger.debug(`Calculated sale value for ${item.name || 'item'} (${item.type}): ${numericValue} × ${multiplier} = ${saleValue}`);
     return saleValue;
   } catch (error) {
     logger.error(`Error calculating item sale value: ${error.message}`);
