@@ -137,22 +137,48 @@ const CustomLootTable = ({
     }, []);
 
     // Helper functions
-    const handleToggleOpen = (name, unidentified, masterwork, type, size) => {
+    const handleToggleOpen = (itemKey) => {
         setOpenItems((prevOpenItems) => ({
             ...prevOpenItems,
-            [`${name}-${unidentified}-${masterwork}-${type}-${size}`]: !prevOpenItems[`${name}-${unidentified}-${masterwork}-${type}-${size}`],
+            [itemKey]: !prevOpenItems[itemKey]
         }));
     };
 
-    const getIndividualItems = (name, unidentified, masterwork, type, size) => {
-        return individualLoot.filter(
-            (item) =>
-                item.name === name &&
-                item.unidentified === unidentified &&
-                item.masterwork === masterwork &&
-                item.type === type &&
-                item.size === size
-        );
+    // Generate a unique key for each summary item based on grouping logic
+    const getItemKey = (item) => {
+        if (item.unidentified) {
+            // For unidentified items: group by name, unidentified flag, masterwork, type, and size
+            return `uid-${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
+        } else {
+            // For identified items: group by itemid, modids, masterwork, and size
+            const modidsStr = Array.isArray(item.modids) ? item.modids.sort().join(',') : '';
+            return `id-${item.itemid || 'unknown'}-${modidsStr}-${item.masterwork}-${item.size}`;
+        }
+    };
+
+    // Find individual items that match the summary item
+    const getIndividualItems = (summary) => {
+        if (!summary) return [];
+
+        if (summary.unidentified) {
+            // For unidentified items
+            return individualLoot.filter(item =>
+                item.name === summary.name &&
+                item.unidentified === summary.unidentified &&
+                item.masterwork === summary.masterwork &&
+                item.type === summary.type &&
+                item.size === summary.size
+            );
+        } else {
+            // For identified items
+            return individualLoot.filter(item =>
+                !item.unidentified &&
+                item.itemid === summary.itemid &&
+                JSON.stringify(item.modids) === JSON.stringify(summary.modids) &&
+                item.masterwork === summary.masterwork &&
+                item.size === summary.size
+            );
+        }
     };
 
     // Filter handlers
@@ -196,9 +222,23 @@ const CustomLootTable = ({
         setSortConfig({key, direction});
     };
 
+    // De-duplicate and process summary rows
+    const processedSummary = useMemo(() => {
+        const uniqueKeys = new Map();
+
+        // First pass: Group loot items by their keys
+        loot.forEach(item => {
+            const key = getItemKey(item);
+            uniqueKeys.set(key, item);
+        });
+
+        // Convert back to array
+        return Array.from(uniqueKeys.values());
+    }, [loot]);
+
     // Apply filters to the data
     const filteredLoot = useMemo(() => {
-        return loot.filter((item) => {
+        return processedSummary.filter((item) => {
             // Unidentified filter
             const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
 
@@ -225,7 +265,7 @@ const CustomLootTable = ({
             return passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
                 passesWhoHasFilter && passesPendingSaleFilter;
         });
-    }, [loot, showOnlyUnidentified, typeFilters, sizeFilters, whoHasFilters, showPendingSales]);
+    }, [processedSummary, showOnlyUnidentified, typeFilters, sizeFilters, whoHasFilters, showPendingSales]);
 
     // Sort the filtered data
     const sortedLoot = useMemo(() => {
@@ -518,10 +558,10 @@ const CustomLootTable = ({
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {sortedLoot.map((item) => {
-                            const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
-                            const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
-                            const itemKey = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
+                        {sortedLoot.map((summaryItem) => {
+                            const itemKey = getItemKey(summaryItem);
+                            const individualItems = getIndividualItems(summaryItem);
+                            const totalQuantity = individualItems.reduce((sum, item) => sum + parseInt(item.quantity || 0, 10), 0);
                             const isOpen = openItems[itemKey];
 
                             return (
@@ -530,12 +570,12 @@ const CustomLootTable = ({
                                         {showColumns.select && (
                                             <TableCell style={mainCellStyle}>
                                                 <Checkbox
-                                                    checked={individualItems.every((item) => selectedItems.includes(item.id))}
+                                                    checked={individualItems.length > 0 && individualItems.every((item) => selectedItems.includes(item.id))}
                                                     indeterminate={
                                                         individualItems.some((item) => selectedItems.includes(item.id)) &&
                                                         !individualItems.every((item) => selectedItems.includes(item.id))
                                                     }
-                                                    onChange={() => individualItems.forEach((item) => handleSelectItem(item.id, setSelectedItems))}
+                                                    onChange={() => individualItems.forEach((item) => handleSelectItem(item.id))}
                                                 />
                                             </TableCell>
                                         )}
@@ -549,53 +589,53 @@ const CustomLootTable = ({
                                                     <IconButton
                                                         aria-label="expand row"
                                                         size="small"
-                                                        onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type, item.size)}
+                                                        onClick={() => handleToggleOpen(itemKey)}
                                                     >
                                                         {isOpen ? <KeyboardArrowUp/> : <KeyboardArrowDown/>}
                                                     </IconButton>
                                                 )}
-                                                <Tooltip title={item.notes || 'No notes'} arrow>
-                                                    <span>{item.name}</span>
+                                                <Tooltip title={summaryItem.notes || 'No notes'} arrow>
+                                                    <span>{summaryItem.name}</span>
                                                 </Tooltip>
                                             </TableCell>
                                         )}
 
                                         {showColumns.unidentified && (
                                             <TableCell style={mainCellStyle}>
-                                                {item.unidentified === true
+                                                {summaryItem.unidentified === true
                                                     ? <strong>Unidentified</strong>
-                                                    : item.unidentified === false
+                                                    : summaryItem.unidentified === false
                                                         ? ''
                                                         : ''}
                                             </TableCell>
                                         )}
 
-                                        {showColumns.type && <TableCell style={mainCellStyle}>{item.type}</TableCell>}
-                                        {showColumns.size && <TableCell style={mainCellStyle}>{item.size}</TableCell>}
+                                        {showColumns.type && <TableCell style={mainCellStyle}>{summaryItem.type}</TableCell>}
+                                        {showColumns.size && <TableCell style={mainCellStyle}>{summaryItem.size}</TableCell>}
                                         {showColumns.whoHasIt &&
-                                            <TableCell style={mainCellStyle}>{item.character_names}</TableCell>}
+                                            <TableCell style={mainCellStyle}>{summaryItem.character_names}</TableCell>}
                                         {showColumns.believedValue &&
-                                            <TableCell style={mainCellStyle}>{item.believedvalue || ''}</TableCell>}
+                                            <TableCell style={mainCellStyle}>{summaryItem.believedvalue || ''}</TableCell>}
 
                                         {showColumns.averageAppraisal && (
                                             <TableCell style={mainCellStyle}>
-                                                {formatAverageAppraisal(item)}
+                                                {formatAverageAppraisal(summaryItem)}
                                             </TableCell>
                                         )}
 
                                         {showColumns.pendingSale && (
                                             <TableCell
-                                                style={mainCellStyle}>{item.status === 'Pending Sale' ? '✔' : ''}</TableCell>
+                                                style={mainCellStyle}>{summaryItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
                                         )}
 
                                         {showColumns.sessionDate && (
                                             <TableCell
-                                                style={mainCellStyle}>{item.session_date ? formatDate(item.session_date) : ''}</TableCell>
+                                                style={mainCellStyle}>{summaryItem.session_date ? formatDate(summaryItem.session_date) : ''}</TableCell>
                                         )}
 
                                         {showColumns.lastUpdate && (
                                             <TableCell
-                                                style={mainCellStyle}>{item.lastupdate ? formatDate(item.lastupdate) : ''}</TableCell>
+                                                style={mainCellStyle}>{summaryItem.lastupdate ? formatDate(summaryItem.lastupdate) : ''}</TableCell>
                                         )}
                                     </TableRow>
 
@@ -631,7 +671,7 @@ const CustomLootTable = ({
                                                                         <TableCell style={subCellStyle}>
                                                                             <Checkbox
                                                                                 checked={selectedItems.includes(subItem.id)}
-                                                                                onChange={() => handleSelectItem(subItem.id, setSelectedItems)}
+                                                                                onChange={() => handleSelectItem(subItem.id)}
                                                                             />
                                                                         </TableCell>
                                                                     )}
