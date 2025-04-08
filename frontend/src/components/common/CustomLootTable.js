@@ -137,38 +137,21 @@ const CustomLootTable = ({
     }, []);
 
     // Helper functions
-    const handleToggleOpen = (itemKey) => {
+    const handleToggleOpen = (name, unidentified, masterwork, type, size) => {
         setOpenItems((prevOpenItems) => ({
             ...prevOpenItems,
-            [itemKey]: !prevOpenItems[itemKey]
+            [`${name}-${unidentified}-${masterwork}-${type}-${size}`]: !prevOpenItems[`${name}-${unidentified}-${masterwork}-${type}-${size}`],
         }));
     };
 
-    // Generate a unique key for each summary item
-    const getItemKey = (item) => {
-        return `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}-${item.session_date || ''}`;
-    };
-
-    const getIndividualItems = (itemKey) => {
-        // Parse the key to extract properties
-        const keyParts = itemKey.split('-');
-        if (keyParts.length < 6) return [];
-
-        const name = keyParts[0];
-        const unidentified = keyParts[1] === 'true';
-        const masterwork = keyParts[2] === 'true';
-        const type = keyParts[3];
-        const size = keyParts[4];
-        const session_date = keyParts[5];
-
+    const getIndividualItems = (name, unidentified, masterwork, type, size) => {
         return individualLoot.filter(
             (item) =>
                 item.name === name &&
                 item.unidentified === unidentified &&
                 item.masterwork === masterwork &&
                 item.type === type &&
-                item.size === size &&
-                (session_date ? formatDate(item.session_date) === formatDate(session_date) : true)
+                item.size === size
         );
     };
 
@@ -536,9 +519,9 @@ const CustomLootTable = ({
                     </TableHead>
                     <TableBody>
                         {sortedLoot.map((item) => {
-                            const itemKey = getItemKey(item);
-                            const individualItems = getIndividualItems(itemKey);
+                            const individualItems = getIndividualItems(item.name, item.unidentified, item.masterwork, item.type, item.size);
                             const totalQuantity = individualItems.reduce((sum, item) => sum + item.quantity, 0);
+                            const itemKey = `${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
                             const isOpen = openItems[itemKey];
 
                             return (
@@ -566,7 +549,7 @@ const CustomLootTable = ({
                                                     <IconButton
                                                         aria-label="expand row"
                                                         size="small"
-                                                        onClick={() => handleToggleOpen(itemKey)}
+                                                        onClick={() => handleToggleOpen(item.name, item.unidentified, item.masterwork, item.type, item.size)}
                                                     >
                                                         {isOpen ? <KeyboardArrowUp/> : <KeyboardArrowDown/>}
                                                     </IconButton>
