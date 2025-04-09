@@ -36,174 +36,55 @@ exports.create = async (entry) => {
 };
 
 /**
- * Find all loot entries, optionally filtered by character
- * @param {number|null} activeCharacterId - Active character ID for filtering, null for DM
+ * Find loot by status - handles both unprocessed and specific status cases
+ * @param {string|null} status - The status to filter by (null means unprocessed)
+ * @param {number|null} activeCharacterId - Active character ID
  * @return {Promise<Object>} - Summary and individual loot entries
  */
-exports.findAll = async (activeCharacterId = null) => {
-  const isDM = activeCharacterId === null;
-
-  const summaryQuery = `
-    SELECT 
-      CASE
-        WHEN l.masterwork = true AND (l.modids IS NULL OR l.modids = '{}')
-        THEN 'Well Made ' || l.name
-        ELSE l.name
-      END AS name,
-      SUM(l.quantity) AS quantity, 
-      l.unidentified, 
-      l.masterwork, 
-      l.type, 
-      l.size, 
-      COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal,
-      ${isDM ? 'NULL' : 'MAX(CASE WHEN a.characterid = $1 THEN a.believedvalue END)'} AS believedvalue,
-      MIN(l.session_date) AS session_date,
-      MAX(l.lastupdate) AS lastupdate,
-      CASE 
-        WHEN COUNT(CASE WHEN l.status = 'Pending Sale' THEN 1 END) > 0 THEN 'Pending Sale'
-        ELSE NULL
-      END AS status,
-      STRING_AGG(DISTINCT l.notes, ' | ') AS notes
-    FROM 
-      loot l
-    LEFT JOIN 
-      appraisal a ON l.id = a.lootid
-    WHERE 
-      l.status IS NULL OR l.status = 'Pending Sale'
-    GROUP BY 
-      l.name, l.unidentified, l.masterwork, l.type, l.size, l.modids;
-  `;
-
-  const individualQuery = `
-    SELECT 
-      l.id, 
-      l.session_date, 
-      l.quantity, 
-      CASE
-        WHEN l.masterwork = true AND (l.modids IS NULL OR l.modids = '{}')
-        THEN 'Well Made ' || l.name
-        ELSE l.name
-      END AS name,
-      l.unidentified, 
-      l.masterwork, 
-      l.type, 
-      l.size, 
-      l.status, 
-      ${isDM ? 'NULL' : 'a.believedvalue'} AS believedvalue,
-      (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal,
-      l.notes,
-      l.lastupdate
-    FROM 
-      loot l
-    ${isDM ? '' : 'LEFT JOIN appraisal a ON l.id = a.lootid AND a.characterid = $1'}
-    WHERE 
-      l.status IS NULL OR l.status = 'Pending Sale';
-  `;
-
+exports.findByStatus = async (status, activeCharacterId = null) => {
   try {
-    const summaryResult = await dbUtils.executeQuery(
-      summaryQuery,
-      isDM ? [] : [activeCharacterId],
-      'Error fetching loot summary'
-    );
+    // Build the WHERE clause based on status
+    let whereClause;
+    const params = [];
 
-    const individualResult = await dbUtils.executeQuery(
-      individualQuery,
-      isDM ? [] : [activeCharacterId],
-      'Error fetching individual loot items'
-    );
+    if (status === null) {
+      // For unprocessed items (null status or Pending Sale)
+      whereClause = "(statuspage IS NULL OR statuspage = 'Pending Sale')";
+    } else {
+      // For specific status
+      whereClause = "statuspage = $1";
+      params.push(status);
+    }
+
+    // Query using the view
+    const query = `
+      SELECT * FROM loot_view
+      WHERE ${whereClause}
+      ORDER BY row_type, name, id
+    `;
+
+    const result = await dbUtils.executeQuery(query, params);
+
+    // Process the results to extract the correct believedvalue for the character
+    const processedRows = result.rows.map(item => {
+      // If we have an active character and appraisals, find the specific appraisal
+      if (activeCharacterId && item.appraisals && Array.isArray(item.appraisals)) {
+        const characterAppraisal = item.appraisals.find(a => {
+          return a.character_id === activeCharacterId ||
+                 (a.character_name && a.character_id?.toString() === activeCharacterId.toString());
+        });
+
+        if (characterAppraisal) {
+          item.believedvalue = characterAppraisal.believedvalue;
+        }
+      }
+
+      return item;
+    });
 
     return {
-      summary: summaryResult.rows,
-      individual: individualResult.rows,
-    };
-  } catch (error) {
-    throw error;
-  }
-};
-
-/**
- * Find loot by status
- * @param {string} status - The status to filter by
- * @param {number} activeCharacterId - Active character ID
- * @return {Promise<Object>} - Summary and individual loot entries with the given status
- */
-exports.findByStatus = async (status, activeCharacterId) => {
-  const summaryQuery = `
-    SELECT 
-      CASE
-        WHEN l.masterwork = true AND (l.modids IS NULL OR l.modids = '{}')
-        THEN 'Well Made ' || l.name
-        ELSE l.name
-      END AS name,
-      SUM(l.quantity) AS quantity, 
-      l.unidentified, 
-      l.masterwork, 
-      l.type, 
-      l.size, 
-      COALESCE(ROUND(AVG(a.believedvalue)::numeric, 2), NULL) AS average_appraisal, 
-      MAX(CASE WHEN a.characterid = $2 THEN a.believedvalue END) AS believedvalue,
-      MIN(l.session_date) AS session_date,
-      MAX(l.lastupdate) AS lastupdate,
-      STRING_AGG(DISTINCT c.name, ', ') AS character_names,
-      STRING_AGG(DISTINCT l.notes, ' | ') AS notes
-    FROM 
-      loot l
-    LEFT JOIN 
-      appraisal a ON l.id = a.lootid
-    LEFT JOIN 
-      characters c ON l.whohas = c.id
-    WHERE 
-      l.status = $1
-    GROUP BY 
-      l.name, l.unidentified, l.masterwork, l.type, l.size, l.modids;
-  `;
-
-  const individualQuery = `
-    SELECT 
-      l.id, 
-      l.session_date, 
-      l.quantity, 
-      CASE
-        WHEN l.masterwork = true AND (l.modids IS NULL OR l.modids = '{}')
-        THEN 'Well Made ' || l.name
-        ELSE l.name
-      END AS name,
-      l.unidentified, 
-      l.masterwork, 
-      l.type, 
-      l.size, 
-      l.status, 
-      a.believedvalue,
-      (SELECT COALESCE(ROUND(AVG(a2.believedvalue)::numeric, 2), NULL) FROM appraisal a2 WHERE a2.lootid = l.id) AS average_appraisal,
-      c.name AS character_name,
-      l.notes
-    FROM 
-      loot l
-    LEFT JOIN 
-      appraisal a ON l.id = a.lootid AND a.characterid = $2
-    LEFT JOIN 
-      characters c ON l.whohas = c.id
-    WHERE 
-      l.status = $1;
-  `;
-
-  try {
-    const summaryResult = await dbUtils.executeQuery(
-      summaryQuery,
-      [status, activeCharacterId],
-      'Error fetching loot summary by status'
-    );
-
-    const individualResult = await dbUtils.executeQuery(
-      individualQuery,
-      [status, activeCharacterId],
-      'Error fetching individual loot items by status'
-    );
-
-    return {
-      summary: summaryResult.rows,
-      individual: individualResult.rows,
+      summary: processedRows.filter(row => row.row_type === 'summary'),
+      individual: processedRows.filter(row => row.row_type === 'individual')
     };
   } catch (error) {
     throw error;

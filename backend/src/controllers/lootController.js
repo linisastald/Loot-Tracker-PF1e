@@ -320,31 +320,29 @@ const createLoot = async (req, res) => {
  * Get all loot
  */
 const getAllLoot = async (req, res) => {
-    const isDM = req.query.isDM === 'true';
-    const activeCharacterId = isDM ? null : req.query.activeCharacterId;
+  const isDM = req.query.isDM === 'true';
+  const activeCharacterId = isDM ? null : req.query.activeCharacterId;
 
-    if (!isDM && !activeCharacterId) {
-        throw controllerFactory.createValidationError('Active character ID is required for non-DM users');
-    }
+  if (!isDM && !activeCharacterId) {
+    throw controllerFactory.createValidationError('Active character ID is required for non-DM users');
+  }
 
-    try {
-        const loot = await Loot.findAll(activeCharacterId);
+  try {
+    // Use findByStatus with null to get unprocessed loot
+    const loot = await Loot.findByStatus(null, activeCharacterId);
 
-        // Enhance individual items with appraisal data
-        const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
-
-        controllerFactory.sendSuccessResponse(res, {
-            summary: loot.summary,
-            individual: enhancedIndividualLoot,
-            count: {
-                summary: loot.summary.length,
-                individual: enhancedIndividualLoot.length
-            }
-        }, 'Loot data retrieved successfully');
-    } catch (error) {
-        logger.error('Error fetching all loot:', error);
-        throw error;
-    }
+    controllerFactory.sendSuccessResponse(res, {
+      summary: loot.summary,
+      individual: loot.individual,
+      count: {
+        summary: loot.summary.length,
+        individual: loot.individual.length
+      }
+    }, 'Loot data retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching all loot:', error);
+    throw error;
+  }
 };
 /**
  * Update loot status (e.g., mark as sold, kept, trashed)
@@ -401,70 +399,64 @@ const updateLootStatus = async (req, res) => {
  * Get loot kept by party
  */
 const getKeptPartyLoot = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const loot = await Loot.findByStatus('Kept Party', userId);
+  try {
+    const activeCharacterId = req.user.activeCharacterId || null;
+    const loot = await Loot.findByStatus('Kept Party', activeCharacterId);
 
-        // Enhance individual items with appraisal data
-        const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
-
-        controllerFactory.sendSuccessResponse(res, {
-            summary: loot.summary,
-            individual: enhancedIndividualLoot,
-            count: {
-                summary: loot.summary.length,
-                individual: enhancedIndividualLoot.length
-            }
-        }, 'Party loot retrieved successfully');
-    } catch (error) {
-        logger.error('Error fetching party loot:', error);
-        throw error;
-    }
+    controllerFactory.sendSuccessResponse(res, {
+      summary: loot.summary,
+      individual: loot.individual,
+      count: {
+        summary: loot.summary.length,
+        individual: loot.individual.length
+      }
+    }, 'Party loot retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching party loot:', error);
+    throw error;
+  }
 };
 /**
  * Get trashed loot
  */
 const getTrashedLoot = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const loot = await Loot.findByStatus('Trashed', userId);
+  try {
+    const activeCharacterId = req.user.activeCharacterId || null;
+    const loot = await Loot.findByStatus('Trashed', activeCharacterId);
 
-        controllerFactory.sendSuccessResponse(res, {
-            summary: loot.summary,
-            individual: loot.individual,
-            count: {
-                summary: loot.summary.length,
-                individual: loot.individual.length
-            }
-        }, 'Trashed loot retrieved successfully');
-    } catch (error) {
-        logger.error('Error fetching trashed loot:', error);
-        throw error;
-    }
+    controllerFactory.sendSuccessResponse(res, {
+      summary: loot.summary,
+      individual: loot.individual,
+      count: {
+        summary: loot.summary.length,
+        individual: loot.individual.length
+      }
+    }, 'Trashed loot retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching trashed loot:', error);
+    throw error;
+  }
 };
 /**
  * Get loot kept by character
  */
 const getKeptCharacterLoot = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const loot = await Loot.findByStatus('Kept Self', userId);
+  try {
+    const activeCharacterId = req.user.activeCharacterId || null;
+    const loot = await Loot.findByStatus('Kept Self', activeCharacterId);
 
-        // Enhance individual items with appraisal data
-        const enhancedIndividualLoot = await enhanceItemsWithAppraisals(loot.individual);
-
-        controllerFactory.sendSuccessResponse(res, {
-            summary: loot.summary,
-            individual: enhancedIndividualLoot,
-            count: {
-                summary: loot.summary.length,
-                individual: enhancedIndividualLoot.length
-            }
-        }, 'Character loot retrieved successfully');
-    } catch (error) {
-        logger.error('Error fetching character loot:', error);
-        throw error;
-    }
+    controllerFactory.sendSuccessResponse(res, {
+      summary: loot.summary,
+      individual: loot.individual,
+      count: {
+        summary: loot.summary.length,
+        individual: loot.individual.length
+      }
+    }, 'Character loot retrieved successfully');
+  } catch (error) {
+    logger.error('Error fetching character loot:', error);
+    throw error;
+  }
 };
 /**
  * Split stack of items

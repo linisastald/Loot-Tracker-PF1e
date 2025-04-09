@@ -137,48 +137,29 @@ const CustomLootTable = ({
     }, []);
 
     // Helper functions
-    const handleToggleOpen = (itemKey) => {
+    const handleToggleOpen = (itemId) => {
         setOpenItems((prevOpenItems) => ({
             ...prevOpenItems,
-            [itemKey]: !prevOpenItems[itemKey]
+            [itemId]: !prevOpenItems[itemId]
         }));
     };
 
-    // Generate a unique key for each summary item based on grouping logic
+    // Simplified - use row type to identify items
     const getItemKey = (item) => {
-        if (item.unidentified) {
-            // For unidentified items: group by name, unidentified flag, masterwork, type, and size
-            return `uid-${item.name}-${item.unidentified}-${item.masterwork}-${item.type}-${item.size}`;
-        } else {
-            // For identified items: group by itemid, modids, masterwork, and size
-            const modidsStr = Array.isArray(item.modids) ? item.modids.sort().join(',') : '';
-            return `id-${item.itemid || 'unknown'}-${modidsStr}-${item.masterwork}-${item.size}`;
-        }
+        return `${item.row_type}-${item.id}`;
     };
 
-    // Find individual items that match the summary item
+    // Simplified - match individual items to summary
     const getIndividualItems = (summary) => {
-        if (!summary) return [];
+        if (!summary || summary.row_type !== 'summary') return [];
 
-        if (summary.unidentified) {
-            // For unidentified items
-            return individualLoot.filter(item =>
-                item.name === summary.name &&
-                item.unidentified === summary.unidentified &&
-                item.masterwork === summary.masterwork &&
-                item.type === summary.type &&
-                item.size === summary.size
-            );
-        } else {
-            // For identified items
-            return individualLoot.filter(item =>
-                !item.unidentified &&
-                item.itemid === summary.itemid &&
-                JSON.stringify(item.modids) === JSON.stringify(summary.modids) &&
-                item.masterwork === summary.masterwork &&
-                item.size === summary.size
-            );
-        }
+        return individualLoot.filter(item =>
+            item.name === summary.name &&
+            item.unidentified === summary.unidentified &&
+            item.masterwork === summary.masterwork &&
+            item.type === summary.type &&
+            item.size === summary.size
+        );
     };
 
     // Filter handlers
@@ -222,23 +203,12 @@ const CustomLootTable = ({
         setSortConfig({key, direction});
     };
 
-    // De-duplicate and process summary rows
-    const processedSummary = useMemo(() => {
-        const uniqueKeys = new Map();
-
-        // First pass: Group loot items by their keys
-        loot.forEach(item => {
-            const key = getItemKey(item);
-            uniqueKeys.set(key, item);
-        });
-
-        // Convert back to array
-        return Array.from(uniqueKeys.values());
-    }, [loot]);
-
-    // Apply filters to the data
+    // Apply filters to the data - simplified as we don't need processedSummary
     const filteredLoot = useMemo(() => {
-        return processedSummary.filter((item) => {
+        // Only filter summary rows - row_type === 'summary'
+        return loot.filter((item) => {
+            if (item.row_type !== 'summary') return false;
+
             // Unidentified filter
             const passesUnidentifiedFilter = !showOnlyUnidentified || item.unidentified === true;
 
@@ -265,7 +235,7 @@ const CustomLootTable = ({
             return passesUnidentifiedFilter && passesTypeFilter && passesSizeFilter &&
                 passesWhoHasFilter && passesPendingSaleFilter;
         });
-    }, [processedSummary, showOnlyUnidentified, typeFilters, sizeFilters, whoHasFilters, showPendingSales]);
+    }, [loot, showOnlyUnidentified, typeFilters, sizeFilters, whoHasFilters, showPendingSales]);
 
     // Sort the filtered data
     const sortedLoot = useMemo(() => {
@@ -403,9 +373,9 @@ const CustomLootTable = ({
         if (showColumns.whoHasIt) {
             headerCells.push(
                 <SortableTableCell
-                    key="character_names"
+                    key="character_name"
                     label="Who Has It?"
-                    field="character_names"
+                    field="character_name"
                     sortConfig={sortConfig}
                     onSort={handleSort}
                 />
@@ -561,7 +531,7 @@ const CustomLootTable = ({
                         {sortedLoot.map((summaryItem) => {
                             const itemKey = getItemKey(summaryItem);
                             const individualItems = getIndividualItems(summaryItem);
-                            const totalQuantity = individualItems.reduce((sum, item) => sum + parseInt(item.quantity || 0, 10), 0);
+                            const totalQuantity = summaryItem.quantity || 0;
                             const isOpen = openItems[itemKey];
 
                             return (
@@ -613,7 +583,7 @@ const CustomLootTable = ({
                                         {showColumns.type && <TableCell style={mainCellStyle}>{summaryItem.type}</TableCell>}
                                         {showColumns.size && <TableCell style={mainCellStyle}>{summaryItem.size}</TableCell>}
                                         {showColumns.whoHasIt &&
-                                            <TableCell style={mainCellStyle}>{summaryItem.character_names}</TableCell>}
+                                            <TableCell style={mainCellStyle}>{summaryItem.character_name}</TableCell>}
                                         {showColumns.believedValue &&
                                             <TableCell style={mainCellStyle}>{summaryItem.believedvalue || ''}</TableCell>}
 
