@@ -79,34 +79,6 @@ const fetchAndProcessAppraisals = async (lootId) => {
     }
 };
 /**
- * Enhance items with appraisal information
- */
-const enhanceItemsWithAppraisals = async (items) => {
-    if (!items || !Array.isArray(items)) return [];
-
-    const enhancedItems = await Promise.all(items.map(async (item) => {
-        try {
-            if (!item.id) return item;
-
-            const {appraisals, average_appraisal} = await fetchAndProcessAppraisals(item.id);
-            return {
-                ...item,
-                appraisals,
-                average_appraisal
-            };
-        } catch (error) {
-            logger.error(`Error enhancing item ${item.id} with appraisals:`, error);
-            return {
-                ...item,
-                appraisals: [],
-                average_appraisal: null
-            };
-        }
-    }));
-
-    return enhancedItems;
-};
-/**
  * Update appraisals when an item's value changes
  */
 const updateAppraisalsOnValueChange = async (lootId, newValue) => {
