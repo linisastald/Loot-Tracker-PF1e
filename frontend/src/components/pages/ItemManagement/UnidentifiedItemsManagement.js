@@ -2,27 +2,27 @@
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
 import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tooltip,
-  Typography,
+    Alert,
+    Box,
+    Button,
+    CircularProgress,
+    Paper,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    Tooltip,
+    Typography,
 } from '@mui/material';
 import ItemManagementDialog from '../../common/dialogs/ItemManagementDialog';
 import {
-  calculateSpellcraftDC,
-  formatDate,
-  formatItemNameWithMods,
-  identifyItem,
-  updateItemAsDM
+    calculateSpellcraftDC,
+    formatDate,
+    formatItemNameWithMods,
+    identifyItem,
+    updateItemAsDM
 } from '../../../utils/utils';
 
 const UnidentifiedItemsManagement = () => {
@@ -151,7 +151,11 @@ const UnidentifiedItemsManagement = () => {
             // Use the new endpoint
             const response = await api.get(`/loot/mods-by-id?ids=${modIds.join(',')}`);
 
-            const modsWithDisplayNames = response.data.map(mod => ({
+            // Check if response.data is an array or has a mods property that's an array
+            const modsArray = Array.isArray(response.data) ? response.data :
+                (response.data && Array.isArray(response.data.mods) ? response.data.mods : []);
+
+            const modsWithDisplayNames = modsArray.map(mod => ({
                 ...mod,
                 displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
             }));
@@ -173,7 +177,12 @@ const UnidentifiedItemsManagement = () => {
     const fetchAllMods = async () => {
         try {
             const response = await api.get(`/loot/mods`);
-            const modsWithDisplayNames = response.data.map(mod => ({
+
+            // Check if response.data is an array or has a mods property that's an array
+            const modsArray = Array.isArray(response.data) ? response.data :
+                (response.data && Array.isArray(response.data.mods) ? response.data.mods : []);
+
+            const modsWithDisplayNames = modsArray.map(mod => ({
                 ...mod,
                 displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
             }));

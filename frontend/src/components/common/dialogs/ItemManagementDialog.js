@@ -85,16 +85,24 @@ const ItemManagementDialog = ({
     };
 
     const fetchMods = async () => {
-        try {
-            const response = await api.get(`/loot/mods`);
-            setMods(response.data.map(mod => ({
-                ...mod,
-                displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
-            })));
-        } catch (error) {
-            console.error('Error fetching mods:', error);
-        }
-    };
+    try {
+        const response = await api.get(`/loot/mods`);
+
+        // Check if response.data is an array or has a mods property that's an array
+        const modsArray = Array.isArray(response.data) ? response.data :
+                         (response.data && Array.isArray(response.data.mods) ? response.data.mods : []);
+
+        const modsWithDisplayNames = modsArray.map(mod => ({
+            ...mod,
+            displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
+        }));
+
+        setMods(modsWithDisplayNames);
+    } catch (error) {
+        console.error('Error fetching mods:', error);
+        setMods([]);
+    }
+};
 
     const handleItemSearch = async (searchText) => {
         if (!searchText || searchText.length < 2) {

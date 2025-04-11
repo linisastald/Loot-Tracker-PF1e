@@ -4,23 +4,23 @@ import api from '../../../utils/api';
 import {calculateItemSaleValue, calculateTotalSaleValue} from '../../../utils/saleValueCalculator';
 import {formatDate, formatItemNameWithMods, updateItemAsDM} from '../../../utils/utils';
 import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Checkbox,
-  CircularProgress,
-  Grid,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
+    Alert,
+    Box,
+    Button,
+    Card,
+    CardContent,
+    Checkbox,
+    CircularProgress,
+    Grid,
+    Paper,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    TextField,
+    Typography,
 } from '@mui/material';
 import ItemManagementDialog from '../../common/dialogs/ItemManagementDialog';
 
@@ -91,24 +91,24 @@ const PendingSaleManagement = () => {
     const fetchMods = async () => {
         try {
             const response = await api.get(`/loot/mods`);
-            if (response.data && Array.isArray(response.data.mods)) {
-                const modsWithDisplayNames = response.data.mods.map(mod => ({
-                    ...mod,
-                    displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
-                }));
 
-                setMods(modsWithDisplayNames);
+            // Check if response.data is an array or has a mods property that's an array
+            const modsArray = Array.isArray(response.data) ? response.data :
+                (response.data && Array.isArray(response.data.mods) ? response.data.mods : []);
 
-                // Create a map for easier lookups
-                const newModsMap = {};
-                modsWithDisplayNames.forEach(mod => {
-                    newModsMap[mod.id] = mod;
-                });
-                setModsMap(newModsMap);
-            } else {
-                console.error('Unexpected mods data structure:', response.data);
-                setMods([]);
-            }
+            const modsWithDisplayNames = modsArray.map(mod => ({
+                ...mod,
+                displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
+            }));
+
+            setMods(modsWithDisplayNames);
+
+            // Create a map for easier lookups
+            const newModsMap = {};
+            modsWithDisplayNames.forEach(mod => {
+                newModsMap[mod.id] = mod;
+            });
+            setModsMap(newModsMap);
         } catch (error) {
             console.error('Error fetching mods:', error);
             setMods([]);
