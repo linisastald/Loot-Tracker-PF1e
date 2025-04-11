@@ -109,6 +109,23 @@ const FormatAverageAppraisal = ({ item }) => {
   );
 };
 
+// Component for formatting believed value for active character
+const FormatBelievedValue = ({ item }) => {
+  // If there are no appraisals, return empty
+  if (!item.appraisals || !Array.isArray(item.appraisals) || item.appraisals.length === 0) {
+    return null;
+  }
+
+  // The believedvalue property should contain the active character's appraisal
+  // This is already processed in the backend in findByStatus function
+  const value = parseFloat(item.believedvalue);
+  const formattedValue = isNaN(value) ? '' : value.toFixed(2).replace(/\.0+$/, '');
+
+  return (
+    <span>{formattedValue}</span>
+  );
+};
+
 const CustomLootTable = ({
   loot,
   individualLoot,
@@ -485,7 +502,12 @@ const CustomLootTable = ({
                     {showColumns.type && <TableCell style={mainCellStyle}>{summaryItem.type}</TableCell>}
                     {showColumns.size && <TableCell style={mainCellStyle}>{summaryItem.size}</TableCell>}
                     {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{summaryItem.character_name}</TableCell>}
-                    {showColumns.believedValue && <TableCell style={mainCellStyle}>{summaryItem.believedvalue || ''}</TableCell>}
+
+                    {showColumns.believedValue && (
+                      <TableCell style={mainCellStyle}>
+                        <FormatBelievedValue item={summaryItem} />
+                      </TableCell>
+                    )}
 
                     {showColumns.averageAppraisal && (
                       <TableCell style={mainCellStyle}>
