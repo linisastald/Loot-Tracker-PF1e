@@ -1,67 +1,22 @@
-// frontend/src/components/pages/Infamy.js
 import React, {useEffect, useState} from 'react';
 import {
-    Accordion,
-    AccordionDetails,
-    AccordionSummary,
-    Alert,
-    Box,
-    Button,
-    Card,
-    CardContent,
-    CardHeader,
-    Chip,
-    CircularProgress,
-    Container,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogContentText,
-    DialogTitle,
-    Divider,
-    FormControl,
-    Grid,
-    IconButton,
-    InputLabel,
-    List,
-    ListItem,
-    ListItemIcon,
-    ListItemText,
-    MenuItem,
-    Paper,
-    Select,
-    Slider,
-    Tab,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    Tabs,
-    TextField,
-    Tooltip,
-    Typography
+    Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Card, CardContent, CardHeader,
+    Chip, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText,
+    DialogTitle, Divider, FormControl, Grid, IconButton, InputLabel, List, ListItem, ListItemIcon,
+    ListItemText, MenuItem, Paper, Select, Slider, Tab, Table, TableBody, TableCell, TableContainer,
+    TableHead, TableRow, Tabs, TextField, Tooltip, Typography
 } from '@mui/material';
 import {
-    Add as AddIcon,
-    EmojiEvents as EmojiEventsIcon,
-    ExpandMore as ExpandMoreIcon,
-    History as HistoryIcon,
-    LocationOn as LocationOnIcon,
-    Public as PublicIcon,
-    Remove as RemoveIcon,
-    Sailing as SailingIcon,
-    ShoppingCart as ShoppingCartIcon,
+    Add as AddIcon, EmojiEvents as EmojiEventsIcon, ExpandMore as ExpandMoreIcon,
+    History as HistoryIcon, LocationOn as LocationOnIcon, Public as PublicIcon,
+    Remove as RemoveIcon, Sailing as SailingIcon, ShoppingCart as ShoppingCartIcon,
     Warning as WarningIcon,
 } from '@mui/icons-material';
 import api from '../../utils/api';
 import {fetchActiveUser} from '../../utils/utils';
 
-// Tab panel component for tab layout
-function TabPanel(props) {
-    const { children, value, index, ...other } = props;
-
+// Extract TabPanel component
+function TabPanel({children, value, index, ...other}) {
     return (
         <div
             role="tabpanel"
@@ -79,8 +34,134 @@ function TabPanel(props) {
     );
 }
 
+// Extract basic dialogs as reusable components
+const ImpositionDialog = ({open, onClose, onPurchase, imposition, disrepute}) => (
+    <Dialog open={open} onClose={onClose}>
+        <DialogTitle>Purchase Imposition</DialogTitle>
+        <DialogContent>
+            {imposition && (
+                <>
+                    <Typography variant="h6">{imposition.name}</Typography>
+                    <Typography variant="body2" paragraph>
+                        Cost: <strong>{imposition.displayCost} Disrepute</strong>
+                    </Typography>
+                    <Typography variant="body1" paragraph>{imposition.effect}</Typography>
+                    {imposition.description && (
+                        <Typography variant="body2" color="text.secondary" paragraph>
+                            {imposition.description}
+                        </Typography>
+                    )}
+                    <DialogContentText>
+                        Your current Disrepute: <strong>{disrepute}</strong>
+                    </DialogContentText>
+                    <DialogContentText color="error">
+                        Are you sure you want to purchase this imposition?
+                    </DialogContentText>
+                </>
+            )}
+        </DialogContent>
+        <DialogActions>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onPurchase} color="primary" variant="contained">Purchase</Button>
+        </DialogActions>
+    </Dialog>
+);
+
+const PortDialog = ({open, onClose, onSubmit, value, onChange, availablePorts, favoredPorts}) => (
+    <Dialog open={open} onClose={onClose}>
+        <DialogTitle>Set Favored Port</DialogTitle>
+        <DialogContent>
+            <DialogContentText>
+                Choose a port to designate as a favored port. This will grant a bonus to all Infamy checks made at this port.
+            </DialogContentText>
+            <FormControl fullWidth margin="normal">
+                <InputLabel id="favored-port-select-label">Port</InputLabel>
+                <Select
+                    labelId="favored-port-select-label"
+                    value={value}
+                    onChange={onChange}
+                    label="Port"
+                >
+                    {availablePorts
+                        .filter(port => !favoredPorts.some(p => p.port_name === port))
+                        .map((port) => (
+                            <MenuItem key={port} value={port}>{port}</MenuItem>
+                        ))}
+                </Select>
+            </FormControl>
+        </DialogContent>
+        <DialogActions>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onSubmit} color="primary" variant="contained" disabled={!value}>
+                Set as Favored Port
+            </Button>
+        </DialogActions>
+    </Dialog>
+);
+
+const SacrificeDialog = ({open, onClose, onSubmit, value, onChange}) => (
+    <Dialog open={open} onClose={onClose}>
+        <DialogTitle>Sacrifice Crew Member</DialogTitle>
+        <DialogContent>
+            <DialogContentText color="error">
+                <WarningIcon /> This sacrifice is always fatal, and returning the victim to life results in the loss of 1d6 points of Disrepute.
+            </DialogContentText>
+            <TextField
+                autoFocus
+                margin="dense"
+                label="Crew Member Name"
+                type="text"
+                fullWidth
+                value={value}
+                onChange={onChange}
+            />
+        </DialogContent>
+        <DialogActions>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onSubmit} color="error" variant="contained" disabled={!value}>
+                Sacrifice
+            </Button>
+        </DialogActions>
+    </Dialog>
+);
+
+// Extract Impositions Table component
+const ImpositionsTable = ({impositions, infamyThreshold, canPurchase, onPurchase}) => (
+    <TableContainer>
+        <Table>
+            <TableHead>
+                <TableRow>
+                    <TableCell>Imposition</TableCell>
+                    <TableCell>Cost</TableCell>
+                    <TableCell>Effect</TableCell>
+                    <TableCell>Action</TableCell>
+                </TableRow>
+            </TableHead>
+            <TableBody>
+                {impositions.map((imposition) => (
+                    <TableRow key={imposition.id}>
+                        <TableCell>{imposition.name}</TableCell>
+                        <TableCell>{imposition.displayCost}</TableCell>
+                        <TableCell>{imposition.effect}</TableCell>
+                        <TableCell>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={() => onPurchase(imposition)}
+                                disabled={!imposition.isAvailable || !canPurchase}
+                            >
+                                Purchase
+                            </Button>
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    </TableContainer>
+);
+
 const Infamy = () => {
-    // State variables
+    // State variables - grouped by purpose
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -94,8 +175,6 @@ const Infamy = () => {
         threshold: 'None',
         favored_ports: []
     });
-
-    // Impositions data
     const [impositions, setImpositions] = useState({
         disgraceful: [],
         despicable: [],
@@ -103,8 +182,6 @@ const Infamy = () => {
         loathsome: [],
         vile: []
     });
-
-    // Port visit data
     const [ports, setPorts] = useState([]);
     const [portHistory, setPortHistory] = useState({});
     const [availablePorts, setAvailablePorts] = useState([
@@ -112,8 +189,6 @@ const Infamy = () => {
         'Ollo', 'Beachcomber', 'Slipcove', 'Tidewater Rock', 'Drenchport',
         'Bag Island', 'Hell Harbor', 'Firegrass Isle', 'Cypress Point'
     ]);
-
-    // History data
     const [infamyHistory, setInfamyHistory] = useState([]);
 
     // Form values
@@ -130,15 +205,11 @@ const Infamy = () => {
     const [adjustmentReason, setAdjustmentReason] = useState('');
     const [adjusting, setAdjusting] = useState(false);
 
-    // Imposition purchase
+    // Dialog states
     const [selectedImposition, setSelectedImposition] = useState(null);
     const [impositionDialogOpen, setImpositionDialogOpen] = useState(false);
-
-    // Sacrifice crew (Despicable feature)
     const [crewName, setCrewName] = useState('');
     const [sacrificeDialogOpen, setSacrificeDialogOpen] = useState(false);
-
-    // Favored port selection
     const [newFavoredPort, setNewFavoredPort] = useState('');
     const [favoredPortDialogOpen, setFavoredPortDialogOpen] = useState(false);
 
@@ -158,33 +229,30 @@ const Infamy = () => {
         }
     };
 
-    // Main data fetch function
+    // Consolidated fetch function
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Get infamy status
-            const statusResponse = await api.get('/infamy/status');
+            // Use Promise.all to fetch data in parallel
+            const [statusResponse, impositionsResponse, portsResponse, historyResponse] = await Promise.all([
+                api.get('/infamy/status'),
+                api.get('/infamy/impositions'),
+                api.get('/infamy/ports'),
+                api.get('/infamy/history')
+            ]);
+
             setInfamyStatus(statusResponse.data);
-
-            // Get available impositions
-            const impositionsResponse = await api.get('/infamy/impositions');
             setImpositions(impositionsResponse.data.impositions);
-
-            // Get port visit history
-            const portsResponse = await api.get('/infamy/ports');
             setPorts(portsResponse.data.ports);
 
-            // Build port history object for easier access
+            // Build port history object
             const portHistoryObj = {};
             portsResponse.data.ports.forEach(port => {
                 portHistoryObj[port.name] = port.thresholds;
             });
             setPortHistory(portHistoryObj);
 
-            // Get infamy history
-            const historyResponse = await api.get('/infamy/history');
             setInfamyHistory(historyResponse.data.history);
-
             setLoading(false);
         } catch (error) {
             console.error('Error fetching infamy data:', error);
@@ -193,20 +261,15 @@ const Infamy = () => {
         }
     };
 
-    // Fetch available plunder
     const fetchAvailablePlunder = async () => {
         try {
-            // Search for plunder items by itemid
             const plunderItems = await api.get('/loot/search', {
-                params: {
-                    itemid: '7807'
-                }
+                params: { itemid: '7807' }
             });
 
             let plunderCount = 0;
-            if (plunderItems && plunderItems.data && plunderItems.data.items) {
+            if (plunderItems?.data?.items) {
                 plunderItems.data.items.forEach(item => {
-                    // Only count items that are not sold or trashed
                     if (item.status !== 'Sold' && item.status !== 'Trashed') {
                         plunderCount += parseInt(item.quantity) || 0;
                     }
@@ -218,6 +281,7 @@ const Infamy = () => {
             console.error('Error fetching plunder count:', error);
         }
     };
+
     // Handle tab change
     const handleTabChange = (event, newValue) => {
         setTabValue(newValue);
@@ -254,67 +318,67 @@ const Infamy = () => {
         return portName;
     };
 
-// Fixed handleGainInfamy function for frontend
-const handleGainInfamy = async () => {
-    try {
-        setError('');
-        setSuccess('');
+    // Handle gaining infamy
+    const handleGainInfamy = async () => {
+        try {
+            setError('');
+            setSuccess('');
 
-        if (!selectedPort) {
-            setError('Please select a port');
-            return;
+            if (!selectedPort) {
+                setError('Please select a port');
+                return;
+            }
+
+            if (!skillCheck && plunderSpent === 0) {
+                setError('Please enter a skill check result or spend plunder');
+                return;
+            }
+
+            // Ensure at least 3 plunder is spent when reroll is selected
+            let effectivePlunderSpent = parseInt(plunderSpent) || 0;
+            if (rerollWithPlunder && effectivePlunderSpent < 3) {
+                effectivePlunderSpent = 3; // Force minimum plunder to 3 for reroll
+            }
+
+            if (effectivePlunderSpent > availablePlunder) {
+                setError(`Not enough plunder available. You have ${availablePlunder} but tried to spend ${effectivePlunderSpent}.`);
+                return;
+            }
+
+            const response = await api.post('/infamy/gain', {
+                port: selectedPort,
+                skillCheck: parseInt(skillCheck) || 0,
+                skillUsed,
+                plunderSpent: effectivePlunderSpent,
+                reroll: rerollWithPlunder
+            });
+
+            // If a new threshold was reached
+            if (response.data.newThreshold) {
+                setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}! You have reached the ${response.data.newThreshold} threshold!`);
+            } else {
+                setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}`);
+            }
+
+            // Reset form
+            setSkillCheck('');
+            setPlunderSpent(0);
+            setRerollWithPlunder(false);
+
+            // Refresh data
+            fetchData();
+            fetchAvailablePlunder();
+        } catch (error) {
+            console.error('Error gaining infamy:', error);
+            if (error.response?.data?.message) {
+                setError(error.response.data.message);
+            } else {
+                setError('Failed to gain infamy. Please try again.');
+            }
         }
+    };
 
-        if (!skillCheck && plunderSpent === 0) {
-            setError('Please enter a skill check result or spend plunder');
-            return;
-        }
-
-        // Ensure at least 3 plunder is spent when reroll is selected
-        let effectivePlunderSpent = parseInt(plunderSpent) || 0;
-        if (rerollWithPlunder && effectivePlunderSpent < 3) {
-            effectivePlunderSpent = 3; // Force minimum plunder to 3 for reroll
-        }
-
-        if (effectivePlunderSpent > availablePlunder) {
-            setError(`Not enough plunder available. You have ${availablePlunder} but tried to spend ${effectivePlunderSpent}.`);
-            return;
-        }
-
-        const response = await api.post('/infamy/gain', {
-            port: selectedPort,
-            skillCheck: parseInt(skillCheck) || 0,
-            skillUsed,
-            plunderSpent: effectivePlunderSpent, // Use effective plunder amount
-            reroll: rerollWithPlunder
-        });
-
-        setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}`);
-
-        // If a new threshold was reached
-        if (response.data.newThreshold) {
-            setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}! You have reached the ${response.data.newThreshold} threshold!`);
-        }
-
-        // Reset form
-        setSkillCheck('');
-        setPlunderSpent(0);
-        setRerollWithPlunder(false);
-
-        // Refresh data
-        fetchData();
-        fetchAvailablePlunder();
-    } catch (error) {
-        console.error('Error gaining infamy:', error);
-        if (error.response && error.response.data && error.response.data.message) {
-            setError(error.response.data.message);
-        } else {
-            setError('Failed to gain infamy. Please try again.');
-        }
-    }
-};
-
-    // Handle DM adjustment of infamy/disrepute
+    // Handle DM adjustment of infamy/disrepute - fix the created_at date issue
     const handleAdjustInfamy = async () => {
         if (!adjustmentReason) {
             setError('Please provide a reason for this adjustment');
@@ -333,7 +397,8 @@ const handleGainInfamy = async () => {
             const response = await api.post('/infamy/adjust', {
                 infamyChange,
                 disreputeChange,
-                reason: adjustmentReason
+                reason: adjustmentReason,
+                created_at: new Date().toISOString() // Add created_at date to fix history issue
             });
 
             setAdjusting(false);
@@ -347,7 +412,7 @@ const handleGainInfamy = async () => {
             fetchData();
         } catch (error) {
             setAdjusting(false);
-            if (error.response && error.response.data && error.response.data.message) {
+            if (error.response?.data?.message) {
                 setError(error.response.data.message);
             } else {
                 setError('Error adjusting infamy/disrepute');
@@ -355,13 +420,12 @@ const handleGainInfamy = async () => {
         }
     };
 
-    // Handle opening imposition dialog
+    // Dialog handlers - consolidated for simplicity
     const handleOpenImpositionDialog = (imposition) => {
         setSelectedImposition(imposition);
         setImpositionDialogOpen(true);
     };
 
-    // Handle purchasing an imposition
     const handlePurchaseImposition = async () => {
         try {
             const response = await api.post('/infamy/purchase', {
@@ -370,12 +434,10 @@ const handleGainInfamy = async () => {
 
             setImpositionDialogOpen(false);
             setSuccess(`Successfully purchased "${selectedImposition.name}" for ${response.data.costPaid} Disrepute`);
-
-            // Refresh data
             fetchData();
         } catch (error) {
             console.error('Error purchasing imposition:', error);
-            if (error.response && error.response.data && error.response.data.message) {
+            if (error.response?.data?.message) {
                 setError(error.response.data.message);
             } else {
                 setError('Failed to purchase imposition. Please try again.');
@@ -384,7 +446,6 @@ const handleGainInfamy = async () => {
         }
     };
 
-    // Handle setting a favored port
     const handleSetFavoredPort = async () => {
         try {
             if (!newFavoredPort) {
@@ -398,15 +459,11 @@ const handleGainInfamy = async () => {
 
             setFavoredPortDialogOpen(false);
             setSuccess(`${newFavoredPort} set as a favored port with +${response.data.bonus} bonus`);
-
-            // Reset form
             setNewFavoredPort('');
-
-            // Refresh data
             fetchData();
         } catch (error) {
             console.error('Error setting favored port:', error);
-            if (error.response && error.response.data && error.response.data.message) {
+            if (error.response?.data?.message) {
                 setError(error.response.data.message);
             } else {
                 setError('Failed to set favored port. Please try again.');
@@ -415,7 +472,6 @@ const handleGainInfamy = async () => {
         }
     };
 
-    // Handle sacrificing a crew member
     const handleSacrificeCrew = async () => {
         try {
             if (!crewName) {
@@ -429,15 +485,11 @@ const handleGainInfamy = async () => {
 
             setSacrificeDialogOpen(false);
             setSuccess(`Sacrificed ${crewName} and gained ${response.data.disreputeGained} Disrepute`);
-
-            // Reset form
             setCrewName('');
-
-            // Refresh data
             fetchData();
         } catch (error) {
             console.error('Error sacrificing crew:', error);
-            if (error.response && error.response.data && error.response.data.message) {
+            if (error.response?.data?.message) {
                 setError(error.response.data.message);
             } else {
                 setError('Failed to sacrifice crew member. Please try again.');
@@ -448,6 +500,7 @@ const handleGainInfamy = async () => {
 
     // Format date for display
     const formatDate = (dateString) => {
+        if (!dateString) return '';
         const date = new Date(dateString);
         return date.toLocaleString();
     };
@@ -462,7 +515,6 @@ const handleGainInfamy = async () => {
         if (infamy >= 30) sphere += 100;
         if (infamy >= 40) sphere += 100;
         if (infamy >= 55) sphere += 100;
-
         return sphere;
     };
 
@@ -492,6 +544,36 @@ const handleGainInfamy = async () => {
             </Container>
         );
     }
+
+    // Render ImpositionAccordion for each threshold level
+    const renderImpositionAccordion = (title, threshold, impositionsList) => (
+        <Accordion defaultExpanded={threshold === 10}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="h6">
+                    {title} Impositions
+                    {infamyStatus.infamy < threshold && (
+                        <Chip size="small" label="Locked" color="default" sx={{ ml: 2 }} />
+                    )}
+                </Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+                <Typography variant="body2" paragraph color="text.secondary">
+                    Requires {threshold}+ Infamy ({title} threshold)
+                </Typography>
+
+                {impositionsList.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">No {title.toLowerCase()} impositions available</Typography>
+                ) : (
+                    <ImpositionsTable
+                        impositions={impositionsList}
+                        infamyThreshold={threshold}
+                        canPurchase={infamyStatus.infamy >= threshold}
+                        onPurchase={handleOpenImpositionDialog}
+                    />
+                )}
+            </AccordionDetails>
+        </Accordion>
+    );
 
     return (
         <Container maxWidth="lg">
@@ -653,7 +735,7 @@ const handleGainInfamy = async () => {
                                     type="number"
                                     value={skillCheck}
                                     onChange={(e) => setSkillCheck(e.target.value)}
-                                    helperText="Enter the total result of your Bluff, Intimidate, or Perform check including bonuses on this page"
+                                    helperText="Enter the total result of your skill check including bonuses"
                                 />
                             </Grid>
 
@@ -815,7 +897,6 @@ const handleGainInfamy = async () => {
                                         color="error"
                                         fullWidth
                                         onClick={() => setSacrificeDialogOpen(true)}
-                                        startIcon={<SailingIcon/>}
                                         startIcon={<SailingIcon />}
                                     >
                                         Sacrifice Crew
@@ -833,270 +914,12 @@ const handleGainInfamy = async () => {
                         Impositions are benefits you can purchase using your Disrepute. Your current Disrepute: <strong>{infamyStatus.disrepute}</strong>
                     </Typography>
 
-                    {/* Disgraceful Impositions */}
-                    <Accordion defaultExpanded={true}>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                            <Typography variant="h6">
-                                Disgraceful Impositions
-                                {infamyStatus.infamy < 10 && (
-                                    <Chip size="small" label="Locked" color="default" sx={{ ml: 2 }} />
-                                )}
-                            </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                            <Typography variant="body2" paragraph color="text.secondary">
-                                Requires 10+ Infamy (Disgraceful threshold)
-                            </Typography>
-
-                            {impositions.disgraceful.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">No disgraceful impositions available</Typography>
-                            ) : (
-                                <TableContainer>
-                                    <Table>
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell>Imposition</TableCell>
-                                                <TableCell>Cost</TableCell>
-                                                <TableCell>Effect</TableCell>
-                                                <TableCell>Action</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {impositions.disgraceful.map((imposition) => (
-                                                <TableRow key={imposition.id}>
-                                                    <TableCell>{imposition.name}</TableCell>
-                                                    <TableCell>{imposition.displayCost}</TableCell>
-                                                    <TableCell>{imposition.effect}</TableCell>
-                                                    <TableCell>
-                                                        <Button
-                                                            variant="outlined"
-                                                            size="small"
-                                                            onClick={() => handleOpenImpositionDialog(imposition)}
-                                                            disabled={!imposition.isAvailable || infamyStatus.infamy < 10}
-                                                        >
-                                                            Purchase
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            )}
-                        </AccordionDetails>
-                    </Accordion>
-
-                    {/* Despicable Impositions */}
-                    <Accordion>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                            <Typography variant="h6">
-                                Despicable Impositions
-                                {infamyStatus.infamy < 20 && (
-                                    <Chip size="small" label="Locked" color="default" sx={{ ml: 2 }} />
-                                )}
-                            </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                            <Typography variant="body2" paragraph color="text.secondary">
-                                Requires 20+ Infamy (Despicable threshold)
-                            </Typography>
-
-                            {impositions.despicable.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">No despicable impositions available</Typography>
-                            ) : (
-                                <TableContainer>
-                                    <Table>
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell>Imposition</TableCell>
-                                                <TableCell>Cost</TableCell>
-                                                <TableCell>Effect</TableCell>
-                                                <TableCell>Action</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {impositions.despicable.map((imposition) => (
-                                                <TableRow key={imposition.id}>
-                                                    <TableCell>{imposition.name}</TableCell>
-                                                    <TableCell>{imposition.displayCost}</TableCell>
-                                                    <TableCell>{imposition.effect}</TableCell>
-                                                    <TableCell>
-                                                        <Button
-                                                            variant="outlined"
-                                                            size="small"
-                                                            onClick={() => handleOpenImpositionDialog(imposition)}
-                                                            disabled={!imposition.isAvailable || infamyStatus.infamy < 20}
-                                                        >
-                                                            Purchase
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            )}
-                        </AccordionDetails>
-                    </Accordion>
-
-                    {/* Notorious Impositions */}
-                    <Accordion>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                            <Typography variant="h6">
-                                Notorious Impositions
-                                {infamyStatus.infamy < 30 && (
-                                    <Chip size="small" label="Locked" color="default" sx={{ ml: 2 }} />
-                                )}
-                            </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                            <Typography variant="body2" paragraph color="text.secondary">
-                                Requires 30+ Infamy (Notorious threshold)
-                            </Typography>
-
-                            {impositions.notorious.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">No notorious impositions available</Typography>
-                            ) : (
-                                <TableContainer>
-                                    <Table>
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell>Imposition</TableCell>
-                                                <TableCell>Cost</TableCell>
-                                                <TableCell>Effect</TableCell>
-                                                <TableCell>Action</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {impositions.notorious.map((imposition) => (
-                                                <TableRow key={imposition.id}>
-                                                    <TableCell>{imposition.name}</TableCell>
-                                                    <TableCell>{imposition.displayCost}</TableCell>
-                                                    <TableCell>{imposition.effect}</TableCell>
-                                                    <TableCell>
-                                                        <Button
-                                                            variant="outlined"
-                                                            size="small"
-                                                            onClick={() => handleOpenImpositionDialog(imposition)}
-                                                            disabled={!imposition.isAvailable || infamyStatus.infamy < 30}
-                                                        >
-                                                            Purchase
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            )}
-                        </AccordionDetails>
-                    </Accordion>
-
-                    {/* Loathsome Impositions */}
-                    <Accordion>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                            <Typography variant="h6">
-                                Loathsome Impositions
-                                {infamyStatus.infamy < 40 && (
-                                    <Chip size="small" label="Locked" color="default" sx={{ ml: 2 }} />
-                                )}
-                            </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                            <Typography variant="body2" paragraph color="text.secondary">
-                                Requires 40+ Infamy (Loathsome threshold)
-                            </Typography>
-
-                            {impositions.loathsome.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">No loathsome impositions available</Typography>
-                            ) : (
-                                <TableContainer>
-                                    <Table>
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell>Imposition</TableCell>
-                                                <TableCell>Cost</TableCell>
-                                                <TableCell>Effect</TableCell>
-                                                <TableCell>Action</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {impositions.loathsome.map((imposition) => (
-                                                <TableRow key={imposition.id}>
-                                                    <TableCell>{imposition.name}</TableCell>
-                                                    <TableCell>{imposition.displayCost}</TableCell>
-                                                    <TableCell>{imposition.effect}</TableCell>
-                                                    <TableCell>
-                                                        <Button
-                                                            variant="outlined"
-                                                            size="small"
-                                                            onClick={() => handleOpenImpositionDialog(imposition)}
-                                                            disabled={!imposition.isAvailable || infamyStatus.infamy < 40}
-                                                        >
-                                                            Purchase
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            )}
-                        </AccordionDetails>
-                    </Accordion>
-
-                    {/* Vile Impositions */}
-                    <Accordion>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                            <Typography variant="h6">
-                                Vile Impositions
-                                {infamyStatus.infamy < 55 && (
-                                    <Chip size="small" label="Locked" color="default" sx={{ ml: 2 }} />
-                                )}
-                            </Typography>
-                        </AccordionSummary>
-                        <AccordionDetails>
-                            <Typography variant="body2" paragraph color="text.secondary">
-                                Requires 55+ Infamy (Vile threshold)
-                            </Typography>
-
-                            {impositions.vile.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">No vile impositions available</Typography>
-                            ) : (
-                                <TableContainer>
-                                    <Table>
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell>Imposition</TableCell>
-                                                <TableCell>Cost</TableCell>
-                                                <TableCell>Effect</TableCell>
-                                                <TableCell>Action</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {impositions.vile.map((imposition) => (
-                                                <TableRow key={imposition.id}>
-                                                    <TableCell>{imposition.name}</TableCell>
-                                                    <TableCell>{imposition.displayCost}</TableCell>
-                                                    <TableCell>{imposition.effect}</TableCell>
-                                                    <TableCell>
-                                                        <Button
-                                                            variant="outlined"
-                                                            size="small"
-                                                            onClick={() => handleOpenImpositionDialog(imposition)}
-                                                            disabled={!imposition.isAvailable || infamyStatus.infamy < 55}
-                                                        >
-                                                            Purchase
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </TableContainer>
-                            )}
-                        </AccordionDetails>
-                    </Accordion>
+                    {/* Render accordions for each threshold level */}
+                    {renderImpositionAccordion('Disgraceful', 10, impositions.disgraceful)}
+                    {renderImpositionAccordion('Despicable', 20, impositions.despicable)}
+                    {renderImpositionAccordion('Notorious', 30, impositions.notorious)}
+                    {renderImpositionAccordion('Loathsome', 40, impositions.loathsome)}
+                    {renderImpositionAccordion('Vile', 55, impositions.vile)}
                 </TabPanel>
 
                 {/* History Tab */}
@@ -1183,25 +1006,6 @@ const handleGainInfamy = async () => {
                             <Typography variant="body2">• Failure: No change in Infamy or Disrepute</Typography>
                         </Box>
 
-                        <Typography variant="h6" gutterBottom>Infamy and Disrepute per Port</Typography>
-                        <Typography variant="body1" paragraph>
-                            No matter how impressionable (or drunk) the crowd, no one wants to hear the same tales and boasts over and over again.
-                            Thus, a group can only gain a maximum of 5 points of Infamy and Disrepute from any particular port. However, this amount
-                            resets every time a group reaches a new Infamy threshold.
-                        </Typography>
-
-                        <Typography variant="h6" gutterBottom>Plunder and Infamy</Typography>
-                        <Typography variant="body1" paragraph>
-                            Before making an Infamy check, the party can choose to spend plunder to influence
-                            the result—any tale is more believable when it comes from someone throwing around her wealth and buying drinks
-                            for the listeners. Every point of plunder expended adds a +2 bonus to the character's skill check to earn Infamy.
-                        </Typography>
-
-                        <Typography variant="body1" paragraph>
-                            If a PC fails an Infamy check, the party can choose to spend 3 points of plunder to immediately reroll
-                            the check. The party may only make one reroll attempt per day.
-                        </Typography>
-
                         <Typography variant="h6" gutterBottom>Infamy Thresholds</Typography>
                         <TableContainer>
                             <Table>
@@ -1278,96 +1082,32 @@ const handleGainInfamy = async () => {
                 </TabPanel>
             </Box>
 
-            {/* Purchase Imposition Dialog */}
-            <Dialog open={impositionDialogOpen} onClose={() => setImpositionDialogOpen(false)}>
-                <DialogTitle>Purchase Imposition</DialogTitle>
-                <DialogContent>
-                    {selectedImposition && (
-                        <>
-                            <Typography variant="h6">{selectedImposition.name}</Typography>
-                            <Typography variant="body2" paragraph>
-                                Cost: <strong>{selectedImposition.displayCost} Disrepute</strong>
-                            </Typography>
-                            <Typography variant="body1" paragraph>{selectedImposition.effect}</Typography>
-                            {selectedImposition.description && (
-                                <Typography variant="body2" color="text.secondary" paragraph>
-                                    {selectedImposition.description}
-                                </Typography>
-                            )}
-                            <DialogContentText>
-                                Your current Disrepute: <strong>{infamyStatus.disrepute}</strong>
-                            </DialogContentText>
-                            <DialogContentText color="error">
-                                Are you sure you want to purchase this imposition?
-                            </DialogContentText>
-                        </>
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setImpositionDialogOpen(false)}>Cancel</Button>
-                    <Button onClick={handlePurchaseImposition} color="primary" variant="contained">
-                        Purchase
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            {/* Dialogs */}
+            <ImpositionDialog
+                open={impositionDialogOpen}
+                onClose={() => setImpositionDialogOpen(false)}
+                onPurchase={handlePurchaseImposition}
+                imposition={selectedImposition}
+                disrepute={infamyStatus.disrepute}
+            />
 
-            {/* Set Favored Port Dialog */}
-            <Dialog open={favoredPortDialogOpen} onClose={() => setFavoredPortDialogOpen(false)}>
-                <DialogTitle>Set Favored Port</DialogTitle>
-                <DialogContent>
-                    <DialogContentText>
-                        Choose a port to designate as a favored port. This will grant a bonus to all Infamy checks made at this port.
-                    </DialogContentText>
-                    <FormControl fullWidth margin="normal">
-                        <InputLabel id="favored-port-select-label">Port</InputLabel>
-                        <Select
-                            labelId="favored-port-select-label"
-                            value={newFavoredPort}
-                            onChange={(e) => setNewFavoredPort(e.target.value)}
-                            label="Port"
-                        >
-                            {availablePorts
-                                .filter(port => !infamyStatus.favored_ports.some(p => p.port_name === port))
-                                .map((port) => (
-                                    <MenuItem key={port} value={port}>
-                                        {port}
-                                    </MenuItem>
-                                ))}
-                        </Select>
-                    </FormControl>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setFavoredPortDialogOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSetFavoredPort} color="primary" variant="contained" disabled={!newFavoredPort}>
-                        Set as Favored Port
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            <PortDialog
+                open={favoredPortDialogOpen}
+                onClose={() => setFavoredPortDialogOpen(false)}
+                onSubmit={handleSetFavoredPort}
+                value={newFavoredPort}
+                onChange={(e) => setNewFavoredPort(e.target.value)}
+                availablePorts={availablePorts}
+                favoredPorts={infamyStatus.favored_ports}
+            />
 
-            {/* Sacrifice Crew Dialog */}
-            <Dialog open={sacrificeDialogOpen} onClose={() => setSacrificeDialogOpen(false)}>
-                <DialogTitle>Sacrifice Crew Member</DialogTitle>
-                <DialogContent>
-                    <DialogContentText color="error">
-                        <WarningIcon /> This sacrifice is always fatal, and returning the victim to life results in the loss of 1d6 points of Disrepute.
-                    </DialogContentText>
-                    <TextField
-                        autoFocus
-                        margin="dense"
-                        label="Crew Member Name"
-                        type="text"
-                        fullWidth
-                        value={crewName}
-                        onChange={(e) => setCrewName(e.target.value)}
-                    />
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setSacrificeDialogOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSacrificeCrew} color="error" variant="contained" disabled={!crewName}>
-                        Sacrifice
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            <SacrificeDialog
+                open={sacrificeDialogOpen}
+                onClose={() => setSacrificeDialogOpen(false)}
+                onSubmit={handleSacrificeCrew}
+                value={crewName}
+                onChange={(e) => setCrewName(e.target.value)}
+            />
         </Container>
     );
 };
