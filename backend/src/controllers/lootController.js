@@ -9,8 +9,93 @@ const {calculateFinalValue} = require('../services/calculateFinalValue');
 const {calculateItemSaleValue, calculateTotalSaleValue} = require('../utils/saleValueCalculator');
 
 /**
- * Helper function for custom rounding of values
+ * Common utility functions to reduce duplication
  */
+// Validate DM permission
+const requireDM = (req) => {
+  if (req.user.role !== 'DM') {
+    throw controllerFactory.createAuthorizationError('Only DMs can perform this operation');
+  }
+};
+// Validate array of items
+const validateItems = (items, fieldName = 'items') => {
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    throw controllerFactory.createValidationError(`${fieldName} array is required`);
+  }
+  return items;
+};
+// Filter valid and invalid sale items
+const filterValidSaleItems = (items) => {
+  const validItems = items.filter(item => item.unidentified !== true && item.value !== null);
+  const invalidItems = items.filter(item => item.unidentified === true || item.value === null);
+  return { validItems, invalidItems };
+};
+// Create gold entry for sales
+const createGoldEntry = (totalSold, notes) => ({
+  session_date: new Date(),
+  transaction_type: 'Sale',
+  platinum: 0,
+  gold: Math.floor(totalSold),
+  silver: Math.floor((totalSold % 1) * 10),
+  copper: Math.floor(((totalSold * 10) % 1) * 10),
+  notes
+});
+// Insert gold entry into database
+const insertGoldEntry = async (client, entry) => {
+  const result = await client.query(
+    'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+    [entry.session_date, entry.transaction_type, entry.platinum, entry.gold, entry.silver, entry.copper, entry.notes]
+  );
+  return result.rows[0];
+};
+// Process sale items common logic
+const processSaleItems = async (client, validItems, notes) => {
+  const soldItems = [];
+  const totalSold = calculateTotalSaleValue(validItems);
+  const validItemIds = validItems.map(item => item.id);
+
+  // Record each item as sold
+  for (const item of validItems) {
+    const saleValue = calculateItemSaleValue(item);
+    await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)',
+      [item.id, saleValue, new Date()]);
+
+    soldItems.push({
+      id: item.id,
+      name: item.name,
+      value: parseFloat(item.value),
+      soldFor: parseFloat(saleValue.toFixed(2))
+    });
+  }
+
+  // Update status to Sold
+  await client.query("UPDATE loot SET status = 'Sold' WHERE id = ANY($1)", [validItemIds]);
+
+  // Create gold entry
+  const goldEntry = createGoldEntry(totalSold, notes);
+  const goldResult = await insertGoldEntry(client, goldEntry);
+
+  return { soldItems, totalSold, goldResult };
+};
+// Create standardized sale response
+const createSaleResponse = (soldItems, totalSold, goldResult, keptItems = [], invalidItems = []) => ({
+  sold: {
+    items: soldItems,
+    count: soldItems.length,
+    total: parseFloat(totalSold.toFixed(2))
+  },
+  kept: keptItems.length > 0 ? {
+    ids: keptItems,
+    count: keptItems.length
+  } : undefined,
+  skipped: invalidItems.length > 0 ? {
+    items: invalidItems.map(item => ({id: item.id, name: item.name})),
+    count: invalidItems.length,
+    reason: 'Items are either unidentified or have no value'
+  } : undefined,
+  gold: goldResult
+});
+// Helper for custom rounding of values
 const customRounding = (value) => {
     const randomValue = Math.random();
     if (randomValue < 0.15) {
@@ -582,10 +667,8 @@ const updateSingleLootStatus = async (req, res) => {
  * Get pending sale items (DM only)
  */
 const getPendingSaleItems = async (req, res) => {
-    // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can access pending sale items');
-    }
+    // Ensure DM permission
+    requireDM(req);
 
     try {
         const result = await dbUtils.executeQuery('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
@@ -993,9 +1076,7 @@ const dmUpdateItem = async (req, res) => {
     }
 
     // Verify DM role
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can perform this operation');
-    }
+    requireDM(req);
 
     return await dbUtils.executeTransaction(async (client) => {
         // Get original item to check if value has changed
@@ -1150,9 +1231,7 @@ const getUnprocessedCount = async (req, res) => {
 const identifyItems = async (req, res) => {
     const {items, characterId, spellcraftRolls, takeTen} = req.body;
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-        throw controllerFactory.createValidationError('Items array is required');
-    }
+    validateItems(items);
 
     return await dbUtils.executeTransaction(async (client) => {
         // Get current Golarion date
@@ -1452,9 +1531,7 @@ const getModsById = async (req, res) => {
  */
 const confirmSale = async (req, res) => {
     // Verify DM role
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can confirm sales');
-    }
+    requireDM(req);
 
     return await dbUtils.executeTransaction(async (client) => {
         const pendingSaleItemsResult = await client.query('SELECT * FROM loot WHERE status = $1', ['Pending Sale']);
@@ -1465,60 +1542,21 @@ const confirmSale = async (req, res) => {
         }
 
         // Filter out unidentified items and items with null values
-        const validItems = allPendingItems.filter(item =>
-            item.unidentified !== true && item.value !== null
-        );
-
-        const invalidItems = allPendingItems.filter(item =>
-            item.unidentified === true || item.value === null
-        );
+        const {validItems, invalidItems} = filterValidSaleItems(allPendingItems);
 
         if (validItems.length === 0) {
             throw controllerFactory.createValidationError('All pending items are either unidentified or have no value');
         }
 
-        // Calculate total sale value using our utility function
-        const totalSold = calculateTotalSaleValue(validItems);
-
-        // Get the IDs of valid items
-        const validItemIds = validItems.map(item => item.id);
-
-        // Record each valid item as sold
-        const soldItems = [];
-        for (const item of validItems) {
-            const saleValue = calculateItemSaleValue(item);
-
-            const soldResult = await client.query(
-                'INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3) RETURNING *',
-                [item.id, saleValue, new Date()]
-            );
-
-            soldItems.push({
-                id: item.id,
-                name: item.name,
-                value: item.value,
-                soldFor: saleValue
-            });
-        }
-
-        // Update only the valid items to sold status
-        await client.query('UPDATE loot SET status = $1 WHERE id = ANY($2)', ['Sold', validItemIds]);
-
-        // Create gold entry
-        const goldEntry = {
-            session_date: new Date(),
-            transaction_type: 'Sale',
-            platinum: 0,
-            gold: Math.floor(totalSold),
-            silver: Math.floor((totalSold % 1) * 10),
-            copper: Math.floor(((totalSold * 10) % 1) * 10),
-            notes: `Sale of ${validItems.length} items`
-        };
-
-        const goldResult = await client.query(
-            'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
+        // Process the items for sale
+        const {soldItems, totalSold, goldResult} = await processSaleItems(
+            client,
+            validItems,
+            `Sale of ${validItems.length} items`
         );
+
+        // Generate the response
+        const response = createSaleResponse(soldItems, totalSold, goldResult, [], invalidItems);
 
         logger.info(`${validItems.length} items sold for ${totalSold.toFixed(2)} gold by DM ${req.user.id}`, {
             dmId: req.user.id,
@@ -1527,19 +1565,9 @@ const confirmSale = async (req, res) => {
             skippedItems: invalidItems.length
         });
 
-        return controllerFactory.sendSuccessResponse(res, {
-            sold: {
-                items: soldItems,
-                count: validItems.length,
-                total: parseFloat(totalSold.toFixed(2))
-            },
-            skipped: {
-                items: invalidItems.map(item => ({id: item.id, name: item.name})),
-                count: invalidItems.length,
-                reason: 'Items are either unidentified or have no value'
-            },
-            gold: goldResult.rows[0]
-        }, `Sale completed: ${validItems.length} items sold for ${totalSold.toFixed(2)} gold${invalidItems.length > 0 ? `, ${invalidItems.length} items skipped` : ''}`);
+        return controllerFactory.sendSuccessResponse(res, response,
+            `Sale completed: ${validItems.length} items sold for ${totalSold.toFixed(2)} gold${invalidItems.length > 0 ? `, ${invalidItems.length} items skipped` : ''}`
+        );
     });
 };
 /**
@@ -1548,14 +1576,8 @@ const confirmSale = async (req, res) => {
 const sellSelected = async (req, res) => {
     const {itemsToSell} = req.body;
 
-    if (!itemsToSell || !Array.isArray(itemsToSell) || itemsToSell.length === 0) {
-        throw controllerFactory.createValidationError('No items selected to sell');
-    }
-
-    // Verify DM role
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can sell items');
-    }
+    validateItems(itemsToSell, 'itemsToSell');
+    requireDM(req);
 
     return await dbUtils.executeTransaction(async (client) => {
         // Fetch the selected items to calculate sale value
@@ -1569,60 +1591,22 @@ const sellSelected = async (req, res) => {
             throw controllerFactory.createValidationError('No valid items to sell');
         }
 
-        // Filter out unidentified items and items with null values
-        const invalidItems = allItems.filter(item => item.unidentified === true || item.value === null);
-        const validItems = allItems.filter(item => item.unidentified !== true && item.value !== null);
+        // Filter items
+        const {validItems, invalidItems} = filterValidSaleItems(allItems);
 
         if (validItems.length === 0) {
             throw controllerFactory.createValidationError('All selected items are either unidentified or have no value');
         }
 
-        // Create a list of valid and invalid item IDs
-        const validItemIds = validItems.map(item => item.id);
-
-        // Use the utility function to calculate the total sale value
-        const totalSold = calculateTotalSaleValue(validItems);
-
-        // Record each valid item as sold in the sold table and collect details
-        const soldItems = [];
-        for (const item of validItems) {
-            const saleValue = calculateItemSaleValue(item);
-
-            await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
-                item.id,
-                saleValue,
-                new Date(),
-            ]);
-
-            soldItems.push({
-                id: item.id,
-                name: item.name,
-                value: parseFloat(item.value),
-                soldFor: parseFloat(saleValue.toFixed(2))
-            });
-        }
-
-        // Update the status of the sold items
-        await client.query(
-            "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
-            [validItemIds]
+        // Process the sale
+        const {soldItems, totalSold, goldResult} = await processSaleItems(
+            client,
+            validItems,
+            `Sale of ${validItems.length} selected items`
         );
 
-        // Record the sale in the gold table
-        const goldEntry = {
-            session_date: new Date(),
-            transaction_type: 'Sale',
-            platinum: 0,
-            gold: Math.floor(totalSold),
-            silver: Math.floor((totalSold % 1) * 10),
-            copper: Math.floor(((totalSold * 10) % 1) * 10),
-            notes: `Sale of ${validItems.length} selected items`
-        };
-
-        const goldResult = await client.query(
-            'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
-        );
+        // Create the response
+        const response = createSaleResponse(soldItems, totalSold, goldResult, [], invalidItems);
 
         logger.info(`${validItems.length} selected items sold for ${totalSold.toFixed(2)} gold by DM ${req.user.id}`, {
             dmId: req.user.id,
@@ -1631,18 +1615,9 @@ const sellSelected = async (req, res) => {
             invalidCount: invalidItems.length
         });
 
-        return controllerFactory.sendSuccessResponse(res, {
-            sold: {
-                items: soldItems,
-                count: validItems.length,
-                total: parseFloat(totalSold.toFixed(2))
-            },
-            skipped: {
-                items: invalidItems.map(item => ({id: item.id, name: item.name})),
-                count: invalidItems.length
-            },
-            gold: goldResult.rows[0]
-        }, `${validItems.length} items sold for ${totalSold.toFixed(2)} gold${invalidItems.length > 0 ? `, ${invalidItems.length} items skipped` : ''}`);
+        return controllerFactory.sendSuccessResponse(res, response,
+            `${validItems.length} items sold for ${totalSold.toFixed(2)} gold${invalidItems.length > 0 ? `, ${invalidItems.length} items skipped` : ''}`
+        );
     });
 };
 /**
@@ -1655,10 +1630,7 @@ const sellAllExcept = async (req, res) => {
         throw controllerFactory.createValidationError('Items to keep array is required');
     }
 
-    // Verify DM role
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can sell items');
-    }
+    requireDM(req);
 
     return await dbUtils.executeTransaction(async (client) => {
         const pendingItemsResult = await client.query(
@@ -1672,63 +1644,22 @@ const sellAllExcept = async (req, res) => {
             throw controllerFactory.createValidationError('No items to sell');
         }
 
-        // Filter out unidentified items and items with null values
-        const validItemsToSell = itemsToConsiderSelling.filter(item =>
-            item.unidentified !== true && item.value !== null
-        );
-
-        const invalidItems = itemsToConsiderSelling.filter(item =>
-            item.unidentified === true || item.value === null
-        );
+        // Filter items
+        const {validItems: validItemsToSell, invalidItems} = filterValidSaleItems(itemsToConsiderSelling);
 
         if (validItemsToSell.length === 0) {
             throw controllerFactory.createValidationError('All available items are either unidentified or have no value');
         }
 
-        // Get all the IDs of valid items to sell
-        const validItemIds = validItemsToSell.map(item => item.id);
-
-        // Use the utility function to calculate total sale value
-        const totalSold = calculateTotalSaleValue(validItemsToSell);
-
-        // Record each valid item as sold in the sold table and collect details
-        const soldItems = [];
-        for (const item of validItemsToSell) {
-            const saleValue = calculateItemSaleValue(item);
-
-            await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
-                item.id,
-                saleValue,
-                new Date(),
-            ]);
-
-            soldItems.push({
-                id: item.id,
-                name: item.name,
-                value: parseFloat(item.value),
-                soldFor: parseFloat(saleValue.toFixed(2))
-            });
-        }
-
-        await client.query(
-            "UPDATE loot SET status = 'Sold' WHERE id = ANY($1)",
-            [validItemIds]
+        // Process the sale
+        const {soldItems, totalSold, goldResult} = await processSaleItems(
+            client,
+            validItemsToSell,
+            `Sale of ${validItemsToSell.length} items (kept ${itemsToKeep.length})`
         );
 
-        const goldEntry = {
-            session_date: new Date(),
-            transaction_type: 'Sale',
-            platinum: 0,
-            gold: Math.floor(totalSold),
-            silver: Math.floor((totalSold % 1) * 10),
-            copper: Math.floor(((totalSold * 10) % 1) * 10),
-            notes: `Sale of ${validItemsToSell.length} items (kept ${itemsToKeep.length})`
-        };
-
-        const goldResult = await client.query(
-            'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
-        );
+        // Create the response
+        const response = createSaleResponse(soldItems, totalSold, goldResult, itemsToKeep, invalidItems);
 
         logger.info(`${validItemsToSell.length} items sold (keeping ${itemsToKeep.length}) for ${totalSold.toFixed(2)} gold by DM ${req.user.id}`, {
             dmId: req.user.id,
@@ -1738,22 +1669,9 @@ const sellAllExcept = async (req, res) => {
             invalidCount: invalidItems.length
         });
 
-        return controllerFactory.sendSuccessResponse(res, {
-            sold: {
-                items: soldItems,
-                count: validItemsToSell.length,
-                total: parseFloat(totalSold.toFixed(2))
-            },
-            kept: {
-                ids: itemsToKeep,
-                count: itemsToKeep.length
-            },
-            skipped: {
-                items: invalidItems.map(item => ({id: item.id, name: item.name})),
-                count: invalidItems.length
-            },
-            gold: goldResult.rows[0]
-        }, `${validItemsToSell.length} items sold for ${totalSold.toFixed(2)} gold, kept ${itemsToKeep.length} items${invalidItems.length > 0 ? `, skipped ${invalidItems.length} invalid items` : ''}`);
+        return controllerFactory.sendSuccessResponse(res, response,
+            `${validItemsToSell.length} items sold for ${totalSold.toFixed(2)} gold, kept ${itemsToKeep.length} items${invalidItems.length > 0 ? `, skipped ${invalidItems.length} invalid items` : ''}`
+        );
     });
 };
 /**
@@ -1766,10 +1684,7 @@ const sellUpTo = async (req, res) => {
         throw controllerFactory.createValidationError('Valid amount is required');
     }
 
-    // Verify DM role
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can sell items');
-    }
+    requireDM(req);
 
     return await dbUtils.executeTransaction(async (client) => {
         const pendingItemsResult = await client.query(
@@ -1778,9 +1693,7 @@ const sellUpTo = async (req, res) => {
         const allPendingItems = pendingItemsResult.rows;
 
         // Filter out unidentified items and items with null values
-        const validPendingItems = allPendingItems.filter(item =>
-            item.unidentified !== true && item.value !== null
-        );
+        const {validItems: validPendingItems, invalidItems} = filterValidSaleItems(allPendingItems);
 
         if (validPendingItems.length === 0) {
             throw controllerFactory.createValidationError('No valid items to sell (all are either unidentified or have no value)');
@@ -1809,7 +1722,7 @@ const sellUpTo = async (req, res) => {
             throw controllerFactory.createValidationError('No items could be sold up to the specified amount');
         }
 
-        // Record each item as sold in the sold table and collect details
+        // Process the sale - use individual sale logic since we've already calculated values
         const soldItems = [];
         for (const item of itemsToSell) {
             await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)', [
@@ -1831,22 +1744,13 @@ const sellUpTo = async (req, res) => {
             [itemsSold]
         );
 
-        const goldEntry = {
-            session_date: new Date(),
-            transaction_type: 'Sale',
-            platinum: 0,
-            gold: Math.floor(totalSold),
-            silver: Math.floor((totalSold % 1) * 10),
-            copper: Math.floor(((totalSold * 10) % 1) * 10),
-            notes: `Sale of ${itemsSold.length} items up to ${parseFloat(amount).toFixed(2)} gold`
-        };
-
-        const goldResult = await client.query(
-            'INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [goldEntry.session_date, goldEntry.transaction_type, goldEntry.platinum, goldEntry.gold, goldEntry.silver, goldEntry.copper, goldEntry.notes]
+        const goldEntry = createGoldEntry(
+            totalSold,
+            `Sale of ${itemsSold.length} items up to ${parseFloat(amount).toFixed(2)} gold`
         );
+        const goldResult = await insertGoldEntry(client, goldEntry);
 
-        // Count how many items were skipped due to being invalid
+        // Count remaining and invalid items
         const invalidItemsCount = allPendingItems.length - validPendingItems.length;
         const remainingItemsCount = validPendingItems.length - itemsSold.length;
 
@@ -1873,7 +1777,7 @@ const sellUpTo = async (req, res) => {
                 count: invalidItemsCount
             },
             limit: parseFloat(amount),
-            gold: goldResult.rows[0]
+            gold: goldResult
         }, `Sold ${itemsSold.length} items for ${totalSold.toFixed(2)} gold (limit: ${parseFloat(amount).toFixed(2)})`);
     });
 };
