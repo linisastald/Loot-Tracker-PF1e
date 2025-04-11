@@ -136,7 +136,19 @@ const useLootManagement = (statusToFetch) => {
   // Special function for handling appraise in UnprocessedLoot
   const handleAppraise = async () => {
     try {
-      await api.post(`/loot/appraise`, {});
+      // Fetch the current user's info
+      const user = await fetchActiveUser();
+
+      if (!user || !user.id) {
+        console.error('Unable to fetch user ID for appraisal');
+        return;
+      }
+
+      // The backend expects userId - it will automatically use the active character
+      await api.post(`/loot/appraise`, {
+        userId: user.id
+      });
+
       fetchLoot();
     } catch (error) {
       console.error('Error appraising loot:', error);
