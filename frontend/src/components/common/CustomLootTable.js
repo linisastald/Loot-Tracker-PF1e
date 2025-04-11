@@ -111,19 +111,49 @@ const FormatAverageAppraisal = ({ item }) => {
 
 // Component for formatting believed value for active character
 const FormatBelievedValue = ({ item }) => {
-  // If there are no appraisals, return empty
-  if (!item.appraisals || !Array.isArray(item.appraisals) || item.appraisals.length === 0) {
+  // Debug logging to see what we're getting
+  console.log('Item in FormatBelievedValue:', item);
+
+  // Try multiple possible locations for the believed value
+  let rawValue = null;
+
+  // Check if directly on the item
+  if (item.believedvalue !== undefined && item.believedvalue !== null) {
+    rawValue = item.believedvalue;
+    console.log('Found direct believedvalue:', rawValue);
+  }
+  // Check if we need to find the active character's appraisal
+  else if (item.appraisals && Array.isArray(item.appraisals) && item.appraisals.length > 0) {
+    // Try to find an appraisal marked as active or with a special flag
+    const activeAppraisal = item.appraisals.find(a => a.isActive || a.isActiveCharacter);
+    if (activeAppraisal) {
+      rawValue = activeAppraisal.believedvalue;
+      console.log('Found active appraisal:', activeAppraisal);
+    }
+    // If no appraisal is marked as active, use the first one as a fallback
+    else {
+      rawValue = item.appraisals[0].believedvalue;
+      console.log('Using first appraisal as fallback:', item.appraisals[0]);
+    }
+  }
+
+  // Return empty if no valid value found
+  if (rawValue === null || rawValue === undefined) {
+    console.log('No valid believed value found');
     return null;
   }
 
-  // The believedvalue property should contain the active character's appraisal
-  // This is already processed in the backend in findByStatus function
-  const value = parseFloat(item.believedvalue);
-  const formattedValue = isNaN(value) ? '' : value.toFixed(2).replace(/\.0+$/, '');
+  // Format the value
+  const value = parseFloat(rawValue);
+  if (isNaN(value)) {
+    console.log('Parsed value is NaN');
+    return null;
+  }
 
-  return (
-    <span>{formattedValue}</span>
-  );
+  const formattedValue = value.toFixed(2).replace(/\.0+$/, '');
+  console.log('Formatted value:', formattedValue);
+
+  return <span>{formattedValue}</span>;
 };
 
 const CustomLootTable = ({
