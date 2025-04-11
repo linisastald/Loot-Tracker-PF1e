@@ -471,7 +471,7 @@ const CustomLootTable = ({
                           </IconButton>
                         )}
                         <Tooltip title={summaryItem.notes || 'No notes'} arrow>
-                          <span>{summaryItem.name}</span>
+                          <span>{summaryItem.masterwork ? 'Well Made ' : ''}{summaryItem.name}</span>
                         </Tooltip>
                       </TableCell>
                     )}
