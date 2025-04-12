@@ -185,10 +185,19 @@ const Infamy = () => {
     const [ports, setPorts] = useState([]);
     const [portHistory, setPortHistory] = useState({});
     const [availablePorts, setAvailablePorts] = useState([
-        'Port Peril', 'Bloodcove', 'Quent', 'Rickety Squibs', 'Senghor',
-        'Ollo', 'Beachcomber', 'Slipcove', 'Tidewater Rock', 'Drenchport',
-        'Bag Island', 'Hell Harbor', 'Firegrass Isle', 'Cypress Point'
-    ]);
+    'Alendruan Harbor', 'Arena', 'Banukmaud', 'Beachcomber', 'Blackblood Cay',
+    'Bogsbridge', 'Chalk Harbor', 'Cho-Tzu', 'Colvaas Gibbet', 'Downpour',
+    'Dragonsthrall', 'Drenchport', 'Drowning Rock', 'Falchion Point', 'Fort Benbem',
+    'Fort Holiday', 'Ganagsau', 'Genzei', 'Ghrinitshahara', 'Goatshead',
+    'Haigui Wan', 'Halabad', 'Heggapnod', 'Hell Harbor', 'Heslandaena',
+    'Kora', 'Kukgukmol', 'Lilywhite', 'Little Oppara', 'Maidenspool',
+    'Mezdrubal', 'Moak Harbor', 'Myscurial', 'Neruma', 'Ngozu',
+    'Ollo', 'Oyster Cay', 'Parley Point', 'Peshaka Naeu', 'Pex',
+    'Plumetown', 'Port Peril', 'Queen Bes', 'Quent', 'Raketooth',
+    'Rapier Bay', 'Rickety\'s Squibs', 'Robu', 'Rumbutter', 'Slipcove',
+    'Tyvas-Devas', 'Vezhnu', 'Vilelock', 'Yelligo Wharf', 'Zeibo',
+    'Zhenbarghua'
+]);
     const [infamyHistory, setInfamyHistory] = useState([]);
 
     // Form values
