@@ -200,18 +200,18 @@ const Tasks = () => {
                 'Calendar Master',
                 'Loot Master',
                 'Lore Master',
-                'Battle Master',
-                'Rule Master',
+                'Rule & Battle Master',
+                'Loot Master',
                 'Inspiration Master'
             ];
 
             const postTasks = [
                 'Food, Drink, and Trash Clear Check',
-                'TV(s) off and windows shut and locked',
+                'TV(s) wiped and turned off',
                 'Dice Trays and Books put away',
                 'Clean Initiative tracker and put away name labels',
                 'Chairs pushed in and extra chairs put back',
-                'Post Discord Reminders',
+                'Windows shut and locked and Post Discord Reminders',
                 'Ensure no duplicate snacks for next session'
             ];
 
