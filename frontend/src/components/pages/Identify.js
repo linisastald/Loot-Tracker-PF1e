@@ -338,7 +338,6 @@ const Identify = () => {
                                     <TableCell>Old Name</TableCell>
                                     <TableCell>New Name</TableCell>
                                     <TableCell>Spellcraft Roll</TableCell>
-                                    <TableCell>Required DC</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -347,7 +346,6 @@ const Identify = () => {
                                         <TableCell>{item.oldName}</TableCell>
                                         <TableCell>{item.newName}</TableCell>
                                         <TableCell>{item.spellcraftRoll}</TableCell>
-                                        <TableCell>{item.requiredDC || 'Unknown'}</TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -365,7 +363,6 @@ const Identify = () => {
                                 <TableRow>
                                     <TableCell>Item Name</TableCell>
                                     <TableCell>Spellcraft Roll</TableCell>
-                                    <TableCell>Required DC</TableCell>
                                     <TableCell>Result</TableCell>
                                 </TableRow>
                             </TableHead>
@@ -374,7 +371,6 @@ const Identify = () => {
                                     <TableRow key={index}>
                                         <TableCell>{item.name}</TableCell>
                                         <TableCell>{item.spellcraftRoll}</TableCell>
-                                        <TableCell>{item.requiredDC || 'Unknown'}</TableCell>
                                         <TableCell>Failed (roll too low)</TableCell>
                                     </TableRow>
                                 ))}
