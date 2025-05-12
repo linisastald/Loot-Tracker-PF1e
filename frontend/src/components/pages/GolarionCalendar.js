@@ -148,11 +148,21 @@ const GolarionCalendar = () => {
     const [error, setError] = useState(null);
     const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
     const [daysToAdd, setDaysToAdd] = useState('');
+    const [weather, setWeather] = useState({});
+    const [currentRegion, setCurrentRegion] = useState('Varisia');
 
     useEffect(() => {
         fetchCurrentDate();
         fetchNotes();
+        fetchCurrentRegion();
     }, []);
+
+    // Fetch weather data when displayed month changes
+    useEffect(() => {
+        if (currentRegion) {
+            fetchWeatherForMonth(displayedDate.year, displayedDate.month);
+        }
+    }, [displayedDate, currentRegion]);
 
     const fetchCurrentDate = async () => {
         try {
@@ -178,6 +188,42 @@ const GolarionCalendar = () => {
         } catch (error) {
             console.error('Error fetching notes:', error.response || error);
             setError('Failed to fetch notes. Please try again later.');
+        }
+    };
+
+    const fetchCurrentRegion = async () => {
+        try {
+            const response = await api.get('/settings/region');
+            if (response.data && response.data.value) {
+                setCurrentRegion(response.data.value);
+            }
+        } catch (error) {
+            console.error('Error fetching current region:', error);
+            // Don't show error for region fetch, use default
+        }
+    };
+
+    const fetchWeatherForMonth = async (year, month) => {
+        try {
+            // Calculate start and end dates for the month
+            const startDay = 1;
+            const endDay = months[month].days;
+            
+            const response = await api.get(
+                `/weather/range/${year}/${month}/${startDay}/${year}/${month}/${endDay}/${currentRegion}`
+            );
+            
+            if (response.data) {
+                const weatherData = {};
+                response.data.forEach(w => {
+                    const key = `${w.year}-${w.month}-${w.day}`;
+                    weatherData[key] = w;
+                });
+                setWeather(weatherData);
+            }
+        } catch (error) {
+            console.error('Error fetching weather:', error);
+            // Don't show error for weather fetch
         }
     };
 
@@ -323,7 +369,10 @@ const GolarionCalendar = () => {
                                     const hasNote = Boolean(note);
 
                                     if (isValidDay) {
-                                        // For valid days, get the moon phase
+                                        // For valid days, get weather and moon phase
+                                        const dateKey = `${displayedDate.year}-${displayedDate.month}-${day}`;
+                                        const weatherData = weather[dateKey];
+                                        
                                         const moonPhaseData = getMoonPhase({
                                             year: displayedDate.year,
                                             month: displayedDate.month,
@@ -357,8 +406,38 @@ const GolarionCalendar = () => {
 
                                         return (
                                             <TableCell key={dayIndex} padding="normal"
-                                                       style={{width: '14.28%', maxWidth: '14.28%', height: '100px'}}>
-                                                <Tooltip title={note || 'Click to add a note'} arrow>
+                                                       style={{width: '14.28%', maxWidth: '14.28%', height: '120px'}}>
+                                                <Tooltip 
+                                                    title={
+                                                        <Box>
+                                                            {weatherData && (
+                                                                <Box mb={1}>
+                                                                    <Typography variant="caption">
+                                                                        {weatherData.emoji} {weatherData.condition}
+                                                                    </Typography>
+                                                                    <br />
+                                                                    <Typography variant="caption">
+                                                                        Low: {weatherData.temp_low}°F, High: {weatherData.temp_high}°F
+                                                                    </Typography>
+                                                                    {weatherData.precipitation_type && (
+                                                                        <><br /><Typography variant="caption">
+                                                                            {weatherData.precipitation_type}
+                                                                        </Typography></>
+                                                                    )}
+                                                                    {weatherData.wind_speed > 20 && (
+                                                                        <><br /><Typography variant="caption">
+                                                                            Wind: {weatherData.wind_speed} mph
+                                                                        </Typography></>
+                                                                    )}
+                                                                </Box>
+                                                            )}
+                                                            <Typography variant="caption">
+                                                                {note || 'Click to add a note'}
+                                                            </Typography>
+                                                        </Box>
+                                                    } 
+                                                    arrow
+                                                >
                                                     <StyledDay
                                                         onClick={() => handleDayClick(day)}
                                                         isCurrentDay={isCurrentDay}
@@ -366,15 +445,29 @@ const GolarionCalendar = () => {
                                                         elevation={isCurrentDay || isSelected ? 3 : 1}
                                                     >
                                                         <Box display="flex" justifyContent="space-between"
-                                                             alignItems="center" width="100%">
-                                                            <DayNumber variant="body2" isCurrentDay={isCurrentDay}>
-                                                                {day}
-                                                            </DayNumber>
-                                                            {showMoonPhase && (
-                                                                <Typography variant="caption" sx={{fontSize: '0.7rem'}}>
-                                                                    {moonEmoji}
-                                                                </Typography>
-                                                            )}
+                                                             alignItems="flex-start" width="100%">
+                                                            <Box display="flex" flexDirection="column">
+                                                                <DayNumber variant="body2" isCurrentDay={isCurrentDay}>
+                                                                    {day}
+                                                                </DayNumber>
+                                                                {weatherData && (
+                                                                    <Typography variant="caption" sx={{fontSize: '0.6rem', lineHeight: 1}}>
+                                                                        {weatherData.emoji} {weatherData.condition}
+                                                                    </Typography>
+                                                                )}
+                                                                {weatherData && (
+                                                                    <Typography variant="caption" sx={{fontSize: '0.55rem', lineHeight: 1}}>
+                                                                        {weatherData.temp_low}°-{weatherData.temp_high}°F
+                                                                    </Typography>
+                                                                )}
+                                                            </Box>
+                                                            <Box display="flex" flexDirection="column" alignItems="flex-end">
+                                                                {showMoonPhase && (
+                                                                    <Typography variant="caption" sx={{fontSize: '0.7rem'}}>
+                                                                        {moonEmoji}
+                                                                    </Typography>
+                                                                )}
+                                                            </Box>
                                                         </Box>
                                                         {note && (
                                                             <NotePreview isCurrentDay={isCurrentDay}>
@@ -389,7 +482,7 @@ const GolarionCalendar = () => {
                                         // Empty cell for invalid days
                                         return (
                                             <TableCell key={dayIndex} padding="normal"
-                                                       style={{width: '14.28%', maxWidth: '14.28%', height: '100px'}}>
+                                                       style={{width: '14.28%', maxWidth: '14.28%', height: '120px'}}>
                                             </TableCell>
                                         );
                                     }
@@ -532,7 +625,37 @@ const GolarionCalendar = () => {
                                         <ListItem>
                                             <ListItemText
                                                 primary={<Typography variant="subtitle1">Weather</Typography>}
-                                                secondary="Weather information not available yet"
+                                                secondary={
+                                                    selectedDate && weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`] ? (
+                                                        <Box>
+                                                            <Typography variant="body2">
+                                                                {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].emoji} {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].condition}
+                                                            </Typography>
+                                                            <Typography variant="body2">
+                                                                Low: {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].temp_low}°F, High: {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].temp_high}°F
+                                                            </Typography>
+                                                            {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].precipitation_type && (
+                                                                <Typography variant="body2">
+                                                                    {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].precipitation_type}
+                                                                </Typography>
+                                                            )}
+                                                            {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].wind_speed > 0 && (
+                                                                <Typography variant="body2">
+                                                                    Wind: {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].wind_speed} mph
+                                                                </Typography>
+                                                            )}
+                                                            {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].description && (
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].description}
+                                                                </Typography>
+                                                            )}
+                                                        </Box>
+                                                    ) : (
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            Weather information not available
+                                                        </Typography>
+                                                    )
+                                                }
                                             />
                                         </ListItem>
                                         <Divider component="li"/>

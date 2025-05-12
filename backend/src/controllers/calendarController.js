@@ -2,6 +2,7 @@
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const { generateWeatherForNextDay } = require('./weatherController');
 
 /**
  * Get the current date in the Golarion calendar
@@ -62,6 +63,17 @@ const setCurrentDate = async (req, res) => {
       );
     }
 
+    // Get user's current region setting
+    const regionResult = await client.query('SELECT value FROM user_settings WHERE name = $1 AND user_id = $2', ['region', req.user.id]);
+    const region = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
+
+    // Generate weather for any missing dates between old and new date
+    const oldDateResult = await client.query('SELECT * FROM golarion_current_date');
+    if (oldDateResult.rows.length > 0) {
+      const oldDate = oldDateResult.rows[0];
+      await generateMissingWeather(oldDate, {year, month, day}, region);
+    }
+
     controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Current date set successfully');
   });
 };
@@ -108,6 +120,18 @@ const advanceDay = async (req, res) => {
         'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
         [year, month, day]
     );
+
+    // Get user's current region setting
+    const regionResult = await client.query('SELECT value FROM user_settings WHERE name = $1 AND user_id = $2', ['region', req.user.id]);
+    const region = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
+
+    // Generate weather for the new day
+    try {
+      await generateWeatherForNextDay({year, month, day}, region);
+    } catch (weatherError) {
+      logger.error('Error generating weather for next day:', weatherError);
+      // Continue with the calendar advancement even if weather generation fails
+    }
 
     controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Date advanced successfully');
   });
@@ -171,6 +195,62 @@ const saveNote = async (req, res) => {
 const getMonthDays = (month) => {
   const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return monthDays[month];
+};
+
+/**
+ * Helper function to calculate days between two dates
+ */
+const calculateDaysBetween = (startDate, endDate) => {
+  let days = [];
+  let current = {...startDate};
+
+  while (current.year < endDate.year || 
+         (current.year === endDate.year && current.month < endDate.month) ||
+         (current.year === endDate.year && current.month === endDate.month && current.day < endDate.day)) {
+    
+    current.day++;
+    
+    // Handle month overflow
+    const daysInMonth = getMonthDays(current.month);
+    if (current.day > daysInMonth) {
+      current.day = 1;
+      current.month++;
+      
+      // Handle year overflow
+      if (current.month > 11) {
+        current.month = 0;
+        current.year++;
+      }
+    }
+    
+    days.push({...current});
+  }
+  
+  return days;
+};
+
+/**
+ * Generate weather for missing dates between two dates
+ */
+const generateMissingWeather = async (oldDate, newDate, region) => {
+  try {
+    const missingDates = calculateDaysBetween(oldDate, newDate);
+    
+    for (const date of missingDates) {
+      // Check if weather already exists for this date
+      const existingWeather = await dbUtils.executeQuery(
+        'SELECT COUNT(*) FROM golarion_weather WHERE year = $1 AND month = $2 AND day = $3 AND region = $4',
+        [date.year, date.month, date.day, region]
+      );
+      
+      if (parseInt(existingWeather.rows[0].count) === 0) {
+        await generateWeatherForNextDay(date, region);
+      }
+    }
+  } catch (error) {
+    logger.error('Error generating missing weather:', error);
+    throw error;
+  }
 };
 
 // Define validation rules

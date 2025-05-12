@@ -12,6 +12,7 @@ const dotenv = require('dotenv');
 const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
+const { initCronJobs } = require('./src/utils/cronJobs');
 
 // Enhanced error handling
 process.on('uncaughtException', (error) => {
@@ -163,6 +164,8 @@ const calendarRoutes = require('./src/api/routes/calendar');
 const soldRoutes = require('./src/api/routes/sold');
 const adminRoutes = require('./src/api/routes/admin');
 const infamyRoutes = require('./src/api/routes/infamy');
+const sessionsRoutes = require('./src/api/routes/sessions');
+const weatherRoutes = require('./src/api/routes/weather');
 
 // Set up routes with appropriate protection
 // Auth routes WITHOUT CSRF protection
@@ -179,6 +182,8 @@ app.use('/api/calendar', csrfProtection, calendarRoutes);
 app.use('/api/sold', csrfProtection, soldRoutes);
 app.use('/api/admin', csrfProtection, adminRoutes);
 app.use('/api/infamy', csrfProtection, infamyRoutes);
+app.use('/api/sessions', csrfProtection, sessionsRoutes);
+app.use('/api/weather', csrfProtection, weatherRoutes);
 
 // Global error handler
 app.use(errorHandler);
@@ -187,6 +192,10 @@ app.use(errorHandler);
 const server = app.listen(port, () => {
   logger.info(`Server running on port ${port}`);
   console.log(`Server running on port ${port}`);
+  
+  // Initialize cron jobs
+  initCronJobs();
+  logger.info('Cron jobs initialized');
 });
 
 // Graceful shutdown

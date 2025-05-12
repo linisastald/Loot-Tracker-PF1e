@@ -7,6 +7,9 @@ import {
     FormControl,
     FormControlLabel,
     FormHelperText,
+    InputLabel,
+    MenuItem,
+    Select,
     Switch,
     TextField,
     Typography,
@@ -21,6 +24,10 @@ const CampaignSettings = () => {
     // Infamy system states
     const [infamyEnabled, setInfamyEnabled] = useState(false);
     const [averagePartyLevel, setAveragePartyLevel] = useState(5);
+
+    // Region states
+    const [region, setRegion] = useState('Varisia');
+    const [availableRegions, setAvailableRegions] = useState([]);
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -42,6 +49,18 @@ const CampaignSettings = () => {
                 const aplResponse = await api.get('/settings/average-party-level');
                 if (aplResponse.data && aplResponse.data.value) {
                     setAveragePartyLevel(parseInt(aplResponse.data.value) || 5);
+                }
+
+                // Fetch current region
+                const regionResponse = await api.get('/settings/region');
+                if (regionResponse.data && regionResponse.data.value) {
+                    setRegion(regionResponse.data.value);
+                }
+
+                // Fetch available regions
+                const regionsResponse = await api.get('/weather/regions');
+                if (regionsResponse.data) {
+                    setAvailableRegions(regionsResponse.data);
                 }
             } catch (error) {
                 console.error('Error fetching settings', error);
@@ -116,6 +135,25 @@ const CampaignSettings = () => {
         }
     };
 
+    const handleRegionChange = async () => {
+        try {
+            await api.put('/user/update-setting', {
+                name: 'region',
+                value: region
+            });
+
+            // Initialize weather for the new region
+            await api.post(`/weather/initialize/${region}`);
+
+            setSuccess('Region updated successfully and weather initialized');
+            setError('');
+        } catch (err) {
+            console.error('Error updating region', err);
+            setError('Error updating region');
+            setSuccess('');
+        }
+    };
+
     return (
         <div>
             <Typography variant="h6" gutterBottom>Campaign Settings</Typography>
@@ -140,6 +178,37 @@ const CampaignSettings = () => {
                     Update Campaign Name
                 </Button>
             </Box>
+
+            <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
+                <Typography variant="h6" gutterBottom>Campaign Region</Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                    The region affects weather patterns and conditions in your campaign.
+                </Typography>
+
+                <FormControl fullWidth margin="normal">
+                    <InputLabel>Region</InputLabel>
+                    <Select
+                        value={region}
+                        label="Region"
+                        onChange={(e) => setRegion(e.target.value)}
+                    >
+                        {availableRegions.map((regionOption) => (
+                            <MenuItem key={regionOption} value={regionOption}>
+                                {regionOption}
+                            </MenuItem>
+                        ))}
+                    </Select>
+                </FormControl>
+
+                <Button
+                    variant="outlined"
+                    color="primary"
+                    onClick={handleRegionChange}
+                    sx={{mt: 2}}
+                >
+                    Update Region
+                </Button>
+            </Paper>
 
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Infamy System</Typography>

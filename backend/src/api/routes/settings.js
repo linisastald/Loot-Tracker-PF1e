@@ -6,5 +6,6 @@ router.get('/discord', settingsController.getDiscordSettings);
 router.get('/campaign-name', settingsController.getCampaignName);
 router.get('/infamy-system', settingsController.getInfamySystem);
 router.get('/average-party-level', settingsController.getAveragePartyLevel);
+router.get('/region', settingsController.getRegion);
 
 module.exports = router;

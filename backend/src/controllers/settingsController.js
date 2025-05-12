@@ -195,6 +195,21 @@ const getAveragePartyLevel = async (req, res) => {
     }
 };
 
+/**
+ * Get current region setting
+ */
+const getRegion = async (req, res) => {
+    try {
+        const settings = await fetchSettingsByNames(['region']);
+        const region = settings.region || 'Varisia';
+
+        controllerFactory.sendSuccessResponse(res, {value: region}, 'Region setting retrieved');
+    } catch (error) {
+        logger.error('Error fetching region setting:', error);
+        throw error;
+    }
+};
+
 // Define validation rules
 const updateSettingValidation = {
     requiredFields: ['name', 'value']
@@ -228,6 +243,10 @@ module.exports = {
     }),
 
     getAveragePartyLevel: controllerFactory.createHandler(getAveragePartyLevel, {
-    errorMessage: 'Error fetching average party level setting'
-})
+        errorMessage: 'Error fetching average party level setting'
+    }),
+
+    getRegion: controllerFactory.createHandler(getRegion, {
+        errorMessage: 'Error fetching region setting'
+    })
 };
