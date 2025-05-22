@@ -338,6 +338,7 @@ const GolarionCalendar = () => {
 
     const renderCalendar = () => {
         const month = months[displayedDate.month];
+        // Note: Date constructor uses 0-indexed months, Golarion uses 1-indexed
         const firstDayOfMonth = new Date(displayedDate.year, displayedDate.month, 1).getDay();
         const weeks = Math.ceil((month.days + firstDayOfMonth) / 7);
 
