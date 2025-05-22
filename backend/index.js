@@ -143,7 +143,6 @@ const limiter = rateLimit({
     });
   }
 });
-app.use(limiter);
 
 // Apply middlewares
 app.use(bodyParser.json());
@@ -162,13 +161,23 @@ const csrfProtection = csrf({
   ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
 });
 
+// CSRF token generation middleware (without validation)
+const csrfTokenGeneration = csrf({
+  cookie: {
+    httpOnly: COOKIES.HTTP_ONLY,
+    sameSite: COOKIES.SAME_SITE,
+    secure: COOKIES.SECURE
+  },
+  ignoreMethods: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'DELETE'] // Ignore all methods for token generation
+});
+
 // Routes
 app.get('/', (req, res) => {
   res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
 });
 
 // Get CSRF token without protection
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
+app.get('/api/csrf-token', csrfTokenGeneration, (req, res) => {
   res.success({ csrfToken: req.csrfToken() }, 'CSRF token generated');
 });
 
@@ -188,10 +197,13 @@ const sessionsRoutes = require('./src/api/routes/sessions');
 const weatherRoutes = require('./src/api/routes/weather');
 
 // Set up routes with appropriate protection
-// Auth routes WITHOUT CSRF protection
+// Auth routes with auth-specific rate limiting (applied before global rate limiting)
 app.use('/api/auth', authRoutes);
 
-// Apply CSRF protection to all other API routes
+// Apply global rate limiting to all other API routes
+app.use('/api', limiter);
+
+// Apply CSRF protection to all API routes except auth and csrf-token
 app.use('/api/loot', csrfProtection, lootRoutes);
 app.use('/api/user', csrfProtection, userRoutes);
 app.use('/api/gold', csrfProtection, goldRoutes);
