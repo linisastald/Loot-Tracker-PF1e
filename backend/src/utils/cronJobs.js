@@ -3,11 +3,15 @@ const cron = require('node-cron');
 const axios = require('axios');
 const logger = require('./logger');
 const Session = require('../models/Session');
+const { initSessionCleanup } = require('./sessionCleanup');
 
 /**
  * Initialize cron jobs
  */
 const initCronJobs = () => {
+    // Initialize session cleanup
+    initSessionCleanup();
+    
     // Check for sessions needing Discord notifications every hour
     cron.schedule('0 * * * *', async () => {
         try {

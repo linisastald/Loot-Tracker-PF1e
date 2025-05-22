@@ -30,10 +30,10 @@ router.post('/login', [
 
 // Register route with validation
 router.post('/register', [
-  body('username').isLength({min: 5}).trim().escape()
-      .withMessage('Username must be at least 5 characters long'),
-  body('password').isLength({min: 8})
-      .withMessage('Password must be at least 8 characters long'),
+  body('username').isLength({min: AUTH.USERNAME_MIN_LENGTH}).trim().escape()
+      .withMessage(`Username must be at least ${AUTH.USERNAME_MIN_LENGTH} characters long`),
+  body('password').isLength({min: AUTH.PASSWORD_MIN_LENGTH})
+      .withMessage(`Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters long`),
   body('inviteCode').if(body('inviteCode').exists())
       .isLength({min: 6}).trim().escape()
       .withMessage('Invite code must be at least 6 characters long')

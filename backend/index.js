@@ -13,6 +13,7 @@ const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
 const { initCronJobs } = require('./src/utils/cronJobs');
+const { RATE_LIMIT, SERVER, COOKIES } = require('./src/config/constants');
 
 // Enhanced error handling
 process.on('uncaughtException', (error) => {
@@ -22,7 +23,23 @@ process.on('uncaughtException', (error) => {
     name: error.name
   });
   console.error('UNCAUGHT EXCEPTION:', error);
-  process.exit(1);
+  
+  // Gracefully close database connections before exiting
+  try {
+    pool.end(() => {
+      logger.info('Database pool closed due to uncaught exception');
+      process.exit(1);
+    });
+    
+    // Force exit after configured timeout if pool.end() hangs
+    setTimeout(() => {
+      logger.error('Forced exit after uncaught exception - pool.end() timeout');
+      process.exit(1);
+    }, SERVER.UNCAUGHT_EXCEPTION_TIMEOUT);
+  } catch (poolError) {
+    logger.error('Error closing pool during uncaught exception cleanup:', poolError);
+    process.exit(1);
+  }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -31,6 +48,9 @@ process.on('unhandledRejection', (reason, promise) => {
     promise
   });
   console.error('UNHANDLED REJECTION:', reason);
+  
+  // Don't exit on unhandled rejection, but log it for investigation
+  // In production, you might want to exit after several unhandled rejections
 });
 
 // Load environment variables
@@ -38,7 +58,7 @@ dotenv.config();
 
 // Initialize express app
 const app = express();
-const port = process.env.PORT || 5000;
+const port = SERVER.PORT;
 
 // Middleware for logging unhandled errors in route handlers
 const errorHandler = (err, req, res, next) => {
@@ -111,8 +131,8 @@ app.use(helmet({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 10 * 1000, // 10 seconds
-  max: 200, // limit each IP to 200 requests per windowMs
+  windowMs: RATE_LIMIT.WINDOW_MS,
+  max: RATE_LIMIT.MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
@@ -135,9 +155,9 @@ app.use(apiResponseMiddleware);
 // CSRF configuration
 const csrfProtection = csrf({
   cookie: {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production'
+    httpOnly: COOKIES.HTTP_ONLY,
+    sameSite: COOKIES.SAME_SITE,
+    secure: COOKIES.SECURE
   },
   ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
 });
@@ -199,16 +219,33 @@ const server = app.listen(port, () => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM signal received: closing HTTP server');
+const gracefulShutdown = (signal) => {
+  logger.info(`${signal} signal received: closing HTTP server`);
+  
   server.close(() => {
     logger.info('HTTP server closed');
+    
     // Close database connection
     pool.end(() => {
       logger.info('Database pool closed');
       process.exit(0);
     });
+    
+    // Force exit after configured timeout if pool doesn't close
+    setTimeout(() => {
+      logger.error('Forced exit - database pool did not close in time');
+      process.exit(1);
+    }, SERVER.POOL_CLOSE_TIMEOUT);
   });
-});
+  
+  // Force exit after configured timeout if server doesn't close
+  setTimeout(() => {
+    logger.error('Forced exit - server did not close in time');
+    process.exit(1);
+  }, SERVER.GRACEFUL_SHUTDOWN_TIMEOUT);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = app;

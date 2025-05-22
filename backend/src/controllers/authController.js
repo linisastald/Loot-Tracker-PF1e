@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const { AUTH, COOKIES } = require('../config/constants');
 require('dotenv').config();
 
 /**
@@ -88,13 +89,13 @@ const registerUser = async (req, res) => {
     }
 
     // Validate password length
-    if (!password || password.length < 8) {
-        throw controllerFactory.createValidationError('Password must be at least 8 characters long');
+    if (!password || password.length < AUTH.PASSWORD_MIN_LENGTH) {
+        throw controllerFactory.createValidationError(`Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters long`);
     }
 
     // Check if password exceeds maximum length
-    if (password.length > 64) {
-        throw controllerFactory.createValidationError('Password cannot exceed 64 characters');
+    if (password.length > AUTH.PASSWORD_MAX_LENGTH) {
+        throw controllerFactory.createValidationError(`Password cannot exceed ${AUTH.PASSWORD_MAX_LENGTH} characters`);
     }
 
     // Create the user
@@ -126,15 +127,15 @@ const registerUser = async (req, res) => {
         const token = jwt.sign(
             {id: user.id, username: user.username, role: user.role},
             process.env.JWT_SECRET,
-            {expiresIn: '24h'} // Token valid for 24 hours
+            {expiresIn: AUTH.JWT_EXPIRES_IN}
         );
 
         // Set token in HTTP-only cookie
         res.cookie('authToken', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // Only use secure in production
-            sameSite: 'strict',
-            maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+            httpOnly: COOKIES.HTTP_ONLY,
+            secure: COOKIES.SECURE,
+            sameSite: COOKIES.SAME_SITE,
+            maxAge: COOKIES.MAX_AGE
         });
 
         controllerFactory.sendCreatedResponse(res, {
@@ -153,8 +154,6 @@ const registerUser = async (req, res) => {
  */
 const loginUser = async (req, res) => {
     const {username, password} = req.body;
-    const MAX_LOGIN_ATTEMPTS = 5;
-    const LOCK_TIME = 5 * 60 * 1000; // 5 minutes in milliseconds
 
     // Get user
     const result = await dbUtils.executeQuery(
@@ -213,15 +212,15 @@ const loginUser = async (req, res) => {
     const token = jwt.sign(
         {id: user.id, username: user.username, role: user.role},
         process.env.JWT_SECRET,
-        {expiresIn: '24h'} // Token valid for 24 hours
+        {expiresIn: AUTH.JWT_EXPIRES_IN}
     );
 
     // Set token in HTTP-only cookie
     res.cookie('authToken', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Only use secure in production
-        sameSite: 'strict',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+        httpOnly: COOKIES.HTTP_ONLY,
+        secure: COOKIES.SECURE,
+        sameSite: COOKIES.SAME_SITE,
+        maxAge: COOKIES.MAX_AGE
     });
 
     // Only return user info, token is already in HTTP-only cookie
@@ -241,23 +240,20 @@ const loginUser = async (req, res) => {
  * @param {Object} user - User object
  */
 const handleFailedLogin = async (user) => {
-    const MAX_LOGIN_ATTEMPTS = 5;
-    const LOCK_TIME = 5 * 60 * 1000; // 5 minutes in milliseconds
-
     // Increment login attempts
     const newAttempts = (user.login_attempts || 0) + 1;
-    if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
+    if (newAttempts >= AUTH.MAX_LOGIN_ATTEMPTS) {
         await dbUtils.executeQuery(
             'UPDATE users SET login_attempts = $1, locked_until = $2 WHERE id = $3',
-            [newAttempts, new Date(Date.now() + LOCK_TIME), user.id]
+            [newAttempts, new Date(Date.now() + AUTH.ACCOUNT_LOCK_TIME), user.id]
         );
-        logger.warn(`Account ${user.username} locked after ${MAX_LOGIN_ATTEMPTS} failed attempts`);
+        logger.warn(`Account ${user.username} locked after ${AUTH.MAX_LOGIN_ATTEMPTS} failed attempts`);
     } else {
         await dbUtils.executeQuery(
             'UPDATE users SET login_attempts = $1 WHERE id = $2',
             [newAttempts, user.id]
         );
-        logger.info(`Failed login attempt ${newAttempts}/${MAX_LOGIN_ATTEMPTS} for user ${user.username}`);
+        logger.info(`Failed login attempt ${newAttempts}/${AUTH.MAX_LOGIN_ATTEMPTS} for user ${user.username}`);
     }
 };
 
@@ -305,9 +301,9 @@ const getUserStatus = async (req, res) => {
 const logoutUser = async (req, res) => {
     // Clear the auth cookie
     res.clearCookie('authToken', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict'
+        httpOnly: COOKIES.HTTP_ONLY,
+        secure: COOKIES.SECURE,
+        sameSite: COOKIES.SAME_SITE
     });
 
     controllerFactory.sendSuccessMessage(res, 'Logged out successfully');
@@ -521,15 +517,15 @@ const refreshToken = async (req, res) => {
         const newToken = jwt.sign(
             {id: user.id, username: user.username, role: user.role},
             process.env.JWT_SECRET,
-            {expiresIn: '24h'}
+            {expiresIn: AUTH.JWT_EXPIRES_IN}
         );
 
         // Set the new token in a cookie
         res.cookie('authToken', newToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+            httpOnly: COOKIES.HTTP_ONLY,
+            secure: COOKIES.SECURE,
+            sameSite: COOKIES.SAME_SITE,
+            maxAge: COOKIES.MAX_AGE
         });
 
         controllerFactory.sendSuccessMessage(res, 'Token refreshed successfully');

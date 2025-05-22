@@ -3,6 +3,7 @@
  */
 const pool = require('../config/db');
 const logger = require('./logger');
+const { DATABASE } = require('../config/constants');
 
 /**
  * Execute a database query with error handling
@@ -19,8 +20,8 @@ const executeQuery = async (queryText, params = [], errorMessage = 'Database que
     const result = await client.query(queryText, params);
     const duration = Date.now() - startTime;
 
-    // Log slow queries for performance monitoring (over 500ms)
-    if (duration > 500) {
+    // Log slow queries for performance monitoring
+    if (duration > DATABASE.SLOW_QUERY_THRESHOLD) {
       logger.warn(`Slow query (${duration}ms): ${queryText.slice(0, 200)}${queryText.length > 200 ? '...' : ''}`);
     }
 
@@ -34,7 +35,12 @@ const executeQuery = async (queryText, params = [], errorMessage = 'Database que
     logger.error(`${errorMessage}: ${error.message}\nQuery: ${queryPreview}\nPosition: ${position}\nStack: ${stack}`);
     throw error;
   } finally {
-    client.release();
+    // Ensure client is always released even if there was an error
+    try {
+      client.release();
+    } catch (releaseError) {
+      logger.error(`Failed to release database client: ${releaseError.message}`);
+    }
   }
 };
 
@@ -55,11 +61,24 @@ const executeTransaction = async (callback, errorMessage = 'Transaction error') 
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    // Only attempt rollback if transaction was actually started
+    try {
+      await client.query('ROLLBACK');
+      logger.info('Transaction rolled back successfully');
+    } catch (rollbackError) {
+      logger.error(`Failed to rollback transaction: ${rollbackError.message}`);
+      // Don't throw rollback error, preserve original error
+    }
+    
     logger.error(`${errorMessage}: ${error.message}\nStack: ${error.stack || ''}`);
     throw error;
   } finally {
-    client.release();
+    // Ensure client is always released even if rollback fails
+    try {
+      client.release();
+    } catch (releaseError) {
+      logger.error(`Failed to release database client: ${releaseError.message}`);
+    }
   }
 };
 
