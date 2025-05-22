@@ -12,16 +12,14 @@ const api = axios.create({
 // Function to fetch CSRF token
 const fetchCsrfToken = async () => {
     try {
-        console.log('Fetching CSRF token from:', `${API_URL}/csrf-token`);
         const response = await axios.get(`${API_URL}/csrf-token`, {withCredentials: true});
 
         if (response.data && response.data.data && response.data.data.csrfToken) {
             const token = response.data.data.csrfToken;
             localStorage.setItem('csrfToken', token);
-            console.log('CSRF token fetched successfully');
             return token;
         } else {
-            console.error('Invalid CSRF token response:', response.data);
+            console.error('Invalid CSRF token response format');
             return null;
         }
     } catch (error) {
@@ -62,27 +60,22 @@ api.interceptors.request.use(
 // Response interceptor
 api.interceptors.response.use(
     (response) => {
-        console.log('API Response:', {
-            url: response.config.url,
-            method: response.config.method,
-            status: response.status
-        });
-
         return response.data;
     },
     async (error) => {
         console.error('API Error:', {
             message: error.message,
-            response: error.response?.data,
             status: error.response?.status
         });
 
-        // Handle CSRF token errors
+        // Handle CSRF token errors (prevent infinite retry)
         if (error.response?.status === 403 &&
             (error.response?.data?.error === 'invalid csrf token' ||
-                error.response?.data?.message === 'invalid csrf token')) {
+                error.response?.data?.message === 'invalid csrf token') &&
+            !error.config._retryCount) {
 
-            console.log('CSRF token error detected, fetching new token');
+            // Mark this request as retried to prevent infinite loops
+            error.config._retryCount = 1;
             localStorage.removeItem('csrfToken');
             const newToken = await fetchCsrfToken();
 

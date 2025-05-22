@@ -3,6 +3,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import React, {useEffect, useState} from 'react';
 import {BrowserRouter as Router, Navigate, Route, Routes} from 'react-router-dom';
 import {ThemeProvider} from '@mui/material/styles';
+import {Box, CircularProgress} from '@mui/material';
 
 
 import Login from './components/pages/Login';
@@ -28,15 +29,20 @@ import api from './utils/api';
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+    
     // First check localStorage for user data
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       try {
         const userData = JSON.parse(storedUser);
-        setIsAuthenticated(true);
-        setUser(userData);
+        if (isMounted) {
+          setIsAuthenticated(true);
+          setUser(userData);
+        }
       } catch (e) {
         console.error('Error parsing stored user data:', e);
         localStorage.removeItem('user');
@@ -46,33 +52,36 @@ function App() {
     // Then verify with server that the token is still valid
     const checkAuthStatus = async () => {
       try {
-        console.log('Checking auth status...');
         const response = await api.get('/auth/status');
-        console.log('Auth status full response:', response);
 
         // Check if the response contains success flag
-        if (response && response.success) {
+        if (response && response.success && isMounted) {
           setIsAuthenticated(true);
           setUser(response.data.user);
           localStorage.setItem('user', JSON.stringify(response.data.user));
-          console.log('Authentication verified successfully');
         } else {
           // Only log out if we get an explicit authentication failure and there's no stored user
-          console.warn('Auth check returned unsuccessful');
-          if (!storedUser) {
+          if (!storedUser && isMounted) {
             handleLogout();
           }
         }
       } catch (error) {
-        console.warn('Auth status check error:', error);
         // Only log out on 401 status
-        if (error.response && error.response.status === 401) {
+        if (error.response && error.response.status === 401 && isMounted) {
           handleLogout();
+        }
+      } finally {
+        if (isMounted) {
+          setAuthLoading(false);
         }
       }
     };
 
     checkAuthStatus();
+    
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleLogin = (user) => {
@@ -88,8 +97,8 @@ function App() {
       localStorage.removeItem('user');
 
       // Log out from server to clear the HTTP-only cookie
-      await api.post('/auth/logout').catch(err => {
-        console.log('Logout request failed, but user was logged out locally');
+      await api.post('/auth/logout').catch(() => {
+        // Logout request failed, but user was logged out locally
       });
     } catch (error) {
       console.error('Error during logout:', error);
@@ -99,6 +108,26 @@ function App() {
     setIsAuthenticated(false);
     setUser(null);
   };
+
+  // Show loading spinner while checking authentication
+  if (authLoading) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: '100vh',
+            backgroundColor: 'background.default'
+          }}
+        >
+          <CircularProgress size={40} role="status" aria-label="Loading application" />
+        </Box>
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider theme={theme}>
@@ -115,7 +144,7 @@ function App() {
           <Route path="/register" element={<Register />} />
 
           {/* Protected routes using the ProtectedRoute component */}
-          <Route path="/" element={<ProtectedRoute><MainLayout onLogout={handleLogout} /></ProtectedRoute>}>
+          <Route path="/" element={<ProtectedRoute isAuthenticated={isAuthenticated}><MainLayout onLogout={handleLogout} /></ProtectedRoute>}>
             <Route path="loot-entry" element={<LootEntry />} />
             <Route path="loot-management/*" element={<LootManagement />} />
             {/* Redirects for old URLs */}

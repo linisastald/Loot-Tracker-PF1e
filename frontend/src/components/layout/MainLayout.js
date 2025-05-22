@@ -32,9 +32,12 @@ const MainLayout = ({ onLogout }) => {
               return 'Identify Items';
           case '/character-loot-ledger':
               return 'Character Loot Ledger';
+          case '/infamy':
+              return 'Infamy';
           default:
               if (path.includes('/loot-management')) return 'Loot Management';
               if (path.includes('/item-management')) return 'Item Management';
+              if (path.includes('/character-user-management')) return 'Character & User Management';
               return 'Pathfinder Loot Tracker';
       }
   };
@@ -74,7 +77,7 @@ const MainLayout = ({ onLogout }) => {
           <Toolbar sx={{ minHeight: { xs: 64 } }}>
             <IconButton
               color="inherit"
-              aria-label="open drawer"
+              aria-label={isCollapsed ? "Open navigation menu" : "Close navigation menu"}
               edge="start"
               onClick={() => setIsCollapsed(!isCollapsed)}
               sx={{ mr: 2, display: { md: 'none' } }}

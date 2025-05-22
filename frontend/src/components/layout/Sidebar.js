@@ -5,6 +5,11 @@ import {
   Badge,
   Box,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   Drawer,
   IconButton,
@@ -14,6 +19,7 @@ import {
   ListItemText,
   Tooltip,
   Typography,
+  Button,
 } from '@mui/material';
 import {
   AddBox,
@@ -46,67 +52,60 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [username, setUsername] = useState('');
   const [activeCharacter, setActiveCharacter] = useState(null);
   const [infamyEnabled, setInfamyEnabled] = useState(false);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const location = useLocation();
 
   const handleToggle = (setter) => () => setter(prev => !prev);
 
   useEffect(() => {
+    let isMounted = true;
+    
     // Get user role and name from localStorage
     const userStr = localStorage.getItem('user');
     if (userStr) {
       try {
         const userData = JSON.parse(userStr);
-        setIsDM(userData.role === 'DM');
-        setUsername(userData.username || '');
+        if (isMounted) {
+          setIsDM(userData.role === 'DM');
+          setUsername(userData.username || '');
+        }
       } catch (e) {
         console.error('Error parsing user data:', e);
       }
     }
-    fetchUnprocessedLootCount();
-    fetchGroupName();
-    fetchActiveCharacter();
-    fetchInfamyStatus();
+    
+    const fetchData = async () => {
+      try {
+        const [lootCountRes, groupNameRes, activeCharRes, infamyRes] = await Promise.all([
+          api.get('/loot/unprocessed-count'),
+          api.get('/settings/campaign-name'),
+          api.get('/auth/status'),
+          api.get('/settings/infamy-system')
+        ]);
+        
+        if (isMounted) {
+          setUnprocessedLootCount(lootCountRes.data.count);
+          setGroupName(groupNameRes.data.value);
+          if (activeCharRes.data?.user?.activeCharacter) {
+            setActiveCharacter(activeCharRes.data.user.activeCharacter);
+          }
+          if (infamyRes.data?.value) {
+            setInfamyEnabled(infamyRes.data.value !== 'disabled');
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching sidebar data:', error);
+      }
+    };
+    
+    fetchData();
+    
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const fetchUnprocessedLootCount = async () => {
-    try {
-      const response = await api.get('/loot/unprocessed-count');
-      setUnprocessedLootCount(response.data.count);
-    } catch (error) {
-      console.error('Error fetching unprocessed loot count:', error);
-    }
-  };
 
-  const fetchGroupName = async () => {
-    try {
-      const response = await api.get('/settings/campaign-name');
-      setGroupName(response.data.value);
-    } catch (error) {
-      console.error('Error fetching campaign name:', error);
-    }
-  };
-
-  const fetchActiveCharacter = async () => {
-    try {
-      const response = await api.get('/auth/status');
-      if (response.data && response.data.user && response.data.user.activeCharacter) {
-        setActiveCharacter(response.data.user.activeCharacter);
-      }
-    } catch (error) {
-      console.error('Error fetching active character:', error);
-    }
-  };
-
-  const fetchInfamyStatus = async () => {
-    try {
-      const response = await api.get('/settings/infamy-system');
-      if (response.data && response.data.value) {
-        setInfamyEnabled(response.data.value !== 'disabled');
-      }
-    } catch (error) {
-      console.error('Error fetching infamy system status:', error);
-    }
-  };
 
 
   const isActiveRoute = (route) => {
@@ -117,16 +116,33 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     setIsCollapsed(!isCollapsed);
   };
 
-  const handleLogout = () => {
+  const handleLogoutClick = () => {
+    setLogoutDialogOpen(true);
+  };
+  
+  const handleLogoutConfirm = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     if (onLogout) onLogout();
-    window.location.href = '/login';
+    setLogoutDialogOpen(false);
+  };
+  
+  const handleLogoutCancel = () => {
+    setLogoutDialogOpen(false);
   };
 
   const MenuItem = ({ to, primary, icon, onClick, open, children, badge, isCategory }) => {
     const active = to ? isActiveRoute(to) : false;
     const ComponentToUse = to ? Link : 'div';
+    
+    const handleKeyDown = (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        if (onClick) {
+          onClick();
+        }
+      }
+    };
 
     return (
       <>
@@ -134,6 +150,11 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
           component={ComponentToUse}
           to={to}
           onClick={onClick}
+          onKeyDown={handleKeyDown}
+          tabIndex={0}
+          role={to ? "link" : "button"}
+          aria-current={active ? "page" : undefined}
+          aria-expanded={children ? open : undefined}
           sx={{
             pl: isCategory ? 2 : 4,
             py: 1.5,
@@ -143,6 +164,11 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             bgcolor: active ? 'rgba(144, 202, 249, 0.16)' : 'transparent',
             '&:hover': {
               bgcolor: active ? 'rgba(144, 202, 249, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+            },
+            '&:focus-visible': {
+              outline: '2px solid',
+              outlineColor: 'primary.main',
+              outlineOffset: '2px',
             },
             '& .MuiListItemIcon-root': {
               color: active ? 'primary.main' : 'text.secondary',
@@ -213,13 +239,18 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             </Typography>
           </Tooltip>
         )}
-        <IconButton onClick={toggleSidebar} color="primary">
+        <IconButton 
+          onClick={toggleSidebar} 
+          color="primary"
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!isCollapsed}
+        >
           {isCollapsed ? <MenuIcon /> : <ChevronLeft />}
         </IconButton>
       </Box>
 
       <Box sx={{ flexGrow: 1, overflow: 'auto', px: 1, py: 2 }}>
-        <List component="nav" disablePadding>
+        <List component="nav" disablePadding role="navigation" aria-label="Main navigation">
           <MenuItem to="/loot-entry" primary="Loot Entry" icon={<AddBox />} isCategory />
 
           <MenuItem
@@ -328,15 +359,48 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
 
         <Tooltip title="Logout">
           <IconButton
-            onClick={handleLogout}
+            onClick={handleLogoutClick}
             color="inherit"
             size="small"
-            sx={{ alignSelf: isCollapsed ? 'center' : 'flex-end' }}
+            aria-label="Logout"
+            sx={{ 
+              alignSelf: isCollapsed ? 'center' : 'flex-end',
+              '&:focus-visible': {
+                outline: '2px solid',
+                outlineColor: 'primary.main',
+                outlineOffset: '2px',
+              },
+            }}
           >
             <Logout />
           </IconButton>
         </Tooltip>
       </Box>
+      
+      {/* Logout Confirmation Dialog */}
+      <Dialog
+        open={logoutDialogOpen}
+        onClose={handleLogoutCancel}
+        aria-labelledby="logout-dialog-title"
+        aria-describedby="logout-dialog-description"
+      >
+        <DialogTitle id="logout-dialog-title">
+          Confirm Logout
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="logout-dialog-description">
+            Are you sure you want to logout? You will need to login again to access the application.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleLogoutCancel} color="primary">
+            Cancel
+          </Button>
+          <Button onClick={handleLogoutConfirm} color="primary" variant="contained">
+            Logout
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Drawer>
   );
 };

@@ -78,6 +78,8 @@ const Login = ({onLogin}) => {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     onKeyDown={handleKeyDown}
+                    aria-describedby={error ? "login-error" : undefined}
+                    error={!!error}
                 />
 
                 <TextField
@@ -90,12 +92,14 @@ const Login = ({onLogin}) => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onKeyDown={handleKeyDown}
+                    aria-describedby={error ? "login-error" : undefined}
+                    error={!!error}
                     InputProps={{
                         // Add eye icon to toggle password visibility
                         endAdornment: (
                             <InputAdornment position="end">
                                 <IconButton
-                                    aria-label="toggle password visibility"
+                                    aria-label={showPassword ? "Hide password" : "Show password"}
                                     onClick={handleTogglePasswordVisibility}
                                     edge="end"
                                 >
@@ -106,7 +110,7 @@ const Login = ({onLogin}) => {
                     }}
                 />
 
-                {error && <Typography color="error" sx={{mt: 1}}>{error}</Typography>}
+                {error && <Typography color="error" sx={{mt: 1}} id="login-error" role="alert">{error}</Typography>}
 
                 <Button
                     fullWidth
