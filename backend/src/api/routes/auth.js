@@ -4,6 +4,7 @@ const {body, validationResult} = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const authController = require('../../controllers/authController');
 const verifyToken = require('../../middleware/auth');
+const { AUTH } = require('../../config/constants');
 
 // Rate limiter specifically for auth routes
 const authLimiter = rateLimit({
