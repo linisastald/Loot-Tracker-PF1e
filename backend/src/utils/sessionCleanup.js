@@ -1,1 +1,131 @@
-// src/utils/sessionCleanup.js\nconst dbUtils = require('./dbUtils');\nconst logger = require('./logger');\nconst cron = require('node-cron');\nconst { AUTH } = require('../config/constants');\n\n/**\n * Clean up expired sessions and login attempts\n */\nconst cleanupExpiredSessions = async () => {\n  try {\n    // Clean up expired locked accounts\n    const unlockedAccounts = await dbUtils.executeQuery(\n      'UPDATE users SET login_attempts = 0, locked_until = NULL WHERE locked_until IS NOT NULL AND locked_until < NOW() RETURNING username'\n    );\n    \n    if (unlockedAccounts.rows.length > 0) {\n      logger.info(`Unlocked ${unlockedAccounts.rows.length} expired account locks`, {\n        accounts: unlockedAccounts.rows.map(row => row.username)\n      });\n    }\n\n    // Clean up expired invite codes\n    const expiredInvites = await dbUtils.executeQuery(\n      'UPDATE invites SET is_used = TRUE WHERE is_used = FALSE AND expires_at IS NOT NULL AND expires_at < NOW() RETURNING code'\n    );\n    \n    if (expiredInvites.rows.length > 0) {\n      logger.info(`Marked ${expiredInvites.rows.length} expired invite codes as used`, {\n        codes: expiredInvites.rows.map(row => row.code)\n      });\n    }\n\n    // Clean up old identification attempts (older than 30 days)\n    const oldIdentifications = await dbUtils.executeQuery(\n      'DELETE FROM identify WHERE golarion_date < (SELECT golarion_date FROM golarion_current_date) - INTERVAL \\'30 days\\''\n    );\n    \n    if (oldIdentifications.rowCount > 0) {\n      logger.info(`Cleaned up ${oldIdentifications.rowCount} old identification attempts`);\n    }\n\n    // Clean up old appraisals for deleted loot items\n    const orphanedAppraisals = await dbUtils.executeQuery(\n      'DELETE FROM appraisal WHERE lootid NOT IN (SELECT id FROM loot)'\n    );\n    \n    if (orphanedAppraisals.rowCount > 0) {\n      logger.info(`Cleaned up ${orphanedAppraisals.rowCount} orphaned appraisals`);\n    }\n\n    // Reset login attempts for accounts that haven't failed in 24 hours\n    const resetAttempts = await dbUtils.executeQuery(\n      `UPDATE users \n       SET login_attempts = 0 \n       WHERE login_attempts > 0 \n         AND locked_until IS NULL \n         AND (\n           SELECT COUNT(*) FROM pg_stat_activity \n           WHERE application_name = 'loot-tracker' \n             AND state = 'active' \n             AND query_start < NOW() - INTERVAL '24 hours'\n         ) = 0\n       RETURNING username`\n    );\n    \n    if (resetAttempts.rows.length > 0) {\n      logger.info(`Reset login attempts for ${resetAttempts.rows.length} accounts after 24 hours`);\n    }\n\n  } catch (error) {\n    logger.error('Error during session cleanup', {\n      error: error.message,\n      stack: error.stack\n    });\n  }\n};\n\n/**\n * Initialize session cleanup job\n * Runs every hour to clean up expired sessions and related data\n */\nconst initSessionCleanup = () => {\n  // Run every hour\n  cron.schedule('0 * * * *', async () => {\n    logger.debug('Running session cleanup job');\n    await cleanupExpiredSessions();\n  });\n\n  // Run immediately on startup\n  cleanupExpiredSessions();\n  \n  logger.info('Session cleanup job initialized - runs every hour');\n};\n\n/**\n * Manual cleanup function for administrative use\n */\nconst forceCleanup = async () => {\n  logger.info('Manual session cleanup initiated');\n  await cleanupExpiredSessions();\n  logger.info('Manual session cleanup completed');\n};\n\n/**\n * Get session statistics\n */\nconst getSessionStats = async () => {\n  try {\n    const stats = await dbUtils.executeQuery(`\n      SELECT \n        (SELECT COUNT(*) FROM users WHERE locked_until IS NOT NULL) as locked_accounts,\n        (SELECT COUNT(*) FROM users WHERE login_attempts > 0) as accounts_with_failed_attempts,\n        (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND (expires_at IS NULL OR expires_at > NOW())) as active_invites,\n        (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND expires_at IS NOT NULL AND expires_at < NOW()) as expired_invites,\n        (SELECT COUNT(*) FROM identify WHERE golarion_date >= (SELECT golarion_date FROM golarion_current_date) - INTERVAL '7 days') as recent_identifications\n    `);\n    \n    return stats.rows[0];\n  } catch (error) {\n    logger.error('Error getting session stats', error);\n    return null;\n  }\n};\n\nmodule.exports = {\n  initSessionCleanup,\n  cleanupExpiredSessions,\n  forceCleanup,\n  getSessionStats\n};\n
+// src/utils/sessionCleanup.js
+const dbUtils = require('./dbUtils');
+const logger = require('./logger');
+const cron = require('node-cron');
+const { AUTH } = require('../config/constants');
+
+/**
+ * Clean up expired sessions and login attempts
+ */
+const cleanupExpiredSessions = async () => {
+  try {
+    // Clean up expired locked accounts
+    const unlockedAccounts = await dbUtils.executeQuery(
+      'UPDATE users SET login_attempts = 0, locked_until = NULL WHERE locked_until IS NOT NULL AND locked_until < NOW() RETURNING username'
+    );
+    
+    if (unlockedAccounts.rows.length > 0) {
+      logger.info(`Unlocked ${unlockedAccounts.rows.length} expired account locks`, {
+        accounts: unlockedAccounts.rows.map(row => row.username)
+      });
+    }
+
+    // Clean up expired invite codes
+    const expiredInvites = await dbUtils.executeQuery(
+      'UPDATE invites SET is_used = TRUE WHERE is_used = FALSE AND expires_at IS NOT NULL AND expires_at < NOW() RETURNING code'
+    );
+    
+    if (expiredInvites.rows.length > 0) {
+      logger.info(`Marked ${expiredInvites.rows.length} expired invite codes as used`, {
+        codes: expiredInvites.rows.map(row => row.code)
+      });
+    }
+
+    // Clean up old identification attempts (older than 30 days)
+    const oldIdentifications = await dbUtils.executeQuery(
+      'DELETE FROM identify WHERE golarion_date < (SELECT golarion_date FROM golarion_current_date) - INTERVAL \'30 days\''
+    );
+    
+    if (oldIdentifications.rowCount > 0) {
+      logger.info(`Cleaned up ${oldIdentifications.rowCount} old identification attempts`);
+    }
+
+    // Clean up old appraisals for deleted loot items
+    const orphanedAppraisals = await dbUtils.executeQuery(
+      'DELETE FROM appraisal WHERE lootid NOT IN (SELECT id FROM loot)'
+    );
+    
+    if (orphanedAppraisals.rowCount > 0) {
+      logger.info(`Cleaned up ${orphanedAppraisals.rowCount} orphaned appraisals`);
+    }
+
+    // Reset login attempts for accounts that haven't failed in 24 hours
+    const resetAttempts = await dbUtils.executeQuery(
+      `UPDATE users 
+       SET login_attempts = 0 
+       WHERE login_attempts > 0 
+         AND locked_until IS NULL 
+         AND (
+           SELECT COUNT(*) FROM pg_stat_activity 
+           WHERE application_name = 'loot-tracker' 
+             AND state = 'active' 
+             AND query_start < NOW() - INTERVAL '24 hours'
+         ) = 0
+       RETURNING username`
+    );
+    
+    if (resetAttempts.rows.length > 0) {
+      logger.info(`Reset login attempts for ${resetAttempts.rows.length} accounts after 24 hours`);
+    }
+
+  } catch (error) {
+    logger.error('Error during session cleanup', {
+      error: error.message,
+      stack: error.stack
+    });
+  }
+};
+
+/**
+ * Initialize session cleanup job
+ * Runs every hour to clean up expired sessions and related data
+ */
+const initSessionCleanup = () => {
+  // Run every hour
+  cron.schedule('0 * * * *', async () => {
+    logger.debug('Running session cleanup job');
+    await cleanupExpiredSessions();
+  });
+
+  // Run immediately on startup
+  cleanupExpiredSessions();
+  
+  logger.info('Session cleanup job initialized - runs every hour');
+};
+
+/**
+ * Manual cleanup function for administrative use
+ */
+const forceCleanup = async () => {
+  logger.info('Manual session cleanup initiated');
+  await cleanupExpiredSessions();
+  logger.info('Manual session cleanup completed');
+};
+
+/**
+ * Get session statistics
+ */
+const getSessionStats = async () => {
+  try {
+    const stats = await dbUtils.executeQuery(`
+      SELECT 
+        (SELECT COUNT(*) FROM users WHERE locked_until IS NOT NULL) as locked_accounts,
+        (SELECT COUNT(*) FROM users WHERE login_attempts > 0) as accounts_with_failed_attempts,
+        (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND (expires_at IS NULL OR expires_at > NOW())) as active_invites,
+        (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND expires_at IS NOT NULL AND expires_at < NOW()) as expired_invites,
+        (SELECT COUNT(*) FROM identify WHERE golarion_date >= (SELECT golarion_date FROM golarion_current_date) - INTERVAL '7 days') as recent_identifications
+    `);
+    
+    return stats.rows[0];
+  } catch (error) {
+    logger.error('Error getting session stats', error);
+    return null;
+  }
+};
+
+module.exports = {
+  initSessionCleanup,
+  cleanupExpiredSessions,
+  forceCleanup,
+  getSessionStats
+};
