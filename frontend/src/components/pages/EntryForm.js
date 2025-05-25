@@ -271,18 +271,13 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     onChange={(e) => handleChange('notes', e.target.value)}
                 />
             </Grid>
-
         </Grid>
     );
 
     const renderGoldForm = () => (
-        <Grid container spacing={2} size={12}>
-            <Grid size={12}>
-                <Typography variant="subtitle1" gutterBottom>
-                    Gold Entry
-                </Typography>
-            </Grid>
-            <Grid size={{xs: 12, md: 4}}>
+        <Grid container spacing={2}>
+            {/* First Line: Session Date, Platinum, Gold, Silver, Copper */}
+            <Grid size={{xs: 12, sm: 1.5}}>
                 <TextField
                     label="Session Date"
                     type="date"
@@ -292,7 +287,61 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     onChange={(e) => handleChange('sessionDate', e.target.value)}
                 />
             </Grid>
-            <Grid size={{xs: 12, md: 8}}>
+            <Grid size={{xs: 12, sm: 2.625}}>
+                <TextField
+                    label="Platinum"
+                    type="number"
+                    fullWidth
+                    inputProps={{min: 0}}
+                    value={localEntry.platinum || ''}
+                    onChange={(e) => {
+                        const value = Math.max(0, parseInt(e.target.value) || 0);
+                        handleChange('platinum', value);
+                    }}
+                />
+            </Grid>
+            <Grid size={{xs: 12, sm: 2.625}}>
+                <TextField
+                    label="Gold"
+                    type="number"
+                    fullWidth
+                    inputProps={{min: 0}}
+                    value={localEntry.gold || ''}
+                    onChange={(e) => {
+                        const value = Math.max(0, parseInt(e.target.value) || 0);
+                        handleChange('gold', value);
+                    }}
+                />
+            </Grid>
+            <Grid size={{xs: 12, sm: 2.625}}>
+                <TextField
+                    label="Silver"
+                    type="number"
+                    fullWidth
+                    inputProps={{min: 0}}
+                    value={localEntry.silver || ''}
+                    onChange={(e) => {
+                        const value = Math.max(0, parseInt(e.target.value) || 0);
+                        handleChange('silver', value);
+                    }}
+                />
+            </Grid>
+            <Grid size={{xs: 12, sm: 2.625}}>
+                <TextField
+                    label="Copper"
+                    type="number"
+                    fullWidth
+                    inputProps={{min: 0}}
+                    value={localEntry.copper || ''}
+                    onChange={(e) => {
+                        const value = Math.max(0, parseInt(e.target.value) || 0);
+                        handleChange('copper', value);
+                    }}
+                />
+            </Grid>
+            
+            {/* Second Line: Transaction Type (1/3), Notes (2/3) */}
+            <Grid size={{xs: 12, sm: 4}}>
                 <FormControl fullWidth>
                     <InputLabel>Transaction Type</InputLabel>
                     <Select
@@ -308,59 +357,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     </Select>
                 </FormControl>
             </Grid>
-            <Grid size={{xs: 12, sm: 6, md: 3}}>
-                <TextField
-                    label="Platinum"
-                    type="number"
-                    fullWidth
-                    inputProps={{min: 0}}
-                    value={localEntry.platinum || ''}
-                    onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleChange('platinum', value);
-                    }}
-                />
-            </Grid>
-            <Grid size={{xs: 12, sm: 6, md: 3}}>
-                <TextField
-                    label="Gold"
-                    type="number"
-                    fullWidth
-                    inputProps={{min: 0}}
-                    value={localEntry.gold || ''}
-                    onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleChange('gold', value);
-                    }}
-                />
-            </Grid>
-            <Grid size={{xs: 12, sm: 6, md: 3}}>
-                <TextField
-                    label="Silver"
-                    type="number"
-                    fullWidth
-                    inputProps={{min: 0}}
-                    value={localEntry.silver || ''}
-                    onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleChange('silver', value);
-                    }}
-                />
-            </Grid>
-            <Grid size={{xs: 12, sm: 6, md: 3}}>
-                <TextField
-                    label="Copper"
-                    type="number"
-                    fullWidth
-                    inputProps={{min: 0}}
-                    value={localEntry.copper || ''}
-                    onChange={(e) => {
-                        const value = Math.max(0, parseInt(e.target.value) || 0);
-                        handleChange('copper', value);
-                    }}
-                />
-            </Grid>
-            <Grid size={12}>
+            <Grid size={{xs: 12, sm: 8}}>
                 <TextField
                     label="Notes"
                     fullWidth
