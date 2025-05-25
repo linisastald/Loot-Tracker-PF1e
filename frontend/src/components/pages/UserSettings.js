@@ -5,7 +5,7 @@ import {
   Box,
   Button,
   Container,
-  Grid2,
+  Grid,
   IconButton,
   InputAdornment,
   Paper,
@@ -168,9 +168,9 @@ const UserSettings = () => {
                 </Box>
 
                 <TabPanel value={tabValue} index={0}>
-                    <Grid2 container spacing={4}>
+                    <Grid container spacing={4} size={12}>
                         {/* Change Password Section */}
-                        <Grid2 xs={12} md={6}>
+                        <Grid size={{xs: 12, md: 6}}>
                             <Paper elevation={2} sx={{p: 3, height: '100%'}}>
                                 <Typography variant="h6" gutterBottom>
                                     Change Password
@@ -254,10 +254,10 @@ const UserSettings = () => {
                                     </Button>
                                 </form>
                             </Paper>
-                        </Grid2>
+                        </Grid>
 
                         {/* Change Email Section */}
-                        <Grid2 xs={12} md={6}>
+                        <Grid size={{xs: 12, md: 6}}>
                             <Paper elevation={2} sx={{p: 3, height: '100%'}}>
                                 <Typography variant="h6" gutterBottom>
                                     Change Email
@@ -313,29 +313,29 @@ const UserSettings = () => {
                                     </Button>
                                 </form>
                             </Paper>
-                        </Grid2>
+                        </Grid>
 
                         {/* Account Information Section */}
-                        <Grid2 xs={12}>
+                        <Grid size={12}>
                             <Paper elevation={2} sx={{p: 3}}>
                                 <Typography variant="h6" gutterBottom>
                                     Account Information
                                 </Typography>
                                 {user && (
-                                    <Grid2 container spacing={2}>
-                                        <Grid2 xs={12} sm={6}>
+                                    <Grid container spacing={2} size={12}>
+                                        <Grid size={{xs: 12, sm: 6}}>
                                             <Typography variant="subtitle1">Username</Typography>
                                             <Typography variant="body1">{user.username}</Typography>
-                                        </Grid2>
-                                        <Grid2 xs={12} sm={6}>
+                                        </Grid>
+                                        <Grid size={{xs: 12, sm: 6}}>
                                             <Typography variant="subtitle1">Role</Typography>
                                             <Typography variant="body1">{user.role}</Typography>
-                                        </Grid2>
-                                    </Grid2>
+                                        </Grid>
+                                    </Grid>
                                 )}
                             </Paper>
-                        </Grid2>
-                    </Grid2>
+                        </Grid>
+                    </Grid>
                 </TabPanel>
 
                 <TabPanel value={tabValue} index={1}>

@@ -5,7 +5,7 @@ import {
     Checkbox,
     FormControl,
     FormControlLabel,
-    Grid2,
+    Grid,
     IconButton,
     InputLabel,
     MenuItem,
@@ -78,13 +78,13 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
     };
 
     const renderItemForm = () => (
-        <Grid2 container spacing={2}>
-            <Grid2 xs={12}>
+        <Grid container spacing={2} size={12}>
+            <Grid size={12}>
                 <Typography variant="subtitle1" gutterBottom>
                     Item Entry
                 </Typography>
-            </Grid2>
-            <Grid2 xs={12} md={4}>
+            </Grid>
+            <Grid size={{xs: 12, md: 4}}>
                 <TextField
                     label="Session Date"
                     type="date"
@@ -93,8 +93,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     value={localEntry.sessionDate ? (typeof localEntry.sessionDate === 'string' ? localEntry.sessionDate.split('T')[0] : new Date(localEntry.sessionDate).toISOString().split('T')[0]) : new Date().toISOString().split('T')[0]}
                     onChange={(e) => handleChange('sessionDate', e.target.value)}
                 />
-            </Grid2>
-            <Grid2 xs={12} md={4}>
+            </Grid>
+            <Grid size={{xs: 12, md: 4}}>
                 <TextField
                     label="Quantity"
                     type="number"
@@ -102,8 +102,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     value={localEntry.quantity}
                     onChange={(e) => handleChange('quantity', e.target.value)}
                 />
-            </Grid2>
-            <Grid2 xs={12} md={4}>
+            </Grid>
+            <Grid size={{xs: 12, md: 4}}>
                 <Autocomplete
                     freeSolo
                     options={itemSuggestions}
@@ -159,8 +159,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         />
                     )}
                 />
-            </Grid2>
-            <Grid2 xs={12} md={4}>
+            </Grid>
+            <Grid size={{xs: 12, md: 4}}>
                 <FormControl fullWidth>
                     <InputLabel>Type</InputLabel>
                     <Select
@@ -178,8 +178,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         <MenuItem value="other">Other</MenuItem>
                     </Select>
                 </FormControl>
-            </Grid2>
-            <Grid2 xs={12} md={4}>
+            </Grid>
+            <Grid size={{xs: 12, md: 4}}>
                 <FormControl fullWidth>
                     <InputLabel>Size</InputLabel>
                     <Select
@@ -199,8 +199,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         <MenuItem value="Colossal">Colossal</MenuItem>
                     </Select>
                 </FormControl>
-            </Grid2>
-            <Grid2 xs={12} md={4}>
+            </Grid>
+            <Grid size={{xs: 12, md: 4}}>
                 <FormControlLabel
                     control={
                         <Checkbox
@@ -210,8 +210,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     }
                     label="Unidentified"
                 />
-            </Grid2>
-            <Grid2 xs={12} md={4}>
+            </Grid>
+            <Grid size={{xs: 12, md: 4}}>
                 <FormControlLabel
                     control={
                         <Checkbox
@@ -221,8 +221,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     }
                     label="Masterwork"
                 />
-            </Grid2>
-            <Grid2 xs={12} md={4}>
+            </Grid>
+            <Grid size={{xs: 12, md: 4}}>
                 <TextField
                     label="Notes"
                     fullWidth
@@ -231,9 +231,9 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     value={localEntry.notes || ''}
                     onChange={(e) => handleChange('notes', e.target.value)}
                 />
-            </Grid2>
+            </Grid>
             {localEntry.name && localEntry.name.toLowerCase().startsWith('wand of ') && (
-                <Grid2 xs={12} md={4}>
+                <Grid size={{xs: 12, md: 4}}>
                     <TextField
                         label="Charges"
                         type="number"
@@ -241,9 +241,9 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         value={localEntry.charges || ''}
                         onChange={(e) => handleChange('charges', e.target.value)}
                     />
-                </Grid2>
+                </Grid>
             )}
-            <Grid2 xs={12} md={4}>
+            <Grid size={{xs: 12, md: 4}}>
                 <FormControlLabel
                     control={
                         <Switch
@@ -259,18 +259,18 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         Not available for unidentified items
                     </Typography>
                 )}
-            </Grid2>
-        </Grid2>
+            </Grid>
+        </Grid>
     );
 
     const renderGoldForm = () => (
-        <Grid2 container spacing={2}>
-            <Grid2 xs={12}>
+        <Grid container spacing={2} size={12}>
+            <Grid size={12}>
                 <Typography variant="subtitle1" gutterBottom>
                     Gold Entry
                 </Typography>
-            </Grid2>
-            <Grid2 xs={12} md={4}>
+            </Grid>
+            <Grid size={{xs: 12, md: 4}}>
                 <TextField
                     label="Session Date"
                     type="date"
@@ -279,8 +279,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     value={localEntry.sessionDate ? (typeof localEntry.sessionDate === 'string' ? localEntry.sessionDate.split('T')[0] : new Date(localEntry.sessionDate).toISOString().split('T')[0]) : new Date().toISOString().split('T')[0]}
                     onChange={(e) => handleChange('sessionDate', e.target.value)}
                 />
-            </Grid2>
-            <Grid2 xs={12} md={8}>
+            </Grid>
+            <Grid size={{xs: 12, md: 8}}>
                 <FormControl fullWidth>
                     <InputLabel>Transaction Type</InputLabel>
                     <Select
@@ -295,8 +295,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         <MenuItem value="Other">Other</MenuItem>
                     </Select>
                 </FormControl>
-            </Grid2>
-            <Grid2 xs={12} sm={6} md={3}>
+            </Grid>
+            <Grid size={{xs: 12, sm: 6, md: 3}}>
                 <TextField
                     label="Platinum"
                     type="number"
@@ -308,8 +308,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         handleChange('platinum', value);
                     }}
                 />
-            </Grid2>
-            <Grid2 xs={12} sm={6} md={3}>
+            </Grid>
+            <Grid size={{xs: 12, sm: 6, md: 3}}>
                 <TextField
                     label="Gold"
                     type="number"
@@ -321,8 +321,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         handleChange('gold', value);
                     }}
                 />
-            </Grid2>
-            <Grid2 xs={12} sm={6} md={3}>
+            </Grid>
+            <Grid size={{xs: 12, sm: 6, md: 3}}>
                 <TextField
                     label="Silver"
                     type="number"
@@ -334,8 +334,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         handleChange('silver', value);
                     }}
                 />
-            </Grid2>
-            <Grid2 xs={12} sm={6} md={3}>
+            </Grid>
+            <Grid size={{xs: 12, sm: 6, md: 3}}>
                 <TextField
                     label="Copper"
                     type="number"
@@ -347,8 +347,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         handleChange('copper', value);
                     }}
                 />
-            </Grid2>
-            <Grid2 xs={12}>
+            </Grid>
+            <Grid size={12}>
                 <TextField
                     label="Notes"
                     fullWidth
@@ -357,8 +357,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     value={localEntry.notes || ''}
                     onChange={(e) => handleChange('notes', e.target.value)}
                 />
-            </Grid2>
-        </Grid2>
+            </Grid>
+        </Grid>
     );
 
     return (

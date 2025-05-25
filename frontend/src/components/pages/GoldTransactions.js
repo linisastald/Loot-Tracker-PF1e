@@ -9,7 +9,7 @@ import {
   CircularProgress,
   Container,
   FormControl,
-  Grid2,
+  Grid,
   InputLabel,
   MenuItem,
   Paper,
@@ -296,8 +296,8 @@ const GoldTransactions = () => {
                     <Card sx={{mb: 3}}>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Currency Summary</Typography>
-                            <Grid2 container spacing={3}>
-                                <Grid2 xs={12} sm={6} md={3}>
+                            <Grid container spacing={3} size={12}>
+                                <Grid size={{xs: 12, sm: 6, md: 3}}>
                                     <Paper sx={{
                                         p: 2,
                                         textAlign: 'center',
@@ -307,8 +307,8 @@ const GoldTransactions = () => {
                                         <Typography variant="subtitle2" color="text.secondary">Platinum</Typography>
                                         <Typography variant="h4" sx={{color: '#E5E4E2'}}>{totals.platinum}</Typography>
                                     </Paper>
-                                </Grid2>
-                                <Grid2 xs={12} sm={6} md={3}>
+                                </Grid>
+                                <Grid size={{xs: 12, sm: 6, md: 3}}>
                                     <Paper sx={{
                                         p: 2,
                                         textAlign: 'center',
@@ -318,8 +318,8 @@ const GoldTransactions = () => {
                                         <Typography variant="subtitle2" color="text.secondary">Gold</Typography>
                                         <Typography variant="h4" sx={{color: '#FFD700'}}>{totals.gold}</Typography>
                                     </Paper>
-                                </Grid2>
-                                <Grid2 xs={12} sm={6} md={3}>
+                                </Grid>
+                                <Grid size={{xs: 12, sm: 6, md: 3}}>
                                     <Paper sx={{
                                         p: 2,
                                         textAlign: 'center',
@@ -329,8 +329,8 @@ const GoldTransactions = () => {
                                         <Typography variant="subtitle2" color="text.secondary">Silver</Typography>
                                         <Typography variant="h4" sx={{color: '#C0C0C0'}}>{totals.silver}</Typography>
                                     </Paper>
-                                </Grid2>
-                                <Grid2 xs={12} sm={6} md={3}>
+                                </Grid>
+                                <Grid size={{xs: 12, sm: 6, md: 3}}>
                                     <Paper sx={{
                                         p: 2,
                                         textAlign: 'center',
@@ -340,8 +340,8 @@ const GoldTransactions = () => {
                                         <Typography variant="subtitle2" color="text.secondary">Copper</Typography>
                                         <Typography variant="h4" sx={{color: '#B87333'}}>{totals.copper}</Typography>
                                     </Paper>
-                                </Grid2>
-                            </Grid2>
+                                </Grid>
+                            </Grid>
                             <Paper sx={{p: 3, mt: 3, textAlign: 'center', bgcolor: 'background.default'}}>
                                 <Typography variant="subtitle1" color="text.secondary">Total Value (in
                                     Gold)</Typography>
@@ -353,8 +353,8 @@ const GoldTransactions = () => {
                     <Card>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Quick Actions</Typography>
-                            <Grid2 container spacing={2}>
-                                <Grid2 xs={12} sm={4}>
+                            <Grid container spacing={2} size={12}>
+                                <Grid size={{xs: 12, sm: 4}}>
                                     <Button
                                         variant="outlined"
                                         color="primary"
@@ -371,8 +371,8 @@ const GoldTransactions = () => {
                                     >
                                         Add New Transaction
                                     </Button>
-                                </Grid2>
-                                <Grid2 xs={12} sm={4}>
+                                </Grid>
+                                <Grid size={{xs: 12, sm: 4}}>
                                     <Button
                                         variant="outlined"
                                         color="secondary"
@@ -389,8 +389,8 @@ const GoldTransactions = () => {
                                     >
                                         Manage Gold
                                     </Button>
-                                </Grid2>
-                                <Grid2 xs={12} sm={4}>
+                                </Grid>
+                                <Grid size={{xs: 12, sm: 4}}>
                                     <Button
                                         variant="outlined"
                                         onClick={() => setActiveTab(2)}
@@ -406,8 +406,8 @@ const GoldTransactions = () => {
                                     >
                                         View History
                                     </Button>
-                                </Grid2>
-                            </Grid2>
+                                </Grid>
+                            </Grid>
                         </CardContent>
                     </Card>
                 </TabPanel>
@@ -418,8 +418,8 @@ const GoldTransactions = () => {
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Add New Gold Transaction</Typography>
                             <form onSubmit={handleSubmitEntry}>
-                                <Grid2 container spacing={3}>
-                                    <Grid2 xs={12} md={4}>
+                                <Grid container spacing={3} size={12}>
+                                    <Grid size={{xs: 12, md: 4}}>
                                         <LocalizationProvider dateAdapter={AdapterDateFns}>
                                             <DatePicker
                                                 label="Session Date"
@@ -428,8 +428,8 @@ const GoldTransactions = () => {
                                                 renderInput={(params) => <TextField {...params} fullWidth/>}
                                             />
                                         </LocalizationProvider>
-                                    </Grid2>
-                                    <Grid2 xs={12} md={8}>
+                                    </Grid>
+                                    <Grid size={{xs: 12, md: 8}}>
                                         <FormControl fullWidth>
                                             <InputLabel>Transaction Type</InputLabel>
                                             <Select
@@ -448,13 +448,13 @@ const GoldTransactions = () => {
                                                 <MenuItem value="Other">Other</MenuItem>
                                             </Select>
                                         </FormControl>
-                                    </Grid2>
+                                    </Grid>
 
-                                    <Grid2 xs={12}>
+                                    <Grid size={12}>
                                         <Typography variant="subtitle1" gutterBottom>Amount</Typography>
-                                    </Grid2>
+                                    </Grid>
 
-                                    <Grid2 xs={12} sm={6} md={3}>
+                                    <Grid size={{xs: 12, sm: 6, md: 3}}>
                                         <TextField
                                             label="Platinum"
                                             type="number"
@@ -463,8 +463,8 @@ const GoldTransactions = () => {
                                             value={newEntry.platinum}
                                             onChange={(e) => handleEntryChange('platinum', e.target.value)}
                                         />
-                                    </Grid2>
-                                    <Grid2 xs={12} sm={6} md={3}>
+                                    </Grid>
+                                    <Grid size={{xs: 12, sm: 6, md: 3}}>
                                         <TextField
                                             label="Gold"
                                             type="number"
@@ -473,8 +473,8 @@ const GoldTransactions = () => {
                                             value={newEntry.gold}
                                             onChange={(e) => handleEntryChange('gold', e.target.value)}
                                         />
-                                    </Grid2>
-                                    <Grid2 xs={12} sm={6} md={3}>
+                                    </Grid>
+                                    <Grid size={{xs: 12, sm: 6, md: 3}}>
                                         <TextField
                                             label="Silver"
                                             type="number"
@@ -483,8 +483,8 @@ const GoldTransactions = () => {
                                             value={newEntry.silver}
                                             onChange={(e) => handleEntryChange('silver', e.target.value)}
                                         />
-                                    </Grid2>
-                                    <Grid2 xs={12} sm={6} md={3}>
+                                    </Grid>
+                                    <Grid size={{xs: 12, sm: 6, md: 3}}>
                                         <TextField
                                             label="Copper"
                                             type="number"
@@ -493,8 +493,8 @@ const GoldTransactions = () => {
                                             value={newEntry.copper}
                                             onChange={(e) => handleEntryChange('copper', e.target.value)}
                                         />
-                                    </Grid2>
-                                    <Grid2 xs={12}>
+                                    </Grid>
+                                    <Grid size={12}>
                                         <TextField
                                             label="Notes"
                                             fullWidth
@@ -503,8 +503,8 @@ const GoldTransactions = () => {
                                             value={newEntry.notes}
                                             onChange={(e) => handleEntryChange('notes', e.target.value)}
                                         />
-                                    </Grid2>
-                                    <Grid2 xs={12}>
+                                    </Grid>
+                                    <Grid size={12}>
                                         <Button
                                             type="submit"
                                             variant="outlined"
@@ -521,8 +521,8 @@ const GoldTransactions = () => {
                                         >
                                             Add Transaction
                                         </Button>
-                                    </Grid2>
-                                </Grid2>
+                                    </Grid>
+                                </Grid>
                             </form>
                         </CardContent>
                     </Card>
@@ -534,24 +534,24 @@ const GoldTransactions = () => {
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Filter Transactions</Typography>
                             <LocalizationProvider dateAdapter={AdapterDateFns}>
-                                <Grid2 container spacing={2} alignItems="center">
-                                    <Grid2 xs={12} sm={4}>
+                                <Grid container spacing={2} size={12}>
+                                    <Grid size={{xs: 12, sm: 4}}>
                                         <DatePicker
                                             label="Start Date"
                                             value={startDate}
                                             onChange={(date) => setStartDate(date)}
                                             renderInput={(params) => <TextField {...params} fullWidth/>}
                                         />
-                                    </Grid2>
-                                    <Grid2 xs={12} sm={4}>
+                                    </Grid>
+                                    <Grid size={{xs: 12, sm: 4}}>
                                         <DatePicker
                                             label="End Date"
                                             value={endDate}
                                             onChange={(date) => setEndDate(date)}
                                             renderInput={(params) => <TextField {...params} fullWidth/>}
                                         />
-                                    </Grid2>
-                                    <Grid2 xs={12} sm={4}>
+                                    </Grid>
+                                    <Grid size={{xs: 12, sm: 4}}>
                                         <Button
                                             variant="outlined"
                                             color="primary"
@@ -568,8 +568,8 @@ const GoldTransactions = () => {
                                         >
                                             Apply Filter
                                         </Button>
-                                    </Grid2>
-                                </Grid2>
+                                    </Grid>
+                                </Grid>
                             </LocalizationProvider>
                             <Box sx={{mt: 2}}>
                                 <Button
@@ -686,8 +686,8 @@ const GoldTransactions = () => {
                     <Card>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Gold Management</Typography>
-                            <Grid2 container spacing={3}>
-                                <Grid2 xs={12} md={4}>
+                            <Grid container spacing={3} size={12}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <Paper sx={{p: 3, textAlign: 'center', height: '100%'}}>
                                         <Typography variant="subtitle1" gutterBottom>Equal Distribution</Typography>
                                         <Typography variant="body2" sx={{mb: 2}}>
@@ -710,9 +710,9 @@ const GoldTransactions = () => {
                                             Distribute All
                                         </Button>
                                     </Paper>
-                                </Grid2>
+                                </Grid>
 
-                                <Grid2 xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <Paper sx={{p: 3, textAlign: 'center', height: '100%'}}>
                                         <Typography variant="subtitle1" gutterBottom>Party Loot Share</Typography>
                                         <Typography variant="body2" sx={{mb: 2}}>
@@ -735,10 +735,10 @@ const GoldTransactions = () => {
                                             Distribute + Party Loot
                                         </Button>
                                     </Paper>
-                                </Grid2>
+                                </Grid>
 
                                 {userRole === 'DM' && (
-                                    <Grid2 xs={12} md={4}>
+                                    <Grid size={{xs: 12, md: 4}}>
                                         <Paper sx={{p: 3, textAlign: 'center', height: '100%'}}>
                                             <Typography variant="subtitle1" gutterBottom>Balance Currency</Typography>
                                             <Typography variant="body2" sx={{mb: 2}}>
@@ -761,9 +761,9 @@ const GoldTransactions = () => {
                                                 Balance Currencies
                                             </Button>
                                         </Paper>
-                                    </Grid2>
+                                    </Grid>
                                 )}
-                            </Grid2>
+                            </Grid>
                         </CardContent>
                     </Card>
                 </TabPanel>
