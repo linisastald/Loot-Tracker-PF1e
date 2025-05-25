@@ -240,7 +240,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                 </Paper>
             </Grid>
             <Grid size={{xs: 12, sm: 3}}>
-                <Paper variant="outlined" sx={{ p: 1, display: 'flex', alignItems: 'center', height: '56px' }}>
+                <Paper variant="outlined" sx={{ p: 1, display: 'inline-flex', alignItems: 'center', height: '56px' }}>
                     <FormControlLabel
                         control={
                             <Switch
