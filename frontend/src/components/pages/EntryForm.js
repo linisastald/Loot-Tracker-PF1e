@@ -79,8 +79,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
 
     const renderItemForm = () => (
         <Grid container spacing={2}>
-            {/* First Line: Session Date (1/3), Quantity (small), Item Name (remaining) */}
-            <Grid size={{xs: 12, sm: 2}}>
+            {/* First Line: Session Date, Quantity (same size as Type/Size), Item Name (remaining) */}
+            <Grid size={{xs: 12, sm: 1.5}}>
                 <TextField
                     label="Session Date"
                     type="date"
@@ -90,7 +90,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     onChange={(e) => handleChange('sessionDate', e.target.value)}
                 />
             </Grid>
-            <Grid size={{xs: 12, sm: 2}}>
+            <Grid size={{xs: 12, sm: 1.5}}>
                 <TextField
                     label="Quantity"
                     type="number"
@@ -99,7 +99,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     onChange={(e) => handleChange('quantity', e.target.value)}
                 />
             </Grid>
-            <Grid size={{xs: 12, sm: 8}}>
+            <Grid size={{xs: 12, sm: 9}}>
                 <Autocomplete
                     freeSolo
                     options={itemSuggestions}
@@ -212,7 +212,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
             )}
             
             <Grid size={{xs: 6, sm: 1.5}}>
-                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pl: 1 }}>
+                <Paper variant="outlined" sx={{ p: 1, display: 'flex', alignItems: 'center', height: '56px' }}>
                     <FormControlLabel
                         control={
                             <Checkbox
@@ -223,10 +223,10 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         label="Unidentified"
                         sx={{ m: 0 }}
                     />
-                </Box>
+                </Paper>
             </Grid>
             <Grid size={{xs: 6, sm: 1.5}}>
-                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pl: 1 }}>
+                <Paper variant="outlined" sx={{ p: 1, display: 'flex', alignItems: 'center', height: '56px' }}>
                     <FormControlLabel
                         control={
                             <Checkbox
@@ -237,10 +237,10 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                         label="Masterwork"
                         sx={{ m: 0 }}
                     />
-                </Box>
+                </Paper>
             </Grid>
             <Grid size={{xs: 12, sm: 3}}>
-                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pl: 1 }}>
+                <Paper variant="outlined" sx={{ p: 1, display: 'flex', alignItems: 'center', height: '56px' }}>
                     <FormControlLabel
                         control={
                             <Switch
@@ -257,7 +257,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                             Not available for unidentified items
                         </Typography>
                     )}
-                </Box>
+                </Paper>
             </Grid>
             
             {/* Third Line: Notes (full width) */}
