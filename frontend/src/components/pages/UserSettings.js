@@ -159,7 +159,6 @@ const UserSettings = () => {
     return (
         <Container maxWidth={false} component="main">
             <Paper sx={{p: 2, mb: 2}}>
-                <Typography variant="h6">User Settings</Typography>
                 <Box sx={{borderBottom: 1, borderColor: 'divider', width: '100%'}}>
                     <Tabs value={tabValue} onChange={handleTabChange} aria-label="user settings tabs">
                         <Tab label="Account Settings"/>

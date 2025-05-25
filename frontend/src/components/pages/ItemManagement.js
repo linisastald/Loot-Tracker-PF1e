@@ -43,7 +43,6 @@ const ItemManagement = () => {
     return (
         <Container maxWidth={false} component="main">
             <Paper sx={{p: 2, mb: 2}}>
-                <Typography variant="h6">Item Management</Typography>
                 <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
                     <Tabs value={activeTab} onChange={handleTabChange} aria-label="item management tabs">
                         <Tab label="General"/>

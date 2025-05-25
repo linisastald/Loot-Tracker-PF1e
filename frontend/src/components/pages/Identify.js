@@ -288,9 +288,6 @@ const Identify = () => {
 
     return (
         <Container maxWidth={false} component="main">
-            <Paper sx={{p: 2, mb: 2}}>
-                <Typography variant="h6">Identify Unidentified Items</Typography>
-            </Paper>
 
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}

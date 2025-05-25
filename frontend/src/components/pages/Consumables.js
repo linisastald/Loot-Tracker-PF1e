@@ -159,8 +159,6 @@ const Consumables = () => {
   return (
     <Container maxWidth={false} component="main">
       <Paper sx={{p: 2, mb: 2}}>
-        <Typography variant="h6">Consumables</Typography>
-
         {/* Search Bar */}
         <TextField
           fullWidth

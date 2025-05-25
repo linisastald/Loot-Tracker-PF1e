@@ -280,8 +280,7 @@ const GoldTransactions = () => {
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}
 
             <Paper sx={{p: 2, mb: 2}}>
-                <Typography variant="h6">Gold Transactions</Typography>
-                <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2, mt: 2}}>
+                <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
                     <Tabs value={activeTab} onChange={handleTabChange} aria-label="gold management tabs">
                         <Tab label="Overview" {...a11yProps(0)} />
                         <Tab label="Add Transaction" {...a11yProps(1)} />

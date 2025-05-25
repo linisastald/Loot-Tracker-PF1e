@@ -587,8 +587,7 @@ const Infamy = () => {
     return (
         <Container maxWidth="lg">
             <Paper sx={{ p: 3, mb: 3 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Typography variant="h5">Ship's Infamy & Disrepute</Typography>
+                <Box display="flex" justifyContent="end" alignItems="center">
                     <Chip
                         label={infamyStatus.threshold}
                         color={infamyStatus.infamy < 10 ? "default" : "primary"}

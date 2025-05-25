@@ -48,7 +48,6 @@ const LootManagement = () => {
     return (
         <Container maxWidth={false} component="main">
             <Paper sx={{p: 2, mb: 2}}>
-                <Typography variant="h6">Loot Management</Typography>
                 <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
                     <Tabs value={activeTab} onChange={handleTabChange} aria-label="loot management tabs">
                         <Tab label="Unprocessed"/>

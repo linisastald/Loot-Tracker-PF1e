@@ -75,7 +75,7 @@ const LootEntry = () => {
                     justifyContent: 'space-between',
                     alignItems: 'center'
                 }}>
-                    <Typography variant="h6">Loot Entry</Typography>
+
                     <Box>
                         <Button
                             variant="outlined"

@@ -392,11 +392,6 @@ const Tasks = () => {
     return (
         <Container maxWidth="lg" component="main">
             <Paper sx={{p: 3, mb: 3, borderRadius: 2}} elevation={3}>
-                <Typography variant="h5" gutterBottom
-                            sx={{display: 'flex', alignItems: 'center', mb: 2, fontWeight: 'bold'}}>
-                    <FormatListBulletedIcon sx={{mr: 1}} color="primary"/>
-                    Session Task Assignments
-                </Typography>
 
                 {alert.show && (
                     <Alert
