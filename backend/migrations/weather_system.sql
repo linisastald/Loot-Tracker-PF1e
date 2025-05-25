@@ -46,8 +46,10 @@ CREATE TABLE IF NOT EXISTS golarion_weather (
     FOREIGN KEY (region) REFERENCES weather_regions(region_name)
 );
 
--- Add region setting to user settings
-ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS region VARCHAR(100) DEFAULT 'Varisia';
+-- Add region setting to settings table
+INSERT INTO settings (name, value, value_type, description) 
+VALUES ('default_region', 'Varisia', 'string', 'Default weather region for the campaign')
+ON CONFLICT (name) DO NOTHING;
 
 -- Add index for faster weather queries
 CREATE INDEX IF NOT EXISTS idx_weather_date_region ON golarion_weather(year, month, day, region);
