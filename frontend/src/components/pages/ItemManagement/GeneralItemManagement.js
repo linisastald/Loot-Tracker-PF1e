@@ -168,7 +168,7 @@ const GeneralItemManagement = () => {
 
             <Box mt={2} mb={2}>
                 <Grid container spacing={2}>
-                    <Grid item xs={12} md={4}>
+                    <Grid item xs={12} md={6}>
                         <TextField
                             label="Search Items"
                             variant="outlined"
@@ -177,7 +177,7 @@ const GeneralItemManagement = () => {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </Grid>
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Unidentified</InputLabel>
                             <Select
@@ -190,7 +190,7 @@ const GeneralItemManagement = () => {
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Type</InputLabel>
                             <Select
@@ -207,7 +207,7 @@ const GeneralItemManagement = () => {
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Size</InputLabel>
                             <Select
@@ -227,7 +227,7 @@ const GeneralItemManagement = () => {
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Status</InputLabel>
                             <Select
@@ -243,7 +243,7 @@ const GeneralItemManagement = () => {
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Item ID</InputLabel>
                             <Select
@@ -256,7 +256,7 @@ const GeneralItemManagement = () => {
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Mod IDs</InputLabel>
                             <Select
@@ -269,7 +269,7 @@ const GeneralItemManagement = () => {
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Value</InputLabel>
                             <Select
@@ -282,7 +282,7 @@ const GeneralItemManagement = () => {
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} md={2}>
+                    <Grid item xs={12} md={3}>
                         <Box sx={{display: 'flex', gap: 1}}>
                             <Button variant="outlined" color="primary" onClick={handleSearch} fullWidth>
                                 Search

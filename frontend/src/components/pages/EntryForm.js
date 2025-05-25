@@ -84,7 +84,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     Item Entry
                 </Typography>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={4}>
                 <TextField
                     label="Session Date"
                     type="date"
@@ -94,7 +94,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     onChange={(e) => handleChange('sessionDate', e.target.value)}
                 />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={4}>
                 <TextField
                     label="Quantity"
                     type="number"
@@ -103,7 +103,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     onChange={(e) => handleChange('quantity', e.target.value)}
                 />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
                 <Autocomplete
                     freeSolo
                     options={itemSuggestions}
@@ -160,7 +160,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     )}
                 />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={4}>
                 <FormControl fullWidth>
                     <InputLabel>Type</InputLabel>
                     <Select
@@ -179,7 +179,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     </Select>
                 </FormControl>
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={4}>
                 <FormControl fullWidth>
                     <InputLabel>Size</InputLabel>
                     <Select
@@ -200,7 +200,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     </Select>
                 </FormControl>
             </Grid>
-            <Grid item xs={6} md={3}>
+            <Grid item xs={12} md={4}>
                 <FormControlLabel
                     control={
                         <Checkbox
@@ -211,7 +211,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     label="Unidentified"
                 />
             </Grid>
-            <Grid item xs={6} md={3}>
+            <Grid item xs={12} md={4}>
                 <FormControlLabel
                     control={
                         <Checkbox
@@ -222,7 +222,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     label="Masterwork"
                 />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
                 <TextField
                     label="Notes"
                     fullWidth
@@ -233,7 +233,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                 />
             </Grid>
             {localEntry.name && localEntry.name.toLowerCase().startsWith('wand of ') && (
-                <Grid item xs={12} md={3}>
+                <Grid item xs={12} md={4}>
                     <TextField
                         label="Charges"
                         type="number"
@@ -243,7 +243,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     />
                 </Grid>
             )}
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={4}>
                 <FormControlLabel
                     control={
                         <Switch
@@ -296,7 +296,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     </Select>
                 </FormControl>
             </Grid>
-            <Grid item xs={6} md={3}>
+            <Grid item xs={12} md={3}>
                 <TextField
                     label="Platinum"
                     type="number"
@@ -309,7 +309,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     }}
                 />
             </Grid>
-            <Grid item xs={6} md={3}>
+            <Grid item xs={12} md={3}>
                 <TextField
                     label="Gold"
                     type="number"
@@ -322,7 +322,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     }}
                 />
             </Grid>
-            <Grid item xs={6} md={3}>
+            <Grid item xs={12} md={3}>
                 <TextField
                     label="Silver"
                     type="number"
@@ -335,7 +335,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     }}
                 />
             </Grid>
-            <Grid item xs={6} md={3}>
+            <Grid item xs={12} md={3}>
                 <TextField
                     label="Copper"
                     type="number"

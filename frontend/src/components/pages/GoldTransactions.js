@@ -297,7 +297,7 @@ const GoldTransactions = () => {
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Currency Summary</Typography>
                             <Grid container spacing={3}>
-                                <Grid item xs={6} sm={3}>
+                                <Grid item xs={12} sm={6} md={3}>
                                     <Paper sx={{
                                         p: 2,
                                         textAlign: 'center',
@@ -308,7 +308,7 @@ const GoldTransactions = () => {
                                         <Typography variant="h4" sx={{color: '#E5E4E2'}}>{totals.platinum}</Typography>
                                     </Paper>
                                 </Grid>
-                                <Grid item xs={6} sm={3}>
+                                <Grid item xs={12} sm={6} md={3}>
                                     <Paper sx={{
                                         p: 2,
                                         textAlign: 'center',
@@ -319,7 +319,7 @@ const GoldTransactions = () => {
                                         <Typography variant="h4" sx={{color: '#FFD700'}}>{totals.gold}</Typography>
                                     </Paper>
                                 </Grid>
-                                <Grid item xs={6} sm={3}>
+                                <Grid item xs={12} sm={6} md={3}>
                                     <Paper sx={{
                                         p: 2,
                                         textAlign: 'center',
@@ -330,7 +330,7 @@ const GoldTransactions = () => {
                                         <Typography variant="h4" sx={{color: '#C0C0C0'}}>{totals.silver}</Typography>
                                     </Paper>
                                 </Grid>
-                                <Grid item xs={6} sm={3}>
+                                <Grid item xs={12} sm={6} md={3}>
                                     <Paper sx={{
                                         p: 2,
                                         textAlign: 'center',
@@ -454,7 +454,7 @@ const GoldTransactions = () => {
                                         <Typography variant="subtitle1" gutterBottom>Amount</Typography>
                                     </Grid>
 
-                                    <Grid item xs={6} sm={3}>
+                                    <Grid item xs={12} sm={6} md={3}>
                                         <TextField
                                             label="Platinum"
                                             type="number"
@@ -464,7 +464,7 @@ const GoldTransactions = () => {
                                             onChange={(e) => handleEntryChange('platinum', e.target.value)}
                                         />
                                     </Grid>
-                                    <Grid item xs={6} sm={3}>
+                                    <Grid item xs={12} sm={6} md={3}>
                                         <TextField
                                             label="Gold"
                                             type="number"
@@ -474,7 +474,7 @@ const GoldTransactions = () => {
                                             onChange={(e) => handleEntryChange('gold', e.target.value)}
                                         />
                                     </Grid>
-                                    <Grid item xs={6} sm={3}>
+                                    <Grid item xs={12} sm={6} md={3}>
                                         <TextField
                                             label="Silver"
                                             type="number"
@@ -484,7 +484,7 @@ const GoldTransactions = () => {
                                             onChange={(e) => handleEntryChange('silver', e.target.value)}
                                         />
                                     </Grid>
-                                    <Grid item xs={6} sm={3}>
+                                    <Grid item xs={12} sm={6} md={3}>
                                         <TextField
                                             label="Copper"
                                             type="number"
