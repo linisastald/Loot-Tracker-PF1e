@@ -400,7 +400,7 @@ const AddItemMod = () => {
                             <Divider sx={{my: 2}}/>
 
                             <Grid container spacing={2}>
-                                <Grid item xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <TextField
                                         label="ID (non-editable)"
                                         value={itemForm.id}
@@ -409,7 +409,7 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid item xs={12} md={8}>
+                                <Grid size={{xs: 12, md: 8}}>
                                     <TextField
                                         required
                                         label="Item Name"
@@ -420,7 +420,7 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <FormControl fullWidth margin="normal" required>
                                         <InputLabel>Type</InputLabel>
                                         <Select
@@ -439,7 +439,7 @@ const AddItemMod = () => {
                                         </Select>
                                     </FormControl>
                                 </Grid>
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <TextField
                                         label="Subtype"
                                         name="subtype"
@@ -449,7 +449,7 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid item xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <TextField
                                         required
                                         label="Value"
@@ -461,7 +461,7 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid item xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <TextField
                                         label="Weight"
                                         name="weight"
@@ -472,7 +472,7 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid item xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <TextField
                                         label="Caster Level"
                                         name="casterlevel"
@@ -483,7 +483,7 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid item xs={12}>
+                                <Grid size={12}>
                                     <Box display="flex" justifyContent="space-between" mt={2}>
                                         <Button
                                             variant="outlined"
@@ -536,7 +536,7 @@ const AddItemMod = () => {
                             <Divider sx={{my: 2}}/>
 
                             <Grid container spacing={2}>
-                                <Grid item xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <TextField
                                         label="ID (non-editable)"
                                         value={modForm.id}
@@ -545,7 +545,7 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid item xs={12} md={8}>
+                                <Grid size={{xs: 12, md: 8}}>
                                     <TextField
                                         required
                                         label="Mod Name"
@@ -556,7 +556,7 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <FormControl fullWidth margin="normal" required>
                                         <InputLabel>Type</InputLabel>
                                         <Select
@@ -571,7 +571,7 @@ const AddItemMod = () => {
                                         </Select>
                                     </FormControl>
                                 </Grid>
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <TextField
                                         label="Plus"
                                         name="plus"
@@ -581,7 +581,7 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid item xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <TextField
                                         label="Value Calculation"
                                         name="valuecalc"
@@ -592,7 +592,7 @@ const AddItemMod = () => {
                                         placeholder="e.g. +10, *1.5"
                                     />
                                 </Grid>
-                                <Grid item xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <FormControl fullWidth margin="normal" required>
                                         <InputLabel>Target</InputLabel>
                                         <Select
@@ -607,7 +607,7 @@ const AddItemMod = () => {
                                         </Select>
                                     </FormControl>
                                 </Grid>
-                                <Grid item xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <FormControl fullWidth margin="normal" required>
                                         <InputLabel>Subtarget</InputLabel>
                                         <Select
@@ -628,7 +628,7 @@ const AddItemMod = () => {
                                         </Select>
                                     </FormControl>
                                 </Grid>
-                                <Grid item xs={12}>
+                                <Grid size={12}>
                                     <Box display="flex" justifyContent="space-between" mt={2}>
                                         <Button
                                             variant="outlined"
