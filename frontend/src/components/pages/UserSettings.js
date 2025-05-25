@@ -168,7 +168,7 @@ const UserSettings = () => {
                 </Box>
 
                 <TabPanel value={tabValue} index={0}>
-                    <Grid container spacing={4} size={12}>
+                    <Grid container spacing={4}>
                         {/* Change Password Section */}
                         <Grid size={{xs: 12, md: 6}}>
                             <Paper elevation={2} sx={{p: 3, height: '100%'}}>
@@ -322,7 +322,7 @@ const UserSettings = () => {
                                     Account Information
                                 </Typography>
                                 {user && (
-                                    <Grid container spacing={2} size={12}>
+                                    <Grid container spacing={2}>
                                         <Grid size={{xs: 12, sm: 6}}>
                                             <Typography variant="subtitle1">Username</Typography>
                                             <Typography variant="body1">{user.username}</Typography>

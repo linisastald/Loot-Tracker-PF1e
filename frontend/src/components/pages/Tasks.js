@@ -413,8 +413,8 @@ const Tasks = () => {
                     to exclude them from pre-session tasks.
                 </Typography>
 
-                <Grid container spacing={3}>
-                    <Grid item xs={12} md={6}>
+                <Grid container spacing={3} size={12}>
+                <Grid size={{xs: 12, md: 6}}>
                         <CharacterSelector>
                             <Typography variant="subtitle1" gutterBottom sx={{display: 'flex', alignItems: 'center'}}>
                                 <PersonIcon sx={{mr: 1}} color="primary"/>
@@ -474,7 +474,7 @@ const Tasks = () => {
                         </CharacterSelector>
                     </Grid>
 
-                    <Grid item xs={12} md={6}>
+                    <Grid size={{xs: 12, md: 6}}>
                         <Box
                             sx={{
                                 display: 'flex',

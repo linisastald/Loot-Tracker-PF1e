@@ -296,7 +296,7 @@ const GoldTransactions = () => {
                     <Card sx={{mb: 3}}>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Currency Summary</Typography>
-                            <Grid container spacing={3} size={12}>
+                            <Grid container spacing={3}>
                                 <Grid size={{xs: 12, sm: 6, md: 3}}>
                                     <Paper sx={{
                                         p: 2,
@@ -353,7 +353,7 @@ const GoldTransactions = () => {
                     <Card>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Quick Actions</Typography>
-                            <Grid container spacing={2} size={12}>
+                            <Grid container spacing={2}>
                                 <Grid size={{xs: 12, sm: 4}}>
                                     <Button
                                         variant="outlined"
@@ -418,7 +418,7 @@ const GoldTransactions = () => {
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Add New Gold Transaction</Typography>
                             <form onSubmit={handleSubmitEntry}>
-                                <Grid container spacing={3} size={12}>
+                                <Grid container spacing={3}>
                                     <Grid size={{xs: 12, md: 4}}>
                                         <LocalizationProvider dateAdapter={AdapterDateFns}>
                                             <DatePicker
@@ -534,7 +534,7 @@ const GoldTransactions = () => {
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Filter Transactions</Typography>
                             <LocalizationProvider dateAdapter={AdapterDateFns}>
-                                <Grid container spacing={2} size={12}>
+                                <Grid container spacing={2}>
                                     <Grid size={{xs: 12, sm: 4}}>
                                         <DatePicker
                                             label="Start Date"
@@ -686,7 +686,7 @@ const GoldTransactions = () => {
                     <Card>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Gold Management</Typography>
-                            <Grid container spacing={3} size={12}>
+                            <Grid container spacing={3}>
                                 <Grid size={{xs: 12, md: 4}}>
                                     <Paper sx={{p: 3, textAlign: 'center', height: '100%'}}>
                                         <Typography variant="subtitle1" gutterBottom>Equal Distribution</Typography>

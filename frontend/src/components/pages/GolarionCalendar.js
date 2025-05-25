@@ -595,8 +595,8 @@ const GolarionCalendar = () => {
                         {`${selectedDate.day} ${months[selectedDate.month].name} ${selectedDate.year}`}
                     </Typography>
 
-                    <Grid container spacing={3}>
-                        <Grid item xs={12} md={5}>
+                    <Grid container spacing={3} size={12}>
+                        <Grid size={{xs: 12, md: 5}}>
                             <InfoCard>
                                 <InfoCardContent>
                                     <Typography variant="h6" color="primary" gutterBottom>Calendar
@@ -672,7 +672,7 @@ const GolarionCalendar = () => {
                             </InfoCard>
                         </Grid>
 
-                        <Grid item xs={12} md={7}>
+                        <Grid size={{xs: 12, md: 7}}>
                             <Paper sx={{p: 2, height: '100%', borderRadius: 2}} elevation={2}>
                                 <Typography variant="h6" gutterBottom sx={{display: 'flex', alignItems: 'center'}}>
                                     <NoteAltIcon sx={{mr: 1}} color="secondary"/>

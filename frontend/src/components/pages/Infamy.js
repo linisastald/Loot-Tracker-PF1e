@@ -599,8 +599,8 @@ const Infamy = () => {
                 {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
                 {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
 
-                <Grid container spacing={3} sx={{ mt: 1 }}>
-                    <Grid item xs={12} md={6}>
+                <Grid container spacing={3} size={12} sx={{ mt: 1 }}>
+                    <Grid size={{xs: 12, md: 6}}>
                         <Card elevation={3}>
                             <CardHeader
                                 title="Reputation"
@@ -639,7 +639,7 @@ const Infamy = () => {
                         </Card>
                     </Grid>
 
-                    <Grid item xs={12} md={6}>
+                    <Grid size={{xs: 12, md: 6}}>
                         <Card elevation={3}>
                             <CardHeader
                                 title="Favored Ports"
@@ -707,8 +707,8 @@ const Infamy = () => {
                     </Typography>
 
                     <Paper sx={{ p: 3 }}>
-                        <Grid container spacing={3}>
-                            <Grid item xs={12} md={6}>
+                        <Grid container spacing={3} size={12}>
+                            <Grid size={{xs: 12, md: 6}}>
                                 <FormControl fullWidth margin="normal">
                                     <InputLabel id="port-select-label">Port</InputLabel>
                                     <Select
@@ -748,7 +748,7 @@ const Infamy = () => {
                                 />
                             </Grid>
 
-                            <Grid item xs={12} md={6}>
+                            <Grid size={{xs: 12, md: 6}}>
                                 <Box sx={{ p: 2, border: '1px dashed gray', borderRadius: 1, mt: 2 }}>
                                     <Typography variant="subtitle2" gutterBottom>Spend Plunder for Bonus</Typography>
                                     <Typography variant="body2" paragraph>
@@ -797,7 +797,7 @@ const Infamy = () => {
                                 </Box>
                             </Grid>
 
-                            <Grid item xs={12}>
+                            <Grid size={12}>
                                 <Button
                                     variant="contained"
                                     color="primary"
@@ -820,8 +820,8 @@ const Infamy = () => {
                                 DM Controls
                             </Typography>
 
-                            <Grid container spacing={3}>
-                                <Grid item xs={12} md={6}>
+                            <Grid container spacing={3} size={12}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <TextField
                                         fullWidth
                                         label="Infamy Change"
@@ -843,7 +843,7 @@ const Infamy = () => {
                                     />
                                 </Grid>
 
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <TextField
                                         fullWidth
                                         label="Disrepute Change"
@@ -865,7 +865,7 @@ const Infamy = () => {
                                     />
                                 </Grid>
 
-                                <Grid item xs={12}>
+                                <Grid size={12}>
                                     <TextField
                                         fullWidth
                                         label="Reason for Adjustment"
@@ -875,7 +875,7 @@ const Infamy = () => {
                                     />
                                 </Grid>
 
-                                <Grid item xs={12}>
+                                <Grid size={12}>
                                     <Button
                                         variant="contained"
                                         color="error"
@@ -892,15 +892,15 @@ const Infamy = () => {
 
                     {infamyStatus.infamy >= 20 && (
                         <Paper sx={{ p: 3, mt: 3 }}>
-                            <Grid container spacing={2} alignItems="center">
-                                <Grid item xs={12} md={8}>
+                            <Grid container spacing={2} size={12} alignItems="center">
+                                <Grid size={{xs: 12, md: 8}}>
                                     <Typography variant="h6" color="error">Sacrifice Crew Member</Typography>
                                     <Typography variant="body2">
                                         Once per week, you can sacrifice a prisoner or crew member to gain 1d3 points of Disrepute.
                                         This sacrifice is always fatal.
                                     </Typography>
                                 </Grid>
-                                <Grid item xs={12} md={4}>
+                                <Grid size={{xs: 12, md: 4}}>
                                     <Button
                                         variant="outlined"
                                         color="error"

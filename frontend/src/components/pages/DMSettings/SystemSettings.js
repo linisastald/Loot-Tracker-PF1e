@@ -434,7 +434,7 @@ const SystemSettings = () => {
 
             <Grid container spacing={3}>
                 {/* Registration Settings */}
-                <Grid item xs={12} md={4}>
+                <Grid size={{xs: 12, md: 4}}>
                     <Card variant="outlined">
                         <CardHeader title="Registration Settings"/>
                         <CardContent>
@@ -524,7 +524,7 @@ const SystemSettings = () => {
                 </Grid>
 
                 {/* Discord Integration Settings */}
-                <Grid item xs={12} md={4}>
+                <Grid size={{xs: 12, md: 4}}>
                     <Card variant="outlined">
                         <CardHeader title="Discord Integration" avatar={<ChatIcon/>}/>
                         <CardContent>
@@ -574,7 +574,7 @@ const SystemSettings = () => {
                 </Grid>
 
                 {/* General Settings */}
-                <Grid item xs={12} md={4}>
+                <Grid size={{xs: 12, md: 4}}>
                     <Card variant="outlined">
                         <CardHeader title="General Settings" avatar={<SettingsIcon/>}/>
                         <CardContent>
@@ -668,7 +668,7 @@ const SystemSettings = () => {
                 </Grid>
 
                 {/* Database Backup & Restore */}
-                <Grid item xs={12}>
+                <Grid size={12}>
                     <Card variant="outlined">
                         <CardHeader title="Database Backup & Restore"/>
                         <CardContent>
@@ -678,7 +678,7 @@ const SystemSettings = () => {
                             </Typography>
 
                             <Grid container spacing={2} sx={{mt: 1}}>
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <Button
                                         variant="outlined"
                                         color="primary"
@@ -691,7 +691,7 @@ const SystemSettings = () => {
                                     </Button>
                                 </Grid>
 
-                                <Grid item xs={12} md={6}>
+                                <Grid size={{xs: 12, md: 6}}>
                                     <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
                                         <Button
                                             variant="contained"
