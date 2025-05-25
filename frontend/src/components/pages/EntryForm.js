@@ -156,8 +156,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     )}
                 />
             </Grid>
-            {/* Second Line: Type (reduced), Size (reduced), Checkboxes, Smart Detection */}
-            <Grid size={{xs: 12, sm: 3}}>
+            {/* Second Line: Type (reduced), Size (reduced), Wand Charges, Checkboxes, Smart Detection */}
+            <Grid size={{xs: 12, sm: 1.5}}>
                 <FormControl fullWidth>
                     <InputLabel>Type</InputLabel>
                     <Select
@@ -176,7 +176,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     </Select>
                 </FormControl>
             </Grid>
-            <Grid size={{xs: 12, sm: 3}}>
+            <Grid size={{xs: 12, sm: 1.5}}>
                 <FormControl fullWidth>
                     <InputLabel>Size</InputLabel>
                     <Select
@@ -197,44 +197,67 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     </Select>
                 </FormControl>
             </Grid>
-            <Grid size={{xs: 6, sm: 2}}>
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            checked={localEntry.unidentified || false}
-                            onChange={(e) => handleChange('unidentified', e.target.checked)}
-                        />
-                    }
-                    label="Unidentified"
-                />
+            
+            {/* Wand Charges (if applicable) */}
+            {localEntry.name && localEntry.name.toLowerCase().startsWith('wand of ') && (
+                <Grid size={{xs: 12, sm: 2}}>
+                    <TextField
+                        label="Charges"
+                        type="number"
+                        fullWidth
+                        value={localEntry.charges || ''}
+                        onChange={(e) => handleChange('charges', e.target.value)}
+                    />
+                </Grid>
+            )}
+            
+            <Grid size={{xs: 6, sm: 1.5}}>
+                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pl: 1 }}>
+                    <FormControlLabel
+                        control={
+                            <Checkbox
+                                checked={localEntry.unidentified || false}
+                                onChange={(e) => handleChange('unidentified', e.target.checked)}
+                            />
+                        }
+                        label="Unidentified"
+                        sx={{ m: 0 }}
+                    />
+                </Box>
             </Grid>
-            <Grid size={{xs: 6, sm: 2}}>
-                <FormControlLabel
-                    control={
-                        <Checkbox
-                            checked={localEntry.masterwork || false}
-                            onChange={(e) => handleChange('masterwork', e.target.checked)}
-                        />
-                    }
-                    label="Masterwork"
-                />
+            <Grid size={{xs: 6, sm: 1.5}}>
+                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pl: 1 }}>
+                    <FormControlLabel
+                        control={
+                            <Checkbox
+                                checked={localEntry.masterwork || false}
+                                onChange={(e) => handleChange('masterwork', e.target.checked)}
+                            />
+                        }
+                        label="Masterwork"
+                        sx={{ m: 0 }}
+                    />
+                </Box>
             </Grid>
             <Grid size={{xs: 12, sm: 3}}>
-                <FormControlLabel
-                    control={
-                        <Switch
-                            checked={localEntry.parseItem || false}
-                            onChange={(e) => handleChange('parseItem', e.target.checked)}
-                            disabled={localEntry.unidentified}
-                        />
-                    }
-                    label="Smart Item Detection"
-                />
-                {localEntry.unidentified && (
-                    <Typography variant="caption" color="error">
-                        Not available for unidentified items
-                    </Typography>
-                )}
+                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pl: 1 }}>
+                    <FormControlLabel
+                        control={
+                            <Switch
+                                checked={localEntry.parseItem || false}
+                                onChange={(e) => handleChange('parseItem', e.target.checked)}
+                                disabled={localEntry.unidentified}
+                            />
+                        }
+                        label="Smart Item Detection"
+                        sx={{ m: 0 }}
+                    />
+                    {localEntry.unidentified && (
+                        <Typography variant="caption" color="error" sx={{ ml: 1 }}>
+                            Not available for unidentified items
+                        </Typography>
+                    )}
+                </Box>
             </Grid>
             
             {/* Third Line: Notes (full width) */}
@@ -248,19 +271,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     onChange={(e) => handleChange('notes', e.target.value)}
                 />
             </Grid>
-            
-            {/* Wand Charges (if applicable) */}
-            {localEntry.name && localEntry.name.toLowerCase().startsWith('wand of ') && (
-                <Grid size={{xs: 12, sm: 3}}>
-                    <TextField
-                        label="Charges"
-                        type="number"
-                        fullWidth
-                        value={localEntry.charges || ''}
-                        onChange={(e) => handleChange('charges', e.target.value)}
-                    />
-                </Grid>
-            )}
+
         </Grid>
     );
 
