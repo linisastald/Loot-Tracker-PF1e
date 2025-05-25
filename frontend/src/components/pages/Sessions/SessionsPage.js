@@ -15,7 +15,7 @@ import {
     Divider,
     FormControl,
     FormControlLabel,
-    Grid,
+    Grid2,
     InputLabel,
     MenuItem,
     Radio,
@@ -255,13 +255,13 @@ const SessionsPage = () => {
                     
                     <Divider sx={{ my: 2 }} />
                     
-                    <Grid container spacing={2}>
-                        <Grid item xs={12} md={8}>
+                    <Grid2 container spacing={2}>
+                        <Grid2 xs={12} md={8}>
                             {renderAttendanceList(session.attendance?.accepted, 'Attending')}
                             {renderAttendanceList(session.attendance?.tentative, 'Maybe')}
                             {renderAttendanceList(session.attendance?.declined, 'Not Attending')}
-                        </Grid>
-                        <Grid item xs={12} md={4}>
+                        </Grid2>
+                        <Grid2 xs={12} md={4}>
                             <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" height="100%">
                                 <Typography variant="body2" sx={{ color: attendanceStatusColor, mb: 1 }}>
                                     Your Status: <strong>{attendanceStatusText}</strong>
@@ -274,8 +274,8 @@ const SessionsPage = () => {
                                     Update Attendance
                                 </Button>
                             </Box>
-                        </Grid>
-                    </Grid>
+                        </Grid2>
+                    </Grid2>
                 </CardContent>
             </Card>
         );
@@ -343,24 +343,24 @@ const SessionsPage = () => {
                             sx={{ mb: 3 }}
                         />
                         
-                        <Grid container spacing={3} sx={{ mb: 3 }}>
-                            <Grid item xs={12} md={6}>
+                        <Grid2 container spacing={3} sx={{ mb: 3 }}>
+                            <Grid2 xs={12} md={6}>
                                 <DateTimePicker
                                     label="Start Time"
                                     value={startTime}
                                     onChange={setStartTime}
                                     slotProps={{ textField: { fullWidth: true } }}
                                 />
-                            </Grid>
-                            <Grid item xs={12} md={6}>
+                            </Grid2>
+                            <Grid2 xs={12} md={6}>
                                 <DateTimePicker
                                     label="End Time"
                                     value={endTime}
                                     onChange={setEndTime}
                                     slotProps={{ textField: { fullWidth: true } }}
                                 />
-                            </Grid>
-                        </Grid>
+                            </Grid2>
+                        </Grid2>
                         
                         <TextField
                             label="Description (Optional)"

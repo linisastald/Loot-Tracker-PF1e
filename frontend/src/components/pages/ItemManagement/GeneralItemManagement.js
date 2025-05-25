@@ -7,7 +7,7 @@ import {
   Box,
   Button,
   FormControl,
-  Grid,
+  Grid2,
   InputLabel,
   MenuItem,
   Paper,
@@ -167,8 +167,8 @@ const GeneralItemManagement = () => {
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}
 
             <Box mt={2} mb={2}>
-                <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
+                <Grid2 container spacing={2}>
+                    <Grid2 xs={12} md={6}>
                         <TextField
                             label="Search Items"
                             variant="outlined"
@@ -176,8 +176,8 @@ const GeneralItemManagement = () => {
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
-                    </Grid>
-                    <Grid item xs={12} md={3}>
+                    </Grid2>
+                    <Grid2 xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Unidentified</InputLabel>
                             <Select
@@ -189,8 +189,8 @@ const GeneralItemManagement = () => {
                                 <MenuItem value="false">No</MenuItem>
                             </Select>
                         </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
+                    </Grid2>
+                    <Grid2 xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Type</InputLabel>
                             <Select
@@ -206,8 +206,8 @@ const GeneralItemManagement = () => {
                                 <MenuItem value="other">Other</MenuItem>
                             </Select>
                         </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
+                    </Grid2>
+                    <Grid2 xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Size</InputLabel>
                             <Select
@@ -226,8 +226,8 @@ const GeneralItemManagement = () => {
                                 <MenuItem value="Colossal">Colossal</MenuItem>
                             </Select>
                         </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
+                    </Grid2>
+                    <Grid2 xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Status</InputLabel>
                             <Select
@@ -242,8 +242,8 @@ const GeneralItemManagement = () => {
                                 <MenuItem value="Sold">Sold</MenuItem>
                             </Select>
                         </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
+                    </Grid2>
+                    <Grid2 xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Item ID</InputLabel>
                             <Select
@@ -255,8 +255,8 @@ const GeneralItemManagement = () => {
                                 <MenuItem value="notnull">Has Value</MenuItem>
                             </Select>
                         </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
+                    </Grid2>
+                    <Grid2 xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Mod IDs</InputLabel>
                             <Select
@@ -268,8 +268,8 @@ const GeneralItemManagement = () => {
                                 <MenuItem value="notnull">Has Values</MenuItem>
                             </Select>
                         </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
+                    </Grid2>
+                    <Grid2 xs={12} md={3}>
                         <FormControl fullWidth>
                             <InputLabel>Value</InputLabel>
                             <Select
@@ -281,8 +281,8 @@ const GeneralItemManagement = () => {
                                 <MenuItem value="notnull">Has Value</MenuItem>
                             </Select>
                         </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={3}>
+                    </Grid2>
+                    <Grid2 xs={12} md={3}>
                         <Box sx={{display: 'flex', gap: 1}}>
                             <Button variant="outlined" color="primary" onClick={handleSearch} fullWidth>
                                 Search
@@ -291,8 +291,8 @@ const GeneralItemManagement = () => {
                                 Clear
                             </Button>
                         </Box>
-                    </Grid>
-                </Grid>
+                    </Grid2>
+                </Grid2>
             </Box>
 
             {filteredItems.length > 0 && (
