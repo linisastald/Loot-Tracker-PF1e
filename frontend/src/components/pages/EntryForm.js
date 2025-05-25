@@ -78,13 +78,9 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
     };
 
     const renderItemForm = () => (
-        <Grid container spacing={2} size={12}>
-            <Grid size={12}>
-                <Typography variant="subtitle1" gutterBottom>
-                    Item Entry
-                </Typography>
-            </Grid>
-            <Grid size={{xs: 12, md: 4}}>
+        <Grid container spacing={2}>
+            {/* First Line: Session Date (1/3), Quantity (small), Item Name (remaining) */}
+            <Grid size={{xs: 12, sm: 2}}>
                 <TextField
                     label="Session Date"
                     type="date"
@@ -94,7 +90,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     onChange={(e) => handleChange('sessionDate', e.target.value)}
                 />
             </Grid>
-            <Grid size={{xs: 12, md: 4}}>
+            <Grid size={{xs: 12, sm: 2}}>
                 <TextField
                     label="Quantity"
                     type="number"
@@ -103,7 +99,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     onChange={(e) => handleChange('quantity', e.target.value)}
                 />
             </Grid>
-            <Grid size={{xs: 12, md: 4}}>
+            <Grid size={{xs: 12, sm: 8}}>
                 <Autocomplete
                     freeSolo
                     options={itemSuggestions}
@@ -160,7 +156,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     )}
                 />
             </Grid>
-            <Grid size={{xs: 12, md: 4}}>
+            {/* Second Line: Type (reduced), Size (reduced), Checkboxes, Smart Detection */}
+            <Grid size={{xs: 12, sm: 3}}>
                 <FormControl fullWidth>
                     <InputLabel>Type</InputLabel>
                     <Select
@@ -179,7 +176,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     </Select>
                 </FormControl>
             </Grid>
-            <Grid size={{xs: 12, md: 4}}>
+            <Grid size={{xs: 12, sm: 3}}>
                 <FormControl fullWidth>
                     <InputLabel>Size</InputLabel>
                     <Select
@@ -200,7 +197,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     </Select>
                 </FormControl>
             </Grid>
-            <Grid size={{xs: 12, md: 4}}>
+            <Grid size={{xs: 6, sm: 2}}>
                 <FormControlLabel
                     control={
                         <Checkbox
@@ -211,7 +208,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     label="Unidentified"
                 />
             </Grid>
-            <Grid size={{xs: 12, md: 4}}>
+            <Grid size={{xs: 6, sm: 2}}>
                 <FormControlLabel
                     control={
                         <Checkbox
@@ -222,28 +219,7 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     label="Masterwork"
                 />
             </Grid>
-            <Grid size={{xs: 12, md: 4}}>
-                <TextField
-                    label="Notes"
-                    fullWidth
-                    multiline
-                    rows={2}
-                    value={localEntry.notes || ''}
-                    onChange={(e) => handleChange('notes', e.target.value)}
-                />
-            </Grid>
-            {localEntry.name && localEntry.name.toLowerCase().startsWith('wand of ') && (
-                <Grid size={{xs: 12, md: 4}}>
-                    <TextField
-                        label="Charges"
-                        type="number"
-                        fullWidth
-                        value={localEntry.charges || ''}
-                        onChange={(e) => handleChange('charges', e.target.value)}
-                    />
-                </Grid>
-            )}
-            <Grid size={{xs: 12, md: 4}}>
+            <Grid size={{xs: 12, sm: 3}}>
                 <FormControlLabel
                     control={
                         <Switch
@@ -260,6 +236,31 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                     </Typography>
                 )}
             </Grid>
+            
+            {/* Third Line: Notes (full width) */}
+            <Grid size={12}>
+                <TextField
+                    label="Notes"
+                    fullWidth
+                    multiline
+                    rows={2}
+                    value={localEntry.notes || ''}
+                    onChange={(e) => handleChange('notes', e.target.value)}
+                />
+            </Grid>
+            
+            {/* Wand Charges (if applicable) */}
+            {localEntry.name && localEntry.name.toLowerCase().startsWith('wand of ') && (
+                <Grid size={{xs: 12, sm: 3}}>
+                    <TextField
+                        label="Charges"
+                        type="number"
+                        fullWidth
+                        value={localEntry.charges || ''}
+                        onChange={(e) => handleChange('charges', e.target.value)}
+                    />
+                </Grid>
+            )}
         </Grid>
     );
 
