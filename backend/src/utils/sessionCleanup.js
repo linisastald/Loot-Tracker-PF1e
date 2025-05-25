@@ -33,7 +33,7 @@ const cleanupExpiredSessions = async () => {
 
     // Clean up old identification attempts (older than 30 days)
     const oldIdentifications = await dbUtils.executeQuery(
-      'DELETE FROM identify WHERE golarion_date < (SELECT golarion_date FROM golarion_current_date) - INTERVAL \'30 days\''
+      'DELETE FROM identify WHERE golarion_date::date < (SELECT golarion_date::date FROM golarion_current_date) - INTERVAL \'30 days\''
     );
     
     if (oldIdentifications.rowCount > 0) {
@@ -113,7 +113,7 @@ const getSessionStats = async () => {
         (SELECT COUNT(*) FROM users WHERE login_attempts > 0) as accounts_with_failed_attempts,
         (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND (expires_at IS NULL OR expires_at > NOW())) as active_invites,
         (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND expires_at IS NOT NULL AND expires_at < NOW()) as expired_invites,
-        (SELECT COUNT(*) FROM identify WHERE golarion_date >= (SELECT golarion_date FROM golarion_current_date) - INTERVAL '7 days') as recent_identifications
+        (SELECT COUNT(*) FROM identify WHERE golarion_date::date >= (SELECT golarion_date::date FROM golarion_current_date) - INTERVAL '7 days') as recent_identifications
     `);
     
     return stats.rows[0];

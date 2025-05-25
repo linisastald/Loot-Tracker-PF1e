@@ -17,7 +17,7 @@ const registerUser = async (req, res) => {
     const regOpenResult = await dbUtils.executeQuery(
         "SELECT value FROM settings WHERE name = 'registrations open'"
     );
-    const isRegOpen = regOpenResult.rows[0] && regOpenResult.rows[0].value === 1;
+    const isRegOpen = regOpenResult.rows[0] && (regOpenResult.rows[0].value === 1 || regOpenResult.rows[0].value === '1');
 
     if (!isRegOpen) {
         throw controllerFactory.createAuthorizationError('Registrations are currently closed');
