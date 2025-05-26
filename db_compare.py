@@ -742,15 +742,34 @@ def main():
 
                 if args.dry_run:
                     logger.info("DRY RUN MODE - Changes will be displayed but not executed")
-                    # In dry run, just show what would be changed
+                    # In dry run, show both structural and data changes
                     master_structure = get_db_structure(master_conn)
                     copy_structure = get_db_structure(copy_conn)
                     differences = compare_structures(master_structure, copy_structure)
                     
+                    # Show structural changes
                     if any(differences.values()):
                         display_structural_changes(differences)
                     else:
                         logger.info("No structural differences found")
+                    
+                    # Show data changes for sync tables
+                    tables_to_sync = ['item', 'mod', 'spells']
+                    data_changes_found = False
+                    
+                    for table in tables_to_sync:
+                        if table in master_structure['tables'] and table in copy_structure['tables']:
+                            master_data = get_table_data(master_conn, table)
+                            copy_data = get_table_data(copy_conn, table)
+                            primary_keys = get_primary_key(copy_conn, table)
+                            
+                            new_rows = compare_table_data(master_data, copy_data, primary_keys)
+                            if new_rows:
+                                display_data_changes(table, new_rows, master_data[0])
+                                data_changes_found = True
+                    
+                    if not data_changes_found:
+                        logger.info("No data synchronization changes found")
                 else:
                     # Execute full synchronization
                     if synchronize_database(master_conn, copy_conn, container_name):
