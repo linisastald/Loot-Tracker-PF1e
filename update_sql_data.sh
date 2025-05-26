@@ -6,7 +6,7 @@
 DB_HOST="192.168.0.64"
 DB_PORT="5432"
 DB_NAME="loot_tracking"
-DB_USER="loot_user"
+DB_USER="postgres"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATABASE_DIR="$SCRIPT_DIR/database"
 
