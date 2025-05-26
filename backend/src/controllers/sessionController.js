@@ -242,6 +242,16 @@ const updateAttendance = async (req, res) => {
  * Process Discord interaction for session attendance (new format)
  */
 const processSessionInteraction = async (req, res) => {
+    // Add comprehensive logging
+    logger.info('Discord interaction received:', {
+        type: req.body.type,
+        customId: req.body.data?.custom_id,
+        userId: req.body.member?.user?.id || req.body.user?.id,
+        messageId: req.body.message?.id,
+        headers: req.headers,
+        body: JSON.stringify(req.body)
+    });
+
     const { type, data, member, message, user } = req.body;
     
     // Handle ping
