@@ -47,6 +47,7 @@ const SystemSettings = () => {
     const [discordSettings, setDiscordSettings] = useState({
         botToken: '',
         channelId: '',
+        roleId: '',
         enabled: false
     });
 
@@ -62,6 +63,7 @@ const SystemSettings = () => {
     const [originalSettings, setOriginalSettings] = useState({
         botToken: '',
         channelId: '',
+        roleId: '',
         enabled: false
     });
 
@@ -108,11 +110,13 @@ const SystemSettings = () => {
             if (discordResponse.data) {
                 const botToken = discordResponse.data.discord_bot_token || '';
                 const channelId = discordResponse.data.discord_channel_id || '';
+                const roleId = discordResponse.data.campaign_role_id || '';
                 const enabled = discordResponse.data.discord_integration_enabled === '1';
 
                 setDiscordSettings({
                     botToken: botToken ? maskedToken : '',
                     channelId: channelId,
+                    roleId: roleId,
                     enabled: enabled,
                     originalBotToken: botToken
                 });
@@ -120,6 +124,7 @@ const SystemSettings = () => {
                 setOriginalSettings({
                     botToken: botToken,
                     channelId: channelId,
+                    roleId: roleId,
                     enabled: enabled
                 });
             }
@@ -205,6 +210,14 @@ const SystemSettings = () => {
                 });
             }
 
+            // Only update role ID if it's changed
+            if (discordSettings.roleId !== originalSettings.roleId) {
+                await api.put('/user/update-setting', {
+                    name: 'campaign_role_id',
+                    value: discordSettings.roleId
+                });
+            }
+
             // Only update enabled status if it's changed
             if (discordSettings.enabled !== originalSettings.enabled) {
                 await api.put('/user/update-setting', {
@@ -217,6 +230,7 @@ const SystemSettings = () => {
             setOriginalSettings({
                 botToken: discordSettings.botToken !== maskedToken ? discordSettings.botToken : originalSettings.botToken,
                 channelId: discordSettings.channelId,
+                roleId: discordSettings.roleId,
                 enabled: discordSettings.enabled
             });
 
@@ -546,6 +560,15 @@ const SystemSettings = () => {
                                 margin="normal"
                                 placeholder="Discord Channel ID"
                                 helperText="Leave unchanged to keep current value"
+                            />
+                            <TextField
+                                label="Campaign Role ID"
+                                value={discordSettings.roleId || ''}
+                                onChange={(e) => setDiscordSettings({...discordSettings, roleId: e.target.value})}
+                                fullWidth
+                                margin="normal"
+                                placeholder="Discord Role ID (optional)"
+                                helperText="Role to ping for session announcements"
                             />
                             <FormControlLabel
                                 control={

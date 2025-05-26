@@ -407,7 +407,7 @@ const SessionSettings = () => {
                 />
               )}
               
-              <Box sx={{ mt: 2 }}>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
                 <Button
                   variant="outlined"
                   color="secondary"
@@ -417,10 +417,19 @@ const SessionSettings = () => {
                 >
                   {sendingEvent ? <CircularProgress size={24} /> : 'Post Session Message'}
                 </Button>
-                <Typography variant="caption" display="block" sx={{ mt: 1, textAlign: 'center' }}>
-                  Posts attendance message for next session
-                </Typography>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  fullWidth
+                  onClick={() => console.log('Cancel session clicked')} // TODO: Implement cancel functionality
+                  disabled={!discordStatus.ready}
+                >
+                  Cancel Next Session
+                </Button>
               </Box>
+              <Typography variant="caption" display="block" sx={{ mt: 1, textAlign: 'center' }}>
+                Posts attendance message for next session
+              </Typography>
             </CardContent>
           </Card>
         </Grid>

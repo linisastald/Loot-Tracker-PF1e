@@ -124,7 +124,7 @@ const sendMessage = async (req, res) => {
 };
 
 /**
- * Send a session attendance message with reaction buttons
+ * Send a session attendance message with interactive buttons
  */
 const sendEvent = async (req, res) => {
     const { title, description, start_time, end_time } = req.body;
@@ -142,9 +142,9 @@ const sendEvent = async (req, res) => {
         throw controllerFactory.createValidationError('Invalid date format for start_time or end_time');
     }
 
-    // Fetch Discord settings (using existing ones)
+    // Fetch Discord settings
     const settings = await dbUtils.executeQuery(
-        'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\')'
+        'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\', \'campaign_name\', \'campaign_role_id\')'
     );
 
     const configMap = {};
@@ -154,6 +154,8 @@ const sendEvent = async (req, res) => {
 
     const discord_bot_token = configMap['discord_bot_token'];
     const discord_channel_id = configMap['discord_channel_id'];
+    const campaign_name = configMap['campaign_name'] || 'Pathfinder';
+    const campaign_role_id = configMap['campaign_role_id'];
 
     if (!discord_bot_token) {
         throw controllerFactory.createValidationError('Discord bot token is not configured');
@@ -179,8 +181,8 @@ const sendEvent = async (req, res) => {
 
     // Create embed for session announcement
     const embed = {
-        title: title,
-        description: description || 'Please react to indicate your attendance!',
+        title: `${campaign_name} Session`,
+        description: description || 'Please click a button to indicate your attendance!',
         color: 0x00ff00, // Green color
         fields: [
             {
@@ -199,8 +201,8 @@ const sendEvent = async (req, res) => {
                 inline: true
             },
             {
-                name: '\u200b',
-                value: '✅ = **Yes, I can attend**\n❌ = **No, I cannot attend**\n❓ = **Maybe/Unsure**',
+                name: 'Responses',
+                value: 'No responses yet...',
                 inline: false
             }
         ],
@@ -210,14 +212,51 @@ const sendEvent = async (req, res) => {
         }
     };
 
+    // Create interactive buttons
+    const components = [
+        {
+            type: 1, // Action Row
+            components: [
+                {
+                    type: 2, // Button
+                    style: 3, // Success (green)
+                    label: 'Yes, I can attend',
+                    emoji: { name: '✅' },
+                    custom_id: 'session_yes'
+                },
+                {
+                    type: 2, // Button
+                    style: 4, // Danger (red)
+                    label: 'No, I cannot attend',
+                    emoji: { name: '❌' },
+                    custom_id: 'session_no'
+                },
+                {
+                    type: 2, // Button
+                    style: 2, // Secondary (gray)
+                    label: 'Maybe/Unsure',
+                    emoji: { name: '❓' },
+                    custom_id: 'session_maybe'
+                }
+            ]
+        }
+    ];
+
+    let messageContent = '';
+    if (campaign_role_id) {
+        messageContent = `<@&${campaign_role_id}>`;
+    }
+
     const messagePayload = {
-        embeds: [embed]
+        content: messageContent,
+        embeds: [embed],
+        components: components
     };
 
     try {
         logger.info('Sending session attendance message:', {
             channelId: discord_channel_id,
-            sessionTitle: title,
+            campaignName: campaign_name,
             sessionDate: sessionDate
         });
 
@@ -235,19 +274,15 @@ const sendEvent = async (req, res) => {
 
         const messageId = response.data.id;
 
-        // Add reaction buttons
-        const reactions = ['✅', '❌', '❓'];
-        for (const emoji of reactions) {
-            await axios.put(
-                `https://discord.com/api/channels/${discord_channel_id}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`,
-                {},
-                {
-                    headers: {
-                        'Authorization': `Bot ${discord_bot_token}`,
-                        'Content-Length': '0'
-                    }
-                }
+        // Store session message info for interaction handling
+        try {
+            await dbUtils.executeQuery(
+                'INSERT INTO session_messages (message_id, channel_id, session_date, session_time, responses) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (message_id) DO UPDATE SET session_date = EXCLUDED.session_date, session_time = EXCLUDED.session_time',
+                [messageId, discord_channel_id, startDate.toISOString(), endDate.toISOString(), JSON.stringify({})]
             );
+        } catch (dbError) {
+            logger.warn('Failed to store session message in database:', dbError.message);
+            // Continue execution - the message was sent successfully
         }
 
         logger.info('Session attendance message sent successfully', {
@@ -270,11 +305,13 @@ const sendEvent = async (req, res) => {
             });
 
             if (error.response.status === 403) {
-                throw controllerFactory.createAuthorizationError('Bot lacks permission to send messages or add reactions');
+                throw controllerFactory.createAuthorizationError('Bot lacks permission to send messages');
             } else if (error.response.status === 404) {
                 throw controllerFactory.createNotFoundError('Discord channel not found');
             } else if (error.response.status === 400) {
                 throw controllerFactory.createValidationError(`Bad request: ${JSON.stringify(error.response.data)}`);
+            } else if (error.response.status === 429) {
+                throw controllerFactory.createValidationError('Rate limited by Discord API, please try again later');
             }
         }
 
