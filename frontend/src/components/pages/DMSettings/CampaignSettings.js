@@ -42,7 +42,7 @@ const CampaignSettings = () => {
                 const infamyResponse = await api.get('/settings/infamy-system');
                 if (infamyResponse.data && infamyResponse.data.value) {
                     const infamyValue = infamyResponse.data.value;
-                    setInfamyEnabled(infamyValue !== 'disabled');
+                    setInfamyEnabled(infamyValue === '1');
                 }
 
                 // Fetch average party level
@@ -95,12 +95,12 @@ const CampaignSettings = () => {
             const isEnabled = event.target.checked;
             setInfamyEnabled(isEnabled);
 
-            // If turning off, set to disabled
-            // If turning on, set to "infamy" by default
-            const newValue = isEnabled ? 'infamy' : 'disabled';
+            // If turning off, set to '0'
+            // If turning on, set to '1'
+            const newValue = isEnabled ? '1' : '0';
 
             await api.put('/user/update-setting', {
-                name: 'infamy_system',
+                name: 'infamy_system_enabled',
                 value: newValue
             });
 

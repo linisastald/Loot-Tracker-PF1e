@@ -313,4 +313,9 @@ CREATE TABLE imposition_uses (
 );
 
 -- Insert initial data for settings
-INSERT INTO settings (name, value) VALUES ('registrations open', '1');
+INSERT INTO settings (name, value, value_type, description) VALUES ('registrations_open', '1', 'boolean', 'Whether new user registrations are allowed (1=open, 0=closed)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('campaign_name', 'PF1e Campaign', 'string', 'Name of the current campaign/group');
+INSERT INTO settings (name, value, value_type, description) VALUES ('discord_integration_enabled', '0', 'boolean', 'Whether Discord integration is enabled (1=enabled, 0=disabled)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('infamy_system_enabled', '0', 'boolean', 'Whether infamy system is enabled (1=enabled, 0=disabled)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('auto_appraisal_enabled', '0', 'boolean', 'Whether automatic appraisal is enabled (1=enabled, 0=disabled)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('theme', 'dark', 'string', 'Default UI theme (dark/light)');

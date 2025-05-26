@@ -101,7 +101,7 @@ const SystemSettings = () => {
             ]);
 
             // Handle registration setting
-            const registrationSetting = settingsResponse.data.find(setting => setting.name === 'registrations open');
+            const registrationSetting = settingsResponse.data.find(setting => setting.name === 'registrations_open');
             console.log('Registration setting:', registrationSetting);
             setRegistrationOpen(registrationSetting?.value === '1' || registrationSetting?.value === 1);
 
@@ -169,7 +169,7 @@ const SystemSettings = () => {
             const newValue = registrationOpen ? 0 : 1;
             await api.put(
                 `/user/update-setting`,
-                {name: 'registrations open', value: newValue}
+                {name: 'registrations_open', value: newValue}
             );
             setRegistrationOpen(!registrationOpen);
             setSuccess(`Registration ${!registrationOpen ? 'opened' : 'closed'} successfully`);

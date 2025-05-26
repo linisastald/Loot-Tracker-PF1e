@@ -83,7 +83,7 @@ const updateSetting = async (req, res) => {
         if (name === 'openai_key' && value) {
             valueToStore = encryptValue(value);
             valueType = 'encrypted';
-        } else if (name === 'registrations_open' || name === 'discord_integration_enabled') {
+        } else if (name === 'registrations_open' || name === 'discord_integration_enabled' || name === 'infamy_system_enabled' || name === 'auto_appraisal_enabled') {
             valueType = 'boolean';
         }
         
@@ -126,6 +126,8 @@ const deleteSetting = async (req, res) => {
         'discord_bot_token',
         'discord_channel_id',
         'discord_integration_enabled',
+        'infamy_system_enabled',
+        'auto_appraisal_enabled',
         'openai_key'
     ];
 
@@ -218,8 +220,8 @@ const decryptValue = (encryptedValue) => {
  */
 const getInfamySystem = async (req, res) => {
     try {
-        const settings = await fetchSettingsByNames(['infamy_system']);
-        const infamySystem = settings.infamy_system || 'disabled';
+        const settings = await fetchSettingsByNames(['infamy_system_enabled']);
+        const infamySystem = settings.infamy_system_enabled || '0';
 
         controllerFactory.sendSuccessResponse(res, {value: infamySystem}, 'Infamy system setting retrieved');
     } catch (error) {
