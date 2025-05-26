@@ -403,11 +403,14 @@ class StructureComparison:
         # Fix column order issues
         for table, order_info in self.differences['column_order_issues'].items():
             master_order = order_info['master_order']
-            # Generate SQL to reorder columns (PostgreSQL doesn't have direct column reordering)
-            # We'll need to recreate the table or use a workaround
-            logger.info("Column order issue detected in table {}: {} -> {}".format(
-                table, order_info['copy_order'], master_order))
-            # For now, we'll log this and handle it separately if needed
+            copy_order = order_info['copy_order']
+            
+            logger.info("Fixing column order for table {}: {} -> {}".format(
+                table, copy_order, master_order))
+            
+            # Generate SQL to reorder columns by recreating table
+            reorder_sql = self._generate_column_reorder_sql(table, master_order)
+            sql_statements.extend(reorder_sql)
 
         # Drop extra indexes
         for table, indexes in self.differences['extra_indexes'].items():
@@ -426,8 +429,91 @@ class StructureComparison:
 
         return sql_statements
     
+    def _generate_column_reorder_sql(self, table, master_order):
+        """Generate SQL to reorder columns by recreating the table"""
+        sql_statements = []
+        quoted_table = '"{}"'.format(table)
+        temp_table = '"{}"'.format(table + '_temp_reorder')
+        old_table = '"{}"'.format(table + '_old')
+        
+        # Step 1: Get current table definition for recreation
+        column_definitions = []
+        for column in master_order:
+            if column in self.master.column_details[table]:
+                col_info = self.master.column_details[table][column]
+                quoted_column = '"{}"'.format(column)
+                col_def = "{} {}".format(quoted_column, col_info['full_definition'])
+                
+                if col_info['nullable'] == 'NO':
+                    col_def += " NOT NULL"
+                if col_info['default']:
+                    col_def += " DEFAULT {}".format(self._format_default(col_info['default']))
+                    
+                column_definitions.append(col_def)
+        
+        # Step 2: Create new table with correct column order
+        sql_statements.append(
+            "CREATE TABLE {} ({});".format(temp_table, ', '.join(column_definitions))
+        )
+        
+        # Step 3: Copy data preserving all values including serials
+        quoted_columns = []
+        for column in master_order:
+            if column in self.master.column_details[table]:
+                quoted_columns.append('"{}"'.format(column))
+        
+        columns_list = ', '.join(quoted_columns)
+        sql_statements.append(
+            "INSERT INTO {} ({}) SELECT {} FROM {};".format(
+                temp_table, columns_list, columns_list, quoted_table
+            )
+        )
+        
+        # Step 4: Get and preserve sequence values for serial columns
+        serial_sequences = self._get_serial_sequences(table)
+        sequence_preservation = []
+        for seq_info in serial_sequences:
+            sequence_preservation.append(
+                "SELECT setval('{}', COALESCE((SELECT MAX({}) FROM {}), 1));".format(
+                    seq_info['sequence_name'], seq_info['column'], temp_table
+                )
+            )
+        
+        # Step 5: Handle constraints and indexes
+        # Get primary key constraint
+        pk_constraint = self._get_primary_key_constraint(table)
+        if pk_constraint:
+            sql_statements.append(
+                "ALTER TABLE {} ADD CONSTRAINT {} PRIMARY KEY ({});".format(
+                    temp_table, pk_constraint['name'], pk_constraint['columns']
+                )
+            )
+        
+        # Step 6: Rename tables atomically
+        sql_statements.append("ALTER TABLE {} RENAME TO {};".format(quoted_table, old_table))
+        sql_statements.append("ALTER TABLE {} RENAME TO {};".format(temp_table, quoted_table))
+        
+        # Step 7: Apply sequence preservation
+        sql_statements.extend(sequence_preservation)
+        
+        # Step 8: Clean up old table
+        sql_statements.append("DROP TABLE {};".format(old_table))
+        
+        return sql_statements
+    
+    def _get_serial_sequences(self, table):
+        """Get information about serial sequences for a table"""
+        # This would need to query the database for sequence information
+        # For now, return empty list - we'll implement if needed
+        return []
+    
+    def _get_primary_key_constraint(self, table):
+        """Get primary key constraint information"""
+        # This would need to query the database for constraint information  
+        # For now, return None - we'll implement if needed
+        return None
+    
     def _format_default(self, default_val):
-        """Format default values properly"""
         if default_val.startswith('nextval('):
             return default_val
         elif default_val.upper() in ('CURRENT_TIMESTAMP', 'NOW()'):
