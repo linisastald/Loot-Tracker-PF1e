@@ -124,6 +124,165 @@ const sendMessage = async (req, res) => {
 };
 
 /**
+ * Send a session attendance message with reaction buttons
+ */
+const sendEvent = async (req, res) => {
+    const { title, description, start_time, end_time } = req.body;
+
+    // Validate required fields
+    if (!title || !start_time || !end_time) {
+        throw controllerFactory.createValidationError('Title, start_time, and end_time are required for session messages');
+    }
+
+    // Validate dates
+    const startDate = new Date(start_time);
+    const endDate = new Date(end_time);
+    
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw controllerFactory.createValidationError('Invalid date format for start_time or end_time');
+    }
+
+    // Fetch Discord settings (using existing ones)
+    const settings = await dbUtils.executeQuery(
+        'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\')'
+    );
+
+    const configMap = {};
+    settings.rows.forEach(row => {
+        configMap[row.name] = row.value;
+    });
+
+    const discord_bot_token = configMap['discord_bot_token'];
+    const discord_channel_id = configMap['discord_channel_id'];
+
+    if (!discord_bot_token) {
+        throw controllerFactory.createValidationError('Discord bot token is not configured');
+    }
+
+    if (!discord_channel_id) {
+        throw controllerFactory.createValidationError('Discord channel ID is not configured');
+    }
+
+    // Format date for display
+    const sessionDate = startDate.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    
+    const sessionTime = startDate.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    });
+
+    // Create embed for session announcement
+    const embed = {
+        title: title,
+        description: description || 'Please react to indicate your attendance!',
+        color: 0x00ff00, // Green color
+        fields: [
+            {
+                name: '📅 Date',
+                value: sessionDate,
+                inline: true
+            },
+            {
+                name: '🕐 Time', 
+                value: sessionTime,
+                inline: true
+            },
+            {
+                name: '⏱️ Duration',
+                value: `${Math.round((endDate - startDate) / (1000 * 60 * 60))} hours`,
+                inline: true
+            },
+            {
+                name: '\u200b',
+                value: '✅ = **Yes, I can attend**\n❌ = **No, I cannot attend**\n❓ = **Maybe/Unsure**',
+                inline: false
+            }
+        ],
+        timestamp: new Date().toISOString(),
+        footer: {
+            text: 'Session Attendance Tracker'
+        }
+    };
+
+    const messagePayload = {
+        embeds: [embed]
+    };
+
+    try {
+        logger.info('Sending session attendance message:', {
+            channelId: discord_channel_id,
+            sessionTitle: title,
+            sessionDate: sessionDate
+        });
+
+        // Send the message
+        const response = await axios.post(
+            `https://discord.com/api/channels/${discord_channel_id}/messages`,
+            messagePayload,
+            {
+                headers: {
+                    'Authorization': `Bot ${discord_bot_token}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        const messageId = response.data.id;
+
+        // Add reaction buttons
+        const reactions = ['✅', '❌', '❓'];
+        for (const emoji of reactions) {
+            await axios.put(
+                `https://discord.com/api/channels/${discord_channel_id}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`,
+                {},
+                {
+                    headers: {
+                        'Authorization': `Bot ${discord_bot_token}`,
+                        'Content-Length': '0'
+                    }
+                }
+            );
+        }
+
+        logger.info('Session attendance message sent successfully', {
+            messageId: messageId,
+            channelId: discord_channel_id
+        });
+
+        controllerFactory.sendSuccessResponse(res, {
+            message_id: messageId,
+            channel_id: discord_channel_id,
+            session_date: sessionDate,
+            session_time: sessionTime
+        }, 'Session attendance message sent successfully');
+    } catch (error) {
+        if (error.response && error.response.data) {
+            logger.error('Discord API error:', {
+                status: error.response.status,
+                error: error.response.data,
+                payload: JSON.stringify(messagePayload)
+            });
+
+            if (error.response.status === 403) {
+                throw controllerFactory.createAuthorizationError('Bot lacks permission to send messages or add reactions');
+            } else if (error.response.status === 404) {
+                throw controllerFactory.createNotFoundError('Discord channel not found');
+            } else if (error.response.status === 400) {
+                throw controllerFactory.createValidationError(`Bad request: ${JSON.stringify(error.response.data)}`);
+            }
+        }
+
+        throw new Error(`Failed to send session message: ${error.message}`);
+    }
+};
+
+/**
  * Get Discord integration status
  */
 const getIntegrationStatus = async (req, res) => {
@@ -232,6 +391,10 @@ const sendMessageValidation = {
     requiredFields: []  // Special validation logic in the handler
 };
 
+const sendEventValidation = {
+    requiredFields: ['title', 'start_time', 'end_time']
+};
+
 const updateSettingsValidation = {
     requiredFields: []  // At least one of the fields should be provided, validated in handler
 };
@@ -241,6 +404,11 @@ module.exports = {
     sendMessage: controllerFactory.createHandler(sendMessage, {
         errorMessage: 'Error sending message to Discord',
         validation: sendMessageValidation
+    }),
+
+    sendEvent: controllerFactory.createHandler(sendEvent, {
+        errorMessage: 'Error creating Discord event',
+        validation: sendEventValidation
     }),
 
     getIntegrationStatus: controllerFactory.createHandler(getIntegrationStatus, {

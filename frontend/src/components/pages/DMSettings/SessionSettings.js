@@ -30,6 +30,7 @@ import {
 const SessionSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sendingEvent, setSendingEvent] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -145,6 +146,64 @@ const SessionSettings = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const sendManualEvent = async () => {
+    try {
+      setSendingEvent(true);
+      setError('');
+
+      // Calculate next session date based on current settings
+      const nextSessionDate = calculateNextSessionDate();
+      
+      const eventData = {
+        title: 'Pathfinder Session',
+        description: eventSettings.includeDescription ? eventSettings.defaultDescription : undefined,
+        start_time: nextSessionDate.toISOString(),
+        end_time: new Date(nextSessionDate.getTime() + (sessionSettings.duration * 60 * 60 * 1000)).toISOString()
+      };
+
+      await api.post('/discord/send-event', eventData);
+      setSuccess('Session attendance message posted successfully!');
+    } catch (err) {
+      setError('Failed to post Discord event: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setSendingEvent(false);
+    }
+  };
+
+  const calculateNextSessionDate = () => {
+    const now = new Date();
+    const [hours, minutes] = sessionSettings.time.split(':').map(Number);
+    
+    // Find the next occurrence of the session day(s)
+    let nextDate = new Date(now);
+    nextDate.setHours(hours, minutes, 0, 0);
+    
+    // If no days selected, default to next day
+    if (sessionSettings.daysOfWeek.length === 0) {
+      nextDate.setDate(nextDate.getDate() + 1);
+      return nextDate;
+    }
+    
+    // Find the next session day
+    for (let i = 0; i < 7; i++) {
+      const checkDate = new Date(now);
+      checkDate.setDate(now.getDate() + i);
+      checkDate.setHours(hours, minutes, 0, 0);
+      
+      if (sessionSettings.daysOfWeek.includes(checkDate.getDay()) && checkDate > now) {
+        return checkDate;
+      }
+    }
+    
+    // Fallback to next occurrence of first selected day
+    const targetDay = sessionSettings.daysOfWeek[0];
+    while (nextDate.getDay() !== targetDay || nextDate <= now) {
+      nextDate.setDate(nextDate.getDate() + 1);
+    }
+    
+    return nextDate;
   };
 
   const saveSettings = async () => {
@@ -347,6 +406,21 @@ const SessionSettings = () => {
                   helperText="Default description for session events"
                 />
               )}
+              
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  fullWidth
+                  onClick={sendManualEvent}
+                  disabled={sendingEvent || !discordStatus.ready || sessionSettings.daysOfWeek.length === 0}
+                >
+                  {sendingEvent ? <CircularProgress size={24} /> : 'Post Session Message'}
+                </Button>
+                <Typography variant="caption" display="block" sx={{ mt: 1, textAlign: 'center' }}>
+                  Posts attendance message for next session
+                </Typography>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
