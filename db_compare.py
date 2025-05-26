@@ -206,14 +206,20 @@ def get_db_structure(conn):
                     structure['tables'][table] = []
                     structure['column_details'][table] = {}
                 
-                # Build complete column definition
+                # Build complete column definition - only add precision for types that support it
                 col_def = data_type
-                if char_len:
-                    col_def += "({})".format(char_len)
-                elif num_prec and num_scale:
-                    col_def += "({},{})".format(num_prec, num_scale)
-                elif num_prec:
-                    col_def += "({})".format(num_prec)
+                if data_type in ('character varying', 'varchar', 'char', 'character'):
+                    if char_len:
+                        col_def += "({})".format(char_len)
+                elif data_type in ('numeric', 'decimal'):
+                    if num_prec and num_scale:
+                        col_def += "({},{})".format(num_prec, num_scale)
+                    elif num_prec:
+                        col_def += "({})".format(num_prec)
+                elif data_type in ('time', 'timestamp', 'timestamptz', 'interval'):
+                    if num_prec:
+                        col_def += "({})".format(num_prec)
+                # For integer, bigint, smallint, etc. - don't add precision
                 
                 structure['tables'][table].append((column, col_def))
                 structure['column_details'][table][column] = {
