@@ -1530,7 +1530,7 @@ const getModsById = async (req, res) => {
 
         // Query the database for these specific mods
         const result = await dbUtils.executeQuery(`
-            SELECT id, name, plus, valuecalc, target, subtarget
+            SELECT id, name, plus, valuecalc, target, subtarget, casterlevel
             FROM mod
             WHERE id = ANY ($1)
         `, [modIds]);
