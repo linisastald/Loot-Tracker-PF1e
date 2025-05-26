@@ -47,7 +47,8 @@ const AddItemMod = () => {
         type: '',
         valuecalc: '',
         target: '',
-        subtarget: ''
+        subtarget: '',
+        casterlevel: ''
     });
 
     // Item and mod lookup state
@@ -174,7 +175,8 @@ const AddItemMod = () => {
             type: '',
             valuecalc: '',
             target: '',
-            subtarget: ''
+            subtarget: '',
+            casterlevel: ''
         });
         setModLookup('');
     };
@@ -254,7 +256,8 @@ const AddItemMod = () => {
             // Prepare data
             const modData = {
                 ...modForm,
-                plus: modForm.plus || null
+                plus: modForm.plus || null,
+                casterlevel: modForm.casterlevel ? parseInt(modForm.casterlevel, 10) : null
             };
 
             let response;
@@ -336,7 +339,8 @@ const AddItemMod = () => {
                 type: '',
                 valuecalc: '',
                 target: '',
-                subtarget: ''
+                subtarget: '',
+                casterlevel: ''
             };
 
             // Only update properties that exist and are not null/undefined
@@ -347,6 +351,7 @@ const AddItemMod = () => {
             if (value.valuecalc !== undefined && value.valuecalc !== null) safeMod.valuecalc = value.valuecalc;
             if (value.target !== undefined && value.target !== null) safeMod.target = value.target;
             if (value.subtarget !== undefined && value.subtarget !== null) safeMod.subtarget = value.subtarget;
+            if (value.casterlevel !== undefined && value.casterlevel !== null) safeMod.casterlevel = String(value.casterlevel);
 
             setModForm(safeMod);
         } catch (error) {
@@ -481,6 +486,18 @@ const AddItemMod = () => {
                                         onChange={handleItemFormChange}
                                         fullWidth
                                         margin="normal"
+                                    />
+                                </Grid>
+                                <Grid size={{xs: 12, md: 4}}>
+                                    <TextField
+                                        label="Caster Level"
+                                        name="casterlevel"
+                                        type="number"
+                                        value={modForm.casterlevel}
+                                        onChange={handleModFormChange}
+                                        fullWidth
+                                        margin="normal"
+                                        helperText="Required for spellcraft DC calculation"
                                     />
                                 </Grid>
                                 <Grid size={12}>

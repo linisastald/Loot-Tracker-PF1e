@@ -104,7 +104,7 @@ const updateItem = async (req, res) => {
  */
 const createMod = async (req, res) => {
   try {
-    const {name, plus, type, valuecalc, target, subtarget} = req.body;
+    const {name, plus, type, valuecalc, target, subtarget, casterlevel} = req.body;
 
     // Validate required fields
     if (!name || !type || !target) {
@@ -113,8 +113,8 @@ const createMod = async (req, res) => {
 
     // Prepare query
     const query = `
-      INSERT INTO mod (name, plus, type, valuecalc, target, subtarget)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO mod (name, plus, type, valuecalc, target, subtarget, casterlevel)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
 
@@ -124,7 +124,8 @@ const createMod = async (req, res) => {
       type,
       valuecalc || null,
       target,
-      subtarget || null
+      subtarget || null,
+      casterlevel || null
     ];
 
     const result = await dbUtils.executeQuery(query, values, 'Error creating mod');
@@ -145,7 +146,7 @@ const createMod = async (req, res) => {
 const updateMod = async (req, res) => {
   try {
     const {id} = req.params;
-    const {name, plus, type, valuecalc, target, subtarget} = req.body;
+    const {name, plus, type, valuecalc, target, subtarget, casterlevel} = req.body;
 
     // Validate required fields
     if (!name || !type || !target) {
@@ -163,13 +164,14 @@ const updateMod = async (req, res) => {
     // Prepare query
     const query = `
       UPDATE mod
-      SET name      = $1,
-          plus      = $2,
-          type      = $3,
-          valuecalc = $4,
-          target    = $5,
-          subtarget = $6
-      WHERE id = $7
+      SET name        = $1,
+          plus        = $2,
+          type        = $3,
+          valuecalc   = $4,
+          target      = $5,
+          subtarget   = $6,
+          casterlevel = $7
+      WHERE id = $8
       RETURNING *
     `;
 
@@ -180,6 +182,7 @@ const updateMod = async (req, res) => {
       valuecalc || null,
       target,
       subtarget || null,
+      casterlevel || null,
       id
     ];
 

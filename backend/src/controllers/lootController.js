@@ -1293,9 +1293,28 @@ const identifyItems = async (req, res) => {
                     }
                 }
 
-                // For DM or successful rolls, update the item
-                const casterLevel = item.casterlevel || 1;
-                const requiredDC = 15 + Math.min(casterLevel, 20);
+                // Calculate effective caster level for DC calculation
+                let effectiveCasterLevel;
+                
+                // For weapons and armor with mods, use mod caster levels
+                if ((item.type === 'weapon' || item.type === 'armor') && lootItem.modids && lootItem.modids.length > 0) {
+                    // Fetch mod details with caster levels
+                    const modsResult = await client.query('SELECT casterlevel FROM mod WHERE id = ANY($1) AND casterlevel IS NOT NULL', [lootItem.modids]);
+                    const modCasterLevels = modsResult.rows.map(row => row.casterlevel);
+                    
+                    if (modCasterLevels.length > 0) {
+                        // Use the highest caster level from mods
+                        effectiveCasterLevel = Math.max(...modCasterLevels);
+                    } else {
+                        // Fallback to base item caster level
+                        effectiveCasterLevel = item.casterlevel || 1;
+                    }
+                } else {
+                    // For other items or items without mods, use base item caster level
+                    effectiveCasterLevel = item.casterlevel || 1;
+                }
+                
+                const requiredDC = 15 + Math.min(effectiveCasterLevel, 20);
                 const isSuccessful = isDMIdentification || spellcraftRoll >= requiredDC;
 
                 // Record the identification attempt in the identify table with Golarion date and success status
