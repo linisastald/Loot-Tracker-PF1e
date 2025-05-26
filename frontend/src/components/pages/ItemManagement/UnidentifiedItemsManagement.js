@@ -203,7 +203,11 @@ const UnidentifiedItemsManagement = () => {
         try {
             // If spellcraft_dc isn't set but we have the item info, calculate it
             if ((!updatedData.spellcraft_dc || updatedData.spellcraft_dc === '') && updatedData.itemid) {
-                const spellcraftDC = calculateSpellcraftDC({itemid: updatedData.itemid}, itemsMap);
+                const spellcraftDC = calculateSpellcraftDC(
+                    {itemid: updatedData.itemid, modids: updatedData.modids}, 
+                    itemsMap, 
+                    modsMap
+                );
                 if (spellcraftDC) {
                     updatedData.spellcraft_dc = spellcraftDC;
                 }
@@ -256,8 +260,8 @@ const UnidentifiedItemsManagement = () => {
             return item.spellcraft_dc;
         }
 
-        // Use the utility function
-        const calculatedDC = calculateSpellcraftDC(item, itemsMap);
+        // Use the utility function with modsMap
+        const calculatedDC = calculateSpellcraftDC(item, itemsMap, modsMap);
         return calculatedDC || 'Not set';
     };
 

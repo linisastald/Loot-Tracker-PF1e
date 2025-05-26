@@ -225,18 +225,43 @@ export const updateItemAsDM = async (itemId, updatedData, onSuccess, onError, on
 
 /**
  * Calculate Spellcraft DC for an item based on its caster level
- * @param {Object} item - The item object with itemid
+ * Uses the same logic as the backend for consistency
+ * @param {Object} item - The loot item object with itemid and modids
  * @param {Object} itemsMap - Map of item ids to item objects
+ * @param {Object} modsMap - Map of mod ids to mod objects (optional)
  * @returns {number|null} - The calculated DC or null if can't be calculated
  */
-export const calculateSpellcraftDC = (item, itemsMap) => {
+export const calculateSpellcraftDC = (item, itemsMap, modsMap = {}) => {
   if (!item.itemid || !itemsMap[item.itemid]) {
     return null;
   }
   
   const selectedItem = itemsMap[item.itemid];
-  const casterLevel = selectedItem.casterlevel || 1;
-  return 15 + Math.min(casterLevel, 20); // Cap at caster level 20
+  let effectiveCasterLevel;
+  
+  // For weapons and armor with mods, use mod caster levels
+  if ((selectedItem.type === 'weapon' || selectedItem.type === 'armor') && 
+      item.modids && item.modids.length > 0 && modsMap) {
+    
+    // Get caster levels from mods
+    const modCasterLevels = item.modids
+      .map(modId => modsMap[modId])
+      .filter(mod => mod && mod.casterlevel !== null && mod.casterlevel !== undefined)
+      .map(mod => mod.casterlevel);
+    
+    if (modCasterLevels.length > 0) {
+      // Use the highest caster level from mods
+      effectiveCasterLevel = Math.max(...modCasterLevels);
+    } else {
+      // Fallback to base item caster level
+      effectiveCasterLevel = selectedItem.casterlevel || 1;
+    }
+  } else {
+    // For other items or items without mods, use base item caster level
+    effectiveCasterLevel = selectedItem.casterlevel || 1;
+  }
+  
+  return 15 + Math.min(effectiveCasterLevel, 20); // Cap at caster level 20
 };
 
 /**
