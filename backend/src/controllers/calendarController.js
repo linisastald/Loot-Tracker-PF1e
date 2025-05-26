@@ -15,10 +15,10 @@ const getCurrentDate = async (req, res) => {
     // Initialize the current date if it doesn't exist
     await dbUtils.executeQuery(
         'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
-        [4722, 0, 1]
+        [4722, 1, 1]
     );
 
-    controllerFactory.sendSuccessResponse(res, {year: 4722, month: 0, day: 1}, 'Default date initialized');
+    controllerFactory.sendSuccessResponse(res, {year: 4722, month: 1, day: 1}, 'Default date initialized');
   } else {
     controllerFactory.sendSuccessResponse(res, result.rows[0], 'Current date retrieved');
   }
@@ -35,8 +35,8 @@ const setCurrentDate = async (req, res) => {
     throw controllerFactory.createValidationError('Year, month, and day must be integers');
   }
 
-  if (month < 0 || month > 11) {
-    throw controllerFactory.createValidationError('Month must be between 0 and 11');
+  if (month < 1 || month > 12) {
+    throw controllerFactory.createValidationError('Month must be between 1 and 12');
   }
 
   const daysInMonth = getMonthDays(month);
@@ -90,10 +90,10 @@ const advanceDay = async (req, res) => {
       // Initialize if not exists
       await client.query(
           'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
-          [4722, 0, 1]
+          [4722, 1, 1]
       );
 
-      controllerFactory.sendSuccessResponse(res, {year: 4722, month: 0, day: 1}, 'Initial date set');
+      controllerFactory.sendSuccessResponse(res, {year: 4722, month: 1, day: 1}, 'Initial date set');
       return;
     }
 
@@ -109,8 +109,8 @@ const advanceDay = async (req, res) => {
       month++;
 
       // Handle year overflow
-      if (month > 11) {
-        month = 0;
+      if (month > 12) {
+        month = 1;
         year++;
       }
     }
@@ -167,8 +167,8 @@ const saveNote = async (req, res) => {
     throw controllerFactory.createValidationError('Year, month, and day must be integers');
   }
 
-  if (date.month < 0 || date.month > 11) {
-    throw controllerFactory.createValidationError('Month must be between 0 and 11');
+  if (date.month < 1 || date.month > 12) {
+    throw controllerFactory.createValidationError('Month must be between 1 and 12');
   }
 
   const daysInMonth = getMonthDays(date.month);
@@ -189,12 +189,12 @@ const saveNote = async (req, res) => {
 
 /**
  * Helper function to get the number of days in a month
- * @param {number} month - The month (0-11)
+ * @param {number} month - The month (1-12)
  * @returns {number} - The number of days in the month
  */
 const getMonthDays = (month) => {
   const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return monthDays[month];
+  return monthDays[month - 1]; // Convert 1-12 to 0-11 for array access
 };
 
 /**
@@ -217,8 +217,8 @@ const calculateDaysBetween = (startDate, endDate) => {
       current.month++;
       
       // Handle year overflow
-      if (current.month > 11) {
-        current.month = 0;
+      if (current.month > 12) {
+        current.month = 1;
         current.year++;
       }
     }

@@ -273,12 +273,12 @@ const initializeWeatherHistory = async (req, res) => {
             // Handle month/year rollover
             while (targetDate.day < 1) {
                 targetDate.month--;
-                if (targetDate.month < 0) {
-                    targetDate.month = 11;
+                if (targetDate.month < 1) {
+                    targetDate.month = 12;
                     targetDate.year--;
                 }
                 const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-                targetDate.day += monthDays[targetDate.month];
+                targetDate.day += monthDays[targetDate.month - 1]; // Convert 1-12 to 0-11 for array access
             }
             
             // Get recent weather for weather generation context

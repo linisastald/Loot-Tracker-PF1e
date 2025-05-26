@@ -32,12 +32,22 @@ const cleanupExpiredSessions = async () => {
     }
 
     // Clean up old identification attempts (older than 30 days)
-    const oldIdentifications = await dbUtils.executeQuery(
-      'DELETE FROM identify WHERE golarion_date::date < (SELECT golarion_date::date FROM golarion_current_date) - INTERVAL \'30 days\''
+    // First check if current date is valid before attempting cleanup
+    const currentDateCheck = await dbUtils.executeQuery(
+      `SELECT golarion_date FROM golarion_current_date WHERE 
+       golarion_date ~ '^[0-9]{4}-([1-9]|1[0-2])-([1-9]|[12][0-9]|3[01])$'`
     );
     
-    if (oldIdentifications.rowCount > 0) {
-      logger.info(`Cleaned up ${oldIdentifications.rowCount} old identification attempts`);
+    if (currentDateCheck.rows.length > 0) {
+      const oldIdentifications = await dbUtils.executeQuery(
+        'DELETE FROM identify WHERE golarion_date::date < (SELECT golarion_date::date FROM golarion_current_date) - INTERVAL \'30 days\''
+      );
+      
+      if (oldIdentifications.rowCount > 0) {
+        logger.info(`Cleaned up ${oldIdentifications.rowCount} old identification attempts`);
+      }
+    } else {
+      logger.warn('Skipping identification cleanup - invalid golarion_current_date format detected');
     }
 
     // Clean up old appraisals for deleted loot items
@@ -113,7 +123,9 @@ const getSessionStats = async () => {
         (SELECT COUNT(*) FROM users WHERE login_attempts > 0) as accounts_with_failed_attempts,
         (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND (expires_at IS NULL OR expires_at > NOW())) as active_invites,
         (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND expires_at IS NOT NULL AND expires_at < NOW()) as expired_invites,
-        (SELECT COUNT(*) FROM identify WHERE golarion_date::date >= (SELECT golarion_date::date FROM golarion_current_date) - INTERVAL '7 days') as recent_identifications
+        (SELECT COUNT(*) FROM identify WHERE 
+          EXISTS(SELECT 1 FROM golarion_current_date WHERE golarion_date ~ '^[0-9]{4}-([1-9]|1[0-2])-([1-9]|[12][0-9]|3[01])$') AND
+          golarion_date::date >= (SELECT golarion_date::date FROM golarion_current_date) - INTERVAL '7 days') as recent_identifications
     `);
     
     return stats.rows[0];
