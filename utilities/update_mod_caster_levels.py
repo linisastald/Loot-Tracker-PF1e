@@ -36,11 +36,6 @@ def get_mod_names_from_db():
         conn = psycopg2.connect(**DB_CONFIG)
         cursor = conn.cursor()
         
-        # Add casterlevel column if it doesn't exist
-        cursor.execute("""
-            ALTER TABLE mod ADD COLUMN IF NOT EXISTS casterlevel INTEGER;
-        """)
-        
         # Update enhancement bonuses first
         cursor.execute("""
             UPDATE mod 
