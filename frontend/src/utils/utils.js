@@ -162,10 +162,13 @@ export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateD
 export const handleSplitSubmit = async (splitQuantities, selectedItems, originalItemQuantity, userId, fetchLoot, setOpenSplitDialog, setSelectedItems) => {
   // Calculate the sum of split quantities
   const sumOfSplits = splitQuantities.reduce((total, current) => total + parseInt(current.quantity, 10), 0);
+  
+  // Ensure originalItemQuantity is a number for accurate comparison
+  const originalQuantity = parseInt(originalItemQuantity, 10);
 
   // Check if the sum of splits equals the original item quantity
-  if (sumOfSplits !== originalItemQuantity) {
-    alert("The sum of the split quantities must equal the original item's quantity.");
+  if (sumOfSplits !== originalQuantity) {
+    alert(`The sum of the split quantities (${sumOfSplits}) must equal the original item's quantity (${originalQuantity}).`);
     return; // Stop execution if they don't match
   }
 
