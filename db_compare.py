@@ -191,12 +191,28 @@ def get_db_structure(conn):
 
     try:
         with conn.cursor() as cur:
-            # Get tables and columns with detailed information
+            # Get tables and columns with detailed information including proper array types
             cur.execute("""
-                SELECT table_name, column_name, data_type, is_nullable, column_default,
+                SELECT table_name, column_name, 
+                       CASE 
+                           WHEN data_type = 'ARRAY' THEN 
+                               (SELECT CASE 
+                                   WHEN et.typname = 'int4' THEN 'integer[]'
+                                   WHEN et.typname = 'int8' THEN 'bigint[]'
+                                   WHEN et.typname = 'varchar' THEN 'character varying[]'
+                                   WHEN et.typname = 'text' THEN 'text[]'
+                                   WHEN et.typname = 'numeric' THEN 'numeric[]'
+                                   ELSE et.typname || '[]'
+                               END
+                               FROM pg_type t
+                               JOIN pg_type et ON t.typelem = et.oid
+                               WHERE t.typname = replace(c.udt_name, '_', ''))
+                           ELSE data_type 
+                       END as data_type,
+                       is_nullable, column_default,
                        character_maximum_length, numeric_precision, numeric_scale,
                        ordinal_position
-                FROM information_schema.columns
+                FROM information_schema.columns c
                 WHERE table_schema = 'public'
                 ORDER BY table_name, ordinal_position
             """)
@@ -208,6 +224,7 @@ def get_db_structure(conn):
                 
                 # Build complete column definition - only add precision for types that support it
                 col_def = data_type
+                
                 if data_type in ('character varying', 'varchar', 'char', 'character'):
                     if char_len:
                         col_def += "({})".format(char_len)
@@ -219,7 +236,7 @@ def get_db_structure(conn):
                 elif data_type in ('time', 'timestamp', 'timestamptz', 'interval'):
                     if num_prec:
                         col_def += "({})".format(num_prec)
-                # For integer, bigint, smallint, etc. - don't add precision
+                # For integer, bigint, smallint, array types, etc. - don't add precision
                 
                 structure['tables'][table].append((column, col_def))
                 structure['column_details'][table][column] = {
