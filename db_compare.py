@@ -270,7 +270,9 @@ def get_table_data(conn, table):
     """Get all data from a table"""
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM {}".format(table))
+            # Properly quote table name to handle reserved words
+            quoted_table = '"{}"'.format(table)
+            cur.execute("SELECT * FROM {}".format(quoted_table))
             columns = [desc[0] for desc in cur.description]
             rows = cur.fetchall()
             return columns, rows
@@ -437,38 +439,74 @@ def generate_structure_sql(differences, master_structure):
         for column, data_type in columns:
             # Get additional column info
             col_info = master_structure['column_details'][table][column]
-            col_def = "{} {}".format(column, col_info['full_definition'])
+            # Properly quote table and column names to handle reserved words
+            quoted_column = '"{}"'.format(column)
+            col_def = "{} {}".format(quoted_column, col_info['full_definition'])
             
             if col_info['nullable'] == 'NO':
                 col_def += " NOT NULL"
             if col_info['default']:
-                col_def += " DEFAULT {}".format(col_info['default'])
+                # Handle different default value types
+                default_val = col_info['default']
+                if default_val.startswith('nextval('):
+                    # Handle sequence defaults
+                    col_def += " DEFAULT {}".format(default_val)
+                elif default_val.upper() in ('CURRENT_TIMESTAMP', 'NOW()'):
+                    # Handle timestamp defaults
+                    col_def += " DEFAULT {}".format(default_val)
+                elif default_val.startswith("'") and default_val.endswith("'"):
+                    # Already quoted string
+                    col_def += " DEFAULT {}".format(default_val)
+                elif default_val.replace('.', '').replace('-', '').isdigit():
+                    # Numeric default
+                    col_def += " DEFAULT {}".format(default_val)
+                else:
+                    # String that needs quoting
+                    col_def += " DEFAULT '{}'".format(default_val.replace("'", "''"))
                 
             column_definitions.append(col_def)
 
+        # Properly quote table name
+        quoted_table = '"{}"'.format(table)
         sql_statements.append(
-            "CREATE TABLE {} ({});".format(table, ', '.join(column_definitions))
+            "CREATE TABLE {} ({});".format(quoted_table, ', '.join(column_definitions))
         )
 
     # Add missing columns
     for table, columns in differences['missing_columns'].items():
         for column, data_type in columns:
             col_info = master_structure['column_details'][table][column]
+            # Properly quote table and column names
+            quoted_table = '"{}"'.format(table)
+            quoted_column = '"{}"'.format(column)
             col_def = col_info['full_definition']
             
             if col_info['nullable'] == 'NO':
                 col_def += " NOT NULL"
             if col_info['default']:
-                col_def += " DEFAULT {}".format(col_info['default'])
+                # Handle different default value types (same logic as above)
+                default_val = col_info['default']
+                if default_val.startswith('nextval('):
+                    col_def += " DEFAULT {}".format(default_val)
+                elif default_val.upper() in ('CURRENT_TIMESTAMP', 'NOW()'):
+                    col_def += " DEFAULT {}".format(default_val)
+                elif default_val.startswith("'") and default_val.endswith("'"):
+                    col_def += " DEFAULT {}".format(default_val)
+                elif default_val.replace('.', '').replace('-', '').isdigit():
+                    col_def += " DEFAULT {}".format(default_val)
+                else:
+                    col_def += " DEFAULT '{}'".format(default_val.replace("'", "''"))
                 
             sql_statements.append(
-                "ALTER TABLE {} ADD COLUMN {} {};".format(table, column, col_def)
+                "ALTER TABLE {} ADD COLUMN {} {};".format(quoted_table, quoted_column, col_def)
             )
 
     # Drop extra indexes
     for table, indexes in differences['extra_indexes'].items():
         for idx_name, idx_def in indexes:
-            sql_statements.append("DROP INDEX IF EXISTS {};".format(idx_name))
+            # Properly quote index name
+            quoted_idx = '"{}"'.format(idx_name)
+            sql_statements.append("DROP INDEX IF EXISTS {};".format(quoted_idx))
 
     # Create missing indexes
     for table, indexes in differences['missing_indexes'].items():
@@ -503,34 +541,38 @@ def generate_data_sql(table, columns, new_rows, primary_keys):
         else:
             return str(val)
 
-    # Generate INSERT statements
-    column_names = ', '.join(columns)
+    # Properly quote table and column names
+    quoted_table = '"{}"'.format(table)
+    quoted_columns = ['"{}"'.format(col) for col in columns]
+    column_names = ', '.join(quoted_columns)
     
     for row in new_rows:
         values = ', '.join(format_value(val) for val in row)
         
         if primary_keys:
             # Use UPSERT for tables with primary keys
-            pk_columns = ', '.join(primary_keys)
+            quoted_pk_columns = ['"{}"'.format(pk) for pk in primary_keys]
+            pk_columns = ', '.join(quoted_pk_columns)
             non_pk_columns = [col for col in columns if col not in primary_keys]
             
             if non_pk_columns:
+                quoted_non_pk = ['"{}"'.format(col) for col in non_pk_columns]
                 update_clause = ', '.join(
-                    "{} = EXCLUDED.{}".format(col, col) for col in non_pk_columns
+                    "{} = EXCLUDED.{}".format(qcol, qcol) for qcol in quoted_non_pk
                 )
                 sql = """INSERT INTO {} ({}) VALUES ({}) 
                         ON CONFLICT ({}) DO UPDATE SET {};""".format(
-                    table, column_names, values, pk_columns, update_clause
+                    quoted_table, column_names, values, pk_columns, update_clause
                 )
             else:
                 sql = """INSERT INTO {} ({}) VALUES ({}) 
                         ON CONFLICT ({}) DO NOTHING;""".format(
-                    table, column_names, values, pk_columns
+                    quoted_table, column_names, values, pk_columns
                 )
         else:
             # Simple INSERT for tables without primary keys
             sql = "INSERT INTO {} ({}) VALUES ({});".format(
-                table, column_names, values
+                quoted_table, column_names, values
             )
         
         sql_statements.append(sql)
@@ -636,7 +678,12 @@ def execute_transaction(conn, sql_statements, description):
                 logger.info("Executing {} changes in transaction...".format(description))
                 for i, statement in enumerate(sql_statements, 1):
                     logger.debug("Executing statement {}/{}: {}".format(i, len(sql_statements), statement[:100]))
-                    cur.execute(statement)
+                    try:
+                        cur.execute(statement)
+                    except psycopg2.Error as e:
+                        logger.error("Error in statement {}/{}: {}".format(i, len(sql_statements), e))
+                        logger.error("Full SQL statement: {}".format(statement))
+                        raise  # Re-raise to trigger transaction rollback
                 
                 logger.info("Successfully executed {} {} statements".format(len(sql_statements), description))
                 return True
