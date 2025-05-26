@@ -768,7 +768,7 @@ def synchronize_database(master_conn, copy_conn, container_name, is_test=False):
             structural_diffs['extra_indexes']
         ])
         
-        # Collect data changes (skip for test databases)
+        # Collect data changes BEFORE applying structural changes (skip for test databases)
         data_changes = {}
         if not is_test:  # Only sync data from production databases
             for table in tables_to_sync:
@@ -810,26 +810,33 @@ def synchronize_database(master_conn, copy_conn, container_name, is_test=False):
             logger.info("User declined changes")
             return False
         
-        # Execute structural changes first
+        # Execute structural changes first (to copy database)
         if has_structural_changes:
             structure_sql = generate_structure_sql(structural_diffs, master_structure)
             if not execute_transaction(copy_conn, structure_sql, "structural"):
                 logger.error("Failed to apply structural changes")
                 return False
         
-        # Execute data changes (copy to master)
-        for table, changes in data_changes.items():
-            data_sql = generate_data_sql(table, changes['columns'], 
-                                       changes['new_rows'], changes['primary_keys'])
-            if not execute_transaction(master_conn, data_sql, "data for {}".format(table)):
-                logger.error("Failed to apply data changes for table {}".format(table))
-                return False
+        # Execute data changes (from copy to master) 
+        if data_changes:
+            for table, changes in data_changes.items():
+                data_sql = generate_data_sql(table, changes['columns'], 
+                                           changes['new_rows'], changes['primary_keys'])
+                if not execute_transaction(master_conn, data_sql, "data for {}".format(table)):
+                    logger.error("Failed to apply data changes for table {}".format(table))
+                    return False
         
         # Update ID references if needed
         # This would be implemented based on specific business logic
         # update_id_references(copy_conn, id_mappings)
         
         logger.info("Iteration {} completed successfully".format(iteration))
+        
+        # Important: Only continue if there were structural changes
+        # Data changes don't require re-iteration since they go to master
+        if not has_structural_changes:
+            logger.info("✅ No structural changes applied. Synchronization complete!")
+            return True
     
     logger.warning("Maximum iterations ({}) reached".format(max_iterations))
     return False
