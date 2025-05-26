@@ -436,7 +436,19 @@ class StructureComparison:
         temp_table = '"{}"'.format(table + '_temp_reorder')
         old_table = '"{}"'.format(table + '_old')
         
-        # Step 1: Get current table definition for recreation
+        # Step 1: Get foreign key dependencies (both incoming and outgoing)
+        incoming_fks = self._get_incoming_foreign_keys(table)
+        outgoing_fks = self._get_outgoing_foreign_keys(table)
+        
+        # Step 2: Drop incoming foreign key constraints (other tables referencing this one)
+        for fk in incoming_fks:
+            sql_statements.append(
+                "ALTER TABLE \"{}\" DROP CONSTRAINT IF EXISTS \"{}\";".format(
+                    fk['table'], fk['constraint_name']
+                )
+            )
+        
+        # Step 3: Get current table definition for recreation
         column_definitions = []
         for column in master_order:
             if column in self.master.column_details[table]:
@@ -451,12 +463,12 @@ class StructureComparison:
                     
                 column_definitions.append(col_def)
         
-        # Step 2: Create new table with correct column order
+        # Step 4: Create new table with correct column order
         sql_statements.append(
             "CREATE TABLE {} ({});".format(temp_table, ', '.join(column_definitions))
         )
         
-        # Step 3: Copy data preserving all values including serials
+        # Step 5: Copy data preserving all values including serials
         quoted_columns = []
         for column in master_order:
             if column in self.master.column_details[table]:
@@ -469,37 +481,93 @@ class StructureComparison:
             )
         )
         
-        # Step 4: Get and preserve sequence values for serial columns
+        # Step 6: Get and preserve sequence values for serial columns
         serial_sequences = self._get_serial_sequences(table)
         sequence_preservation = []
         for seq_info in serial_sequences:
             sequence_preservation.append(
-                "SELECT setval('{}', COALESCE((SELECT MAX({}) FROM {}), 1));".format(
+                "SELECT setval('{}', COALESCE((SELECT MAX(\"{}\"::bigint) FROM {}), 1));".format(
                     seq_info['sequence_name'], seq_info['column'], temp_table
                 )
             )
         
-        # Step 5: Handle constraints and indexes
-        # Get primary key constraint
+        # Step 7: Recreate primary key constraint
         pk_constraint = self._get_primary_key_constraint(table)
         if pk_constraint:
             sql_statements.append(
-                "ALTER TABLE {} ADD CONSTRAINT {} PRIMARY KEY ({});".format(
+                "ALTER TABLE {} ADD CONSTRAINT \"{}\" PRIMARY KEY ({});".format(
                     temp_table, pk_constraint['name'], pk_constraint['columns']
                 )
             )
         
-        # Step 6: Rename tables atomically
+        # Step 8: Recreate outgoing foreign key constraints (this table referencing others)
+        for fk in outgoing_fks:
+            sql_statements.append(
+                "ALTER TABLE {} ADD CONSTRAINT \"{}\" FOREIGN KEY ({}) REFERENCES \"{}\" ({});".format(
+                    temp_table, fk['constraint_name'], fk['local_columns'], 
+                    fk['foreign_table'], fk['foreign_columns']
+                )
+            )
+        
+        # Step 9: Rename tables atomically
         sql_statements.append("ALTER TABLE {} RENAME TO {};".format(quoted_table, old_table))
         sql_statements.append("ALTER TABLE {} RENAME TO {};".format(temp_table, quoted_table))
         
-        # Step 7: Apply sequence preservation
+        # Step 10: Apply sequence preservation
         sql_statements.extend(sequence_preservation)
         
-        # Step 8: Clean up old table
+        # Step 11: Recreate incoming foreign key constraints (other tables referencing this one)
+        for fk in incoming_fks:
+            sql_statements.append(
+                "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" FOREIGN KEY ({}) REFERENCES {} ({});".format(
+                    fk['table'], fk['constraint_name'], fk['local_columns'],
+                    quoted_table, fk['foreign_columns']
+                )
+            )
+        
+        # Step 12: Recreate indexes (excluding primary key which was already handled)
+        table_indexes = self.master.indexes.get(table, [])
+        for idx_name, idx_def in table_indexes:
+            # Skip primary key indexes as they're handled with constraints
+            if 'PRIMARY KEY' not in idx_def.upper():
+                # Replace table name in index definition to use new table
+                updated_idx_def = idx_def.replace(table, quoted_table)
+                sql_statements.append("{};" .format(updated_idx_def))
+        
+        # Step 13: Clean up old table
         sql_statements.append("DROP TABLE {};".format(old_table))
         
         return sql_statements
+    
+    def _get_incoming_foreign_keys(self, table):
+        """Get foreign keys from other tables that reference this table"""
+        # This should query the database for incoming foreign key references
+        # For now, return empty list - will implement with actual DB queries
+        return []
+        # Example structure:
+        # [
+        #     {
+        #         'table': 'loot',
+        #         'constraint_name': 'loot_item_id_fkey', 
+        #         'local_columns': 'item_id',
+        #         'foreign_columns': 'id'
+        #     }
+        # ]
+    
+    def _get_outgoing_foreign_keys(self, table):
+        """Get foreign keys from this table that reference other tables"""
+        # This should query the database for outgoing foreign key references
+        # For now, return empty list - will implement with actual DB queries  
+        return []
+        # Example structure:
+        # [
+        #     {
+        #         'constraint_name': 'item_mod_id_fkey',
+        #         'local_columns': 'mod_id', 
+        #         'foreign_table': 'mod',
+        #         'foreign_columns': 'id'
+        #     }
+        # ]
     
     def _get_serial_sequences(self, table):
         """Get information about serial sequences for a table"""
