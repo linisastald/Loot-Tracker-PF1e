@@ -332,19 +332,31 @@ def compare_structures(master, copy):
 
 def compare_table_data(master_data, copy_data, primary_keys):
     """Compare data between master and copy tables"""
-    master_rows, copy_rows = master_data[1], copy_data[1]
+    master_columns, master_rows = master_data
+    copy_columns, copy_rows = copy_data
+    
+    # Ensure columns match before comparing
+    if master_columns != copy_columns:
+        logger.warning("Column mismatch between master and copy for comparison")
+        logger.debug("Master columns: {}".format(master_columns))
+        logger.debug("Copy columns: {}".format(copy_columns))
     
     # Convert rows to sets for comparison (handling unhashable types)
     def row_to_hashable(row):
-        return tuple(str(item) if item is not None else None for item in row)
+        return tuple(str(item) if item is not None else 'NULL' for item in row)
     
-    master_set = {row_to_hashable(row): row for row in master_rows}
-    copy_set = {row_to_hashable(row): row for row in copy_rows}
+    master_set = {row_to_hashable(row) for row in master_rows}
+    copy_set = {row_to_hashable(row) for row in copy_rows}
     
+    # Find rows in copy that are not in master
     new_in_copy = []
-    for row_hash, row in copy_set.items():
+    for i, row in enumerate(copy_rows):
+        row_hash = row_to_hashable(row)
         if row_hash not in master_set:
             new_in_copy.append(row)
+    
+    logger.debug("Master has {} rows, Copy has {} rows, {} new in copy".format(
+        len(master_rows), len(copy_rows), len(new_in_copy)))
     
     return new_in_copy
 
@@ -759,14 +771,25 @@ def main():
                     
                     for table in tables_to_sync:
                         if table in master_structure['tables'] and table in copy_structure['tables']:
+                            logger.info("Checking data for table: {}".format(table))
                             master_data = get_table_data(master_conn, table)
                             copy_data = get_table_data(copy_conn, table)
                             primary_keys = get_primary_key(copy_conn, table)
+                            
+                            logger.info("Master {} has {} rows, Copy {} has {} rows".format(
+                                table, len(master_data[1]), table, len(copy_data[1])))
+                            
+                            # Quick sanity check - compare first few rows
+                            if len(master_data[1]) > 0 and len(copy_data[1]) > 0:
+                                logger.debug("First master row: {}".format(master_data[1][0][:3]))
+                                logger.debug("First copy row: {}".format(copy_data[1][0][:3]))
                             
                             new_rows = compare_table_data(master_data, copy_data, primary_keys)
                             if new_rows:
                                 display_data_changes(table, new_rows, master_data[0])
                                 data_changes_found = True
+                            else:
+                                logger.info("No new rows found in {} copy database".format(table))
                     
                     if not data_changes_found:
                         logger.info("No data synchronization changes found")
