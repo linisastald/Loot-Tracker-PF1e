@@ -16,8 +16,8 @@ import logging
 DB_CONFIG = {
     'host': 'localhost',
     'database': 'loot_tracking',
-    'user': 'your_username',
-    'password': 'your_password'
+    'user': 'loot_user',
+    'password': 'g5Zr7!cXw@2sP9Lk'
 }
 
 # Base URLs for different mod types
