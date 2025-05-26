@@ -1,9 +1,43 @@
 const {OpenAI} = require('openai');
+const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY // This is also the default, can be omitted
-});
+/**
+ * Get OpenAI key from settings and decrypt it
+ * @returns {Promise<string>} - The decrypted OpenAI API key
+ */
+const getOpenAiKey = async () => {
+    try {
+        const result = await dbUtils.executeQuery(
+            'SELECT value, value_type FROM settings WHERE name = $1',
+            ['openai_key']
+        );
+        
+        if (result.rows.length === 0 || !result.rows[0].value) {
+            throw new Error('OpenAI API key not configured in settings');
+        }
+        
+        const row = result.rows[0];
+        // Decrypt the stored key if it's encrypted
+        if (row.value_type === 'encrypted') {
+            return Buffer.from(row.value, 'base64').toString('utf8');
+        }
+        
+        return row.value;
+    } catch (error) {
+        logger.error('Error retrieving OpenAI key from settings:', error);
+        throw error;
+    }
+};
+
+/**
+ * Create OpenAI client with key from settings
+ * @returns {Promise<OpenAI>} - OpenAI client instance
+ */
+const createOpenAiClient = async () => {
+    const apiKey = await getOpenAiKey();
+    return new OpenAI({ apiKey });
+};
 
 /**
  * Function to call GPT API to parse item description
@@ -14,6 +48,8 @@ const parseItemDescriptionWithGPT = async (description) => {
     try {
         logger.info(`Parsing item description with GPT: "${description.substring(0, 50)}..."`);
 
+        const openai = await createOpenAiClient();
+        
         const response = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
             messages: [

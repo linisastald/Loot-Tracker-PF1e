@@ -48,7 +48,8 @@ const SystemSettings = () => {
         botToken: '',
         channelId: '',
         roleId: '',
-        enabled: false
+        enabled: false,
+        openaiKey: ''
     });
 
     // General settings
@@ -64,7 +65,8 @@ const SystemSettings = () => {
         botToken: '',
         channelId: '',
         roleId: '',
-        enabled: false
+        enabled: false,
+        openaiKey: ''
     });
 
     const [maskedToken, setMaskedToken] = useState('********');
@@ -90,10 +92,12 @@ const SystemSettings = () => {
         try {
             const [
                 settingsResponse,
-                discordResponse
+                discordResponse,
+                openaiResponse
             ] = await Promise.all([
                 api.get(`/user/settings`),
-                api.get('/settings/discord')
+                api.get('/settings/discord'),
+                api.get('/settings/openai-key')
             ]);
 
             // Handle registration setting
@@ -112,12 +116,16 @@ const SystemSettings = () => {
                 const channelId = discordResponse.data.discord_channel_id || '';
                 const roleId = discordResponse.data.campaign_role_id || '';
                 const enabled = discordResponse.data.discord_integration_enabled === '1';
+                
+                // Get OpenAI key
+                const openaiKey = openaiResponse.data?.hasKey ? maskedToken : '';
 
                 setDiscordSettings({
                     botToken: botToken ? maskedToken : '',
                     channelId: channelId,
                     roleId: roleId,
                     enabled: enabled,
+                    openaiKey: openaiKey,
                     originalBotToken: botToken
                 });
 
@@ -125,7 +133,8 @@ const SystemSettings = () => {
                     botToken: botToken,
                     channelId: channelId,
                     roleId: roleId,
-                    enabled: enabled
+                    enabled: enabled,
+                    openaiKey: openaiKey
                 });
             }
 
@@ -226,12 +235,21 @@ const SystemSettings = () => {
                 });
             }
 
+            // Only update OpenAI key if it's changed and not the masked value
+            if (discordSettings.openaiKey !== maskedToken && discordSettings.openaiKey !== originalSettings.openaiKey) {
+                await api.put('/user/update-setting', {
+                    name: 'openai_key',
+                    value: discordSettings.openaiKey
+                });
+            }
+
             // Update original settings for next comparison
             setOriginalSettings({
                 botToken: discordSettings.botToken !== maskedToken ? discordSettings.botToken : originalSettings.botToken,
                 channelId: discordSettings.channelId,
                 roleId: discordSettings.roleId,
-                enabled: discordSettings.enabled
+                enabled: discordSettings.enabled,
+                openaiKey: discordSettings.openaiKey !== maskedToken ? discordSettings.openaiKey : originalSettings.openaiKey
             });
 
             setSuccess('Discord settings updated successfully');
@@ -569,6 +587,16 @@ const SystemSettings = () => {
                                 margin="normal"
                                 placeholder="Discord Role ID (optional)"
                                 helperText="Role to ping for session announcements"
+                            />
+                            <TextField
+                                label="OpenAI API Key"
+                                type="password"
+                                value={discordSettings.openaiKey || ''}
+                                onChange={(e) => setDiscordSettings({...discordSettings, openaiKey: e.target.value})}
+                                fullWidth
+                                margin="normal"
+                                placeholder="Enter OpenAI API Key for Smart Item Detection"
+                                helperText="Required for Smart Item Detection feature"
                             />
                             <FormControlLabel
                                 control={

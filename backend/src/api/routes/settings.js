@@ -7,5 +7,6 @@ router.get('/campaign-name', settingsController.getCampaignName);
 router.get('/infamy-system', settingsController.getInfamySystem);
 router.get('/average-party-level', settingsController.getAveragePartyLevel);
 router.get('/region', settingsController.getRegion);
+router.get('/openai-key', settingsController.getOpenAiKey);
 
 module.exports = router;

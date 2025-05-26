@@ -17,10 +17,12 @@ import {
 } from '@mui/material';
 import {Delete as DeleteIcon} from '@mui/icons-material';
 import {fetchItemNames} from '../../utils/lootEntryUtils';
+import api from '../../utils/api';
 
 const EntryForm = ({entry, index, onRemove, onChange}) => {
     const [localEntry, setLocalEntry] = useState(entry.data);
     const [itemSuggestions, setItemSuggestions] = useState([]);
+    const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
 
     useEffect(() => {
         setLocalEntry(entry.data);
@@ -32,7 +34,18 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
             setItemSuggestions(items);
         };
 
+        const checkOpenAiKey = async () => {
+            try {
+                const response = await api.get('/settings/openai-key');
+                setHasOpenAiKey(response.data?.hasKey || false);
+            } catch (error) {
+                console.error('Error checking OpenAI key:', error);
+                setHasOpenAiKey(false);
+            }
+        };
+
         loadItemOptions();
+        checkOpenAiKey();
     }, []);
 
     const handleChange = (field, value) => {
@@ -42,6 +55,11 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
             updatedEntry.parseItem = false;
             // Also clear itemId if unidentified is checked
             updatedEntry.itemId = null;
+        }
+        
+        // If trying to enable parseItem but no OpenAI key, prevent it
+        if (field === 'parseItem' && value === true && !hasOpenAiKey) {
+            return; // Don't allow enabling if no OpenAI key
         }
 
         setLocalEntry(prev => ({...prev, [field]: value}));
@@ -246,15 +264,18 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                             <Switch
                                 checked={localEntry.parseItem || false}
                                 onChange={(e) => handleChange('parseItem', e.target.checked)}
-                                disabled={localEntry.unidentified}
+                                disabled={localEntry.unidentified || !hasOpenAiKey}
                             />
                         }
                         label="Smart Item Detection"
                         sx={{ m: 0 }}
                     />
-                    {localEntry.unidentified && (
+                    {(localEntry.unidentified || !hasOpenAiKey) && (
                         <Typography variant="caption" color="error" sx={{ ml: 1 }}>
-                            Not available for unidentified items
+                            {localEntry.unidentified 
+                                ? 'Not available for unidentified items'
+                                : 'OpenAI key required in System Settings'
+                            }
                         </Typography>
                     )}
                 </Paper>

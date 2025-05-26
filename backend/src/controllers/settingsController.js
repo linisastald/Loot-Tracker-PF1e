@@ -37,12 +37,17 @@ const getAllSettings = async (req, res) => {
         throw controllerFactory.createAuthorizationError('Only DMs can access all settings');
     }
 
-    const result = await dbUtils.executeQuery('SELECT * FROM settings ORDER BY name');
+    const result = await dbUtils.executeQuery('SELECT name, value, value_type FROM settings ORDER BY name');
 
     // Convert to a more usable format
     const settings = {};
     result.rows.forEach(row => {
-        settings[row.name] = row.value;
+        let value = row.value;
+        // Don't decrypt for getAllSettings - keep encrypted values masked
+        if (row.value_type === 'encrypted') {
+            value = maskSensitiveValue(value);
+        }
+        settings[row.name] = value;
     });
 
     controllerFactory.sendSuccessResponse(res, settings, 'All settings retrieved');
@@ -71,13 +76,25 @@ const updateSetting = async (req, res) => {
     }
 
     try {
+        // Encrypt sensitive values before storing
+        let valueToStore = value;
+        let valueType = 'text'; // Default for most settings
+        
+        if (name === 'openai_key' && value) {
+            valueToStore = encryptValue(value);
+            valueType = 'encrypted';
+        } else if (name === 'registrations_open' || name === 'discord_integration_enabled') {
+            valueType = 'boolean';
+        }
+        
         await dbUtils.executeQuery(
-            'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
-            [name, value]
+            'INSERT INTO settings (name, value, value_type) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value, value_type = EXCLUDED.value_type',
+            [name, valueToStore, valueType]
         );
 
-        // Log the setting change
-        logger.info(`Setting updated: ${name}=${value}`, {userId: req.user.id});
+        // Log the setting change (mask sensitive values in logs)
+        const logValue = (name === 'openai_key' && value) ? maskSensitiveValue(value) : value;
+        logger.info(`Setting updated: ${name}=${logValue}`, {userId: req.user.id});
 
         controllerFactory.sendSuccessResponse(res, {name, value}, 'Setting updated successfully');
     } catch (error) {
@@ -108,7 +125,8 @@ const deleteSetting = async (req, res) => {
         'registrations_open',
         'discord_bot_token',
         'discord_channel_id',
-        'discord_integration_enabled'
+        'discord_integration_enabled',
+        'openai_key'
     ];
 
     if (protectedSettings.includes(name)) {
@@ -142,13 +160,18 @@ const deleteSetting = async (req, res) => {
  */
 const fetchSettingsByNames = async (names) => {
     const result = await dbUtils.executeQuery(
-        'SELECT name, value FROM settings WHERE name = ANY($1)',
+        'SELECT name, value, value_type FROM settings WHERE name = ANY($1)',
         [names]
     );
 
     const settings = {};
     result.rows.forEach(row => {
-        settings[row.name] = row.value;
+        let value = row.value;
+        // Decrypt encrypted values
+        if (row.value_type === 'encrypted') {
+            value = decryptValue(row.value);
+        }
+        settings[row.name] = value;
     });
 
     return settings;
@@ -163,6 +186,31 @@ const maskSensitiveValue = (value) => {
     if (!value || value.length < 8) return '***';
 
     return value.substring(0, 4) + '...' + value.substring(value.length - 4);
+};
+
+/**
+ * Simple encryption for API keys using base64 encoding
+ * @param {string} value - The value to encrypt
+ * @returns {string} - Encrypted value
+ */
+const encryptValue = (value) => {
+    if (!value) return value;
+    return Buffer.from(value).toString('base64');
+};
+
+/**
+ * Simple decryption for API keys using base64 decoding
+ * @param {string} encryptedValue - The encrypted value to decrypt
+ * @returns {string} - Decrypted value
+ */
+const decryptValue = (encryptedValue) => {
+    if (!encryptedValue) return encryptedValue;
+    try {
+        return Buffer.from(encryptedValue, 'base64').toString('utf8');
+    } catch (error) {
+        logger.error('Error decrypting value:', error);
+        return encryptedValue; // Return as-is if decryption fails
+    }
 };
 
 /**
@@ -210,12 +258,32 @@ const getRegion = async (req, res) => {
     }
 };
 
+/**
+ * Get OpenAI key setting (masked for security)
+ */
+const getOpenAiKey = async (req, res) => {
+    try {
+        const settings = await fetchSettingsByNames(['openai_key']);
+        const openaiKey = settings.openai_key;
+        
+        // Return masked key or empty if not set
+        const maskedKey = openaiKey ? maskSensitiveValue(decryptValue(openaiKey)) : '';
+        
+        controllerFactory.sendSuccessResponse(res, {
+            value: maskedKey,
+            hasKey: !!openaiKey
+        }, 'OpenAI key setting retrieved');
+    } catch (error) {
+        logger.error('Error fetching OpenAI key setting:', error);
+        throw error;
+    }
+};
+
 // Define validation rules
 const updateSettingValidation = {
     requiredFields: ['name', 'value']
 };
 
-// Create handlers with validation and error handling
 module.exports = {
     getDiscordSettings: controllerFactory.createHandler(getDiscordSettings, {
         errorMessage: 'Error fetching Discord settings'
@@ -248,5 +316,13 @@ module.exports = {
 
     getRegion: controllerFactory.createHandler(getRegion, {
         errorMessage: 'Error fetching region setting'
-    })
+    }),
+
+    getOpenAiKey: controllerFactory.createHandler(getOpenAiKey, {
+        errorMessage: 'Error fetching OpenAI key setting'
+    }),
+
+    // Export helper functions for internal use
+    fetchSettingsByNames,
+    decryptValue
 };
