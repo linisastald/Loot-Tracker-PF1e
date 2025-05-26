@@ -335,23 +335,60 @@ def compare_table_data(master_data, copy_data, primary_keys):
     master_columns, master_rows = master_data
     copy_columns, copy_rows = copy_data
     
-    # Ensure columns match before comparing
+    # Handle column order differences
     if master_columns != copy_columns:
-        logger.warning("Column mismatch between master and copy for comparison")
+        logger.info("Column order/content differs between master and copy - normalizing for comparison")
         logger.debug("Master columns: {}".format(master_columns))
         logger.debug("Copy columns: {}".format(copy_columns))
+        
+        # Find common columns
+        common_columns = [col for col in master_columns if col in copy_columns]
+        master_only = [col for col in master_columns if col not in copy_columns]
+        copy_only = [col for col in copy_columns if col not in master_columns]
+        
+        if master_only:
+            logger.info("Columns only in master: {}".format(master_only))
+        if copy_only:
+            logger.info("Columns only in copy: {}".format(copy_only))
+        
+        # Create index mappings for reordering
+        master_indices = [master_columns.index(col) for col in common_columns]
+        copy_indices = [copy_columns.index(col) for col in common_columns]
+        
+        logger.debug("Common columns: {}".format(common_columns))
+        logger.debug("Master indices for common columns: {}".format(master_indices))
+        logger.debug("Copy indices for common columns: {}".format(copy_indices))
+        
+        # Reorder rows to match common column order
+        def reorder_row(row, indices):
+            return tuple(row[i] if i < len(row) else None for i in indices)
+        
+        master_rows_normalized = [reorder_row(row, master_indices) for row in master_rows]
+        copy_rows_normalized = [reorder_row(row, copy_indices) for row in copy_rows]
+        
+        logger.debug("Using {} common columns for comparison".format(len(common_columns)))
+        if master_rows_normalized and copy_rows_normalized:
+            logger.debug("First master row normalized: {}".format(master_rows_normalized[0][:3]))
+            logger.debug("First copy row normalized: {}".format(copy_rows_normalized[0][:3]))
+    else:
+        master_rows_normalized = master_rows
+        copy_rows_normalized = copy_rows
     
     # Convert rows to sets for comparison (handling unhashable types)
     def row_to_hashable(row):
         return tuple(str(item) if item is not None else 'NULL' for item in row)
     
-    master_set = {row_to_hashable(row) for row in master_rows}
-    copy_set = {row_to_hashable(row) for row in copy_rows}
+    master_set = {row_to_hashable(row) for row in master_rows_normalized}
+    copy_set = {row_to_hashable(row) for row in copy_rows_normalized}
     
     # Find rows in copy that are not in master
     new_in_copy = []
     for i, row in enumerate(copy_rows):
-        row_hash = row_to_hashable(row)
+        if master_columns != copy_columns:
+            row_normalized = reorder_row(row, copy_indices)
+        else:
+            row_normalized = row
+        row_hash = row_to_hashable(row_normalized)
         if row_hash not in master_set:
             new_in_copy.append(row)
     
