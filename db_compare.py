@@ -196,17 +196,21 @@ def get_db_structure(conn):
                 SELECT table_name, column_name, 
                        CASE 
                            WHEN data_type = 'ARRAY' THEN 
-                               (SELECT CASE 
-                                   WHEN et.typname = 'int4' THEN 'integer[]'
-                                   WHEN et.typname = 'int8' THEN 'bigint[]'
-                                   WHEN et.typname = 'varchar' THEN 'character varying[]'
-                                   WHEN et.typname = 'text' THEN 'text[]'
-                                   WHEN et.typname = 'numeric' THEN 'numeric[]'
-                                   ELSE et.typname || '[]'
-                               END
-                               FROM pg_type t
-                               JOIN pg_type et ON t.typelem = et.oid
-                               WHERE t.typname = replace(c.udt_name, '_', ''))
+                               COALESCE(
+                                   (SELECT CASE 
+                                       WHEN et.typname = 'int4' THEN 'integer[]'
+                                       WHEN et.typname = 'int8' THEN 'bigint[]'
+                                       WHEN et.typname = 'varchar' THEN 'character varying[]'
+                                       WHEN et.typname = 'text' THEN 'text[]'
+                                       WHEN et.typname = 'numeric' THEN 'numeric[]'
+                                       WHEN et.typname = 'bpchar' THEN 'character[]'
+                                       ELSE et.typname || '[]'
+                                   END
+                                   FROM pg_type t
+                                   JOIN pg_type et ON t.typelem = et.oid
+                                   WHERE t.typname = replace(c.udt_name, '_', '')),
+                                   'integer[]'  -- fallback default
+                               )
                            ELSE data_type 
                        END as data_type,
                        is_nullable, column_default,
@@ -457,6 +461,9 @@ def generate_structure_sql(differences, master_structure):
                 elif '::' in default_val:
                     # Handle PostgreSQL type casts (e.g., '{}'::jsonb)
                     col_def += " DEFAULT {}".format(default_val)
+                elif default_val.startswith('ARRAY['):
+                    # Handle PostgreSQL array literals
+                    col_def += " DEFAULT {}".format(default_val)
                 elif default_val.startswith("'") and default_val.endswith("'"):
                     # Already quoted string
                     col_def += " DEFAULT {}".format(default_val)
@@ -495,6 +502,9 @@ def generate_structure_sql(differences, master_structure):
                     col_def += " DEFAULT {}".format(default_val)
                 elif '::' in default_val:
                     # Handle PostgreSQL type casts (e.g., '{}'::jsonb)
+                    col_def += " DEFAULT {}".format(default_val)
+                elif default_val.startswith('ARRAY['):
+                    # Handle PostgreSQL array literals
                     col_def += " DEFAULT {}".format(default_val)
                 elif default_val.startswith("'") and default_val.endswith("'"):
                     col_def += " DEFAULT {}".format(default_val)
