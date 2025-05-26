@@ -97,13 +97,17 @@ def get_docker_container_ids(config):
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 universal_newlines=True, check=True)
         containers = []
+        
         for line in result.stdout.split('\n'):
             if line and '\t' in line:
                 parts = line.split('\t')
                 if len(parts) >= 2:
                     container_id, name = parts[0], parts[1]
                     if config['CONTAINER_FILTER'] in name:
-                        containers.append((container_id, name))
+                        # Mark test containers but don't exclude them
+                        is_test = 'test' in name.lower()
+                        containers.append((container_id, name, is_test))
+                        
         return containers
     except subprocess.CalledProcessError as e:
         logger.error("Error running docker command: {}".format(e))
@@ -651,7 +655,7 @@ def check_for_changes(master_conn, copy_conn, tables_to_check):
     return has_structural_changes or has_data_changes, structural_diffs
 
 
-def synchronize_database(master_conn, copy_conn, container_name):
+def synchronize_database(master_conn, copy_conn, container_name, is_test=False):
     """Synchronize a single copy database with the master"""
     tables_to_sync = ['item', 'mod', 'spells']  # Tables to sync data bidirectionally
     max_iterations = 10
@@ -678,21 +682,24 @@ def synchronize_database(master_conn, copy_conn, container_name):
             structural_diffs['extra_indexes']
         ])
         
-        # Collect data changes
+        # Collect data changes (skip for test databases)
         data_changes = {}
-        for table in tables_to_sync:
-            if table in master_structure['tables'] and table in copy_structure['tables']:
-                master_data = get_table_data(master_conn, table)
-                copy_data = get_table_data(copy_conn, table)
-                primary_keys = get_primary_key(copy_conn, table)
-                
-                new_rows = compare_table_data(master_data, copy_data, primary_keys)
-                if new_rows:
-                    data_changes[table] = {
-                        'new_rows': new_rows,
-                        'columns': master_data[0],
-                        'primary_keys': primary_keys
-                    }
+        if not is_test:  # Only sync data from production databases
+            for table in tables_to_sync:
+                if table in master_structure['tables'] and table in copy_structure['tables']:
+                    master_data = get_table_data(master_conn, table)
+                    copy_data = get_table_data(copy_conn, table)
+                    primary_keys = get_primary_key(copy_conn, table)
+                    
+                    new_rows = compare_table_data(master_data, copy_data, primary_keys)
+                    if new_rows:
+                        data_changes[table] = {
+                            'new_rows': new_rows,
+                            'columns': master_data[0],
+                            'primary_keys': primary_keys
+                        }
+        else:
+            logger.info("Skipping data synchronization for test database: {}".format(container_name))
         
         # If no changes needed, we're done
         if not has_structural_changes and not data_changes:
@@ -767,13 +774,19 @@ def main():
         if not containers:
             logger.warning("No matching Docker containers found.")
             sys.exit(0)
+        
+        logger.info("Found {} matching containers".format(len(containers)))
+        for container_id, container_name, is_test in containers:
+            container_type = "TEST" if is_test else "PRODUCTION"
+            logger.info("  - {} ({})".format(container_name, container_type))
 
         success_count = 0
         total_count = len(containers)
 
-        for container_id, container_name in containers:
+        for container_id, container_name, is_test in containers:
+            container_type = "TEST" if is_test else "PRODUCTION"
             logger.info("\n" + "="*100)
-            logger.info("PROCESSING CONTAINER: {}".format(container_name))
+            logger.info("PROCESSING CONTAINER: {} ({})".format(container_name, container_type))
             logger.info("="*100)
             
             container_port = get_container_port(container_id)
@@ -821,6 +834,11 @@ def main():
                                 logger.debug("First master row: {}".format(master_data[1][0][:3]))
                                 logger.debug("First copy row: {}".format(copy_data[1][0][:3]))
                             
+                            # Skip data sync preview for test databases
+                            if is_test:
+                                logger.info("Skipping data sync check for test database: {}".format(table))
+                                continue
+                                
                             new_rows = compare_table_data(master_data, copy_data, primary_keys)
                             if new_rows:
                                 display_data_changes(table, new_rows, master_data[0])
@@ -832,7 +850,7 @@ def main():
                         logger.info("No data synchronization changes found")
                 else:
                     # Execute full synchronization
-                    if synchronize_database(master_conn, copy_conn, container_name):
+                    if synchronize_database(master_conn, copy_conn, container_name, is_test):
                         success_count += 1
                         logger.info("✅ Successfully synchronized {}".format(container_name))
                     else:
