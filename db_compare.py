@@ -403,9 +403,23 @@ def compare_table_data(master_data, copy_data, primary_keys):
         if master_rows_normalized and copy_rows_normalized:
             logger.debug("First master row normalized: {}".format(master_rows_normalized[0][:3]))
             logger.debug("First copy row normalized: {}".format(copy_rows_normalized[0][:3]))
+            
+        # Update copy_rows to be in master column order for final output
+        # Map copy data to master column order (filling in None for missing columns)
+        copy_rows_remapped = []
+        for copy_row in copy_rows:
+            master_ordered_row = []
+            for master_col in master_columns:
+                if master_col in copy_columns:
+                    copy_idx = copy_columns.index(master_col)
+                    master_ordered_row.append(copy_row[copy_idx])
+                else:
+                    master_ordered_row.append(None)  # Column doesn't exist in copy
+            copy_rows_remapped.append(tuple(master_ordered_row))
     else:
         master_rows_normalized = master_rows
         copy_rows_normalized = copy_rows
+        copy_rows_remapped = copy_rows
     
     # Convert rows to sets for comparison (handling unhashable types)
     def row_to_hashable(row):
@@ -414,16 +428,16 @@ def compare_table_data(master_data, copy_data, primary_keys):
     master_set = {row_to_hashable(row) for row in master_rows_normalized}
     copy_set = {row_to_hashable(row) for row in copy_rows_normalized}
     
-    # Find rows in copy that are not in master
+    logger.debug("Sample master hashes: {}".format(list(master_set)[:3]))
+    logger.debug("Sample copy hashes: {}".format(list(copy_set)[:3]))
+    
+    # Find rows in copy that are not in master - return in master column order
     new_in_copy = []
-    for i, row in enumerate(copy_rows):
-        if master_columns != copy_columns:
-            row_normalized = reorder_row(row, copy_indices)
-        else:
-            row_normalized = row
+    for i, row_normalized in enumerate(copy_rows_normalized):
         row_hash = row_to_hashable(row_normalized)
         if row_hash not in master_set:
-            new_in_copy.append(row)
+            # Use the remapped row (in master column order) for output
+            new_in_copy.append(copy_rows_remapped[i])
     
     logger.debug("Master has {} rows, Copy has {} rows, {} new in copy".format(
         len(master_rows), len(copy_rows), len(new_in_copy)))
