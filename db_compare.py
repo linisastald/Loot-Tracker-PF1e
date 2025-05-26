@@ -454,6 +454,9 @@ def generate_structure_sql(differences, master_structure):
                 elif default_val.upper() in ('CURRENT_TIMESTAMP', 'NOW()'):
                     # Handle timestamp defaults
                     col_def += " DEFAULT {}".format(default_val)
+                elif '::' in default_val:
+                    # Handle PostgreSQL type casts (e.g., '{}'::jsonb)
+                    col_def += " DEFAULT {}".format(default_val)
                 elif default_val.startswith("'") and default_val.endswith("'"):
                     # Already quoted string
                     col_def += " DEFAULT {}".format(default_val)
@@ -489,6 +492,9 @@ def generate_structure_sql(differences, master_structure):
                 if default_val.startswith('nextval('):
                     col_def += " DEFAULT {}".format(default_val)
                 elif default_val.upper() in ('CURRENT_TIMESTAMP', 'NOW()'):
+                    col_def += " DEFAULT {}".format(default_val)
+                elif '::' in default_val:
+                    # Handle PostgreSQL type casts (e.g., '{}'::jsonb)
                     col_def += " DEFAULT {}".format(default_val)
                 elif default_val.startswith("'") and default_val.endswith("'"):
                     col_def += " DEFAULT {}".format(default_val)
