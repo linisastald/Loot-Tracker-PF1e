@@ -276,8 +276,14 @@ const sendEvent = async (req, res) => {
 
         // Store session message info for interaction handling
         try {
+            // First, let's check if we have a sessions table or session_messages table
+            // For now, we'll create a simple mapping in the session_messages table
             await dbUtils.executeQuery(
-                'INSERT INTO session_messages (message_id, channel_id, session_date, session_time, responses) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (message_id) DO UPDATE SET session_date = EXCLUDED.session_date, session_time = EXCLUDED.session_time',
+                `INSERT INTO session_messages (message_id, channel_id, session_date, session_time, responses) 
+                 VALUES ($1, $2, $3, $4, $5) 
+                 ON CONFLICT (message_id) DO UPDATE SET 
+                 session_date = EXCLUDED.session_date, 
+                 session_time = EXCLUDED.session_time`,
                 [messageId, discord_channel_id, startDate.toISOString(), endDate.toISOString(), JSON.stringify({})]
             );
         } catch (dbError) {

@@ -10,6 +10,6 @@ router.get('/status', verifyToken, discordController.getIntegrationStatus);
 router.put('/settings', verifyToken, discordController.updateSettings);
 
 // Handle Discord interactions (no auth - uses Discord's verification)
-router.post('/interactions', sessionController.processDiscordInteraction);
+router.post('/interactions', sessionController.processSessionInteraction);
 
 module.exports = router;
