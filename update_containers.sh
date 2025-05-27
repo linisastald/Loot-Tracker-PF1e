@@ -41,9 +41,10 @@ cd /root
 if [ "$UPDATE_PRODUCTION" = true ]; then
     echo "Updating production containers..."
     
-    # Stop production services
-    echo "Stopping production services..."
+    # Stop and remove production services
+    echo "Stopping and removing production services..."
     docker-compose stop rotr_app rotr_db sns_app sns_db
+    docker-compose rm -f rotr_app rotr_db sns_app sns_db
     
     # Rebuild and start production services
     echo "Rebuilding production containers..."
@@ -56,9 +57,10 @@ if [ "$UPDATE_PRODUCTION" = true ]; then
 else
     echo "Updating test containers..."
     
-    # Stop test services
-    echo "Stopping test services..."
+    # Stop and remove test services
+    echo "Stopping and removing test services..."
     docker-compose stop test_app test_db
+    docker-compose rm -f test_app test_db
     
     # Clean test data if requested
     if [ "$CLEAN_TEST_DATA" = true ]; then
@@ -69,9 +71,6 @@ else
     
     # Rebuild and start test services
     echo "Rebuilding test containers..."
-    echo "Current directory: $(pwd)"
-    echo "Compose file exists: $(test -f /root/docker-compose.yml && echo 'yes' || echo 'no')"
-    echo "Docker context path: $(ls -la /root/pathfinder/Loot-Tracker-PF1e/docker/ 2>/dev/null || echo 'directory not found')"
     docker-compose -f /root/docker-compose.yml build test_app
     
     echo "Starting test services..."
