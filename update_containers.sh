@@ -45,6 +45,8 @@ if [ "$UPDATE_PRODUCTION" = true ]; then
     echo "Stopping and removing production services..."
     docker-compose stop rotr_app rotr_db sns_app sns_db
     docker-compose rm -f rotr_app rotr_db sns_app sns_db
+    # Force remove containers by name in case of conflicts
+    docker rm -f rotr_loot_app rotr_loot_db sns_loot_app sns_loot_db 2>/dev/null || true
     
     # Rebuild and start production services
     echo "Rebuilding production containers..."
