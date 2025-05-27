@@ -495,6 +495,10 @@ class DatabaseSync:
                     values.append("NULL")
                 elif isinstance(val, str):
                     values.append(f"'{val.replace(chr(39), chr(39)+chr(39))}'")
+                elif isinstance(val, dict):
+                    # Handle JSON/JSONB fields
+                    json_str = json.dumps(val).replace(chr(39), chr(39)+chr(39))
+                    values.append(f"'{json_str}'")
                 elif isinstance(val, list):
                     # Handle PostgreSQL arrays
                     array_elements = []
@@ -530,7 +534,8 @@ class DatabaseSync:
                 with conn.cursor() as cur:
                     for i, sql_stmt in enumerate(insert_sql):
                         # Execute insert and get the new ID
-                        cur.execute(sql_stmt + f" RETURNING {id_field}")
+                        sql_without_semicolon = sql_stmt.rstrip(';')
+                        cur.execute(sql_without_semicolon + f" RETURNING {id_field}")
                         new_id = cur.fetchone()[0]
                         
                         # Get the old ID from the original row
