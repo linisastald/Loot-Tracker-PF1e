@@ -152,8 +152,12 @@ class LookupConflictResolver:
             versions = {}
             for db_name, (columns, data) in all_data.items():
                 if key in data:
-                    # Convert row to comparable format
+                    # Convert row to comparable format (excluding auto-generated IDs)
                     row = data[key].copy()
+                    if self.current_table in self.lookup_tables and self.lookup_tables[self.current_table]['id_field']:
+                        id_field = self.lookup_tables[self.current_table]['id_field']
+                        if id_field in row:
+                            del row[id_field]
                     
                     # Convert to JSON for comparison
                     row_json = json.dumps(row, sort_keys=True, default=str)
