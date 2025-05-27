@@ -281,28 +281,37 @@ class LookupConflictResolver:
         
         logger.info(f"Found {len(containers)} containers")
         
-        # Connect to all databases
+        # Connect to all databases and keep connections open
         all_connections = {}
         
-        # Master connection
-        with self.db_connection(self.config['DB_HOST'], self.config['MASTER_PORT'], 
-                               self.config['DB_NAME'], self.config['DB_USER'], 
-                               self.config['DB_PASSWORD'], "Master") as master_conn:
-            if not master_conn:
-                logger.error("Failed to connect to master database")
-                return
-            
+        try:
+            # Master connection
+            master_conn = psycopg2.connect(
+                host=self.config['DB_HOST'], 
+                port=self.config['MASTER_PORT'],
+                dbname=self.config['DB_NAME'], 
+                user=self.config['DB_USER'], 
+                password=self.config['DB_PASSWORD']
+            )
             all_connections['master'] = master_conn
+            logger.debug("Connected to master")
             
             # Container connections
             for container_id, container_name, is_test in containers:
                 container_port = self.get_container_port(container_id)
                 if container_port:
-                    with self.db_connection(self.config['DB_HOST'], container_port,
-                                           self.config['DB_NAME'], self.config['DB_USER'],
-                                           self.config['DB_PASSWORD'], container_name) as conn:
-                        if conn:
-                            all_connections[container_name] = conn
+                    try:
+                        conn = psycopg2.connect(
+                            host=self.config['DB_HOST'],
+                            port=container_port,
+                            dbname=self.config['DB_NAME'],
+                            user=self.config['DB_USER'],
+                            password=self.config['DB_PASSWORD']
+                        )
+                        all_connections[container_name] = conn
+                        logger.debug(f"Connected to {container_name}")
+                    except psycopg2.Error as e:
+                        logger.error(f"Failed to connect to {container_name}: {e}")
             
             if len(all_connections) < 2:
                 logger.error("Need at least 2 database connections")
@@ -362,6 +371,14 @@ class LookupConflictResolver:
             print(f"\n{'='*80}")
             print(f"SUMMARY: Resolved {resolved_conflicts}/{total_conflicts} conflicts")
             print(f"{'='*80}")
+            
+        finally:
+            # Close all connections
+            for conn in all_connections.values():
+                try:
+                    conn.close()
+                except:
+                    pass
 
 def main():
     import argparse
