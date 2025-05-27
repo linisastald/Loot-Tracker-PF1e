@@ -176,6 +176,30 @@ app.get('/', (req, res) => {
   res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
 });
 
+// Health check endpoint (no middleware needed)
+app.get('/api/health', (req, res) => {
+  // Basic health check - verify database connection
+  pool.query('SELECT 1', (err, result) => {
+    if (err) {
+      logger.error('Health check failed - database error:', err);
+      return res.status(503).json({
+        success: false,
+        status: 'unhealthy',
+        message: 'Database connection failed',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      status: 'healthy',
+      message: 'Service is running',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
+  });
+});
+
 // Get CSRF token without protection
 app.get('/api/csrf-token', csrfTokenGeneration, (req, res) => {
   res.success({ csrfToken: req.csrfToken() }, 'CSRF token generated');
