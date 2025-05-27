@@ -602,8 +602,38 @@ class DatabaseSync:
         
         return []
 
+    def format_summary_table(self, data, headers):
+        """Format summary data as a table"""
+        if not data:
+            return "No changes found"
+        
+        # Calculate column widths
+        col_widths = [len(str(header)) for header in headers]
+        for row in data:
+            for i, cell in enumerate(row):
+                if i < len(col_widths):
+                    col_widths[i] = max(col_widths[i], len(str(cell)))
+        
+        # Create format string
+        row_format = "|" + "|".join(" {{:<{}}} ".format(width) for width in col_widths) + "|"
+        separator = "+" + "+".join("-" * (width + 2) for width in col_widths) + "+"
+        
+        # Build table
+        result = []
+        result.append(separator)
+        result.append(row_format.format(*headers))
+        result.append(separator)
+        
+        for row in data:
+            formatted_row = [str(cell) if cell is not None else "" for cell in row]
+            while len(formatted_row) < len(headers):
+                formatted_row.append("")
+            result.append(row_format.format(*formatted_row[:len(headers)]))
+        
+        result.append(separator)
+        return "\n".join(result)
+
     def execute_sql_transaction(self, conn, sql_statements, description, dry_run=False):
-        """Execute SQL statements in a transaction"""
         if not sql_statements:
             logger.info(f"No {description} changes to execute")
             return True
@@ -645,6 +675,12 @@ class DatabaseSync:
 
         logger.info(f"Found {len(containers)} containers to synchronize")
         
+        # Initialize summary tracking for dry run
+        if dry_run:
+            structure_summary = {}
+            data_summary = {}
+            container_names = [name for _, name, _ in containers]
+        
         # Connect to master database
         with self.db_connection(config['DB_HOST'], config['MASTER_PORT'], config['DB_NAME'],
                                config['DB_USER'], config['DB_PASSWORD'], "Master DB") as master_conn:
@@ -685,15 +721,41 @@ class DatabaseSync:
                     copy_structure = self.get_database_structure(copy_conn)
                     differences = self.compare_structures(master_structure, copy_structure)
                     
+                    # Track structure changes for dry run summary
+                    if dry_run:
+                        for table in set(list(differences['missing_tables']) + 
+                                        list(differences['missing_columns'].keys()) + 
+                                        list(differences['missing_indexes'].keys()) + 
+                                        list(differences['extra_indexes'].keys())):
+                            if table not in structure_summary:
+                                structure_summary[table] = {'master': 'n/a'}
+                            
+                            changes = []
+                            if table in differences['missing_tables']:
+                                changes.append('table missing')
+                            if table in differences['missing_columns']:
+                                changes.append(f"{len(differences['missing_columns'][table])} columns added")
+                            if table in differences['missing_indexes']:
+                                changes.append(f"{len(differences['missing_indexes'][table])} indexes added")
+                            if table in differences['extra_indexes']:
+                                changes.append(f"{len(differences['extra_indexes'][table])} indexes removed")
+                            
+                            structure_summary[table][container_name] = ', '.join(changes) if changes else 'no changes'
+                    
                     # Generate and execute structure fixes
                     structure_sql = self.generate_structure_sql(differences, master_structure)
                     if structure_sql:
-                        logger.info(f"{'Would apply' if dry_run else 'Applying'} {len(structure_sql)} structural changes to {container_name}")
+                        if not dry_run:
+                            logger.info(f"Applying {len(structure_sql)} structural changes to {container_name}")
                         if not self.execute_sql_transaction(copy_conn, structure_sql, "structural", dry_run):
                             logger.error(f"Failed to apply structural changes to {container_name}")
                             return False
                     else:
-                        logger.info(f"No structural changes needed for {container_name}")
+                        if dry_run and container_name not in [v for v in structure_summary.values() for v in v.keys()]:
+                            # Mark containers with no structure changes
+                            pass
+                        elif not dry_run:
+                            logger.info(f"No structural changes needed for {container_name}")
 
             # Phase 2: Data collection and master updates
             logger.info("\n=== Phase 2: Data Collection and Master Updates ===")
@@ -704,10 +766,17 @@ class DatabaseSync:
                 logger.info(f"\nProcessing data for table: {table}")
                 all_new_rows = []
                 
+                # Track data changes for dry run summary
+                if dry_run:
+                    if table not in data_summary:
+                        data_summary[table] = {'master': '0 rows added'}
+                
                 # Collect new data from all non-test containers
                 for container_id, container_name, is_test in containers:
                     if is_test:
                         logger.info(f"Skipping data collection from test container: {container_name}")
+                        if dry_run:
+                            data_summary[table][container_name] = 'skipped (test)'
                         continue
                         
                     container_port = self.get_container_port(container_id)
@@ -727,13 +796,21 @@ class DatabaseSync:
                         if new_rows:
                             logger.info(f"Found {len(new_rows)} new rows in {container_name}.{table}")
                             all_new_rows.extend(new_rows)
+                            
+                        # Track for dry run summary
+                        if dry_run:
+                            data_summary[table][container_name] = f"{len(new_rows)} rows retrieved"
 
                 # Add new rows to master and collect ID mappings
                 if all_new_rows:
                     master_data = self.get_table_data(master_conn, table)
                     insert_sql = self.generate_insert_sql(table, master_data[0], all_new_rows)
                     
-                    logger.info(f"{'Would add' if dry_run else 'Adding'} {len(all_new_rows)} new rows to master.{table}")
+                    if dry_run:
+                        data_summary[table]['master'] = f"{len(all_new_rows)} rows added"
+                    else:
+                        logger.info(f"Adding {len(all_new_rows)} new rows to master.{table}")
+                        
                     if self.execute_sql_transaction(master_conn, insert_sql, f"data for {table}", dry_run):
                         # Collect ID mappings if this table has generated IDs (skip in dry run)
                         if not dry_run:
@@ -746,6 +823,11 @@ class DatabaseSync:
                     else:
                         logger.error(f"Failed to add new rows to master.{table}")
                         return False
+                elif dry_run:
+                    # No new rows found across all containers
+                    for container_id, container_name, is_test in containers:
+                        if not is_test and container_name not in data_summary[table]:
+                            data_summary[table][container_name] = '0 rows retrieved'
 
             # Update references in all containers for ID changes
             if all_id_mappings or dry_run:
@@ -798,12 +880,51 @@ class DatabaseSync:
                             all_sync_sql.extend(sync_sql)
 
                     if all_sync_sql:
-                        logger.info(f"{'Would sync' if dry_run else 'Syncing'} {len(all_sync_sql)} total rows to {container_name}")
+                        if not dry_run:
+                            logger.info(f"Syncing {len(all_sync_sql)} total rows to {container_name}")
                         if not self.execute_sql_transaction(copy_conn, all_sync_sql, "lookup data sync", dry_run):
                             logger.error(f"Failed to sync lookup data to {container_name}")
                             return False
                     else:
                         logger.info(f"No lookup data sync needed for {container_name}")
+
+        # Display summary tables for dry run
+        if dry_run:
+            logger.info("\n" + "="*80)
+            logger.info("DRY RUN SUMMARY")
+            logger.info("="*80)
+            
+            # Structure changes table
+            if structure_summary:
+                logger.info("\n📋 STRUCTURE CHANGES:")
+                headers = ['Table', 'Master'] + container_names
+                structure_data = []
+                
+                for table, changes in structure_summary.items():
+                    row = [table, changes.get('master', 'n/a')]
+                    for container_name in container_names:
+                        row.append(changes.get(container_name, 'no changes'))
+                    structure_data.append(row)
+                
+                print(self.format_summary_table(structure_data, headers))
+            else:
+                logger.info("\n📋 STRUCTURE CHANGES: No structural changes needed")
+            
+            # Data changes table
+            if data_summary:
+                logger.info("\n📊 DATA CHANGES (Contributing Tables):")
+                headers = ['Table', 'Master'] + container_names
+                data_data = []
+                
+                for table, changes in data_summary.items():
+                    row = [table, changes.get('master', '0 rows added')]
+                    for container_name in container_names:
+                        row.append(changes.get(container_name, '0 rows retrieved'))
+                    data_data.append(row)
+                
+                print(self.format_summary_table(data_data, headers))
+            else:
+                logger.info("\n📊 DATA CHANGES: No data changes needed")
 
         logger.info("\n=== Synchronization Complete ===")
         if not dry_run:
