@@ -52,7 +52,7 @@ class DatabaseSync:
             'DB_HOST': 'localhost',
             'DB_NAME': 'loot_tracking',
             'DB_USER': 'loot_user',
-            'DB_PASSWORD': os.environ.get('DB_PASSWORD', ''),
+            'DB_PASSWORD': 'g5Zr7!cXw@2sP9Lk',
             'MASTER_PORT': 5432,
             'CONTAINER_FILTER': 'loot_db'
         }
@@ -66,6 +66,12 @@ class DatabaseSync:
                 for key in config:
                     if key in db_config:
                         config[key] = db_config[key]
+
+        # Override with environment variables if available
+        for key in config:
+            env_value = os.environ.get(key)
+            if env_value is not None:
+                config[key] = env_value
 
         return config
 
@@ -629,9 +635,7 @@ class DatabaseSync:
         config = self.load_config()
         self.config = config
         
-        if not config['DB_PASSWORD']:
-            logger.error("Database password not found in environment variables")
-            return False
+        # Password validation removed - using hardcoded fallback from config
 
         # Get Docker containers
         containers = self.get_docker_containers()
