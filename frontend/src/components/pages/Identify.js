@@ -335,6 +335,7 @@ const Identify = () => {
                                     <TableCell>Old Name</TableCell>
                                     <TableCell>New Name</TableCell>
                                     <TableCell>Spellcraft Roll</TableCell>
+                                    <TableCell>Special</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -343,6 +344,11 @@ const Identify = () => {
                                         <TableCell>{item.oldName}</TableCell>
                                         <TableCell>{item.newName}</TableCell>
                                         <TableCell>{item.spellcraftRoll}</TableCell>
+                                        <TableCell>
+                                            {item.cursedDetected && (
+                                                <span style={{color: 'red', fontWeight: 'bold'}}>CURSED DETECTED!</span>
+                                            )}
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>

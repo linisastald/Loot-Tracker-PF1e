@@ -9,9 +9,9 @@ exports.create = async (entry) => {
   const query = `
     INSERT INTO loot (
       session_date, quantity, name, unidentified, masterwork, 
-      type, size, itemid, modids, value, whoupdated, notes, charges
+      type, size, itemid, modids, value, whoupdated, notes, charges, cursed
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     RETURNING *
   `;
 
@@ -28,7 +28,8 @@ exports.create = async (entry) => {
     entry.value || null,   // Ensure null if empty
     entry.whoupdated,
     entry.notes,
-    entry.charges || null  // Add charges, ensure null if empty
+    entry.charges || null,  // Add charges, ensure null if empty
+    entry.cursed || false   // Add cursed, default false
   ];
 
   const result = await dbUtils.executeQuery(query, values, 'Error creating loot entry');
@@ -146,8 +147,8 @@ exports.splitStack = async (id, splits, userId) => {
     // Insert new split items for the remaining splits
     if (splits.length > 1) {
       const insertSplitQuery = `
-        INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, status, whoupdated, lastupdate, whohas, notes, itemid, modids, value, charges)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, $10, $11, $12, $13, $14, $15)
+        INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, status, whoupdated, lastupdate, whohas, notes, itemid, modids, value, charges, cursed)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, $10, $11, $12, $13, $14, $15, $16)
       `;
 
       for (let i = 1; i < splits.length; i++) {
@@ -166,7 +167,8 @@ exports.splitStack = async (id, splits, userId) => {
           originalItem.itemid,
           originalItem.modids,
           originalItem.value,
-          originalItem.charges
+          originalItem.charges,
+          originalItem.cursed
         ];
         await client.query(insertSplitQuery, values);
       }
@@ -200,8 +202,8 @@ exports.updateEntry = async (id, updatedEntry) => {
     UPDATE loot
     SET session_date = $1, quantity = $2, name = $3, unidentified = $4, masterwork = $5, 
         type = $6, size = $7, itemid = $8, modids = $9, value = $10, whoupdated = $11, 
-        lastupdate = CURRENT_TIMESTAMP, whohas = $12, notes = $13
-    WHERE id = $14
+        lastupdate = CURRENT_TIMESTAMP, whohas = $12, notes = $13, cursed = $14
+    WHERE id = $15
   `;
 
   const values = [
@@ -218,6 +220,7 @@ exports.updateEntry = async (id, updatedEntry) => {
     mergedEntry.whoupdated,
     mergedEntry.whohas,
     mergedEntry.notes,
+    mergedEntry.cursed,
     id,
   ];
 

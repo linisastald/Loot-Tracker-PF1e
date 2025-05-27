@@ -225,7 +225,7 @@ const createLoot = async (req, res) => {
             const {
                 itemId, name, quantity, notes, session_date, sessionDate,
                 item: parsedItem, itemType, itemSubtype, itemValue, mods: parsedMods, modIds,
-                unidentified, masterwork, size, whoupdated, charges, type
+                unidentified, masterwork, cursed, size, whoupdated, charges, type
             } = entry;
 
             let itemData, modsData, isMasterwork;
@@ -339,6 +339,7 @@ const createLoot = async (req, res) => {
                 name: name || itemData.name,
                 unidentified: unidentified || false,
                 masterwork: isMasterwork,
+                cursed: cursed || false,
                 type: itemData.type || itemType || type || '',
                 size: size || '',
                 itemid: itemData.id,
@@ -1092,7 +1093,7 @@ const dmUpdateItem = async (req, res) => {
         const allowedFields = [
             'session_date', 'quantity', 'name', 'unidentified', 'masterwork',
             'type', 'size', 'status', 'itemid', 'modids', 'charges', 'value',
-            'whohas', 'notes', 'spellcraft_dc', 'dm_notes'
+            'whohas', 'notes', 'spellcraft_dc', 'dm_notes', 'cursed'
         ];
 
         const filteredUpdateData = Object.fromEntries(
@@ -1340,6 +1341,11 @@ const identifyItems = async (req, res) => {
                     let newName = mods.join(' ') + ' ' + item.name;
                     newName = newName.trim();
 
+                    // Check if item is cursed and if roll exceeds DC by 10+
+                    if (lootItem.cursed && spellcraftRoll >= requiredDC + 10) {
+                        newName += ' - CURSED';
+                    }
+
                     // Update the loot item
                     await client.query(
                         'UPDATE loot SET name = $1, unidentified = false WHERE id = $2',
@@ -1352,7 +1358,8 @@ const identifyItems = async (req, res) => {
                         oldName: lootItem.name,
                         newName,
                         spellcraftRoll,
-                        requiredDC
+                        requiredDC,
+                        cursedDetected: lootItem.cursed && spellcraftRoll >= requiredDC + 10
                     });
                 } else {
                     // Record the failed identification attempt

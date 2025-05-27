@@ -126,7 +126,7 @@ const ItemManagementDialog = ({
             if (field === 'modids') {
                 return {...prevItem, [field]: value};
             }
-            if (['unidentified', 'masterwork', 'type', 'size', 'status', 'whohas'].includes(field)) {
+            if (['unidentified', 'masterwork', 'cursed', 'type', 'size', 'status', 'whohas'].includes(field)) {
                 return {...prevItem, [field]: value === '' ? null : value};
             }
             return {...prevItem, [field]: value};
@@ -141,6 +141,7 @@ const ItemManagementDialog = ({
                 name: updatedItem.name || null,
                 unidentified: updatedItem.unidentified === '' ? null : updatedItem.unidentified,
                 masterwork: updatedItem.masterwork === '' ? null : updatedItem.masterwork,
+                cursed: updatedItem.cursed === '' ? null : updatedItem.cursed,
                 type: updatedItem.type || null,
                 size: updatedItem.size || null,
                 status: updatedItem.status || null,
@@ -212,6 +213,17 @@ const ItemManagementDialog = ({
                     <Select
                         value={updatedItem.masterwork === null ? '' : updatedItem.masterwork}
                         onChange={(e) => handleItemUpdateChange('masterwork', e.target.value === '' ? null : e.target.value)}
+                    >
+                        <MenuItem value="">None</MenuItem>
+                        <MenuItem value={true}>Yes</MenuItem>
+                        <MenuItem value={false}>No</MenuItem>
+                    </Select>
+                </FormControl>
+                <FormControl fullWidth margin="normal">
+                    <InputLabel>Cursed</InputLabel>
+                    <Select
+                        value={updatedItem.cursed === null ? '' : updatedItem.cursed}
+                        onChange={(e) => handleItemUpdateChange('cursed', e.target.value === '' ? null : e.target.value)}
                     >
                         <MenuItem value="">None</MenuItem>
                         <MenuItem value={true}>Yes</MenuItem>
