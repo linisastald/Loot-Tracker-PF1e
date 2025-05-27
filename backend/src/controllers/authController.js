@@ -694,7 +694,9 @@ const resetPassword = async (req, res) => {
         );
 
         logger.info(`Password reset successful for user: ${resetData.username}`);
-        controllerFactory.sendSuccessMessage(res, 'Password has been reset successfully');
+        controllerFactory.sendSuccessResponse(res, {
+            message: 'Password has been reset successfully'
+        }, 'Password has been reset successfully');
     });
 };
 
