@@ -63,8 +63,8 @@ const setCurrentDate = async (req, res) => {
       );
     }
 
-    // Get user's current region setting
-    const regionResult = await client.query('SELECT value FROM user_settings WHERE name = $1 AND user_id = $2', ['region', req.user.id]);
+    // Get global region setting
+    const regionResult = await client.query('SELECT value FROM settings WHERE name = $1', ['region']);
     const region = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
 
     // Generate weather for any missing dates between old and new date
@@ -121,8 +121,8 @@ const advanceDay = async (req, res) => {
         [year, month, day]
     );
 
-    // Get user's current region setting
-    const regionResult = await client.query('SELECT value FROM user_settings WHERE name = $1 AND user_id = $2', ['region', req.user.id]);
+    // Get global region setting
+    const regionResult = await client.query('SELECT value FROM settings WHERE name = $1', ['region']);
     const region = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
 
     // Generate weather for the new day
