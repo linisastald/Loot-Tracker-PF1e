@@ -576,7 +576,8 @@ const UserManagement = () => {
                     </Typography>
                     <Box sx={{ 
                         p: 2, 
-                        backgroundColor: 'grey.100', 
+                        backgroundColor: 'grey.900', 
+                        color: 'white',
                         borderRadius: 1, 
                         fontFamily: 'monospace',
                         wordBreak: 'break-all',
