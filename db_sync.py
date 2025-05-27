@@ -507,15 +507,18 @@ class DatabaseSync:
                         values.append(f"'{str(val)}'")
                 elif isinstance(val, list):
                     # Handle PostgreSQL arrays
-                    array_elements = []
-                    for element in val:
-                        if element is None:
-                            array_elements.append("NULL")
-                        elif isinstance(element, str):
-                            array_elements.append(f"'{element.replace(chr(39), chr(39)+chr(39))}'")
-                        else:
-                            array_elements.append(str(element))
-                    values.append(f"ARRAY[{', '.join(array_elements)}]")
+                    if not val:  # Empty array
+                        values.append("ARRAY[]::text[]")
+                    else:
+                        array_elements = []
+                        for element in val:
+                            if element is None:
+                                array_elements.append("NULL")
+                            elif isinstance(element, str):
+                                array_elements.append(f"'{element.replace(chr(39), chr(39)+chr(39))}'")
+                            else:
+                                array_elements.append(str(element))
+                        values.append(f"ARRAY[{', '.join(array_elements)}]")
                 elif isinstance(val, bool):
                     values.append(str(val).upper())
                 else:
