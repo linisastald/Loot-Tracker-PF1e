@@ -61,7 +61,12 @@ class EmailService {
                 "SELECT value FROM settings WHERE name = 'campaign_name'"
             );
             const campaignName = campaignResult.rows[0]?.value || 'campaign';
-            const fromEmail = `${campaignName.toLowerCase().replace(/\s+/g, '')}@kempsonandko.com`;
+            // Sanitize campaign name for email address (remove special characters, spaces, etc.)
+            const sanitizedCampaignName = campaignName
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric characters
+                .substring(0, 64); // Limit length for email standards
+            const fromEmail = `${sanitizedCampaignName}@kempsonandko.com`;
             
             const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
             
