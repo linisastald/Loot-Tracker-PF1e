@@ -47,9 +47,7 @@ if [ "$UPDATE_PRODUCTION" = true ]; then
     
     # Rebuild and start production services
     echo "Rebuilding production containers..."
-    cd /root/pathfinder/Loot-Tracker-PF1e
     docker-compose -f /root/docker-compose.yml build rotr_app sns_app
-    cd /root
     
     echo "Starting production services..."
     docker-compose up -d rotr_app rotr_db sns_app sns_db
@@ -71,9 +69,7 @@ else
     
     # Rebuild and start test services
     echo "Rebuilding test containers..."
-    cd /root/pathfinder/Loot-Tracker-PF1e
     docker-compose -f /root/docker-compose.yml build test_app
-    cd /root
     
     echo "Starting test services..."
     docker-compose up -d test_app test_db
