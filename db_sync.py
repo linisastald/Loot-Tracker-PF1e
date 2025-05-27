@@ -465,14 +465,32 @@ class DatabaseSync:
         if not rows:
             return []
 
+        # Check if this table has an auto-generated ID field
+        exclude_id = table in self.lookup_tables and self.lookup_tables[table]['id_field']
+        
+        # Filter out ID column if it's auto-generated
+        if exclude_id:
+            id_field = self.lookup_tables[table]['id_field']
+            insert_columns = [col for col in columns if col != id_field]
+        else:
+            insert_columns = columns
+
         sql_statements = []
         quoted_table = f'"{table}"'
-        quoted_columns = [f'"{col}"' for col in columns]
+        quoted_columns = [f'"{col}"' for col in insert_columns]
         column_names = ', '.join(quoted_columns)
         
         for row in rows:
+            # Build values excluding ID if auto-generated
+            if exclude_id:
+                id_field = self.lookup_tables[table]['id_field']
+                id_index = columns.index(id_field)
+                values_data = [val for i, val in enumerate(row) if i != id_index]
+            else:
+                values_data = row
+                
             values = []
-            for val in row:
+            for val in values_data:
                 if val is None:
                     values.append("NULL")
                 elif isinstance(val, str):
@@ -498,8 +516,8 @@ class DatabaseSync:
         
         return sql_statements
 
-    def collect_id_mappings(self, conn, table, old_rows, new_sql):
-        """Execute inserts and collect ID mappings for tables with generated IDs"""
+    def collect_id_mappings_individual(self, conn, table, columns, new_rows, insert_sql):
+        """Execute inserts individually and collect ID mappings for tables with generated IDs"""
         id_mappings = {}
         
         if table not in self.lookup_tables or not self.lookup_tables[table]['id_field']:
@@ -508,23 +526,52 @@ class DatabaseSync:
         id_field = self.lookup_tables[table]['id_field']
         
         try:
+            with conn:
+                with conn.cursor() as cur:
+                    for i, sql_stmt in enumerate(insert_sql):
+                        # Execute insert and get the new ID
+                        cur.execute(sql_stmt + f" RETURNING {id_field}")
+                        new_id = cur.fetchone()[0]
+                        
+                        # Get the old ID from the original row
+                        if i < len(new_rows):
+                            old_row = new_rows[i]
+                            old_row_dict = dict(zip(columns, old_row))
+                            if id_field in old_row_dict and old_row_dict[id_field] is not None:
+                                old_id = old_row_dict[id_field]
+                                id_mappings[old_id] = new_id
+                                logger.debug(f"ID mapping: {table}.{old_id} -> {new_id}")
+                                
+        except psycopg2.Error as e:
+            logger.error(f"Error collecting ID mappings for {table}: {e}")
+            
+        return id_mappings
+
+    def collect_id_mappings(self, conn, table, new_rows_with_columns, insert_sql):
+        """Execute inserts and collect ID mappings for tables with generated IDs"""
+        id_mappings = {}
+        
+        if table not in self.lookup_tables or not self.lookup_tables[table]['id_field']:
+            return id_mappings
+        
+        id_field = self.lookup_tables[table]['id_field']
+        columns, rows = new_rows_with_columns
+        
+        try:
             with conn.cursor() as cur:
-                for i, sql_stmt in enumerate(new_sql):
+                for i, sql_stmt in enumerate(insert_sql):
                     # Execute insert and get the new ID
-                    cur.execute(sql_stmt + " RETURNING " + id_field)
+                    cur.execute(sql_stmt + f" RETURNING {id_field}")
                     new_id = cur.fetchone()[0]
                     
-                    # Build lookup key for this row
-                    row_dict = dict(zip(*old_rows))  # Assumes columns are in same order
-                    lookup_key = self.build_lookup_key(row_dict, table)
-                    
-                    # Map old ID to new ID (if row had an ID)
-                    if i < len(old_rows[1]):  # old_rows is (columns, rows)
-                        old_row = old_rows[1][i]
-                        old_row_dict = dict(zip(old_rows[0], old_row))
+                    # Get the old ID from the original row
+                    if i < len(rows):
+                        old_row = rows[i]
+                        old_row_dict = dict(zip(columns, old_row))
                         if id_field in old_row_dict and old_row_dict[id_field] is not None:
                             old_id = old_row_dict[id_field]
                             id_mappings[old_id] = new_id
+                            logger.debug(f"ID mapping: {table}.{old_id} -> {new_id}")
                             
         except psycopg2.Error as e:
             logger.error(f"Error collecting ID mappings for {table}: {e}")
@@ -811,18 +858,22 @@ class DatabaseSync:
                     else:
                         logger.info(f"Adding {len(all_new_rows)} new rows to master.{table}")
                         
-                    if self.execute_sql_transaction(master_conn, insert_sql, f"data for {table}", dry_run):
-                        # Collect ID mappings if this table has generated IDs (skip in dry run)
-                        if not dry_run:
-                            id_mappings = self.collect_id_mappings(master_conn, table, (master_data[0], all_new_rows), insert_sql)
-                            if id_mappings:
-                                all_id_mappings[table] = id_mappings
-                                logger.info(f"Collected {len(id_mappings)} ID mappings for {table}")
+                    # For tables with auto-generated IDs, execute individually to collect mappings
+                    if table in self.lookup_tables and self.lookup_tables[table]['id_field'] and not dry_run:
+                        id_mappings = self.collect_id_mappings_individual(master_conn, table, master_data[0], all_new_rows, insert_sql)
+                        if id_mappings:
+                            all_id_mappings[table] = id_mappings
+                            logger.info(f"Successfully added {len(all_new_rows)} rows and collected {len(id_mappings)} ID mappings for {table}")
                         else:
-                            logger.info(f"DRY RUN - Would collect ID mappings for {table}")
+                            logger.info(f"Successfully added {len(all_new_rows)} rows to {table}")
                     else:
-                        logger.error(f"Failed to add new rows to master.{table}")
-                        return False
+                        # For non-ID tables or dry run, use normal transaction
+                        if self.execute_sql_transaction(master_conn, insert_sql, f"data for {table}", dry_run):
+                            if dry_run:
+                                logger.info(f"DRY RUN - Would collect ID mappings for {table}")
+                        else:
+                            logger.error(f"Failed to add new rows to master.{table}")
+                            return False
                 elif dry_run:
                     # No new rows found across all containers
                     for container_id, container_name, is_test in containers:
