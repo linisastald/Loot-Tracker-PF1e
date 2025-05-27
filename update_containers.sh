@@ -66,6 +66,7 @@ else
     if [ "$CLEAN_TEST_DATA" = true ]; then
         echo "Removing test database persistent data..."
         docker-compose rm -f test_db
+        docker rm -f test_loot_db 2>/dev/null || true
         sudo rm -rf /root/pathfinder/test/db/*
     fi
     
