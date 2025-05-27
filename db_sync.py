@@ -499,6 +499,12 @@ class DatabaseSync:
                     # Handle JSON/JSONB fields
                     json_str = json.dumps(val).replace(chr(39), chr(39)+chr(39))
                     values.append(f"'{json_str}'")
+                elif isinstance(val, (datetime, time.struct_time)):
+                    # Handle datetime objects
+                    if hasattr(val, 'isoformat'):
+                        values.append(f"'{val.isoformat()}'")
+                    else:
+                        values.append(f"'{str(val)}'")
                 elif isinstance(val, list):
                     # Handle PostgreSQL arrays
                     array_elements = []
@@ -731,6 +737,7 @@ class DatabaseSync:
         if dry_run:
             structure_summary = {}
             data_summary = {}
+            lookup_summary = {}
             container_names = [name for _, name, _ in containers]
         
         # Connect to master database
@@ -929,11 +936,23 @@ class DatabaseSync:
 
                     all_sync_sql = []
                     
+                    # Track lookup changes for dry run
+                    if dry_run:
+                        for table in self.lookup_tables:
+                            if table not in lookup_summary:
+                                lookup_summary[table] = {'master': 'n/a'}
+                    
                     for table in self.lookup_tables:
                         sync_sql = self.sync_lookup_data(master_conn, copy_conn, table)
                         if sync_sql:
                             logger.info(f"Found {len(sync_sql)} rows to sync for {table}")
                             all_sync_sql.extend(sync_sql)
+                            
+                            # Track for dry run
+                            if dry_run:
+                                lookup_summary[table][container_name] = f"{len(sync_sql)} rows synced"
+                        elif dry_run:
+                            lookup_summary[table][container_name] = "no changes"
 
                     if all_sync_sql:
                         if not dry_run:
@@ -981,6 +1000,22 @@ class DatabaseSync:
                 print(self.format_summary_table(data_data, headers))
             else:
                 logger.info("\n📊 DATA CHANGES: No data changes needed")
+                
+            # Lookup sync table
+            if lookup_summary:
+                logger.info("\n🔄 LOOKUP DATA SYNCHRONIZATION:")
+                headers = ['Table', 'Master'] + container_names
+                lookup_data = []
+                
+                for table, changes in lookup_summary.items():
+                    row = [table, changes.get('master', 'n/a')]
+                    for container_name in container_names:
+                        row.append(changes.get(container_name, 'no changes'))
+                    lookup_data.append(row)
+                
+                print(self.format_summary_table(lookup_data, headers))
+            else:
+                logger.info("\n🔄 LOOKUP DATA SYNCHRONIZATION: No lookup sync needed")
 
         logger.info("\n=== Synchronization Complete ===")
         if not dry_run:
