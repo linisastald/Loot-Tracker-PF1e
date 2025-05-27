@@ -169,9 +169,11 @@ const GolarionCalendar = () => {
             const response = await api.get('/calendar/current-date');
             console.log('Current date response:', response.data);
             const {year, month, day} = response.data;
-            setCurrentDate({year, month, day});
-            setDisplayedDate({year, month});
-            setSelectedDate({year, month, day});
+            // Backend uses 1-indexed months, frontend uses 0-indexed
+            const frontendMonth = month - 1;
+            setCurrentDate({year, month: frontendMonth, day});
+            setDisplayedDate({year, month: frontendMonth});
+            setSelectedDate({year, month: frontendMonth, day});
             setError(null);
         } catch (error) {
             console.error('Error fetching current date:', error.response || error);
@@ -209,14 +211,17 @@ const GolarionCalendar = () => {
             const startDay = 1;
             const endDay = months[month].days;
             
+            // Convert frontend 0-indexed month to backend 1-indexed month
+            const backendMonth = month + 1;
             const response = await api.get(
-                `/weather/range/${year}/${month}/${startDay}/${year}/${month}/${endDay}/${currentRegion}`
+                `/weather/range/${year}/${backendMonth}/${startDay}/${year}/${backendMonth}/${endDay}/${currentRegion}`
             );
             
             if (response.data) {
                 const weatherData = {};
                 response.data.forEach(w => {
-                    const key = `${w.year}-${w.month}-${w.day}`;
+                    // Convert backend 1-indexed month to frontend 0-indexed for key
+                    const key = `${w.year}-${w.month - 1}-${w.day}`;
                     weatherData[key] = w;
                 });
                 setWeather(weatherData);
@@ -231,9 +236,11 @@ const GolarionCalendar = () => {
         try {
             const response = await api.post('/calendar/next-day');
             const {year, month, day} = response.data;
-            setCurrentDate({year, month, day});
-            setDisplayedDate({year, month});
-            setSelectedDate({year, month, day});
+            // Backend uses 1-indexed months, frontend uses 0-indexed
+            const frontendMonth = month - 1;
+            setCurrentDate({year, month: frontendMonth, day});
+            setDisplayedDate({year, month: frontendMonth});
+            setSelectedDate({year, month: frontendMonth, day});
             setError(null);
         } catch (error) {
             console.error('Error advancing day:', error);
@@ -245,9 +252,10 @@ const GolarionCalendar = () => {
         if (!selectedDate) return;
 
         try {
+            // Convert frontend 0-indexed month to backend 1-indexed month
             await api.post('/calendar/set-current-date', {
                 year: selectedDate.year,
-                month: selectedDate.month,
+                month: selectedDate.month + 1,
                 day: selectedDate.day
             });
 
@@ -308,8 +316,13 @@ const GolarionCalendar = () => {
         if (!selectedDate) return;
 
         try {
+            // Convert frontend 0-indexed month to backend 1-indexed month
             await api.post('/calendar/notes', {
-                date: selectedDate,
+                date: {
+                    year: selectedDate.year,
+                    month: selectedDate.month + 1,
+                    day: selectedDate.day
+                },
                 note: noteText
             });
             setNotes(prevNotes => ({
