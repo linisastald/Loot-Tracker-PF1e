@@ -105,7 +105,9 @@ const registerUser = async (req, res) => {
     // Add salt and hash the password with bcrypt (cost factor 10)
     const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
 
-    const userRole = 'Player'; // Default role for invited users
+    // Get role from request, default to 'Player' if not provided
+    const { role } = req.body;
+    const userRole = role || 'Player';
 
     return await dbUtils.executeTransaction(async (client) => {
         // Insert the user
