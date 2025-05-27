@@ -15,7 +15,7 @@ const registerUser = async (req, res) => {
 
     // Check if registrations are open
     const regOpenResult = await dbUtils.executeQuery(
-        "SELECT value FROM settings WHERE name = 'registrations open'"
+        "SELECT value FROM settings WHERE name = 'registrations_open'"
     );
     const isRegOpen = regOpenResult.rows[0] && (regOpenResult.rows[0].value === 1 || regOpenResult.rows[0].value === '1');
 
@@ -322,7 +322,7 @@ const checkForDm = async (req, res) => {
  * Check registration status
  */
 const checkRegistrationStatus = async (req, res) => {
-    const result = await dbUtils.executeQuery("SELECT value FROM settings WHERE name = 'registrations open'");
+    const result = await dbUtils.executeQuery("SELECT value FROM settings WHERE name = 'registrations_open'");
     const isOpen = result.rows[0] && (result.rows[0].value === 1 || result.rows[0].value === '1');
     controllerFactory.sendSuccessResponse(res, {isOpen});
 };
