@@ -163,7 +163,7 @@ class DatabaseSync:
             env = os.environ.copy()
             env['PGPASSWORD'] = self.config['DB_PASSWORD']
             
-            result = subprocess.run(dump_cmd, env=env, capture_output=True, text=True)
+            result = subprocess.run(dump_cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             
             if result.returncode == 0:
                 logger.info(f"Database backup created: {backup_file}")
