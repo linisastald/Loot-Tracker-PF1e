@@ -69,6 +69,9 @@ else
     
     # Rebuild and start test services
     echo "Rebuilding test containers..."
+    echo "Current directory: $(pwd)"
+    echo "Compose file exists: $(test -f /root/docker-compose.yml && echo 'yes' || echo 'no')"
+    echo "Docker context path: $(ls -la /root/pathfinder/Loot-Tracker-PF1e/docker/ 2>/dev/null || echo 'directory not found')"
     docker-compose -f /root/docker-compose.yml build test_app
     
     echo "Starting test services..."
