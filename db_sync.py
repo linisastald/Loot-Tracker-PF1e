@@ -337,6 +337,19 @@ class DatabaseSync:
         """Generate SQL to fix structural differences"""
         sql_statements = []
         
+        # First, create any needed sequences for missing tables
+        for table in differences['missing_tables']:
+            columns = master_structure['tables'].get(table, [])
+            
+            for column, data_type in columns:
+                col_info = master_structure['column_details'][table][column]
+                if col_info['default'] and 'nextval(' in col_info['default']:
+                    # Extract sequence name from default
+                    sequence_match = re.search(r"nextval\('([^']+)'::regclass\)", col_info['default'])
+                    if sequence_match:
+                        sequence_name = sequence_match.group(1)
+                        sql_statements.append(f'CREATE SEQUENCE IF NOT EXISTS "{sequence_name}";')
+        
         # Create missing tables
         for table in differences['missing_tables']:
             columns = master_structure['tables'].get(table, [])
@@ -357,6 +370,17 @@ class DatabaseSync:
             quoted_table = f'"{table}"'
             sql_statements.append(f"CREATE TABLE {quoted_table} ({', '.join(column_definitions)});")
 
+        # Create sequences for missing columns
+        for table, columns in differences['missing_columns'].items():
+            for column, data_type in columns:
+                col_info = master_structure['column_details'][table][column]
+                if col_info['default'] and 'nextval(' in col_info['default']:
+                    # Extract sequence name from default
+                    sequence_match = re.search(r"nextval\('([^']+)'::regclass\)", col_info['default'])
+                    if sequence_match:
+                        sequence_name = sequence_match.group(1)
+                        sql_statements.append(f'CREATE SEQUENCE IF NOT EXISTS "{sequence_name}";')
+        
         # Add missing columns
         for table, columns in differences['missing_columns'].items():
             for column, data_type in columns:
