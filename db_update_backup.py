@@ -418,20 +418,22 @@ class StructureComparison:
                 quoted_idx = '"{}"'.format(idx_name)
                 sql_statements.append("DROP INDEX IF EXISTS {};".format(quoted_idx))
 
-        # Create missing indexes with syntax fix
+        # Create missing indexes
         for table, indexes in self.differences['missing_indexes'].items():
             for idx_name, idx_def in indexes:
                 # Fix index name syntax - ensure proper underscore placement
                 fixed_idx_def = idx_def
-                if 'idx"' in idx_def:
+                if 'idx"' in idx_def and '_name_' in idx_def:
                     # Fix pattern like idx"table"_name to idx_"table"_name
                     fixed_idx_def = idx_def.replace('idx"', 'idx_"')
-                
+                elif 'idx"' in idx_def:
+                    # Fix any other idx"table" patterns to idx_"table"
+                    fixed_idx_def = idx_def.replace('idx"', 'idx_"')
                 if 'CREATE INDEX' in fixed_idx_def and 'IF NOT EXISTS' not in fixed_idx_def:
                     fixed_idx_def = fixed_idx_def.replace('CREATE INDEX', 'CREATE INDEX IF NOT EXISTS', 1)
                 elif 'CREATE UNIQUE INDEX' in fixed_idx_def and 'IF NOT EXISTS' not in fixed_idx_def:
                     fixed_idx_def = fixed_idx_def.replace('CREATE UNIQUE INDEX', 'CREATE UNIQUE INDEX IF NOT EXISTS', 1)
-                sql_statements.append("{};".format(fixed_idx_def))
+                sql_statements.append("{};".format(idx_def))
 
         return sql_statements
     
@@ -487,4 +489,304 @@ class StructureComparison:
             )
         )
         
-        # Step 6: Get and preserve sequence values for
+        # Step 6: Get and preserve sequence values for serial columns
+        serial_sequences = self._get_serial_sequences(table)
+        sequence_preservation = []
+        for seq_info in serial_sequences:
+            sequence_preservation.append(
+                "SELECT setval('{}', COALESCE((SELECT MAX(\"{}\"::bigint) FROM {}), 1));".format(
+                    seq_info['sequence_name'], seq_info['column'], temp_table
+                )
+            )
+        
+        # Step 7: Recreate primary key constraint
+        pk_constraint = self._get_primary_key_constraint(table)
+        if pk_constraint:
+            sql_statements.append(
+                "ALTER TABLE {} ADD CONSTRAINT \"{}\" PRIMARY KEY ({});".format(
+                    temp_table, pk_constraint['name'], pk_constraint['columns']
+                )
+            )
+        
+        # Step 8: Recreate outgoing foreign key constraints (this table referencing others)
+        for fk in outgoing_fks:
+            sql_statements.append(
+                "ALTER TABLE {} ADD CONSTRAINT \"{}\" FOREIGN KEY ({}) REFERENCES \"{}\" ({});".format(
+                    temp_table, fk['constraint_name'], fk['local_columns'], 
+                    fk['foreign_table'], fk['foreign_columns']
+                )
+            )
+        
+        # Step 9: Rename tables atomically
+        sql_statements.append("ALTER TABLE {} RENAME TO {};".format(quoted_table, old_table))
+        sql_statements.append("ALTER TABLE {} RENAME TO {};".format(temp_table, quoted_table))
+        
+        # Step 10: Apply sequence preservation
+        sql_statements.extend(sequence_preservation)
+        
+        # Step 11: Recreate incoming foreign key constraints (other tables referencing this one)
+        for fk in incoming_fks:
+            sql_statements.append(
+                "ALTER TABLE \"{}\" ADD CONSTRAINT \"{}\" FOREIGN KEY ({}) REFERENCES {} ({});".format(
+                    fk['table'], fk['constraint_name'], fk['local_columns'],
+                    quoted_table, fk['foreign_columns']
+                )
+            )
+        
+        # Step 12: Recreate indexes (excluding primary key which was already handled)
+        table_indexes = self.master.indexes.get(table, [])
+        for idx_name, idx_def in table_indexes:
+            # Skip primary key indexes as they're handled with constraints
+            if 'PRIMARY KEY' not in idx_def.upper():
+                # Replace table name in index definition to use new table
+                updated_idx_def = idx_def.replace(table, quoted_table)
+                sql_statements.append("{};" .format(updated_idx_def))
+        
+        # Step 13: Clean up old table
+        sql_statements.append("DROP TABLE {};".format(old_table))
+        
+        return sql_statements
+    
+    def _get_incoming_foreign_keys(self, table):
+        """Get foreign keys from other tables that reference this table"""
+        # This should query the database for incoming foreign key references
+        # For now, return empty list - will implement with actual DB queries
+        return []
+        # Example structure:
+        # [
+        #     {
+        #         'table': 'loot',
+        #         'constraint_name': 'loot_item_id_fkey', 
+        #         'local_columns': 'item_id',
+        #         'foreign_columns': 'id'
+        #     }
+        # ]
+    
+    def _get_outgoing_foreign_keys(self, table):
+        """Get foreign keys from this table that reference other tables"""
+        # This should query the database for outgoing foreign key references
+        # For now, return empty list - will implement with actual DB queries  
+        return []
+        # Example structure:
+        # [
+        #     {
+        #         'constraint_name': 'item_mod_id_fkey',
+        #         'local_columns': 'mod_id', 
+        #         'foreign_table': 'mod',
+        #         'foreign_columns': 'id'
+        #     }
+        # ]
+    
+    def _get_serial_sequences(self, table):
+        """Get information about serial sequences for a table"""
+        # This would need to query the database for sequence information
+        # For now, return empty list - we'll implement if needed
+        return []
+    
+    def _get_primary_key_constraint(self, table):
+        """Get primary key constraint information"""
+        # This would need to query the database for constraint information  
+        # For now, return None - we'll implement if needed
+        return None
+    
+    def _format_default(self, default_val):
+        if default_val.startswith('nextval('):
+            return default_val
+        elif default_val.upper() in ('CURRENT_TIMESTAMP', 'NOW()'):
+            return default_val
+        elif '::' in default_val:
+            return default_val
+        elif default_val.startswith('ARRAY['):
+            return default_val
+        elif default_val.startswith("'") and default_val.endswith("'"):
+            return default_val
+        elif default_val.replace('.', '').replace('-', '').isdigit():
+            return default_val
+        else:
+            return "'{}'".format(default_val.replace("'", "''"))
+
+
+def display_structure_differences(comparison: StructureComparison):
+    """Display structural differences in formatted tables"""
+    if not comparison.has_differences():
+        logger.info("No structural differences found")
+        return
+    
+    print("\n" + "="*80)
+    print("STRUCTURAL DIFFERENCES DETECTED")
+    print("="*80)
+    
+    diffs = comparison.differences
+    
+    if diffs['missing_tables']:
+        print("\n📋 MISSING TABLES:")
+        table_data = [[table] for table in diffs['missing_tables']]
+        print(format_table(table_data, headers=['Table Name']))
+
+    if diffs['missing_columns']:
+        print("\n📝 MISSING COLUMNS:")
+        col_data = []
+        for table, columns in diffs['missing_columns'].items():
+            for column, data_type in columns:
+                col_data.append([table, column, data_type])
+        if col_data:
+            print(format_table(col_data, headers=['Table', 'Column', 'Data Type']))
+    
+    if diffs['column_order_issues']:
+        print("\n🔄 COLUMN ORDER ISSUES:")
+        order_data = []
+        for table, order_info in diffs['column_order_issues'].items():
+            master_order = ', '.join(order_info['master_order'])
+            copy_order = ', '.join(order_info['copy_order'])
+            order_data.append([table, copy_order, master_order])
+        if order_data:
+            print(format_table(order_data, headers=['Table', 'Current Order', 'Expected Order']))
+
+    if diffs['extra_indexes']:
+        print("\n🗑️  EXTRA INDEXES TO REMOVE:")
+        idx_data = []
+        for table, indexes in diffs['extra_indexes'].items():
+            for idx_name, idx_def in indexes:
+                idx_data.append([table, idx_name])
+        if idx_data:
+            print(format_table(idx_data, headers=['Table', 'Index Name']))
+
+    if diffs['missing_indexes']:
+        print("\n🔍 MISSING INDEXES TO CREATE:")
+        idx_data = []
+        for table, indexes in diffs['missing_indexes'].items():
+            for idx_name, idx_def in indexes:
+                idx_data.append([table, idx_name])
+        if idx_data:
+            print(format_table(idx_data, headers=['Table', 'Index Name']))
+
+
+def execute_sql_transaction(conn, sql_statements, description):
+    """Execute SQL statements in a single transaction"""
+    if not sql_statements:
+        logger.info("No {} changes to execute".format(description))
+        return True
+        
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                logger.info("Executing {} changes in transaction...".format(description))
+                for i, statement in enumerate(sql_statements, 1):
+                    logger.debug("Executing statement {}/{}: {}".format(i, len(sql_statements), statement[:100]))
+                    try:
+                        cur.execute(statement)
+                    except psycopg2.Error as e:
+                        logger.error("Error in statement {}/{}: {}".format(i, len(sql_statements), e))
+                        logger.error("Full SQL statement: {}".format(statement))
+                        raise
+                
+                logger.info("Successfully executed {} {} statements".format(len(sql_statements), description))
+                return True
+                
+    except psycopg2.Error as e:
+        logger.error("Error executing {} changes: {}".format(description, e))
+        logger.error("Transaction rolled back")
+        return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Database structure and data synchronization tool")
+    parser.add_argument("--master-port", type=int, default=5432, help="Master database port")
+    parser.add_argument("--structure-only", action="store_true", help="Only perform structure synchronization")
+    parser.add_argument("--data-only", action="store_true", help="Only perform data synchronization")
+    parser.add_argument("--table", type=str, help="Only process specific table (item, mod, spells)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--dry-run", action="store_true", help="Show changes without executing")
+    args = parser.parse_args()
+
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+
+    if args.structure_only and args.data_only:
+        logger.error("Cannot specify both --structure-only and --data-only")
+        sys.exit(1)
+
+    # Load configuration
+    config = load_config()
+
+    # Connect to master database
+    with db_connection(config['DB_HOST'], args.master_port, config['DB_NAME'],
+                       config['DB_USER'], config['DB_PASSWORD'], "Master DB") as master_conn:
+        if not master_conn:
+            logger.error("Failed to connect to master database. Exiting.")
+            sys.exit(1)
+
+        # Get Docker containers
+        containers = get_docker_container_ids(config)
+        if not containers:
+            logger.warning("No matching Docker containers found.")
+            sys.exit(0)
+        
+        logger.info("Found {} matching containers".format(len(containers)))
+        for container_id, container_name, is_test in containers:
+            container_type = "TEST" if is_test else "PRODUCTION"
+            logger.info("  - {} ({})".format(container_name, container_type))
+
+        success_count = 0
+        total_count = len(containers)
+
+        for container_id, container_name, is_test in containers:
+            container_type = "TEST" if is_test else "PRODUCTION"
+            logger.info("\n" + "="*100)
+            logger.info("PROCESSING CONTAINER: {} ({})".format(container_name, container_type))
+            logger.info("="*100)
+            
+            container_port = get_container_port(container_id)
+            if not container_port:
+                logger.error("Unable to get port for container {}. Skipping.".format(container_name))
+                continue
+
+            # Connect to copy database
+            with db_connection(config['DB_HOST'], container_port, config['DB_NAME'],
+                               config['DB_USER'], config['DB_PASSWORD'],
+                               "Copy DB ({})".format(container_name)) as copy_conn:
+                if not copy_conn:
+                    logger.error("Failed to connect to copy database. Skipping.")
+                    continue
+
+                # Structure synchronization
+                if not args.data_only:
+                    logger.info("Checking database structure...")
+                    master_structure = DatabaseStructure(master_conn)
+                    copy_structure = DatabaseStructure(copy_conn)
+                    comparison = StructureComparison(master_structure, copy_structure)
+                    
+                    if comparison.has_differences():
+                        display_structure_differences(comparison)
+                        
+                        if args.dry_run:
+                            logger.info("DRY RUN MODE - Structure changes not executed")
+                        else:
+                            response = input("\nApply structural changes to {}? (y/n): ".format(container_name))
+                            if response.lower() == 'y':
+                                fix_sql = comparison.generate_fix_sql()
+                                if execute_sql_transaction(copy_conn, fix_sql, "structural"):
+                                    logger.info("✅ Structural changes applied successfully")
+                                else:
+                                    logger.error("❌ Failed to apply structural changes")
+                                    continue
+                            else:
+                                logger.info("Structural changes declined")
+                    else:
+                        logger.info("✅ Database structure is synchronized")
+
+                # Data synchronization (placeholder for now)
+                if not args.structure_only:
+                    logger.info("Data synchronization will be implemented next...")
+                    # TODO: Implement data synchronization logic
+
+                success_count += 1
+
+        logger.info("\n" + "="*100)
+        logger.info("SYNCHRONIZATION SUMMARY")
+        logger.info("="*100)
+        logger.info("Successfully processed: {}/{}".format(success_count, total_count))
+
+
+if __name__ == "__main__":
+    main()

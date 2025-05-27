@@ -55,5 +55,35 @@ router.post('/generate-quick-invite', verifyToken, authController.generateQuickI
 router.post('/generate-custom-invite', verifyToken, authController.generateCustomInvite);
 router.get('/active-invites', verifyToken, authController.getActiveInvites);
 router.post('/deactivate-invite', verifyToken, authController.deactivateInvite);
+router.post('/forgot-password', [
+  body('username').trim().notEmpty().withMessage('Username is required'),
+  body('email').isEmail().withMessage('Valid email is required')
+], (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({errors: errors.array()});
+  }
+  next();
+}, authController.forgotPassword);
+router.post('/reset-password', [
+  body('token').trim().notEmpty().withMessage('Reset token is required'),
+  body('newPassword').isLength({min: AUTH.PASSWORD_MIN_LENGTH})
+      .withMessage(`Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters long`)
+], (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({errors: errors.array()});
+  }
+  next();
+}, authController.resetPassword);
+router.post('/generate-manual-reset-link', verifyToken, [
+  body('username').trim().notEmpty().withMessage('Username is required')
+], (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({errors: errors.array()});
+  }
+  next();
+}, authController.generateManualResetLink);
 
 module.exports = router;

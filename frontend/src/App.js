@@ -8,6 +8,8 @@ import {Box, CircularProgress} from '@mui/material';
 
 import Login from './components/pages/Login';
 import Register from './components/pages/Register';
+import ForgotPassword from './components/pages/ForgotPassword';
+import ResetPassword from './components/pages/ResetPassword';
 import LootEntry from './components/pages/LootEntry';
 import GoldTransactions from './components/pages/GoldTransactions';
 import UserSettings from './components/pages/UserSettings';
@@ -142,6 +144,8 @@ function App() {
               <Login onLogin={handleLogin} />
           } />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Protected routes using the ProtectedRoute component */}
           <Route path="/" element={<ProtectedRoute isAuthenticated={isAuthenticated}><MainLayout onLogout={handleLogout} /></ProtectedRoute>}>

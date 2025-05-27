@@ -124,6 +124,15 @@ const Login = ({onLogin}) => {
 
                 <Box textAlign="center" mt={2}>
                     <Typography variant="body2">
+                        <Link
+                            component="button"
+                            variant="body2"
+                            onClick={() => navigate('/forgot-password')}
+                        >
+                            Forgot Password?
+                        </Link>
+                    </Typography>
+                    <Typography variant="body2" mt={1}>
                         Don't have an account?{' '}
                         <Link
                             component="button"

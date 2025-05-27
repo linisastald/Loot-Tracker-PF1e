@@ -1,9 +1,11 @@
 // src/controllers/authController.js
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const emailService = require('../services/emailService');
 const { AUTH, COOKIES } = require('../config/constants');
 require('dotenv').config();
 
@@ -148,6 +150,63 @@ const registerUser = async (req, res) => {
                 email: user.email
             }
         }, 'User registered successfully');
+    });
+};
+
+/**
+ * Generate manual password reset link for DM
+ */
+const generateManualResetLink = async (req, res) => {
+    const { username } = req.body;
+
+    // Ensure DM permission
+    if (req.user.role !== 'DM') {
+        throw controllerFactory.createAuthorizationError('Only DMs can generate manual reset links');
+    }
+
+    if (!username) {
+        throw controllerFactory.createValidationError('Username is required');
+    }
+
+    // Find user by username
+    const userResult = await dbUtils.executeQuery(
+        'SELECT id, username, email FROM users WHERE username = $1',
+        [username]
+    );
+
+    if (userResult.rows.length === 0) {
+        throw controllerFactory.createNotFoundError('User not found');
+    }
+
+    const user = userResult.rows[0];
+
+    // Generate secure random token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+    return await dbUtils.executeTransaction(async (client) => {
+        // Clean up any existing tokens for this user
+        await client.query(
+            'DELETE FROM password_reset_tokens WHERE user_id = $1',
+            [user.id]
+        );
+
+        // Insert new reset token
+        await client.query(
+            'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+            [user.id, resetToken, expiresAt]
+        );
+
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+
+        logger.info(`Manual password reset link generated for user: ${user.username} by DM: ${req.user.username}`);
+        
+        controllerFactory.sendSuccessResponse(res, {
+            resetUrl,
+            username: user.username,
+            email: user.email,
+            expiresAt
+        }, 'Password reset link generated successfully');
     });
 };
 
@@ -539,6 +598,106 @@ const refreshToken = async (req, res) => {
     }
 };
 
+/**
+ * Initiate password reset
+ */
+const forgotPassword = async (req, res) => {
+    const { username, email } = req.body;
+
+    // Find user by both username and email for security
+    const userResult = await dbUtils.executeQuery(
+        'SELECT id, username, email FROM users WHERE username = $1 AND email = $2',
+        [username, email]
+    );
+
+    if (userResult.rows.length === 0) {
+        // For security, don't reveal if user exists or not
+        controllerFactory.sendSuccessMessage(res, 'If a user with those credentials exists, a password reset email has been sent.');
+        return;
+    }
+
+    const user = userResult.rows[0];
+
+    // Generate secure random token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+    return await dbUtils.executeTransaction(async (client) => {
+        // Clean up any existing tokens for this user
+        await client.query(
+            'DELETE FROM password_reset_tokens WHERE user_id = $1',
+            [user.id]
+        );
+
+        // Insert new reset token
+        await client.query(
+            'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+            [user.id, resetToken, expiresAt]
+        );
+
+        // Send email
+        const emailSent = await emailService.sendPasswordResetEmail(user.email, user.username, resetToken);
+        
+        if (!emailSent) {
+            logger.warn(`Failed to send password reset email to ${user.email}`);
+        }
+
+        controllerFactory.sendSuccessMessage(res, 'If a user with those credentials exists, a password reset email has been sent.');
+    });
+};
+
+/**
+ * Reset password using token
+ */
+const resetPassword = async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    // Validate password
+    if (!newPassword || newPassword.length < AUTH.PASSWORD_MIN_LENGTH) {
+        throw controllerFactory.createValidationError(`Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters long`);
+    }
+
+    if (newPassword.length > AUTH.PASSWORD_MAX_LENGTH) {
+        throw controllerFactory.createValidationError(`Password cannot exceed ${AUTH.PASSWORD_MAX_LENGTH} characters`);
+    }
+
+    // Find valid token
+    const tokenResult = await dbUtils.executeQuery(
+        `SELECT prt.*, u.id as user_id, u.username 
+         FROM password_reset_tokens prt
+         JOIN users u ON prt.user_id = u.id
+         WHERE prt.token = $1 AND prt.used = FALSE AND prt.expires_at > NOW()`,
+        [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+        throw controllerFactory.createValidationError('Invalid or expired reset token');
+    }
+
+    const resetData = tokenResult.rows[0];
+
+    return await dbUtils.executeTransaction(async (client) => {
+        // Hash new password
+        const normalizedPassword = newPassword.normalize('NFC');
+        const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
+
+        // Update user password and reset login attempts
+        await client.query(
+            'UPDATE users SET password = $1, login_attempts = 0, locked_until = NULL WHERE id = $2',
+            [hashedPassword, resetData.user_id]
+        );
+
+        // Mark token as used
+        await client.query(
+            'UPDATE password_reset_tokens SET used = TRUE WHERE token = $1',
+            [token]
+        );
+
+        logger.info(`Password reset successful for user: ${resetData.username}`);
+        controllerFactory.sendSuccessMessage(res, 'Password has been reset successfully');
+    });
+};
+
 // Define validation rules for each endpoint
 const loginValidationRules = {
     requiredFields: ['username', 'password']
@@ -546,6 +705,18 @@ const loginValidationRules = {
 
 const registerValidationRules = {
     requiredFields: ['username', 'password', 'email']
+};
+
+const forgotPasswordValidationRules = {
+    requiredFields: ['username', 'email']
+};
+
+const resetPasswordValidationRules = {
+    requiredFields: ['token', 'newPassword']
+};
+
+const generateManualResetLinkValidationRules = {
+    requiredFields: ['username']
 };
 
 // Use controllerFactory to create handler functions with standardized error handling
@@ -604,5 +775,20 @@ module.exports = {
 
     refreshToken: controllerFactory.createHandler(refreshToken, {
         errorMessage: 'Error refreshing token'
+    }),
+
+    forgotPassword: controllerFactory.createHandler(forgotPassword, {
+        errorMessage: 'Error processing password reset request',
+        validation: forgotPasswordValidationRules
+    }),
+
+    resetPassword: controllerFactory.createHandler(resetPassword, {
+        errorMessage: 'Error resetting password',
+        validation: resetPasswordValidationRules
+    }),
+
+    generateManualResetLink: controllerFactory.createHandler(generateManualResetLink, {
+        errorMessage: 'Error generating manual reset link',
+        validation: generateManualResetLinkValidationRules
     })
 };

@@ -57,6 +57,13 @@ const UserManagement = () => {
     const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
     const [selectedInviteToDeactivate, setSelectedInviteToDeactivate] = useState(null);
 
+    // Manual password reset states
+    const [manualResetDialogOpen, setManualResetDialogOpen] = useState(false);
+    const [resetUsername, setResetUsername] = useState('');
+    const [generatedResetLink, setGeneratedResetLink] = useState('');
+    const [resetLinkDialogOpen, setResetLinkDialogOpen] = useState(false);
+    const [isGeneratingResetLink, setIsGeneratingResetLink] = useState(false);
+
     useEffect(() => {
         fetchData();
         fetchActiveInvites();
@@ -226,6 +233,44 @@ const UserManagement = () => {
         setSnackbarOpen(false);
     };
 
+    // Manual password reset functions
+    const handleGenerateManualResetLink = async () => {
+        if (!resetUsername.trim()) {
+            setError('Username is required');
+            return;
+        }
+
+        try {
+            setIsGeneratingResetLink(true);
+            setError('');
+
+            const response = await api.post('/auth/generate-manual-reset-link', {
+                username: resetUsername.trim()
+            });
+
+            if (response && response.data) {
+                setGeneratedResetLink(response.data.resetUrl);
+                setResetLinkDialogOpen(true);
+                setManualResetDialogOpen(false);
+                setResetUsername('');
+            }
+        } catch (err) {
+            setError(err.response?.data?.error || err.response?.data?.message || 'Error generating reset link');
+        } finally {
+            setIsGeneratingResetLink(false);
+        }
+    };
+
+    const handleCopyResetLink = () => {
+        navigator.clipboard.writeText(generatedResetLink).then(() => {
+            setSnackbarMessage('Reset link copied to clipboard');
+            setSnackbarOpen(true);
+        }).catch(() => {
+            setSnackbarMessage('Failed to copy reset link');
+            setSnackbarOpen(true);
+        });
+    };
+
     return (
         <div>
             <Typography variant="h6" gutterBottom>User Management</Typography>
@@ -277,6 +322,13 @@ const UserManagement = () => {
                     disabled={selectedUsers.length === 0}
                 >
                     Delete User
+                </Button>
+                <Button
+                    variant="outlined"
+                    color="info"
+                    onClick={() => setManualResetDialogOpen(true)}
+                >
+                    Generate Reset Link
                 </Button>
             </Box>
 
@@ -483,6 +535,68 @@ const UserManagement = () => {
                 onClose={handleSnackbarClose}
                 message={snackbarMessage}
             />
+
+            {/* Manual Reset Link Dialog */}
+            <Dialog open={manualResetDialogOpen} onClose={() => setManualResetDialogOpen(false)}>
+                <DialogTitle>Generate Manual Password Reset Link</DialogTitle>
+                <DialogContent>
+                    <Typography sx={{ mb: 2 }}>
+                        Generate a password reset link for any user that you can provide manually.
+                    </Typography>
+                    <TextField
+                        label="Username"
+                        fullWidth
+                        value={resetUsername}
+                        onChange={(e) => setResetUsername(e.target.value)}
+                        margin="normal"
+                        placeholder="Enter username"
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setManualResetDialogOpen(false)} color="secondary" variant="outlined">
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={handleGenerateManualResetLink}
+                        color="primary"
+                        variant="outlined"
+                        disabled={isGeneratingResetLink || !resetUsername.trim()}
+                    >
+                        {isGeneratingResetLink ? <CircularProgress size={24} /> : 'Generate Link'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Reset Link Display Dialog */}
+            <Dialog open={resetLinkDialogOpen} onClose={() => setResetLinkDialogOpen(false)} maxWidth="md">
+                <DialogTitle>Password Reset Link Generated</DialogTitle>
+                <DialogContent>
+                    <Typography sx={{ mb: 2 }}>
+                        The password reset link has been generated. You can copy and provide this link to the user:
+                    </Typography>
+                    <Box sx={{ 
+                        p: 2, 
+                        backgroundColor: 'grey.100', 
+                        borderRadius: 1, 
+                        fontFamily: 'monospace',
+                        wordBreak: 'break-all',
+                        mb: 2
+                    }}>
+                        {generatedResetLink}
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                        This link will expire in 1 hour.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCopyResetLink} color="primary" variant="outlined">
+                        Copy Link
+                    </Button>
+                    <Button onClick={() => setResetLinkDialogOpen(false)} color="secondary" variant="outlined">
+                        Close
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </div>
     );
 };
