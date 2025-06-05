@@ -42,6 +42,7 @@ router.put('/delete-user', verifyToken, checkRole(['DM']), userController.delete
 router.put('/update-setting', verifyToken, checkRole(['DM']), userController.updateSetting);
 router.get('/settings', verifyToken, checkRole(['DM']), userController.getSettings);
 router.get('/all-characters', verifyToken, checkRole(['DM']), userController.getAllCharacters);
+router.put('/update-any-character', verifyToken, checkRole(['DM']), userController.updateAnyCharacter);
 
 // Keep at the bottom to avoid route conflicts
 router.get('/:id', verifyToken, userController.getUserById);

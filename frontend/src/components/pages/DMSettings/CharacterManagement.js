@@ -84,8 +84,9 @@ const CharacterManagement = () => {
 
     const handleCharacterUpdateSubmit = async () => {
         try {
+            // Use the DM-specific endpoint for updating any character
             await api.put(
-                `/user/characters`,
+                `/user/update-any-character`,
                 {...selectedCharacter, ...updateCharacter}
             );
             setUpdateCharacterDialogOpen(false);

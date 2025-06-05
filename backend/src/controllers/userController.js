@@ -138,6 +138,10 @@ const addCharacter = async (req, res) => {
         throw controllerFactory.createValidationError('Character name already exists');
     }
 
+    // Handle date values - convert empty strings to null
+    const processedBirthday = birthday === '' ? null : birthday;
+    const processedDeathday = deathday === '' ? null : deathday;
+
     return await dbUtils.executeTransaction(async (client) => {
         // If this character is being set as active, deactivate other characters
         if (active) {
@@ -150,7 +154,7 @@ const addCharacter = async (req, res) => {
         // Insert the new character
         const result = await client.query(
             'INSERT INTO characters (user_id, name, appraisal_bonus, birthday, deathday, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [userId, name, appraisal_bonus || 0, birthday || null, deathday || null, active]
+            [userId, name, appraisal_bonus || 0, processedBirthday || null, processedDeathday || null, active]
         );
 
         logger.info(`New character "${name}" created for user ID ${userId}`);
@@ -187,6 +191,10 @@ const updateCharacter = async (req, res) => {
         }
     }
 
+    // Handle date values - convert empty strings to null
+    const processedBirthday = birthday === '' ? null : birthday;
+    const processedDeathday = deathday === '' ? null : deathday;
+
     return await dbUtils.executeTransaction(async (client) => {
         // If this character is being set as active, deactivate other characters
         if (active) {
@@ -202,8 +210,8 @@ const updateCharacter = async (req, res) => {
             [
                 name || characterCheck.rows[0].name,
                 appraisal_bonus !== undefined ? appraisal_bonus : characterCheck.rows[0].appraisal_bonus,
-                birthday !== undefined ? birthday : characterCheck.rows[0].birthday,
-                deathday !== undefined ? deathday : characterCheck.rows[0].deathday,
+                processedBirthday !== undefined ? processedBirthday : characterCheck.rows[0].birthday,
+                processedDeathday !== undefined ? processedDeathday : characterCheck.rows[0].deathday,
                 active !== undefined ? active : characterCheck.rows[0].active,
                 id,
                 userId
@@ -427,6 +435,74 @@ const getAllCharacters = async (req, res) => {
     controllerFactory.sendSuccessResponse(res, result.rows, 'All characters retrieved successfully');
 };
 
+/**
+ * Update any character (DM only)
+ */
+const updateAnyCharacter = async (req, res) => {
+    const {id, name, appraisal_bonus, birthday, deathday, active, user_id} = req.body;
+
+    // Ensure DM permission (should be handled by middleware too)
+    if (req.user.role !== 'DM') {
+        throw controllerFactory.createAuthorizationError('Only DMs can update any character');
+    }
+
+    // Check if character exists
+    const characterCheck = await dbUtils.executeQuery(
+        'SELECT * FROM characters WHERE id = $1',
+        [id]
+    );
+
+    if (characterCheck.rows.length === 0) {
+        throw controllerFactory.createNotFoundError('Character not found');
+    }
+
+    const currentCharacter = characterCheck.rows[0];
+
+    // Check for name uniqueness (excluding this character) only if name is provided
+    if (name && name !== currentCharacter.name) {
+        const existingNameCheck = await dbUtils.executeQuery(
+            'SELECT * FROM characters WHERE name = $1 AND id != $2',
+            [name, id]
+        );
+
+        if (existingNameCheck.rows.length > 0) {
+            throw controllerFactory.createValidationError('Character name already exists');
+        }
+    }
+
+    // Handle date values - convert empty strings to null
+    const processedBirthday = birthday === '' ? null : birthday;
+    const processedDeathday = deathday === '' ? null : deathday;
+
+    return await dbUtils.executeTransaction(async (client) => {
+        // If this character is being set as active, deactivate other characters for the same user
+        if (active && (user_id || currentCharacter.user_id)) {
+            const targetUserId = user_id || currentCharacter.user_id;
+            await client.query(
+                'UPDATE characters SET active = false WHERE user_id = $1 AND id != $2',
+                [targetUserId, id]
+            );
+        }
+
+        // Update the character
+        const result = await client.query(
+            'UPDATE characters SET name = $1, appraisal_bonus = $2, birthday = $3, deathday = $4, active = $5, user_id = $6 WHERE id = $7 RETURNING *',
+            [
+                name !== undefined ? name : currentCharacter.name,
+                appraisal_bonus !== undefined ? appraisal_bonus : currentCharacter.appraisal_bonus,
+                processedBirthday !== undefined ? processedBirthday : currentCharacter.birthday,
+                processedDeathday !== undefined ? processedDeathday : currentCharacter.deathday,
+                active !== undefined ? active : currentCharacter.active,
+                user_id !== undefined ? user_id : currentCharacter.user_id,
+                id
+            ]
+        );
+
+        logger.info(`Character ID ${id} updated by DM ${req.user.id}`);
+        controllerFactory.sendSuccessResponse(res, result.rows[0], 'Character updated successfully');
+    });
+};
+
 // Define validation rules
 const changePasswordValidation = {
     requiredFields: ['oldPassword', 'newPassword']
@@ -441,6 +517,10 @@ const addCharacterValidation = {
 };
 
 const updateCharacterValidation = {
+    requiredFields: ['id']
+};
+
+const updateAnyCharacterValidation = {
     requiredFields: ['id']
 };
 
@@ -519,5 +599,10 @@ module.exports = {
 
     getAllCharacters: controllerFactory.createHandler(getAllCharacters, {
         errorMessage: 'Error fetching all characters'
+    }),
+
+    updateAnyCharacter: controllerFactory.createHandler(updateAnyCharacter, {
+        errorMessage: 'Error updating character',
+        validation: updateAnyCharacterValidation
     })
 };
