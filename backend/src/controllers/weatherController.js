@@ -296,7 +296,7 @@ const initializeWeatherHistory = async (req, res) => {
                      (year, month, day, region, condition, temp_low, temp_high, precipitation_type, 
                       wind_speed, humidity, visibility, description)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                     ON CONFLICT (year, month, day, region) DO NOTHING`,
+                     ON CONFLICT ON CONSTRAINT golarion_weather_pkey DO NOTHING`,
                     [weather.year, weather.month, weather.day, weather.region, weather.condition,
                      weather.temp_low, weather.temp_high, weather.precipitation_type,
                      weather.wind_speed, weather.humidity, weather.visibility, weather.description]
@@ -324,7 +324,7 @@ const setWeatherForDate = async (req, res) => {
              (year, month, day, region, condition, temp_low, temp_high, precipitation_type, 
               wind_speed, humidity, visibility, description)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-             ON CONFLICT (year, month, day, region) 
+             ON CONFLICT ON CONSTRAINT golarion_weather_pkey 
              DO UPDATE SET 
                 condition = EXCLUDED.condition,
                 temp_low = EXCLUDED.temp_low,
@@ -382,7 +382,7 @@ const generateWeatherForNextDay = async (newDate, region) => {
              (year, month, day, region, condition, temp_low, temp_high, precipitation_type, 
               wind_speed, humidity, visibility, description)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-             ON CONFLICT (year, month, day, region) DO NOTHING`,
+             ON CONFLICT ON CONSTRAINT golarion_weather_pkey DO NOTHING`,
             [weather.year, weather.month, weather.day, weather.region, weather.condition,
              weather.temp_low, weather.temp_high, weather.precipitation_type,
              weather.wind_speed, weather.humidity, weather.visibility, weather.description]
