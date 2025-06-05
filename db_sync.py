@@ -317,9 +317,44 @@ class DatabaseSync:
 
         return differences
 
+    def _extract_sequence_name(self, default_val):
+        """Extract sequence name from DEFAULT value"""
+        if not default_val:
+            return None
+        
+        # Match nextval('sequence_name') or nextval('sequence_name'::regclass)
+        match = re.search(r"nextval\('([^']+)'(?:::regclass)?\)", default_val)
+        return match.group(1) if match else None
+    
     def generate_structure_sql(self, differences, master_structure):
         """Generate SQL to fix structural differences"""
         sql_statements = []
+        
+        # First, create sequences for missing tables and columns
+        all_sequences = set()
+        
+        # Check missing tables for sequences
+        for table in differences['missing_tables']:
+            columns = master_structure['tables'].get(table, [])
+            for column, data_type in columns:
+                col_info = master_structure['column_details'][table][column]
+                if col_info['default']:
+                    seq_name = self._extract_sequence_name(col_info['default'])
+                    if seq_name:
+                        all_sequences.add(seq_name)
+        
+        # Check missing columns for sequences
+        for table, columns in differences['missing_columns'].items():
+            for column, data_type in columns:
+                col_info = master_structure['column_details'][table][column]
+                if col_info['default']:
+                    seq_name = self._extract_sequence_name(col_info['default'])
+                    if seq_name:
+                        all_sequences.add(seq_name)
+        
+        # Create all sequences first
+        for seq_name in all_sequences:
+            sql_statements.append(f'CREATE SEQUENCE IF NOT EXISTS "{seq_name}";')
         
         # Create missing tables
         for table in differences['missing_tables']:
