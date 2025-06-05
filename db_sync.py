@@ -218,12 +218,15 @@ class DatabaseSync:
             structure['tables'][table].sort(key=lambda x: x[0])
             structure['tables'][table] = [(col, dtype) for pos, col, dtype in structure['tables'][table]]
         
-        # Get indexes
+        # Get indexes (exclude constraint-backed ones)
         index_sql = """
             SELECT tablename, indexname, indexdef
             FROM pg_indexes
             WHERE schemaname = 'public'
             AND indexname NOT LIKE '%_pkey'
+            AND indexname NOT LIKE '%_key'
+            AND indexname NOT LIKE '%_check'
+            AND indexname NOT LIKE '%_fkey'
             ORDER BY tablename, indexname
         """
         
@@ -391,9 +394,13 @@ class DatabaseSync:
                     
                 sql_statements.append(f"ALTER TABLE {quoted_table} ADD COLUMN {quoted_column} {col_def};")
 
-        # Drop extra indexes
+        # Drop extra indexes (skip constraint-backed indexes)
         for table, indexes in differences['extra_indexes'].items():
             for idx_name, idx_def in indexes:
+                # Skip constraint-backed indexes (typically end with _key, _pkey, etc.)
+                if idx_name.endswith(('_key', '_pkey', '_check', '_fkey')):
+                    logger.debug(f"Skipping constraint-backed index: {idx_name}")
+                    continue
                 quoted_idx = f'"{idx_name}"'
                 sql_statements.append(f"DROP INDEX IF EXISTS {quoted_idx};")
 
