@@ -57,7 +57,13 @@ const calculateTotalSaleValue = (items) => {
       return 0;
     }
 
-    const totalValue = items.reduce((sum, item) => sum + calculateItemSaleValue(item), 0);
+    const totalValue = items.reduce((sum, item) => {
+      const itemSaleValue = calculateItemSaleValue(item);
+      const quantity = parseInt(item.quantity) || 1;
+      const itemTotal = itemSaleValue * quantity;
+      logger.debug(`Item ${item.name || 'unknown'}: sale value ${itemSaleValue} × quantity ${quantity} = ${itemTotal}`);
+      return sum + itemTotal;
+    }, 0);
     logger.debug(`Calculated total sale value for ${items.length} items: ${totalValue}`);
 
     return totalValue;

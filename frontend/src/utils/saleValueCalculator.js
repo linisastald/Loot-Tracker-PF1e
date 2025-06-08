@@ -37,5 +37,9 @@ export const calculateItemSaleValue = (item) => {
 export const calculateTotalSaleValue = (items) => {
   if (!items || !Array.isArray(items)) return 0;
 
-  return items.reduce((sum, item) => sum + calculateItemSaleValue(item), 0);
+  return items.reduce((sum, item) => {
+    const itemSaleValue = calculateItemSaleValue(item);
+    const quantity = parseInt(item.quantity) || 1;
+    return sum + (itemSaleValue * quantity);
+  }, 0);
 };
