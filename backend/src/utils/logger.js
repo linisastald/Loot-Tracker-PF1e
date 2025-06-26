@@ -12,7 +12,7 @@ const logger = winston.createLogger({
   transports: [
     // Error logs with rotation
     new winston.transports.DailyRotateFile({
-      filename: 'logs/error-%DATE%.log',
+      filename: '/app/logs/error-%DATE%.log',
       datePattern: LOGGING.DATE_PATTERN,
       level: 'error',
       maxSize: LOGGING.MAX_SIZE,
@@ -22,7 +22,7 @@ const logger = winston.createLogger({
     }),
     // Combined logs with rotation
     new winston.transports.DailyRotateFile({
-      filename: 'logs/combined-%DATE%.log',
+      filename: '/app/logs/combined-%DATE%.log',
       datePattern: LOGGING.DATE_PATTERN,
       maxSize: LOGGING.MAX_SIZE,
       maxFiles: LOGGING.MAX_FILES,
@@ -46,7 +46,7 @@ if (process.env.NODE_ENV !== 'production') {
 // Create logs directory if it doesn't exist
 const fs = require('fs');
 const path = require('path');
-const logsDir = path.join(process.cwd(), 'logs');
+const logsDir = '/app/logs';
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
