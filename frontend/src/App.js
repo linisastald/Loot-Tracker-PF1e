@@ -27,6 +27,7 @@ import Infamy from './components/pages/Infamy';
 
 import theme from './theme';
 import api from './utils/api';
+import { ConfigProvider } from './contexts/ConfigContext';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -134,7 +135,8 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
+      <ConfigProvider>
+        <Router>
         <Routes>
           <Route path="/" element={isAuthenticated ? <Navigate to="/loot-entry" /> : <Navigate to="/login" />} />
           <Route path="/login" element={
@@ -168,7 +170,8 @@ function App() {
             <Route path="infamy" element={<Infamy />} />
           </Route>
         </Routes>
-      </Router>
+        </Router>
+      </ConfigProvider>
     </ThemeProvider>
   );
 }

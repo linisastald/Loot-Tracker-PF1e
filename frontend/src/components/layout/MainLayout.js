@@ -1,13 +1,20 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import Sidebar from './Sidebar';
 import {AppBar, Box, IconButton, Toolbar, Typography} from '@mui/material';
 import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
+import { useConfig } from '../../contexts/ConfigContext';
 
 const MainLayout = ({ onLogout }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { config } = useConfig();
+
+  // Update document title when config changes
+  useEffect(() => {
+    document.title = config.groupName;
+  }, [config.groupName]);
 
   // Get current page title based on route
   const getPageTitle = () => {
@@ -38,7 +45,7 @@ const MainLayout = ({ onLogout }) => {
               if (path.includes('/loot-management')) return 'Loot Management';
               if (path.includes('/item-management')) return 'Item Management';
               if (path.includes('/character-user-management')) return 'Character & User Management';
-              return 'Pathfinder Loot Tracker';
+              return config.groupName;
       }
   };
 

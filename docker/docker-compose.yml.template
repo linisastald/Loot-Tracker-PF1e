@@ -7,7 +7,6 @@ services:
       dockerfile: Dockerfile.full
       args:
         - REACT_APP_API_URL=/api
-        - REACT_APP_GROUP_NAME="Rise of the Runelords"
     ports:
       - "4004:80"  # Nginx port for serving frontend
       - "4005:5000"  # Backend port
@@ -22,7 +21,7 @@ services:
       - PORT=5000
       - JWT_SECRET=
       - OPENAI_API_KEY=
-      - REACT_APP_GROUP_NAME="Rise of the Runelords"
+      - GROUP_NAME=Rise of the Runelords
       - ALLOWED_ORIGINS=http://192.168.0.64:4004
     depends_on:
       - rotr_db
@@ -51,7 +50,6 @@ services:
       dockerfile: Dockerfile.full
       args:
         - REACT_APP_API_URL=/api
-        - REACT_APP_GROUP_NAME="Skulls & Shackles"
     ports:
       - "4007:80"  # Nginx port for serving frontend
       - "4008:5000"  # Backend port
@@ -66,7 +64,7 @@ services:
       - PORT=5000
       - JWT_SECRET=
       - OPENAI_API_KEY=
-      - REACT_APP_GROUP_NAME="Skulls & Shackles"
+      - GROUP_NAME=Skulls & Shackles
       - ALLOWED_ORIGINS=http://192.168.0.64:4269
     depends_on:
       - sns_db

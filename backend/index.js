@@ -219,10 +219,14 @@ const adminRoutes = require('./src/api/routes/admin');
 const infamyRoutes = require('./src/api/routes/infamy');
 const sessionsRoutes = require('./src/api/routes/sessions');
 const weatherRoutes = require('./src/api/routes/weather');
+const configRoutes = require('./src/api/routes/config');
 
 // Set up routes with appropriate protection
 // Auth routes with auth-specific rate limiting (applied before global rate limiting)
 app.use('/api/auth', authRoutes);
+
+// Public config route (no auth or CSRF protection needed)
+app.use('/api/config', configRoutes);
 
 // Apply global rate limiting to all other API routes
 app.use('/api', limiter);
