@@ -388,34 +388,34 @@ const GolarionCalendar = () => {
                                         const weatherData = weather[dateKey];
                                         
                                         const moonPhaseData = getMoonPhase({
-                                            year: displayedDate.year,
-                                            month: displayedDate.month,
-                                            day
+                                        year: displayedDate.year,
+                                        month: displayedDate.month,
+                                        day
                                         });
-                                        const moonEmoji = moonPhaseData.emoji;
+                                        const moonEmoji = moonPhaseData?.emoji || '🌑';
 
                                         // Check if the phase changed from previous day
                                         const prevDay = day - 1;
                                         let showMoonPhase = false;
 
                                         if (prevDay > 0) {
-                                            const prevPhase = getMoonPhase({
-                                                year: displayedDate.year,
-                                                month: displayedDate.month,
-                                                day: prevDay
-                                            });
-                                            showMoonPhase = prevPhase.name !== moonPhaseData.name;
+                                        const prevPhase = getMoonPhase({
+                                        year: displayedDate.year,
+                                        month: displayedDate.month,
+                                        day: prevDay
+                                        });
+                                        showMoonPhase = prevPhase?.name && moonPhaseData?.name && prevPhase.name !== moonPhaseData.name;
                                         } else if (day === 1) {
-                                            // First day of month - check against last day of previous month
-                                            const prevMonth = displayedDate.month > 0 ? displayedDate.month - 1 : 11;
-                                            const prevYear = prevMonth === 11 ? displayedDate.year - 1 : displayedDate.year;
-                                            const lastDayOfPrevMonth = months[prevMonth].days;
-                                            const prevPhase = getMoonPhase({
-                                                year: prevYear,
-                                                month: prevMonth,
-                                                day: lastDayOfPrevMonth
-                                            });
-                                            showMoonPhase = prevPhase.name !== moonPhaseData.name;
+                                        // First day of month - check against last day of previous month
+                                        const prevMonth = displayedDate.month > 0 ? displayedDate.month - 1 : 11;
+                                        const prevYear = prevMonth === 11 ? displayedDate.year - 1 : displayedDate.year;
+                                        const lastDayOfPrevMonth = months[prevMonth].days;
+                                        const prevPhase = getMoonPhase({
+                                        year: prevYear,
+                                        month: prevMonth,
+                                        day: lastDayOfPrevMonth
+                                        });
+                                        showMoonPhase = prevPhase?.name && moonPhaseData?.name && prevPhase.name !== moonPhaseData.name;
                                         }
 
                                         return (
@@ -621,15 +621,15 @@ const GolarionCalendar = () => {
                                                 primary={<Typography variant="subtitle1">Moon Phase</Typography>}
                                                 secondary={
                                                     selectedDate && (
-                                                        <Chip
-                                                            icon={<span
-                                                                style={{fontSize: '1.2rem'}}>{getMoonPhase(selectedDate).emoji}</span>}
-                                                            label={getMoonPhase(selectedDate).name}
-                                                            color="primary"
-                                                            variant="outlined"
-                                                            size="small"
-                                                            sx={{mt: 0.5}}
-                                                        />
+                                                    <Chip
+                                                    icon={<span
+                                                    style={{fontSize: '1.2rem'}}>{getMoonPhase(selectedDate)?.emoji || '🌑'}</span>}
+                                                    label={getMoonPhase(selectedDate)?.name || 'Unknown Phase'}
+                                                    color="primary"
+                                                    variant="outlined"
+                                                    size="small"
+                                                    sx={{mt: 0.5}}
+                                                    />
                                                     )
                                                 }
                                             />
