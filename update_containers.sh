@@ -10,6 +10,7 @@ COMPOSE_FILE="/root/docker-compose.yml"
 # Default settings
 UPDATE_PRODUCTION=false
 CLEAN_TEST_DATA=false
+SKIP_GIT_PULL=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -22,11 +23,16 @@ while [[ $# -gt 0 ]]; do
             CLEAN_TEST_DATA=true
             shift
             ;;
+        --skip-pull)
+            SKIP_GIT_PULL=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--production] [--clean-test-data]"
+            echo "Usage: $0 [--production] [--clean-test-data] [--skip-pull]"
             echo "  --production      Update production containers (rotr, sns)"
             echo "  --clean-test-data Remove test database persistent data"
-            echo "  Default: Updates only test containers"
+            echo "  --skip-pull       Skip git pull (use current local code)"
+            echo "  Default: Updates only test containers and pulls latest code"
             exit 0
             ;;
         *)
@@ -35,6 +41,18 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Pull latest code from GitHub unless --skip-pull is specified
+if [ "$SKIP_GIT_PULL" = false ]; then
+    echo "Pulling latest code from GitHub..."
+    cd /root
+    git pull origin main || {
+        echo "Warning: Git pull failed. Continuing with current local code."
+        echo "Make sure you're in the correct git repository and have proper permissions."
+    }
+else
+    echo "Skipping git pull, using current local code..."
+fi
 
 cd /root
 
