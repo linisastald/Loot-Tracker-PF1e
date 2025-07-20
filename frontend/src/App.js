@@ -23,6 +23,9 @@ import Tasks from "./components/pages/Tasks";
 import Identify from './components/pages/Identify';
 import LootManagement from './components/pages/LootManagement';
 import Infamy from './components/pages/Infamy';
+import ShipManagement from './components/pages/ShipManagement';
+import OutpostManagement from './components/pages/OutpostManagement';
+import CrewManagement from './components/pages/CrewManagement';
 
 
 import theme from './theme';
@@ -168,6 +171,9 @@ function App() {
             <Route path="tasks" element={<Tasks />} />
             <Route path="identify" element={<Identify />} />
             <Route path="infamy" element={<Infamy />} />
+            <Route path="ships" element={<ShipManagement />} />
+            <Route path="outposts" element={<OutpostManagement />} />
+            <Route path="crew" element={<CrewManagement />} />
           </Route>
         </Routes>
         </Router>
