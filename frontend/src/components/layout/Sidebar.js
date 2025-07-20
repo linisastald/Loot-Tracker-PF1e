@@ -37,6 +37,9 @@ import {
   ViewList,
   EmojiEvents,
   Sailing as SailingIcon,
+  DirectionsBoat as ShipIcon,
+  People as CrewIcon,
+  Home as OutpostIcon,
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -46,6 +49,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [openBeta, setOpenBeta] = useState(false);
   const [openSessionTools, setOpenSessionTools] = useState(false);
   const [openDMSettings, setOpenDMSettings] = useState(false);
+  const [openFleetManagement, setOpenFleetManagement] = useState(false);
   const [isDM, setIsDM] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
   const [groupName, setGroupName] = useState('Loot Tracker');
@@ -275,6 +279,20 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
               icon={<SailingIcon/>}
               isCategory
             />
+          )}
+
+          {infamyEnabled && (
+            <MenuItem
+              primary="Fleet Management"
+              icon={<ShipIcon/>}
+              onClick={handleToggle(setOpenFleetManagement)}
+              open={openFleetManagement}
+              isCategory
+            >
+              <MenuItem to="/ships" primary="Ships" icon={<ShipIcon />} />
+              <MenuItem to="/crew" primary="Crew" icon={<CrewIcon />} />
+              <MenuItem to="/outposts" primary="Outposts" icon={<OutpostIcon />} />
+            </MenuItem>
           )}
 
           <MenuItem
