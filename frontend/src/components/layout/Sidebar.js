@@ -84,7 +84,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
           api.get('/loot/unprocessed-count'),
           api.get('/settings/campaign-name'),
           api.get('/auth/status'),
-          api.get('/settings/infamy-system')
+          api.get('/settings/infamy_system_enabled')
         ]);
         
         if (isMounted) {
@@ -94,7 +94,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             setActiveCharacter(activeCharRes.data.user.activeCharacter);
           }
           if (infamyRes.data?.value) {
-            setInfamyEnabled(infamyRes.data.value !== 'disabled');
+            setInfamyEnabled(infamyRes.data.value === '1');
           }
         }
       } catch (error) {
