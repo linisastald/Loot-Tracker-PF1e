@@ -220,6 +220,9 @@ const infamyRoutes = require('./src/api/routes/infamy');
 const sessionsRoutes = require('./src/api/routes/sessions');
 const weatherRoutes = require('./src/api/routes/weather');
 const configRoutes = require('./src/api/routes/config');
+const shipRoutes = require('./src/api/routes/ships');
+const outpostRoutes = require('./src/api/routes/outposts');
+const crewRoutes = require('./src/api/routes/crew');
 
 // Set up routes with appropriate protection
 // Auth routes with auth-specific rate limiting (applied before global rate limiting)
@@ -244,6 +247,9 @@ app.use('/api/admin', csrfProtection, adminRoutes);
 app.use('/api/infamy', csrfProtection, infamyRoutes);
 app.use('/api/sessions', csrfProtection, sessionsRoutes);
 app.use('/api/weather', csrfProtection, weatherRoutes);
+app.use('/api/ships', csrfProtection, shipRoutes);
+app.use('/api/outposts', csrfProtection, outpostRoutes);
+app.use('/api/crew', csrfProtection, crewRoutes);
 
 // Global error handler
 app.use(errorHandler);
