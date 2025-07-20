@@ -351,6 +351,9 @@ const GolarionCalendar = () => {
 
     const renderCalendar = () => {
         const month = months[displayedDate.month];
+        if (!month) {
+            return <div>Loading calendar...</div>;
+        }
         // Note: Date constructor uses 0-indexed months, Golarion uses 1-indexed
         const firstDayOfMonth = new Date(displayedDate.year, displayedDate.month, 1).getDay();
         const weeks = Math.ceil((month.days + firstDayOfMonth) / 7);
@@ -530,7 +533,7 @@ const GolarionCalendar = () => {
 
                     <CalendarTitle variant="h4">
                         <EventIcon color="primary"/>
-                        {months[displayedDate.month].name} {displayedDate.year}
+                        {months[displayedDate.month]?.name || 'Loading...'} {displayedDate.year}
                     </CalendarTitle>
 
                     <Button
@@ -605,7 +608,7 @@ const GolarionCalendar = () => {
                     <Typography variant="h5" gutterBottom color="primary"
                                 sx={{display: 'flex', alignItems: 'center', mb: 2}}>
                         <CalendarTodayIcon sx={{mr: 1}}/>
-                        {`${selectedDate.day} ${months[selectedDate.month].name} ${selectedDate.year}`}
+                        {`${selectedDate.day} ${months[selectedDate.month]?.name || 'Unknown Month'} ${selectedDate.year}`}
                     </Typography>
 
                     <Grid container spacing={3} size={12}>
@@ -733,7 +736,7 @@ const GolarionCalendar = () => {
                 <DialogContent>
                     <DialogContentText>
                         Are you sure you want to set the current date to {selectedDate ?
-                        `${selectedDate.day} ${months[selectedDate.month].name} ${selectedDate.year}` :
+                        `${selectedDate.day} ${months[selectedDate.month]?.name || 'Unknown Month'} ${selectedDate.year}` :
                         ''
                     }?
                     </DialogContentText>
