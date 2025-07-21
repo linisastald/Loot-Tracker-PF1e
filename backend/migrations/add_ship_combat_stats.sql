@@ -1,6 +1,21 @@
 -- Add combat stats to ships table
 -- This migration adds proper combat statistics based on the Pathfinder ship sheet
 
+-- Add ship type and additional fields
+ALTER TABLE ships ADD COLUMN ship_type VARCHAR(50);
+ALTER TABLE ships ADD COLUMN size VARCHAR(20) DEFAULT 'Colossal';
+ALTER TABLE ships ADD COLUMN cost INTEGER DEFAULT 0;
+ALTER TABLE ships ADD COLUMN max_speed INTEGER DEFAULT 30;
+ALTER TABLE ships ADD COLUMN acceleration INTEGER DEFAULT 15;
+ALTER TABLE ships ADD COLUMN propulsion VARCHAR(100);
+ALTER TABLE ships ADD COLUMN min_crew INTEGER DEFAULT 1;
+ALTER TABLE ships ADD COLUMN max_crew INTEGER DEFAULT 10;
+ALTER TABLE ships ADD COLUMN cargo_capacity INTEGER DEFAULT 10000; -- in pounds
+ALTER TABLE ships ADD COLUMN max_passengers INTEGER DEFAULT 10;
+ALTER TABLE ships ADD COLUMN decks INTEGER DEFAULT 1;
+ALTER TABLE ships ADD COLUMN weapons INTEGER DEFAULT 0;
+ALTER TABLE ships ADD COLUMN ramming_damage VARCHAR(20) DEFAULT '1d8';
+
 -- Add new combat stat columns
 ALTER TABLE ships ADD COLUMN base_ac INTEGER DEFAULT 10;
 ALTER TABLE ships ADD COLUMN touch_ac INTEGER DEFAULT 10;
@@ -33,7 +48,15 @@ ALTER TABLE ships ADD CONSTRAINT ships_hp_check
 ALTER TABLE ships ADD CONSTRAINT ships_ac_check 
     CHECK (base_ac >= 0 AND base_ac <= 50 AND touch_ac >= 0 AND touch_ac <= 50);
 
--- Add comment to track migration
+-- Add constraints for crew and capacity
+ALTER TABLE ships ADD CONSTRAINT ships_crew_check 
+    CHECK (min_crew >= 0 AND max_crew >= min_crew);
+
+ALTER TABLE ships ADD CONSTRAINT ships_capacity_check 
+    CHECK (cargo_capacity >= 0 AND max_passengers >= 0);
+
+-- Add comments to track migration
+COMMENT ON COLUMN ships.ship_type IS 'Type of ship from Pathfinder ship types (e.g., sailing_ship, warship)';
 COMMENT ON COLUMN ships.current_hp IS 'Current hit points of the ship';
 COMMENT ON COLUMN ships.max_hp IS 'Maximum hit points of the ship'; 
 COMMENT ON COLUMN ships.base_ac IS 'Base armor class (before pilot bonuses)';
@@ -44,3 +67,7 @@ COMMENT ON COLUMN ships.cmd IS 'Combat Maneuver Defense';
 COMMENT ON COLUMN ships.saves IS 'Base save bonus';
 COMMENT ON COLUMN ships.initiative IS 'Initiative modifier';
 COMMENT ON COLUMN ships.legacy_damage IS 'Backup of old damage percentage system';
+COMMENT ON COLUMN ships.size IS 'Ship size category (Large, Colossal, etc.)';
+COMMENT ON COLUMN ships.propulsion IS 'Type of propulsion (wind, muscle, magic, etc.)';
+COMMENT ON COLUMN ships.cargo_capacity IS 'Cargo capacity in pounds';
+COMMENT ON COLUMN ships.ramming_damage IS 'Damage dealt when ramming (dice notation)';

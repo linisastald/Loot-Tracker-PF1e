@@ -1,5 +1,6 @@
 // src/controllers/shipController.js
 const Ship = require('../models/Ship');
+const { getShipTypesList, getShipTypeData } = require('../data/shipTypes');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 
@@ -8,7 +9,10 @@ const logger = require('../utils/logger');
  */
 const createShip = async (req, res) => {
   const { 
-    name, location, is_squibbing,
+    name, location, is_squibbing, ship_type,
+    size, cost, max_speed, acceleration, propulsion,
+    min_crew, max_crew, cargo_capacity, max_passengers,
+    decks, weapons, ramming_damage,
     base_ac, touch_ac, hardness, max_hp, current_hp,
     cmb, cmd, saves, initiative
   } = req.body;
@@ -17,26 +21,103 @@ const createShip = async (req, res) => {
     throw controllerFactory.createValidationError('Ship name is required');
   }
 
-  const shipData = {
+  // Auto-fill from ship type if provided
+  let shipData = {
     name,
     location: location || null,
     is_squibbing: is_squibbing || false,
-    base_ac: base_ac || 10,
-    touch_ac: touch_ac || 10,
-    hardness: hardness || 0,
-    max_hp: max_hp || 100,
-    current_hp: current_hp || max_hp || 100,
-    cmb: cmb || 0,
-    cmd: cmd || 10,
-    saves: saves || 0,
-    initiative: initiative || 0
+    ship_type: ship_type || null
   };
+
+  if (ship_type) {
+    const typeData = getShipTypeData(ship_type);
+    if (typeData) {
+      // Auto-fill with ship type data, but allow manual overrides
+      shipData = {
+        ...shipData,
+        size: size || typeData.size,
+        cost: cost !== undefined ? cost : typeData.cost,
+        max_speed: max_speed !== undefined ? max_speed : typeData.max_speed,
+        acceleration: acceleration !== undefined ? acceleration : typeData.acceleration,
+        propulsion: propulsion || typeData.propulsion,
+        min_crew: min_crew !== undefined ? min_crew : typeData.min_crew,
+        max_crew: max_crew !== undefined ? max_crew : typeData.max_crew,
+        cargo_capacity: cargo_capacity !== undefined ? cargo_capacity : typeData.cargo_capacity,
+        max_passengers: max_passengers !== undefined ? max_passengers : typeData.max_passengers,
+        decks: decks !== undefined ? decks : typeData.decks,
+        weapons: weapons !== undefined ? weapons : typeData.weapons,
+        ramming_damage: ramming_damage || typeData.ramming_damage,
+        base_ac: base_ac !== undefined ? base_ac : typeData.base_ac,
+        touch_ac: touch_ac !== undefined ? touch_ac : typeData.touch_ac,
+        hardness: hardness !== undefined ? hardness : typeData.hardness,
+        max_hp: max_hp !== undefined ? max_hp : typeData.max_hp,
+        current_hp: current_hp !== undefined ? current_hp : (max_hp !== undefined ? max_hp : typeData.max_hp),
+        cmb: cmb !== undefined ? cmb : typeData.cmb,
+        cmd: cmd !== undefined ? cmd : typeData.cmd,
+        saves: saves !== undefined ? saves : typeData.saves,
+        initiative: initiative !== undefined ? initiative : typeData.initiative
+      };
+    } else {
+      // Manual entry with defaults
+      shipData = {
+        ...shipData,
+        size: size || 'Colossal',
+        cost: cost || 0,
+        max_speed: max_speed || 30,
+        acceleration: acceleration || 15,
+        propulsion: propulsion || null,
+        min_crew: min_crew || 1,
+        max_crew: max_crew || 10,
+        cargo_capacity: cargo_capacity || 10000,
+        max_passengers: max_passengers || 10,
+        decks: decks || 1,
+        weapons: weapons || 0,
+        ramming_damage: ramming_damage || '1d8',
+        base_ac: base_ac || 10,
+        touch_ac: touch_ac || 10,
+        hardness: hardness || 0,
+        max_hp: max_hp || 100,
+        current_hp: current_hp || max_hp || 100,
+        cmb: cmb || 0,
+        cmd: cmd || 10,
+        saves: saves || 0,
+        initiative: initiative || 0
+      };
+    }
+  } else {
+    // Manual entry with defaults
+    shipData = {
+      ...shipData,
+      size: size || 'Colossal',
+      cost: cost || 0,
+      max_speed: max_speed || 30,
+      acceleration: acceleration || 15,
+      propulsion: propulsion || null,
+      min_crew: min_crew || 1,
+      max_crew: max_crew || 10,
+      cargo_capacity: cargo_capacity || 10000,
+      max_passengers: max_passengers || 10,
+      decks: decks || 1,
+      weapons: weapons || 0,
+      ramming_damage: ramming_damage || '1d8',
+      base_ac: base_ac || 10,
+      touch_ac: touch_ac || 10,
+      hardness: hardness || 0,
+      max_hp: max_hp || 100,
+      current_hp: current_hp || max_hp || 100,
+      cmb: cmb || 0,
+      cmd: cmd || 10,
+      saves: saves || 0,
+      initiative: initiative || 0
+    };
+  }
 
   const ship = await Ship.create(shipData);
 
   logger.info(`Ship created: ${name}`, {
     userId: req.user.id,
-    shipId: ship.id
+    shipId: ship.id,
+    shipType: ship_type
   });
 
   controllerFactory.sendCreatedResponse(res, ship, 'Ship created successfully');
@@ -117,6 +198,33 @@ const deleteShip = async (req, res) => {
   });
 
   controllerFactory.sendSuccessMessage(res, 'Ship deleted successfully');
+};
+
+/**
+ * Get all available ship types
+ */
+const getShipTypes = async (req, res) => {
+  const shipTypes = getShipTypesList();
+  
+  controllerFactory.sendSuccessResponse(res, {
+    shipTypes,
+    count: shipTypes.length
+  }, 'Ship types retrieved successfully');
+};
+
+/**
+ * Get ship type data for auto-filling
+ */
+const getShipTypeDataEndpoint = async (req, res) => {
+  const { type } = req.params;
+  
+  const typeData = getShipTypeData(type);
+  
+  if (!typeData) {
+    throw controllerFactory.createNotFoundError('Ship type not found');
+  }
+
+  controllerFactory.sendSuccessResponse(res, typeData, 'Ship type data retrieved successfully');
 };
 
 /**
@@ -228,6 +336,14 @@ exports.updateShip = controllerFactory.createHandler(updateShip, {
 
 exports.deleteShip = controllerFactory.createHandler(deleteShip, {
   errorMessage: 'Error deleting ship'
+});
+
+exports.getShipTypes = controllerFactory.createHandler(getShipTypes, {
+  errorMessage: 'Error fetching ship types'
+});
+
+exports.getShipTypeData = controllerFactory.createHandler(getShipTypeDataEndpoint, {
+  errorMessage: 'Error fetching ship type data'
 });
 
 exports.applyDamage = controllerFactory.createHandler(applyDamage, {

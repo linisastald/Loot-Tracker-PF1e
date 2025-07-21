@@ -2,6 +2,16 @@
 import api from '../utils/api';
 
 const shipService = {
+  // Get all ship types
+  getShipTypes: async () => {
+    return await api.get('/ships/types');
+  },
+
+  // Get ship type data for auto-filling
+  getShipTypeData: async (type) => {
+    return await api.get(`/ships/types/${type}`);
+  },
+
   // Get all ships with crew count
   getAllShips: async () => {
     return await api.get('/ships');

@@ -3,7 +3,7 @@ import {
   Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Grid, Card, CardContent, CardHeader, Chip, Box, Alert, CircularProgress,
-  Switch, FormControlLabel, Tabs, Tab, TablePagination
+  Switch, FormControlLabel, Tabs, Tab, TablePagination, Autocomplete, Divider
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, 
@@ -31,6 +31,10 @@ const ShipManagement = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
+  // Ship types data
+  const [shipTypes, setShipTypes] = useState([]);
+  const [loadingShipTypes, setLoadingShipTypes] = useState(false);
+
   // Dialog states
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -40,6 +44,19 @@ const ShipManagement = () => {
     name: '',
     location: '',
     is_squibbing: false,
+    ship_type: null,
+    size: 'Colossal',
+    cost: 0,
+    max_speed: 30,
+    acceleration: 15,
+    propulsion: '',
+    min_crew: 1,
+    max_crew: 10,
+    cargo_capacity: 10000,
+    max_passengers: 10,
+    decks: 1,
+    weapons: 0,
+    ramming_damage: '1d8',
     base_ac: 10,
     touch_ac: 10,
     hardness: 0,
@@ -61,6 +78,7 @@ const ShipManagement = () => {
 
   useEffect(() => {
     fetchShips();
+    fetchShipTypes();
   }, []);
 
   const fetchShips = async () => {
@@ -77,6 +95,18 @@ const ShipManagement = () => {
     }
   };
 
+  const fetchShipTypes = async () => {
+    try {
+      setLoadingShipTypes(true);
+      const response = await shipService.getShipTypes();
+      setShipTypes(response.data.shipTypes);
+    } catch (error) {
+      console.error('Error fetching ship types:', error);
+    } finally {
+      setLoadingShipTypes(false);
+    }
+  };
+
   const fetchShipCrew = async (shipId) => {
     try {
       setLoadingCrew(true);
@@ -90,11 +120,68 @@ const ShipManagement = () => {
     }
   };
 
+  const handleShipTypeChange = async (shipType) => {
+    if (shipType) {
+      try {
+        const response = await shipService.getShipTypeData(shipType.key);
+        const typeData = response.data;
+        
+        // Auto-fill ship data with type defaults
+        setEditingShip(prev => ({
+          ...prev,
+          ship_type: shipType.key,
+          size: typeData.size,
+          cost: typeData.cost,
+          max_speed: typeData.max_speed,
+          acceleration: typeData.acceleration,
+          propulsion: typeData.propulsion,
+          min_crew: typeData.min_crew,
+          max_crew: typeData.max_crew,
+          cargo_capacity: typeData.cargo_capacity,
+          max_passengers: typeData.max_passengers,
+          decks: typeData.decks,
+          weapons: typeData.weapons,
+          ramming_damage: typeData.ramming_damage,
+          base_ac: typeData.base_ac,
+          touch_ac: typeData.touch_ac,
+          hardness: typeData.hardness,
+          max_hp: typeData.max_hp,
+          current_hp: typeData.max_hp, // Set current HP to max when creating
+          cmb: typeData.cmb,
+          cmd: typeData.cmd,
+          saves: typeData.saves,
+          initiative: typeData.initiative
+        }));
+        
+        setSuccess(`Auto-filled ship stats for ${typeData.name}`);
+      } catch (error) {
+        setError('Failed to load ship type data');
+        console.error('Error fetching ship type data:', error);
+      }
+    } else {
+      // Clear ship type
+      setEditingShip(prev => ({ ...prev, ship_type: null }));
+    }
+  };
+
   const handleCreateShip = () => {
     setEditingShip({
       name: '',
       location: '',
       is_squibbing: false,
+      ship_type: null,
+      size: 'Colossal',
+      cost: 0,
+      max_speed: 30,
+      acceleration: 15,
+      propulsion: '',
+      min_crew: 1,
+      max_crew: 10,
+      cargo_capacity: 10000,
+      max_passengers: 10,
+      decks: 1,
+      weapons: 0,
+      ramming_damage: '1d8',
       base_ac: 10,
       touch_ac: 10,
       hardness: 0,
@@ -110,10 +197,25 @@ const ShipManagement = () => {
   };
 
   const handleEditShip = (ship) => {
+    const currentShipType = shipTypes.find(type => type.key === ship.ship_type);
+    
     setEditingShip({
       name: ship.name,
       location: ship.location || '',
       is_squibbing: ship.is_squibbing || false,
+      ship_type: ship.ship_type || null,
+      size: ship.size || 'Colossal',
+      cost: ship.cost || 0,
+      max_speed: ship.max_speed || 30,
+      acceleration: ship.acceleration || 15,
+      propulsion: ship.propulsion || '',
+      min_crew: ship.min_crew || 1,
+      max_crew: ship.max_crew || 10,
+      cargo_capacity: ship.cargo_capacity || 10000,
+      max_passengers: ship.max_passengers || 10,
+      decks: ship.decks || 1,
+      weapons: ship.weapons || 0,
+      ramming_damage: ship.ramming_damage || '1d8',
       base_ac: ship.base_ac || 10,
       touch_ac: ship.touch_ac || 10,
       hardness: ship.hardness || 0,
@@ -512,6 +614,34 @@ const ShipManagement = () => {
                 required
               />
             </Grid>
+            
+            <Grid item xs={12}>
+              <Autocomplete
+                options={shipTypes}
+                value={shipTypes.find(type => type.key === editingShip.ship_type) || null}
+                onChange={(event, newValue) => handleShipTypeChange(newValue)}
+                getOptionLabel={(option) => option.name}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Ship Type (Auto-fills stats)"
+                    helperText="Select a ship type to auto-fill combat stats and specifications"
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props}>
+                    <Box>
+                      <Typography variant="body1">{option.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {option.size} • {option.cost} gp
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+                loading={loadingShipTypes}
+              />
+            </Grid>
+            
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -522,7 +652,85 @@ const ShipManagement = () => {
             </Grid>
             
             <Grid item xs={12}>
-              <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>Combat Statistics</Typography>
+              <Divider sx={{ my: 1 }}>
+                <Typography variant="h6">Basic Specifications</Typography>
+              </Divider>
+            </Grid>
+            
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Size"
+                value={editingShip.size}
+                onChange={(e) => setEditingShip({ ...editingShip, size: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Cost (gp)"
+                type="number"
+                inputProps={{ min: 0 }}
+                value={editingShip.cost}
+                onChange={(e) => setEditingShip({ ...editingShip, cost: parseInt(e.target.value) || 0 })}
+              />
+            </Grid>
+            
+            <Grid item xs={4}>
+              <TextField
+                fullWidth
+                label="Max Speed"
+                type="number"
+                inputProps={{ min: 0 }}
+                value={editingShip.max_speed}
+                onChange={(e) => setEditingShip({ ...editingShip, max_speed: parseInt(e.target.value) || 0 })}
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <TextField
+                fullWidth
+                label="Acceleration"
+                type="number"
+                inputProps={{ min: 0 }}
+                value={editingShip.acceleration}
+                onChange={(e) => setEditingShip({ ...editingShip, acceleration: parseInt(e.target.value) || 0 })}
+              />
+            </Grid>
+            <Grid item xs={4}>
+              <TextField
+                fullWidth
+                label="Propulsion"
+                value={editingShip.propulsion}
+                onChange={(e) => setEditingShip({ ...editingShip, propulsion: e.target.value })}
+                placeholder="wind/muscle/magic"
+              />
+            </Grid>
+            
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Min Crew"
+                type="number"
+                inputProps={{ min: 0 }}
+                value={editingShip.min_crew}
+                onChange={(e) => setEditingShip({ ...editingShip, min_crew: parseInt(e.target.value) || 0 })}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Max Crew"
+                type="number"
+                inputProps={{ min: 0 }}
+                value={editingShip.max_crew}
+                onChange={(e) => setEditingShip({ ...editingShip, max_crew: parseInt(e.target.value) || 0 })}
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Divider sx={{ my: 1 }}>
+                <Typography variant="h6">Combat Statistics</Typography>
+              </Divider>
             </Grid>
             
             <Grid item xs={6}>

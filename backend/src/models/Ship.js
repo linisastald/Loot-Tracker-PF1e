@@ -60,11 +60,13 @@ exports.getWithCrew = async (shipId) => {
 exports.create = async (shipData) => {
   const query = `
     INSERT INTO ships (
-      name, location, is_squibbing, 
+      name, location, is_squibbing, ship_type, size, cost,
+      max_speed, acceleration, propulsion, min_crew, max_crew,
+      cargo_capacity, max_passengers, decks, weapons, ramming_damage,
       base_ac, touch_ac, hardness, max_hp, current_hp,
       cmb, cmd, saves, initiative
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
     RETURNING *
   `;
   
@@ -72,6 +74,19 @@ exports.create = async (shipData) => {
     shipData.name,
     shipData.location || null,
     shipData.is_squibbing || false,
+    shipData.ship_type || null,
+    shipData.size || 'Colossal',
+    shipData.cost || 0,
+    shipData.max_speed || 30,
+    shipData.acceleration || 15,
+    shipData.propulsion || null,
+    shipData.min_crew || 1,
+    shipData.max_crew || 10,
+    shipData.cargo_capacity || 10000,
+    shipData.max_passengers || 10,
+    shipData.decks || 1,
+    shipData.weapons || 0,
+    shipData.ramming_damage || '1d8',
     shipData.base_ac || 10,
     shipData.touch_ac || 10,
     shipData.hardness || 0,
@@ -96,11 +111,14 @@ exports.create = async (shipData) => {
 exports.update = async (id, shipData) => {
   const query = `
     UPDATE ships 
-    SET name = $1, location = $2, is_squibbing = $3, 
-        base_ac = $4, touch_ac = $5, hardness = $6, 
-        max_hp = $7, current_hp = $8, cmb = $9, cmd = $10, 
-        saves = $11, initiative = $12, updated_at = CURRENT_TIMESTAMP
-    WHERE id = $13
+    SET name = $1, location = $2, is_squibbing = $3, ship_type = $4,
+        size = $5, cost = $6, max_speed = $7, acceleration = $8,
+        propulsion = $9, min_crew = $10, max_crew = $11,
+        cargo_capacity = $12, max_passengers = $13, decks = $14,
+        weapons = $15, ramming_damage = $16, base_ac = $17, touch_ac = $18,
+        hardness = $19, max_hp = $20, current_hp = $21, cmb = $22, cmd = $23,
+        saves = $24, initiative = $25, updated_at = CURRENT_TIMESTAMP
+    WHERE id = $26
     RETURNING *
   `;
   
@@ -108,6 +126,19 @@ exports.update = async (id, shipData) => {
     shipData.name,
     shipData.location,
     shipData.is_squibbing,
+    shipData.ship_type,
+    shipData.size,
+    shipData.cost,
+    shipData.max_speed,
+    shipData.acceleration,
+    shipData.propulsion,
+    shipData.min_crew,
+    shipData.max_crew,
+    shipData.cargo_capacity,
+    shipData.max_passengers,
+    shipData.decks,
+    shipData.weapons,
+    shipData.ramming_damage,
     shipData.base_ac,
     shipData.touch_ac,
     shipData.hardness,
