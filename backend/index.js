@@ -13,6 +13,7 @@ const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
 const { initCronJobs } = require('./src/utils/cronJobs');
+const migrationRunner = require('./src/utils/migrationRunner');
 const { RATE_LIMIT, SERVER, COOKIES } = require('./src/config/constants');
 
 // Enhanced error handling
@@ -255,43 +256,62 @@ app.use('/api/crew', csrfProtection, crewRoutes);
 app.use(errorHandler);
 
 // Start server
-const server = app.listen(port, () => {
-  logger.info(`Server running on port ${port}`);
-  console.log(`Server running on port ${port}`);
-  
-  // Initialize cron jobs
-  initCronJobs();
-  logger.info('Cron jobs initialized');
-});
-
-// Graceful shutdown
-const gracefulShutdown = (signal) => {
-  logger.info(`${signal} signal received: closing HTTP server`);
-  
-  server.close(() => {
-    logger.info('HTTP server closed');
+const startServer = async () => {
+  try {
+    // Run database migrations
+    logger.info('Running database migrations...');
+    await migrationRunner.runMigrations();
+    logger.info('Database migrations completed');
     
-    // Close database connection
-    pool.end(() => {
-      logger.info('Database pool closed');
-      process.exit(0);
+    // Start the server
+    const server = app.listen(port, () => {
+      logger.info(`Server running on port ${port}`);
+      console.log(`Server running on port ${port}`);
+      
+      // Initialize cron jobs
+      initCronJobs();
+      logger.info('Cron jobs initialized');
     });
     
-    // Force exit after configured timeout if pool doesn't close
-    setTimeout(() => {
-      logger.error('Forced exit - database pool did not close in time');
-      process.exit(1);
-    }, SERVER.POOL_CLOSE_TIMEOUT);
-  });
-  
-  // Force exit after configured timeout if server doesn't close
-  setTimeout(() => {
-    logger.error('Forced exit - server did not close in time');
+    return server;
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    console.error('Failed to start server:', error);
     process.exit(1);
-  }, SERVER.GRACEFUL_SHUTDOWN_TIMEOUT);
+  }
 };
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// Start the application
+startServer().then(server => {
+  // Graceful shutdown
+  const gracefulShutdown = (signal) => {
+    logger.info(`${signal} signal received: closing HTTP server`);
+    
+    server.close(() => {
+      logger.info('HTTP server closed');
+      
+      // Close database connection
+      pool.end(() => {
+        logger.info('Database pool closed');
+        process.exit(0);
+      });
+      
+      // Force exit after configured timeout if pool doesn't close
+      setTimeout(() => {
+        logger.error('Forced exit - database pool did not close in time');
+        process.exit(1);
+      }, SERVER.POOL_CLOSE_TIMEOUT);
+    });
+    
+    // Force exit after configured timeout if server doesn't close
+    setTimeout(() => {
+      logger.error('Forced exit - server did not close in time');
+      process.exit(1);
+    }, SERVER.GRACEFUL_SHUTDOWN_TIMEOUT);
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+});
 
 module.exports = app;
