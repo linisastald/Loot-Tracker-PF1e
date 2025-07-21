@@ -10,8 +10,8 @@ import {
   DirectionsBoat as ShipIcon, People as PeopleIcon, LocationOn as LocationIcon,
   Warning as WarningIcon, Build as RepairIcon
 } from '@mui/icons-material';
-import shipService from '../services/shipService';
-import crewService from '../services/crewService';
+import shipService from '../../services/shipService';
+import crewService from '../../services/crewService';
 
 function TabPanel({ children, value, index, ...other }) {
   return (

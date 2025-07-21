@@ -10,8 +10,8 @@ import {
   Home as OutpostIcon, People as PeopleIcon, LocationOn as LocationIcon,
   DateRange as DateIcon
 } from '@mui/icons-material';
-import outpostService from '../services/outpostService';
-import crewService from '../services/crewService';
+import outpostService from '../../services/outpostService';
+import crewService from '../../services/crewService';
 
 function TabPanel({ children, value, index, ...other }) {
   return (

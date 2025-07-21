@@ -10,9 +10,9 @@ import {
   Person as PersonIcon, DirectionsBoat as ShipIcon, Home as OutpostIcon,
   LocationOn as LocationIcon, Warning as WarningIcon, MoveUp as MoveIcon
 } from '@mui/icons-material';
-import crewService from '../services/crewService';
-import shipService from '../services/shipService';
-import outpostService from '../services/outpostService';
+import crewService from '../../services/crewService';
+import shipService from '../../services/shipService';
+import outpostService from '../../services/outpostService';
 
 function TabPanel({ children, value, index, ...other }) {
   return (
