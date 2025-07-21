@@ -13,6 +13,7 @@ import {
 } from '@mui/icons-material';
 import shipService from '../../services/shipService';
 import crewService from '../../services/crewService';
+import ShipDialog from './ShipDialog';
 
 function TabPanel({ children, value, index, ...other }) {
   return (
@@ -55,7 +56,7 @@ const ShipManagement = () => {
     cargo_capacity: 10000,
     max_passengers: 10,
     decks: 1,
-    weapons: 0,
+    weapons: [],
     ramming_damage: '1d8',
     base_ac: 10,
     touch_ac: 10,
@@ -65,7 +66,20 @@ const ShipManagement = () => {
     cmb: 0,
     cmd: 10,
     saves: 0,
-    initiative: 0
+    initiative: 0,
+    // Pirate campaign fields
+    plunder: 0,
+    infamy: 0,
+    disrepute: 0,
+    // Additional ship details
+    sails_oars: '',
+    sailing_check_bonus: 0,
+    officers: [],
+    improvements: [],
+    cargo_manifest: { items: [], passengers: [], impositions: [] },
+    ship_notes: '',
+    captain_name: '',
+    flag_description: ''
   });
   const [damageRepairData, setDamageRepairData] = useState({
     amount: 0,
@@ -140,7 +154,7 @@ const ShipManagement = () => {
           cargo_capacity: typeData.cargo_capacity,
           max_passengers: typeData.max_passengers,
           decks: typeData.decks,
-          weapons: typeData.weapons,
+          weapons: typeData.typical_weapons || [],
           ramming_damage: typeData.ramming_damage,
           base_ac: typeData.base_ac,
           touch_ac: typeData.touch_ac,
@@ -150,7 +164,10 @@ const ShipManagement = () => {
           cmb: typeData.cmb,
           cmd: typeData.cmd,
           saves: typeData.saves,
-          initiative: typeData.initiative
+          initiative: typeData.initiative,
+          sails_oars: typeData.sails_oars || '',
+          sailing_check_bonus: typeData.sailing_check_bonus || 0,
+          improvements: typeData.typical_improvements || []
         }));
         
         setSuccess(`Auto-filled ship stats for ${typeData.name}`);
@@ -180,7 +197,7 @@ const ShipManagement = () => {
       cargo_capacity: 10000,
       max_passengers: 10,
       decks: 1,
-      weapons: 0,
+      weapons: [],
       ramming_damage: '1d8',
       base_ac: 10,
       touch_ac: 10,
@@ -190,7 +207,18 @@ const ShipManagement = () => {
       cmb: 0,
       cmd: 10,
       saves: 0,
-      initiative: 0
+      initiative: 0,
+      plunder: 0,
+      infamy: 0,
+      disrepute: 0,
+      sails_oars: '',
+      sailing_check_bonus: 0,
+      officers: [],
+      improvements: [],
+      cargo_manifest: { items: [], passengers: [], impositions: [] },
+      ship_notes: '',
+      captain_name: '',
+      flag_description: ''
     });
     setSelectedShip(null);
     setShipDialogOpen(true);
@@ -214,7 +242,7 @@ const ShipManagement = () => {
       cargo_capacity: ship.cargo_capacity || 10000,
       max_passengers: ship.max_passengers || 10,
       decks: ship.decks || 1,
-      weapons: ship.weapons || 0,
+      weapons: ship.weapons || [],
       ramming_damage: ship.ramming_damage || '1d8',
       base_ac: ship.base_ac || 10,
       touch_ac: ship.touch_ac || 10,
@@ -224,7 +252,18 @@ const ShipManagement = () => {
       cmb: ship.cmb || 0,
       cmd: ship.cmd || 10,
       saves: ship.saves || 0,
-      initiative: ship.initiative || 0
+      initiative: ship.initiative || 0,
+      plunder: ship.plunder || 0,
+      infamy: ship.infamy || 0,
+      disrepute: ship.disrepute || 0,
+      sails_oars: ship.sails_oars || '',
+      sailing_check_bonus: ship.sailing_check_bonus || 0,
+      officers: ship.officers || [],
+      improvements: ship.improvements || [],
+      cargo_manifest: ship.cargo_manifest || { items: [], passengers: [], impositions: [] },
+      ship_notes: ship.ship_notes || '',
+      captain_name: ship.captain_name || '',
+      flag_description: ship.flag_description || ''
     });
     setSelectedShip(ship);
     setShipDialogOpen(true);
@@ -271,6 +310,89 @@ const ShipManagement = () => {
     setSelectedShip(ship);
     setTabValue(1);
     await fetchShipCrew(ship.id);
+  };
+
+  const handleAddWeapon = () => {
+    if (editingShip.weapons.length >= 4) {
+      setError('Maximum of 4 weapons allowed per ship');
+      return;
+    }
+    
+    const newWeapon = {
+      name: '',
+      type: 'direct-fire',
+      range: '',
+      crew: 1,
+      aim: 2,
+      load: 3,
+      damage: '',
+      ammunition: '',
+      critical: 'x2',
+      attack_bonus: '+0',
+      mount: 'port'
+    };
+    
+    setEditingShip(prev => ({
+      ...prev,
+      weapons: [...prev.weapons, newWeapon]
+    }));
+  };
+
+  const handleRemoveWeapon = (index) => {
+    setEditingShip(prev => ({
+      ...prev,
+      weapons: prev.weapons.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleUpdateWeapon = (index, field, value) => {
+    setEditingShip(prev => ({
+      ...prev,
+      weapons: prev.weapons.map((weapon, i) => 
+        i === index ? { ...weapon, [field]: value } : weapon
+      )
+    }));
+  };
+
+  const handleAddOfficer = () => {
+    const newOfficer = { position: '', name: '' };
+    setEditingShip(prev => ({
+      ...prev,
+      officers: [...prev.officers, newOfficer]
+    }));
+  };
+
+  const handleRemoveOfficer = (index) => {
+    setEditingShip(prev => ({
+      ...prev,
+      officers: prev.officers.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleUpdateOfficer = (index, field, value) => {
+    setEditingShip(prev => ({
+      ...prev,
+      officers: prev.officers.map((officer, i) => 
+        i === index ? { ...officer, [field]: value } : officer
+      )
+    }));
+  };
+
+  const handleAddImprovement = () => {
+    const improvement = prompt('Enter ship improvement:');
+    if (improvement && improvement.trim()) {
+      setEditingShip(prev => ({
+        ...prev,
+        improvements: [...prev.improvements, improvement.trim()]
+      }));
+    }
+  };
+
+  const handleRemoveImprovement = (index) => {
+    setEditingShip(prev => ({
+      ...prev,
+      improvements: prev.improvements.filter((_, i) => i !== index)
+    }));
   };
 
   const handleDamageRepairShip = (ship, type) => {
@@ -599,262 +721,25 @@ const ShipManagement = () => {
       </Paper>
 
       {/* Ship Dialog */}
-      <Dialog open={shipDialogOpen} onClose={() => setShipDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {selectedShip ? 'Edit Ship' : 'Create New Ship'}
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Ship Name"
-                value={editingShip.name}
-                onChange={(e) => setEditingShip({ ...editingShip, name: e.target.value })}
-                required
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Autocomplete
-                options={shipTypes}
-                value={shipTypes.find(type => type.key === editingShip.ship_type) || null}
-                onChange={(event, newValue) => handleShipTypeChange(newValue)}
-                getOptionLabel={(option) => option.name}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="Ship Type (Auto-fills stats)"
-                    helperText="Select a ship type to auto-fill combat stats and specifications"
-                  />
-                )}
-                renderOption={(props, option) => (
-                  <Box component="li" {...props}>
-                    <Box>
-                      <Typography variant="body1">{option.name}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {option.size} • {option.cost} gp
-                      </Typography>
-                    </Box>
-                  </Box>
-                )}
-                loading={loadingShipTypes}
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Location"
-                value={editingShip.location}
-                onChange={(e) => setEditingShip({ ...editingShip, location: e.target.value })}
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Divider sx={{ my: 1 }}>
-                <Typography variant="h6">Basic Specifications</Typography>
-              </Divider>
-            </Grid>
-            
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Size"
-                value={editingShip.size}
-                onChange={(e) => setEditingShip({ ...editingShip, size: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Cost (gp)"
-                type="number"
-                inputProps={{ min: 0 }}
-                value={editingShip.cost}
-                onChange={(e) => setEditingShip({ ...editingShip, cost: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            
-            <Grid item xs={4}>
-              <TextField
-                fullWidth
-                label="Max Speed"
-                type="number"
-                inputProps={{ min: 0 }}
-                value={editingShip.max_speed}
-                onChange={(e) => setEditingShip({ ...editingShip, max_speed: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <TextField
-                fullWidth
-                label="Acceleration"
-                type="number"
-                inputProps={{ min: 0 }}
-                value={editingShip.acceleration}
-                onChange={(e) => setEditingShip({ ...editingShip, acceleration: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            <Grid item xs={4}>
-              <TextField
-                fullWidth
-                label="Propulsion"
-                value={editingShip.propulsion}
-                onChange={(e) => setEditingShip({ ...editingShip, propulsion: e.target.value })}
-                placeholder="wind/muscle/magic"
-              />
-            </Grid>
-            
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Min Crew"
-                type="number"
-                inputProps={{ min: 0 }}
-                value={editingShip.min_crew}
-                onChange={(e) => setEditingShip({ ...editingShip, min_crew: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Max Crew"
-                type="number"
-                inputProps={{ min: 0 }}
-                value={editingShip.max_crew}
-                onChange={(e) => setEditingShip({ ...editingShip, max_crew: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Divider sx={{ my: 1 }}>
-                <Typography variant="h6">Combat Statistics</Typography>
-              </Divider>
-            </Grid>
-            
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Max HP"
-                type="number"
-                inputProps={{ min: 1, max: 9999 }}
-                value={editingShip.max_hp}
-                onChange={(e) => {
-                  const maxHp = parseInt(e.target.value) || 100;
-                  setEditingShip({ 
-                    ...editingShip, 
-                    max_hp: maxHp,
-                    current_hp: Math.min(editingShip.current_hp, maxHp)
-                  });
-                }}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Current HP"
-                type="number"
-                inputProps={{ min: 0, max: editingShip.max_hp }}
-                value={editingShip.current_hp}
-                onChange={(e) => setEditingShip({ ...editingShip, current_hp: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Base AC"
-                type="number"
-                inputProps={{ min: 0, max: 50 }}
-                value={editingShip.base_ac}
-                onChange={(e) => setEditingShip({ ...editingShip, base_ac: parseInt(e.target.value) || 10 })}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Touch AC"
-                type="number"
-                inputProps={{ min: 0, max: 50 }}
-                value={editingShip.touch_ac}
-                onChange={(e) => setEditingShip({ ...editingShip, touch_ac: parseInt(e.target.value) || 10 })}
-              />
-            </Grid>
-            
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Hardness"
-                type="number"
-                inputProps={{ min: 0, max: 50 }}
-                value={editingShip.hardness}
-                onChange={(e) => setEditingShip({ ...editingShip, hardness: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Initiative"
-                type="number"
-                inputProps={{ min: -20, max: 20 }}
-                value={editingShip.initiative}
-                onChange={(e) => setEditingShip({ ...editingShip, initiative: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="CMB"
-                type="number"
-                inputProps={{ min: -20, max: 50 }}
-                value={editingShip.cmb}
-                onChange={(e) => setEditingShip({ ...editingShip, cmb: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="CMD"
-                type="number"
-                inputProps={{ min: 0, max: 100 }}
-                value={editingShip.cmd}
-                onChange={(e) => setEditingShip({ ...editingShip, cmd: parseInt(e.target.value) || 10 })}
-              />
-            </Grid>
-            
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Saves"
-                type="number"
-                inputProps={{ min: -10, max: 30 }}
-                value={editingShip.saves}
-                onChange={(e) => setEditingShip({ ...editingShip, saves: parseInt(e.target.value) || 0 })}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={editingShip.is_squibbing}
-                    onChange={(e) => setEditingShip({ ...editingShip, is_squibbing: e.target.checked })}
-                  />
-                }
-                label="Squibbing"
-                sx={{ mt: 2 }}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShipDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSaveShip} variant="contained">
-            {selectedShip ? 'Update' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ShipDialog
+        open={shipDialogOpen}
+        onClose={() => setShipDialogOpen(false)}
+        selectedShip={selectedShip}
+        editingShip={editingShip}
+        setEditingShip={setEditingShip}
+        shipTypes={shipTypes}
+        loadingShipTypes={loadingShipTypes}
+        onShipTypeChange={handleShipTypeChange}
+        onSave={handleSaveShip}
+        onAddWeapon={handleAddWeapon}
+        onRemoveWeapon={handleRemoveWeapon}
+        onUpdateWeapon={handleUpdateWeapon}
+        onAddOfficer={handleAddOfficer}
+        onRemoveOfficer={handleRemoveOfficer}
+        onUpdateOfficer={handleUpdateOfficer}
+        onAddImprovement={handleAddImprovement}
+        onRemoveImprovement={handleRemoveImprovement}
+      />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>

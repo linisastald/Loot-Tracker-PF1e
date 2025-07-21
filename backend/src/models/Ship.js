@@ -64,9 +64,12 @@ exports.create = async (shipData) => {
       max_speed, acceleration, propulsion, min_crew, max_crew,
       cargo_capacity, max_passengers, decks, weapons, ramming_damage,
       base_ac, touch_ac, hardness, max_hp, current_hp,
-      cmb, cmd, saves, initiative
+      cmb, cmd, saves, initiative,
+      plunder, infamy, disrepute, sails_oars, sailing_check_bonus,
+      officers, improvements, cargo_manifest,
+      ship_notes, captain_name, flag_description
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
     RETURNING *
   `;
   
@@ -85,7 +88,7 @@ exports.create = async (shipData) => {
     shipData.cargo_capacity || 10000,
     shipData.max_passengers || 10,
     shipData.decks || 1,
-    shipData.weapons || 0,
+    JSON.stringify(shipData.weapons || []),
     shipData.ramming_damage || '1d8',
     shipData.base_ac || 10,
     shipData.touch_ac || 10,
@@ -95,7 +98,18 @@ exports.create = async (shipData) => {
     shipData.cmb || 0,
     shipData.cmd || 10,
     shipData.saves || 0,
-    shipData.initiative || 0
+    shipData.initiative || 0,
+    shipData.plunder || 0,
+    shipData.infamy || 0,
+    shipData.disrepute || 0,
+    shipData.sails_oars || null,
+    shipData.sailing_check_bonus || 0,
+    JSON.stringify(shipData.officers || []),
+    JSON.stringify(shipData.improvements || []),
+    JSON.stringify(shipData.cargo_manifest || {items: [], passengers: [], impositions: []}),
+    shipData.ship_notes || null,
+    shipData.captain_name || null,
+    shipData.flag_description || null
   ];
   
   const result = await dbUtils.executeQuery(query, values);
@@ -117,8 +131,11 @@ exports.update = async (id, shipData) => {
         cargo_capacity = $12, max_passengers = $13, decks = $14,
         weapons = $15, ramming_damage = $16, base_ac = $17, touch_ac = $18,
         hardness = $19, max_hp = $20, current_hp = $21, cmb = $22, cmd = $23,
-        saves = $24, initiative = $25, updated_at = CURRENT_TIMESTAMP
-    WHERE id = $26
+        saves = $24, initiative = $25, plunder = $26, infamy = $27, disrepute = $28,
+        sails_oars = $29, sailing_check_bonus = $30, officers = $31, improvements = $32,
+        cargo_manifest = $33, ship_notes = $34, captain_name = $35, flag_description = $36,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = $37
     RETURNING *
   `;
   
@@ -137,7 +154,7 @@ exports.update = async (id, shipData) => {
     shipData.cargo_capacity,
     shipData.max_passengers,
     shipData.decks,
-    shipData.weapons,
+    JSON.stringify(shipData.weapons || []),
     shipData.ramming_damage,
     shipData.base_ac,
     shipData.touch_ac,
@@ -148,6 +165,17 @@ exports.update = async (id, shipData) => {
     shipData.cmd,
     shipData.saves,
     shipData.initiative,
+    shipData.plunder || 0,
+    shipData.infamy || 0,
+    shipData.disrepute || 0,
+    shipData.sails_oars,
+    shipData.sailing_check_bonus || 0,
+    JSON.stringify(shipData.officers || []),
+    JSON.stringify(shipData.improvements || []),
+    JSON.stringify(shipData.cargo_manifest || {items: [], passengers: [], impositions: []}),
+    shipData.ship_notes,
+    shipData.captain_name,
+    shipData.flag_description,
     id
   ];
   

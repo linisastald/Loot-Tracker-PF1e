@@ -23,7 +23,11 @@ const SHIP_TYPES = {
     max_passengers: 4,
     decks: 1,
     weapons: 0,
-    ramming_damage: "1d8"
+    ramming_damage: "1d8",
+    sails_oars: "2 oars",
+    sailing_check_bonus: 0,
+    typical_weapons: [],
+    typical_improvements: []
   },
   ships_boat: {
     name: "Ship's Boat",
@@ -115,7 +119,38 @@ const SHIP_TYPES = {
     max_passengers: 200,
     decks: 3,
     weapons: 20,
-    ramming_damage: "8d8"
+    ramming_damage: "8d8",
+    sails_oars: "90 squares of sails (3 masts)",
+    sailing_check_bonus: 0,
+    typical_weapons: [
+      {
+        name: "Light Ballista",
+        type: "direct-fire",
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+6",
+        mount: "port"
+      },
+      {
+        name: "Light Ballista",
+        type: "direct-fire", 
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+6",
+        mount: "starboard"
+      }
+    ],
+    typical_improvements: ["Reinforced Hull", "Improved Rigging"]
   },
   warship: {
     name: "Warship",
@@ -138,7 +173,38 @@ const SHIP_TYPES = {
     max_passengers: 160,
     decks: 2,
     weapons: 20,
-    ramming_damage: "10d8"
+    ramming_damage: "10d8",
+    sails_oars: "160 squares of sails (3 masts), 60 oars",
+    sailing_check_bonus: 1,
+    typical_weapons: [
+      {
+        name: "Heavy Ballista",
+        type: "direct-fire",
+        range: "180 ft",
+        crew: 3,
+        aim: 2,
+        load: 3,
+        damage: "4d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+8",
+        mount: "fore"
+      },
+      {
+        name: "Standard Catapult",
+        type: "indirect-fire",
+        range: "300 ft",
+        crew: 3,
+        aim: 3,
+        load: 3,
+        damage: "6d6",
+        ammunition: "stone",
+        critical: "x2",
+        attack_bonus: "+7",
+        mount: "aft"
+      }
+    ],
+    typical_improvements: ["Ram", "Armored Hull", "Improved Steering"]
   },
   galley: {
     name: "Galley",
