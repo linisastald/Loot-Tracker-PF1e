@@ -84,7 +84,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
           api.get('/loot/unprocessed-count'),
           api.get('/settings/campaign-name'),
           api.get('/auth/status'),
-          api.get('/settings/infamy_system_enabled')
+          api.get('/settings/infamy-system')
         ]);
         
         if (isMounted) {
