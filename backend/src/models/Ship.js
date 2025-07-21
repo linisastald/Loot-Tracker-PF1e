@@ -59,8 +59,12 @@ exports.getWithCrew = async (shipId) => {
  */
 exports.create = async (shipData) => {
   const query = `
-    INSERT INTO ships (name, location, is_squibbing, damage)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO ships (
+      name, location, is_squibbing, 
+      base_ac, touch_ac, hardness, max_hp, current_hp,
+      cmb, cmd, saves, initiative
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *
   `;
   
@@ -68,7 +72,15 @@ exports.create = async (shipData) => {
     shipData.name,
     shipData.location || null,
     shipData.is_squibbing || false,
-    shipData.damage || 0
+    shipData.base_ac || 10,
+    shipData.touch_ac || 10,
+    shipData.hardness || 0,
+    shipData.max_hp || 100,
+    shipData.current_hp || shipData.max_hp || 100,
+    shipData.cmb || 0,
+    shipData.cmd || 10,
+    shipData.saves || 0,
+    shipData.initiative || 0
   ];
   
   const result = await dbUtils.executeQuery(query, values);
@@ -84,8 +96,11 @@ exports.create = async (shipData) => {
 exports.update = async (id, shipData) => {
   const query = `
     UPDATE ships 
-    SET name = $1, location = $2, is_squibbing = $3, damage = $4, updated_at = CURRENT_TIMESTAMP
-    WHERE id = $5
+    SET name = $1, location = $2, is_squibbing = $3, 
+        base_ac = $4, touch_ac = $5, hardness = $6, 
+        max_hp = $7, current_hp = $8, cmb = $9, cmd = $10, 
+        saves = $11, initiative = $12, updated_at = CURRENT_TIMESTAMP
+    WHERE id = $13
     RETURNING *
   `;
   
@@ -93,7 +108,15 @@ exports.update = async (id, shipData) => {
     shipData.name,
     shipData.location,
     shipData.is_squibbing,
-    shipData.damage,
+    shipData.base_ac,
+    shipData.touch_ac,
+    shipData.hardness,
+    shipData.max_hp,
+    shipData.current_hp,
+    shipData.cmb,
+    shipData.cmd,
+    shipData.saves,
+    shipData.initiative,
     id
   ];
   
@@ -121,6 +144,71 @@ exports.findById = async (id) => {
   const query = 'SELECT * FROM ships WHERE id = $1';
   const result = await dbUtils.executeQuery(query, [id]);
   return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Apply damage to a ship
+ * @param {number} id 
+ * @param {number} damageAmount 
+ * @return {Promise<Object|null>} Updated ship
+ */
+exports.applyDamage = async (id, damageAmount) => {
+  const query = `
+    UPDATE ships 
+    SET current_hp = GREATEST(0, current_hp - $1), updated_at = CURRENT_TIMESTAMP
+    WHERE id = $2
+    RETURNING *
+  `;
+  
+  const result = await dbUtils.executeQuery(query, [damageAmount, id]);
+  return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Repair a ship
+ * @param {number} id 
+ * @param {number} repairAmount 
+ * @return {Promise<Object|null>} Updated ship
+ */
+exports.repairShip = async (id, repairAmount) => {
+  const query = `
+    UPDATE ships 
+    SET current_hp = LEAST(max_hp, current_hp + $1), updated_at = CURRENT_TIMESTAMP
+    WHERE id = $2
+    RETURNING *
+  `;
+  
+  const result = await dbUtils.executeQuery(query, [repairAmount, id]);
+  return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Get ship status based on current HP
+ * @param {Object} ship 
+ * @return {string} Ship status
+ */
+exports.getShipStatus = (ship) => {
+  if (!ship || ship.current_hp === undefined || ship.max_hp === undefined) {
+    return 'Unknown';
+  }
+  
+  if (ship.current_hp === 0) {
+    return 'Sunk';
+  }
+  
+  const hpPercentage = (ship.current_hp / ship.max_hp) * 100;
+  
+  if (hpPercentage === 100) {
+    return 'Pristine';
+  } else if (hpPercentage >= 75) {
+    return 'Minor Damage';
+  } else if (hpPercentage >= 50) {
+    return 'Moderate Damage';
+  } else if (hpPercentage >= 25) {
+    return 'Heavy Damage';
+  } else {
+    return 'Critical Damage';
+  }
 };
 
 module.exports = exports;

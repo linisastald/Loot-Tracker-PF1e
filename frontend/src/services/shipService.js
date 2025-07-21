@@ -25,6 +25,16 @@ const shipService = {
   // Delete ship
   deleteShip: async (id) => {
     return await api.delete(`/ships/${id}`);
+  },
+
+  // Apply damage to ship
+  applyDamage: async (id, damage) => {
+    return await api.post(`/ships/${id}/damage`, { damage });
+  },
+
+  // Repair ship
+  repairShip: async (id, repair) => {
+    return await api.post(`/ships/${id}/repair`, { repair });
   }
 };
 

@@ -8,7 +8,8 @@ import {
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, 
   DirectionsBoat as ShipIcon, People as PeopleIcon, LocationOn as LocationIcon,
-  Warning as WarningIcon, Build as RepairIcon
+  Warning as WarningIcon, Build as RepairIcon, LocalHospital as HealIcon,
+  Security as ShieldIcon, Speed as InitiativeIcon
 } from '@mui/icons-material';
 import shipService from '../../services/shipService';
 import crewService from '../../services/crewService';
@@ -33,12 +34,25 @@ const ShipManagement = () => {
   // Dialog states
   const [shipDialogOpen, setShipDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [damageRepairDialogOpen, setDamageRepairDialogOpen] = useState(false);
   const [selectedShip, setSelectedShip] = useState(null);
   const [editingShip, setEditingShip] = useState({
     name: '',
     location: '',
     is_squibbing: false,
-    damage: 0
+    base_ac: 10,
+    touch_ac: 10,
+    hardness: 0,
+    max_hp: 100,
+    current_hp: 100,
+    cmb: 0,
+    cmd: 10,
+    saves: 0,
+    initiative: 0
+  });
+  const [damageRepairData, setDamageRepairData] = useState({
+    amount: 0,
+    type: 'damage' // 'damage' or 'repair'
   });
 
   // Crew data for detail view
@@ -77,7 +91,20 @@ const ShipManagement = () => {
   };
 
   const handleCreateShip = () => {
-    setEditingShip({ name: '', location: '', is_squibbing: false, damage: 0 });
+    setEditingShip({
+      name: '',
+      location: '',
+      is_squibbing: false,
+      base_ac: 10,
+      touch_ac: 10,
+      hardness: 0,
+      max_hp: 100,
+      current_hp: 100,
+      cmb: 0,
+      cmd: 10,
+      saves: 0,
+      initiative: 0
+    });
     setSelectedShip(null);
     setShipDialogOpen(true);
   };
@@ -87,7 +114,15 @@ const ShipManagement = () => {
       name: ship.name,
       location: ship.location || '',
       is_squibbing: ship.is_squibbing || false,
-      damage: ship.damage || 0
+      base_ac: ship.base_ac || 10,
+      touch_ac: ship.touch_ac || 10,
+      hardness: ship.hardness || 0,
+      max_hp: ship.max_hp || 100,
+      current_hp: ship.current_hp || 100,
+      cmb: ship.cmb || 0,
+      cmd: ship.cmd || 10,
+      saves: ship.saves || 0,
+      initiative: ship.initiative || 0
     });
     setSelectedShip(ship);
     setShipDialogOpen(true);
@@ -136,17 +171,61 @@ const ShipManagement = () => {
     await fetchShipCrew(ship.id);
   };
 
-  const getDamageColor = (damage) => {
-    if (damage === 0) return 'success';
-    if (damage <= 25) return 'warning';
+  const handleDamageRepairShip = (ship, type) => {
+    setSelectedShip(ship);
+    setDamageRepairData({ amount: 0, type });
+    setDamageRepairDialogOpen(true);
+  };
+
+  const handleApplyDamageRepair = async () => {
+    try {
+      if (!damageRepairData.amount || damageRepairData.amount <= 0) {
+        setError('Amount must be a positive number');
+        return;
+      }
+
+      let response;
+      if (damageRepairData.type === 'damage') {
+        response = await shipService.applyDamage(selectedShip.id, damageRepairData.amount);
+      } else {
+        response = await shipService.repairShip(selectedShip.id, damageRepairData.amount);
+      }
+
+      setSuccess(response.data.message || `${damageRepairData.type === 'damage' ? 'Damage applied' : 'Ship repaired'} successfully`);
+      setDamageRepairDialogOpen(false);
+      fetchShips();
+      setError('');
+    } catch (error) {
+      setError(`Failed to ${damageRepairData.type === 'damage' ? 'apply damage' : 'repair ship'}`);
+      console.error(`Error ${damageRepairData.type === 'damage' ? 'applying damage' : 'repairing ship'}:`, error);
+    }
+  };
+
+  const getShipStatusColor = (ship) => {
+    if (!ship.current_hp || !ship.max_hp) return 'default';
+    
+    if (ship.current_hp === 0) return 'error';
+    
+    const hpPercentage = (ship.current_hp / ship.max_hp) * 100;
+    
+    if (hpPercentage === 100) return 'success';
+    if (hpPercentage >= 75) return 'success';
+    if (hpPercentage >= 50) return 'warning';
+    if (hpPercentage >= 25) return 'warning';
     return 'error';
   };
 
-  const getDamageLabel = (damage) => {
-    if (damage === 0) return 'No Damage';
-    if (damage <= 25) return 'Light Damage';
-    if (damage <= 50) return 'Moderate Damage';
-    if (damage <= 75) return 'Heavy Damage';
+  const getShipStatusLabel = (ship) => {
+    if (!ship.current_hp || !ship.max_hp) return 'Unknown';
+    
+    if (ship.current_hp === 0) return 'Sunk';
+    
+    const hpPercentage = (ship.current_hp / ship.max_hp) * 100;
+    
+    if (hpPercentage === 100) return 'Pristine';
+    if (hpPercentage >= 75) return 'Minor Damage';
+    if (hpPercentage >= 50) return 'Moderate Damage';
+    if (hpPercentage >= 25) return 'Heavy Damage';
     return 'Critical Damage';
   };
 
@@ -193,7 +272,8 @@ const ShipManagement = () => {
                   <TableCell>Location</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Crew</TableCell>
-                  <TableCell>Damage</TableCell>
+                  <TableCell>HP</TableCell>
+                  <TableCell>Combat Stats</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -234,12 +314,23 @@ const ShipManagement = () => {
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        label={getDamageLabel(ship.damage)}
-                        color={getDamageColor(ship.damage)}
-                        size="small"
-                        icon={ship.damage > 0 ? <RepairIcon /> : undefined}
-                      />
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Typography variant="body2">
+                          {ship.current_hp || 0}/{ship.max_hp || 100}
+                        </Typography>
+                        <Chip
+                          label={getShipStatusLabel(ship)}
+                          color={getShipStatusColor(ship)}
+                          size="small"
+                          icon={ship.current_hp === 0 ? <WarningIcon /> : undefined}
+                        />
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Chip label={`AC ${ship.base_ac || 10}`} size="small" icon={<ShieldIcon />} />
+                        <Chip label={`Init ${ship.initiative >= 0 ? '+' : ''}${ship.initiative || 0}`} size="small" icon={<InitiativeIcon />} />
+                      </Box>
                     </TableCell>
                     <TableCell>
                       <IconButton onClick={() => handleViewShipDetails(ship)} title="View Details">
@@ -247,6 +338,22 @@ const ShipManagement = () => {
                       </IconButton>
                       <IconButton onClick={() => handleEditShip(ship)} title="Edit">
                         <EditIcon />
+                      </IconButton>
+                      <IconButton 
+                        onClick={() => handleDamageRepairShip(ship, 'damage')} 
+                        title="Apply Damage"
+                        color="warning"
+                        disabled={ship.current_hp === 0}
+                      >
+                        <WarningIcon />
+                      </IconButton>
+                      <IconButton 
+                        onClick={() => handleDamageRepairShip(ship, 'repair')} 
+                        title="Repair Ship"
+                        color="success"
+                        disabled={ship.current_hp >= ship.max_hp}
+                      >
+                        <HealIcon />
                       </IconButton>
                       <IconButton 
                         onClick={() => { setSelectedShip(ship); setDeleteDialogOpen(true); }}
@@ -284,16 +391,70 @@ const ShipManagement = () => {
                     <Typography color="text.secondary" gutterBottom>
                       Location: {selectedShip.location || 'Unknown'}
                     </Typography>
-                    <Box sx={{ mt: 2 }}>
+                    
+                    <Box sx={{ mt: 2, mb: 2 }}>
                       <Chip
                         label={selectedShip.is_squibbing ? 'Squibbing' : 'Active'}
                         color={selectedShip.is_squibbing ? 'warning' : 'success'}
                         sx={{ mr: 1 }}
                       />
                       <Chip
-                        label={getDamageLabel(selectedShip.damage)}
-                        color={getDamageColor(selectedShip.damage)}
+                        label={getShipStatusLabel(selectedShip)}
+                        color={getShipStatusColor(selectedShip)}
                       />
+                    </Box>
+
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Hit Points</Typography>
+                        <Typography variant="h6">
+                          {selectedShip.current_hp || 0} / {selectedShip.max_hp || 100}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Armor Class</Typography>
+                        <Typography variant="body2">
+                          Base AC: {selectedShip.base_ac || 10} | Touch AC: {selectedShip.touch_ac || 10}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Combat Maneuvers</Typography>
+                        <Typography variant="body2">
+                          CMB: {selectedShip.cmb >= 0 ? '+' : ''}{selectedShip.cmb || 0} | CMD: {selectedShip.cmd || 10}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Other Stats</Typography>
+                        <Typography variant="body2">
+                          Saves: {selectedShip.saves >= 0 ? '+' : ''}{selectedShip.saves || 0} | Initiative: {selectedShip.initiative >= 0 ? '+' : ''}{selectedShip.initiative || 0}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Hardness</Typography>
+                        <Typography variant="body2">{selectedShip.hardness || 0}</Typography>
+                      </Grid>
+                    </Grid>
+                    
+                    <Box sx={{ mt: 2 }}>
+                      <Button
+                        variant="outlined"
+                        color="warning"
+                        startIcon={<WarningIcon />}
+                        onClick={() => handleDamageRepairShip(selectedShip, 'damage')}
+                        disabled={selectedShip.current_hp === 0}
+                        sx={{ mr: 1 }}
+                      >
+                        Apply Damage
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        color="success"
+                        startIcon={<HealIcon />}
+                        onClick={() => handleDamageRepairShip(selectedShip, 'repair')}
+                        disabled={selectedShip.current_hp >= selectedShip.max_hp}
+                      >
+                        Repair Ship
+                      </Button>
                     </Box>
                   </CardContent>
                 </Card>
@@ -359,14 +520,110 @@ const ShipManagement = () => {
                 onChange={(e) => setEditingShip({ ...editingShip, location: e.target.value })}
               />
             </Grid>
+            
+            <Grid item xs={12}>
+              <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>Combat Statistics</Typography>
+            </Grid>
+            
             <Grid item xs={6}>
               <TextField
                 fullWidth
-                label="Damage"
+                label="Max HP"
+                type="number"
+                inputProps={{ min: 1, max: 9999 }}
+                value={editingShip.max_hp}
+                onChange={(e) => {
+                  const maxHp = parseInt(e.target.value) || 100;
+                  setEditingShip({ 
+                    ...editingShip, 
+                    max_hp: maxHp,
+                    current_hp: Math.min(editingShip.current_hp, maxHp)
+                  });
+                }}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Current HP"
+                type="number"
+                inputProps={{ min: 0, max: editingShip.max_hp }}
+                value={editingShip.current_hp}
+                onChange={(e) => setEditingShip({ ...editingShip, current_hp: parseInt(e.target.value) || 0 })}
+              />
+            </Grid>
+            
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Base AC"
+                type="number"
+                inputProps={{ min: 0, max: 50 }}
+                value={editingShip.base_ac}
+                onChange={(e) => setEditingShip({ ...editingShip, base_ac: parseInt(e.target.value) || 10 })}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Touch AC"
+                type="number"
+                inputProps={{ min: 0, max: 50 }}
+                value={editingShip.touch_ac}
+                onChange={(e) => setEditingShip({ ...editingShip, touch_ac: parseInt(e.target.value) || 10 })}
+              />
+            </Grid>
+            
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Hardness"
+                type="number"
+                inputProps={{ min: 0, max: 50 }}
+                value={editingShip.hardness}
+                onChange={(e) => setEditingShip({ ...editingShip, hardness: parseInt(e.target.value) || 0 })}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Initiative"
+                type="number"
+                inputProps={{ min: -20, max: 20 }}
+                value={editingShip.initiative}
+                onChange={(e) => setEditingShip({ ...editingShip, initiative: parseInt(e.target.value) || 0 })}
+              />
+            </Grid>
+            
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="CMB"
+                type="number"
+                inputProps={{ min: -20, max: 50 }}
+                value={editingShip.cmb}
+                onChange={(e) => setEditingShip({ ...editingShip, cmb: parseInt(e.target.value) || 0 })}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="CMD"
                 type="number"
                 inputProps={{ min: 0, max: 100 }}
-                value={editingShip.damage}
-                onChange={(e) => setEditingShip({ ...editingShip, damage: parseInt(e.target.value) || 0 })}
+                value={editingShip.cmd}
+                onChange={(e) => setEditingShip({ ...editingShip, cmd: parseInt(e.target.value) || 10 })}
+              />
+            </Grid>
+            
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Saves"
+                type="number"
+                inputProps={{ min: -10, max: 30 }}
+                value={editingShip.saves}
+                onChange={(e) => setEditingShip({ ...editingShip, saves: parseInt(e.target.value) || 0 })}
               />
             </Grid>
             <Grid item xs={6}>
@@ -403,6 +660,74 @@ const ShipManagement = () => {
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleDeleteShip} color="error" variant="contained">
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Damage/Repair Dialog */}
+      <Dialog open={damageRepairDialogOpen} onClose={() => setDamageRepairDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {damageRepairData.type === 'damage' ? 'Apply Damage' : 'Repair Ship'} - {selectedShip?.name}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Current HP: {selectedShip?.current_hp || 0} / {selectedShip?.max_hp || 100}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Status: {selectedShip ? getShipStatusLabel(selectedShip) : 'Unknown'}
+            </Typography>
+            
+            <TextField
+              fullWidth
+              label={damageRepairData.type === 'damage' ? 'Damage Amount' : 'Repair Amount'}
+              type="number"
+              inputProps={{ 
+                min: 1, 
+                max: damageRepairData.type === 'damage' 
+                  ? selectedShip?.current_hp || 0
+                  : (selectedShip?.max_hp || 100) - (selectedShip?.current_hp || 0)
+              }}
+              value={damageRepairData.amount}
+              onChange={(e) => setDamageRepairData({ 
+                ...damageRepairData, 
+                amount: parseInt(e.target.value) || 0 
+              })}
+              helperText={
+                damageRepairData.type === 'damage' 
+                  ? `Maximum damage: ${selectedShip?.current_hp || 0}`
+                  : `Maximum repair: ${(selectedShip?.max_hp || 100) - (selectedShip?.current_hp || 0)}`
+              }
+              sx={{ mt: 2 }}
+            />
+            
+            {damageRepairData.amount > 0 && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <Typography variant="subtitle2">Preview:</Typography>
+                <Typography variant="body2">
+                  {damageRepairData.type === 'damage' 
+                    ? `New HP: ${Math.max(0, (selectedShip?.current_hp || 0) - damageRepairData.amount)}`
+                    : `New HP: ${Math.min((selectedShip?.max_hp || 100), (selectedShip?.current_hp || 0) + damageRepairData.amount)}`
+                  } / {selectedShip?.max_hp || 100}
+                </Typography>
+                {damageRepairData.type === 'damage' && (selectedShip?.current_hp || 0) - damageRepairData.amount <= 0 && (
+                  <Typography variant="body2" color="error">
+                    ⚠️ This will sink the ship!
+                  </Typography>
+                )}
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDamageRepairDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleApplyDamageRepair} 
+            variant="contained"
+            color={damageRepairData.type === 'damage' ? 'warning' : 'success'}
+            disabled={!damageRepairData.amount || damageRepairData.amount <= 0}
+          >
+            {damageRepairData.type === 'damage' ? 'Apply Damage' : 'Repair Ship'}
           </Button>
         </DialogActions>
       </Dialog>
