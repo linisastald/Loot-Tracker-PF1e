@@ -3,17 +3,19 @@ import {
   Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Grid, Card, CardContent, CardHeader, Chip, Box, Alert, CircularProgress,
-  Switch, FormControlLabel, Tabs, Tab, TablePagination, Autocomplete, Divider
+  Switch, FormControlLabel, Tabs, Tab, TablePagination, Autocomplete, Divider,
+  Accordion, AccordionSummary, AccordionDetails
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, 
   DirectionsBoat as ShipIcon, People as PeopleIcon, LocationOn as LocationIcon,
   Warning as WarningIcon, Build as RepairIcon, LocalHospital as HealIcon,
-  Security as ShieldIcon, Speed as InitiativeIcon
+  Security as ShieldIcon, Speed as InitiativeIcon, ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import shipService from '../../services/shipService';
 import crewService from '../../services/crewService';
 import ShipDialog from './ShipDialog';
+import { SHIP_IMPROVEMENTS } from '../../data/shipData';
 
 function TabPanel({ children, value, index, ...other }) {
   return (
@@ -876,15 +878,59 @@ const ShipManagement = () => {
                   <CardHeader title="Ship Improvements" />
                   <CardContent>
                     {selectedShip.improvements && selectedShip.improvements.length > 0 ? (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {selectedShip.improvements.map((improvement, index) => (
-                          <Chip
-                            key={index}
-                            label={improvement}
-                            color="primary"
-                            variant="outlined"
-                          />
-                        ))}
+                      <Box>
+                        {selectedShip.improvements.map((improvementName, index) => {
+                          const improvement = SHIP_IMPROVEMENTS[improvementName];
+                          if (!improvement) {
+                            // Fallback for custom improvements not in our data
+                            return (
+                              <Chip
+                                key={index}
+                                label={improvementName}
+                                color="primary"
+                                variant="outlined"
+                                sx={{ mr: 1, mb: 1 }}
+                              />
+                            );
+                          }
+                          
+                          return (
+                            <Accordion key={improvementName} sx={{ mb: 1 }}>
+                              <AccordionSummary
+                                expandIcon={<ExpandMoreIcon />}
+                                aria-controls={`improvement-${index}-content`}
+                                id={`improvement-${index}-header`}
+                              >
+                                <Typography variant="h6" color="primary">
+                                  {improvement.name}
+                                </Typography>
+                              </AccordionSummary>
+                              <AccordionDetails>
+                                <Box>
+                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    {improvement.description}
+                                  </Typography>
+                                  {Object.keys(improvement.effects).length > 0 && (
+                                    <Box>
+                                      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>Effects:</Typography>
+                                      <Box display="flex" flexWrap="wrap" gap={1}>
+                                        {Object.entries(improvement.effects).map(([effect, value]) => (
+                                          <Chip
+                                            key={effect}
+                                            label={`${effect.replace(/_/g, ' ')}: ${value}`}
+                                            size="small"
+                                            color="primary"
+                                            variant="outlined"
+                                          />
+                                        ))}
+                                      </Box>
+                                    </Box>
+                                  )}
+                                </Box>
+                              </AccordionDetails>
+                            </Accordion>
+                          );
+                        })}
                       </Box>
                     ) : (
                       <Typography color="text.secondary">No improvements installed</Typography>
