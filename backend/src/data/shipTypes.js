@@ -50,7 +50,11 @@ const SHIP_TYPES = {
     max_passengers: 12,
     decks: 1,
     weapons: 0,
-    ramming_damage: "1d8"
+    ramming_damage: "1d8",
+    sails_oars: "6 oars, 10 squares of sails (1 mast)",
+    sailing_check_bonus: 0,
+    typical_weapons: [],
+    typical_improvements: []
   },
   keelboat: {
     name: "Keelboat",
@@ -73,7 +77,25 @@ const SHIP_TYPES = {
     max_passengers: 100,
     decks: 1,
     weapons: 1,
-    ramming_damage: "6d8"
+    ramming_damage: "6d8",
+    sails_oars: "8 oars, 20 squares of sails (1 mast)",
+    sailing_check_bonus: 0,
+    typical_weapons: [
+      {
+        name: "Light Ballista",
+        type: "direct-fire",
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+4",
+        mount: "fore"
+      }
+    ],
+    typical_improvements: ["Reinforced Hull"]
   },
   longship: {
     name: "Longship",
@@ -96,7 +118,38 @@ const SHIP_TYPES = {
     max_passengers: 120,
     decks: 1,
     weapons: 2,
-    ramming_damage: "8d8"
+    ramming_damage: "8d8",
+    sails_oars: "40 oars, 30 squares of sails (1 mast)",
+    sailing_check_bonus: 0,
+    typical_weapons: [
+      {
+        name: "Light Ballista",
+        type: "direct-fire",
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+5",
+        mount: "fore"
+      },
+      {
+        name: "Light Ballista",
+        type: "direct-fire",
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+5",
+        mount: "aft"
+      }
+    ],
+    typical_improvements: ["Ram", "Reinforced Hull"]
   },
   sailing_ship: {
     name: "Sailing Ship",
@@ -227,7 +280,51 @@ const SHIP_TYPES = {
     max_passengers: 250,
     decks: 3,
     weapons: 40,
-    ramming_damage: "8d8"
+    ramming_damage: "8d8",
+    sails_oars: "140 oars, 80 squares of sails (2-3 masts)",
+    sailing_check_bonus: 0,
+    typical_weapons: [
+      {
+        name: "Light Ballista",
+        type: "direct-fire",
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+6",
+        mount: "port"
+      },
+      {
+        name: "Light Ballista",
+        type: "direct-fire",
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+6",
+        mount: "starboard"
+      },
+      {
+        name: "Ram",
+        type: "special",
+        range: "ramming",
+        crew: 0,
+        aim: 0,
+        load: 0,
+        damage: "+3d6 ramming",
+        ammunition: "none",
+        critical: "x2",
+        attack_bonus: "+0",
+        mount: "fore"
+      }
+    ],
+    typical_improvements: ["Ram", "Reinforced Hull", "Improved Oars"]
   },
   man_o_war: {
     name: "Man-o'-War",
@@ -252,9 +349,9 @@ const SHIP_TYPES = {
     weapons: 30,
     ramming_damage: "10d8"
   },
-  // Skull & Shackles Specific Ships
-  wormwood: {
-    name: "The Wormwood (3-Masted Ship)",
+  // Skull & Shackles Style Ships (Generic Types)
+  three_masted_ship: {
+    name: "Three-Masted Ship",
     size: "Colossal",
     cost: 15000,
     base_ac: 2,
@@ -274,10 +371,28 @@ const SHIP_TYPES = {
     max_passengers: 150,
     decks: 3,
     weapons: 12,
-    ramming_damage: "8d8"
+    ramming_damage: "8d8",
+    sails_oars: "90 squares of sails (3 masts)",
+    sailing_check_bonus: 0,
+    typical_weapons: [
+      {
+        name: "Light Ballista",
+        type: "direct-fire",
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+6",
+        mount: "port"
+      }
+    ],
+    typical_improvements: ["Reinforced Hull", "Improved Rigging"]
   },
-  mans_promise: {
-    name: "Man's Promise (3-Masted Ship)",
+  improved_three_masted_ship: {
+    name: "Improved Three-Masted Ship",
     size: "Colossal",
     cost: 18000,
     base_ac: 3,
@@ -297,10 +412,28 @@ const SHIP_TYPES = {
     max_passengers: 140,
     decks: 3,
     weapons: 8,
-    ramming_damage: "8d8"
+    ramming_damage: "8d8",
+    sails_oars: "100 squares of sails (3 masts)",
+    sailing_check_bonus: 1,
+    typical_weapons: [
+      {
+        name: "Light Ballista",
+        type: "direct-fire",
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+7",
+        mount: "starboard"
+      }
+    ],
+    typical_improvements: ["Reinforced Hull", "Improved Steering", "Silk Sails"]
   },
-  dominator: {
-    name: "The Dominator (Chelish Man-o'-War)",
+  heavy_warship: {
+    name: "Heavy Warship",
     size: "Colossal",
     cost: 75000,
     base_ac: 19,
@@ -320,10 +453,41 @@ const SHIP_TYPES = {
     max_passengers: 250,
     decks: 4,
     weapons: 20,
-    ramming_damage: "12d8"
+    ramming_damage: "12d8",
+    sails_oars: "200 squares of sails (4 masts)",
+    sailing_check_bonus: 2,
+    typical_weapons: [
+      {
+        name: "Heavy Ballista",
+        type: "direct-fire",
+        range: "180 ft",
+        crew: 3,
+        aim: 2,
+        load: 3,
+        damage: "4d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+10",
+        mount: "port"
+      },
+      {
+        name: "Standard Catapult",
+        type: "indirect-fire",
+        range: "300 ft",
+        crew: 3,
+        aim: 3,
+        load: 3,
+        damage: "6d6",
+        ammunition: "stone",
+        critical: "x2",
+        attack_bonus: "+9",
+        mount: "fore"
+      }
+    ],
+    typical_improvements: ["Ram", "Armored Hull", "Advanced Steering", "Rapid Deploy Sails"]
   },
-  thresher: {
-    name: "The Thresher (Shackles Junk)",
+  junk: {
+    name: "Junk",
     size: "Colossal",
     cost: 12000,
     base_ac: 10,
@@ -343,7 +507,38 @@ const SHIP_TYPES = {
     max_passengers: 120,
     decks: 2,
     weapons: 11,
-    ramming_damage: "8d8"
+    ramming_damage: "8d8",
+    sails_oars: "80 squares of sails (2 masts, battened)",
+    sailing_check_bonus: 1,
+    typical_weapons: [
+      {
+        name: "Light Ballista",
+        type: "direct-fire",
+        range: "120 ft",
+        crew: 1,
+        aim: 2,
+        load: 3,
+        damage: "3d8",
+        ammunition: "ballista bolt",
+        critical: "19-20/x2",
+        attack_bonus: "+8",
+        mount: "port"
+      },
+      {
+        name: "Standard Catapult",
+        type: "indirect-fire",
+        range: "300 ft",
+        crew: 3,
+        aim: 3,
+        load: 3,
+        damage: "6d6",
+        ammunition: "stone",
+        critical: "x2",
+        attack_bonus: "+7",
+        mount: "aft"
+      }
+    ],
+    typical_improvements: ["Rapid Deploy Sails", "Silk Sails", "Reinforced Hull"]
   },
   // Specialized Vessels
   airship: {
