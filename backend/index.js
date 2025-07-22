@@ -61,6 +61,9 @@ dotenv.config();
 const app = express();
 const port = SERVER.PORT;
 
+// Trust proxy for rate limiting (required when behind reverse proxy/load balancer)
+app.set('trust proxy', 1);
+
 // Middleware for logging unhandled errors in route handlers
 const errorHandler = (err, req, res, next) => {
   logger.error('Unhandled Error', {
