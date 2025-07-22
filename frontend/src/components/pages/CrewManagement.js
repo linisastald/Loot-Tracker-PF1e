@@ -240,8 +240,8 @@ const CrewManagement = () => {
       }
 
       const rollResult = parseInt(recruitmentData.rollResult);
-      if (!rollResult || rollResult < 1 || rollResult > 20) {
-        setError('Please enter a valid d20 roll result (1-20)');
+      if (isNaN(rollResult)) {
+        setError('Please enter a valid roll result');
         return;
       }
 
@@ -759,13 +759,22 @@ const CrewManagement = () => {
       </Dialog>
 
       {/* Recruitment Dialog */}
-      <Dialog open={recruitmentDialogOpen} onClose={() => setRecruitmentDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Recruit Crew Members</DialogTitle>
+      <Dialog open={recruitmentDialogOpen} onClose={() => setRecruitmentDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Recruit Crew Members - Skull & Shackles Rules</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Use the official Skull & Shackles recruitment rules. Make a DC 20 skill check - success recruits 1d4+2 crew members (3-6). Each attempt takes 1 full day.
-          </Typography>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Official Recruitment Rules
+            </Typography>
+            <Typography variant="body2" color="text.secondary" paragraph>
+              Make a DC 20 skill check. Success recruits 1d4+2 crew members (3-6 total). Each attempt takes 1 full day.
+            </Typography>
+            <Typography variant="body2" color="warning.main" sx={{ fontWeight: 'bold' }}>
+              Remember: Crew expect plunder shares, not daily wages. Deduct 1 plunder point when selling.
+            </Typography>
+          </Box>
+
+          <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel>Recruitment Method</InputLabel>
@@ -780,18 +789,19 @@ const CrewManagement = () => {
                 </Select>
               </FormControl>
             </Grid>
+            
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Your d20 Roll Result"
+                label="Total Roll Result"
                 type="number"
                 value={recruitmentData.rollResult}
                 onChange={(e) => setRecruitmentData({ ...recruitmentData, rollResult: e.target.value })}
-                inputProps={{ min: 1, max: 20 }}
-                helperText="Need DC 20 to succeed"
+                helperText="Include all modifiers (DC 20 needed)"
                 required
               />
             </Grid>
+
             <Grid item xs={12}>
               <Autocomplete
                 fullWidth
@@ -810,6 +820,7 @@ const CrewManagement = () => {
                 )}
               />
             </Grid>
+
             {allLocations.find(loc => loc.id === recruitmentData.location_id)?.type === 'ship' && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
@@ -826,12 +837,6 @@ const CrewManagement = () => {
                 </FormControl>
               </Grid>
             )}
-            <Grid item xs={12}>
-              <Typography variant="caption" color="text.secondary">
-                <strong>Reminder:</strong> Crew members don't get daily wages - they expect shares of plunder when you sell it. 
-                Deduct 1 point of plunder when selling to pay crew shares.
-              </Typography>
-            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
