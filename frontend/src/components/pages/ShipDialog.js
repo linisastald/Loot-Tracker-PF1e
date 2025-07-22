@@ -230,9 +230,7 @@ const ShipDialog = ({
               required
             />
           </Grid>
-          
-
-          
+          {/* Ship Type and Location */}
           <Grid item xs={12}>
             <Autocomplete
               options={shipTypes}

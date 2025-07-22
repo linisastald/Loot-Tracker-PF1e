@@ -607,27 +607,138 @@ const ShipManagement = () => {
         <TabPanel value={tabValue} index={1}>
           {selectedShip && (
             <Grid container spacing={3}>
+              {/* Basic Ship Information */}
               <Grid item xs={12} md={6}>
                 <Card>
                   <CardHeader title="Ship Information" />
                   <CardContent>
                     <Typography variant="h6">{selectedShip.name}</Typography>
-                    <Typography color="text.secondary" gutterBottom>
-                      Location: {selectedShip.location || 'Unknown'}
-                    </Typography>
                     
-                    <Box sx={{ mt: 2, mb: 2 }}>
-                      <Chip
-                        label={selectedShip.is_squibbing ? 'Squibbing' : 'Active'}
-                        color={selectedShip.is_squibbing ? 'warning' : 'success'}
-                        sx={{ mr: 1 }}
-                      />
-                      <Chip
-                        label={getShipStatusLabel(selectedShip)}
-                        color={getShipStatusColor(selectedShip)}
-                      />
-                    </Box>
+                    <Grid container spacing={2} sx={{ mt: 1 }}>
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" color="primary">Ship Type</Typography>
+                        <Typography variant="body2">
+                          {selectedShip.ship_type || 'Not specified'}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Size</Typography>
+                        <Typography variant="body2">{selectedShip.size || 'Colossal'}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Cost</Typography>
+                        <Typography variant="body2">{selectedShip.cost || 0} gp</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Location</Typography>
+                        <Typography variant="body2">{selectedShip.location || 'Unknown'}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Status</Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Chip
+                            label={selectedShip.is_squibbing ? 'Squibbing' : 'Active'}
+                            color={selectedShip.is_squibbing ? 'warning' : 'success'}
+                            size="small"
+                          />
+                          <Chip
+                            label={getShipStatusLabel(selectedShip)}
+                            color={getShipStatusColor(selectedShip)}
+                            size="small"
+                          />
+                        </Box>
+                      </Grid>
+                      
+                      {selectedShip.captain_name && (
+                        <Grid item xs={12}>
+                          <Typography variant="subtitle2" color="primary">Captain</Typography>
+                          <Typography variant="body2">{selectedShip.captain_name}</Typography>
+                        </Grid>
+                      )}
+                      
+                      {selectedShip.ship_notes && (
+                        <Grid item xs={12}>
+                          <Typography variant="subtitle2" color="primary">Notes</Typography>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                            {selectedShip.ship_notes}
+                          </Typography>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Grid>
 
+              {/* Physical Characteristics */}
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardHeader title="Physical Characteristics" />
+                  <CardContent>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Max Speed</Typography>
+                        <Typography variant="body2">{selectedShip.max_speed || 30} ft.</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Acceleration</Typography>
+                        <Typography variant="body2">{selectedShip.acceleration || 15} ft.</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" color="primary">Propulsion</Typography>
+                        <Typography variant="body2">{selectedShip.propulsion || 'Not specified'}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Crew Requirements</Typography>
+                        <Typography variant="body2">
+                          {selectedShip.min_crew || 1} - {selectedShip.max_crew || 10}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Decks</Typography>
+                        <Typography variant="body2">{selectedShip.decks || 1}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Cargo Capacity</Typography>
+                        <Typography variant="body2">{selectedShip.cargo_capacity || 10000} lbs</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Max Passengers</Typography>
+                        <Typography variant="body2">{selectedShip.max_passengers || 10}</Typography>
+                      </Grid>
+                      
+                      {selectedShip.sails_oars && (
+                        <Grid item xs={12}>
+                          <Typography variant="subtitle2" color="primary">Sails/Oars</Typography>
+                          <Typography variant="body2">{selectedShip.sails_oars}</Typography>
+                        </Grid>
+                      )}
+                      
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" color="primary">Sailing Check Bonus</Typography>
+                        <Typography variant="body2">
+                          {selectedShip.sailing_check_bonus >= 0 ? '+' : ''}{selectedShip.sailing_check_bonus || 0}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Combat Statistics */}
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardHeader title="Combat Statistics" />
+                  <CardContent>
                     <Grid container spacing={2}>
                       <Grid item xs={6}>
                         <Typography variant="subtitle2" color="primary">Hit Points</Typography>
@@ -635,27 +746,51 @@ const ShipManagement = () => {
                           {selectedShip.current_hp || 0} / {selectedShip.max_hp || 100}
                         </Typography>
                       </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="subtitle2" color="primary">Armor Class</Typography>
-                        <Typography variant="body2">
-                          Base AC: {selectedShip.base_ac || 10} | Touch AC: {selectedShip.touch_ac || 10}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="subtitle2" color="primary">Combat Maneuvers</Typography>
-                        <Typography variant="body2">
-                          CMB: {selectedShip.cmb >= 0 ? '+' : ''}{selectedShip.cmb || 0} | CMD: {selectedShip.cmd || 10}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="subtitle2" color="primary">Other Stats</Typography>
-                        <Typography variant="body2">
-                          Saves: {selectedShip.saves >= 0 ? '+' : ''}{selectedShip.saves || 0} | Initiative: {selectedShip.initiative >= 0 ? '+' : ''}{selectedShip.initiative || 0}
-                        </Typography>
-                      </Grid>
+                      
                       <Grid item xs={6}>
                         <Typography variant="subtitle2" color="primary">Hardness</Typography>
                         <Typography variant="body2">{selectedShip.hardness || 0}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Base AC</Typography>
+                        <Typography variant="body2">{selectedShip.base_ac || 10}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Touch AC</Typography>
+                        <Typography variant="body2">{selectedShip.touch_ac || 10}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">CMB</Typography>
+                        <Typography variant="body2">
+                          {selectedShip.cmb >= 0 ? '+' : ''}{selectedShip.cmb || 0}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">CMD</Typography>
+                        <Typography variant="body2">{selectedShip.cmd || 10}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Saves</Typography>
+                        <Typography variant="body2">
+                          {selectedShip.saves >= 0 ? '+' : ''}{selectedShip.saves || 0}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle2" color="primary">Initiative</Typography>
+                        <Typography variant="body2">
+                          {selectedShip.initiative >= 0 ? '+' : ''}{selectedShip.initiative || 0}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" color="primary">Ramming Damage</Typography>
+                        <Typography variant="body2">{selectedShip.ramming_damage || '1d8'}</Typography>
                       </Grid>
                     </Grid>
                     
@@ -667,6 +802,7 @@ const ShipManagement = () => {
                         onClick={() => handleDamageRepairShip(selectedShip, 'damage')}
                         disabled={selectedShip.current_hp === 0}
                         sx={{ mr: 1 }}
+                        size="small"
                       >
                         Apply Damage
                       </Button>
@@ -676,6 +812,7 @@ const ShipManagement = () => {
                         startIcon={<HealIcon />}
                         onClick={() => handleDamageRepairShip(selectedShip, 'repair')}
                         disabled={selectedShip.current_hp >= selectedShip.max_hp}
+                        size="small"
                       >
                         Repair Ship
                       </Button>
@@ -684,7 +821,142 @@ const ShipManagement = () => {
                 </Card>
               </Grid>
 
+              {/* Weapons */}
               <Grid item xs={12} md={6}>
+                <Card>
+                  <CardHeader title="Ship Weapons" />
+                  <CardContent>
+                    {/* New weapon_types format */}
+                    {selectedShip.weapon_types && selectedShip.weapon_types.length > 0 ? (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>Weapon Types</Typography>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                          {selectedShip.weapon_types.map((weaponType, index) => (
+                            <Chip
+                              key={index}
+                              label={`${weaponType.type} (${weaponType.quantity})`}
+                              variant="outlined"
+                              size="small"
+                            />
+                          ))}
+                        </Box>
+                      </Box>
+                    ) : null}
+                    
+                    {/* Legacy weapons format */}
+                    {selectedShip.weapons && selectedShip.weapons.length > 0 ? (
+                      <Box>
+                        <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>Detailed Weapons</Typography>
+                        {selectedShip.weapons.map((weapon, index) => (
+                          <Box key={index} sx={{ mb: 1, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
+                            <Typography variant="body2" fontWeight="bold">
+                              {weapon.name || `Weapon ${index + 1}`}
+                            </Typography>
+                            {weapon.type && (
+                              <Typography variant="caption" color="text.secondary">
+                                {weapon.type} | {weapon.damage} | {weapon.range}
+                              </Typography>
+                            )}
+                          </Box>
+                        ))}
+                      </Box>
+                    ) : null}
+                    
+                    {(!selectedShip.weapon_types || selectedShip.weapon_types.length === 0) && 
+                     (!selectedShip.weapons || selectedShip.weapons.length === 0) && (
+                      <Typography color="text.secondary">No weapons installed</Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Ship Improvements */}
+              <Grid item xs={12}>
+                <Card>
+                  <CardHeader title="Ship Improvements" />
+                  <CardContent>
+                    {selectedShip.improvements && selectedShip.improvements.length > 0 ? (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {selectedShip.improvements.map((improvement, index) => (
+                          <Chip
+                            key={index}
+                            label={improvement}
+                            color="primary"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography color="text.secondary">No improvements installed</Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Officers */}
+              {selectedShip.officers && selectedShip.officers.length > 0 && (
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardHeader title="Officers" />
+                    <CardContent>
+                      {selectedShip.officers.map((officer, index) => (
+                        <Box key={index} sx={{ mb: 1, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
+                          <Typography variant="body2" fontWeight="bold">
+                            {officer.position}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {officer.name}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+
+              {/* Pirate Campaign Stats */}
+              {(selectedShip.plunder > 0 || selectedShip.infamy > 0 || selectedShip.disrepute > 0) && (
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardHeader title="Pirate Campaign Stats" />
+                    <CardContent>
+                      <Grid container spacing={2}>
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2" color="primary">Plunder</Typography>
+                          <Typography variant="h6">{selectedShip.plunder || 0}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2" color="primary">Infamy</Typography>
+                          <Typography variant="h6">{selectedShip.infamy || 0}</Typography>
+                        </Grid>
+                        
+                        <Grid item xs={4}>
+                          <Typography variant="subtitle2" color="primary">Disrepute</Typography>
+                          <Typography variant="h6">{selectedShip.disrepute || 0}</Typography>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+
+              {/* Flag Description */}
+              {selectedShip.flag_description && (
+                <Grid item xs={12}>
+                  <Card>
+                    <CardHeader title="Ship's Flag" />
+                    <CardContent>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {selectedShip.flag_description}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              )}
+
+              {/* Crew Members */}
+              <Grid item xs={12}>
                 <Card>
                   <CardHeader 
                     title="Crew Members" 
@@ -694,27 +966,47 @@ const ShipManagement = () => {
                     {loadingCrew ? (
                       <CircularProgress size={24} />
                     ) : selectedShipCrew.length > 0 ? (
-                      selectedShipCrew.map((crew) => (
-                        <Box key={crew.id} sx={{ mb: 1, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
-                          <Typography variant="body2" fontWeight="bold">
-                            {crew.name}
-                            {crew.ship_position && (
-                              <Chip label={crew.ship_position} size="small" sx={{ ml: 1 }} />
-                            )}
-                          </Typography>
-                          {crew.race && (
-                            <Typography variant="caption" color="text.secondary">
-                              {crew.race}
-                            </Typography>
-                          )}
-                        </Box>
-                      ))
+                      <Grid container spacing={2}>
+                        {selectedShipCrew.map((crew) => (
+                          <Grid item xs={12} sm={6} md={4} key={crew.id}>
+                            <Box sx={{ p: 2, border: '1px solid #eee', borderRadius: 1 }}>
+                              <Typography variant="body2" fontWeight="bold">
+                                {crew.name}
+                                {crew.ship_position && (
+                                  <Chip 
+                                    label={crew.ship_position} 
+                                    size="small" 
+                                    sx={{ ml: 1 }} 
+                                    color={crew.ship_position === 'captain' ? 'primary' : 'default'}
+                                  />
+                                )}
+                              </Typography>
+                              {crew.race && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {crew.race}
+                                </Typography>
+                              )}
+                              {crew.age && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Age: {crew.age}
+                                </Typography>
+                              )}
+                              {crew.description && (
+                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                  {crew.description}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Grid>
+                        ))}
+                      </Grid>
                     ) : (
                       <Typography color="text.secondary">No crew members assigned</Typography>
                     )}
                   </CardContent>
                 </Card>
               </Grid>
+              
             </Grid>
           )}
         </TabPanel>
