@@ -12,9 +12,15 @@ const createShip = async (req, res) => {
     name, location, is_squibbing, ship_type,
     size, cost, max_speed, acceleration, propulsion,
     min_crew, max_crew, cargo_capacity, max_passengers,
-    decks, weapons, ramming_damage,
+    decks, weapons, weapon_types, ramming_damage,
     base_ac, touch_ac, hardness, max_hp, current_hp,
-    cmb, cmd, saves, initiative
+    cmb, cmd, saves, initiative,
+    // Pirate campaign fields
+    plunder, infamy, disrepute,
+    // Additional ship details
+    sails_oars, sailing_check_bonus,
+    officers, improvements, cargo_manifest,
+    ship_notes, captain_name, flag_description
   } = req.body;
 
   if (!name) {
@@ -26,7 +32,20 @@ const createShip = async (req, res) => {
     name,
     location: location || null,
     is_squibbing: is_squibbing || false,
-    ship_type: ship_type || null
+    ship_type: ship_type || null,
+    // Include all the new fields
+    plunder: plunder || 0,
+    infamy: infamy || 0,
+    disrepute: disrepute || 0,
+    sails_oars: sails_oars || null,
+    sailing_check_bonus: sailing_check_bonus || 0,
+    officers: officers || [],
+    improvements: improvements || [],
+    weapon_types: weapon_types || [],
+    cargo_manifest: cargo_manifest || { items: [], passengers: [], impositions: [] },
+    ship_notes: ship_notes || null,
+    captain_name: captain_name || null,
+    flag_description: flag_description || null
   };
 
   if (ship_type) {
@@ -45,7 +64,7 @@ const createShip = async (req, res) => {
         cargo_capacity: cargo_capacity !== undefined ? cargo_capacity : typeData.cargo_capacity,
         max_passengers: max_passengers !== undefined ? max_passengers : typeData.max_passengers,
         decks: decks !== undefined ? decks : typeData.decks,
-        weapons: weapons !== undefined ? weapons : typeData.weapons,
+        weapons: weapons !== undefined ? weapons : (weapon_types !== undefined ? weapon_types : typeData.weapons),
         ramming_damage: ramming_damage || typeData.ramming_damage,
         base_ac: base_ac !== undefined ? base_ac : typeData.base_ac,
         touch_ac: touch_ac !== undefined ? touch_ac : typeData.touch_ac,
@@ -55,7 +74,10 @@ const createShip = async (req, res) => {
         cmb: cmb !== undefined ? cmb : typeData.cmb,
         cmd: cmd !== undefined ? cmd : typeData.cmd,
         saves: saves !== undefined ? saves : typeData.saves,
-        initiative: initiative !== undefined ? initiative : typeData.initiative
+        initiative: initiative !== undefined ? initiative : typeData.initiative,
+        // Preserve manual improvements over type defaults
+        improvements: improvements && improvements.length > 0 ? improvements : (typeData.typical_improvements || []),
+        weapon_types: weapon_types && weapon_types.length > 0 ? weapon_types : (typeData.typical_weapons || [])
       };
     } else {
       // Manual entry with defaults
@@ -71,7 +93,7 @@ const createShip = async (req, res) => {
         cargo_capacity: cargo_capacity || 10000,
         max_passengers: max_passengers || 10,
         decks: decks || 1,
-        weapons: weapons || 0,
+        weapons: weapons !== undefined ? weapons : (weapon_types || []),
         ramming_damage: ramming_damage || '1d8',
         base_ac: base_ac || 10,
         touch_ac: touch_ac || 10,
@@ -98,7 +120,7 @@ const createShip = async (req, res) => {
       cargo_capacity: cargo_capacity || 10000,
       max_passengers: max_passengers || 10,
       decks: decks || 1,
-      weapons: weapons || 0,
+      weapons: weapons !== undefined ? weapons : (weapon_types || []),
       ramming_damage: ramming_damage || '1d8',
       base_ac: base_ac || 10,
       touch_ac: touch_ac || 10,
@@ -117,7 +139,9 @@ const createShip = async (req, res) => {
   logger.info(`Ship created: ${name}`, {
     userId: req.user.id,
     shipId: ship.id,
-    shipType: ship_type
+    shipType: ship_type,
+    improvements: improvements ? improvements.length : 0,
+    weaponTypes: weapon_types ? weapon_types.length : 0
   });
 
   controllerFactory.sendCreatedResponse(res, ship, 'Ship created successfully');
