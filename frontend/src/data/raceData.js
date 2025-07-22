@@ -1,4 +1,66 @@
-// Standard Pathfinder races for crew members
+// Weighted racial distribution for the Shackles region
+// Based on Pathfinder lore about pirate demographics
+const SHACKLES_RACIAL_WEIGHTS = {
+  // Very Common (60% total)
+  "Human": 45,           // "mostly human" - dominant population
+  
+  // Common (25% total) 
+  "Half-Elf": 12,        // "comparatively high proportion of aiuvarins"
+  "Half-Orc": 8,         // "comparatively high proportion of dromaars"  
+  "Tengu": 5,            // "large tengu population" with own quarters
+  
+  // Uncommon (12% total)
+  "Hobgoblin": 4,        // "significant population" (Bandu Fleet)
+  "Goblin": 3,           // "tribes of goblins" in wilder areas
+  "Elf": 2,              // Some present but not specifically mentioned as common
+  "Dwarf": 2,            // Maritime dwarves, traders
+  "Halfling": 1,         // Wanderers, ship cooks, etc.
+  
+  // Rare (3% total)
+  "Gnome": 1,            // Occasional wanderers
+  "Tiefling": 1,         // Outcasts drawn to pirate havens  
+  "Aasimar": 0.5,        // Very rare, most avoid pirate life
+  "Orc": 0.3,            // Pure orcs rare, mostly dromaars instead
+  
+  // Very Rare (0.8% total)
+  "Catfolk": 0.15,       // Rare wanderers from distant lands
+  "Ratfolk": 0.1,        // Occasional ship rats who gained sentience
+  "Lizardfolk": 0.1,     // From coastal swamps, very uncommon
+  "Dragonborn": 0.08,    // Extremely rare, powerful outcasts
+  "Merfolk": 0.07,       // Occasional sea-dwellers who join crews
+  "Grippli": 0.05,       // Rare frog-folk from jungles
+  "Nagaji": 0.05,        // Serpentine humanoids, very uncommon
+  "Undine": 0.04,        // Water elementals, drawn to seas but rare
+  "Ifrit": 0.03,         // Fire elementals, some drawn to adventure
+  "Sylph": 0.03,         // Air elementals, occasional sky pirates
+  "Vishkanya": 0.03,     // Poison-wielders, assassins
+  "Samsaran": 0.02,      // Ancient souls, extremely rare
+  "Kitsune": 0.02,       // Shapeshifting fox-folk, very secretive
+  "Vanara": 0.02,        // Monkey-folk from distant jungles
+  "Wayang": 0.02,        // Shadow-touched, prefer hiding
+  "Oread": 0.01          // Earth elementals, least likely to take to sea
+};
+
+// Create weighted array for selection
+function createWeightedRaceArray() {
+  const weightedArray = [];
+  
+  // Convert weights to selection pool
+  Object.entries(SHACKLES_RACIAL_WEIGHTS).forEach(([race, weight]) => {
+    // Multiply by 100 to handle decimal weights and add to array
+    const instances = Math.round(weight * 100);
+    for (let i = 0; i < instances; i++) {
+      weightedArray.push(race);
+    }
+  });
+  
+  return weightedArray;
+}
+
+// Pre-create the weighted array for performance
+const WEIGHTED_RACE_ARRAY = createWeightedRaceArray();
+
+// Standard Pathfinder races for crew members (all available races)
 export const STANDARD_RACES = [
   'Human',
   'Elf',
@@ -74,9 +136,19 @@ export const generateRandomName = () => {
   return `${firstName} ${lastName}`;
 };
 
-// Function to generate a random race
+// Function to generate a weighted random race based on Shackles demographics
 export const generateRandomRace = () => {
+  return WEIGHTED_RACE_ARRAY[Math.floor(Math.random() * WEIGHTED_RACE_ARRAY.length)];
+};
+
+// Function to generate an unweighted random race (for manual selection lists)
+export const generateUnweightedRandomRace = () => {
   return STANDARD_RACES[Math.floor(Math.random() * STANDARD_RACES.length)];
+};
+
+// Function to get the weight of a specific race (for debugging/info)
+export const getRaceWeight = (race) => {
+  return SHACKLES_RACIAL_WEIGHTS[race] || 0;
 };
 
 // Function to generate a random age based on race
