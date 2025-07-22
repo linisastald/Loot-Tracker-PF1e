@@ -3,16 +3,20 @@ import {
   Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Grid, Card, CardContent, CardHeader, Box, Alert, CircularProgress,
-  Tabs, Tab, TablePagination, FormControl, InputLabel, Select, MenuItem, Chip
+  Tabs, Tab, TablePagination, FormControl, InputLabel, Select, MenuItem, Chip,
+  Autocomplete
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, 
   Person as PersonIcon, DirectionsBoat as ShipIcon, Home as OutpostIcon,
-  LocationOn as LocationIcon, Warning as WarningIcon, MoveUp as MoveIcon
+  LocationOn as LocationIcon, Warning as WarningIcon, MoveUp as MoveIcon,
+  Group as RecruitIcon
 } from '@mui/icons-material';
 import crewService from '../../services/crewService';
 import shipService from '../../services/shipService';
 import outpostService from '../../services/outpostService';
+import { STANDARD_RACES, generateRandomName, generateRandomRace, generateRandomAge } from '../../data/raceData';
+import { getTodayInInputFormat, golarionToInputFormat, inputFormatToGolarion } from '../../utils/golarionDate';
 
 function TabPanel({ children, value, index, ...other }) {
   return (
@@ -39,20 +43,23 @@ const CrewManagement = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [recruitmentDialogOpen, setRecruitmentDialogOpen] = useState(false);
   const [selectedCrew, setSelectedCrew] = useState(null);
+  const [currentGolarionDate, setCurrentGolarionDate] = useState('');
+  const [allLocations, setAllLocations] = useState([]);
   
   const [editingCrew, setEditingCrew] = useState({
     name: '',
     race: '',
+    customRace: '',
     age: '',
     description: '',
-    location_type: 'ship',
     location_id: '',
-    ship_position: ''
+    ship_position: '',
+    hire_date: ''
   });
 
   const [moveData, setMoveData] = useState({
-    location_type: 'ship',
     location_id: '',
     ship_position: ''
   });
@@ -61,6 +68,12 @@ const CrewManagement = () => {
     type: 'dead',
     date: '',
     reason: ''
+  });
+
+  const [recruitmentData, setRecruitmentData] = useState({
+    numberOfCrew: 1,
+    location_id: '',
+    ship_position: ''
   });
 
   const shipPositions = [
@@ -86,6 +99,18 @@ const CrewManagement = () => {
       setShips(shipsResponse.data.ships);
       setOutposts(outpostsResponse.data.outposts);
       setDeceasedCrew(deceasedResponse.data.crew);
+      
+      // Combine all locations for the dropdown
+      const locations = [
+        ...shipsResponse.data.ships.map(ship => ({ ...ship, type: 'ship' })),
+        ...outpostsResponse.data.outposts.map(outpost => ({ ...outpost, type: 'outpost' }))
+      ];
+      setAllLocations(locations);
+      
+      // Get current Golarion date
+      const todayDate = await getTodayInInputFormat();
+      setCurrentGolarionDate(todayDate);
+      
       setError('');
     } catch (error) {
       setError('Failed to load data');
@@ -99,25 +124,32 @@ const CrewManagement = () => {
     setEditingCrew({
       name: '',
       race: '',
+      customRace: '',
       age: '',
       description: '',
-      location_type: 'ship',
       location_id: '',
-      ship_position: ''
+      ship_position: '',
+      hire_date: currentGolarionDate
     });
     setSelectedCrew(null);
     setCrewDialogOpen(true);
   };
 
   const handleEditCrew = (crewMember) => {
+    const isCustomRace = !STANDARD_RACES.includes(crewMember.race);
     setEditingCrew({
       name: crewMember.name,
-      race: crewMember.race || '',
+      race: isCustomRace ? 'Other' : (crewMember.race || ''),
+      customRace: isCustomRace ? crewMember.race : '',
       age: crewMember.age || '',
       description: crewMember.description || '',
-      location_type: crewMember.location_type,
       location_id: crewMember.location_id,
-      ship_position: crewMember.ship_position || ''
+      ship_position: crewMember.ship_position || '',
+      hire_date: crewMember.hire_date ? golarionToInputFormat(
+        crewMember.hire_date.year || new Date(crewMember.hire_date).getFullYear(),
+        crewMember.hire_date.month || new Date(crewMember.hire_date).getMonth() + 1,
+        crewMember.hire_date.day || new Date(crewMember.hire_date).getDate()
+      ) : currentGolarionDate
     });
     setSelectedCrew(crewMember);
     setCrewDialogOpen(true);
@@ -134,9 +166,28 @@ const CrewManagement = () => {
         return;
       }
 
+      // Determine location type from the selected location
+      const selectedLocation = allLocations.find(loc => loc.id === editingCrew.location_id);
+      if (!selectedLocation) {
+        setError('Invalid location selected');
+        return;
+      }
+
+      // Determine final race (custom or standard)
+      const finalRace = editingCrew.race === 'Other' ? editingCrew.customRace : editingCrew.race;
+      
+      // Parse the hire date
+      const hireDateParsed = inputFormatToGolarion(editingCrew.hire_date);
+
       const crewData = {
-        ...editingCrew,
-        age: editingCrew.age ? parseInt(editingCrew.age) : null
+        name: editingCrew.name,
+        race: finalRace,
+        age: editingCrew.age ? parseInt(editingCrew.age) : null,
+        description: editingCrew.description,
+        location_type: selectedLocation.type,
+        location_id: editingCrew.location_id,
+        ship_position: selectedLocation.type === 'ship' ? editingCrew.ship_position : null,
+        hire_date: hireDateParsed
       };
 
       if (selectedCrew) {
@@ -158,11 +209,18 @@ const CrewManagement = () => {
 
   const handleMoveCrew = async () => {
     try {
+      // Determine location type from the selected location
+      const selectedLocation = allLocations.find(loc => loc.id === moveData.location_id);
+      if (!selectedLocation) {
+        setError('Invalid location selected');
+        return;
+      }
+
       await crewService.moveCrewToLocation(
         selectedCrew.id,
-        moveData.location_type,
+        selectedLocation.type,
         moveData.location_id,
-        moveData.ship_position
+        selectedLocation.type === 'ship' ? moveData.ship_position : null
       );
       setSuccess('Crew member moved successfully');
       setMoveDialogOpen(false);
@@ -170,6 +228,56 @@ const CrewManagement = () => {
     } catch (error) {
       setError('Failed to move crew member');
       console.error('Error moving crew:', error);
+    }
+  };
+
+  const handleRecruitment = async () => {
+    try {
+      if (!recruitmentData.location_id) {
+        setError('Location is required for recruitment');
+        return;
+      }
+
+      const selectedLocation = allLocations.find(loc => loc.id === recruitmentData.location_id);
+      if (!selectedLocation) {
+        setError('Invalid location selected');
+        return;
+      }
+
+      const numberOfCrew = parseInt(recruitmentData.numberOfCrew);
+      if (numberOfCrew < 1 || numberOfCrew > 20) {
+        setError('Number of crew must be between 1 and 20');
+        return;
+      }
+
+      // Generate random crew members
+      for (let i = 0; i < numberOfCrew; i++) {
+        const randomName = generateRandomName();
+        const randomRace = generateRandomRace();
+        const randomAge = generateRandomAge(randomRace);
+        const hireDateParsed = inputFormatToGolarion(currentGolarionDate);
+
+        const crewData = {
+          name: randomName,
+          race: randomRace,
+          age: randomAge,
+          description: 'Recruited crew member',
+          location_type: selectedLocation.type,
+          location_id: recruitmentData.location_id,
+          ship_position: selectedLocation.type === 'ship' ? (recruitmentData.ship_position || 'Crew') : null,
+          hire_date: hireDateParsed
+        };
+
+        await crewService.createCrew(crewData);
+      }
+
+      setSuccess(`Successfully recruited ${numberOfCrew} crew member${numberOfCrew > 1 ? 's' : ''}`);
+      setRecruitmentDialogOpen(false);
+      fetchData();
+      setError('');
+    } catch (error) {
+      setError('Failed to recruit crew members');
+      console.error('Error recruiting crew:', error);
     }
   };
 
@@ -229,13 +337,25 @@ const CrewManagement = () => {
             <PersonIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
             Crew Management
           </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleCreateCrew}
-          >
-            Add Crew Member
-          </Button>
+          <Box display="flex" gap={1}>
+            <Button
+              variant="outlined"
+              startIcon={<RecruitIcon />}
+              onClick={() => {
+                setRecruitmentData({ numberOfCrew: 1, location_id: '', ship_position: '' });
+                setRecruitmentDialogOpen(true);
+              }}
+            >
+              Recruit Crew
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleCreateCrew}
+            >
+              Add Crew Member
+            </Button>
+          </Box>
         </Box>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -296,7 +416,7 @@ const CrewManagement = () => {
                       <IconButton 
                         onClick={() => { 
                           setSelectedCrew(crewMember); 
-                          setMoveData({ location_type: 'ship', location_id: '', ship_position: '' });
+                          setMoveData({ location_id: '', ship_position: '' });
                           setMoveDialogOpen(true); 
                         }}
                         title="Move"
@@ -398,14 +518,30 @@ const CrewManagement = () => {
               />
             </Grid>
             <Grid item xs={12} md={6}>
-              <TextField
+              <Autocomplete
                 fullWidth
-                label="Race"
+                options={[...STANDARD_RACES, 'Other']}
                 value={editingCrew.race}
-                onChange={(e) => setEditingCrew({ ...editingCrew, race: e.target.value })}
+                onChange={(event, newValue) => {
+                  setEditingCrew({ ...editingCrew, race: newValue || '', customRace: newValue === 'Other' ? editingCrew.customRace : '' });
+                }}
+                renderInput={(params) => (
+                  <TextField {...params} label="Race" required />
+                )}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            {editingCrew.race === 'Other' && (
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Custom Race"
+                  value={editingCrew.customRace}
+                  onChange={(e) => setEditingCrew({ ...editingCrew, customRace: e.target.value })}
+                  required
+                />
+              </Grid>
+            )}
+            <Grid item xs={12} md={3}>
               <TextField
                 fullWidth
                 label="Age"
@@ -414,48 +550,44 @@ const CrewManagement = () => {
                 onChange={(e) => setEditingCrew({ ...editingCrew, age: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Location Type</InputLabel>
-                <Select
-                  value={editingCrew.location_type}
-                  label="Location Type"
-                  onChange={(e) => setEditingCrew({ ...editingCrew, location_type: e.target.value, location_id: '' })}
-                >
-                  <MenuItem value="ship">Ship</MenuItem>
-                  <MenuItem value="outpost">Outpost</MenuItem>
-                </Select>
-              </FormControl>
+            <Grid item xs={12} md={3}>
+              <TextField
+                fullWidth
+                label="Hire Date"
+                type="date"
+                value={editingCrew.hire_date}
+                onChange={(e) => setEditingCrew({ ...editingCrew, hire_date: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
             </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>
-                  {editingCrew.location_type === 'ship' ? 'Ship' : 'Outpost'}
-                </InputLabel>
-                <Select
-                  value={editingCrew.location_id}
-                  label={editingCrew.location_type === 'ship' ? 'Ship' : 'Outpost'}
-                  onChange={(e) => setEditingCrew({ ...editingCrew, location_id: e.target.value })}
-                >
-                  {editingCrew.location_type === 'ship' 
-                    ? ships.map((ship) => (
-                        <MenuItem key={ship.id} value={ship.id}>{ship.name}</MenuItem>
-                      ))
-                    : outposts.map((outpost) => (
-                        <MenuItem key={outpost.id} value={outpost.id}>{outpost.name}</MenuItem>
-                      ))
-                  }
-                </Select>
-              </FormControl>
+            <Grid item xs={12}>
+              <Autocomplete
+                fullWidth
+                options={allLocations}
+                getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
+                value={allLocations.find(loc => loc.id === editingCrew.location_id) || null}
+                onChange={(event, newValue) => {
+                  setEditingCrew({ 
+                    ...editingCrew, 
+                    location_id: newValue ? newValue.id : '',
+                    ship_position: newValue?.type !== 'ship' ? '' : editingCrew.ship_position
+                  });
+                }}
+                renderInput={(params) => (
+                  <TextField {...params} label="Location" required />
+                )}
+                sx={{ '& .MuiAutocomplete-input': { minWidth: '200px' } }}
+              />
             </Grid>
-            {editingCrew.location_type === 'ship' && (
-              <Grid item xs={12} md={6}>
+            {allLocations.find(loc => loc.id === editingCrew.location_id)?.type === 'ship' && (
+              <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel>Position</InputLabel>
+                  <InputLabel>Ship Position</InputLabel>
                   <Select
                     value={editingCrew.ship_position}
-                    label="Position"
+                    label="Ship Position"
                     onChange={(e) => setEditingCrew({ ...editingCrew, ship_position: e.target.value })}
+                    sx={{ minWidth: '150px' }}
                   >
                     {shipPositions.map((position) => (
                       <MenuItem key={position} value={position}>{position}</MenuItem>
@@ -490,46 +622,30 @@ const CrewManagement = () => {
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Location Type</InputLabel>
-                <Select
-                  value={moveData.location_type}
-                  label="Location Type"
-                  onChange={(e) => setMoveData({ ...moveData, location_type: e.target.value, location_id: '' })}
-                >
-                  <MenuItem value="ship">Ship</MenuItem>
-                  <MenuItem value="outpost">Outpost</MenuItem>
-                </Select>
-              </FormControl>
+              <Autocomplete
+                fullWidth
+                options={allLocations}
+                getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
+                value={allLocations.find(loc => loc.id === moveData.location_id) || null}
+                onChange={(event, newValue) => {
+                  setMoveData({ 
+                    ...moveData, 
+                    location_id: newValue ? newValue.id : '',
+                    ship_position: newValue?.type !== 'ship' ? '' : moveData.ship_position
+                  });
+                }}
+                renderInput={(params) => (
+                  <TextField {...params} label="New Location" required />
+                )}
+              />
             </Grid>
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>
-                  {moveData.location_type === 'ship' ? 'Ship' : 'Outpost'}
-                </InputLabel>
-                <Select
-                  value={moveData.location_id}
-                  label={moveData.location_type === 'ship' ? 'Ship' : 'Outpost'}
-                  onChange={(e) => setMoveData({ ...moveData, location_id: e.target.value })}
-                >
-                  {moveData.location_type === 'ship' 
-                    ? ships.map((ship) => (
-                        <MenuItem key={ship.id} value={ship.id}>{ship.name}</MenuItem>
-                      ))
-                    : outposts.map((outpost) => (
-                        <MenuItem key={outpost.id} value={outpost.id}>{outpost.name}</MenuItem>
-                      ))
-                  }
-                </Select>
-              </FormControl>
-            </Grid>
-            {moveData.location_type === 'ship' && (
+            {allLocations.find(loc => loc.id === moveData.location_id)?.type === 'ship' && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel>Position</InputLabel>
+                  <InputLabel>Ship Position</InputLabel>
                   <Select
                     value={moveData.ship_position}
-                    label="Position"
+                    label="Ship Position"
                     onChange={(e) => setMoveData({ ...moveData, ship_position: e.target.value })}
                   >
                     {shipPositions.map((position) => (
@@ -607,6 +723,69 @@ const CrewManagement = () => {
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleDeleteCrew} color="error" variant="contained">
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Recruitment Dialog */}
+      <Dialog open={recruitmentDialogOpen} onClose={() => setRecruitmentDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Recruit Crew Members</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Use the Skull & Shackles recruitment rules to add random crew members to your fleet.
+          </Typography>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Number of Crew"
+                type="number"
+                value={recruitmentData.numberOfCrew}
+                onChange={(e) => setRecruitmentData({ ...recruitmentData, numberOfCrew: e.target.value })}
+                inputProps={{ min: 1, max: 20 }}
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Autocomplete
+                fullWidth
+                options={allLocations}
+                getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
+                value={allLocations.find(loc => loc.id === recruitmentData.location_id) || null}
+                onChange={(event, newValue) => {
+                  setRecruitmentData({ 
+                    ...recruitmentData, 
+                    location_id: newValue ? newValue.id : '',
+                    ship_position: newValue?.type !== 'ship' ? '' : recruitmentData.ship_position
+                  });
+                }}
+                renderInput={(params) => (
+                  <TextField {...params} label="Recruitment Location" required />
+                )}
+              />
+            </Grid>
+            {allLocations.find(loc => loc.id === recruitmentData.location_id)?.type === 'ship' && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Default Ship Position</InputLabel>
+                  <Select
+                    value={recruitmentData.ship_position}
+                    label="Default Ship Position"
+                    onChange={(e) => setRecruitmentData({ ...recruitmentData, ship_position: e.target.value })}
+                  >
+                    {shipPositions.map((position) => (
+                      <MenuItem key={position} value={position}>{position}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRecruitmentDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleRecruitment} variant="contained" color="primary">
+            Recruit Crew
           </Button>
         </DialogActions>
       </Dialog>
