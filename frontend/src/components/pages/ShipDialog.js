@@ -10,6 +10,56 @@ import {
   Add as AddIcon, Delete as DeleteIcon
 } from '@mui/icons-material';
 
+// Standard Pathfinder 1e Ship Weapons
+const SHIP_WEAPON_TYPES = [
+  'Light Ballista',
+  'Heavy Ballista',
+  'Dragon Ballista',
+  'Gate Breaker Ballista',
+  'Light Catapult',
+  'Standard Catapult',
+  'Heavy Catapult',
+  'Light Bombard',
+  'Standard Bombard',
+  'Heavy Bombard',
+  'Cannon',
+  'Ship\'s Cannon',
+  'Carronade',
+  'Corvus',
+  'Ram',
+  'Manticore\'s Tail',
+  'Firedrake',
+  'Firewyrm',
+  'Springal Arrow',
+  'Springal Rocket'
+];
+
+// Standard Skull & Shackles Ship Improvements
+const SHIP_IMPROVEMENTS = [
+  'Reinforced Hull',
+  'Armored Plating',
+  'Improved Rigging',
+  'Rapid-Deploy Sails',
+  'Ram',
+  'Narrow Hull',
+  'Wooden Plating',
+  'Sturdy Hull',
+  'Magically Treated Hull',
+  'Magically Treated Sails',
+  'Magically Treated Oars',
+  'Magically Treated Control Device',
+  'Concealed Weapon Port',
+  'Improved Rudder',
+  'Improved Steering',
+  'Smuggling Compartments',
+  'Additional Crew Quarters',
+  'Superior Rigging',
+  'Silk Sails',
+  'Advanced Steering',
+  'Enhanced Hull',
+  'Masterwork Rigging'
+];
+
 const ShipDialog = ({
   open,
   onClose,
@@ -20,22 +70,12 @@ const ShipDialog = ({
   loadingShipTypes,
   onShipTypeChange,
   onSave,
-  onAddWeapon,
-  onRemoveWeapon,
-  onUpdateWeapon,
-  onAddOfficer,
-  onRemoveOfficer,
-  onUpdateOfficer,
+  onAddWeaponType,
+  onRemoveWeaponType,
+  onUpdateWeaponType,
   onAddImprovement,
   onRemoveImprovement
 }) => {
-
-  const weaponTypes = ['direct-fire', 'indirect-fire'];
-  const mountPositions = ['port', 'starboard', 'fore', 'aft', 'deck'];
-  const officerPositions = [
-    'Captain', 'First Mate', 'Bosun', 'Cook', 'Gunner',
-    'Master Gunner', 'Pilot', 'Surgeon', 'Quartermaster'
-  ];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
@@ -61,14 +101,7 @@ const ShipDialog = ({
             />
           </Grid>
           
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Captain Name"
-              value={editingShip.captain_name}
-              onChange={(e) => setEditingShip({ ...editingShip, captain_name: e.target.value })}
-            />
-          </Grid>
+
           
           <Grid item xs={12}>
             <Autocomplete
@@ -175,64 +208,54 @@ const ShipDialog = ({
             />
           </Grid>
 
-          {/* Weapons */}
+          {/* Weapon Types */}
           <Grid item xs={12}>
             <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6" color="primary">Weapons</Typography>
+              <Typography variant="h6" color="primary">Weapon Types</Typography>
               <Button
                 startIcon={<AddIcon />}
-                onClick={onAddWeapon}
-                disabled={editingShip.weapons.length >= 4}
+                onClick={onAddWeaponType}
                 size="small"
               >
-                Add Weapon ({editingShip.weapons.length}/4)
+                Add Weapon Type
               </Button>
             </Box>
             <Divider sx={{ mb: 2 }} />
           </Grid>
           
-          {editingShip.weapons.map((weapon, index) => (
-            <Grid item xs={12} key={index}>
+          {editingShip.weapon_types && editingShip.weapon_types.map((weaponType, index) => (
+            <Grid item xs={12} md={6} key={index}>
               <Card variant="outlined" sx={{ p: 2 }}>
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                  <Typography variant="subtitle1">Weapon {index + 1}</Typography>
-                  <IconButton onClick={() => onRemoveWeapon(index)} color="error" size="small">
+                  <Typography variant="subtitle1">Weapon Type {index + 1}</Typography>
+                  <IconButton onClick={() => onRemoveWeaponType(index)} color="error" size="small">
                     <DeleteIcon />
                   </IconButton>
                 </Box>
                 
                 <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="Weapon Name"
-                      value={weapon.name}
-                      onChange={(e) => onUpdateWeapon(index, 'name', e.target.value)}
-                      placeholder="Light Ballista"
-                    />
-                  </Grid>
-                  
-                  <Grid item xs={6} md={3}>
+                  <Grid item xs={8}>
                     <FormControl fullWidth>
-                      <InputLabel>Type</InputLabel>
+                      <InputLabel>Weapon Type</InputLabel>
                       <Select
-                        value={weapon.type}
-                        onChange={(e) => onUpdateWeapon(index, 'type', e.target.value)}
+                        value={weaponType.type}
+                        onChange={(e) => onUpdateWeaponType(index, 'type', e.target.value)}
                       >
-                        {weaponTypes.map(type => (
+                        {SHIP_WEAPON_TYPES.map(type => (
                           <MenuItem key={type} value={type}>{type}</MenuItem>
                         ))}
                       </Select>
                     </FormControl>
                   </Grid>
                   
-                  <Grid item xs={6} md={3}>
+                  <Grid item xs={4}>
                     <TextField
                       fullWidth
-                      label="Damage"
-                      value={weapon.damage}
-                      onChange={(e) => onUpdateWeapon(index, 'damage', e.target.value)}
-                      placeholder="3d8"
+                      label="Quantity"
+                      type="number"
+                      inputProps={{ min: 1, max: 20 }}
+                      value={weaponType.quantity}
+                      onChange={(e) => onUpdateWeaponType(index, 'quantity', parseInt(e.target.value) || 1)}
                     />
                   </Grid>
                 </Grid>
@@ -240,89 +263,41 @@ const ShipDialog = ({
             </Grid>
           ))}
 
-          {/* Officers */}
-          <Grid item xs={12}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6" color="primary">Officers</Typography>
-              <Button
-                startIcon={<AddIcon />}
-                onClick={onAddOfficer}
-                size="small"
-              >
-                Add Officer
-              </Button>
-            </Box>
-            <Divider sx={{ mb: 2 }} />
-          </Grid>
-          
-          {editingShip.officers.map((officer, index) => (
-            <Grid item xs={12} md={6} key={index}>
-              <Card variant="outlined" sx={{ p: 2 }}>
-                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                  <Typography variant="subtitle2">Officer {index + 1}</Typography>
-                  <IconButton onClick={() => onRemoveOfficer(index)} color="error" size="small">
-                    <DeleteIcon />
-                  </IconButton>
-                </Box>
-                
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <FormControl fullWidth>
-                      <InputLabel>Position</InputLabel>
-                      <Select
-                        value={officer.position}
-                        onChange={(e) => onUpdateOfficer(index, 'position', e.target.value)}
-                      >
-                        {officerPositions.map(position => (
-                          <MenuItem key={position} value={position}>{position}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  
-                  <Grid item xs={6}>
-                    <TextField
-                      fullWidth
-                      label="Name"
-                      value={officer.name}
-                      onChange={(e) => onUpdateOfficer(index, 'name', e.target.value)}
-                    />
-                  </Grid>
-                </Grid>
-              </Card>
-            </Grid>
-          ))}
+
 
           {/* Ship Improvements */}
           <Grid item xs={12}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6" color="primary">Ship Improvements</Typography>
-              <Button
-                startIcon={<AddIcon />}
-                onClick={onAddImprovement}
-                size="small"
-              >
-                Add Improvement
-              </Button>
-            </Box>
+            <Typography variant="h6" color="primary">Ship Improvements</Typography>
             <Divider sx={{ mb: 2 }} />
           </Grid>
           
-          <Grid item xs={12}>
-            <Box display="flex" flexWrap="wrap" gap={1}>
-              {editingShip.improvements.map((improvement, index) => (
-                <Chip
-                  key={index}
-                  label={improvement}
-                  onDelete={() => onRemoveImprovement(index)}
-                  color="primary"
-                  variant="outlined"
+          <Grid item xs={12} md={6}>
+            <Autocomplete
+              multiple
+              options={SHIP_IMPROVEMENTS}
+              value={editingShip.improvements || []}
+              onChange={(event, newValue) => {
+                setEditingShip({ ...editingShip, improvements: newValue });
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Ship Improvements"
+                  placeholder="Select improvements..."
+                  helperText="Select from standard Skull & Shackles improvements"
                 />
-              ))}
-              {editingShip.improvements.length === 0 && (
-                <Typography color="text.secondary">No improvements added</Typography>
               )}
-            </Box>
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => (
+                  <Chip
+                    variant="outlined"
+                    label={option}
+                    {...getTagProps({ index })}
+                    key={option}
+                  />
+                ))
+              }
+            />
           </Grid>
           
         </Grid>
