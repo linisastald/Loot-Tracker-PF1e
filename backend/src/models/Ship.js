@@ -88,7 +88,8 @@ exports.create = async (shipData) => {
     shipData.cargo_capacity || 10000,
     shipData.max_passengers || 10,
     shipData.decks || 1,
-    JSON.stringify(shipData.weapons || []),
+    // Handle both weapon_types (new format) and weapons (legacy format)
+    JSON.stringify(shipData.weapon_types || shipData.weapons || []),
     shipData.ramming_damage || '1d8',
     shipData.base_ac || 10,
     shipData.touch_ac || 10,
@@ -154,7 +155,8 @@ exports.update = async (id, shipData) => {
     shipData.cargo_capacity,
     shipData.max_passengers,
     shipData.decks,
-    JSON.stringify(shipData.weapons || []),
+    // Handle both weapon_types (new format) and weapons (legacy format)
+    JSON.stringify(shipData.weapon_types || shipData.weapons || []),
     shipData.ramming_damage,
     shipData.base_ac,
     shipData.touch_ac,

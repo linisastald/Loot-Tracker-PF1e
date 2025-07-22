@@ -1,7 +1,8 @@
 -- Ship, Crew, and Outpost Tracking System Migration
+-- Updated to handle existing tables from init.sql
 
--- Ships table
-CREATE TABLE ships (
+-- Create ships table only if it doesn't exist
+CREATE TABLE IF NOT EXISTS ships (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     location VARCHAR(255),
@@ -11,8 +12,8 @@ CREATE TABLE ships (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Outposts table  
-CREATE TABLE outposts (
+-- Create outposts table only if it doesn't exist
+CREATE TABLE IF NOT EXISTS outposts (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     location VARCHAR(255),
@@ -21,8 +22,8 @@ CREATE TABLE outposts (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Crew table
-CREATE TABLE crew (
+-- Create crew table only if it doesn't exist
+CREATE TABLE IF NOT EXISTS crew (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     race VARCHAR(100),
@@ -39,11 +40,20 @@ CREATE TABLE crew (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes for performance
-CREATE INDEX idx_crew_location ON crew(location_type, location_id);
-CREATE INDEX idx_crew_is_alive ON crew(is_alive);
-CREATE INDEX idx_crew_ship_position ON crew(ship_position);
+-- Create indexes only if they don't exist
+CREATE INDEX IF NOT EXISTS idx_crew_location ON crew(location_type, location_id);
+CREATE INDEX IF NOT EXISTS idx_crew_is_alive ON crew(is_alive);
+CREATE INDEX IF NOT EXISTS idx_crew_ship_position ON crew(ship_position);
 
--- Add constraints to ensure location_type is valid
-ALTER TABLE crew ADD CONSTRAINT crew_location_type_check 
-    CHECK (location_type IN ('ship', 'outpost'));
+-- Add constraint only if it doesn't exist
+DO $
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'crew_location_type_check' 
+        AND table_name = 'crew'
+    ) THEN
+        ALTER TABLE crew ADD CONSTRAINT crew_location_type_check 
+            CHECK (location_type IN ('ship', 'outpost'));
+    END IF;
+END $;
