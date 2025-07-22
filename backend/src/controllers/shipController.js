@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
  */
 const createShip = async (req, res) => {
   const { 
-    name, location, is_squibbing, ship_type,
+    name, location, status, is_squibbing, ship_type,
     size, cost, max_speed, acceleration, propulsion,
     min_crew, max_crew, cargo_capacity, max_passengers,
     decks, weapons, weapon_types, ramming_damage,
@@ -31,6 +31,7 @@ const createShip = async (req, res) => {
   let shipData = {
     name,
     location: location || null,
+    status: status || 'Active',
     is_squibbing: is_squibbing || false,
     ship_type: ship_type || null,
     // Include all the new fields
@@ -272,20 +273,20 @@ const applyDamage = async (req, res) => {
     throw controllerFactory.createNotFoundError('Ship not found');
   }
 
-  const status = Ship.getShipStatus(ship);
+  const damageStatus = Ship.getShipDamageStatus(ship);
 
   logger.info(`Damage applied to ship: ${ship.name}`, {
     userId: req.user.id,
     shipId: ship.id,
     damage: damage,
     newHP: ship.current_hp,
-    status: status
+    damageStatus: damageStatus
   });
 
   controllerFactory.sendSuccessResponse(res, {
     ship,
-    status,
-    message: status === 'Sunk' ? 'Ship has been sunk!' : `${damage} damage applied`
+    damageStatus,
+    message: damageStatus === 'Destroyed' ? 'Ship has been destroyed!' : `${damage} damage applied`
   }, 'Damage applied successfully');
 };
 
@@ -310,19 +311,19 @@ const repairShip = async (req, res) => {
     throw controllerFactory.createNotFoundError('Ship not found');
   }
 
-  const status = Ship.getShipStatus(ship);
+  const damageStatus = Ship.getShipDamageStatus(ship);
 
   logger.info(`Ship repaired: ${ship.name}`, {
     userId: req.user.id,
     shipId: ship.id,
     repair: repair,
     newHP: ship.current_hp,
-    status: status
+    damageStatus: damageStatus
   });
 
   controllerFactory.sendSuccessResponse(res, {
     ship,
-    status,
+    damageStatus,
     message: `${repair} HP repaired`
   }, 'Ship repaired successfully');
 };

@@ -46,7 +46,7 @@ const ShipManagement = () => {
   const [editingShip, setEditingShip] = useState({
     name: '',
     location: '',
-    is_squibbing: false,
+    status: 'Active',
     ship_type: null,
     size: 'Colossal',
     cost: 0,
@@ -187,7 +187,7 @@ const ShipManagement = () => {
     setEditingShip({
       name: '',
       location: '',
-      is_squibbing: false,
+      status: 'Active',
       ship_type: null,
       size: 'Colossal',
       cost: 0,
@@ -232,7 +232,7 @@ const ShipManagement = () => {
     setEditingShip({
       name: ship.name,
       location: ship.location || '',
-      is_squibbing: ship.is_squibbing || false,
+      status: ship.status || 'Active',
       ship_type: ship.ship_type || null,
       size: ship.size || 'Colossal',
       cost: ship.cost || 0,
@@ -528,8 +528,14 @@ const ShipManagement = () => {
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={ship.is_squibbing ? 'Squibbing' : 'Active'}
-                        color={ship.is_squibbing ? 'warning' : 'success'}
+                        label={ship.status || 'Active'}
+                        color={
+                          ship.status === 'PC Active' ? 'primary' :
+                          ship.status === 'Active' ? 'success' :
+                          ship.status === 'Docked' ? 'info' :
+                          ship.status === 'Lost' ? 'warning' :
+                          ship.status === 'Sunk' ? 'error' : 'default'
+                        }
                         size="small"
                       />
                     </TableCell>
@@ -641,18 +647,17 @@ const ShipManagement = () => {
                       
                       <Grid item xs={6}>
                         <Typography variant="subtitle2" color="primary">Status</Typography>
-                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                          <Chip
-                            label={selectedShip.is_squibbing ? 'Squibbing' : 'Active'}
-                            color={selectedShip.is_squibbing ? 'warning' : 'success'}
-                            size="small"
-                          />
-                          <Chip
-                            label={getShipStatusLabel(selectedShip)}
-                            color={getShipStatusColor(selectedShip)}
-                            size="small"
-                          />
-                        </Box>
+                        <Chip
+                          label={selectedShip.status || 'Active'}
+                          color={
+                            selectedShip.status === 'PC Active' ? 'primary' :
+                            selectedShip.status === 'Active' ? 'success' :
+                            selectedShip.status === 'Docked' ? 'info' :
+                            selectedShip.status === 'Lost' ? 'warning' :
+                            selectedShip.status === 'Sunk' ? 'error' : 'default'
+                          }
+                          size="small"
+                        />
                       </Grid>
                       
                       {selectedShip.captain_name && (

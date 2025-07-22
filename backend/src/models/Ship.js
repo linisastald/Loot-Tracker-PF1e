@@ -60,7 +60,7 @@ exports.getWithCrew = async (shipId) => {
 exports.create = async (shipData) => {
   const query = `
     INSERT INTO ships (
-      name, location, is_squibbing, ship_type, size, cost,
+      name, location, status, is_squibbing, ship_type, size, cost,
       max_speed, acceleration, propulsion, min_crew, max_crew,
       cargo_capacity, max_passengers, decks, weapons, ramming_damage,
       base_ac, touch_ac, hardness, max_hp, current_hp,
@@ -69,13 +69,14 @@ exports.create = async (shipData) => {
       officers, improvements, cargo_manifest,
       ship_notes, captain_name, flag_description
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
     RETURNING *
   `;
   
   const values = [
     shipData.name,
     shipData.location || null,
+    shipData.status || 'Active',
     shipData.is_squibbing || false,
     shipData.ship_type || null,
     shipData.size || 'Colossal',
@@ -126,23 +127,24 @@ exports.create = async (shipData) => {
 exports.update = async (id, shipData) => {
   const query = `
     UPDATE ships 
-    SET name = $1, location = $2, is_squibbing = $3, ship_type = $4,
-        size = $5, cost = $6, max_speed = $7, acceleration = $8,
-        propulsion = $9, min_crew = $10, max_crew = $11,
-        cargo_capacity = $12, max_passengers = $13, decks = $14,
-        weapons = $15, ramming_damage = $16, base_ac = $17, touch_ac = $18,
-        hardness = $19, max_hp = $20, current_hp = $21, cmb = $22, cmd = $23,
-        saves = $24, initiative = $25, plunder = $26, infamy = $27, disrepute = $28,
-        sails_oars = $29, sailing_check_bonus = $30, officers = $31, improvements = $32,
-        cargo_manifest = $33, ship_notes = $34, captain_name = $35, flag_description = $36,
+    SET name = $1, location = $2, status = $3, is_squibbing = $4, ship_type = $5,
+        size = $6, cost = $7, max_speed = $8, acceleration = $9,
+        propulsion = $10, min_crew = $11, max_crew = $12,
+        cargo_capacity = $13, max_passengers = $14, decks = $15,
+        weapons = $16, ramming_damage = $17, base_ac = $18, touch_ac = $19,
+        hardness = $20, max_hp = $21, current_hp = $22, cmb = $23, cmd = $24,
+        saves = $25, initiative = $26, plunder = $27, infamy = $28, disrepute = $29,
+        sails_oars = $30, sailing_check_bonus = $31, officers = $32, improvements = $33,
+        cargo_manifest = $34, ship_notes = $35, captain_name = $36, flag_description = $37,
         updated_at = CURRENT_TIMESTAMP
-    WHERE id = $37
+    WHERE id = $38
     RETURNING *
   `;
   
   const values = [
     shipData.name,
     shipData.location,
+    shipData.status,
     shipData.is_squibbing,
     shipData.ship_type,
     shipData.size,
@@ -244,17 +246,25 @@ exports.repairShip = async (id, repairAmount) => {
 };
 
 /**
- * Get ship status based on current HP
- * @param {Object} ship 
- * @return {string} Ship status
+ * Get valid ship status options
+ * @return {Array<string>} Array of valid status values
  */
-exports.getShipStatus = (ship) => {
+exports.getValidStatuses = () => {
+  return ['PC Active', 'Active', 'Docked', 'Lost', 'Sunk'];
+};
+
+/**
+ * Get ship damage status based on current HP (separate from operational status)
+ * @param {Object} ship 
+ * @return {string} Ship damage status
+ */
+exports.getShipDamageStatus = (ship) => {
   if (!ship || ship.current_hp === undefined || ship.max_hp === undefined) {
     return 'Unknown';
   }
   
   if (ship.current_hp === 0) {
-    return 'Sunk';
+    return 'Destroyed';
   }
   
   const hpPercentage = (ship.current_hp / ship.max_hp) * 100;

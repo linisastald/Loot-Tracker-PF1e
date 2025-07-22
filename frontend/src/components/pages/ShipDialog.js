@@ -84,6 +84,23 @@ const ShipDialog = ({
           </Grid>
           
           <Grid item xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel>Ship Status</InputLabel>
+              <Select
+                value={editingShip.status || 'Active'}
+                label="Ship Status"
+                onChange={(e) => setEditingShip({ ...editingShip, status: e.target.value })}
+              >
+                <MenuItem value="PC Active">PC Active</MenuItem>
+                <MenuItem value="Active">Active</MenuItem>
+                <MenuItem value="Docked">Docked</MenuItem>
+                <MenuItem value="Lost">Lost</MenuItem>
+                <MenuItem value="Sunk">Sunk</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          
+          <Grid item xs={12} md={6}>
             <FormControlLabel
               control={
                 <Switch

@@ -73,8 +73,7 @@ const CrewManagement = () => {
   const [recruitmentData, setRecruitmentData] = useState({
     skillType: 'diplomacy',
     rollResult: '',
-    location_id: '',
-    ship_position: ''
+    location_id: ''
   });
 
   const shipPositions = [
@@ -107,6 +106,12 @@ const CrewManagement = () => {
         ...outpostsResponse.data.outposts.map(outpost => ({ ...outpost, type: 'outpost' }))
       ];
       setAllLocations(locations);
+      
+      // Find PC Active ship and set as default for recruitment
+      const pcActiveShip = shipsResponse.data.ships.find(ship => ship.status === 'PC Active');
+      if (pcActiveShip) {
+        setRecruitmentData(prev => ({ ...prev, location_id: pcActiveShip.id }));
+      }
       
       // Get current Golarion date
       const todayDate = await getTodayInInputFormat();
@@ -295,7 +300,7 @@ const CrewManagement = () => {
           description: `${recruitmentMethod} via ${skillTypeLabel} check`,
           location_type: selectedLocation.type,
           location_id: recruitmentData.location_id,
-          ship_position: selectedLocation.type === 'ship' ? (recruitmentData.ship_position || 'Crew') : null,
+          ship_position: selectedLocation.type === 'ship' ? 'Crew' : null,
           hire_date: hireDateParsed
         };
 
@@ -373,7 +378,13 @@ const CrewManagement = () => {
               variant="outlined"
               startIcon={<RecruitIcon />}
               onClick={() => {
-                setRecruitmentData({ skillType: 'diplomacy', rollResult: '', location_id: '', ship_position: '' });
+                // Find PC Active ship for default
+                const pcActiveShip = ships.find(ship => ship.status === 'PC Active');
+                setRecruitmentData({ 
+                  skillType: 'diplomacy', 
+                  rollResult: '', 
+                  location_id: pcActiveShip ? pcActiveShip.id : '' 
+                });
                 setRecruitmentDialogOpen(true);
               }}
             >
@@ -538,7 +549,7 @@ const CrewManagement = () => {
           {selectedCrew ? 'Edit Crew Member' : 'Add New Crew Member'}
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
@@ -548,6 +559,7 @@ const CrewManagement = () => {
                 required
               />
             </Grid>
+
             <Grid item xs={12} md={6}>
               <Autocomplete
                 fullWidth
@@ -561,6 +573,7 @@ const CrewManagement = () => {
                 )}
               />
             </Grid>
+
             {editingCrew.race === 'Other' && (
               <Grid item xs={12} md={6}>
                 <TextField
@@ -572,6 +585,7 @@ const CrewManagement = () => {
                 />
               </Grid>
             )}
+
             <Grid item xs={12} md={3}>
               <TextField
                 fullWidth
@@ -581,6 +595,7 @@ const CrewManagement = () => {
                 onChange={(e) => setEditingCrew({ ...editingCrew, age: e.target.value })}
               />
             </Grid>
+
             <Grid item xs={12} md={3}>
               <TextField
                 fullWidth
@@ -591,6 +606,7 @@ const CrewManagement = () => {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
+
             <Grid item xs={12}>
               <Autocomplete
                 fullWidth
@@ -607,9 +623,9 @@ const CrewManagement = () => {
                 renderInput={(params) => (
                   <TextField {...params} label="Location" required />
                 )}
-                sx={{ '& .MuiAutocomplete-input': { minWidth: '200px' } }}
               />
             </Grid>
+
             {allLocations.find(loc => loc.id === editingCrew.location_id)?.type === 'ship' && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
@@ -618,7 +634,6 @@ const CrewManagement = () => {
                     value={editingCrew.ship_position}
                     label="Ship Position"
                     onChange={(e) => setEditingCrew({ ...editingCrew, ship_position: e.target.value })}
-                    sx={{ minWidth: '150px' }}
                   >
                     {shipPositions.map((position) => (
                       <MenuItem key={position} value={position}>{position}</MenuItem>
@@ -627,6 +642,7 @@ const CrewManagement = () => {
                 </FormControl>
               </Grid>
             )}
+
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -648,10 +664,10 @@ const CrewManagement = () => {
       </Dialog>
 
       {/* Move Dialog */}
-      <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Move Crew Member</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <Autocomplete
                 fullWidth
@@ -668,6 +684,7 @@ const CrewManagement = () => {
                 renderInput={(params) => (
                   <TextField {...params} label="New Location" required />
                 )}
+                sx={{ '& .MuiAutocomplete-listbox': { maxHeight: 200 } }}
               />
             </Grid>
             {allLocations.find(loc => loc.id === moveData.location_id)?.type === 'ship' && (
@@ -698,7 +715,7 @@ const CrewManagement = () => {
       <Dialog open={statusDialogOpen} onClose={() => setStatusDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Update Crew Status</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <FormControl fullWidth>
                 <InputLabel>Status</InputLabel>
@@ -811,8 +828,7 @@ const CrewManagement = () => {
                 onChange={(event, newValue) => {
                   setRecruitmentData({ 
                     ...recruitmentData, 
-                    location_id: newValue ? newValue.id : '',
-                    ship_position: newValue?.type !== 'ship' ? '' : recruitmentData.ship_position
+                    location_id: newValue ? newValue.id : ''
                   });
                 }}
                 renderInput={(params) => (
@@ -820,23 +836,6 @@ const CrewManagement = () => {
                 )}
               />
             </Grid>
-
-            {allLocations.find(loc => loc.id === recruitmentData.location_id)?.type === 'ship' && (
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Default Ship Position</InputLabel>
-                  <Select
-                    value={recruitmentData.ship_position}
-                    label="Default Ship Position"
-                    onChange={(e) => setRecruitmentData({ ...recruitmentData, ship_position: e.target.value })}
-                  >
-                    {shipPositions.map((position) => (
-                      <MenuItem key={position} value={position}>{position}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-            )}
           </Grid>
         </DialogContent>
         <DialogActions>
