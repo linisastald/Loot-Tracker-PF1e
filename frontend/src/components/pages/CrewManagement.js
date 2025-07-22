@@ -71,7 +71,8 @@ const CrewManagement = () => {
   });
 
   const [recruitmentData, setRecruitmentData] = useState({
-    numberOfCrew: 1,
+    skillType: 'diplomacy',
+    rollResult: '',
     location_id: '',
     ship_position: ''
   });
@@ -238,30 +239,60 @@ const CrewManagement = () => {
         return;
       }
 
+      const rollResult = parseInt(recruitmentData.rollResult);
+      if (!rollResult || rollResult < 1 || rollResult > 20) {
+        setError('Please enter a valid d20 roll result (1-20)');
+        return;
+      }
+
       const selectedLocation = allLocations.find(loc => loc.id === recruitmentData.location_id);
       if (!selectedLocation) {
         setError('Invalid location selected');
         return;
       }
 
-      const numberOfCrew = parseInt(recruitmentData.numberOfCrew);
-      if (numberOfCrew < 1 || numberOfCrew > 20) {
-        setError('Number of crew must be between 1 and 20');
+      // Check if recruitment attempt succeeds (DC 20)
+      const recruitmentDC = 20;
+      const skillTypeLabel = {
+        bluff: 'Bluff',
+        diplomacy: 'Diplomacy', 
+        intimidate: 'Intimidate'
+      }[recruitmentData.skillType];
+
+      if (rollResult < recruitmentDC) {
+        setError(`Recruitment failed! Your ${skillTypeLabel} check (${rollResult}) did not meet DC ${recruitmentDC}. No crew members were recruited. (Each attempt takes 1 full day)`);
         return;
       }
 
-      // Generate random crew members
+      // Success! Roll 1d4+2 for number of crew (3-6 crew members)
+      const baseCrewRoll = Math.floor(Math.random() * 4) + 1; // 1d4
+      const numberOfCrew = baseCrewRoll + 2; // +2 for final result of 3-6
+
+      // Generate the recruited crew members
       for (let i = 0; i < numberOfCrew; i++) {
         const randomName = generateRandomName();
         const randomRace = generateRandomRace();
         const randomAge = generateRandomAge(randomRace);
         const hireDateParsed = inputFormatToGolarion(currentGolarionDate);
 
+        let recruitmentMethod = '';
+        switch (recruitmentData.skillType) {
+          case 'bluff':
+            recruitmentMethod = 'Tricked into joining';
+            break;
+          case 'diplomacy':
+            recruitmentMethod = 'Convinced to join';
+            break;
+          case 'intimidate':
+            recruitmentMethod = 'Press-ganged';
+            break;
+        }
+
         const crewData = {
           name: randomName,
           race: randomRace,
           age: randomAge,
-          description: 'Recruited crew member',
+          description: `${recruitmentMethod} via ${skillTypeLabel} check`,
           location_type: selectedLocation.type,
           location_id: recruitmentData.location_id,
           ship_position: selectedLocation.type === 'ship' ? (recruitmentData.ship_position || 'Crew') : null,
@@ -271,7 +302,7 @@ const CrewManagement = () => {
         await crewService.createCrew(crewData);
       }
 
-      setSuccess(`Successfully recruited ${numberOfCrew} crew member${numberOfCrew > 1 ? 's' : ''}`);
+      setSuccess(`Recruitment successful! Your ${skillTypeLabel} check (${rollResult}) beat DC ${recruitmentDC}. You recruited ${numberOfCrew} crew members (rolled ${baseCrewRoll}+2). Remember: this took 1 full day and crew expects plunder shares!`);
       setRecruitmentDialogOpen(false);
       fetchData();
       setError('');
@@ -342,7 +373,7 @@ const CrewManagement = () => {
               variant="outlined"
               startIcon={<RecruitIcon />}
               onClick={() => {
-                setRecruitmentData({ numberOfCrew: 1, location_id: '', ship_position: '' });
+                setRecruitmentData({ skillType: 'diplomacy', rollResult: '', location_id: '', ship_position: '' });
                 setRecruitmentDialogOpen(true);
               }}
             >
@@ -732,17 +763,32 @@ const CrewManagement = () => {
         <DialogTitle>Recruit Crew Members</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Use the Skull & Shackles recruitment rules to add random crew members to your fleet.
+            Use the official Skull & Shackles recruitment rules. Make a DC 20 skill check - success recruits 1d4+2 crew members (3-6). Each attempt takes 1 full day.
           </Typography>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Recruitment Method</InputLabel>
+                <Select
+                  value={recruitmentData.skillType}
+                  label="Recruitment Method"
+                  onChange={(e) => setRecruitmentData({ ...recruitmentData, skillType: e.target.value })}
+                >
+                  <MenuItem value="bluff">Bluff (trick sailors aboard)</MenuItem>
+                  <MenuItem value="diplomacy">Diplomacy (convince to join)</MenuItem>
+                  <MenuItem value="intimidate">Intimidate (press-gang)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Number of Crew"
+                label="Your d20 Roll Result"
                 type="number"
-                value={recruitmentData.numberOfCrew}
-                onChange={(e) => setRecruitmentData({ ...recruitmentData, numberOfCrew: e.target.value })}
+                value={recruitmentData.rollResult}
+                onChange={(e) => setRecruitmentData({ ...recruitmentData, rollResult: e.target.value })}
                 inputProps={{ min: 1, max: 20 }}
+                helperText="Need DC 20 to succeed"
                 required
               />
             </Grid>
@@ -780,12 +826,18 @@ const CrewManagement = () => {
                 </FormControl>
               </Grid>
             )}
+            <Grid item xs={12}>
+              <Typography variant="caption" color="text.secondary">
+                <strong>Reminder:</strong> Crew members don't get daily wages - they expect shares of plunder when you sell it. 
+                Deduct 1 point of plunder when selling to pay crew shares.
+              </Typography>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setRecruitmentDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleRecruitment} variant="contained" color="primary">
-            Recruit Crew
+            Make Recruitment Check
           </Button>
         </DialogActions>
       </Dialog>
