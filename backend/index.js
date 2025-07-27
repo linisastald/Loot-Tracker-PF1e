@@ -114,7 +114,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Security middleware
+// Security middleware with comprehensive headers
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   contentSecurityPolicy: {
@@ -130,7 +130,18 @@ app.use(helmet({
       frameSrc: ["'none'"],
       upgradeInsecureRequests: []
     }
-  }
+  },
+  // Additional security headers
+  strictTransportSecurity: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  },
+  xContentTypeOptions: true,  // Adds X-Content-Type-Options: nosniff
+  xFrameOptions: { action: 'deny' },  // Adds X-Frame-Options: DENY
+  xPoweredBy: false,  // Remove X-Powered-By header
+  xXssProtection: true,  // Adds X-XSS-Protection: 1; mode=block
+  referrerPolicy: { policy: 'same-origin' }
 }));
 
 // Rate limiting
@@ -148,8 +159,15 @@ const limiter = rateLimit({
   }
 });
 
-// Apply middlewares
-app.use(bodyParser.json());
+// Apply middlewares with size limits to prevent DoS attacks
+app.use(bodyParser.json({ 
+  limit: '10mb',  // Limit JSON body size
+  strict: true    // Only accept arrays and objects
+}));
+app.use(bodyParser.urlencoded({ 
+  extended: true, 
+  limit: '10mb'   // Limit URL-encoded body size
+}));
 app.use(cookieParser());
 
 // Add API response middleware
@@ -227,6 +245,14 @@ const configRoutes = require('./src/api/routes/config');
 const shipRoutes = require('./src/api/routes/ships');
 const outpostRoutes = require('./src/api/routes/outposts');
 const crewRoutes = require('./src/api/routes/crew');
+const migrationRoutes = require('./src/api/routes/migrations');
+
+// New refactored routes
+const itemRoutes = require('./src/api/routes/items');
+const itemCreationRoutes = require('./src/api/routes/itemCreation');
+const salesRoutes = require('./src/api/routes/sales');
+const appraisalRoutes = require('./src/api/routes/appraisal');
+const reportsRoutes = require('./src/api/routes/reports');
 
 // Set up routes with appropriate protection
 // Auth routes with auth-specific rate limiting (applied before global rate limiting)
@@ -239,6 +265,7 @@ app.use('/api/config', configRoutes);
 app.use('/api', limiter);
 
 // Apply CSRF protection to all API routes except auth and csrf-token
+// Legacy routes (will be gradually deprecated)
 app.use('/api/loot', csrfProtection, lootRoutes);
 app.use('/api/user', csrfProtection, userRoutes);
 app.use('/api/gold', csrfProtection, goldRoutes);
@@ -254,6 +281,14 @@ app.use('/api/weather', csrfProtection, weatherRoutes);
 app.use('/api/ships', csrfProtection, shipRoutes);
 app.use('/api/outposts', csrfProtection, outpostRoutes);
 app.use('/api/crew', csrfProtection, crewRoutes);
+app.use('/api/migrations', migrationRoutes); // No CSRF protection for read-only endpoints
+
+// New refactored routes
+app.use('/api/items', csrfProtection, itemRoutes);
+app.use('/api/item-creation', csrfProtection, itemCreationRoutes);
+app.use('/api/sales', csrfProtection, salesRoutes);
+app.use('/api/appraisal', csrfProtection, appraisalRoutes);
+app.use('/api/reports', csrfProtection, reportsRoutes);
 
 // Global error handler
 app.use(errorHandler);

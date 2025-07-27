@@ -9,15 +9,15 @@ router.post('/send-event', verifyToken, discordController.sendEvent);
 router.get('/status', verifyToken, discordController.getIntegrationStatus);
 router.put('/settings', verifyToken, discordController.updateSettings);
 
-// Handle Discord interactions (no auth - uses Discord's verification)
+// Handle Discord interactions (routed from discord-handler service)
+// Note: This endpoint is now called by the discord-handler service, not directly by Discord
 router.post('/interactions', (req, res, next) => {
-    // Log all interaction attempts
-    console.log('=== DISCORD INTERACTION RECEIVED ===');
+    // Log interactions routed from discord-handler
+    console.log('=== DISCORD INTERACTION ROUTED FROM HANDLER ===');
     console.log('Headers:', req.headers);
+    console.log('Forwarded from:', req.headers['x-forwarded-from']);
     console.log('Body:', req.body);
-    console.log('Method:', req.method);
-    console.log('URL:', req.url);
-    console.log('=====================================');
+    console.log('================================================');
     next();
 }, sessionController.processSessionInteraction);
 

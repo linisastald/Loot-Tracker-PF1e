@@ -6,6 +6,94 @@ const logger = require('./logger');
 const { DATABASE } = require('../config/constants');
 
 /**
+ * Whitelist of allowed table names to prevent SQL injection
+ */
+const ALLOWED_TABLES = new Set([
+  'users', 'characters', 'ships', 'outposts', 'crew', 'item', 'mod', 'loot',
+  'appraisals', 'gold', 'sold', 'consumables', 'sessions', 'invites', 'settings',
+  'infamy', 'weather_events', 'weather_regions', 'impositions', 'spells',
+  'min_caster_levels', 'min_costs', 'password_reset_tokens'
+]);
+
+/**
+ * Whitelist of allowed column names for common operations
+ */
+const ALLOWED_COLUMNS = new Set([
+  'id', 'user_id', 'character_id', 'ship_id', 'outpost_id', 'location_id',
+  'name', 'username', 'email', 'role', 'active', 'is_alive', 'is_used',
+  'created_at', 'updated_at', 'session_date', 'location_type', 'status'
+]);
+
+/**
+ * Validate and sanitize table name to prevent SQL injection
+ * @param {string} table - Table name to validate
+ * @returns {string} - Validated table name
+ * @throws {Error} - If table name is invalid
+ */
+const validateTableName = (table) => {
+  if (!table || typeof table !== 'string') {
+    throw new Error('Invalid table name: must be a non-empty string');
+  }
+
+  const cleanTable = table.toLowerCase().trim();
+  
+  if (!ALLOWED_TABLES.has(cleanTable)) {
+    logger.error(`Attempted to access unauthorized table: ${table}`);
+    throw new Error('Invalid table name');
+  }
+
+  // Additional validation: table name should match pattern
+  if (!/^[a-z_]+$/.test(cleanTable)) {
+    throw new Error('Invalid table name format');
+  }
+
+  return cleanTable;
+};
+
+/**
+ * Validate and sanitize column name to prevent SQL injection
+ * @param {string} column - Column name to validate
+ * @param {boolean} [strict=true] - Whether to enforce whitelist
+ * @returns {string} - Validated column name
+ * @throws {Error} - If column name is invalid
+ */
+const validateColumnName = (column, strict = true) => {
+  if (!column || typeof column !== 'string') {
+    throw new Error('Invalid column name: must be a non-empty string');
+  }
+
+  const cleanColumn = column.toLowerCase().trim();
+
+  // Basic pattern validation - alphanumeric with underscores only
+  if (!/^[a-z0-9_]+$/.test(cleanColumn)) {
+    logger.error(`Invalid column name format: ${column}`);
+    throw new Error('Invalid column name format');
+  }
+
+  // In strict mode, enforce whitelist
+  if (strict && !ALLOWED_COLUMNS.has(cleanColumn)) {
+    logger.error(`Attempted to access unauthorized column: ${column}`);
+    throw new Error('Invalid column name');
+  }
+
+  return cleanColumn;
+};
+
+/**
+ * Validate multiple column names
+ * @param {Array<string>} columns - Array of column names
+ * @param {boolean} [strict=false] - Whether to enforce whitelist
+ * @returns {Array<string>} - Array of validated column names
+ */
+const validateColumnNames = (columns, strict = false) => {
+  if (!Array.isArray(columns)) {
+    throw new Error('Columns must be an array');
+  }
+
+  return columns.map(col => validateColumnName(col, strict));
+};
+
+/**
  * Execute a database query with error handling
  * @param {string} queryText - SQL query text
  * @param {Array} params - Query parameters
@@ -90,10 +178,14 @@ const executeTransaction = async (callback, errorMessage = 'Transaction error') 
  * @returns {Promise<boolean>} - True if exists, false otherwise
  */
 const rowExists = async (table, column, value) => {
+  // Validate inputs to prevent SQL injection
+  const validTable = validateTableName(table);
+  const validColumn = validateColumnName(column);
+
   const result = await executeQuery(
-    `SELECT EXISTS(SELECT 1 FROM ${table} WHERE ${column} = $1)`,
+    `SELECT EXISTS(SELECT 1 FROM "${validTable}" WHERE "${validColumn}" = $1)`,
     [value],
-    `Error checking if ${table}.${column} = ${value} exists`
+    `Error checking if ${validTable}.${validColumn} = ${value} exists`
   );
   return result.rows[0].exists;
 };
@@ -106,10 +198,14 @@ const rowExists = async (table, column, value) => {
  * @returns {Promise<Object|null>} - Row data or null if not found
  */
 const getById = async (table, id, idColumn = 'id') => {
+  // Validate inputs to prevent SQL injection
+  const validTable = validateTableName(table);
+  const validIdColumn = validateColumnName(idColumn);
+
   const result = await executeQuery(
-    `SELECT * FROM ${table} WHERE ${idColumn} = $1`,
+    `SELECT * FROM "${validTable}" WHERE "${validIdColumn}" = $1`,
     [id],
-    `Error getting ${table} by ${idColumn} = ${id}`
+    `Error getting ${validTable} by ${validIdColumn} = ${id}`
   );
   return result.rows.length > 0 ? result.rows[0] : null;
 };
@@ -123,6 +219,10 @@ const getById = async (table, id, idColumn = 'id') => {
  * @returns {Promise<Object|null>} - Updated row or null if not found
  */
 const updateById = async (table, id, data, idColumn = 'id') => {
+  // Validate table and id column
+  const validTable = validateTableName(table);
+  const validIdColumn = validateColumnName(idColumn);
+
   // Filter out undefined values and prepare for query
   const filteredData = Object.fromEntries(
     Object.entries(data).filter(([_, v]) => v !== undefined)
@@ -132,20 +232,24 @@ const updateById = async (table, id, data, idColumn = 'id') => {
     return await getById(table, id, idColumn);
   }
 
-  const setClauses = Object.keys(filteredData).map((key, i) => `${key} = $${i + 2}`);
-  const values = Object.values(filteredData);
+  // Validate all column names
+  const columns = Object.keys(filteredData);
+  const validColumns = validateColumnNames(columns, false); // Less strict for updates
+
+  const setClauses = validColumns.map((col, i) => `"${col}" = $${i + 2}`);
+  const values = validColumns.map(col => filteredData[columns[columns.indexOf(col)]]);
 
   const query = `
-    UPDATE ${table}
+    UPDATE "${validTable}"
     SET ${setClauses.join(', ')}
-    WHERE ${idColumn} = $1
+    WHERE "${validIdColumn}" = $1
     RETURNING *
   `;
 
   const result = await executeQuery(
     query,
     [id, ...values],
-    `Error updating ${table} where ${idColumn} = ${id}`
+    `Error updating ${validTable} where ${validIdColumn} = ${id}`
   );
 
   return result.rows.length > 0 ? result.rows[0] : null;
@@ -158,17 +262,26 @@ const updateById = async (table, id, data, idColumn = 'id') => {
  * @returns {Promise<Object>} - Inserted row
  */
 const insert = async (table, data) => {
+  // Validate table name
+  const validTable = validateTableName(table);
+
   const keys = Object.keys(data);
-  const values = Object.values(data);
-  const placeholders = keys.map((_, i) => `$${i + 1}`);
+  if (keys.length === 0) {
+    throw new Error('No data provided for insert');
+  }
+
+  // Validate column names
+  const validKeys = validateColumnNames(keys, false); // Less strict for inserts
+  const values = validKeys.map(key => data[keys[keys.indexOf(key)]]);
+  const placeholders = validKeys.map((_, i) => `$${i + 1}`);
 
   const query = `
-    INSERT INTO ${table} (${keys.join(', ')})
+    INSERT INTO "${validTable}" (${validKeys.map(k => `"${k}"`).join(', ')})
     VALUES (${placeholders.join(', ')})
     RETURNING *
   `;
 
-  const result = await executeQuery(query, values, `Error inserting into ${table}`);
+  const result = await executeQuery(query, values, `Error inserting into ${validTable}`);
   return result.rows[0];
 };
 
@@ -180,13 +293,17 @@ const insert = async (table, data) => {
  * @returns {Promise<boolean>} - True if deleted, false if not found
  */
 const deleteById = async (table, id, idColumn = 'id') => {
+  // Validate inputs
+  const validTable = validateTableName(table);
+  const validIdColumn = validateColumnName(idColumn);
+
   const query = `
-    DELETE FROM ${table}
-    WHERE ${idColumn} = $1
-    RETURNING ${idColumn}
+    DELETE FROM "${validTable}"
+    WHERE "${validIdColumn}" = $1
+    RETURNING "${validIdColumn}"
   `;
 
-  const result = await executeQuery(query, [id], `Error deleting from ${table} where ${idColumn} = ${id}`);
+  const result = await executeQuery(query, [id], `Error deleting from ${validTable} where ${validIdColumn} = ${id}`);
   return result.rows.length > 0;
 };
 
@@ -197,12 +314,21 @@ const deleteById = async (table, id, idColumn = 'id') => {
  * @returns {Promise<Object>} - Rows and count
  */
 const getMany = async (table, options = {}) => {
+  // Validate table name
+  const validTable = validateTableName(table);
+
   const {
     limit = 50,
     offset = 0,
     orderBy = {column: 'id', direction: 'ASC'},
     where = null
   } = options;
+
+  // Validate orderBy
+  const validOrderColumn = validateColumnName(orderBy.column, false);
+  const validDirection = ['ASC', 'DESC'].includes(orderBy.direction.toUpperCase()) 
+    ? orderBy.direction.toUpperCase() 
+    : 'ASC';
 
   let whereClause = '';
   let values = [limit, offset];
@@ -213,7 +339,8 @@ const getMany = async (table, options = {}) => {
     const whereValues = [];
 
     for (const [key, value] of Object.entries(where)) {
-      whereClauses.push(`${key} = $${paramIndex}`);
+      const validKey = validateColumnName(key, false);
+      whereClauses.push(`"${validKey}" = $${paramIndex}`);
       whereValues.push(value);
       paramIndex++;
     }
@@ -225,20 +352,20 @@ const getMany = async (table, options = {}) => {
   }
 
   const query = `
-    SELECT * FROM ${table}
+    SELECT * FROM "${validTable}"
     ${whereClause}
-    ORDER BY ${orderBy.column} ${orderBy.direction}
+    ORDER BY "${validOrderColumn}" ${validDirection}
     LIMIT $1 OFFSET $2
   `;
 
   const countQuery = `
-    SELECT COUNT(*) FROM ${table}
+    SELECT COUNT(*) FROM "${validTable}"
     ${whereClause}
   `;
 
   const [rows, count] = await Promise.all([
-    executeQuery(query, values, `Error fetching from ${table}`),
-    executeQuery(countQuery, where ? values.slice(2) : [], `Error counting rows in ${table}`)
+    executeQuery(query, values, `Error fetching from ${validTable}`),
+    executeQuery(countQuery, where ? values.slice(2) : [], `Error counting rows in ${validTable}`)
   ]);
 
   return {
@@ -247,6 +374,7 @@ const getMany = async (table, options = {}) => {
   };
 };
 
+// Export the validation functions for use in other modules
 module.exports = {
   executeQuery,
   executeTransaction,
@@ -255,5 +383,10 @@ module.exports = {
   updateById,
   insert,
   deleteById,
-  getMany
+  getMany,
+  validateTableName,
+  validateColumnName,
+  validateColumnNames,
+  ALLOWED_TABLES,
+  ALLOWED_COLUMNS
 };

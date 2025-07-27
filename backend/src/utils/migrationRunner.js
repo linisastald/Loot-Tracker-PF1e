@@ -56,11 +56,38 @@ class MigrationRunner {
   }
 
   /**
-   * Apply a single migration
+   * Validate migration SQL for common issues
+   */
+  validateMigrationSQL(filename, sql) {
+    const issues = [];
+    
+    // Check for ON CONFLICT without proper constraint verification
+    if (sql.includes('ON CONFLICT') && sql.includes('CREATE TABLE IF NOT EXISTS')) {
+      issues.push('Migration uses ON CONFLICT with CREATE TABLE IF NOT EXISTS - this may fail if table exists without constraints');
+    }
+    
+    // Check for missing transaction safety
+    if (sql.includes('ALTER TABLE') && !sql.includes('BEGIN') && !sql.includes('COMMIT')) {
+      logger.warn(`Migration ${filename}: Consider wrapping DDL statements in explicit transactions`);
+    }
+    
+    // Log validation issues
+    if (issues.length > 0) {
+      logger.warn(`Migration validation issues in ${filename}:`, issues);
+    }
+    
+    return issues;
+  }
+
+  /**
+   * Apply a single migration with enhanced error handling
    */
   async applyMigration(filename) {
     const filePath = path.join(this.migrationDir, filename);
     const migrationSQL = fs.readFileSync(filePath, 'utf8');
+
+    // Validate migration before applying
+    this.validateMigrationSQL(filename, migrationSQL);
 
     logger.info(`Applying migration: ${filename}`);
 
@@ -82,7 +109,18 @@ class MigrationRunner {
       logger.info(`Migration applied successfully: ${filename}`);
     } catch (error) {
       await client.query('ROLLBACK');
-      logger.error(`Failed to apply migration ${filename}:`, error);
+      logger.error(`Failed to apply migration ${filename}:`, {
+        error: error.message,
+        detail: error.detail,
+        hint: error.hint,
+        position: error.position
+      });
+      
+      // Provide specific guidance for common errors
+      if (error.message.includes('unique or exclusion constraint')) {
+        logger.error('MIGRATION HINT: This error often occurs when using ON CONFLICT without proper constraints. Consider using INSERT...WHERE NOT EXISTS instead.');
+      }
+      
       throw error;
     } finally {
       client.release();
@@ -90,7 +128,7 @@ class MigrationRunner {
   }
 
   /**
-   * Run all pending migrations
+   * Run all pending migrations with enhanced logging
    */
   async runMigrations() {
     try {
@@ -103,6 +141,13 @@ class MigrationRunner {
       const appliedMigrations = await this.getAppliedMigrations();
       const availableMigrations = this.getAvailableMigrations();
       
+      // Log current migration status
+      logger.info('Migration status:', {
+        totalAvailable: availableMigrations.length,
+        alreadyApplied: appliedMigrations.length,
+        appliedMigrations: appliedMigrations
+      });
+      
       // Find pending migrations
       const pendingMigrations = availableMigrations.filter(
         migration => !appliedMigrations.includes(migration)
@@ -113,17 +158,66 @@ class MigrationRunner {
         return;
       }
       
-      logger.info(`Found ${pendingMigrations.length} pending migrations`);
+      logger.info(`Found ${pendingMigrations.length} pending migrations:`, pendingMigrations);
       
-      // Apply pending migrations
+      // Apply pending migrations with rollback template creation
       for (const migration of pendingMigrations) {
+        await this.createRollbackTemplate(migration);
         await this.applyMigration(migration);
       }
       
       logger.info('All migrations applied successfully');
+      
+      // Log final status
+      const finalStatus = await this.getMigrationStatus();
+      logger.info('Final migration status:', finalStatus);
+      
     } catch (error) {
-      logger.error('Migration failed:', error);
+      logger.error('Migration failed:', {
+        error: error.message,
+        detail: error.detail,
+        hint: error.hint
+      });
+      
+      // Log helpful recovery information
+      logger.error('Recovery suggestions:');
+      logger.error('1. Check the migration SQL for syntax errors');
+      logger.error('2. Verify database constraints and table structure');
+      logger.error('3. Consider manual intervention if migration is partially applied');
+      logger.error('4. Check generated rollback templates in migrations/rollbacks/');
+      
       throw error;
+    }
+  }
+
+  /**
+   * Create a rollback migration file template
+   */
+  async createRollbackTemplate(filename) {
+    const rollbackDir = path.join(this.migrationDir, 'rollbacks');
+    if (!fs.existsSync(rollbackDir)) {
+      fs.mkdirSync(rollbackDir, { recursive: true });
+    }
+    
+    const rollbackFilename = filename.replace('.sql', '_rollback.sql');
+    const rollbackPath = path.join(rollbackDir, rollbackFilename);
+    
+    if (!fs.existsSync(rollbackPath)) {
+      const template = `-- Rollback for ${filename}
+-- Generated automatically - REVIEW AND MODIFY BEFORE USE
+
+-- TODO: Add rollback statements here
+-- Example:
+-- DROP TABLE IF EXISTS table_name;
+-- DROP INDEX IF EXISTS index_name;
+-- DELETE FROM settings WHERE name = 'setting_name';
+
+-- Remove migration record
+-- DELETE FROM schema_migrations WHERE filename = '${filename}';
+`;
+      
+      fs.writeFileSync(rollbackPath, template);
+      logger.info(`Created rollback template: ${rollbackPath}`);
     }
   }
 
@@ -142,6 +236,24 @@ class MigrationRunner {
     const existingTables = result.rows.map(row => row.table_name);
     
     return tableNames.every(table => existingTables.includes(table));
+  }
+
+  /**
+   * Get migration status report
+   */
+  async getMigrationStatus() {
+    const appliedMigrations = await this.getAppliedMigrations();
+    const availableMigrations = this.getAvailableMigrations();
+    
+    const status = {
+      total: availableMigrations.length,
+      applied: appliedMigrations.length,
+      pending: availableMigrations.filter(m => !appliedMigrations.includes(m)),
+      appliedList: appliedMigrations,
+      availableList: availableMigrations
+    };
+    
+    return status;
   }
 }
 

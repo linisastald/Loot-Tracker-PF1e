@@ -11,3 +11,47 @@ docker/docker-compose.yml
 /.idea/misc.xml
 /.idea/deployment.xml
 /docker/docker-compose-root.yml
+
+# Environment files with sensitive data
+.env
+.env.local
+.env.production
+.env.docker
+docker/.env
+docker/.env.docker
+*.env
+
+# Log files
+*.log
+logs/
+/backend/logs/
+/app/logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# Backup files
+*.bak
+*.backup
+
+# Private keys and certificates
+*.pem
+*.key
+*.crt
+*.cer
+private/
+
+# Docker volumes (local development)
+/data/
+/volumes/
