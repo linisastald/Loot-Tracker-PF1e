@@ -19,6 +19,19 @@ COPY backend .
 # Final stage
 FROM nginx:alpine
 
+# Build arguments for metadata
+ARG BUILD_DATE
+ARG GIT_COMMIT
+ARG BUILD_TYPE
+
+# Add metadata labels
+LABEL maintainer="Pathfinder Loot Tracker Team"
+LABEL org.opencontainers.image.created=$BUILD_DATE
+LABEL org.opencontainers.image.revision=$GIT_COMMIT
+LABEL org.opencontainers.image.title="Pathfinder Loot Tracker"
+LABEL org.opencontainers.image.description="Full-stack Pathfinder 1e loot and campaign management system"
+LABEL build.type=$BUILD_TYPE
+
 # Install Node.js and PostgreSQL client
 RUN apk add --no-cache nodejs npm postgresql-client
 
