@@ -32,16 +32,11 @@ RUN cd frontend && npm run build
 # Copy frontend build to backend location
 RUN mkdir -p backend/frontend && cp -r frontend/build backend/frontend/
 
-# Copy database files
-COPY database/ ./backend/database/
+# Copy database files with node user ownership (node:node already exists in node:alpine)
+COPY --chown=node:node database/ ./backend/database/
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S backend -u 1001 -G nodejs && \
-    chown -R backend:nodejs /app
-
-# Switch to non-root user
-USER backend
+# Switch to non-root user (node user already exists)
+USER node
 
 # Set working directory to backend
 WORKDIR /app/backend
