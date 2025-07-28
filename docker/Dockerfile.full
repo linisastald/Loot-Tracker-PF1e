@@ -9,13 +9,10 @@ ARG OPTIMIZE_BUILD=true
 ARG NODE_ENV=production
 ARG NPM_CONFIG_PRODUCTION=true
 
-# Copy package files - use production package.json if optimizing
+# Copy package files
 COPY frontend/package*.json ./
-COPY frontend/package.prod.json ./package.prod.json 2>/dev/null || true
-# Use production package file if it exists and we're optimizing
-RUN if [ "$OPTIMIZE_BUILD" = "true" ] && [ -f "./package.prod.json" ]; then \
-        cp ./package.prod.json ./package.json; \
-    fi
+# Copy production package file if using optimization
+COPY frontend/package.prod.json ./
 
 # Install dependencies (production only for optimized builds)
 RUN if [ "$OPTIMIZE_BUILD" = "true" ]; then \
@@ -43,13 +40,10 @@ ARG OPTIMIZE_BUILD=true
 ARG NODE_ENV=production
 ARG NPM_CONFIG_PRODUCTION=true
 
-# Copy package files and install dependencies
+# Copy package files
 COPY backend/package*.json ./
-COPY backend/package.prod.json ./package.prod.json 2>/dev/null || true
-# Use production package file if it exists and we're optimizing
-RUN if [ "$OPTIMIZE_BUILD" = "true" ] && [ -f "./package.prod.json" ]; then \
-        cp ./package.prod.json ./package.json; \
-    fi
+# Copy production package file if using optimization
+COPY backend/package.prod.json ./
 
 # Install dependencies (production only for optimized builds)
 RUN if [ "$OPTIMIZE_BUILD" = "true" ]; then \
