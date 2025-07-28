@@ -9,8 +9,9 @@ ARG OPTIMIZE_BUILD=true
 ARG NODE_ENV=production
 ARG NPM_CONFIG_PRODUCTION=true
 
-# Copy package files
+# Copy package files and lockfile
 COPY frontend/package*.json ./
+COPY frontend/package-lock.json ./
 # Copy production package file if using optimization
 COPY frontend/package.prod.json ./
 
@@ -40,8 +41,9 @@ ARG OPTIMIZE_BUILD=true
 ARG NODE_ENV=production
 ARG NPM_CONFIG_PRODUCTION=true
 
-# Copy package files
+# Copy package files and lockfile
 COPY backend/package*.json ./
+COPY backend/package-lock.json ./
 # Copy production package file if using optimization
 COPY backend/package.prod.json ./
 
