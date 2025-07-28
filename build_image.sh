@@ -192,12 +192,12 @@ if [ "$OPTIMIZE_BUILD" = true ]; then
     BUILD_CMD="$BUILD_CMD --build-arg NODE_OPTIONS='--max-old-space-size=4096'"
 fi
 
-BUILD_CMD="$BUILD_CMD -f docker/Dockerfile.full -t ${IMAGE_NAME}:${TAG} ."
+BUILD_CMD="$BUILD_CMD -f docker/Dockerfile.backend -t ${IMAGE_NAME}:${TAG} ."
 
 echo ""
 echo "🔧 Build Configuration:"
 echo "   Command: $BUILD_CMD"
-echo "   Dockerfile: docker/Dockerfile.full"
+echo "   Dockerfile: docker/Dockerfile.backend"
 echo "   Context: $(pwd)"
 echo "   BuildKit: $([ "$USE_BUILDKIT" = true ] && echo "ENABLED" || echo "DISABLED")"
 echo "   Optimizations: $([ "$OPTIMIZE_BUILD" = true ] && echo "ENABLED" || echo "DISABLED")"

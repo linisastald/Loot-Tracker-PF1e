@@ -290,6 +290,29 @@ app.use('/api/sales', csrfProtection, salesRoutes);
 app.use('/api/appraisal', csrfProtection, appraisalRoutes);
 app.use('/api/reports', csrfProtection, reportsRoutes);
 
+// Serve React frontend static files (production)
+if (process.env.NODE_ENV === 'production') {
+  const path = require('path');
+  const frontendBuildPath = path.join(__dirname, 'frontend/build');
+  
+  // Serve static files from React build
+  app.use(express.static(frontendBuildPath));
+  
+  // Handle React routing - serve index.html for non-API routes
+  app.get('*', (req, res) => {
+    // Skip API routes and health check
+    if (req.path.startsWith('/api/') || req.path === '/health') {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'API endpoint not found',
+        path: req.path 
+      });
+    }
+    
+    res.sendFile(path.join(frontendBuildPath, 'index.html'));
+  });
+}
+
 // Global error handler
 app.use(errorHandler);
 

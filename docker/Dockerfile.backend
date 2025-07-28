@@ -1,0 +1,64 @@
+# Simple frontend+backend single container (no nginx)
+# Compatible with existing TrueNAS deployment
+
+FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Build arguments
+ARG NODE_ENV=production
+ARG REACT_APP_API_URL=/api
+
+# Copy package files for both frontend and backend
+COPY frontend/package*.json ./frontend/
+COPY backend/package*.json ./backend/
+
+# Install dependencies for both
+RUN cd frontend && npm ci --ignore-scripts && \
+    cd ../backend && npm ci --ignore-scripts
+
+# Copy source code
+COPY frontend/src ./frontend/src
+COPY frontend/public ./frontend/public
+COPY backend/src ./backend/src
+COPY backend/index.js ./backend/
+
+# Build frontend
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ENV NODE_ENV=production
+RUN cd frontend && npm run build
+
+# Copy frontend build to backend location
+RUN mkdir -p backend/frontend && cp -r frontend/build backend/frontend/
+
+# Copy database files
+COPY database/ ./backend/database/
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S backend -u 1001 -G nodejs && \
+    chown -R backend:nodejs /app
+
+# Switch to non-root user
+USER backend
+
+# Set working directory to backend
+WORKDIR /app/backend
+
+# Expose backend port
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "const http = require('http'); \
+    const options = { hostname: 'localhost', port: 5000, path: '/api/health', timeout: 2000 }; \
+    const req = http.request(options, (res) => { \
+      if (res.statusCode === 200) process.exit(0); else process.exit(1); \
+    }); \
+    req.on('error', () => process.exit(1)); \
+    req.on('timeout', () => process.exit(1)); \
+    req.end();"
+
+# Start backend server (which serves frontend too)
+CMD ["node", "index.js"]
