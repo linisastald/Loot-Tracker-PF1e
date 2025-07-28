@@ -75,9 +75,9 @@ LABEL maintainer="Pathfinder Loot Tracker Team" \
       build.type=$BUILD_TYPE
 
 # Create non-root users for both services
+# Note: nginx group already exists in nginx:alpine base image
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S backend -u 1001 -G nodejs && \
-    addgroup -g 1002 -S nginx && \
     adduser -S frontend -u 1002 -G nginx
 
 # Install only essential system dependencies (minimal security footprint)
