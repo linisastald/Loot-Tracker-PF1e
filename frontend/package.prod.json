@@ -1,0 +1,31 @@
+{
+  "name": "frontend",
+  "version": "1.0.0",
+  "description": "Pathfinder 1e Loot Tracker Frontend",
+  "private": true,
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^7.1.0",
+    "@mui/material": "^7.1.0",
+    "@mui/system": "^7.1.0",
+    "@mui/x-date-pickers": "^8.4.0",
+    "axios": "^1.9.0",
+    "date-fns": "^4.1.0",
+    "jwt-decode": "^3.1.2",
+    "lodash": "^4.17.21",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^6.28.0",
+    "react-scripts": "5.0.1",
+    "@rollup/plugin-terser": "^0.4.4"
+  },
+  "scripts": {
+    "build": "react-scripts build"
+  },
+  "browserslist": [
+    ">0.2%",
+    "not dead",
+    "not op_mini all"
+  ]
+}

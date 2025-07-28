@@ -1,6 +1,7 @@
 // frontend/src/components/pages/ItemManagement/PendingSaleManagement.js
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
+import lootService from '../../../services/lootService';
 import {calculateItemSaleValue, calculateTotalSaleValue} from '../../../utils/saleValueCalculator';
 import {formatDate, formatItemNameWithMods, updateItemAsDM} from '../../../utils/utils';
 import {
@@ -50,7 +51,7 @@ const PendingSaleManagement = () => {
         try {
             setLoading(true);
             console.log('Fetching pending items...');
-            const response = await api.get(`/loot/pending-sale`);
+            const response = await lootService.getPendingSaleItems();
             console.log('Response:', response);
 
             // Check for proper data structure
@@ -74,7 +75,7 @@ const PendingSaleManagement = () => {
 
     const fetchItems = async () => {
         try {
-            const response = await api.get(`/loot/items`);
+            const response = await lootService.getAllLoot();
             setItems(response.data);
 
             // Create a map for easier lookups
@@ -90,7 +91,7 @@ const PendingSaleManagement = () => {
 
     const fetchMods = async () => {
         try {
-            const response = await api.get(`/loot/mods`);
+            const response = await lootService.getMods();
 
             // Check if response.data is an array or has a mods property that's an array
             const modsArray = Array.isArray(response.data) ? response.data :
@@ -136,7 +137,7 @@ const PendingSaleManagement = () => {
     const handleConfirmSale = async () => {
         try {
             setLoading(true);
-            const response = await api.put(`/loot/confirm-sale`, {});
+            const response = await lootService.confirmSale({});
 
             if (response.data && response.data.success) {
                 const soldCount = response.data.sold?.count || 0;
@@ -164,7 +165,7 @@ const PendingSaleManagement = () => {
                 return;
             }
 
-            const response = await api.post('/loot/sell-up-to', {amount});
+            const response = await lootService.sellUpTo({amount});
             if (response.data && response.data.success) {
                 const soldCount = response.data.sold?.count || 0;
                 const totalValue = response.data.sold?.total || 0;
@@ -191,7 +192,7 @@ const PendingSaleManagement = () => {
                 return;
             }
 
-            const response = await api.post('/loot/sell-all-except', {itemsToKeep: selectedPendingItems});
+            const response = await lootService.sellAllExcept({itemsToKeep: selectedPendingItems});
             if (response.data && response.data.success) {
                 const soldCount = response.data.sold?.count || 0;
                 const totalValue = response.data.sold?.total || 0;
@@ -236,7 +237,7 @@ const PendingSaleManagement = () => {
             // Only send valid item IDs to the backend
             const validItemIds = validItems.map(item => item.id);
             console.log('Sending items to sell:', validItemIds);
-            const response = await api.post('/loot/sell-selected', {itemsToSell: validItemIds});
+            const response = await lootService.sellSelected({itemsToSell: validItemIds});
             console.log('Sell selected response:', response);
 
             if (response.data && response.data.success) {

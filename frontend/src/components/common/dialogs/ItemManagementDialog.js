@@ -14,6 +14,7 @@ import {
   TextField
 } from '@mui/material';
 import api from '../../../utils/api';
+import lootService from '../../../services/lootService';
 
 const ItemManagementDialog = ({
                                   open,
@@ -53,7 +54,7 @@ const ItemManagementDialog = ({
                         setItemOptions([existingItem]);
                     } else {
                         // Otherwise fetch it
-                        const response = await api.get(`/loot/items?query=${updatedItem.itemid}`);
+                        const response = await lootService.getAllLoot({query: updatedItem.itemid});
                         if (response.data && response.data.length > 0) {
                             // Find the exact item
                             const matchingItem = response.data.find(item => item.id === updatedItem.itemid);
@@ -77,7 +78,7 @@ const ItemManagementDialog = ({
 
     const fetchItems = async () => {
         try {
-            const response = await api.get(`/loot/items`);
+            const response = await lootService.getAllLoot();
             setItems(response.data);
         } catch (error) {
             console.error('Error fetching all items:', error);
@@ -86,7 +87,7 @@ const ItemManagementDialog = ({
 
     const fetchMods = async () => {
     try {
-        const response = await api.get(`/loot/mods`);
+        const response = await lootService.getMods();
 
         // Check if response.data is an array or has a mods property that's an array
         const modsArray = Array.isArray(response.data) ? response.data :
@@ -112,7 +113,7 @@ const ItemManagementDialog = ({
 
         setItemsLoading(true);
         try {
-            const response = await api.get(`/loot/items?query=${searchText}`);
+            const response = await lootService.getAllLoot({query: searchText});
             setItemOptions(response.data);
         } catch (error) {
             console.error('Error fetching items:', error);

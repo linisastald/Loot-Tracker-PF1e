@@ -1,6 +1,7 @@
 // frontend/src/components/pages/ItemManagement/AddItemMod.js
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
+import lootService from '../../../services/lootService';
 import {
   Alert,
   Autocomplete,
@@ -65,7 +66,7 @@ const AddItemMod = () => {
     const fetchItems = async () => {
         try {
             setItemsLoading(true);
-            const response = await api.get('/loot/items');
+            const response = await lootService.getAllLoot();
             setItems(response.data);
             setItemsLoading(false);
         } catch (error) {
@@ -78,7 +79,7 @@ const AddItemMod = () => {
     const fetchMods = async () => {
         try {
             setModsLoading(true);
-            const response = await api.get('/loot/mods');
+            const response = await lootService.getMods();
 
             if (response.data && Array.isArray(response.data.mods)) {
                 setMods(response.data.mods);
@@ -105,7 +106,7 @@ const AddItemMod = () => {
 
         setItemsLoading(true);
         try {
-            const response = await api.get(`/loot/items?query=${searchText}`);
+            const response = await lootService.getAllLoot({query: searchText});
             setItemOptions(response.data);
         } catch (error) {
             console.error('Error searching items:', error);

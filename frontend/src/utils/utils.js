@@ -1,5 +1,7 @@
 // src/utils/utils.js
+import React from 'react';
 import api from './api';
+import lootService from '../services/lootService';
 
 export const fetchActiveUser = async () => {
   try {
@@ -26,10 +28,10 @@ export const handleSelectItem = (id, setSelectedItems) => {
 export const handleSell = async (selectedItems, fetchLoot) => {
   try {
     const user = await fetchActiveUser();
-    await api.put(`/loot/update-status`, {
-      ids: selectedItems,
+    await lootService.updateLootStatus({
+      lootIds: selectedItems,
       status: 'Pending Sale',
-      userId: user?.id
+      characterId: user?.activeCharacterId || user?.id
     });
     fetchLoot();
   } catch (error) {
@@ -40,10 +42,10 @@ export const handleSell = async (selectedItems, fetchLoot) => {
 export const handleTrash = async (selectedItems, fetchLoot) => {
   try {
     const user = await fetchActiveUser();
-    await api.put(`/loot/update-status`, {
-      ids: selectedItems,
+    await lootService.updateLootStatus({
+      lootIds: selectedItems,
       status: 'Trashed',
-      userId: user?.id
+      characterId: user?.activeCharacterId || user?.id
     });
     fetchLoot();
   } catch (error) {
@@ -54,11 +56,11 @@ export const handleTrash = async (selectedItems, fetchLoot) => {
 export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
   try {
     const user = await fetchActiveUser();
-    await api.put(`/loot/update-status`, {
-      ids: selectedItems,
+    await lootService.updateLootStatus({
+      lootIds: selectedItems,
       status: 'Kept Self',
-      whohas: activeUser.activeCharacterId,
-      userId: user?.id
+      characterId: activeUser.activeCharacterId,
+      saleValue: null
     });
     fetchLoot();
   } catch (error) {
@@ -69,10 +71,10 @@ export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
 export const handleKeepParty = async (selectedItems, fetchLoot) => {
   try {
     const user = await fetchActiveUser();
-    await api.put(`/loot/update-status`, {
-      ids: selectedItems,
+    await lootService.updateLootStatus({
+      lootIds: selectedItems,
       status: 'Kept Party',
-      userId: user?.id
+      characterId: user?.activeCharacterId || user?.id
     });
     fetchLoot();
   } catch (error) {
@@ -106,10 +108,23 @@ export const applyFilters = (loot, filters) => {
   let filteredLoot = { ...loot };
 
   if (filters.unidentified) {
-    filteredLoot.individual = filteredLoot.individual.filter(item =>
-      filters.unidentified === 'all' || item.unidentified === null ||
-      item.unidentified === (filters.unidentified === 'true')
-    );
+    filteredLoot.individual = filteredLoot.individual.filter(item => {
+      if (filters.unidentified === 'all') {
+        return true;
+      }
+      
+      // Handle the filter for unidentified items
+      if (filters.unidentified === 'true') {
+        return item.unidentified === true;
+      }
+      
+      if (filters.unidentified === 'false') {
+        return item.unidentified === false;
+      }
+      
+      // If filter is not 'all', 'true', or 'false', include items with null values
+      return item.unidentified === null;
+    });
   }
 
   if (filters.type) {
@@ -141,7 +156,7 @@ export const handleOpenSplitDialog = (item, setSplitItem, setSplitEntries, setSp
 
 export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems) => {
   try {
-    await api.put(`/loot/update-entry/${updatedEntry.id}`, {
+    await lootService.updateLootItem(updatedEntry.id, {
       session_date: updatedEntry.session_date,
       quantity: updatedEntry.quantity,
       name: updatedEntry.name,
@@ -174,9 +189,9 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
 
   try {
     const itemId = selectedItems[0];
-    const response = await api.post(`/loot/split-stack`, {
-      id: itemId,
-      splits: splitQuantities,
+    const response = await lootService.splitStack({
+      lootId: itemId,
+      newQuantities: splitQuantities,
     });
     if (response.status === 200) {
       await fetchLoot();
@@ -201,7 +216,7 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
 export const updateItemAsDM = async (itemId, updatedData, onSuccess, onError, onFinally) => {
   try {
     // Perform the update
-    await api.put(`/loot/dm-update/${itemId}`, updatedData);
+    await lootService.updateLootItem(itemId, updatedData);
     
     // Call success callback if provided
     if (onSuccess) {
@@ -305,7 +320,7 @@ export const identifyItem = async (item, itemsMap, onSuccess, onError, refreshDa
       name: selectedItem ? selectedItem.name : item.name,
     };
 
-    await api.put(`/loot/dm-update/${item.id}`, updatedData);
+    await lootService.updateLootItem(item.id, updatedData);
     
     if (onSuccess) {
       onSuccess('Item identified successfully');
@@ -332,12 +347,12 @@ export const identifyItem = async (item, itemsMap, onSuccess, onError, refreshDa
  */
 export const formatItemNameWithMods = (item, itemsMap, modsMap) => {
   if (!item || !item.itemid) {
-    return <span style={{color: 'red'}}>Not linked</span>;
+    return React.createElement('span', { style: { color: 'red' } }, 'Not linked');
   }
 
   const selectedItem = itemsMap[item.itemid];
   if (!selectedItem) {
-    return <span style={{color: 'red'}}>Not linked (ID: {item.itemid})</span>;
+    return React.createElement('span', { style: { color: 'red' } }, `Not linked (ID: ${item.itemid})`);
   }
 
   let displayName = selectedItem.name;

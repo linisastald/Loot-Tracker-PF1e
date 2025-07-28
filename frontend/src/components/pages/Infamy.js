@@ -13,6 +13,7 @@ import {
     Warning as WarningIcon,
 } from '@mui/icons-material';
 import api from '../../utils/api';
+import lootService from '../../services/lootService';
 import {fetchActiveUser} from '../../utils/utils';
 
 // Extract TabPanel component
@@ -272,7 +273,7 @@ const Infamy = () => {
 
     const fetchAvailablePlunder = async () => {
         try {
-            const plunderItems = await api.get('/loot/search', {
+            const plunderItems = await lootService.searchLoot({
                 params: { itemid: '7807' }
             });
 

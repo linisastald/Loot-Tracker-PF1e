@@ -1,59 +1,239 @@
-# Build frontend
-FROM node:18 as frontend-build
-WORKDIR /app/frontend
+# Multi-stage optimized full-stack build
+
+# Frontend build stage
+FROM node:18-alpine as frontend-build
+WORKDIR /app
+
+# Build arguments
+ARG OPTIMIZE_BUILD=true
+ARG NODE_ENV=production
+ARG NPM_CONFIG_PRODUCTION=true
+
+# Copy package files - use production package.json if optimizing
 COPY frontend/package*.json ./
-RUN npm install
-COPY frontend .
-ARG REACT_APP_API_URL
+COPY frontend/package.prod.json ./package.prod.json 2>/dev/null || true
+# Use production package file if it exists and we're optimizing
+RUN if [ "$OPTIMIZE_BUILD" = "true" ] && [ -f "./package.prod.json" ]; then \
+        cp ./package.prod.json ./package.json; \
+    fi
+
+# Install dependencies (production only for optimized builds)
+RUN if [ "$OPTIMIZE_BUILD" = "true" ]; then \
+        npm ci --omit=dev --ignore-scripts; \
+    else \
+        npm ci --ignore-scripts; \
+    fi
+
+# Copy source and build
+COPY frontend/src ./src
+COPY frontend/public ./public
+
+ARG REACT_APP_API_URL=/api
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ENV NODE_ENV=production
 
 RUN npm run build
 
-# Build backend
-FROM node:18 as backend-build
-WORKDIR /app/backend
-COPY backend/package*.json ./
-RUN npm install
-COPY backend .
+# Backend build stage  
+FROM node:18-alpine as backend-build
+WORKDIR /app
 
-# Final stage
-FROM nginx:alpine
+# Build arguments
+ARG OPTIMIZE_BUILD=true
+ARG NODE_ENV=production
+ARG NPM_CONFIG_PRODUCTION=true
+
+# Copy package files and install dependencies
+COPY backend/package*.json ./
+COPY backend/package.prod.json ./package.prod.json 2>/dev/null || true
+# Use production package file if it exists and we're optimizing
+RUN if [ "$OPTIMIZE_BUILD" = "true" ] && [ -f "./package.prod.json" ]; then \
+        cp ./package.prod.json ./package.json; \
+    fi
+
+# Install dependencies (production only for optimized builds)
+RUN if [ "$OPTIMIZE_BUILD" = "true" ]; then \
+        npm ci --omit=dev --ignore-scripts; \
+    else \
+        npm ci --ignore-scripts; \
+    fi
+
+# Copy source code (excluding tests and dev files via .dockerignore)
+COPY backend/src ./src
+COPY backend/index.js ./
+
+# Production runtime stage
+FROM nginx:1.25-alpine as production
 
 # Build arguments for metadata
 ARG BUILD_DATE
 ARG GIT_COMMIT
-ARG BUILD_TYPE
+ARG BUILD_TYPE=production
 
-# Add metadata labels
-LABEL maintainer="Pathfinder Loot Tracker Team"
-LABEL org.opencontainers.image.created=$BUILD_DATE
-LABEL org.opencontainers.image.revision=$GIT_COMMIT
-LABEL org.opencontainers.image.title="Pathfinder Loot Tracker"
-LABEL org.opencontainers.image.description="Full-stack Pathfinder 1e loot and campaign management system"
-LABEL build.type=$BUILD_TYPE
+# Add comprehensive metadata labels
+LABEL maintainer="Pathfinder Loot Tracker Team" \
+      org.opencontainers.image.created=$BUILD_DATE \
+      org.opencontainers.image.revision=$GIT_COMMIT \
+      org.opencontainers.image.title="Pathfinder Loot Tracker" \
+      org.opencontainers.image.description="Full-stack Pathfinder 1e loot and campaign management system" \
+      org.opencontainers.image.vendor="Pathfinder Loot Tracker Team" \
+      org.opencontainers.image.version="1.0.0" \
+      build.type=$BUILD_TYPE
 
-# Install Node.js and PostgreSQL client
-RUN apk add --no-cache nodejs npm postgresql-client
+# Create non-root users for both services
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S backend -u 1001 -G nodejs && \
+    addgroup -g 1002 -S nginx && \
+    adduser -S frontend -u 1002 -G nginx
 
-# Create app directories
-RUN mkdir -p /app/logs /app/data
+# Install only essential system dependencies (minimal security footprint)
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    postgresql-client \
+    dumb-init \
+    supervisor \
+    curl \
+    # Remove unnecessary packages after npm is used
+    && npm --version >/dev/null \
+    && rm -rf /var/cache/apk/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
 
-# Copy backend
-COPY --from=backend-build /app/backend /app/backend
+# Create application directories with proper permissions
+RUN mkdir -p /app/backend /app/logs /app/data /app/database && \
+    mkdir -p /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp && \
+    mkdir -p /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp && \
+    mkdir -p /var/cache/nginx/scgi_temp && \
+    chown -R backend:nodejs /app && \
+    chown -R frontend:nginx /var/cache/nginx && \
+    chown -R frontend:nginx /usr/share/nginx/html
 
-# Copy frontend build
-COPY --from=frontend-build /app/frontend/build /usr/share/nginx/html
+# Copy backend with proper ownership (production files only)
+COPY --from=backend-build --chown=backend:nodejs /app/node_modules /app/backend/node_modules
+COPY --from=backend-build --chown=backend:nodejs /app/package.json /app/backend/package.json
+COPY --chown=backend:nodejs backend/src /app/backend/src
+COPY --chown=backend:nodejs backend/index.js /app/backend/index.js
 
-# Copy database initialization scripts
-COPY database/*.sql /app/database/
+# Copy frontend build with proper ownership (static files only)
+COPY --from=frontend-build --chown=frontend:nginx /app/build /usr/share/nginx/html
 
-# Set execute permissions on start script
-COPY start.sh /app/
-RUN chmod +x /app/start.sh
+# Copy database initialization scripts (essential runtime files only)
+COPY --chown=backend:nodejs database/init.sql /app/database/
+COPY --chown=backend:nodejs database/*_data.sql /app/database/
+COPY --chown=backend:nodejs database/sessions.sql /app/database/
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Create optimized nginx configuration
+RUN echo 'user frontend;' > /etc/nginx/nginx.conf && \
+    echo 'worker_processes auto;' >> /etc/nginx/nginx.conf && \
+    echo 'error_log /var/log/nginx/error.log warn;' >> /etc/nginx/nginx.conf && \
+    echo 'pid /tmp/nginx.pid;' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo 'events {' >> /etc/nginx/nginx.conf && \
+    echo '    worker_connections 1024;' >> /etc/nginx/nginx.conf && \
+    echo '    use epoll;' >> /etc/nginx/nginx.conf && \
+    echo '}' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo 'http {' >> /etc/nginx/nginx.conf && \
+    echo '    include /etc/nginx/mime.types;' >> /etc/nginx/nginx.conf && \
+    echo '    default_type application/octet-stream;' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo '    # Security headers' >> /etc/nginx/nginx.conf && \
+    echo '    add_header X-Frame-Options "SAMEORIGIN" always;' >> /etc/nginx/nginx.conf && \
+    echo '    add_header X-Content-Type-Options "nosniff" always;' >> /etc/nginx/nginx.conf && \
+    echo '    add_header X-XSS-Protection "1; mode=block" always;' >> /etc/nginx/nginx.conf && \
+    echo '    add_header Referrer-Policy "strict-origin-when-cross-origin" always;' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo '    # Performance optimizations' >> /etc/nginx/nginx.conf && \
+    echo '    sendfile on;' >> /etc/nginx/nginx.conf && \
+    echo '    tcp_nopush on;' >> /etc/nginx/nginx.conf && \
+    echo '    tcp_nodelay on;' >> /etc/nginx/nginx.conf && \
+    echo '    keepalive_timeout 65;' >> /etc/nginx/nginx.conf && \
+    echo '    types_hash_max_size 2048;' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo '    # Gzip compression' >> /etc/nginx/nginx.conf && \
+    echo '    gzip on;' >> /etc/nginx/nginx.conf && \
+    echo '    gzip_vary on;' >> /etc/nginx/nginx.conf && \
+    echo '    gzip_min_length 10240;' >> /etc/nginx/nginx.conf && \
+    echo '    gzip_proxied expired no-cache no-store private must-revalidate auth;' >> /etc/nginx/nginx.conf && \
+    echo '    gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo '    # Rate limiting' >> /etc/nginx/nginx.conf && \
+    echo '    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo '    server {' >> /etc/nginx/nginx.conf && \
+    echo '        listen 80;' >> /etc/nginx/nginx.conf && \
+    echo '        server_name localhost;' >> /etc/nginx/nginx.conf && \
+    echo '        root /usr/share/nginx/html;' >> /etc/nginx/nginx.conf && \
+    echo '        index index.html;' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo '        # Frontend routes' >> /etc/nginx/nginx.conf && \
+    echo '        location / {' >> /etc/nginx/nginx.conf && \
+    echo '            try_files $uri $uri/ /index.html;' >> /etc/nginx/nginx.conf && \
+    echo '        }' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo '        # API proxy with rate limiting' >> /etc/nginx/nginx.conf && \
+    echo '        location /api/ {' >> /etc/nginx/nginx.conf && \
+    echo '            limit_req zone=api burst=20 nodelay;' >> /etc/nginx/nginx.conf && \
+    echo '            proxy_pass http://127.0.0.1:5000/;' >> /etc/nginx/nginx.conf && \
+    echo '            proxy_http_version 1.1;' >> /etc/nginx/nginx.conf && \
+    echo '            proxy_set_header Upgrade $http_upgrade;' >> /etc/nginx/nginx.conf && \
+    echo '            proxy_set_header Connection "upgrade";' >> /etc/nginx/nginx.conf && \
+    echo '            proxy_set_header Host $host;' >> /etc/nginx/nginx.conf && \
+    echo '            proxy_set_header X-Real-IP $remote_addr;' >> /etc/nginx/nginx.conf && \
+    echo '            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> /etc/nginx/nginx.conf && \
+    echo '            proxy_set_header X-Forwarded-Proto $scheme;' >> /etc/nginx/nginx.conf && \
+    echo '            proxy_cache_bypass $http_upgrade;' >> /etc/nginx/nginx.conf && \
+    echo '        }' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo '        # Static asset caching' >> /etc/nginx/nginx.conf && \
+    echo '        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {' >> /etc/nginx/nginx.conf && \
+    echo '            expires 1y;' >> /etc/nginx/nginx.conf && \
+    echo '            add_header Cache-Control "public, immutable";' >> /etc/nginx/nginx.conf && \
+    echo '        }' >> /etc/nginx/nginx.conf && \
+    echo '' >> /etc/nginx/nginx.conf && \
+    echo '        # Health check endpoint' >> /etc/nginx/nginx.conf && \
+    echo '        location /health {' >> /etc/nginx/nginx.conf && \
+    echo '            access_log off;' >> /etc/nginx/nginx.conf && \
+    echo '            return 200 "healthy\n";' >> /etc/nginx/nginx.conf && \
+    echo '            add_header Content-Type text/plain;' >> /etc/nginx/nginx.conf && \
+    echo '        }' >> /etc/nginx/nginx.conf && \
+    echo '    }' >> /etc/nginx/nginx.conf && \
+    echo '}' >> /etc/nginx/nginx.conf
 
+# Create supervisor configuration for managing both services
+RUN echo '[supervisord]' > /etc/supervisord.conf && \
+    echo 'nodaemon=true' >> /etc/supervisord.conf && \
+    echo 'user=root' >> /etc/supervisord.conf && \
+    echo 'logfile=/var/log/supervisord.log' >> /etc/supervisord.conf && \
+    echo 'pidfile=/tmp/supervisord.pid' >> /etc/supervisord.conf && \
+    echo '' >> /etc/supervisord.conf && \
+    echo '[program:backend]' >> /etc/supervisord.conf && \
+    echo 'command=node index.js' >> /etc/supervisord.conf && \
+    echo 'directory=/app/backend' >> /etc/supervisord.conf && \
+    echo 'user=backend' >> /etc/supervisord.conf && \
+    echo 'autostart=true' >> /etc/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisord.conf && \
+    echo 'stderr_logfile=/app/logs/backend.err.log' >> /etc/supervisord.conf && \
+    echo 'stdout_logfile=/app/logs/backend.out.log' >> /etc/supervisord.conf && \
+    echo '' >> /etc/supervisord.conf && \
+    echo '[program:nginx]' >> /etc/supervisord.conf && \
+    echo 'command=nginx -g "daemon off;"' >> /etc/supervisord.conf && \
+    echo 'user=frontend' >> /etc/supervisord.conf && \
+    echo 'autostart=true' >> /etc/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisord.conf && \
+    echo 'stderr_logfile=/var/log/nginx.err.log' >> /etc/supervisord.conf && \
+    echo 'stdout_logfile=/var/log/nginx.out.log' >> /etc/supervisord.conf
+
+# Expose port
 EXPOSE 80
 
-CMD ["/app/start.sh"]
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+# Health check that tests both frontend and backend
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:80/health && curl -f http://localhost:80/api/health || exit 1
+
+# Start both services with supervisor
+CMD ["supervisord", "-c", "/etc/supervisord.conf"]

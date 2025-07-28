@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import api from '../../utils/api';
+import lootService from '../../services/lootService';
 import {
   Alert,
   Box,
@@ -251,7 +252,7 @@ const GoldTransactions = () => {
     const fetchLedgerData = async () => {
         try {
             setLedgerLoading(true);
-            const response = await api.get('/loot/character-ledger');
+            const response = await lootService.getCharacterLedger();
 
             if (response.data && Array.isArray(response.data.characters)) {
                 // Sort active characters first, then by name

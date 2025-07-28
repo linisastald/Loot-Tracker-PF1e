@@ -1,6 +1,7 @@
 // frontend/src/components/pages/ItemManagement/GeneralItemManagement.js
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
+import lootService from '../../../services/lootService';
 import {formatDate, updateItemAsDM,} from '../../../utils/utils';
 import {
   Alert,
@@ -52,7 +53,7 @@ const GeneralItemManagement = () => {
 
     const fetchItems = async () => {
         try {
-            const response = await api.get(`/loot/items`);
+            const response = await lootService.getAllLoot();
             setItems(response.data);
 
             // Create a map for easier lookups
@@ -81,7 +82,13 @@ const GeneralItemManagement = () => {
             if (advancedSearch.modids) params.append('modids', advancedSearch.modids);
             if (advancedSearch.value) params.append('value', advancedSearch.value);
 
-            const response = await api.get(`/loot/search?${params.toString()}`);
+            const searchParams = {
+                query: searchTerm,
+                ...Object.fromEntries(
+                    Object.entries(advancedSearch).filter(([key, value]) => value)
+                )
+            };
+            const response = await lootService.searchLoot(searchParams);
             console.log('Search response:', response);
 
             // Check if the response has the expected structure

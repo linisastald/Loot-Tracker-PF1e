@@ -1,6 +1,7 @@
 // frontend/src/components/pages/ItemManagement/UnidentifiedItemsManagement.js
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
+import lootService from '../../../services/lootService';
 import {
     Alert,
     Box,
@@ -74,7 +75,7 @@ const UnidentifiedItemsManagement = () => {
 
     const fetchUnidentifiedItems = async () => {
         try {
-            const response = await api.get(`/loot/unidentified`);
+            const response = await lootService.getUnidentifiedItems();
             console.log('Unidentified items:', response.data);
             if (response.data && Array.isArray(response.data.items)) {
                 setUnidentifiedItems(response.data.items);
@@ -95,7 +96,7 @@ const UnidentifiedItemsManagement = () => {
         console.log('fetchItemsByIds called with:', itemIds);
         try {
             // Use the new endpoint
-            const response = await api.get(`/loot/items-by-id?ids=${itemIds.join(',')}`);
+            const response = await lootService.getItemsByIds(itemIds);
             console.log('fetchItemsByIds response:', response);
 
             // Create a map for easier lookups
@@ -135,7 +136,7 @@ const UnidentifiedItemsManagement = () => {
             // Fetch each item separately
             for (const id of itemIds) {
                 try {
-                    const response = await api.get(`/loot/items?query=${id}`);
+                    const response = await lootService.getAllLoot({query: id});
                     const exactMatch = response.data.find(item => item.id === id);
 
                     if (exactMatch) {
@@ -156,7 +157,7 @@ const UnidentifiedItemsManagement = () => {
     const fetchModsByIds = async (modIds) => {
         try {
             // Use the new endpoint
-            const response = await api.get(`/loot/mods-by-id?ids=${modIds.join(',')}`);
+            const response = await lootService.getModsByIds(modIds);
 
             // Check if response.data is an array or has a mods property that's an array
             const modsArray = Array.isArray(response.data) ? response.data :
@@ -183,7 +184,7 @@ const UnidentifiedItemsManagement = () => {
 
     const fetchAllMods = async () => {
         try {
-            const response = await api.get(`/loot/mods`);
+            const response = await lootService.getMods();
 
             // Check if response.data is an array or has a mods property that's an array
             const modsArray = Array.isArray(response.data) ? response.data :

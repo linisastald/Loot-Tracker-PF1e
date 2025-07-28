@@ -1,0 +1,63 @@
+# Frontend .dockerignore - exclude development files and build artifacts
+
+# Development dependencies
+node_modules/
+
+# Build artifacts (will be built fresh in container)
+build/
+dist/
+out/
+
+# Test files and coverage
+__tests__/
+**/*.test.js
+**/*.spec.js
+src/**/__tests__/
+coverage/
+.nyc_output/
+jest.config.js
+setupTests.js
+
+# Development configuration
+.env.local
+.env.development
+.env.test
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Source maps (development only)
+*.map
+
+# Hot reload files
+.cache/
+.temp/
+.tmp/
+
+# Editor backup files
+*~
+*.bak
+*.swp
+*.swo
+
+# React specific
+.eslintcache

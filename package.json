@@ -4,7 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node test-runner.js",
+    "test:coverage": "node test-runner.js --coverage",
+    "test:frontend": "node test-runner.js --frontend-only",
+    "test:backend": "node test-runner.js --backend-only",
+    "test:frontend:coverage": "node test-runner.js --frontend-only --coverage",
+    "test:backend:coverage": "node test-runner.js --backend-only --coverage",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "setup:test": "cd backend && npm run test:setup",
+    "teardown:test": "cd backend && npm run test:teardown",
     "validate-migrations": "bash scripts/validate-migrations.sh",
     "migration-status": "node backend/scripts/migration-status.js",
     "pre-commit": "npm run validate-migrations"

@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import api from '../../utils/api';
+import lootService from '../../services/lootService';
 import {
   Alert,
   Box,
@@ -75,7 +76,7 @@ const Identify = () => {
 
             console.log("Fetching loot with params:", params);
 
-            const response = await api.get(`/loot`, {params: params});
+            const response = await lootService.getAllLoot(params);
             setLoot(response.data);
         } catch (error) {
             console.error('Error fetching loot:', error);
@@ -85,7 +86,7 @@ const Identify = () => {
 
     const fetchItems = async () => {
         try {
-            const response = await api.get('/loot/items');
+            const response = await lootService.getAllLoot();
             setItems(response.data);
         } catch (error) {
             console.error('Error fetching items:', error);
@@ -172,11 +173,14 @@ const Identify = () => {
 
             try {
                 // Send identification request to the server
-                const response = await api.post('/loot/identify', {
-                    items: identifyData.map(item => item.itemId),
+                const response = await lootService.identifyItems({
+                    itemIds: identifyData.map(item => item.itemId),
                     characterId: isDMUser ? null : activeUser.activeCharacterId,
-                    spellcraftRolls: identifyData.map(item => item.spellcraftRoll),
-                    takeTen: takeTen
+                    identifyResults: identifyData.map(item => ({
+                        itemId: item.itemId,
+                        spellcraftRoll: item.spellcraftRoll,
+                        takeTen: takeTen
+                    }))
                 });
 
                 // Handle response for already-attempted items

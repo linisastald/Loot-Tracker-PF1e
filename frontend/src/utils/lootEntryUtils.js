@@ -1,4 +1,5 @@
 import api from './api';
+import lootService from '../services/lootService';
 
 export const fetchInitialData = async (setItemOptions, setActiveCharacterId) => {
   try {
@@ -21,7 +22,7 @@ export const fetchItemNames = async (query = '') => {
   try {
     // If query is empty, return all items
     const params = query.trim() ? {query} : {};
-    const response = await api.get(`/loot/items`, {params});
+    const response = await lootService.getAllLoot(params);
 
     // Ensure we always return an array of objects with name and id
     const items = response.data.map(item => ({
@@ -135,7 +136,7 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
     // (parseItem should be false if unidentified is true - this is enforced in the UI)
     if (data.parseItem && !data.unidentified) {
       try {
-        const parseResponse = await api.post('/loot/parse-item', {description: data.name});
+        const parseResponse = await lootService.parseItem({description: data.name});
         if (parseResponse.data) {
           data = {...data, ...parseResponse.data};
           // Ensure the type is lowercase if it was set by the parsing
@@ -148,6 +149,6 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
       }
     }
 
-    return await api.post('/loot', {entries: [data]});
+    return await lootService.createLoot({entries: [data]});
   }
 };

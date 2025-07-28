@@ -6,7 +6,19 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "migrate": "node scripts/run-migration.js"
+    "migrate": "node scripts/run-migration.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --coverage --watchAll=false",
+    "test:unit": "jest --config=jest.unit.config.js",
+    "test:unit:watch": "jest --config=jest.unit.config.js --watch",
+    "test:unit:coverage": "jest --config=jest.unit.config.js --coverage",
+    "test:integration": "USE_REAL_DB_FOR_TESTS=true jest --testPathPattern=integration",
+    "test:api": "USE_REAL_DB_FOR_TESTS=true jest --testPathPattern=tests/api",
+    "test:setup": "node scripts/test-setup.js setup",
+    "test:teardown": "node scripts/test-setup.js teardown",
+    "test:reset": "npm run test:teardown && npm run test:setup"
   },
   "keywords": [],
   "author": "",
@@ -35,6 +47,9 @@
     "crypto": "^1.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "@types/jest": "^29.5.12"
   }
 }

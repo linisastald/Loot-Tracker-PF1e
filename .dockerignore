@@ -1,10 +1,128 @@
-node_modules
-npm-debug.log
-.git
+# Root .dockerignore - exclude development and non-production files
+
+# Documentation and README files
+*.md
+docs/
+TESTING.md
+REFACTORING_SUMMARY.md
+BUILD_SCRIPT_IMPROVEMENTS.md
+FRONTEND_API_MIGRATION_GUIDE.md
+MIGRATION_BEST_PRACTICES.md
+PASSWORD_RESET_README.md
+SECRET_ROTATION_GUIDE.md
+SECURITY.md
+CLAUDE.md
+
+# Git files
+.git/
 .gitignore
-README.md
-.env
-.nyc_output
-coverage
-.idea
+.gitattributes
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Test files and coverage
+**/__tests__/
+**/*.test.js
+**/*.spec.js
+**/test/
+**/tests/
+coverage/
+.nyc_output/
+jest.config.js
+codecov.yml
+setupTests.js
+
+# Development dependencies and build artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn/
+
+# Frontend build artifacts (will be built in container)
+frontend/build/
+frontend/dist/
+
+# Backend logs and temp files
+backend/logs/
 *.log
+logs/
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Development scripts and utilities (keep build_image.sh as it's the main build script)
+update_containers.sh
+start.sh
+test-runner.js
+scripts/validate-migrations.sh
+update_sql_data.sh
+scripts/test-setup.js
+
+# Python utilities (development only)
+*.py
+utilities/
+db_compare*.py
+db_sync.py
+db_update*.py
+
+# Database backup and comparison files
+fix_weather_table.sql
+
+# Claude AI configuration
+.claude/
+
+# Environment files (secrets handled via docker-compose)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Package manager lock files (keep package.json and package.prod.json)
+# Note: package-lock.json is needed for npm ci
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs that will be regenerated
+dist/
+build/
+out/
+
+# CI/CD and GitHub workflows (not needed in container)
+.github/
+codecov.yml
+
+# Additional development files
+.claude/
+
+# Docker development files (keep Dockerfile.full and docker-compose.yml)
+docker-compose.secure.yml
+docker-compose.yml.template
+docker/Dockerfile.test
+docker/DOCKER_SECURITY_OPTIMIZATIONS.md
+docker/generate-secrets.sh

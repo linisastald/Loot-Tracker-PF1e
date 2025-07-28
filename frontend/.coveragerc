@@ -1,0 +1,27 @@
+# Coverage configuration for frontend
+[run]
+source = src/
+omit = 
+    src/setupTests.js
+    src/reportWebVitals.js
+    src/index.js
+    src/**/__tests__/**
+    src/**/*.test.js
+    src/**/*.spec.js
+    src/**/testUtils.js
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+    class .*\bProtocol\):
+    @(abc\.)?abstractmethod
+
+[html]
+directory = coverage_html_report

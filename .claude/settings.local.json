@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(chmod:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(git commit:*)",
+      "Bash(npm install:*)",
+      "Bash(npm test)",
+      "Bash(npm run test:unit:*)",
+      "Bash(npm test:*)"
     ],
     "deny": []
   }

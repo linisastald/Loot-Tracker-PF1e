@@ -44,6 +44,7 @@ import {
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import api from '../../utils/api';
+import lootService from '../../services/lootService';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [openBeta, setOpenBeta] = useState(false);
@@ -81,7 +82,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     const fetchData = async () => {
       try {
         const [lootCountRes, groupNameRes, activeCharRes, infamyRes] = await Promise.all([
-          api.get('/loot/unprocessed-count'),
+          lootService.getUnprocessedCount(),
           api.get('/settings/campaign-name'),
           api.get('/auth/status'),
           api.get('/settings/infamy-system')

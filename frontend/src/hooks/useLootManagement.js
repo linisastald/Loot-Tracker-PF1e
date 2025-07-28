@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import api from '../utils/api';
+import lootService from '../services/lootService';
 import {
   applyFilters,
   fetchActiveUser,
@@ -52,16 +52,16 @@ const useLootManagement = (statusToFetch) => {
           }
         }
 
-        const response = await api.get(`/loot`, { params });
+        const response = await lootService.getAllLoot(params);
         setLoot(response.data);
       } else if (statusToFetch === 'Kept Party') {
-        const response = await api.get(`/loot/kept-party`);
+        const response = await lootService.getKeptPartyLoot();
         setLoot(response.data);
       } else if (statusToFetch === 'Kept Self') {
-        const response = await api.get(`/loot/kept-character`);
+        const response = await lootService.getKeptCharacterLoot();
         setLoot(response.data);
       } else if (statusToFetch === 'Trashed') {
-        const response = await api.get(`/loot/trash`);
+        const response = await lootService.getTrashedLoot();
         setLoot(response.data);
       }
     } catch (error) {
@@ -144,9 +144,11 @@ const useLootManagement = (statusToFetch) => {
         return;
       }
 
-      // The backend expects userId - it will automatically use the active character
-      await api.post(`/loot/appraise`, {
-        userId: user.id
+      // The backend expects characterId - it will automatically use the active character
+      await lootService.appraiseLoot({
+        lootIds: selectedItems,
+        characterId: user.activeCharacterId || user.id,
+        appraisalRolls: selectedItems.map(() => Math.floor(Math.random() * 20) + 1) // Generate d20 rolls
       });
 
       fetchLoot();
