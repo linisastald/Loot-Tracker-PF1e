@@ -1,37 +1,56 @@
 const express = require('express');
 const router = express.Router();
-const lootController = require('../../controllers/lootController');
+// Import the refactored controllers
+const itemController = require('../../controllers/itemController');
+const itemCreationController = require('../../controllers/itemCreationController');
+const reportsController = require('../../controllers/reportsController');
+const appraisalController = require('../../controllers/appraisalController');
+const salesController = require('../../controllers/salesController');
+const identificationService = require('../../services/identificationService');
 const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
+const logger = require('../../utils/logger');
 
-// Add the route to parse item description
-router.post('/parse-item', verifyToken, lootController.parseItemDescription);
+// Log deprecation warning
+logger.warn('Legacy loot routes are being used. These routes will be deprecated. Please migrate to new API endpoints.');
 
-router.post('/', verifyToken, lootController.createLoot);
-router.get('/', verifyToken, lootController.getAllLoot);
-router.get('/items', verifyToken, lootController.getItems);
-router.post('/split-stack', verifyToken, lootController.splitStack);
-router.get('/trash', verifyToken, lootController.getTrashedLoot);
-router.get('/kept-party', verifyToken, lootController.getKeptPartyLoot);
-router.get('/kept-character', verifyToken, lootController.getKeptCharacterLoot);
-router.put('/update-status', verifyToken, lootController.updateLootStatus);
-router.get('/unprocessed-count', lootController.getUnprocessedCount);
-router.get('/items-by-id', verifyToken, lootController.getItemsById);
-router.get('/mods-by-id', verifyToken, lootController.getModsById);
-router.get('/pending-sale', verifyToken, checkRole('DM'), lootController.getPendingSaleItems);
-router.get('/search', verifyToken, lootController.searchItems);
-router.put('/confirm-sale', verifyToken, checkRole('DM'), lootController.confirmSale);
-router.put('/update-entry/:id', verifyToken, lootController.updateItem);
-router.post('/appraise', verifyToken, lootController.appraiseLoot);
-router.post('/identify', verifyToken, lootController.identifyItems);
-router.get('/mods', verifyToken, checkRole('DM'), lootController.getMods);
-router.put('/dm-update/:id', verifyToken, checkRole('DM'), lootController.dmUpdateItem);
-router.get('/character-ledger', verifyToken, lootController.getCharacterLedger);
-router.get('/unidentified', verifyToken, lootController.getUnidentifiedItems);
-router.post('/sell-up-to', verifyToken, checkRole('DM'), lootController.sellUpTo);
-router.post('/sell-all-except', verifyToken, checkRole('DM'), lootController.sellAllExcept);
-router.post('/sell-selected', verifyToken, checkRole('DM'), lootController.sellSelected);
+// Legacy route mappings to new controllers
+// TODO: Update frontend to use new API endpoints
 
-router.put('/:id', verifyToken, lootController.updateSingleLootStatus);
+// Item creation routes -> itemCreationController
+router.post('/parse-item', verifyToken, itemCreationController.parseItemDescription);
+router.post('/', verifyToken, itemCreationController.createLoot);
+router.get('/items-by-id', verifyToken, itemCreationController.getItemsById);
+router.get('/mods-by-id', verifyToken, itemCreationController.getModsById);
+router.get('/mods', verifyToken, checkRole('DM'), itemCreationController.getMods);
+
+// Item management routes -> itemController  
+router.get('/', verifyToken, itemController.getAllLoot);
+router.get('/items', verifyToken, itemController.getAllLoot); // Alias
+router.post('/split-stack', verifyToken, itemController.splitItemStack);
+router.put('/update-status', verifyToken, itemController.updateLootStatus);
+router.get('/search', verifyToken, itemController.searchLoot);
+router.put('/update-entry/:id', verifyToken, itemController.updateLootItem);
+router.put('/dm-update/:id', verifyToken, checkRole('DM'), itemController.updateLootItem);
+router.put('/:id', verifyToken, itemController.updateLootItem);
+
+// Reports routes -> reportsController
+router.get('/trash', verifyToken, reportsController.getTrashedLoot);
+router.get('/kept-party', verifyToken, reportsController.getKeptPartyLoot);
+router.get('/kept-character', verifyToken, reportsController.getKeptCharacterLoot);
+router.get('/unprocessed-count', reportsController.getUnprocessedCount);
+router.get('/character-ledger', verifyToken, reportsController.getCharacterLedger);
+
+// Sales routes -> salesController
+router.get('/pending-sale', verifyToken, checkRole('DM'), salesController.getPendingSaleItems);
+router.put('/confirm-sale', verifyToken, checkRole('DM'), salesController.confirmSale);
+router.post('/sell-up-to', verifyToken, checkRole('DM'), salesController.sellUpTo);
+router.post('/sell-all-except', verifyToken, checkRole('DM'), salesController.sellAllExcept);
+router.post('/sell-selected', verifyToken, checkRole('DM'), salesController.sellSelected);
+
+// Appraisal and identification routes -> appraisalController
+router.post('/appraise', verifyToken, appraisalController.appraiseLoot);
+router.get('/unidentified', verifyToken, appraisalController.getUnidentifiedItems);
+router.post('/identify', verifyToken, appraisalController.identifyItems);
 
 module.exports = router;
