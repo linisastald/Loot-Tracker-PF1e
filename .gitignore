@@ -1,13 +1,11 @@
 /backend/node_modules/
 /frontend/node_modules/
 
-/frontend/package-lock.json
 /node_modules/
 backend/.env
 /.idea/dataSources.xml
 /.idea/sqldialects.xml
 docker/docker-compose.yml
-/backend/package-lock.json
 /.idea/misc.xml
 /.idea/deployment.xml
 /docker/docker-compose-root.yml
