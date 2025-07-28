@@ -8,10 +8,15 @@ import sys
 from termcolor import colored
 
 # Common variables
-DB_HOST = 'localhost'
-DB_NAME = 'loot_tracking'
-DB_USER = 'loot_user'
-DB_PASSWORD = 'g5Zr7!cXw@2sP9Lk'  # Replace this with the actual password
+import os
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_NAME = os.getenv('DB_NAME', 'loot_tracking')
+DB_USER = os.getenv('DB_USER', 'loot_user')
+DB_PASSWORD = os.getenv('DB_PASSWORD')  # Must be provided via environment variable
+
+if not DB_PASSWORD:
+    print("Error: DB_PASSWORD environment variable is required")
+    sys.exit(1)
 
 # Tables to check and create if missing
 TABLES_TO_CHECK = [

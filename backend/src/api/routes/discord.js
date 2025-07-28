@@ -3,6 +3,7 @@ const router = express.Router();
 const discordController = require('../../controllers/discordController');
 const sessionController = require('../../controllers/sessionController');
 const verifyToken = require('../../middleware/auth');
+const logger = require('../../utils/logger');
 
 router.post('/send-message', verifyToken, discordController.sendMessage);
 router.post('/send-event', verifyToken, discordController.sendEvent);
@@ -12,12 +13,21 @@ router.put('/settings', verifyToken, discordController.updateSettings);
 // Handle Discord interactions (routed from discord-handler service)
 // Note: This endpoint is now called by the discord-handler service, not directly by Discord
 router.post('/interactions', (req, res, next) => {
-    // Log interactions routed from discord-handler
-    console.log('=== DISCORD INTERACTION ROUTED FROM HANDLER ===');
-    console.log('Headers:', req.headers);
-    console.log('Forwarded from:', req.headers['x-forwarded-from']);
-    console.log('Body:', req.body);
-    console.log('================================================');
+    // Log interactions routed from discord-handler (sanitized for security)
+    logger.info('Discord interaction routed from handler', {
+        forwardedFrom: req.headers['x-forwarded-from'],
+        userAgent: req.headers['user-agent'],
+        contentType: req.headers['content-type'],
+        bodyType: typeof req.body,
+        hasBody: !!req.body,
+        timestamp: new Date().toISOString()
+    });
+    
+    // Log detailed body only in development mode
+    if (process.env.NODE_ENV === 'development') {
+        logger.debug('Discord interaction body', { body: req.body });
+    }
+    
     next();
 }, sessionController.processSessionInteraction);
 
