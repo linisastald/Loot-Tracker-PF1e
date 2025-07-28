@@ -116,8 +116,8 @@ COPY --from=frontend-build --chown=frontend:nginx /app/build /usr/share/nginx/ht
 
 # Copy database initialization scripts (essential runtime files only)
 COPY --chown=backend:nodejs database/init.sql /app/database/
-COPY --chown=backend:nodejs database/*_data.sql /app/database/
 COPY --chown=backend:nodejs database/sessions.sql /app/database/
+COPY --chown=backend:nodejs database/*.sql /app/database/
 
 # Create optimized nginx configuration
 RUN echo 'user frontend;' > /etc/nginx/nginx.conf && \

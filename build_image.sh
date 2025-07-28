@@ -18,7 +18,7 @@ USE_BUILDKIT=true
 ENABLE_SECURITY_SCAN=false
 
 # Parse command line arguments
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
     case $1 in
         --stable)
             BUILD_STABLE=true
