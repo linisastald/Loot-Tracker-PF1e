@@ -45,6 +45,12 @@ while [ $# -gt 0 ]; do
             TAG="$2"
             shift 2
             ;;
+        --cleanup)
+            echo "🧹 Cleaning up dangling images..."
+            docker image prune -f
+            echo "✅ Cleanup complete"
+            exit 0
+            ;;
         -h|--help)
             echo "Usage: $0 [--stable] [--keep-cache] [--tag TAG]"
             echo ""
@@ -63,6 +69,7 @@ while [ $# -gt 0 ]; do
             echo "    --security-scan   Enable container security scanning"
             echo "    --no-buildkit     Disable Docker BuildKit (use legacy builder)"
             echo "    --tag TAG         Override default tag"
+            echo "    --cleanup         Remove all dangling images and exit"
             echo ""
             echo "  EXAMPLES:"
             echo "    $0                        # Build optimized dev image with latest git code"
@@ -204,6 +211,10 @@ echo "   Optimizations: $([ "$OPTIMIZE_BUILD" = true ] && echo "ENABLED" || echo
 echo "   Security Scan: $([ "$ENABLE_SECURITY_SCAN" = true ] && echo "ENABLED" || echo "DISABLED")"
 echo ""
 
+# Clean up dangling images before build
+echo "🧹 Cleaning up any dangling images..."
+docker image prune -f 2>/dev/null || true
+
 # Execute the build
 echo "🚀 Starting optimized Docker build..."
 eval $BUILD_CMD
@@ -226,14 +237,38 @@ if [ $BUILD_EXIT_CODE -eq 0 ] && [ "$ENABLE_SECURITY_SCAN" = true ]; then
 fi
 
 if [ $BUILD_EXIT_CODE -eq 0 ]; then
-    echo ""
-    echo "✅ BUILD COMPLETED SUCCESSFULLY!"
-    echo "================================"
-    echo "Image created: ${IMAGE_NAME}:${TAG}"
-    echo "Build type: $([ "$BUILD_STABLE" = true ] && echo "STABLE/PRODUCTION" || echo "DEV/UNSTABLE")"
-    echo "Git commit: $(get_git_commit)"
-    echo "Build time: $(date)"
-    echo ""
+    # Verify the image was actually created and tagged
+    if docker image inspect "${IMAGE_NAME}:${TAG}" >/dev/null 2>&1; then
+        echo ""
+        echo "✅ BUILD COMPLETED SUCCESSFULLY!"
+        echo "================================"
+        echo "Image created: ${IMAGE_NAME}:${TAG}"
+        echo "Build type: $([ "$BUILD_STABLE" = true ] && echo "STABLE/PRODUCTION" || echo "DEV/UNSTABLE")"
+        echo "Git commit: $(get_git_commit)"
+        echo "Build time: $(date)"
+        echo ""
+    else
+        echo ""
+        echo "⚠️ BUILD WARNING: Image built but not properly tagged"
+        echo "Attempting to find and tag the latest untagged image..."
+        
+        # Find the most recent untagged image
+        LATEST_UNTAGGED=$(docker images --filter "dangling=true" --format "{{.ID}}" | head -n1)
+        
+        if [ -n "$LATEST_UNTAGGED" ]; then
+            echo "Found untagged image: $LATEST_UNTAGGED"
+            docker tag "$LATEST_UNTAGGED" "${IMAGE_NAME}:${TAG}"
+            if [ $? -eq 0 ]; then
+                echo "✅ Successfully tagged image as ${IMAGE_NAME}:${TAG}"
+            else
+                echo "❌ Failed to tag image"
+                exit 1
+            fi
+        else
+            echo "❌ No untagged images found. Build may have failed."
+            exit 1
+        fi
+    fi
     # Show image size information
     IMAGE_SIZE=$(docker image inspect ${IMAGE_NAME}:${TAG} --format='{{.Size}}' | numfmt --to=iec --suffix=B 2>/dev/null || echo "Unknown")
     echo "📊 IMAGE INFORMATION:"
