@@ -73,9 +73,11 @@ const useLootManagement = (statusToFetch) => {
     const user = await fetchActiveUser();
     if (user && user.activeCharacterId) {
       setActiveUser(user);
-    } else {
+    } else if (!isDM()) {
+      // Only log error for non-DM users who should have an active character
       console.error('Active character ID is not available or user could not be fetched');
     }
+    // DM users don't need an active character ID, so no error for them
   };
 
   useEffect(() => {
