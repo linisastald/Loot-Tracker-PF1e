@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Configure logs directory
-const logsDir = process.env.LOG_DIR || path.join(__dirname, '../../../logs');
+const logsDir = process.env.LOG_DIR || path.join(__dirname, '../../logs');
 
 // Create logs directory if it doesn't exist
 if (!fs.existsSync(logsDir)) {
