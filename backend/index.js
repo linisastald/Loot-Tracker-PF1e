@@ -193,8 +193,8 @@ const csrfTokenGeneration = csrf({
   ignoreMethods: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'DELETE'] // Ignore all methods for token generation
 });
 
-// Routes
-app.get('/', (req, res) => {
+// API info route
+app.get('/api', (req, res) => {
   res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
 });
 
@@ -295,13 +295,17 @@ if (process.env.NODE_ENV === 'production') {
   const path = require('path');
   const frontendBuildPath = path.join(__dirname, 'frontend/build');
   
+  // Log the path for debugging
+  logger.info(`Frontend build path: ${frontendBuildPath}`);
+  logger.info(`Frontend build exists: ${require('fs').existsSync(frontendBuildPath)}`);
+  
   // Serve static files from React build
   app.use(express.static(frontendBuildPath));
   
   // Handle React routing - serve index.html for non-API routes
   app.get('*', (req, res) => {
-    // Skip API routes and health check
-    if (req.path.startsWith('/api/') || req.path === '/health') {
+    // Skip API routes
+    if (req.path.startsWith('/api/')) {
       return res.status(404).json({ 
         success: false, 
         message: 'API endpoint not found',
@@ -309,7 +313,17 @@ if (process.env.NODE_ENV === 'production') {
       });
     }
     
-    res.sendFile(path.join(frontendBuildPath, 'index.html'));
+    const indexPath = path.join(frontendBuildPath, 'index.html');
+    if (require('fs').existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'Frontend not found',
+        path: frontendBuildPath,
+        exists: require('fs').existsSync(frontendBuildPath)
+      });
+    }
   });
 }
 
