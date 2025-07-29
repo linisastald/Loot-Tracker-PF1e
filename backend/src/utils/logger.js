@@ -1,6 +1,16 @@
 const winston = require('winston');
 require('winston-daily-rotate-file');
 const { LOGGING } = require('../config/constants');
+const fs = require('fs');
+const path = require('path');
+
+// Configure logs directory
+const logsDir = process.env.LOG_DIR || path.join(__dirname, '../../../logs');
+
+// Create logs directory if it doesn't exist
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
 
 const logger = winston.createLogger({
   level: LOGGING.LEVEL,
@@ -12,7 +22,7 @@ const logger = winston.createLogger({
   transports: [
     // Error logs with rotation
     new winston.transports.DailyRotateFile({
-      filename: '/app/logs/error-%DATE%.log',
+      filename: path.join(logsDir, 'error-%DATE%.log'),
       datePattern: LOGGING.DATE_PATTERN,
       level: 'error',
       maxSize: LOGGING.MAX_SIZE,
@@ -22,7 +32,7 @@ const logger = winston.createLogger({
     }),
     // Combined logs with rotation
     new winston.transports.DailyRotateFile({
-      filename: '/app/logs/combined-%DATE%.log',
+      filename: path.join(logsDir, 'combined-%DATE%.log'),
       datePattern: LOGGING.DATE_PATTERN,
       maxSize: LOGGING.MAX_SIZE,
       maxFiles: LOGGING.MAX_FILES,
@@ -41,14 +51,6 @@ if (process.env.NODE_ENV !== 'production') {
       winston.format.simple()
     )
   }));
-}
-
-// Create logs directory if it doesn't exist
-const fs = require('fs');
-const path = require('path');
-const logsDir = '/app/logs';
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
 }
 
 module.exports = logger;
