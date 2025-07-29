@@ -29,7 +29,7 @@ const getAllLoot = async (req, res) => {
     }
 
     if (character_id) {
-      conditions.push(`l.character_id = $${paramIndex}`);
+      conditions.push(`l.whohas = $${paramIndex}`);
       params.push(character_id);
       paramIndex++;
     }
@@ -38,7 +38,7 @@ const getAllLoot = async (req, res) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
 
-    query += ' ORDER BY l.created_at DESC';
+    query += ' ORDER BY l.lastupdate DESC';
     
     if (limit) {
       query += ` LIMIT $${paramIndex}`;
@@ -304,7 +304,7 @@ const searchLoot = async (req, res) => {
     }
 
     if (character_id) {
-      conditions.push(`l.character_id = $${paramIndex}`);
+      conditions.push(`l.whohas = $${paramIndex}`);
       params.push(character_id);
       paramIndex++;
     }
@@ -337,7 +337,7 @@ const searchLoot = async (req, res) => {
       sql += ' WHERE ' + conditions.join(' AND ');
     }
 
-    sql += ' ORDER BY l.created_at DESC';
+    sql += ' ORDER BY l.lastupdate DESC';
     sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(parseInt(limit), parseInt(offset));
 

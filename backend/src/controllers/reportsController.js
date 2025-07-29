@@ -61,7 +61,7 @@ const getKeptCharacterLoot = async (req, res) => {
       SELECT l.*, i.name as base_item_name, i.type as item_type, c.name as character_name
       FROM loot l
       JOIN item i ON l.itemid = i.id
-      LEFT JOIN characters c ON l.character_id = c.id
+      LEFT JOIN characters c ON l.whohas = c.id
       WHERE l.status = 'Kept Character'
     `;
 
@@ -70,7 +70,7 @@ const getKeptCharacterLoot = async (req, res) => {
 
     if (character_id) {
       ValidationService.validateCharacterId(parseInt(character_id));
-      query += ` AND l.character_id = $${paramIndex}`;
+      query += ` AND l.whohas = $${paramIndex}`;
       params.push(character_id);
       paramIndex++;
     }
@@ -85,7 +85,7 @@ const getKeptCharacterLoot = async (req, res) => {
 
     const countParams = [];
     if (character_id) {
-      countQuery += ` AND l.character_id = $1`;
+      countQuery += ` AND l.whohas = $1`;
       countParams.push(character_id);
     }
 
@@ -175,7 +175,7 @@ const getCharacterLedger = async (req, res) => {
                               END
                       ), 0) AS payments
       FROM characters c
-               LEFT JOIN loot l ON c.id = l.character_id AND l.status = 'Kept Character'
+               LEFT JOIN loot l ON c.id = l.whohas AND l.status = 'Kept Character'
                LEFT JOIN gold g ON c.id = g.character_id
       GROUP BY c.id, c.name, c.active
       ORDER BY c.active DESC, lootValue DESC
@@ -412,7 +412,7 @@ const getSessionReport = async (req, res) => {
         c.name as character_name
       FROM loot l
       JOIN item i ON l.itemid = i.id
-      LEFT JOIN characters c ON l.character_id = c.id
+      LEFT JOIN characters c ON l.whohas = c.id
       WHERE DATE(l.session_date) = DATE($1)
       ORDER BY l.created_at
     `;
