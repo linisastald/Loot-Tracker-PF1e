@@ -211,3 +211,55 @@ Based on README.md tracking:
 - Testing infrastructure (item 3)
 - Error handling resilience (item 4)
 - Logging consistency (item 5)
+
+## Important Development Guidelines
+
+### Database Schema Management
+
+**NEVER change existing database column or table names**. The production database has existing data with specific column names that must be preserved:
+- `loot` table uses `whohas` (not `character_id`)
+- `loot` table uses `lastupdate` (not `created_at`)
+- Always verify column names in `/database/init.sql` before writing queries
+
+Creating new tables and columns is acceptable when required for new features, but existing schema must remain unchanged to maintain compatibility with production data.
+
+### Docker and Infrastructure Changes
+
+**Be extremely cautious with infrastructure changes**:
+- NEVER change volume mount paths without explicit user confirmation
+- Preserve all existing Docker volume mounts exactly as configured
+- Do not modify database connection parameters without understanding the deployment
+- Always ask for clarification before changing infrastructure configuration
+
+### Architecture Decisions
+
+**Current architecture (as of latest updates):**
+- Single container with Node.js backend serving both API and React frontend
+- Backend runs on port 5000, serves frontend at `/` and API at `/api/*`
+- No nginx layer - Node.js directly serves static files in production
+- External proxy manager handles routing (not part of the application container)
+
+### Testing Infrastructure
+
+**Current testing setup:**
+- Jest configured for both frontend and backend
+- Separate unit and integration test configurations
+- Database mocking for unit tests using mock functions
+- Integration tests use real database connections
+- Run tests with `npm test` in respective directories
+
+### Logging Configuration
+
+**Logger behavior:**
+- Logs to files in `/app/backend/logs` when permissions allow
+- Falls back to console logging if file permissions denied
+- Configurable via `LOG_DIR` environment variable
+- Uses winston with daily rotation
+
+### Common Pitfalls to Avoid
+
+1. **Don't assume column names** - Always check the actual database schema
+2. **Don't change working infrastructure** - If it's working, understand why before changing
+3. **Don't hardcode paths** - Use environment variables for configuration
+4. **Don't ignore existing patterns** - Follow established code patterns in the codebase
+5. **Don't mix concerns** - Keep frontend, backend, and database logic separated
