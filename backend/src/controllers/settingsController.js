@@ -283,7 +283,8 @@ const getOpenAiKey = async (req, res) => {
 
 // Define validation rules
 const updateSettingValidation = {
-    requiredFields: ['name', 'value']
+    requiredFields: ['name']
+    // Note: 'value' is not required since some settings can be null/empty (like Discord settings)
 };
 
 module.exports = {

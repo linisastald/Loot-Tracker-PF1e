@@ -21,19 +21,16 @@ const registerUser = async (req, res) => {
     );
     const isRegOpen = regOpenResult.rows[0] && (regOpenResult.rows[0].value === 1 || regOpenResult.rows[0].value === '1');
 
-    if (!isRegOpen) {
-        throw controllerFactory.createAuthorizationError('Registrations are currently closed');
-    }
-
-    // Check if invite code is required
-    const inviteRequiredResult = await dbUtils.executeQuery(
-        "SELECT value FROM settings WHERE name = 'invite_required'"
-    );
-    const isInviteRequired = inviteRequiredResult.rows[0] && inviteRequiredResult.rows[0].value === 1;
+    // If registrations are closed, require invite code
+    const isInviteRequired = !isRegOpen;
 
     // Verify invite code if required
     if (isInviteRequired && !inviteCode) {
         throw controllerFactory.createValidationError('Invitation code is required for registration');
+    }
+
+    if (!isRegOpen && !inviteCode) {
+        throw controllerFactory.createAuthorizationError('Registrations are currently closed. An invitation code is required.');
     }
 
     if (inviteCode) {
@@ -392,10 +389,15 @@ const checkRegistrationStatus = async (req, res) => {
  * Check if invite is required for registration
  */
 const checkInviteRequired = async (req, res) => {
-    const inviteRequiredResult = await dbUtils.executeQuery(
-        "SELECT value FROM settings WHERE name = 'invite_required'"
+    // Check if registrations are open
+    const regOpenResult = await dbUtils.executeQuery(
+        "SELECT value FROM settings WHERE name = 'registrations_open'"
     );
-    const isRequired = inviteRequiredResult.rows[0] && (inviteRequiredResult.rows[0].value === 1 || inviteRequiredResult.rows[0].value === '1');
+    const isRegOpen = regOpenResult.rows[0] && (regOpenResult.rows[0].value === 1 || regOpenResult.rows[0].value === '1');
+    
+    // If registrations are closed, invite code is required
+    const isRequired = !isRegOpen;
+    
     controllerFactory.sendSuccessResponse(res, {isRequired});
 };
 

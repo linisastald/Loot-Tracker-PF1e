@@ -13,9 +13,8 @@ const getAllLoot = async (req, res) => {
     const { status, character_id, limit = 50, offset = 0 } = req.query;
     
     let query = `
-      SELECT l.*, i.name as base_item_name, i.type as item_type
-      FROM loot l
-      JOIN item i ON l.itemid = i.id
+      SELECT *
+      FROM loot_view
     `;
     
     const conditions = [];
@@ -23,13 +22,13 @@ const getAllLoot = async (req, res) => {
     let paramIndex = 1;
 
     if (status) {
-      conditions.push(`l.status = $${paramIndex}`);
+      conditions.push(`status = $${paramIndex}`);
       params.push(status);
       paramIndex++;
     }
 
     if (character_id) {
-      conditions.push(`l.whohas = $${paramIndex}`);
+      conditions.push(`whohas = $${paramIndex}`);
       params.push(character_id);
       paramIndex++;
     }
@@ -38,7 +37,7 @@ const getAllLoot = async (req, res) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
 
-    query += ' ORDER BY l.lastupdate DESC';
+    query += ' ORDER BY lastupdate DESC';
     
     if (limit) {
       query += ` LIMIT $${paramIndex}`;
@@ -52,11 +51,17 @@ const getAllLoot = async (req, res) => {
     }
 
     const result = await dbUtils.executeQuery(query, params);
+    const allItems = result.rows;
+
+    // Separate summary and individual items
+    const summaryItems = allItems.filter(item => item.row_type === 'summary');
+    const individualItems = allItems.filter(item => item.row_type === 'individual');
 
     return controllerFactory.sendSuccessResponse(res, {
-      items: result.rows,
-      count: result.rows.length
-    }, `${result.rows.length} loot items retrieved`);
+      summary: summaryItems,
+      individual: individualItems,
+      count: allItems.length
+    }, `${allItems.length} loot items retrieved`);
   } catch (error) {
     logger.error('Error fetching all loot:', error);
     throw error;
@@ -378,9 +383,17 @@ const splitItemStack = async (req, res) => {
   ValidationService.requireDM(req);
   
   const itemId = ValidationService.validateItemId(parseInt(req.params.id));
-  const { splitQuantity } = req.body;
+  const { newQuantities, splitQuantity } = req.body;
   
-  const validatedSplitQuantity = ValidationService.validateQuantity(splitQuantity);
+  // Support both old (splitQuantity) and new (newQuantities) formats
+  let quantities = [];
+  if (newQuantities && Array.isArray(newQuantities)) {
+    quantities = newQuantities.map(q => ValidationService.validateQuantity(q.quantity));
+  } else if (splitQuantity) {
+    quantities = [ValidationService.validateQuantity(splitQuantity)];
+  } else {
+    throw controllerFactory.createValidationError('Either newQuantities or splitQuantity must be provided');
+  }
 
   try {
     return await dbUtils.executeTransaction(async (client) => {
@@ -392,51 +405,96 @@ const splitItemStack = async (req, res) => {
         throw controllerFactory.createNotFoundError('Loot item not found');
       }
 
-      if (originalItem.quantity <= validatedSplitQuantity) {
-        throw controllerFactory.createValidationError('Split quantity must be less than current quantity');
+      // Calculate total quantities being split
+      const totalSplitQuantity = quantities.reduce((sum, qty) => sum + qty, 0);
+      
+      // Validate that total split quantities match original quantity
+      if (totalSplitQuantity !== originalItem.quantity) {
+        throw controllerFactory.createValidationError(
+          `Total split quantities (${totalSplitQuantity}) must equal original quantity (${originalItem.quantity})`
+        );
       }
 
-      // Calculate remaining quantity
-      const remainingQuantity = originalItem.quantity - validatedSplitQuantity;
+      const newItems = [];
+      
+      // For multiple splits, update the original item with the first quantity and create new items for the rest
+      if (quantities.length > 1) {
+        // Update original item with first quantity
+        await client.query(
+          'UPDATE loot SET quantity = $1 WHERE id = $2',
+          [quantities[0], itemId]
+        );
 
-      // Update original item with remaining quantity
-      await client.query(
-        'UPDATE loot SET quantity = $1 WHERE id = $2',
-        [remainingQuantity, itemId]
-      );
+        // Create new items for the remaining quantities
+        for (let i = 1; i < quantities.length; i++) {
+          const newItemData = {
+            ...originalItem,
+            quantity: quantities[i]
+          };
+          delete newItemData.id; // Remove ID so a new one is generated
 
-      // Create new item with split quantity
-      const newItemData = {
-        ...originalItem,
-        quantity: validatedSplitQuantity
-      };
-      delete newItemData.id; // Remove ID so a new one is generated
+          const keys = Object.keys(newItemData);
+          const values = Object.values(newItemData);
+          const placeholders = keys.map((_, idx) => `$${idx + 1}`);
 
-      const keys = Object.keys(newItemData);
-      const values = Object.values(newItemData);
-      const placeholders = keys.map((_, i) => `$${i + 1}`);
+          const insertQuery = `
+            INSERT INTO loot (${keys.join(', ')})
+            VALUES (${placeholders.join(', ')})
+            RETURNING *
+          `;
 
-      const insertQuery = `
-        INSERT INTO loot (${keys.join(', ')})
-        VALUES (${placeholders.join(', ')})
-        RETURNING *
-      `;
+          const newItemResult = await client.query(insertQuery, values);
+          newItems.push(newItemResult.rows[0]);
+        }
+      } else {
+        // Single split (legacy behavior)
+        const splitQuantity = quantities[0];
+        if (originalItem.quantity <= splitQuantity) {
+          throw controllerFactory.createValidationError('Split quantity must be less than current quantity');
+        }
 
-      const newItemResult = await client.query(insertQuery, values);
-      const newItem = newItemResult.rows[0];
+        const remainingQuantity = originalItem.quantity - splitQuantity;
+        
+        // Update original item with remaining quantity
+        await client.query(
+          'UPDATE loot SET quantity = $1 WHERE id = $2',
+          [remainingQuantity, itemId]
+        );
+
+        // Create new item with split quantity
+        const newItemData = {
+          ...originalItem,
+          quantity: splitQuantity
+        };
+        delete newItemData.id;
+
+        const keys = Object.keys(newItemData);
+        const values = Object.values(newItemData);
+        const placeholders = keys.map((_, idx) => `$${idx + 1}`);
+
+        const insertQuery = `
+          INSERT INTO loot (${keys.join(', ')})
+          VALUES (${placeholders.join(', ')})
+          RETURNING *
+        `;
+
+        const newItemResult = await client.query(insertQuery, values);
+        newItems.push(newItemResult.rows[0]);
+      }
 
       logger.info(`Item ${itemId} split by DM ${req.user.id}`, {
         userId: req.user.id,
         originalItemId: itemId,
-        newItemId: newItem.id,
-        splitQuantity: validatedSplitQuantity,
-        remainingQuantity
+        newItemIds: newItems.map(item => item.id),
+        quantities: quantities,
+        totalPieces: quantities.length
       });
 
       return controllerFactory.sendSuccessResponse(res, {
-        originalItem: { ...originalItem, quantity: remainingQuantity },
-        newItem: newItem
-      }, `Item split successfully. New item created with quantity ${validatedSplitQuantity}`);
+        originalItem: { ...originalItem, quantity: quantities[0] },
+        newItems: newItems,
+        totalPieces: quantities.length
+      }, `Item split successfully into ${quantities.length} pieces`);
     });
   } catch (error) {
     logger.error(`Error splitting item ${itemId}:`, error);

@@ -1,0 +1,248 @@
+version: '3.8'
+services:
+  # Nginx Proxy Manager
+  nginx-proxy-manager:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - '80:80'      # HTTP port
+      - '443:443'    # HTTPS port
+      - '81:81'      # Admin UI port
+    environment:
+      - DB_MYSQL_HOST=npm-db
+      - DB_MYSQL_PORT=3306
+      - DB_MYSQL_USER=npm
+      - DB_MYSQL_PASSWORD=${NPM_DB_PASSWORD}
+      - DB_MYSQL_NAME=npm
+    volumes:
+      - /root/nginx/data:/data
+      - /root/nginx/letsencrypt:/etc/letsencrypt
+    depends_on:
+      - npm-db
+    networks:
+      - proxy-network
+
+  npm-db:
+    image: 'jc21/mariadb-aria:latest'
+    container_name: npm-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${NPM_ROOT_PASSWORD}
+      - MYSQL_DATABASE=npm
+      - MYSQL_USER=npm
+      - MYSQL_PASSWORD=${NPM_DB_PASSWORD}
+    volumes:
+      - /root/nginx/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "root", "-p${NPM_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 20s
+      retries: 10
+      start_period: 30s
+    networks:
+      - proxy-network
+
+  # Rise of the Runelords services
+  rotr_app:
+    build:
+      context: ./pathfinder/Loot-Tracker-PF1e
+      dockerfile: docker/Dockerfile.full
+      args:
+        - REACT_APP_API_URL=/api
+    expose:
+      - "80"  # Nginx port for serving frontend
+      - "5000"  # Backend port
+    environment:
+      - DB_USER=loot_user
+      - DB_HOST=rotr_db
+      - DB_NAME=loot_tracking
+      - DB_PASSWORD=${ROTR_DB_PASSWORD}
+      - DB_PORT=5432
+      - PORT=5000
+      - JWT_SECRET=${ROTR_JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ALLOWED_ORIGINS=https://rotr.kempsonandko.com,http://rotr.kempsonandko.com
+      - FRONTEND_URL=https://rotr.kempsonandko.com
+      - GROUP_NAME=Rise of the Runelords
+    depends_on:
+      rotr_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    container_name: rotr_loot_app
+    restart: unless-stopped
+    networks:
+      - proxy-network
+      - default
+
+  rotr_db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=loot_user
+      - POSTGRES_PASSWORD=${ROTR_DB_PASSWORD}
+      - POSTGRES_DB=loot_tracking
+    volumes:
+      - ./pathfinder/Loot-Tracker-PF1e/database/00-extensions.sql:/docker-entrypoint-initdb.d/00-extensions.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/item_data.sql:/docker-entrypoint-initdb.d/02-item_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/mod_data.sql:/docker-entrypoint-initdb.d/03-mod_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/min_caster_levels_data.sql:/docker-entrypoint-initdb.d/04-min_caster_levels_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/min_costs_data.sql:/docker-entrypoint-initdb.d/05-min_costs_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/spells_data.sql:/docker-entrypoint-initdb.d/06-spells_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/weather_regions_data.sql:/docker-entrypoint-initdb.d/07-weather_regions_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/impositions_data.sql:/docker-entrypoint-initdb.d/08-impositions_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/sessions.sql:/docker-entrypoint-initdb.d/09-sessions.sql
+      - /root/pathfinder/rotr/db:/var/lib/postgresql/data
+    container_name: rotr_loot_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loot_user -d loot_tracking"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - default
+
+  # Skulls & Shackles services
+  sns_app:
+    build:
+      context: ./pathfinder/Loot-Tracker-PF1e
+      dockerfile: docker/Dockerfile.full
+      args:
+        - REACT_APP_API_URL=/api
+    expose:
+      - "80"  # Nginx port for serving frontend
+      - "5000"  # Backend port
+    environment:
+      - DB_USER=loot_user
+      - DB_HOST=sns_db
+      - DB_NAME=loot_tracking
+      - DB_PASSWORD=${SNS_DB_PASSWORD}
+      - DB_PORT=5432
+      - PORT=5000
+      - JWT_SECRET=${SNS_JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ALLOWED_ORIGINS=https://sns.kempsonandko.com,http://sns.kempsonandko.com
+      - FRONTEND_URL=https://sns.kempsonandko.com
+      - GROUP_NAME=Skulls & Shackles
+    depends_on:
+      sns_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    container_name: sns_loot_app
+    restart: unless-stopped
+    networks:
+      - proxy-network
+      - default
+
+  sns_db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=loot_user
+      - POSTGRES_PASSWORD=${SNS_DB_PASSWORD}
+      - POSTGRES_DB=loot_tracking
+    volumes:
+      - ./pathfinder/Loot-Tracker-PF1e/database/00-extensions.sql:/docker-entrypoint-initdb.d/00-extensions.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/item_data.sql:/docker-entrypoint-initdb.d/02-item_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/mod_data.sql:/docker-entrypoint-initdb.d/03-mod_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/min_caster_levels_data.sql:/docker-entrypoint-initdb.d/04-min_caster_levels_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/min_costs_data.sql:/docker-entrypoint-initdb.d/05-min_costs_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/spells_data.sql:/docker-entrypoint-initdb.d/06-spells_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/weather_regions_data.sql:/docker-entrypoint-initdb.d/07-weather_regions_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/impositions_data.sql:/docker-entrypoint-initdb.d/08-impositions_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/sessions.sql:/docker-entrypoint-initdb.d/09-sessions.sql
+      - /root/pathfinder/sns/db:/var/lib/postgresql/data
+    container_name: sns_loot_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loot_user -d loot_tracking"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - default
+
+  # Test services
+  test_app:
+    build:
+      context: ./pathfinder/Loot-Tracker-PF1e
+      dockerfile: docker/Dockerfile.full
+      args:
+        - REACT_APP_API_URL=/api
+    expose:
+      - "80"  # Nginx port for serving frontend
+      - "5000"  # Backend port
+    environment:
+      - DB_USER=loot_user
+      - DB_HOST=test_db
+      - DB_NAME=loot_tracking
+      - DB_PASSWORD=${TEST_DB_PASSWORD}
+      - DB_PORT=5432
+      - PORT=5000
+      - JWT_SECRET=${TEST_JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ALLOWED_ORIGINS=https://test.kempsonandko.com,http://test.kempsonandko.com
+      - FRONTEND_URL=https://test.kempsonandko.com
+      - GROUP_NAME=Test Campaign
+    depends_on:
+      test_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    container_name: test_loot_app
+    restart: unless-stopped
+    networks:
+      - proxy-network
+      - default
+
+  test_db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=loot_user
+      - POSTGRES_PASSWORD=${TEST_DB_PASSWORD}
+      - POSTGRES_DB=loot_tracking
+    volumes:
+      - ./pathfinder/Loot-Tracker-PF1e/database/00-extensions.sql:/docker-entrypoint-initdb.d/00-extensions.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/item_data.sql:/docker-entrypoint-initdb.d/02-item_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/mod_data.sql:/docker-entrypoint-initdb.d/03-mod_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/min_caster_levels_data.sql:/docker-entrypoint-initdb.d/04-min_caster_levels_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/min_costs_data.sql:/docker-entrypoint-initdb.d/05-min_costs_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/spells_data.sql:/docker-entrypoint-initdb.d/06-spells_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/weather_regions_data.sql:/docker-entrypoint-initdb.d/07-weather_regions_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/impositions_data.sql:/docker-entrypoint-initdb.d/08-impositions_data.sql
+      - ./pathfinder/Loot-Tracker-PF1e/database/sessions.sql:/docker-entrypoint-initdb.d/09-sessions.sql
+      - /root/pathfinder/test/db:/var/lib/postgresql/data
+    container_name: test_loot_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loot_user -d loot_tracking"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - default
+
+networks:
+  proxy-network:
+    external: true
+  default:
+    driver: bridge

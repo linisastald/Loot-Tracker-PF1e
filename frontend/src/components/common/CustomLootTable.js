@@ -111,8 +111,22 @@ const FormatAverageAppraisal = ({ item }) => {
 
 // Component for formatting believed value for active character
 const FormatBelievedValue = ({ item }) => {
-  // Debug logging to see what we're getting
-  console.log('Item in FormatBelievedValue:', item);
+  const [activeCharacterId, setActiveCharacterId] = React.useState(null);
+
+  // Get active character ID on component mount
+  React.useEffect(() => {
+    const fetchActiveCharacter = async () => {
+      try {
+        const response = await api.get('/user/me');
+        if (response.data && response.data.activeCharacterId) {
+          setActiveCharacterId(response.data.activeCharacterId);
+        }
+      } catch (error) {
+        console.error('Error fetching active character:', error);
+      }
+    };
+    fetchActiveCharacter();
+  }, []);
 
   // Try multiple possible locations for the believed value
   let rawValue = null;
@@ -120,26 +134,21 @@ const FormatBelievedValue = ({ item }) => {
   // Check if directly on the item
   if (item.believedvalue !== undefined && item.believedvalue !== null) {
     rawValue = item.believedvalue;
-    console.log('Found direct believedvalue:', rawValue);
   }
   // Check if we need to find the active character's appraisal
-  else if (item.appraisals && Array.isArray(item.appraisals) && item.appraisals.length > 0) {
-    // Try to find an appraisal marked as active or with a special flag
-    const activeAppraisal = item.appraisals.find(a => a.isActive || a.isActiveCharacter);
-    if (activeAppraisal) {
-      rawValue = activeAppraisal.believedvalue;
-      console.log('Found active appraisal:', activeAppraisal);
+  else if (item.appraisals && Array.isArray(item.appraisals) && item.appraisals.length > 0 && activeCharacterId) {
+    // Find appraisal for the active character specifically
+    const activeCharacterAppraisal = item.appraisals.find(a => 
+      a.character_id === activeCharacterId || a.characterId === activeCharacterId
+    );
+    if (activeCharacterAppraisal) {
+      rawValue = activeCharacterAppraisal.believedvalue;
     }
-    // If no appraisal is marked as active, use the first one as a fallback
-    else {
-      rawValue = item.appraisals[0].believedvalue;
-      console.log('Using first appraisal as fallback:', item.appraisals[0]);
-    }
+    // If no appraisal for active character, don't show any value (don't fall back to random character)
   }
 
   // Return empty if no valid value found
   if (rawValue === null || rawValue === undefined) {
-    console.log('No valid believed value found');
     return null;
   }
 
