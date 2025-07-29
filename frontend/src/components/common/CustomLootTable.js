@@ -314,6 +314,7 @@ const CustomLootTable = ({
 
   // Apply filters to data
   const filteredLoot = useMemo(() => {
+    if (!loot || !Array.isArray(loot)) return [];
     return loot.filter((item) => {
       if (item.row_type !== 'summary') return false;
 
