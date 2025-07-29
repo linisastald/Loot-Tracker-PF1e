@@ -148,6 +148,65 @@ class MockPool extends EventEmitter {
       };
     }
 
+    // Mock loot_view queries (prioritize over general loot queries)
+    if (sql.includes('loot_view')) {
+      return {
+        rows: [
+          {
+            row_type: 'summary',
+            id: 1,
+            session_date: new Date().toISOString().split('T')[0],
+            quantity: 2,
+            name: 'Magic Sword',
+            unidentified: false,
+            masterwork: false,
+            type: 'weapon',
+            size: 'Medium',
+            value: 1000,
+            itemid: 1,
+            modids: [],
+            status: 'unprocessed',
+            statuspage: 'unprocessed',
+            whohas: 1,
+            lastupdate: new Date().toISOString(),
+            believedvalue: 1000,
+            notes: 'Test item',
+            appraisals: []
+          },
+          {
+            row_type: 'individual',
+            id: 2,
+            session_date: new Date().toISOString().split('T')[0],
+            quantity: 1,
+            name: 'Magic Sword',
+            unidentified: false,
+            masterwork: false,
+            type: 'weapon',
+            size: 'Medium',
+            value: 1000,
+            itemid: 1,
+            modids: [],
+            status: 'unprocessed',
+            statuspage: 'unprocessed',
+            whohas: 1,
+            lastupdate: new Date().toISOString(),
+            believedvalue: 1000,
+            notes: 'Test item individual',
+            appraisals: []
+          }
+        ],
+        rowCount: 2,
+        command: 'SELECT',
+        fields: [
+          { name: 'row_type', dataTypeID: 1043 },
+          { name: 'id', dataTypeID: 23 },
+          { name: 'name', dataTypeID: 1043 },
+          { name: 'quantity', dataTypeID: 23 },
+          { name: 'value', dataTypeID: 1700 }
+        ]
+      };
+    }
+
     // Mock loot/item queries
     if (sql.includes('loot') || sql.includes('item')) {
       return {
@@ -193,6 +252,69 @@ class MockPool extends EventEmitter {
           { name: 'name', dataTypeID: 1043 },
           { name: 'class', dataTypeID: 1043 },
           { name: 'level', dataTypeID: 23 }
+        ]
+      };
+    }
+
+    // Mock invites queries  
+    if (sql.includes('invites')) {
+      if (sql.includes('insert')) {
+        return {
+          rows: [{ 
+            code: 'TESTINV', 
+            created_by: 1, 
+            expires_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString() 
+          }],
+          rowCount: 1,
+          command: 'INSERT',
+          fields: [
+            { name: 'code', dataTypeID: 1043 },
+            { name: 'expires_at', dataTypeID: 1184 }
+          ]
+        };
+      }
+      
+      // Default invites query (no active invites for testing)
+      return {
+        rows: [],
+        rowCount: 0,
+        command: 'SELECT',
+        fields: [
+          { name: 'code', dataTypeID: 1043 },
+          { name: 'is_used', dataTypeID: 16 },
+          { name: 'expires_at', dataTypeID: 1184 }
+        ]
+      };
+    }
+
+    // Mock settings queries
+    if (sql.includes('settings')) {
+      // Mock different settings based on the query
+      if (sql.includes('registrations_open')) {
+        return {
+          rows: [{ name: 'registrations_open', value: '1', value_type: 'boolean' }],
+          rowCount: 1,
+          command: 'SELECT',
+          fields: [
+            { name: 'name', dataTypeID: 1043 },
+            { name: 'value', dataTypeID: 1043 },
+            { name: 'value_type', dataTypeID: 1043 }
+          ]
+        };
+      }
+      
+      // Default settings mock
+      return {
+        rows: [
+          { name: 'registrations_open', value: '1', value_type: 'boolean' },
+          { name: 'campaign_name', value: 'Test Campaign', value_type: 'text' }
+        ],
+        rowCount: 2,
+        command: 'SELECT',
+        fields: [
+          { name: 'name', dataTypeID: 1043 },
+          { name: 'value', dataTypeID: 1043 },
+          { name: 'value_type', dataTypeID: 1043 }
         ]
       };
     }
