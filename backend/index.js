@@ -85,7 +85,7 @@ const errorHandler = (err, req, res, next) => {
 // Detect host IP for Docker networking
 let hostIp;
 try {
-  hostIp = execSync("getent hosts host.docker.internal && awk '{ print $1 }' || hostname -I | awk '{print $1}'").toString().trim();
+  hostIp = execSync("getent hosts host.docker.internal | awk '{ print $1 }' || hostname -i").toString().trim();
   logger.info(`Detected HOST_IP: ${hostIp}`);
 } catch (err) {
   logger.error('Failed to detect host IP:', err);

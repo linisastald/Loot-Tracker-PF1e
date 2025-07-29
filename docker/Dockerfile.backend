@@ -35,6 +35,9 @@ RUN mkdir -p backend/frontend && cp -r frontend/build backend/frontend/
 # Copy database files with node user ownership (node:node already exists in node:alpine)
 COPY --chown=node:node database/ ./backend/database/
 
+# Create logs directory with proper ownership
+RUN mkdir -p /app/logs && chown -R node:node /app/logs
+
 # Switch to non-root user (node user already exists)
 USER node
 
