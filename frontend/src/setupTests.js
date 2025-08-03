@@ -6,16 +6,119 @@
 import '@testing-library/jest-dom';
 import { configure } from '@testing-library/react';
 
-// Mock Material-UI components to avoid React 19 compatibility issues
+// Mock Material-UI styled function and components to avoid React 19 compatibility issues
 jest.mock('@mui/material/styles', () => ({
   ThemeProvider: ({ children }) => children,
   createTheme: () => ({}),
   useTheme: () => ({}),
+  styled: (component) => (styles) => component,
+}));
+
+jest.mock('@mui/system', () => ({
+  styled: (component) => (styles) => component,
+  Box: ({ children, ...props }) => require('react').createElement('div', props, children),
 }));
 
 jest.mock('@mui/material/CssBaseline', () => {
   return function MockCssBaseline() {
     return null;
+  };
+});
+
+// Mock common Material-UI components
+jest.mock('@mui/material', () => {
+  const React = require('react');
+  
+  const mockComponent = (name) => ({ children, ...props }) => 
+    React.createElement('div', { 'data-testid': name.toLowerCase(), ...props }, children);
+
+  return {
+    Box: mockComponent('Box'),
+    Button: ({ children, onClick, type, ...props }) => {
+      const React = require('react');
+      return React.createElement('button', {
+        'data-testid': 'button',
+        onClick: onClick,
+        type: type || 'button',
+        ...props
+      }, children);
+    },
+    Container: mockComponent('Container'),
+    IconButton: ({ children, onClick, 'aria-label': ariaLabel, ...props }) => {
+      const React = require('react');
+      return React.createElement('button', {
+        'data-testid': 'iconbutton',
+        onClick: onClick,
+        'aria-label': ariaLabel,
+        ...props
+      }, children);
+    },
+    InputAdornment: mockComponent('InputAdornment'),
+    Link: mockComponent('Link'),
+    Paper: mockComponent('Paper'),
+    TextField: ({ children, label, type, value, onChange, ...props }) => {
+      const React = require('react');
+      return React.createElement('input', {
+        'data-testid': 'textfield',
+        'aria-label': label,
+        type: type || 'text',
+        value: value || '',
+        onChange: onChange,
+        required: props.required,
+        'aria-invalid': props.error ? 'true' : 'false',
+        'aria-describedby': props.error ? 'login-error' : undefined,
+        ...props
+      });
+    },
+    Typography: mockComponent('Typography'),
+    Grid: mockComponent('Grid'),
+    Alert: mockComponent('Alert'),
+    CircularProgress: mockComponent('CircularProgress'),
+    Chip: mockComponent('Chip'),
+    FormControl: mockComponent('FormControl'),
+    InputLabel: mockComponent('InputLabel'),
+    Select: mockComponent('Select'),
+    MenuItem: mockComponent('MenuItem'),
+    Dialog: mockComponent('Dialog'),
+    DialogTitle: mockComponent('DialogTitle'),
+    DialogContent: mockComponent('DialogContent'),
+    DialogActions: mockComponent('DialogActions'),
+    Table: mockComponent('Table'),
+    TableBody: mockComponent('TableBody'),
+    TableCell: mockComponent('TableCell'),
+    TableContainer: mockComponent('TableContainer'),
+    TableHead: mockComponent('TableHead'),
+    TableRow: mockComponent('TableRow'),
+    Tabs: mockComponent('Tabs'),
+    Tab: mockComponent('Tab'),
+    Card: mockComponent('Card'),
+    CardContent: mockComponent('CardContent'),
+    CardHeader: mockComponent('CardHeader'),
+    Autocomplete: mockComponent('Autocomplete'),
+    TablePagination: mockComponent('TablePagination'),
+  };
+});
+
+// Mock Material-UI icons
+jest.mock('@mui/icons-material', () => {
+  const React = require('react');
+  
+  const mockIcon = (name) => (props) => 
+    React.createElement('div', { 'data-testid': `${name.toLowerCase()}-icon`, ...props });
+
+  return {
+    Visibility: mockIcon('Visibility'),
+    VisibilityOff: mockIcon('VisibilityOff'),
+    Add: mockIcon('Add'),
+    Edit: mockIcon('Edit'),
+    Delete: mockIcon('Delete'),
+    Person: mockIcon('Person'),
+    DirectionsBoat: mockIcon('DirectionsBoat'),
+    Home: mockIcon('Home'),
+    LocationOn: mockIcon('LocationOn'),
+    Warning: mockIcon('Warning'),
+    MoveUp: mockIcon('MoveUp'),
+    Group: mockIcon('Group'),
   };
 });
 
