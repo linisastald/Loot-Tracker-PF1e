@@ -54,7 +54,15 @@ jest.mock('@mui/material', () => {
       }, children);
     },
     InputAdornment: mockComponent('InputAdornment'),
-    Link: mockComponent('Link'),
+    Link: ({ children, onClick, ...props }) => {
+      const React = require('react');
+      return React.createElement('a', {
+        'data-testid': 'link',
+        onClick: onClick,
+        href: '#',
+        ...props
+      }, children);
+    },
     Paper: mockComponent('Paper'),
     TextField: ({ children, label, type, value, onChange, ...props }) => {
       const React = require('react');
@@ -70,9 +78,26 @@ jest.mock('@mui/material', () => {
         ...props
       });
     },
-    Typography: mockComponent('Typography'),
+    Typography: ({ children, variant, component, ...props }) => {
+      const React = require('react');
+      const isHeading = variant && (variant.startsWith('h') || variant === 'title' || variant === 'subtitle');
+      const tag = isHeading ? 'h1' : 'div';
+      return React.createElement(tag, {
+        'data-testid': 'typography',
+        role: isHeading ? 'heading' : undefined,
+        ...props
+      }, children);
+    },
     Grid: mockComponent('Grid'),
-    Alert: mockComponent('Alert'),
+    Alert: ({ children, severity, id, ...props }) => {
+      const React = require('react');
+      return React.createElement('div', {
+        'data-testid': 'alert',
+        role: 'alert',
+        id: id,
+        ...props
+      }, children);
+    },
     CircularProgress: mockComponent('CircularProgress'),
     Chip: mockComponent('Chip'),
     FormControl: mockComponent('FormControl'),
