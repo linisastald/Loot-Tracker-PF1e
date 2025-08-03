@@ -3,6 +3,7 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/tests/setupTests.js'],
   testMatch: [
     '<rootDir>/tests/**/*.test.js',
+    '<rootDir>/../tests/**/*.test.js',
     '<rootDir>/src/**/__tests__/**/*.js',
     '<rootDir>/src/**/?(*.)(spec|test).js'
   ],
@@ -36,7 +37,7 @@ module.exports = {
     }
   },
   // Ensure proper module resolution
-  moduleNameMapping: {},
+  moduleNameMapper: {},
   transform: {},
   // Handle async operations better
   maxWorkers: 1
