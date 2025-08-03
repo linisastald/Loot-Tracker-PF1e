@@ -1,0 +1,88 @@
+name: Debug Tests
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  debug-backend:
+    name: Debug Backend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: List available tests
+      run: |
+        cd backend
+        echo "Available test files:"
+        npx jest --listTests
+        
+    - name: Run basic test
+      run: |
+        cd backend
+        npx jest --testPathPattern="saleValueCalculator" --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret
+        
+    - name: Run all tests
+      run: |
+        cd backend
+        npm test
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret
+        OPENAI_API_KEY: test-openai-key
+        DB_NAME: mock_test_db
+        DB_USER: mock_user
+        DB_PASSWORD: mock_password
+        DB_HOST: mock_host
+        DB_PORT: 5432
+
+  debug-frontend:
+    name: Debug Frontend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+        
+    - name: List available tests
+      run: |
+        cd frontend
+        echo "Available test files:"
+        npx jest --listTests
+        
+    - name: Run frontend tests
+      run: |
+        cd frontend
+        npm test -- --watchAll=false
+      env:
+        NODE_ENV: test
+        CI: true
