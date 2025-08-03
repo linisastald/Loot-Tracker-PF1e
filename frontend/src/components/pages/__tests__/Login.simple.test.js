@@ -5,6 +5,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import Login from '../Login';
 
 // Mock the Login component import to avoid complex dependencies
 jest.mock('../Login', () => {
@@ -23,8 +24,6 @@ jest.mock('../Login', () => {
   };
 });
 
-const Login = require('../Login').default;
-
 describe('Login Component (Simplified)', () => {
   const renderLogin = (props = {}) => {
     return render(
@@ -38,7 +37,7 @@ describe('Login Component (Simplified)', () => {
     renderLogin();
     
     expect(screen.getByText(/pathfinder loot tracker/i)).toBeInTheDocument();
-    expect(screen.getByText(/login/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /login/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument();

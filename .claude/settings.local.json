@@ -14,7 +14,10 @@
       "Bash(npx jest:*)",
       "Bash(timeout 10s npx jest src/utils/__tests__/saleValueCalculator.test.js --no-coverage)",
       "Bash(timeout 15s npx jest tests/api/auth.test.js --no-coverage --verbose)",
-      "Bash(npm run test:*)"
+      "Bash(npm run test:*)",
+      "Bash(cp:*)",
+      "Bash(mkdir:*)",
+      "Bash(timeout:*)"
     ],
     "deny": []
   }

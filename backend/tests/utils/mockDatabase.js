@@ -79,12 +79,7 @@ class MockPool extends EventEmitter {
         return this.getMockSelectResult(text, params);
 
       case 'insert':
-        return {
-          rows: [{ id: Math.floor(Math.random() * 1000) + 1 }],
-          rowCount: 1,
-          command: 'INSERT',
-          fields: [{ name: 'id', dataTypeID: 23 }]
-        };
+        return this.getMockInsertResult(text, params);
 
       case 'update':
         return {
@@ -121,12 +116,118 @@ class MockPool extends EventEmitter {
     }
   }
 
+  // Generate mock INSERT results based on table/query pattern
+  getMockInsertResult(text, params) {
+    const sql = text.toLowerCase();
+    const id = Math.floor(Math.random() * 1000) + 1;
+    
+    // Mock user insertion
+    if (sql.includes('users')) {
+      return {
+        rows: [{
+          id: id,
+          username: params && params[0] ? params[0] : 'testuser',
+          email: params && params[1] ? params[1] : 'test@example.com',
+          role: params && params[3] ? params[3] : 'player'
+        }],
+        rowCount: 1,
+        command: 'INSERT',
+        fields: [
+          { name: 'id', dataTypeID: 23 },
+          { name: 'username', dataTypeID: 1043 },
+          { name: 'email', dataTypeID: 1043 },
+          { name: 'role', dataTypeID: 1043 }
+        ]
+      };
+    }
+    
+    // Mock character insertion
+    if (sql.includes('characters')) {
+      return {
+        rows: [{
+          id: id,
+          user_id: params && params[0] ? params[0] : 1,
+          name: params && params[1] ? params[1] : 'Test Character',
+          appraisal_bonus: params && params[2] ? params[2] : 5,
+          active: params && params[3] !== undefined ? params[3] : true
+        }],
+        rowCount: 1,
+        command: 'INSERT',
+        fields: [
+          { name: 'id', dataTypeID: 23 },
+          { name: 'user_id', dataTypeID: 23 },
+          { name: 'name', dataTypeID: 1043 },
+          { name: 'appraisal_bonus', dataTypeID: 23 },
+          { name: 'active', dataTypeID: 16 }
+        ]
+      };
+    }
+    
+    // Mock loot insertion
+    if (sql.includes('loot')) {
+      return {
+        rows: [{
+          id: id,
+          session_date: params && params[0] ? params[0] : new Date().toISOString().split('T')[0],
+          quantity: params && params[1] ? params[1] : 1,
+          name: params && params[2] ? params[2] : 'Test Item',
+          unidentified: params && params[3] !== undefined ? params[3] : false,
+          value: params && params[4] ? params[4] : 100,
+          whohas: params && params[5] ? params[5] : 1,
+          status: params && params[6] ? params[6] : 'kept',
+          lastupdate: new Date().toISOString()
+        }],
+        rowCount: 1,
+        command: 'INSERT',
+        fields: [
+          { name: 'id', dataTypeID: 23 },
+          { name: 'name', dataTypeID: 1043 },
+          { name: 'quantity', dataTypeID: 23 },
+          { name: 'value', dataTypeID: 1700 },
+          { name: 'whohas', dataTypeID: 23 },
+          { name: 'status', dataTypeID: 1043 }
+        ]
+      };
+    }
+    
+    // Default INSERT response
+    return {
+      rows: [{ id: id }],
+      rowCount: 1,
+      command: 'INSERT',
+      fields: [{ name: 'id', dataTypeID: 23 }]
+    };
+  }
+
   // Generate mock SELECT results based on table/query pattern
   getMockSelectResult(text, params) {
     const sql = text.toLowerCase();
     
     // Mock user/auth queries
     if (sql.includes('users') || sql.includes('user')) {
+      // Check if this is a specific user query by ID
+      if (params && params.length > 0 && typeof params[0] === 'number') {
+        return {
+          rows: [{
+            id: params[0],
+            username: `testuser_${params[0]}`,
+            email: `test_${params[0]}@example.com`,
+            role: 'player',
+            password_hash: '$2b$10$mockhashedpassword',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }],
+          rowCount: 1,
+          command: 'SELECT',
+          fields: [
+            { name: 'id', dataTypeID: 23 },
+            { name: 'username', dataTypeID: 1043 },
+            { name: 'email', dataTypeID: 1043 },
+            { name: 'role', dataTypeID: 1043 }
+          ]
+        };
+      }
+      
       return {
         rows: [{
           id: 1,
@@ -235,6 +336,35 @@ class MockPool extends EventEmitter {
 
     // Mock character queries
     if (sql.includes('character')) {
+      // Check if this is a specific character query by ID or user_id
+      if (params && params.length > 0) {
+        const id = typeof params[0] === 'number' ? params[0] : 1;
+        const userId = params.length > 1 ? params[1] : id;
+        
+        return {
+          rows: [{
+            id: id,
+            name: `Test Character ${id}`,
+            class: 'Fighter',
+            level: 5,
+            user_id: userId,
+            active: true,
+            appraisal_bonus: 5,
+            created_at: new Date().toISOString()
+          }],
+          rowCount: 1,
+          command: 'SELECT',
+          fields: [
+            { name: 'id', dataTypeID: 23 },
+            { name: 'name', dataTypeID: 1043 },
+            { name: 'class', dataTypeID: 1043 },
+            { name: 'level', dataTypeID: 23 },
+            { name: 'user_id', dataTypeID: 23 },
+            { name: 'appraisal_bonus', dataTypeID: 23 }
+          ]
+        };
+      }
+      
       return {
         rows: [{
           id: 1,
@@ -243,6 +373,7 @@ class MockPool extends EventEmitter {
           level: 5,
           user_id: 1,
           active: true,
+          appraisal_bonus: 5,
           created_at: new Date().toISOString()
         }],
         rowCount: 1,
@@ -251,7 +382,9 @@ class MockPool extends EventEmitter {
           { name: 'id', dataTypeID: 23 },
           { name: 'name', dataTypeID: 1043 },
           { name: 'class', dataTypeID: 1043 },
-          { name: 'level', dataTypeID: 23 }
+          { name: 'level', dataTypeID: 23 },
+          { name: 'user_id', dataTypeID: 23 },
+          { name: 'appraisal_bonus', dataTypeID: 23 }
         ]
       };
     }

@@ -6,7 +6,7 @@
 const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
-const { setupMockDatabase, teardownMockDatabase } = require('./utils/mockDatabase');
+const { setupMockDatabase, teardownMockDatabase, MockPool } = require('./utils/mockDatabase');
 
 // Set NODE_ENV to test
 process.env.NODE_ENV = 'test';
@@ -27,6 +27,86 @@ process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-openai-key';
 const USE_MOCK_DB = (process.env.NODE_ENV === 'test' && !process.env.USE_REAL_DB_FOR_TESTS) || 
                     (process.env.CI === 'true' && !process.env.USE_REAL_DB_FOR_TESTS);
 
+// Set up comprehensive database mocking BEFORE any modules load
+if (USE_MOCK_DB) {
+  // Mock the pg module at the module level
+  jest.doMock('pg', () => ({
+    Pool: MockPool,
+    Client: MockPool,
+    types: {
+      setTypeParser: jest.fn(),
+    },
+  }));
+
+  // Mock the database configuration module
+  jest.doMock('../src/config/db', () => {
+    const mockPool = new MockPool();
+    // Add pool status methods for monitoring
+    mockPool.getPoolStatus = jest.fn(() => ({
+      totalCount: 0,
+      idleCount: 0,
+      waitingCount: 0
+    }));
+    return mockPool;
+  });
+
+  // Mock the logger to prevent any logging issues during tests
+  jest.doMock('../src/utils/logger', () => ({
+    info: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn()
+  }));
+
+  // Mock the email service to prevent SMTP connection issues
+  jest.doMock('../src/services/emailService', () => ({
+    sendPasswordResetEmail: jest.fn().mockResolvedValue(true),
+    sendWelcomeEmail: jest.fn().mockResolvedValue(true),
+    sendEmail: jest.fn().mockResolvedValue(true)
+  }));
+
+  // Mock dbUtils to use mock database
+  jest.doMock('../src/utils/dbUtils', () => {
+    const mockPool = new MockPool();
+    
+    return {
+      executeQuery: jest.fn().mockImplementation((query, params) => {
+        return mockPool.query(query, params);
+      }),
+      executeTransaction: jest.fn().mockImplementation(async (callback) => {
+        const mockClient = {
+          query: (query, params) => mockPool.query(query, params),
+          release: jest.fn(),
+        };
+        return await callback(mockClient);
+      }),
+      getPool: jest.fn().mockReturnValue(mockPool),
+      validateTableName: jest.fn().mockImplementation((table) => {
+        if (!table || typeof table !== 'string') {
+          throw new Error('Invalid table name: must be a non-empty string');
+        }
+        return table.toLowerCase().trim();
+      }),
+      validateColumnName: jest.fn().mockImplementation((column) => {
+        if (!column || typeof column !== 'string') {
+          throw new Error('Invalid column name: must be a non-empty string');
+        }
+        return column.toLowerCase().trim();
+      }),
+      buildWhereClause: jest.fn().mockImplementation((filters) => {
+        return { whereClause: '', params: [], paramIndex: 1 };
+      }),
+      buildOrderByClause: jest.fn().mockImplementation(() => 'ORDER BY id ASC'),
+      buildLimitClause: jest.fn().mockImplementation(() => ''),
+      sanitizeInput: jest.fn().mockImplementation((input) => input),
+      formatDateForDB: jest.fn().mockImplementation((date) => date),
+      parseDBDate: jest.fn().mockImplementation((date) => date)
+    };
+  });
+
+  console.log('🎭 Database mocking enabled for tests');
+}
+
 // Global test utilities
 global.testUtils = {
   pool: null,
@@ -37,14 +117,8 @@ global.testUtils = {
     if (USE_MOCK_DB) {
       console.log('🎭 Using mock database for tests');
       try {
-        const mockDb = setupMockDatabase();
-        this.pool = mockDb.createPool({
-          user: 'mock_user',
-          host: 'mock_host',
-          database: 'mock_db',
-          password: 'mock_password',
-          port: 'mock_port',
-        });
+        // Use the already mocked database pool
+        this.pool = new MockPool();
         console.log('✓ Mock database connection established');
         return;
       } catch (error) {
@@ -159,7 +233,7 @@ global.testUtils = {
     const client = await this.pool.connect();
     try {
       const result = await client.query(
-        `INSERT INTO users (username, email, password, role, created_at) 
+        `INSERT INTO users (username, email, password, role, joined) 
          VALUES ($1, $2, $3, $4, NOW()) 
          RETURNING id, username, email, role`,
         [defaultUser.username, defaultUser.email, hashedPassword, defaultUser.role]
@@ -175,8 +249,8 @@ global.testUtils = {
   async createTestCharacter(userId, characterData = {}) {
     const defaultCharacter = {
       name: 'Test Character',
-      class: 'Fighter',
-      level: 1,
+      appraisal_bonus: 5,
+      active: true,
       ...characterData
     };
 
@@ -186,19 +260,18 @@ global.testUtils = {
         id: 1,
         user_id: userId,
         name: defaultCharacter.name,
-        class: defaultCharacter.class,
-        level: defaultCharacter.level,
-        created_at: new Date().toISOString()
+        appraisal_bonus: defaultCharacter.appraisal_bonus,
+        active: defaultCharacter.active
       };
     }
 
     const client = await this.pool.connect();
     try {
       const result = await client.query(
-        `INSERT INTO characters (user_id, name, class, level, created_at) 
-         VALUES ($1, $2, $3, $4, NOW()) 
+        `INSERT INTO characters (user_id, name, appraisal_bonus, active) 
+         VALUES ($1, $2, $3, $4) 
          RETURNING *`,
-        [userId, defaultCharacter.name, defaultCharacter.class, defaultCharacter.level]
+        [userId, defaultCharacter.name, defaultCharacter.appraisal_bonus, defaultCharacter.active]
       );
       
       return result.rows[0];
@@ -211,10 +284,12 @@ global.testUtils = {
   async createTestLoot(characterId, lootData = {}) {
     const defaultLoot = {
       name: 'Test Item',
-      description: 'A test item for testing purposes',
-      value: 100,
+      session_date: new Date().toISOString().split('T')[0], // Today as YYYY-MM-DD
       quantity: 1,
-      identified: true,
+      unidentified: false,
+      value: 100,
+      whohas: characterId,
+      status: 'kept',
       ...lootData
     };
 
@@ -222,23 +297,23 @@ global.testUtils = {
     if (USE_MOCK_DB) {
       return {
         id: 1,
-        character_id: characterId,
+        whohas: characterId,
         name: defaultLoot.name,
-        description: defaultLoot.description,
         value: defaultLoot.value,
         quantity: defaultLoot.quantity,
-        identified: defaultLoot.identified,
-        created_at: new Date().toISOString()
+        unidentified: defaultLoot.unidentified,
+        status: defaultLoot.status,
+        lastupdate: new Date().toISOString()
       };
     }
 
     const client = await this.pool.connect();
     try {
       const result = await client.query(
-        `INSERT INTO loot (character_id, name, description, value, quantity, identified, created_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, NOW()) 
+        `INSERT INTO loot (session_date, quantity, name, unidentified, value, whohas, status, lastupdate) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) 
          RETURNING *`,
-        [characterId, defaultLoot.name, defaultLoot.description, defaultLoot.value, defaultLoot.quantity, defaultLoot.identified]
+        [defaultLoot.session_date, defaultLoot.quantity, defaultLoot.name, defaultLoot.unidentified, defaultLoot.value, defaultLoot.whohas, defaultLoot.status]
       );
       
       return result.rows[0];

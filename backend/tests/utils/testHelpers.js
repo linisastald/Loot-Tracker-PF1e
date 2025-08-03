@@ -118,9 +118,9 @@ class DatabaseTestHelpers {
     const client = await this.pool.connect();
     try {
       const result = await client.query(
-        `INSERT INTO users (username, email, password, role, created_at) 
+        `INSERT INTO users (username, email, password, role, joined) 
          VALUES ($1, $2, $3, $4, NOW()) 
-         RETURNING id, username, email, role, created_at`,
+         RETURNING id, username, email, role, joined`,
         [defaultUser.username, defaultUser.email, hashedPassword, defaultUser.role]
       );
       
@@ -136,18 +136,18 @@ class DatabaseTestHelpers {
   async insertCharacter(userId, characterData = {}) {
     const defaultCharacter = {
       name: `TestChar_${Date.now()}`,
-      class: 'Fighter',
-      level: 1,
+      appraisal_bonus: 5,
+      active: true,
       ...characterData
     };
 
     const client = await this.pool.connect();
     try {
       const result = await client.query(
-        `INSERT INTO characters (user_id, name, class, level, created_at) 
-         VALUES ($1, $2, $3, $4, NOW()) 
+        `INSERT INTO characters (user_id, name, appraisal_bonus, active) 
+         VALUES ($1, $2, $3, $4) 
          RETURNING *`,
-        [userId, defaultCharacter.name, defaultCharacter.class, defaultCharacter.level]
+        [userId, defaultCharacter.name, defaultCharacter.appraisal_bonus, defaultCharacter.active]
       );
       
       return result.rows[0];
@@ -162,20 +162,22 @@ class DatabaseTestHelpers {
   async insertLoot(characterId, lootData = {}) {
     const defaultLoot = {
       name: `TestItem_${Date.now()}`,
-      description: 'A test item for testing purposes',
-      value: 100,
+      session_date: new Date().toISOString().split('T')[0], // Today as YYYY-MM-DD
       quantity: 1,
-      identified: true,
+      unidentified: false,
+      value: 100,
+      whohas: characterId,
+      status: 'kept',
       ...lootData
     };
 
     const client = await this.pool.connect();
     try {
       const result = await client.query(
-        `INSERT INTO loot (character_id, name, description, value, quantity, identified, created_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, NOW()) 
+        `INSERT INTO loot (session_date, quantity, name, unidentified, value, whohas, status, lastupdate) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) 
          RETURNING *`,
-        [characterId, defaultLoot.name, defaultLoot.description, defaultLoot.value, defaultLoot.quantity, defaultLoot.identified]
+        [defaultLoot.session_date, defaultLoot.quantity, defaultLoot.name, defaultLoot.unidentified, defaultLoot.value, defaultLoot.whohas, defaultLoot.status]
       );
       
       return result.rows[0];
@@ -218,6 +220,47 @@ class DatabaseTestHelpers {
     try {
       const result = await client.query('SELECT * FROM loot WHERE id = $1', [id]);
       return result.rows[0];
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Insert test item
+   */
+  async insertItem(itemData = {}) {
+    const defaultItem = {
+      id: Math.floor(Math.random() * 1000) + 1,
+      name: `Test Item`,
+      type: 'weapon',
+      casterlevel: 5,
+      description: 'A test item',
+      ...itemData
+    };
+
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query(
+        `INSERT INTO item (id, name, type, casterlevel, description) 
+         VALUES ($1, $2, $3, $4, $5) 
+         RETURNING *`,
+        [defaultItem.id, defaultItem.name, defaultItem.type, defaultItem.casterlevel, defaultItem.description]
+      );
+      
+      return result.rows[0];
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Execute raw query
+   */
+  async executeQuery(query, params = []) {
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query(query, params);
+      return result;
     } finally {
       client.release();
     }
@@ -273,10 +316,11 @@ class MockDataGenerators {
   static generateLoot(overrides = {}) {
     return {
       name: `TestItem_${Date.now()}`,
-      description: 'A test item description',
-      value: Math.floor(Math.random() * 1000) + 10,
+      session_date: new Date().toISOString().split('T')[0],
       quantity: 1,
-      identified: true,
+      unidentified: false,
+      value: Math.floor(Math.random() * 1000) + 10,
+      status: 'kept',
       ...overrides
     };
   }
