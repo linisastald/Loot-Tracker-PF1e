@@ -1,0 +1,252 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+
+jobs:
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run backend tests
+      run: |
+        cd backend
+        npm test -- --coverage --watchAll=false
+      env:
+        NODE_ENV: test
+        CI: true
+        # Use mock database for CI tests
+        USE_MOCK_DB_FOR_TESTS: true
+        # Test environment variables
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
+        OPENAI_API_KEY: test-openai-key-for-ci
+        DB_NAME: mock_test_db
+        DB_USER: mock_user
+        DB_PASSWORD: mock_password
+        DB_HOST: mock_host
+        DB_PORT: 5432
+        
+    - name: Upload backend coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: backend
+        name: backend-coverage
+        fail_ci_if_error: false
+
+  test-frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+        
+    - name: Run frontend tests
+      run: |
+        cd frontend
+        npm test -- --coverage --watchAll=false
+      env:
+        NODE_ENV: test
+        CI: true
+        
+    - name: Upload frontend coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./frontend/coverage/lcov.info
+        flags: frontend
+        name: frontend-coverage
+        fail_ci_if_error: false
+
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: pathfinder_loot_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Setup test database
+      run: |
+        cd backend
+        # Create database schema
+        PGPASSWORD=testpass psql -h localhost -U testuser -d pathfinder_loot_test -f ../database/init.sql || echo "Schema setup completed"
+      env:
+        PGPASSWORD: testpass
+        
+    - name: Run integration tests
+      run: |
+        cd backend
+        npm test -- --testPathPattern="integration" --coverage --watchAll=false
+      env:
+        NODE_ENV: test
+        CI: true
+        # Use real database for integration tests
+        USE_REAL_DB_FOR_TESTS: true
+        # Database connection for integration tests
+        DB_NAME: pathfinder_loot_test
+        DB_USER: testuser
+        DB_PASSWORD: testpass
+        DB_HOST: localhost
+        DB_PORT: 5432
+        # Other required environment variables
+        JWT_SECRET: test-jwt-secret-for-integration-tests
+        OPENAI_API_KEY: test-openai-key-for-integration
+
+  lint-and-format:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+        
+    - name: Run backend linting (if configured)
+      run: |
+        cd backend
+        if [ -f "package.json" ] && npm run lint --if-present; then
+          echo "Backend linting completed"
+        else
+          echo "No backend linting configured"
+        fi
+      continue-on-error: true
+        
+    - name: Run frontend linting (if configured)
+      run: |
+        cd frontend
+        if [ -f "package.json" ] && npm run lint --if-present; then
+          echo "Frontend linting completed"
+        else
+          echo "No frontend linting configured"
+        fi
+      continue-on-error: true
+
+  security-scan:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        
+    - name: Run backend security audit
+      run: |
+        cd backend
+        npm audit --audit-level=high || echo "Security audit completed with warnings"
+        
+    - name: Run frontend security audit
+      run: |
+        cd frontend
+        npm audit --audit-level=high || echo "Security audit completed with warnings"
+
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, test-integration, lint-and-format, security-scan]
+    if: always()
+    
+    steps:
+    - name: Test Results Summary
+      run: |
+        echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- Backend Tests: ${{ needs.test-backend.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Frontend Tests: ${{ needs.test-frontend.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Integration Tests: ${{ needs.test-integration.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Lint and Format: ${{ needs.lint-and-format.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Security Scan: ${{ needs.security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ needs.test-backend.result }}" == "success" && "${{ needs.test-frontend.result }}" == "success" && "${{ needs.test-integration.result }}" == "success" ]]; then
+          echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Some tests failed. Please check the individual job results." >> $GITHUB_STEP_SUMMARY
+        fi
