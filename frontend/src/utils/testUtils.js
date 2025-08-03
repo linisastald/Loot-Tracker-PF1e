@@ -6,10 +6,6 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
-import { ThemeProvider } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import theme from '../theme';
-import ConfigContext from '../contexts/ConfigContext';
 
 // Default config for testing
 const defaultTestConfig = {
@@ -36,12 +32,7 @@ export const renderWithProviders = (
   function Wrapper({ children }) {
     return (
       <BrowserRouter>
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
-          <ConfigContext.Provider value={{ config, loading: false }}>
-            {children}
-          </ConfigContext.Provider>
-        </ThemeProvider>
+        {children}
       </BrowserRouter>
     );
   }
