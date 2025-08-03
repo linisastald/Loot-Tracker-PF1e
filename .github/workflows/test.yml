@@ -101,21 +101,6 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpass
-          POSTGRES_DB: pathfinder_loot_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -132,30 +117,22 @@ jobs:
         cd backend
         npm ci
         
-    - name: Setup test database
+    - name: Run integration tests with mock database
       run: |
         cd backend
-        # Create database schema
-        PGPASSWORD=testpass psql -h localhost -U testuser -d pathfinder_loot_test -f ../database/init.sql || echo "Schema setup completed"
-      env:
-        PGPASSWORD: testpass
-        
-    - name: Run integration tests
-      run: |
-        cd backend
-        npm test -- --testPathPattern="integration" --coverage --watchAll=false
+        npm test -- --testPathPattern="integration|lootManagement" --coverage --watchAll=false
       env:
         NODE_ENV: test
         CI: true
-        # Use real database for integration tests
-        USE_REAL_DB_FOR_TESTS: true
-        # Database connection for integration tests
-        DB_NAME: pathfinder_loot_test
-        DB_USER: testuser
-        DB_PASSWORD: testpass
-        DB_HOST: localhost
+        # Use mock database for all tests in CI
+        USE_MOCK_DB_FOR_TESTS: true
+        # Mock database configuration
+        DB_NAME: mock_test_db
+        DB_USER: mock_user
+        DB_PASSWORD: mock_password
+        DB_HOST: mock_host
         DB_PORT: 5432
-        # Other required environment variables
+        # Required environment variables
         JWT_SECRET: test-jwt-secret-for-integration-tests
         OPENAI_API_KEY: test-openai-key-for-integration
 

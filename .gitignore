@@ -53,3 +53,8 @@ private/
 # Docker volumes (local development)
 /data/
 /volumes/
+
+# Test coverage reports
+/backend/coverage/
+/frontend/coverage/
+*.lcov
