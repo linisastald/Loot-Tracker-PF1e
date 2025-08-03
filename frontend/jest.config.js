@@ -12,8 +12,14 @@ module.exports = {
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': ['babel-jest', {
       presets: [
-        ['@babel/preset-env', { targets: 'defaults' }],
-        ['@babel/preset-react', { runtime: 'automatic' }]
+        ['@babel/preset-env', { 
+          targets: 'defaults',
+          modules: 'commonjs'
+        }],
+        ['@babel/preset-react', { 
+          runtime: 'automatic',
+          development: false
+        }]
       ]
     }]
   },
@@ -36,5 +42,11 @@ module.exports = {
   },
   coverageReporters: ['text', 'lcov', 'html'],
   moduleDirectories: ['node_modules', '<rootDir>/src'],
-  testTimeout: 10000
+  testTimeout: 10000,
+  // Handle potential issues with React 19 and updated dependencies
+  extensionsToTreatAsEsm: [],
+  resetMocks: true,
+  clearMocks: true,
+  restoreMocks: true,
+  maxWorkers: 1
 };

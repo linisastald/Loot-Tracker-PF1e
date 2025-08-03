@@ -27,5 +27,17 @@ module.exports = {
   forceExit: true,
   clearMocks: true,
   resetMocks: true,
-  restoreMocks: true
+  restoreMocks: true,
+  // Handle potential issues with updated dependencies
+  extensionsToTreatAsEsm: [],
+  globals: {
+    'ts-jest': {
+      useESM: false
+    }
+  },
+  // Ensure proper module resolution
+  moduleNameMapping: {},
+  transform: {},
+  // Handle async operations better
+  maxWorkers: 1
 };
