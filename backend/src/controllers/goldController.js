@@ -28,6 +28,25 @@ const createGoldEntry = async (req, res) => {
             copper: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(copper || 0) : (copper || 0)
         };
 
+        // Check if this transaction would cause negative totals
+        const totalResult = await dbUtils.executeQuery(
+            'SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold'
+        );
+
+        const currentPlatinum = parseFloat(totalResult.rows[0].total_platinum) || 0;
+        const currentGold = parseFloat(totalResult.rows[0].total_gold) || 0;
+        const currentSilver = parseFloat(totalResult.rows[0].total_silver) || 0;
+        const currentCopper = parseFloat(totalResult.rows[0].total_copper) || 0;
+
+        const newPlatinum = currentPlatinum + adjustedEntry.platinum;
+        const newGold = currentGold + adjustedEntry.gold;
+        const newSilver = currentSilver + adjustedEntry.silver;
+        const newCopper = currentCopper + adjustedEntry.copper;
+
+        if (newPlatinum < 0 || newGold < 0 || newSilver < 0 || newCopper < 0) {
+            return res.validationError('Transaction would result in negative currency balance');
+        }
+
         try {
             const createdEntry = await Gold.create(adjustedEntry);
             createdEntries.push(createdEntry);
@@ -102,6 +121,19 @@ const distributeGold = async (req, res, includePartyShare) => {
 
         if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
             return res.validationError('No currency to distribute');
+        }
+
+        // Check if distribution would cause negative balances
+        const totalAfterDistribution = {
+            platinum: totalPlatinum - (distributePlatinum * numCharacters),
+            gold: totalGold - (distributeGold * numCharacters),
+            silver: totalSilver - (distributeSilver * numCharacters),
+            copper: totalCopper - (distributeCopper * numCharacters)
+        };
+
+        if (totalAfterDistribution.platinum < 0 || totalAfterDistribution.gold < 0 || 
+            totalAfterDistribution.silver < 0 || totalAfterDistribution.copper < 0) {
+            return res.validationError('Insufficient funds for distribution');
         }
 
         const createdEntries = [];
@@ -181,6 +213,11 @@ const balance = async (req, res) => {
         const totalCopper = parseInt(totalResult.rows[0].total_copper, 10) || 0;
         const totalSilver = parseInt(totalResult.rows[0].total_silver, 10) || 0;
         const totalGold = parseInt(totalResult.rows[0].total_gold, 10) || 0;
+
+        // Check if totals are already negative - we can't balance negative amounts
+        if (totalCopper < 0 || totalSilver < 0 || totalGold < 0) {
+            return res.validationError('Cannot balance currencies when any denomination is negative');
+        }
 
         // Calculate the balancing transaction values
         // First convert copper to silver

@@ -137,20 +137,25 @@ const PendingSaleManagement = () => {
     const handleConfirmSale = async () => {
         try {
             setLoading(true);
+            setError('');
+            setSuccess('');
+            
             const response = await lootService.confirmSale({});
 
             if (response.data && response.data.success) {
                 const soldCount = response.data.sold?.count || 0;
                 const totalValue = response.data.sold?.total || 0;
 
-                setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`);
-                // Refresh data
+                // Refresh data first
                 await fetchPendingItems();
+                
+                // Then show success message
+                setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`);
             }
-            setLoading(false);
         } catch (error) {
             console.error('Error confirming sale', error);
             setError('Failed to complete the sale process.');
+        } finally {
             setLoading(false);
         }
     };
@@ -158,6 +163,9 @@ const PendingSaleManagement = () => {
     const handleSellUpTo = async () => {
         try {
             setLoading(true);
+            setError('');
+            setSuccess('');
+            
             const amount = parseFloat(sellUpToAmount);
             if (isNaN(amount) || amount <= 0) {
                 setError('Please enter a valid amount');
@@ -170,15 +178,17 @@ const PendingSaleManagement = () => {
                 const soldCount = response.data.sold?.count || 0;
                 const totalValue = response.data.sold?.total || 0;
 
-                setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`);
                 setSellUpToAmount('');
                 // Make sure we await the fetch to ensure data is refreshed
                 await fetchPendingItems();
+                
+                // Then show success message
+                setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`);
             }
-            setLoading(false);
         } catch (error) {
             console.error('Error selling items up to amount:', error);
             setError('Failed to sell items.');
+        } finally {
             setLoading(false);
         }
     };
@@ -186,6 +196,9 @@ const PendingSaleManagement = () => {
     const handleSellAllExcept = async () => {
         try {
             setLoading(true);
+            setError('');
+            setSuccess('');
+            
             if (selectedPendingItems.length === 0) {
                 setError('No items selected to keep.');
                 setLoading(false);
@@ -198,16 +211,18 @@ const PendingSaleManagement = () => {
                 const totalValue = response.data.sold?.total || 0;
                 const keptCount = response.data.kept?.count || 0;
 
-                setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold, kept ${keptCount} items.`);
                 setSelectedPendingItems([]);
                 // Use await to ensure data is refreshed before UI updates
                 await fetchPendingItems();
+                
+                // Then show success message
+                setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold, kept ${keptCount} items.`);
             }
-            setLoading(false);
         } catch (error) {
             console.error('Error selling all items except selected:', error);
             const errorMessage = error.message || 'Failed to sell items.';
             setError(errorMessage);
+        } finally {
             setLoading(false);
         }
     };
@@ -215,6 +230,9 @@ const PendingSaleManagement = () => {
     const handleSellSelected = async () => {
         try {
             setLoading(true);
+            setError('');
+            setSuccess('');
+            
             if (selectedPendingItems.length === 0) {
                 setError('No items selected to sell.');
                 setLoading(false);
@@ -245,23 +263,24 @@ const PendingSaleManagement = () => {
                 const totalValue = response.data.sold?.total || 0;
                 const skippedCount = response.data.skipped?.count || 0;
 
+                setSelectedPendingItems([]);
+                // Use await to ensure data is refreshed before UI updates
+                await fetchPendingItems();
+                
+                // Then show success message
                 let successMessage = `Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`;
                 if (skippedCount > 0) {
                     successMessage += ` (${skippedCount} items were skipped)`;
                 }
-
                 setSuccess(successMessage);
-                setSelectedPendingItems([]);
-                // Use await to ensure data is refreshed before UI updates
-                await fetchPendingItems();
             }
-            setLoading(false);
         } catch (error) {
             console.error('Error selling selected items:', error);
 
             // Extract more specific error message if available
             const errorMessage = error.message || 'Failed to sell items.';
             setError(errorMessage);
+        } finally {
             setLoading(false);
         }
     };

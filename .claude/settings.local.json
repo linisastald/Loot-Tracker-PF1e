@@ -7,7 +7,13 @@
       "Bash(npm install:*)",
       "Bash(npm test)",
       "Bash(npm run test:unit:*)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(ls:*)",
+      "Bash(npx jest:*)",
+      "Bash(timeout 10s npx jest src/utils/__tests__/saleValueCalculator.test.js --no-coverage)",
+      "Bash(timeout 15s npx jest tests/api/auth.test.js --no-coverage --verbose)"
     ],
     "deny": []
   }

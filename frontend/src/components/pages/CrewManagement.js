@@ -667,11 +667,22 @@ const CrewManagement = () => {
       <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>Move Crew Member</DialogTitle>
         <DialogContent>
+          {selectedCrew && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Moving <strong>{selectedCrew.name}</strong> from <strong>{selectedCrew.location_name}</strong>
+              {selectedCrew.ship_position && ` (${selectedCrew.ship_position})`}
+            </Alert>
+          )}
+          {allLocations.filter(loc => loc.id !== selectedCrew?.location_id).length === 0 && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              No other locations available. Please create a ship or outpost first.
+            </Alert>
+          )}
           <Grid container spacing={3} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <Autocomplete
                 fullWidth
-                options={allLocations}
+                options={allLocations.filter(loc => loc.id !== selectedCrew?.location_id)}
                 getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
                 value={allLocations.find(loc => loc.id === moveData.location_id) || null}
                 onChange={(event, newValue) => {
@@ -685,6 +696,11 @@ const CrewManagement = () => {
                   <TextField {...params} label="New Location" required />
                 )}
                 sx={{ '& .MuiAutocomplete-listbox': { maxHeight: 200 } }}
+                renderOption={(props, option) => (
+                  <li {...props}>
+                    {option.name} ({option.type === 'ship' ? 'Ship' : 'Outpost'})
+                  </li>
+                )}
               />
             </Grid>
             {allLocations.find(loc => loc.id === moveData.location_id)?.type === 'ship' && (
