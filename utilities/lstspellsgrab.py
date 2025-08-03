@@ -2,6 +2,7 @@ import os
 import re
 import psycopg2
 from psycopg2 import sql
+import sys
 
 def is_relevant_file(filename):
     return 'spells' in filename.lower()
@@ -68,9 +69,14 @@ if __name__ == "__main__":
     db_params = {
         'dbname': 'loot_tracking',
         'user': 'loot_user',
-        'password': 'g5Zr7!cXw@2sP9Lk',
+        'password': os.getenv('DB_PASSWORD'),
         'host': 'localhost'
     }
+    
+    # Validate required environment variables
+    if not db_params['password']:
+        print("Error: DB_PASSWORD environment variable is not set")
+        sys.exit(1)
 
     # Establish database connection
     try:

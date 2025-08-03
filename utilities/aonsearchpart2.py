@@ -2,14 +2,20 @@ import psycopg2
 from psycopg2 import sql
 import sys
 from blessed import Terminal
+import os
 
 # Database connection parameters
 db_params = {
     'dbname': 'loot_tracking',
     'user': 'loot_user',
-    'password': 'g5Zr7!cXw@2sP9Lk',
+    'password': os.getenv('DB_PASSWORD'),
     'host': 'localhost'
 }
+
+# Validate required environment variables
+if not db_params['password']:
+    print("Error: DB_PASSWORD environment variable is not set")
+    sys.exit(1)
 
 term = Terminal()
 

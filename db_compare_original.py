@@ -27,9 +27,14 @@ def load_config():
         'DB_HOST': 'localhost',
         'DB_NAME': 'loot_tracking',
         'DB_USER': 'loot_user',
-        'DB_PASSWORD': 'g5Zr7!cXw@2sP9Lk',  # Will be loaded from environment or config file
+        'DB_PASSWORD': os.getenv('DB_PASSWORD'),  # Will be loaded from environment or config file
         'CONTAINER_FILTER': 'loot_db'  # Filter for identifying relevant containers
     }
+    
+    # Validate required environment variables
+    if not config['DB_PASSWORD']:
+        logger.error("DB_PASSWORD environment variable is not set")
+        raise ValueError("DB_PASSWORD environment variable is required")
 
     # Try to load from config.ini file
     config_parser = configparser.ConfigParser()

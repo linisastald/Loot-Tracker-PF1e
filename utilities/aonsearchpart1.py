@@ -8,6 +8,8 @@ import logging
 from urllib.parse import quote
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import os
+import sys
 
 # Set up logging
 logging.basicConfig(filename='item_search.log', level=logging.INFO,
@@ -17,9 +19,15 @@ logging.basicConfig(filename='item_search.log', level=logging.INFO,
 db_params = {
     'dbname': 'loot_tracking',
     'user': 'loot_user',
-    'password': 'g5Zr7!cXw@2sP9Lk',
+    'password': os.getenv('DB_PASSWORD'),
     'host': 'localhost'
 }
+
+# Validate required environment variables
+if not db_params['password']:
+    print("Error: DB_PASSWORD environment variable is not set")
+    logging.error("DB_PASSWORD environment variable is not set")
+    sys.exit(1)
 
 # URLs to check
 urls = [

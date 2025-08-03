@@ -38,10 +38,15 @@ class LookupConflictResolver:
             'DB_HOST': 'localhost',
             'DB_NAME': 'loot_tracking',
             'DB_USER': 'loot_user',
-            'DB_PASSWORD': 'g5Zr7!cXw@2sP9Lk',
+            'DB_PASSWORD': os.getenv('DB_PASSWORD'),
             'MASTER_PORT': 5432,
             'CONTAINER_FILTER': 'loot_db'
         }
+        
+        # Validate required environment variables
+        if not config['DB_PASSWORD']:
+            logger.error("DB_PASSWORD environment variable is not set")
+            raise ValueError("DB_PASSWORD environment variable is required")
 
         config_parser = configparser.ConfigParser()
         if os.path.exists('config.ini'):

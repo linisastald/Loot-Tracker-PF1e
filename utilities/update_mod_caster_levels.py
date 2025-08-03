@@ -11,14 +11,20 @@ import psycopg2
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, quote
 import logging
+import os
 
 # Database configuration
 DB_CONFIG = {
     'host': 'localhost',
     'database': 'loot_tracking',
     'user': 'loot_user',
-    'password': 'g5Zr7!cXw@2sP9Lk'
+    'password': os.getenv('DB_PASSWORD')
 }
+
+# Validate required environment variables
+if not DB_CONFIG['password']:
+    logger.error("DB_PASSWORD environment variable is not set")
+    raise ValueError("DB_PASSWORD environment variable is required")
 
 # Base URLs for different mod types
 BASE_URLS = {

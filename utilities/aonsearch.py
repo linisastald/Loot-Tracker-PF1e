@@ -11,6 +11,7 @@ from blessed import Terminal
 import logging
 import traceback
 import sys
+import os
 
 # Set up logging
 logging.basicConfig(filename='loot_tracker_debug.log', level=logging.DEBUG,
@@ -20,9 +21,15 @@ logging.basicConfig(filename='loot_tracker_debug.log', level=logging.DEBUG,
 db_params = {
     'dbname': 'loot_tracking',
     'user': 'loot_user',
-    'password': 'g5Zr7!cXw@2sP9Lk',
+    'password': os.getenv('DB_PASSWORD'),
     'host': 'localhost'
 }
+
+# Validate required environment variables
+if not db_params['password']:
+    print("Error: DB_PASSWORD environment variable is not set")
+    logging.error("DB_PASSWORD environment variable is not set")
+    sys.exit(1)
 
 # List of URLs to display
 urls = [
