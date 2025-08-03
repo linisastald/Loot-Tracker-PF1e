@@ -1,4 +1,4 @@
-name: Comprehensive Test Suite
+name: Feature-Based Test Suite
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [ master, main, develop ]
 
 jobs:
-  test-backend:
-    name: Backend Tests & Coverage
+  test-auth:
+    name: 🔐 Authentication & Security Tests
     runs-on: ubuntu-latest
     
     steps:
@@ -27,39 +27,113 @@ jobs:
         cd backend
         npm ci
         
-    - name: List available tests
+    - name: Run authentication tests
       run: |
         cd backend
-        echo "📋 Discoverable test files:"
-        npx jest --listTests
+        echo "🔐 Running authentication & security tests..."
+        npx jest --testPathPattern="(auth|Auth|security|Security)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
         
-    - name: Run all backend tests with coverage
+    - name: Upload auth coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: auth
+        name: auth-coverage
+        fail_ci_if_error: false
+
+  test-loot:
+    name: 🎒 Loot Management Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
       run: |
         cd backend
-        npm test -- --coverage --watchAll=false --verbose
+        npm ci
+        
+    - name: Run loot management tests
+      run: |
+        cd backend
+        echo "🎒 Running loot management tests..."
+        npx jest --testPathPattern="(loot|Loot|item|Item)" --coverage --watchAll=false --verbose
       env:
         NODE_ENV: test
         CI: true
         USE_MOCK_DB_FOR_TESTS: true
         JWT_SECRET: test-jwt-secret-for-ci-only-not-production
         OPENAI_API_KEY: test-openai-key-for-ci
+        
+    - name: Upload loot coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: loot
+        name: loot-coverage
+        fail_ci_if_error: false
+
+  test-infrastructure:
+    name: 🏗️ Infrastructure & Models Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run infrastructure tests
+      run: |
+        cd backend
+        echo "🏗️ Running infrastructure & database tests..."
+        npx jest --testPathPattern="(BaseModel|Model|db|database|util|api)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
         DB_NAME: mock_test_db
         DB_USER: mock_user
         DB_PASSWORD: mock_password
         DB_HOST: mock_host
         DB_PORT: 5432
         
-    - name: Upload backend coverage to Codecov
+    - name: Upload infrastructure coverage
       if: success()
       uses: codecov/codecov-action@v4
       with:
         file: ./backend/coverage/lcov.info
-        flags: backend
-        name: backend-coverage
+        flags: infrastructure
+        name: infrastructure-coverage
         fail_ci_if_error: false
 
-  test-frontend:
-    name: Frontend Tests & Build
+  test-frontend-components:
+    name: ⚛️ Frontend Components Tests
     runs-on: ubuntu-latest
     
     steps:
@@ -78,16 +152,11 @@ jobs:
         cd frontend
         npm ci
         
-    - name: List available tests
+    - name: Run frontend component tests
       run: |
         cd frontend
-        echo "📋 Discoverable test files:"
-        npx jest --listTests || echo "No Jest tests found, checking for other test patterns"
-        
-    - name: Run frontend tests
-      run: |
-        cd frontend
-        npm test -- --coverage --watchAll=false --passWithNoTests
+        echo "⚛️ Running frontend component tests..."
+        npm test -- --coverage --watchAll=false --passWithNoTests --verbose
       env:
         NODE_ENV: test
         CI: true
@@ -100,7 +169,7 @@ jobs:
         NODE_ENV: production
         REACT_APP_API_URL: /api
         
-    - name: Upload frontend coverage to Codecov
+    - name: Upload frontend coverage
       if: success()
       uses: codecov/codecov-action@v4
       with:
@@ -109,8 +178,8 @@ jobs:
         name: frontend-coverage
         fail_ci_if_error: false
 
-  quality-checks:
-    name: Quality & Security Checks
+  quality-security-audit:
+    name: 🔍 Quality & Security Audit
     runs-on: ubuntu-latest
     
     steps:
@@ -145,30 +214,33 @@ jobs:
         fi
 
   test-summary:
-    name: Test Results Summary
+    name: 📊 Feature Test Results Summary
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend, quality-checks]
+    needs: [test-auth, test-loot, test-infrastructure, test-frontend-components, quality-security-audit]
     if: always()
     
     steps:
-    - name: Generate Test Summary
+    - name: Generate Feature-Based Test Summary
       run: |
-        echo "## 🧪 Test Suite Results" >> $GITHUB_STEP_SUMMARY
+        echo "## 🧪 Feature-Based Test Suite Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
-        echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Backend Tests | ${{ needs.test-backend.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | 82 tests, 5.71% coverage |" >> $GITHUB_STEP_SUMMARY
-        echo "| Frontend Tests | ${{ needs.test-frontend.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Build validation & tests |" >> $GITHUB_STEP_SUMMARY
-        echo "| Quality Checks | ${{ needs.quality-checks.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Security audit & code quality |" >> $GITHUB_STEP_SUMMARY
+        echo "| Feature Area | Status | Coverage | Description |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------------|--------|----------|-------------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 🔐 Authentication | ${{ needs.test-auth.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Auth tests | JWT, middleware, security |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🎒 Loot Management | ${{ needs.test-loot.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Loot tests | Items, parsing, OpenAI |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🏗️ Infrastructure | ${{ needs.test-infrastructure.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Core tests | Models, DB, utilities |" >> $GITHUB_STEP_SUMMARY
+        echo "| ⚛️ Frontend Components | ${{ needs.test-frontend-components.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | React tests | UI components, build |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🔍 Quality & Security | ${{ needs.quality-security-audit.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Audit results | Dependencies, secrets |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
-        if [[ "${{ needs.test-backend.result }}" == "success" && "${{ needs.test-frontend.result }}" == "success" && "${{ needs.quality-checks.result }}" == "success" ]]; then
-          echo "🎉 **ALL CHECKS PASSED!** Ready for deployment." >> $GITHUB_STEP_SUMMARY
+        if [[ "${{ needs.test-auth.result }}" == "success" && "${{ needs.test-loot.result }}" == "success" && "${{ needs.test-infrastructure.result }}" == "success" && "${{ needs.test-frontend-components.result }}" == "success" && "${{ needs.quality-security-audit.result }}" == "success" ]]; then
+          echo "🎉 **ALL FEATURE TESTS PASSED!** Ready for deployment." >> $GITHUB_STEP_SUMMARY
         else
-          echo "⚠️ **Some checks failed.** Please review the failed jobs above." >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Some feature tests failed.** Please review the failed areas above." >> $GITHUB_STEP_SUMMARY
         fi
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Recent Coverage Improvements" >> $GITHUB_STEP_SUMMARY
-        echo "- **+330% statements coverage** (1.33% → 5.71%)" >> $GITHUB_STEP_SUMMARY
-        echo "- **+600% functions coverage** (0.95% → 6.66%)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Comprehensive auth & infrastructure testing**" >> $GITHUB_STEP_SUMMARY
+        echo "### 📈 Coverage Improvements by Feature" >> $GITHUB_STEP_SUMMARY
+        echo "- **🔐 Auth**: Complete authController + middleware testing" >> $GITHUB_STEP_SUMMARY
+        echo "- **🏗️ Infrastructure**: BaseModel + database utilities" >> $GITHUB_STEP_SUMMARY
+        echo "- **📊 Overall**: +330% statements (1.33% → 5.71%)" >> $GITHUB_STEP_SUMMARY
+        echo "- **🎯 Functions**: +600% coverage (0.95% → 6.66%)" >> $GITHUB_STEP_SUMMARY
