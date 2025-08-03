@@ -7,8 +7,8 @@ on:
     branches: [ master, main, develop ]
 
 jobs:
-  test-auth:
-    name: 🔐 Authentication & Security Tests
+  test-auth-user:
+    name: 🔐 Authentication & User Management
     runs-on: ubuntu-latest
     
     steps:
@@ -27,11 +27,11 @@ jobs:
         cd backend
         npm ci
         
-    - name: Run authentication tests
+    - name: Run authentication & user tests
       run: |
         cd backend
-        echo "🔐 Running authentication & security tests..."
-        npx jest --testPathPattern="(auth|Auth|security|Security)" --coverage --watchAll=false --verbose
+        echo "🔐 Running authentication & user management tests..."
+        npx jest --testPathPattern="(auth|Auth|user|User|login|Login|register|Register)" --coverage --watchAll=false --verbose
       env:
         NODE_ENV: test
         CI: true
@@ -47,8 +47,8 @@ jobs:
         name: auth-coverage
         fail_ci_if_error: false
 
-  test-loot:
-    name: 🎒 Loot Management Tests
+  test-loot-management:
+    name: 💰 Loot Management (CRUD, Selling, Appraisal)
     runs-on: ubuntu-latest
     
     steps:
@@ -70,8 +70,8 @@ jobs:
     - name: Run loot management tests
       run: |
         cd backend
-        echo "🎒 Running loot management tests..."
-        npx jest --testPathPattern="(loot|Loot|item|Item)" --coverage --watchAll=false --verbose
+        echo "💰 Running loot management tests..."
+        npx jest --testPathPattern="(loot|Loot|item|Item|sell|apprais)" --coverage --watchAll=false --verbose
       env:
         NODE_ENV: test
         CI: true
@@ -88,8 +88,8 @@ jobs:
         name: loot-coverage
         fail_ci_if_error: false
 
-  test-infrastructure:
-    name: 🏗️ Infrastructure & Models Tests
+  test-gold-currency:
+    name: 🪙 Gold/Currency Management (Transactions, Balancing)
     runs-on: ubuntu-latest
     
     steps:
@@ -108,11 +108,332 @@ jobs:
         cd backend
         npm ci
         
-    - name: Run infrastructure tests
+    - name: Run gold/currency tests
       run: |
         cd backend
-        echo "🏗️ Running infrastructure & database tests..."
-        npx jest --testPathPattern="(BaseModel|Model|db|database|util|api)" --coverage --watchAll=false --verbose
+        echo "🪙 Running gold/currency management tests..."
+        npx jest --testPathPattern="(gold|Gold|currency|Currency|transaction|Transaction|balance|Balance)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
+        
+    - name: Upload gold coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: gold
+        name: gold-coverage
+        fail_ci_if_error: false
+
+  test-character-management:
+    name: 👤 Character Management
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run character management tests
+      run: |
+        cd backend
+        echo "👤 Running character management tests..."
+        npx jest --testPathPattern="(character|Character)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
+        
+    - name: Upload character coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: character
+        name: character-coverage
+        fail_ci_if_error: false
+
+  test-ship-management:
+    name: 🚢 Ship Management
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run ship management tests
+      run: |
+        cd backend
+        echo "🚢 Running ship management tests..."
+        npx jest --testPathPattern="(ship|Ship)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
+        
+    - name: Upload ship coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: ship
+        name: ship-coverage
+        fail_ci_if_error: false
+
+  test-crew-management:
+    name: 👥 Crew Management (Movement, Recruitment)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run crew management tests
+      run: |
+        cd backend
+        echo "👥 Running crew management tests..."
+        npx jest --testPathPattern="(crew|Crew)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
+        
+    - name: Upload crew coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: crew
+        name: crew-coverage
+        fail_ci_if_error: false
+
+  test-calendar-weather:
+    name: 📅 Calendar & Weather (Golarion calendar)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run calendar & weather tests
+      run: |
+        cd backend
+        echo "📅 Running calendar & weather tests..."
+        npx jest --testPathPattern="(calendar|Calendar|weather|Weather|golarion|Golarion)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
+        
+    - name: Upload calendar coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: calendar
+        name: calendar-coverage
+        fail_ci_if_error: false
+
+  test-outpost-management:
+    name: 🏘️ Outpost Management
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run outpost management tests
+      run: |
+        cd backend
+        echo "🏘️ Running outpost management tests..."
+        npx jest --testPathPattern="(outpost|Outpost)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
+        
+    - name: Upload outpost coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: outpost
+        name: outpost-coverage
+        fail_ci_if_error: false
+
+  test-campaign-settings:
+    name: ⚙️ Campaign & Settings (DM tools, Invites)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run campaign & settings tests
+      run: |
+        cd backend
+        echo "⚙️ Running campaign & settings tests..."
+        npx jest --testPathPattern="(campaign|Campaign|setting|Setting|invite|Invite|dm|DM)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
+        
+    - name: Upload campaign coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: campaign
+        name: campaign-coverage
+        fail_ci_if_error: false
+
+  test-api-integrations:
+    name: 🔗 API & Integrations (OpenAI, Discord)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run API & integrations tests
+      run: |
+        cd backend
+        echo "🔗 Running API & integrations tests..."
+        npx jest --testPathPattern="(openai|OpenAI|discord|Discord|webhook|integration|Integration)" --coverage --watchAll=false --verbose
+      env:
+        NODE_ENV: test
+        CI: true
+        USE_MOCK_DB_FOR_TESTS: true
+        JWT_SECRET: test-jwt-secret-for-ci-only-not-production
+        OPENAI_API_KEY: test-openai-key-for-ci
+        
+    - name: Upload integrations coverage
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./backend/coverage/lcov.info
+        flags: integrations
+        name: integrations-coverage
+        fail_ci_if_error: false
+
+  test-utility-core:
+    name: 🛠️ Utility & Core Functions
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+        
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+        
+    - name: Run utility & core tests
+      run: |
+        cd backend
+        echo "🛠️ Running utility & core function tests..."
+        npx jest --testPathPattern="(BaseModel|Model|util|Util|helper|Helper|api|response)" --coverage --watchAll=false --verbose
       env:
         NODE_ENV: test
         CI: true
@@ -123,17 +444,17 @@ jobs:
         DB_HOST: mock_host
         DB_PORT: 5432
         
-    - name: Upload infrastructure coverage
+    - name: Upload utility coverage
       if: success()
       uses: codecov/codecov-action@v4
       with:
         file: ./backend/coverage/lcov.info
-        flags: infrastructure
-        name: infrastructure-coverage
+        flags: utility
+        name: utility-coverage
         fail_ci_if_error: false
 
   test-frontend-components:
-    name: ⚛️ Frontend Components Tests
+    name: ⚛️ Frontend Components & UI
     runs-on: ubuntu-latest
     
     steps:
@@ -214,33 +535,59 @@ jobs:
         fi
 
   test-summary:
-    name: 📊 Feature Test Results Summary
+    name: 📊 Pathfinder Campaign Test Results Summary
     runs-on: ubuntu-latest
-    needs: [test-auth, test-loot, test-infrastructure, test-frontend-components, quality-security-audit]
+    needs: [test-auth-user, test-loot-management, test-gold-currency, test-character-management, test-ship-management, test-crew-management, test-calendar-weather, test-outpost-management, test-campaign-settings, test-api-integrations, test-utility-core, test-frontend-components, quality-security-audit]
     if: always()
     
     steps:
-    - name: Generate Feature-Based Test Summary
+    - name: Generate Pathfinder Feature Test Summary
       run: |
-        echo "## 🧪 Feature-Based Test Suite Results" >> $GITHUB_STEP_SUMMARY
+        echo "## 🧪 Pathfinder Campaign Management Test Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Feature Area | Status | Coverage | Description |" >> $GITHUB_STEP_SUMMARY
-        echo "|--------------|--------|----------|-------------|" >> $GITHUB_STEP_SUMMARY
-        echo "| 🔐 Authentication | ${{ needs.test-auth.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Auth tests | JWT, middleware, security |" >> $GITHUB_STEP_SUMMARY
-        echo "| 🎒 Loot Management | ${{ needs.test-loot.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Loot tests | Items, parsing, OpenAI |" >> $GITHUB_STEP_SUMMARY
-        echo "| 🏗️ Infrastructure | ${{ needs.test-infrastructure.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Core tests | Models, DB, utilities |" >> $GITHUB_STEP_SUMMARY
-        echo "| ⚛️ Frontend Components | ${{ needs.test-frontend-components.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | React tests | UI components, build |" >> $GITHUB_STEP_SUMMARY
-        echo "| 🔍 Quality & Security | ${{ needs.quality-security-audit.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Audit results | Dependencies, secrets |" >> $GITHUB_STEP_SUMMARY
+        echo "| Feature Area | Status | Description |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------------|--------|-------------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 🔐 Authentication & User Management | ${{ needs.test-auth-user.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | JWT, middleware, user accounts |" >> $GITHUB_STEP_SUMMARY
+        echo "| 💰 Loot Management | ${{ needs.test-loot-management.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | CRUD, selling, appraisal |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🪙 Gold/Currency Management | ${{ needs.test-gold-currency.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Transactions, balancing |" >> $GITHUB_STEP_SUMMARY
+        echo "| 👤 Character Management | ${{ needs.test-character-management.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Character creation, stats |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🚢 Ship Management | ${{ needs.test-ship-management.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Skulls & Shackles ships |" >> $GITHUB_STEP_SUMMARY
+        echo "| 👥 Crew Management | ${{ needs.test-crew-management.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Movement, recruitment |" >> $GITHUB_STEP_SUMMARY
+        echo "| 📅 Calendar & Weather | ${{ needs.test-calendar-weather.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Golarion calendar system |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🏘️ Outpost Management | ${{ needs.test-outpost-management.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Settlement tracking |" >> $GITHUB_STEP_SUMMARY
+        echo "| ⚙️ Campaign & Settings | ${{ needs.test-campaign-settings.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | DM tools, invites |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🔗 API & Integrations | ${{ needs.test-api-integrations.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | OpenAI, Discord webhooks |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🛠️ Utility & Core Functions | ${{ needs.test-utility-core.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | BaseModel, database utils |" >> $GITHUB_STEP_SUMMARY
+        echo "| ⚛️ Frontend Components & UI | ${{ needs.test-frontend-components.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | React components, build |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🔍 Quality & Security Audit | ${{ needs.quality-security-audit.result == 'success' && '✅ PASSED' || '❌ FAILED' }} | Dependencies, vulnerabilities |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
-        if [[ "${{ needs.test-auth.result }}" == "success" && "${{ needs.test-loot.result }}" == "success" && "${{ needs.test-infrastructure.result }}" == "success" && "${{ needs.test-frontend-components.result }}" == "success" && "${{ needs.quality-security-audit.result }}" == "success" ]]; then
-          echo "🎉 **ALL FEATURE TESTS PASSED!** Ready for deployment." >> $GITHUB_STEP_SUMMARY
+        # Count passed/failed tests
+        PASSED=0
+        FAILED=0
+        
+        if [[ "${{ needs.test-auth-user.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-loot-management.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-gold-currency.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-character-management.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-ship-management.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-crew-management.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-calendar-weather.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-outpost-management.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-campaign-settings.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-api-integrations.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-utility-core.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.test-frontend-components.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        if [[ "${{ needs.quality-security-audit.result }}" == "success" ]]; then ((PASSED++)); else ((FAILED++)); fi
+        
+        if [[ $FAILED -eq 0 ]]; then
+          echo "🎉 **ALL PATHFINDER FEATURES TESTED SUCCESSFULLY!** Ready for campaign deployment." >> $GITHUB_STEP_SUMMARY
         else
-          echo "⚠️ **Some feature tests failed.** Please review the failed areas above." >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **$FAILED of 13 feature areas failed.** Campaign systems need attention before deployment." >> $GITHUB_STEP_SUMMARY
         fi
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📈 Coverage Improvements by Feature" >> $GITHUB_STEP_SUMMARY
-        echo "- **🔐 Auth**: Complete authController + middleware testing" >> $GITHUB_STEP_SUMMARY
-        echo "- **🏗️ Infrastructure**: BaseModel + database utilities" >> $GITHUB_STEP_SUMMARY
-        echo "- **📊 Overall**: +330% statements (1.33% → 5.71%)" >> $GITHUB_STEP_SUMMARY
-        echo "- **🎯 Functions**: +600% coverage (0.95% → 6.66%)" >> $GITHUB_STEP_SUMMARY
+        echo "### 📈 Test Coverage by Campaign Feature" >> $GITHUB_STEP_SUMMARY
+        echo "- **🔐 Auth & Users**: Complete authentication + user management" >> $GITHUB_STEP_SUMMARY
+        echo "- **🛠️ Core Infrastructure**: BaseModel + database foundation" >> $GITHUB_STEP_SUMMARY
+        echo "- **📊 Overall Progress**: +330% statements (1.33% → 5.71%)" >> $GITHUB_STEP_SUMMARY
+        echo "- **🎯 Function Coverage**: +600% improvement (0.95% → 6.66%)" >> $GITHUB_STEP_SUMMARY
