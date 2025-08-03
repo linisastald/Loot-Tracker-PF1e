@@ -14,15 +14,14 @@ module.exports = {
     '!<rootDir>/node_modules/',
     '!<rootDir>/tests/'
   ],
-  // Coverage thresholds temporarily disabled until more tests are added
-  // coverageThreshold: {
-  //   global: {
-  //     branches: 5,
-  //     functions: 5,
-  //     lines: 5,
-  //     statements: 5
-  //   }
-  // },
+  coverageThreshold: {
+    global: {
+      branches: 6,
+      functions: 6,
+      lines: 5,
+      statements: 5
+    }
+  },
   coverageReporters: ['text', 'lcov', 'html'],
   testTimeout: 30000,
   detectOpenHandles: true,

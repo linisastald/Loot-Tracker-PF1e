@@ -100,7 +100,14 @@ if (USE_MOCK_DB) {
       buildLimitClause: jest.fn().mockImplementation(() => ''),
       sanitizeInput: jest.fn().mockImplementation((input) => input),
       formatDateForDB: jest.fn().mockImplementation((date) => date),
-      parseDBDate: jest.fn().mockImplementation((date) => date)
+      parseDBDate: jest.fn().mockImplementation((date) => date),
+      // Add BaseModel required methods
+      getMany: jest.fn(),
+      getById: jest.fn(),
+      insert: jest.fn(),
+      updateById: jest.fn(),
+      deleteById: jest.fn(),
+      rowExists: jest.fn()
     };
   });
 
