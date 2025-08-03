@@ -6,6 +6,7 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import { MockThemeProvider, MockCssBaseline, MockConfigProvider, mockConfigContext } from './testMocks';
 
 // Default config for testing
 const defaultTestConfig = {
@@ -32,7 +33,12 @@ export const renderWithProviders = (
   function Wrapper({ children }) {
     return (
       <BrowserRouter>
-        {children}
+        <MockThemeProvider>
+          <MockCssBaseline />
+          <MockConfigProvider value={{ config, loading: false }}>
+            {children}
+          </MockConfigProvider>
+        </MockThemeProvider>
       </BrowserRouter>
     );
   }

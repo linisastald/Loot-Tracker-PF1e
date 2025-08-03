@@ -23,7 +23,9 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-key-for-test
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-openai-key';
 
 // Determine if we should use mock database or real database
-const USE_MOCK_DB = process.env.NODE_ENV === 'test' && !process.env.USE_REAL_DB_FOR_TESTS;
+// Force mock database in CI environment unless explicitly told to use real DB
+const USE_MOCK_DB = (process.env.NODE_ENV === 'test' && !process.env.USE_REAL_DB_FOR_TESTS) || 
+                    (process.env.CI === 'true' && !process.env.USE_REAL_DB_FOR_TESTS);
 
 // Global test utilities
 global.testUtils = {
@@ -34,16 +36,21 @@ global.testUtils = {
   async setupDatabase() {
     if (USE_MOCK_DB) {
       console.log('🎭 Using mock database for tests');
-      const mockDb = setupMockDatabase();
-      this.pool = mockDb.createPool({
-        user: 'mock_user',
-        host: 'mock_host',
-        database: 'mock_db',
-        password: 'mock_password',
-        port: 'mock_port',
-      });
-      console.log('✓ Mock database connection established');
-      return;
+      try {
+        const mockDb = setupMockDatabase();
+        this.pool = mockDb.createPool({
+          user: 'mock_user',
+          host: 'mock_host',
+          database: 'mock_db',
+          password: 'mock_password',
+          port: 'mock_port',
+        });
+        console.log('✓ Mock database connection established');
+        return;
+      } catch (error) {
+        console.error('✗ Failed to setup mock database:', error.message);
+        throw error;
+      }
     }
 
     // Real database connection for integration tests
@@ -84,6 +91,12 @@ global.testUtils = {
   async cleanDatabase() {
     if (!this.pool) {
       throw new Error('Database not initialized. Call setupDatabase() first.');
+    }
+
+    // For mock database, just return success
+    if (USE_MOCK_DB) {
+      console.log('🧹 Mock database cleaned (no-op)');
+      return;
     }
 
     const client = await this.pool.connect();
@@ -130,6 +143,17 @@ global.testUtils = {
       ...userData
     };
 
+    // For mock database, return mock user data
+    if (USE_MOCK_DB) {
+      return {
+        id: 1,
+        username: defaultUser.username,
+        email: defaultUser.email,
+        role: defaultUser.role,
+        plainPassword: defaultUser.password
+      };
+    }
+
     const hashedPassword = await bcrypt.hash(defaultUser.password, 10);
     
     const client = await this.pool.connect();
@@ -156,6 +180,18 @@ global.testUtils = {
       ...characterData
     };
 
+    // For mock database, return mock character data
+    if (USE_MOCK_DB) {
+      return {
+        id: 1,
+        user_id: userId,
+        name: defaultCharacter.name,
+        class: defaultCharacter.class,
+        level: defaultCharacter.level,
+        created_at: new Date().toISOString()
+      };
+    }
+
     const client = await this.pool.connect();
     try {
       const result = await client.query(
@@ -181,6 +217,20 @@ global.testUtils = {
       identified: true,
       ...lootData
     };
+
+    // For mock database, return mock loot data
+    if (USE_MOCK_DB) {
+      return {
+        id: 1,
+        character_id: characterId,
+        name: defaultLoot.name,
+        description: defaultLoot.description,
+        value: defaultLoot.value,
+        quantity: defaultLoot.quantity,
+        identified: defaultLoot.identified,
+        created_at: new Date().toISOString()
+      };
+    }
 
     const client = await this.pool.connect();
     try {

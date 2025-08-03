@@ -16,7 +16,7 @@ jest.mock('react-router-dom', () => ({
   useNavigate: jest.fn(),
 }));
 
-describe.skip('Login Component', () => {
+describe('Login Component', () => {
   const mockNavigate = jest.fn();
   const mockOnLogin = jest.fn();
 
