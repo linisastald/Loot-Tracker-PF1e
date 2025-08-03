@@ -6,6 +6,51 @@
 import '@testing-library/jest-dom';
 import { configure } from '@testing-library/react';
 
+// Mock Material-UI components to avoid React 19 compatibility issues
+jest.mock('@mui/material/styles', () => ({
+  ThemeProvider: ({ children }) => children,
+  createTheme: () => ({}),
+  useTheme: () => ({}),
+}));
+
+jest.mock('@mui/material/CssBaseline', () => {
+  return function MockCssBaseline() {
+    return null;
+  };
+});
+
+// Mock the theme module
+jest.mock('./theme', () => ({
+  palette: {
+    mode: 'dark',
+    primary: { main: '#1976d2' },
+  },
+  typography: { fontFamily: 'Roboto' },
+  spacing: (factor) => `${8 * factor}px`,
+}));
+
+// Mock the ConfigContext
+jest.mock('./contexts/ConfigContext', () => {
+  const React = require('react');
+  const mockContext = {
+    config: {
+      apiUrl: 'http://localhost:5000/api',
+      features: {
+        weatherSystem: true,
+        calendar: true,
+        ships: true,
+        crew: true,
+      },
+    },
+    loading: false,
+  };
+  
+  return {
+    default: React.createContext(mockContext),
+    ConfigProvider: ({ children }) => children,
+  };
+});
+
 // Configure Testing Library
 configure({
   testIdAttribute: 'data-testid',

@@ -65,30 +65,5 @@ export const MockConfigProvider = ({ children, value = mockConfigContext }) => {
   return React.createElement('div', { 'data-testid': 'config-provider' }, children);
 };
 
-// Mock Material-UI components that might cause issues
-export const mockMuiComponents = () => {
-  // Mock components that are known to have issues with React 19
-  jest.mock('@mui/material/styles', () => ({
-    ThemeProvider: MockThemeProvider,
-    createTheme: () => mockTheme,
-    useTheme: () => mockTheme,
-  }));
-
-  jest.mock('@mui/material/CssBaseline', () => {
-    return MockCssBaseline;
-  });
-};
-
-// Setup mock for all Material-UI imports
-export const setupMaterialUiMocks = () => {
-  // Mock the theme module
-  jest.mock('../theme', () => mockTheme);
-  
-  // Mock the context module
-  jest.mock('../contexts/ConfigContext', () => ({
-    default: React.createContext(mockConfigContext),
-    ConfigProvider: MockConfigProvider,
-  }));
-  
-  mockMuiComponents();
-};
+// These functions should be called in setupTests.js or individual test files
+// Don't call jest.mock() inside exported functions as it causes scope issues
