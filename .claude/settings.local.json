@@ -17,7 +17,9 @@
       "Bash(npm run test:*)",
       "Bash(cp:*)",
       "Bash(mkdir:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }
