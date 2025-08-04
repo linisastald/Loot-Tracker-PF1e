@@ -56,6 +56,7 @@ RUN if [ "$OPTIMIZE_BUILD" = "true" ]; then \
 
 # Copy source code (excluding tests and dev files via .dockerignore)
 COPY backend/src ./src
+COPY backend/migrations ./migrations
 COPY backend/index.js ./
 
 # Production runtime stage
@@ -108,9 +109,9 @@ RUN mkdir -p /app/backend /app/logs /app/data /app/database && \
 # Copy backend with proper ownership (production files only)
 COPY --from=backend-build --chown=backend:nodejs /app/node_modules /app/backend/node_modules
 COPY --from=backend-build --chown=backend:nodejs /app/package.json /app/backend/package.json
-COPY --chown=backend:nodejs backend/src /app/backend/src
-COPY --chown=backend:nodejs backend/index.js /app/backend/index.js
-COPY --chown=backend:nodejs backend/migrations /app/backend/migrations
+COPY --from=backend-build --chown=backend:nodejs /app/src /app/backend/src
+COPY --from=backend-build --chown=backend:nodejs /app/migrations /app/backend/migrations
+COPY --from=backend-build --chown=backend:nodejs /app/index.js /app/backend/index.js
 
 # Copy frontend build with proper ownership (static files only)
 COPY --from=frontend-build --chown=frontend:nginx /app/build /usr/share/nginx/html
