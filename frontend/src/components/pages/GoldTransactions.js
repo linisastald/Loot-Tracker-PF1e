@@ -254,8 +254,17 @@ const GoldTransactions = () => {
             setLedgerLoading(true);
             const response = await lootService.getCharacterLedger();
 
-            if (response.data && Array.isArray(response.data.characters)) {
+            if (response.data && Array.isArray(response.data.ledger)) {
                 // Sort active characters first, then by name
+                const sortedData = response.data.ledger
+                    .sort((a, b) => {
+                        if (a.active !== b.active) return b.active - a.active;
+                        return a.character.localeCompare(b.character);
+                    });
+
+                setLedgerData(sortedData);
+            } else if (response.data && Array.isArray(response.data.characters)) {
+                // Fallback for old API format
                 const sortedData = response.data.characters
                     .sort((a, b) => {
                         if (a.active !== b.active) return b.active - a.active;
