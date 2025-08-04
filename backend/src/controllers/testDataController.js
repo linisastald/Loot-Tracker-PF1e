@@ -58,10 +58,10 @@ const generateTestData = async (req, res) => {
         await client.query(`
           INSERT INTO characters (name, appraisal_bonus, active, user_id) 
           SELECT * FROM (VALUES
-            ('Captain Blackwater', 8, true, $1),
-            ('Quartermaster Swift', 6, true, $2),
-            ('Navigator Reef', 7, true, $3),
-            ('Gunner Ironbeard', 5, true, $4)
+            ('Captain Blackwater', 8, true, $1::integer),
+            ('Quartermaster Swift', 6, true, $2::integer),
+            ('Navigator Reef', 7, true, $3::integer),
+            ('Gunner Ironbeard', 5, true, $4::integer)
           ) AS v(name, appraisal_bonus, active, user_id)
           WHERE NOT EXISTS (
             SELECT 1 FROM characters WHERE name = v.name
