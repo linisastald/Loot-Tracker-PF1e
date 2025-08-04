@@ -11,11 +11,17 @@ INSERT INTO users (username, password, role, email) VALUES
 
 -- Create characters for each test user
 -- Note: We'll use user IDs 2-5 assuming DM is ID 1
-INSERT INTO characters (name, appraisal_bonus, active, user_id) VALUES
-('Captain Blackwater', 8, true, 2),
-('Quartermaster Swift', 6, true, 3),
-('Navigator Reef', 7, true, 4),
-('Gunner Ironbeard', 5, true, 5);
+-- Note: Replace user_id values (2,3,4,5) with actual user IDs from your users table
+INSERT INTO characters (name, appraisal_bonus, active, user_id)
+SELECT * FROM (VALUES
+  ('Captain Blackwater', 8, true, 2),
+  ('Quartermaster Swift', 6, true, 3),
+  ('Navigator Reef', 7, true, 4),
+  ('Gunner Ironbeard', 5, true, 5)
+) AS v(name, appraisal_bonus, active, user_id)
+WHERE NOT EXISTS (
+  SELECT 1 FROM characters WHERE name = v.name
+);
 
 -- Create test ships with various statuses
 INSERT INTO ships (name, location, is_squibbing, damage) VALUES

@@ -32,12 +32,16 @@ const generateTestData = async (req, res) => {
 
       // Create test users
       const usersResult = await client.query(`
-        INSERT INTO users (username, password, role, email) VALUES
-        ('testplayer1', $1, 'player', 'player1@test.com'),
-        ('testplayer2', $1, 'player', 'player2@test.com'),
-        ('testplayer3', $1, 'player', 'player3@test.com'),
-        ('testplayer4', $1, 'player', 'player4@test.com')
-        ON CONFLICT (username) DO NOTHING
+        INSERT INTO users (username, password, role, email) 
+        SELECT * FROM (VALUES
+          ('testplayer1', $1, 'player', 'player1@test.com'),
+          ('testplayer2', $1, 'player', 'player2@test.com'),
+          ('testplayer3', $1, 'player', 'player3@test.com'),
+          ('testplayer4', $1, 'player', 'player4@test.com')
+        ) AS v(username, password, role, email)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM users WHERE username = v.username
+        )
         RETURNING id, username
       `, [testPassword]);
 
@@ -51,33 +55,45 @@ const generateTestData = async (req, res) => {
 
       // Create characters for test users
       await client.query(`
-        INSERT INTO characters (name, appraisal_bonus, active, user_id) VALUES
-        ('Captain Blackwater', 8, true, $1),
-        ('Quartermaster Swift', 6, true, $2),
-        ('Navigator Reef', 7, true, $3),
-        ('Gunner Ironbeard', 5, true, $4)
-        ON CONFLICT (name) DO NOTHING
+        INSERT INTO characters (name, appraisal_bonus, active, user_id) 
+        SELECT * FROM (VALUES
+          ('Captain Blackwater', 8, true, $1),
+          ('Quartermaster Swift', 6, true, $2),
+          ('Navigator Reef', 7, true, $3),
+          ('Gunner Ironbeard', 5, true, $4)
+        ) AS v(name, appraisal_bonus, active, user_id)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM characters WHERE name = v.name
+        )
       `, userIds);
 
       // Create test ships
       await client.query(`
-        INSERT INTO ships (name, location, is_squibbing, damage) VALUES
-        ('The Salty Revenge', 'Port Peril', false, 0),
-        ('Crimson Wave', 'Bloodcove', true, 15),
-        ('Storm Dancer', 'At Sea', false, 8),
-        ('Dead Mans Folly', 'Drenchport', false, 25),
-        ('The Kraken''s Bane', 'Sargava', false, 0)
-        ON CONFLICT (name) DO NOTHING
+        INSERT INTO ships (name, location, is_squibbing, damage)
+        SELECT * FROM (VALUES
+          ('The Salty Revenge', 'Port Peril', false, 0),
+          ('Crimson Wave', 'Bloodcove', true, 15),
+          ('Storm Dancer', 'At Sea', false, 8),
+          ('Dead Mans Folly', 'Drenchport', false, 25),
+          ('The Kraken''s Bane', 'Sargava', false, 0)
+        ) AS v(name, location, is_squibbing, damage)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM ships WHERE name = v.name
+        )
       `);
 
       // Create test outposts
       await client.query(`
-        INSERT INTO outposts (name, location, access_date) VALUES
-        ('Rickety Squibs', 'Rickety Hinge', '2024-01-15'),
-        ('Pirates Den', 'Tortuga', '2024-02-20'),
-        ('Smugglers Cove', 'Hidden Bay', '2024-03-10'),
-        ('Port Royal Trading Post', 'Port Royal', '2024-01-05')
-        ON CONFLICT (name) DO NOTHING
+        INSERT INTO outposts (name, location, access_date)
+        SELECT * FROM (VALUES
+          ('Rickety Squibs', 'Rickety Hinge', '2024-01-15'::date),
+          ('Pirates Den', 'Tortuga', '2024-02-20'::date),
+          ('Smugglers Cove', 'Hidden Bay', '2024-03-10'::date),
+          ('Port Royal Trading Post', 'Port Royal', '2024-01-05'::date)
+        ) AS v(name, location, access_date)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM outposts WHERE name = v.name
+        )
       `);
 
       // Get ship and outpost IDs for crew assignment
@@ -106,8 +122,10 @@ const generateTestData = async (req, res) => {
       for (const crew of crewData) {
         await client.query(`
           INSERT INTO crew (name, race, age, description, location_type, location_id, ship_position, is_alive)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (name) DO NOTHING
+          SELECT $1, $2, $3, $4, $5, $6, $7, $8
+          WHERE NOT EXISTS (
+            SELECT 1 FROM crew WHERE name = $1
+          )
         `, crew);
       }
 
@@ -153,7 +171,6 @@ const generateTestData = async (req, res) => {
         await client.query(`
           INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, value, whohas, whoupdated, notes)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-          ON CONFLICT DO NOTHING
         `, loot);
       }
 
