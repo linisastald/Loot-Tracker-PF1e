@@ -34,10 +34,10 @@ const generateTestData = async (req, res) => {
       const usersResult = await client.query(`
         INSERT INTO users (username, password, role, email) 
         SELECT * FROM (VALUES
-          ('testplayer1', $1, 'player', 'player1@test.com'),
-          ('testplayer2', $1, 'player', 'player2@test.com'),
-          ('testplayer3', $1, 'player', 'player3@test.com'),
-          ('testplayer4', $1, 'player', 'player4@test.com')
+          ('testplayer1'::varchar(255), $1::varchar(255), 'player'::varchar(7), 'player1@test.com'::varchar(255)),
+          ('testplayer2'::varchar(255), $1::varchar(255), 'player'::varchar(7), 'player2@test.com'::varchar(255)),
+          ('testplayer3'::varchar(255), $1::varchar(255), 'player'::varchar(7), 'player3@test.com'::varchar(255)),
+          ('testplayer4'::varchar(255), $1::varchar(255), 'player'::varchar(7), 'player4@test.com'::varchar(255))
         ) AS v(username, password, role, email)
         WHERE NOT EXISTS (
           SELECT 1 FROM users WHERE username = v.username
@@ -73,11 +73,11 @@ const generateTestData = async (req, res) => {
       await client.query(`
         INSERT INTO ships (name, location, is_squibbing, damage)
         SELECT * FROM (VALUES
-          ('The Salty Revenge', 'Port Peril', false, 0),
-          ('Crimson Wave', 'Bloodcove', true, 15),
-          ('Storm Dancer', 'At Sea', false, 8),
-          ('Dead Mans Folly', 'Drenchport', false, 25),
-          ('The Kraken''s Bane', 'Sargava', false, 0)
+          ('The Salty Revenge'::varchar(255), 'Port Peril'::varchar(255), false::boolean, 0::integer),
+          ('Crimson Wave'::varchar(255), 'Bloodcove'::varchar(255), true::boolean, 15::integer),
+          ('Storm Dancer'::varchar(255), 'At Sea'::varchar(255), false::boolean, 8::integer),
+          ('Dead Mans Folly'::varchar(255), 'Drenchport'::varchar(255), false::boolean, 25::integer),
+          ('The Kraken''s Bane'::varchar(255), 'Sargava'::varchar(255), false::boolean, 0::integer)
         ) AS v(name, location, is_squibbing, damage)
         WHERE NOT EXISTS (
           SELECT 1 FROM ships WHERE name = v.name
@@ -88,10 +88,10 @@ const generateTestData = async (req, res) => {
       await client.query(`
         INSERT INTO outposts (name, location, access_date)
         SELECT * FROM (VALUES
-          ('Rickety Squibs', 'Rickety Hinge', '2024-01-15'::date),
-          ('Pirates Den', 'Tortuga', '2024-02-20'::date),
-          ('Smugglers Cove', 'Hidden Bay', '2024-03-10'::date),
-          ('Port Royal Trading Post', 'Port Royal', '2024-01-05'::date)
+          ('Rickety Squibs'::varchar(255), 'Rickety Hinge'::varchar(255), '2024-01-15'::date),
+          ('Pirates Den'::varchar(255), 'Tortuga'::varchar(255), '2024-02-20'::date),
+          ('Smugglers Cove'::varchar(255), 'Hidden Bay'::varchar(255), '2024-03-10'::date),
+          ('Port Royal Trading Post'::varchar(255), 'Port Royal'::varchar(255), '2024-01-05'::date)
         ) AS v(name, location, access_date)
         WHERE NOT EXISTS (
           SELECT 1 FROM outposts WHERE name = v.name
@@ -175,7 +175,7 @@ const generateTestData = async (req, res) => {
         for (const loot of lootData) {
           await client.query(`
             INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, value, whohas, whoupdated, notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1::date, $2::integer, $3::varchar(255), $4::boolean, $5::boolean, $6::varchar(15), $7::varchar(15), $8::varchar(15), $9::integer, $10::numeric, $11::integer, $12::integer, $13::varchar(511))
           `, loot);
         }
 
@@ -207,7 +207,7 @@ const generateTestData = async (req, res) => {
         for (const gold of goldData) {
           await client.query(`
             INSERT INTO gold (session_date, who, transaction_type, notes, copper, silver, gold, platinum, character_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1::timestamp, $2::integer, $3::varchar(63), $4::varchar(255), $5::integer, $6::integer, $7::integer, $8::integer, $9::integer)
           `, gold);
         }
       }
