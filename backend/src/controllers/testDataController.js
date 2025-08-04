@@ -125,9 +125,9 @@ const generateTestData = async (req, res) => {
         for (const crew of crewData) {
           await client.query(`
             INSERT INTO crew (name, race, age, description, location_type, location_id, ship_position, is_alive)
-            SELECT $1, $2, $3, $4, $5, $6, $7, $8
+            SELECT $1::varchar(255), $2::varchar(100), $3::integer, $4::text, $5::varchar(20), $6::integer, $7::varchar(100), $8::boolean
             WHERE NOT EXISTS (
-              SELECT 1 FROM crew WHERE name = $1
+              SELECT 1 FROM crew WHERE name = $1::varchar(255)
             )
           `, crew);
         }
