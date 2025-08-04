@@ -55,9 +55,11 @@ const ItemManagementDialog = ({
                     } else {
                         // Otherwise fetch it
                         const response = await lootService.getAllLoot({query: updatedItem.itemid});
-                        if (response.data && response.data.length > 0) {
+                        // API returns { summary: [], individual: [], count: number }
+                        const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+                        if (allItems && allItems.length > 0) {
                             // Find the exact item
-                            const matchingItem = response.data.find(item => item.id === updatedItem.itemid);
+                            const matchingItem = allItems.find(item => item.id === updatedItem.itemid);
                             if (matchingItem) {
                                 setItemInputValue(matchingItem.name);
                                 setItemOptions([matchingItem]);
@@ -79,7 +81,9 @@ const ItemManagementDialog = ({
     const fetchItems = async () => {
         try {
             const response = await lootService.getAllLoot();
-            setItems(response.data);
+            // API returns { summary: [], individual: [], count: number }
+            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+            setItems(allItems);
         } catch (error) {
             console.error('Error fetching all items:', error);
         }
@@ -114,7 +118,9 @@ const ItemManagementDialog = ({
         setItemsLoading(true);
         try {
             const response = await lootService.getAllLoot({query: searchText});
-            setItemOptions(response.data);
+            // API returns { summary: [], individual: [], count: number }
+            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+            setItemOptions(allItems);
         } catch (error) {
             console.error('Error fetching items:', error);
         } finally {

@@ -137,7 +137,9 @@ const UnidentifiedItemsManagement = () => {
             for (const id of itemIds) {
                 try {
                     const response = await lootService.getAllLoot({query: id});
-                    const exactMatch = response.data.find(item => item.id === id);
+                    // API returns { summary: [], individual: [], count: number }
+                    const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+                    const exactMatch = allItems.find(item => item.id === id);
 
                     if (exactMatch) {
                         newItemsMap[id] = exactMatch;

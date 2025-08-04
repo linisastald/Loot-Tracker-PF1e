@@ -67,7 +67,9 @@ const AddItemMod = () => {
         try {
             setItemsLoading(true);
             const response = await lootService.getAllLoot();
-            setItems(response.data);
+            // API returns { summary: [], individual: [], count: number }
+            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+            setItems(allItems);
             setItemsLoading(false);
         } catch (error) {
             console.error('Error fetching items:', error);
@@ -107,7 +109,9 @@ const AddItemMod = () => {
         setItemsLoading(true);
         try {
             const response = await lootService.getAllLoot({query: searchText});
-            setItemOptions(response.data);
+            // API returns { summary: [], individual: [], count: number }
+            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+            setItemOptions(allItems);
         } catch (error) {
             console.error('Error searching items:', error);
         } finally {

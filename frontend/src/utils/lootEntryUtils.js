@@ -25,7 +25,9 @@ export const fetchItemNames = async (query = '') => {
     const response = await lootService.getAllLoot(params);
 
     // Ensure we always return an array of objects with name and id
-    const items = (response.data.items || response.data || []).map(item => ({
+    // API returns { summary: [], individual: [], count: number }
+    const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+    const items = allItems.map(item => ({
       name: item.name,
       id: item.id,
       type: item.type,

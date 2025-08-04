@@ -24,7 +24,8 @@ import {
   CloudUpload,
   FileCopy as FileCopyIcon,
   Message as ChatIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  DataObject as TestDataIcon
 } from '@mui/icons-material';
 
 const SystemSettings = () => {
@@ -42,6 +43,7 @@ const SystemSettings = () => {
     const [snackbarMessage, setSnackbarMessage] = useState('');
     const [quickInviteData, setQuickInviteData] = useState(null);
     const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
+    const [isGeneratingTestData, setIsGeneratingTestData] = useState(false);
 
     // Discord integration settings
     const [discordSettings, setDiscordSettings] = useState({
@@ -437,6 +439,24 @@ const SystemSettings = () => {
         }
     };
 
+    const handleGenerateTestData = async () => {
+        setIsGeneratingTestData(true);
+        try {
+            const response = await api.post('/test-data/generate');
+            
+            setSuccess(response.data.message || 'Test data generated successfully!');
+            setSnackbarMessage(`Test data generated: ${response.data.data.summary.loot} loot items, ${response.data.data.summary.gold} gold transactions, ${response.data.data.summary.users} users, ${response.data.data.summary.ships} ships, ${response.data.data.summary.crew} crew members`);
+            setSnackbarOpen(true);
+            setError('');
+        } catch (error) {
+            console.error('Error generating test data:', error);
+            setError(error.response?.data?.message || 'Error generating test data. Please try again.');
+            setSuccess('');
+        } finally {
+            setIsGeneratingTestData(false);
+        }
+    };
+
     const handleSnackbarClose = () => {
         setSnackbarOpen(false);
     };
@@ -779,6 +799,38 @@ const SystemSettings = () => {
                         </CardContent>
                     </Card>
                 </Grid>
+
+                {/* Test Data Generation - Only show on test instance */}
+                {window.location.hostname === 'test.kempsonandko.com' && (
+                    <Grid size={12}>
+                        <Card variant="outlined">
+                            <CardHeader 
+                                title="Test Data Generation" 
+                                avatar={<TestDataIcon/>}
+                                sx={{ backgroundColor: 'rgba(255, 152, 0, 0.1)' }}
+                            />
+                            <CardContent>
+                                <Typography variant="body2" gutterBottom color="text.secondary">
+                                    ⚠️ This feature is only available on the test environment. Generate sample data for testing purposes including users, characters, loot items, gold transactions, ships, and crew.
+                                </Typography>
+                                <Typography variant="body2" gutterBottom color="text.secondary" sx={{ mb: 2 }}>
+                                    Creates: 4 test users (testplayer1-4, password: testpass123), 4 characters, ~50 loot items, ~40 gold transactions, 5 ships, 4 outposts, and 13 crew members.
+                                </Typography>
+                                
+                                <Button
+                                    variant="outlined"
+                                    color="warning"
+                                    startIcon={<TestDataIcon/>}
+                                    onClick={handleGenerateTestData}
+                                    disabled={isGeneratingTestData}
+                                    sx={{ mt: 1 }}
+                                >
+                                    {isGeneratingTestData ? <CircularProgress size={24}/> : 'Generate Test Data'}
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+                )}
             </Grid>
             <Snackbar
                 open={snackbarOpen}

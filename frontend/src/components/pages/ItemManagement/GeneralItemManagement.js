@@ -54,11 +54,13 @@ const GeneralItemManagement = () => {
     const fetchItems = async () => {
         try {
             const response = await lootService.getAllLoot();
-            setItems(response.data);
+            // API returns { summary: [], individual: [], count: number }
+            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+            setItems(allItems);
 
             // Create a map for easier lookups
             const newItemsMap = {};
-            response.data.forEach(item => {
+            allItems.forEach(item => {
                 newItemsMap[item.id] = item;
             });
             setItemsMap(newItemsMap);

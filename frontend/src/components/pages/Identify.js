@@ -87,7 +87,9 @@ const Identify = () => {
     const fetchItems = async () => {
         try {
             const response = await lootService.getAllLoot();
-            setItems(response.data);
+            // API returns { summary: [], individual: [], count: number }
+            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+            setItems(allItems);
         } catch (error) {
             console.error('Error fetching items:', error);
             setError('Error fetching items. Please try again later.');
