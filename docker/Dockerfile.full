@@ -110,6 +110,7 @@ COPY --from=backend-build --chown=backend:nodejs /app/node_modules /app/backend/
 COPY --from=backend-build --chown=backend:nodejs /app/package.json /app/backend/package.json
 COPY --chown=backend:nodejs backend/src /app/backend/src
 COPY --chown=backend:nodejs backend/index.js /app/backend/index.js
+COPY --chown=backend:nodejs backend/migrations /app/backend/migrations
 
 # Copy frontend build with proper ownership (static files only)
 COPY --from=frontend-build --chown=frontend:nginx /app/build /usr/share/nginx/html
