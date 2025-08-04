@@ -54,18 +54,20 @@ const generateTestData = async (req, res) => {
       const userIds = existingUsers.rows.map(row => row.id);
 
       // Create characters for test users
-      await client.query(`
-        INSERT INTO characters (name, appraisal_bonus, active, user_id) 
-        SELECT * FROM (VALUES
-          ('Captain Blackwater', 8, true, $1),
-          ('Quartermaster Swift', 6, true, $2),
-          ('Navigator Reef', 7, true, $3),
-          ('Gunner Ironbeard', 5, true, $4)
-        ) AS v(name, appraisal_bonus, active, user_id)
-        WHERE NOT EXISTS (
-          SELECT 1 FROM characters WHERE name = v.name
-        )
-      `, userIds);
+      if (userIds.length >= 4) {
+        await client.query(`
+          INSERT INTO characters (name, appraisal_bonus, active, user_id) 
+          SELECT * FROM (VALUES
+            ('Captain Blackwater', 8, true, $1),
+            ('Quartermaster Swift', 6, true, $2),
+            ('Navigator Reef', 7, true, $3),
+            ('Gunner Ironbeard', 5, true, $4)
+          ) AS v(name, appraisal_bonus, active, user_id)
+          WHERE NOT EXISTS (
+            SELECT 1 FROM characters WHERE name = v.name
+          )
+        `, [userIds[0], userIds[1], userIds[2], userIds[3]]);
+      }
 
       // Create test ships
       await client.query(`
@@ -102,31 +104,33 @@ const generateTestData = async (req, res) => {
       const shipIds = ships.rows.map(row => row.id);
       const outpostIds = outposts.rows.map(row => row.id);
 
-      // Create crew members
-      const crewData = [
-        ['First Mate Rodriguez', 'Human', 35, 'Experienced sailor with a keen eye for trouble', 'ship', shipIds[0], 'First Mate', true],
-        ['Bosun Thompson', 'Human', 42, 'Gruff but fair, keeps the crew in line', 'ship', shipIds[0], 'Bosun', true],
-        ['Rigger "Nimble" Pete', 'Halfling', 28, 'Quick on the rigging, quicker with a joke', 'ship', shipIds[0], 'Rigger', true],
-        ['Cook Martha', 'Human', 38, 'Makes the best hardtack this side of the Shackles', 'ship', shipIds[0], 'Cook', true],
-        ['Captain Scarface', 'Human', 45, 'Battle-hardened pirate captain', 'ship', shipIds[1], 'Captain', true],
-        ['Gunner Blackpowder', 'Dwarf', 52, 'Expert with cannons and explosives', 'ship', shipIds[1], 'Master Gunner', true],
-        ['Lookout Sharp-Eye', 'Elf', 120, 'Can spot a sail on the horizon from leagues away', 'ship', shipIds[1], 'Lookout', true],
-        ['Navigator Starweaver', 'Human', 31, 'Reads the stars like a book', 'ship', shipIds[2], 'Navigator', true],
-        ['Carpenter Jenkins', 'Human', 39, 'Keeps the ship seaworthy through any storm', 'ship', shipIds[2], 'Carpenter', true],
-        ['Dockmaster Willem', 'Human', 48, 'Manages the port operations', 'outpost', outpostIds[0], null, true],
-        ['Trader Goldfingers', 'Halfling', 34, 'Deals in rare goods and information', 'outpost', outpostIds[1], null, true],
-        ['Guard Captain Steel', 'Human', 41, 'Protects the outpost from threats', 'outpost', outpostIds[2], null, true],
-        ['Innkeeper Rosie', 'Human', 44, 'Provides room and board for weary sailors', 'outpost', outpostIds[3], null, true]
-      ];
+      // Create crew members (only if we have ships and outposts)
+      if (shipIds.length >= 3 && outpostIds.length >= 4) {
+        const crewData = [
+          ['First Mate Rodriguez', 'Human', 35, 'Experienced sailor with a keen eye for trouble', 'ship', shipIds[0], 'First Mate', true],
+          ['Bosun Thompson', 'Human', 42, 'Gruff but fair, keeps the crew in line', 'ship', shipIds[0], 'Bosun', true],
+          ['Rigger "Nimble" Pete', 'Halfling', 28, 'Quick on the rigging, quicker with a joke', 'ship', shipIds[0], 'Rigger', true],
+          ['Cook Martha', 'Human', 38, 'Makes the best hardtack this side of the Shackles', 'ship', shipIds[0], 'Cook', true],
+          ['Captain Scarface', 'Human', 45, 'Battle-hardened pirate captain', 'ship', shipIds[1], 'Captain', true],
+          ['Gunner Blackpowder', 'Dwarf', 52, 'Expert with cannons and explosives', 'ship', shipIds[1], 'Master Gunner', true],
+          ['Lookout Sharp-Eye', 'Elf', 120, 'Can spot a sail on the horizon from leagues away', 'ship', shipIds[1], 'Lookout', true],
+          ['Navigator Starweaver', 'Human', 31, 'Reads the stars like a book', 'ship', shipIds[2], 'Navigator', true],
+          ['Carpenter Jenkins', 'Human', 39, 'Keeps the ship seaworthy through any storm', 'ship', shipIds[2], 'Carpenter', true],
+          ['Dockmaster Willem', 'Human', 48, 'Manages the port operations', 'outpost', outpostIds[0], null, true],
+          ['Trader Goldfingers', 'Halfling', 34, 'Deals in rare goods and information', 'outpost', outpostIds[1], null, true],
+          ['Guard Captain Steel', 'Human', 41, 'Protects the outpost from threats', 'outpost', outpostIds[2], null, true],
+          ['Innkeeper Rosie', 'Human', 44, 'Provides room and board for weary sailors', 'outpost', outpostIds[3], null, true]
+        ];
 
-      for (const crew of crewData) {
-        await client.query(`
-          INSERT INTO crew (name, race, age, description, location_type, location_id, ship_position, is_alive)
-          SELECT $1, $2, $3, $4, $5, $6, $7, $8
-          WHERE NOT EXISTS (
-            SELECT 1 FROM crew WHERE name = $1
-          )
-        `, crew);
+        for (const crew of crewData) {
+          await client.query(`
+            INSERT INTO crew (name, race, age, description, location_type, location_id, ship_position, is_alive)
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8
+            WHERE NOT EXISTS (
+              SELECT 1 FROM crew WHERE name = $1
+            )
+          `, crew);
+        }
       }
 
       // Get character IDs for loot assignment
@@ -136,8 +140,9 @@ const generateTestData = async (req, res) => {
       `);
       const characterIds = characters.rows.map(row => row.id);
 
-      // Create test loot entries
-      const lootData = [
+      // Create test loot entries (only if we have characters)
+      if (characterIds.length >= 4) {
+        const lootData = [
         // Recent session loot (unprocessed)
         ['2024-08-01', 1, 'Masterwork Cutlass', false, true, 'weapon', 'medium', 'Unprocessed', 1, 315, null, req.user.id, 'Found in captain\'s quarters'],
         ['2024-08-01', 3, 'Potion of Cure Light Wounds', false, false, 'potion', 'small', 'Unprocessed', null, 150, null, req.user.id, 'Standard healing potions'],
@@ -167,15 +172,15 @@ const generateTestData = async (req, res) => {
         ['2024-06-15', 20, 'Arrows +1', false, false, 'ammunition', 'small', 'Kept Party', null, 164, null, req.user.id, 'Enchanted arrows']
       ];
 
-      for (const loot of lootData) {
-        await client.query(`
-          INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, value, whohas, whoupdated, notes)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-        `, loot);
-      }
+        for (const loot of lootData) {
+          await client.query(`
+            INSERT INTO loot (session_date, quantity, name, unidentified, masterwork, type, size, status, itemid, value, whohas, whoupdated, notes)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          `, loot);
+        }
 
-      // Create gold transaction data
-      const goldData = [
+        // Create gold transaction data
+        const goldData = [
         // Party loot sales
         ['2024-08-02', req.user.id, 'Party Loot Sale', 'Sale of pearls and foreign silver', 0, 0, 550, 0, null],
         ['2024-07-25', req.user.id, 'Party Loot Sale', 'Sold gems and art objects', 0, 0, 3600, 3, null],
@@ -199,11 +204,12 @@ const generateTestData = async (req, res) => {
         ['2024-07-05', userIds[3], 'Purchase', 'Ship supplies and rations', 0, 8, 45, 0, characterIds[3]]
       ];
 
-      for (const gold of goldData) {
-        await client.query(`
-          INSERT INTO gold (session_date, who, transaction_type, notes, copper, silver, gold, platinum, character_id)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        `, gold);
+        for (const gold of goldData) {
+          await client.query(`
+            INSERT INTO gold (session_date, who, transaction_type, notes, copper, silver, gold, platinum, character_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `, gold);
+        }
       }
 
       // Get counts for response
