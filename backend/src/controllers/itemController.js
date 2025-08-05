@@ -21,14 +21,19 @@ const getAllLoot = async (req, res) => {
     const params = [];
     let paramIndex = 1;
 
+    // If no status specified, default to unprocessed items
     if (status) {
-      conditions.push(`status = $${paramIndex}`);
+      conditions.push(`statuspage = $${paramIndex}`);
       params.push(status);
+      paramIndex++;
+    } else {
+      conditions.push(`statuspage = $${paramIndex}`);
+      params.push('Unprocessed');
       paramIndex++;
     }
 
     if (character_id) {
-      conditions.push(`whohas = $${paramIndex}`);
+      conditions.push(`(character_name = (SELECT name FROM characters WHERE id = $${paramIndex}) OR character_names @> ARRAY[(SELECT name FROM characters WHERE id = $${paramIndex})])`);
       params.push(character_id);
       paramIndex++;
     }

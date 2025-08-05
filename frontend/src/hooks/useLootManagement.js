@@ -35,10 +35,8 @@ const useLootManagement = (statusToFetch) => {
   // Fetch data based on the status
   const fetchLoot = async () => {
     try {
-      let endpoint;
-
       if (!statusToFetch) {
-        // For unprocessed loot
+        // For unprocessed loot - use the default getAllLoot which now defaults to Unprocessed
         const isDMUser = isDM();
         let params = { isDM: isDMUser };
 

@@ -312,7 +312,7 @@ const CustomLootTable = ({
     { key: "whoHasIt", label: "Who Has It?", field: "character_name", show: showColumns.whoHasIt },
     { key: "believedValue", label: "Believed Value", field: "believedvalue", show: showColumns.believedValue },
     { key: "averageAppraisal", label: "Average Appraisal", field: "average_appraisal", show: showColumns.averageAppraisal },
-    { key: "pendingSale", label: "Pending Sale", field: "status", show: showColumns.pendingSale },
+    { key: "pendingSale", label: "Pending Sale", field: "statuspage", show: showColumns.pendingSale },
     { key: "sessionDate", label: "Session Date", field: "session_date", show: showColumns.sessionDate },
     { key: "lastUpdate", label: "Last Update", field: "lastupdate", show: showColumns.lastUpdate },
   ], [showColumns]);
@@ -353,7 +353,7 @@ const CustomLootTable = ({
           )) &&
 
         // Pending sale filter
-        (showPendingSales || item.status !== 'Pending Sale')
+        (showPendingSales || item.statuspage !== 'Pending Sale')
       );
     });
   }, [
@@ -390,6 +390,7 @@ const CustomLootTable = ({
 
         case 'unidentified':
         case 'status':
+        case 'statuspage':
           return ((a[sortConfig.key] === b[sortConfig.key])
             ? 0
             : (a[sortConfig.key] ? 1 : -1)) * direction;
@@ -556,7 +557,7 @@ const CustomLootTable = ({
                     )}
 
                     {showColumns.pendingSale && (
-                      <TableCell style={mainCellStyle}>{summaryItem.status === 'Pending Sale' ? '✔' : ''}</TableCell>
+                      <TableCell style={mainCellStyle}>{summaryItem.statuspage === 'Pending Sale' ? '✔' : ''}</TableCell>
                     )}
 
                     {showColumns.sessionDate && (
