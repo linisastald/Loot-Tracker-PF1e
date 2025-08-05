@@ -105,7 +105,20 @@ export const handleUpdateChange = (e, setUpdatedEntry) => {
 };
 
 export const applyFilters = (loot, filters) => {
-  let filteredLoot = { ...loot };
+  // Ensure loot has the expected structure
+  if (!loot || !loot.individual || !loot.summary) {
+    return { summary: [], individual: [] };
+  }
+
+  let filteredLoot = { 
+    summary: [...(loot.summary || [])],
+    individual: [...(loot.individual || [])]
+  };
+
+  // Only apply filters if we have individual items
+  if (filteredLoot.individual.length === 0) {
+    return filteredLoot;
+  }
 
   if (filters.unidentified) {
     filteredLoot.individual = filteredLoot.individual.filter(item => {
@@ -138,6 +151,9 @@ export const applyFilters = (loot, filters) => {
   if (filters.pendingSale) {
     filteredLoot.individual = filteredLoot.individual.filter(item => (item.status === 'Pending Sale') === (filters.pendingSale === 'true'));
   }
+
+  // TODO: Update summary items based on filtered individual items
+  // For now, return all summary items
 
   return filteredLoot;
 };

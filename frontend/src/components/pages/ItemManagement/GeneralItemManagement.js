@@ -184,6 +184,11 @@ const GeneralItemManagement = () => {
                             fullWidth
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                    handleSearch();
+                                }
+                            }}
                         />
                     </Grid>
                     <Grid size={{xs: 12, md: 3}}>

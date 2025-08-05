@@ -356,7 +356,7 @@ class IdentificationService {
     const query = `
       SELECT l.*, i.name as base_item_name, i.type as item_type
       FROM loot l
-      JOIN item i ON l.itemid = i.id
+      LEFT JOIN item i ON l.itemid = i.id
       WHERE l.unidentified = true
       ORDER BY l.name
       LIMIT $1 OFFSET $2

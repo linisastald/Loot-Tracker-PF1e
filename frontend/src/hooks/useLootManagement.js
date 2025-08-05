@@ -53,19 +53,20 @@ const useLootManagement = (statusToFetch) => {
         }
 
         const response = await lootService.getAllLoot(params);
-        setLoot(response.data);
+        setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Kept Party') {
         const response = await lootService.getKeptPartyLoot();
-        setLoot(response.data);
+        setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Kept Self') {
         const response = await lootService.getKeptCharacterLoot();
-        setLoot(response.data);
+        setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Trashed') {
         const response = await lootService.getTrashedLoot();
-        setLoot(response.data);
+        setLoot(response.data || { summary: [], individual: [] });
       }
     } catch (error) {
       console.error(`Error fetching loot:`, error);
+      setLoot({ summary: [], individual: [] });
     }
   };
 
@@ -116,7 +117,7 @@ const useLootManagement = (statusToFetch) => {
   const filteredLoot = applyFilters(loot, filters);
 
   const handleUpdateDialogWrapper = () => {
-    handleOpenUpdateDialog(loot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog);
+    handleOpenUpdateDialog(filteredLoot.individual, selectedItems, setUpdatedEntry, setOpenUpdateDialog);
   };
 
   const handleSplitSubmitWrapper = () => {

@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
 import {
@@ -59,6 +59,7 @@ function a11yProps(index) {
 
 const GoldTransactions = () => {
     const [goldEntries, setGoldEntries] = useState([]);
+    const [overviewTotals, setOverviewTotals] = useState({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [totals, setTotals] = useState({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
@@ -68,6 +69,15 @@ const GoldTransactions = () => {
     const [activeTab, setActiveTab] = useState(0);
     const [ledgerData, setLedgerData] = useState([]);
     const [ledgerLoading, setLedgerLoading] = useState(false);
+
+    // Memoized utility function to safely format numbers
+    const formatCurrency = useCallback((value, defaultValue = '0.00') => {
+        const num = parseFloat(value);
+        if (isNaN(num) || !isFinite(num)) {
+            return defaultValue;
+        }
+        return num.toFixed(2);
+    }, []);
 
     // New gold entry form state
     const [newEntry, setNewEntry] = useState({
@@ -81,12 +91,17 @@ const GoldTransactions = () => {
     });
 
     useEffect(() => {
-        fetchGoldEntries();
         fetchUserRole();
-
-        // Fetch ledger data when the component mounts
+        fetchOverviewTotals();
         fetchLedgerData();
-    }, [startDate, endDate]);
+    }, []);
+
+    useEffect(() => {
+        // Only fetch filtered entries when on Transaction History tab
+        if (activeTab === 2) {
+            fetchGoldEntries();
+        }
+    }, [startDate, endDate, activeTab]);
 
     const fetchGoldEntries = async () => {
         try {
@@ -119,6 +134,19 @@ const GoldTransactions = () => {
         }
     };
 
+    const fetchOverviewTotals = async () => {
+        try {
+            setError(null);
+            // Fetch all gold entries without date filters for overview
+            const response = await api.get(`/gold`);
+            
+            calculateOverviewTotals(response.data);
+        } catch (error) {
+            console.error('Error fetching overview totals:', error);
+            setError('Failed to fetch overview totals.');
+        }
+    };
+
     const calculateTotals = (entries) => {
         const totals = entries.reduce(
             (acc, entry) => {
@@ -136,12 +164,32 @@ const GoldTransactions = () => {
         setTotals(totals);
     };
 
+    const calculateOverviewTotals = (entries) => {
+        const totals = entries.reduce(
+            (acc, entry) => {
+                acc.platinum += Number(entry.platinum) || 0;
+                acc.gold += Number(entry.gold) || 0;
+                acc.silver += Number(entry.silver) || 0;
+                acc.copper += Number(entry.copper) || 0;
+                return acc;
+            },
+            {platinum: 0, gold: 0, silver: 0, copper: 0}
+        );
+
+        // Calculate full total in gold pieces
+        totals.fullTotal = (10 * totals.platinum) + totals.gold + (totals.silver / 10) + (totals.copper / 100);
+        setOverviewTotals(totals);
+    };
+
     const handleDistributeAll = async () => {
         try {
             setError(null);
             await api.post(`/gold/distribute-all`, {});
             setSuccess('Gold distributed successfully!');
-            fetchGoldEntries(); // Refresh the gold entries after distribution
+            fetchOverviewTotals(); // Refresh overview totals
+            if (activeTab === 2) {
+                fetchGoldEntries(); // Refresh the gold entries if on history tab
+            }
         } catch (error) {
             console.error('Error distributing gold:', error);
             setError('Failed to distribute gold.');
@@ -153,7 +201,10 @@ const GoldTransactions = () => {
             setError(null);
             await api.post(`/gold/distribute-plus-party-loot`, {});
             setSuccess('Gold distributed with party loot successfully!');
-            fetchGoldEntries(); // Refresh the gold entries after distribution
+            fetchOverviewTotals(); // Refresh overview totals
+            if (activeTab === 2) {
+                fetchGoldEntries(); // Refresh the gold entries if on history tab
+            }
         } catch (error) {
             console.error('Error distributing gold plus party loot:', error);
             setError('Failed to distribute gold plus party loot.');
@@ -165,7 +216,10 @@ const GoldTransactions = () => {
             setError(null);
             await api.post(`/gold/balance`, {});
             setSuccess('Currency balanced successfully!');
-            fetchGoldEntries(); // Refresh the gold entries after balancing
+            fetchOverviewTotals(); // Refresh overview totals
+            if (activeTab === 2) {
+                fetchGoldEntries(); // Refresh the gold entries if on history tab
+            }
         } catch (error) {
             console.error('Error balancing gold:', error);
             setError('Failed to balance gold.');
@@ -179,13 +233,52 @@ const GoldTransactions = () => {
         setEndDate(endDate);
     };
 
-    const formatDate = (dateString) => {
+    const formatDate = useCallback((dateString) => {
         const options = {year: 'numeric', month: 'long', day: 'numeric'};
         return new Date(dateString).toLocaleDateString(undefined, options);
-    };
+    }, []);
+
+    // Memoized processing of ledger data for display
+    const processedLedgerData = useMemo(() => {
+        return ledgerData.map((row) => {
+            // Safely parse numeric values with fallback to 0
+            const lootValue = parseFloat(row.lootvalue) || 0;
+            const payments = parseFloat(row.payments) || 0;
+            const balance = lootValue - payments;
+            
+            // Check for valid balance calculation
+            const isValidBalance = !isNaN(balance) && isFinite(balance);
+            const isOverpaid = isValidBalance && balance < -0.01; // Small tolerance for floating point
+            const isUnderpaid = isValidBalance && balance > 0.01;
+            const isBalanced = isValidBalance && Math.abs(balance) <= 0.01;
+            
+            // Safely handle character name display
+            const characterName = row.character || 'Unknown Character';
+            const displayName = characterName.length > 30 
+                ? `${characterName.substring(0, 27)}...` 
+                : characterName;
+
+            return {
+                ...row,
+                lootValue,
+                payments,
+                balance,
+                isValidBalance,
+                isOverpaid,
+                isUnderpaid,
+                isBalanced,
+                characterName,
+                displayName
+            };
+        });
+    }, [ledgerData]);
 
     const handleTabChange = (event, newValue) => {
         setActiveTab(newValue);
+        // Fetch gold entries when switching to Transaction History tab
+        if (newValue === 2 && goldEntries.length === 0) {
+            fetchGoldEntries();
+        }
     };
 
     const handleEntryChange = (field, value) => {
@@ -237,7 +330,10 @@ const GoldTransactions = () => {
                 notes: ''
             });
 
-            fetchGoldEntries();
+            fetchOverviewTotals(); // Always refresh overview totals after new entry
+            if (activeTab === 2) {
+                fetchGoldEntries(); // Refresh filtered entries if on history tab
+            }
             // Also refresh ledger data if new entry affects character balances
             if (newEntry.transactionType === 'Party Payment' || newEntry.transactionType === 'Party Payback') {
                 fetchLedgerData();
@@ -252,33 +348,57 @@ const GoldTransactions = () => {
     const fetchLedgerData = async () => {
         try {
             setLedgerLoading(true);
+            setError(null); // Clear any previous errors
             const response = await lootService.getCharacterLedger();
 
             if (response.data && Array.isArray(response.data.ledger)) {
+                // Validate and clean the ledger data
+                const validatedData = response.data.ledger
+                    .filter(row => row && typeof row === 'object') // Filter out null/invalid rows
+                    .map(row => ({
+                        ...row,
+                        character: row.character || 'Unknown Character',
+                        lootvalue: row.lootvalue || '0',
+                        payments: row.payments || '0',
+                        active: Boolean(row.active)
+                    }));
+
                 // Sort active characters first, then by name
-                const sortedData = response.data.ledger
+                const sortedData = validatedData
                     .sort((a, b) => {
                         if (a.active !== b.active) return b.active - a.active;
-                        return a.character.localeCompare(b.character);
+                        return (a.character || '').localeCompare(b.character || '');
                     });
 
                 setLedgerData(sortedData);
             } else if (response.data && Array.isArray(response.data.characters)) {
-                // Fallback for old API format
-                const sortedData = response.data.characters
+                // Fallback for old API format with validation
+                const validatedData = response.data.characters
+                    .filter(row => row && typeof row === 'object')
+                    .map(row => ({
+                        ...row,
+                        character: row.character || 'Unknown Character',
+                        lootvalue: row.lootvalue || '0',
+                        payments: row.payments || '0',
+                        active: Boolean(row.active)
+                    }));
+
+                const sortedData = validatedData
                     .sort((a, b) => {
                         if (a.active !== b.active) return b.active - a.active;
-                        return a.character.localeCompare(b.character);
+                        return (a.character || '').localeCompare(b.character || '');
                     });
 
                 setLedgerData(sortedData);
             } else {
                 console.error('Invalid ledger data format:', response.data);
                 setLedgerData([]);
+                setError('Received invalid data format from server. Please contact support if this issue persists.');
             }
         } catch (error) {
             console.error('Error fetching ledger data:', error);
-            setError('Failed to load ledger data. Please try again later.');
+            setError('Failed to load ledger data. Please check your connection and try again.');
+            setLedgerData([]); // Ensure we have empty data on error
         } finally {
             setLedgerLoading(false);
         }
@@ -314,7 +434,7 @@ const GoldTransactions = () => {
                                         borderLeft: '5px solid #E5E4E2'
                                     }}>
                                         <Typography variant="subtitle2" color="text.secondary">Platinum</Typography>
-                                        <Typography variant="h4" sx={{color: '#E5E4E2'}}>{totals.platinum}</Typography>
+                                        <Typography variant="h4" sx={{color: '#E5E4E2'}}>{overviewTotals.platinum}</Typography>
                                     </Paper>
                                 </Grid>
                                 <Grid size={{xs: 12, sm: 6, md: 3}}>
@@ -325,7 +445,7 @@ const GoldTransactions = () => {
                                         borderLeft: '5px solid #FFD700'
                                     }}>
                                         <Typography variant="subtitle2" color="text.secondary">Gold</Typography>
-                                        <Typography variant="h4" sx={{color: '#FFD700'}}>{totals.gold}</Typography>
+                                        <Typography variant="h4" sx={{color: '#FFD700'}}>{overviewTotals.gold}</Typography>
                                     </Paper>
                                 </Grid>
                                 <Grid size={{xs: 12, sm: 6, md: 3}}>
@@ -336,7 +456,7 @@ const GoldTransactions = () => {
                                         borderLeft: '5px solid #C0C0C0'
                                     }}>
                                         <Typography variant="subtitle2" color="text.secondary">Silver</Typography>
-                                        <Typography variant="h4" sx={{color: '#C0C0C0'}}>{totals.silver}</Typography>
+                                        <Typography variant="h4" sx={{color: '#C0C0C0'}}>{overviewTotals.silver}</Typography>
                                     </Paper>
                                 </Grid>
                                 <Grid size={{xs: 12, sm: 6, md: 3}}>
@@ -347,14 +467,14 @@ const GoldTransactions = () => {
                                         borderLeft: '5px solid #B87333'
                                     }}>
                                         <Typography variant="subtitle2" color="text.secondary">Copper</Typography>
-                                        <Typography variant="h4" sx={{color: '#B87333'}}>{totals.copper}</Typography>
+                                        <Typography variant="h4" sx={{color: '#B87333'}}>{overviewTotals.copper}</Typography>
                                     </Paper>
                                 </Grid>
                             </Grid>
                             <Paper sx={{p: 3, mt: 3, textAlign: 'center', bgcolor: 'background.default'}}>
                                 <Typography variant="subtitle1" color="text.secondary">Total Value (in
                                     Gold)</Typography>
-                                <Typography variant="h3" color="primary">{totals.fullTotal.toFixed(2)} GP</Typography>
+                                <Typography variant="h3" color="primary">{overviewTotals.fullTotal.toFixed(2)} GP</Typography>
                             </Paper>
                         </CardContent>
                     </Card>
@@ -804,47 +924,53 @@ const GoldTransactions = () => {
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
-                                            {ledgerData.length === 0 ? (
+                                            {processedLedgerData.length === 0 ? (
                                                 <TableRow>
                                                     <TableCell colSpan={5} align="center">No ledger data
                                                         available</TableCell>
                                                 </TableRow>
                                             ) : (
-                                                ledgerData.map((row) => {
-                                                    const balance = parseFloat(row.lootvalue) - parseFloat(row.payments);
-                                                    const isOverpaid = balance < 0;
-                                                    const isUnderpaid = balance > 0;
-
-                                                    return (
-                                                        <TableRow
-                                                            key={row.character}
+                                                processedLedgerData.map((row) => (
+                                                    <TableRow
+                                                        key={row.character || Math.random()}
+                                                        sx={{
+                                                            bgcolor: row.active ? 'rgba(144, 202, 249, 0.1)' : 'inherit',
+                                                            fontWeight: row.active ? 'bold' : 'normal'
+                                                        }}
+                                                    >
+                                                        <TableCell 
+                                                            component="th" 
+                                                            scope="row"
+                                                            title={row.characterName} // Show full name on hover
+                                                            sx={{ maxWidth: '200px' }}
+                                                        >
+                                                            {row.displayName} {row.active && '(Active)'}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                            {formatCurrency(row.lootValue)}
+                                                        </TableCell>
+                                                        <TableCell align="right">
+                                                            {formatCurrency(row.payments)}
+                                                        </TableCell>
+                                                        <TableCell
+                                                            align="right"
                                                             sx={{
-                                                                bgcolor: row.active ? 'rgba(144, 202, 249, 0.1)' : 'inherit',
-                                                                fontWeight: row.active ? 'bold' : 'normal'
+                                                                color: !row.isValidBalance ? 'text.disabled' : 
+                                                                       row.isOverpaid ? 'error.main' : 
+                                                                       row.isUnderpaid ? 'warning.main' : 'inherit',
+                                                                fontWeight: (row.isOverpaid || row.isUnderpaid) ? 'bold' : 'normal'
                                                             }}
                                                         >
-                                                            <TableCell component="th" scope="row">
-                                                                {row.character} {row.active && '(Active)'}
-                                                            </TableCell>
-                                                            <TableCell
-                                                                align="right">{parseFloat(row.lootvalue).toFixed(2)}</TableCell>
-                                                            <TableCell
-                                                                align="right">{parseFloat(row.payments).toFixed(2)}</TableCell>
-                                                            <TableCell
-                                                                align="right"
-                                                                sx={{
-                                                                    color: isOverpaid ? 'error.main' : isUnderpaid ? 'warning.main' : 'inherit',
-                                                                    fontWeight: (isOverpaid || isUnderpaid) ? 'bold' : 'normal'
-                                                                }}
-                                                            >
-                                                                {balance.toFixed(2)}
-                                                            </TableCell>
-                                                            <TableCell align="center">
-                                                                {isOverpaid ? 'Overpaid' : isUnderpaid ? 'Underpaid' : 'Balanced'}
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    );
-                                                })
+                                                            {formatCurrency(row.balance)}
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            {!row.isValidBalance ? 'Invalid Data' :
+                                                             row.isOverpaid ? 'Overpaid' : 
+                                                             row.isUnderpaid ? 'Underpaid' : 
+                                                             row.isBalanced ? 'Balanced' : 'Balanced'}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
                                             )}
                                         </TableBody>
                                     </Table>
@@ -881,4 +1007,4 @@ const GoldTransactions = () => {
     );
 };
 
-export default GoldTransactions;
+export default React.memo(GoldTransactions);

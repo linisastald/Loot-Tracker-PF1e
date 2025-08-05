@@ -270,6 +270,7 @@ const searchLoot = async (req, res) => {
   const { 
     query, status, type, subtype, character_id, 
     unidentified, cursed, min_value, max_value,
+    itemid, modids, value,
     limit = 20, offset = 0 
   } = req.query;
 
@@ -277,7 +278,7 @@ const searchLoot = async (req, res) => {
     let sql = `
       SELECT l.*, i.name as base_item_name, i.type as item_type, i.subtype
       FROM loot l
-      JOIN item i ON l.itemid = i.id
+      LEFT JOIN item i ON l.itemid = i.id
     `;
     
     const conditions = [];
@@ -297,7 +298,7 @@ const searchLoot = async (req, res) => {
     }
 
     if (type) {
-      conditions.push(`i.type = $${paramIndex}`);
+      conditions.push(`l.type = $${paramIndex}`);
       params.push(type);
       paramIndex++;
     }
@@ -326,16 +327,41 @@ const searchLoot = async (req, res) => {
       paramIndex++;
     }
 
-    if (min_value) {
-      conditions.push(`l.value >= $${paramIndex}`);
-      params.push(parseFloat(min_value));
+    // Handle special itemid filters
+    if (itemid === 'null') {
+      conditions.push(`l.itemid IS NULL`);
+    } else if (itemid === 'notnull') {
+      conditions.push(`l.itemid IS NOT NULL`);
+    } else if (itemid) {
+      conditions.push(`l.itemid = $${paramIndex}`);
+      params.push(parseInt(itemid));
       paramIndex++;
     }
 
-    if (max_value) {
-      conditions.push(`l.value <= $${paramIndex}`);
-      params.push(parseFloat(max_value));
-      paramIndex++;
+    // Handle special modids filters
+    if (modids === 'null') {
+      conditions.push(`(l.modids IS NULL OR l.modids = '{}')`);
+    } else if (modids === 'notnull') {
+      conditions.push(`(l.modids IS NOT NULL AND l.modids != '{}')`);
+    }
+
+    // Handle special value filters
+    if (value === 'null') {
+      conditions.push(`l.value IS NULL`);
+    } else if (value === 'notnull') {
+      conditions.push(`l.value IS NOT NULL`);
+    } else {
+      if (min_value) {
+        conditions.push(`l.value >= $${paramIndex}`);
+        params.push(parseFloat(min_value));
+        paramIndex++;
+      }
+
+      if (max_value) {
+        conditions.push(`l.value <= $${paramIndex}`);
+        params.push(parseFloat(max_value));
+        paramIndex++;
+      }
     }
 
     if (conditions.length > 0) {
@@ -350,7 +376,7 @@ const searchLoot = async (req, res) => {
     let countSql = `
       SELECT COUNT(*)
       FROM loot l
-      JOIN item i ON l.itemid = i.id
+      LEFT JOIN item i ON l.itemid = i.id
     `;
     if (conditions.length > 0) {
       countSql += ' WHERE ' + conditions.join(' AND ');
