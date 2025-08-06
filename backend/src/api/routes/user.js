@@ -5,6 +5,7 @@ const userController = require('../../controllers/userController');
 const verifyToken = require('../../middleware/auth');
 
 // General user routes - require authentication
+router.get('/me', verifyToken, userController.getCurrentUser);
 router.put('/change-password', verifyToken, userController.changePassword);
 router.put('/change-email', verifyToken, userController.changeEmail); // New route for changing email
 router.get('/characters', verifyToken, userController.getCharacters);

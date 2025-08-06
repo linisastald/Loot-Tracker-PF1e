@@ -224,6 +224,41 @@ const updateCharacter = async (req, res) => {
 };
 
 /**
+ * Get current user info
+ */
+const getCurrentUser = async (req, res) => {
+    const userId = req.user.id; // From JWT token
+
+    // Get the user (excluding password)
+    const userResult = await dbUtils.executeQuery(
+        'SELECT id, username, role, joined, email FROM users WHERE id = $1',
+        [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+        throw controllerFactory.createNotFoundError('User not found');
+    }
+
+    const user = userResult.rows[0];
+
+    // Get active character
+    const activeCharacterResult = await dbUtils.executeQuery(
+        'SELECT id as character_id FROM characters WHERE user_id = $1 AND active IS true',
+        [userId]
+    );
+
+    const activeCharacterId = activeCharacterResult.rows.length > 0
+        ? activeCharacterResult.rows[0].character_id
+        : null;
+
+    controllerFactory.sendSuccessResponse(
+        res,
+        {...user, activeCharacterId},
+        'Current user retrieved successfully'
+    );
+};
+
+/**
  * Get user by ID
  */
 const getUserById = async (req, res) => {
@@ -564,6 +599,10 @@ module.exports = {
     updateCharacter: controllerFactory.createHandler(updateCharacter, {
         errorMessage: 'Error updating character',
         validation: updateCharacterValidation
+    }),
+
+    getCurrentUser: controllerFactory.createHandler(getCurrentUser, {
+        errorMessage: 'Error fetching current user'
     }),
 
     getUserById: controllerFactory.createHandler(getUserById, {
