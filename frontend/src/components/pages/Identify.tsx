@@ -329,8 +329,8 @@ const Identify: React.FC = () => {
     };
 
     const filteredLoot = {
-        summary: loot.summary.filter(item => !item.identified && item.itemid !== null),
-        individual: loot.individual.filter(item => !item.identified && item.itemid !== null)
+        summary: loot.summary.filter(item => item.unidentified === true),
+        individual: loot.individual.filter(item => item.unidentified === true)
     };
 
     return (
