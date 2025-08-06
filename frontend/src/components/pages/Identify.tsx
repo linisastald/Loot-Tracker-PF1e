@@ -22,20 +22,53 @@ import {fetchActiveUser} from '../../utils/utils';
 import CustomLootTable from '../common/CustomLootTable';
 import {isDM} from "../../utils/auth";
 
-const Identify = () => {
-    const [loot, setLoot] = useState({summary: [], individual: []});
-    const [selectedItems, setSelectedItems] = useState([]);
-    const [spellcraftValue, setSpellcraftValue] = useState('');
-    const [activeUser, setActiveUser] = useState(null);
-    const [openItems, setOpenItems] = useState({});
-    const [sortConfig, setSortConfig] = useState({key: '', direction: 'asc'});
-    const [isDMUser, setIsDMUser] = useState(false);
-    const [items, setItems] = useState([]);
-    const [identifiedItems, setIdentifiedItems] = useState([]);
-    const [failedItems, setFailedItems] = useState([]);
-    const [takeTen, setTakeTen] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+interface LootItem {
+  id: number;
+  name: string;
+  description?: string;
+  value?: number;
+  whohas?: string;
+  identified?: boolean;
+}
+
+interface LootData {
+  summary: LootItem[];
+  individual: LootItem[];
+}
+
+interface User {
+  id: number;
+  username: string;
+  role: string;
+}
+
+interface Item {
+  id: number;
+  name: string;
+  description?: string;
+  value?: number;
+  dc?: number;
+}
+
+interface SortConfig {
+  key: string;
+  direction: 'asc' | 'desc';
+}
+
+const Identify: React.FC = () => {
+    const [loot, setLoot] = useState<LootData>({summary: [], individual: []});
+    const [selectedItems, setSelectedItems] = useState<number[]>([]);
+    const [spellcraftValue, setSpellcraftValue] = useState<string>('');
+    const [activeUser, setActiveUser] = useState<User | null>(null);
+    const [openItems, setOpenItems] = useState<Record<number, boolean>>({});
+    const [sortConfig, setSortConfig] = useState<SortConfig>({key: '', direction: 'asc'});
+    const [isDMUser, setIsDMUser] = useState<boolean>(false);
+    const [items, setItems] = useState<Item[]>([]);
+    const [identifiedItems, setIdentifiedItems] = useState<Item[]>([]);
+    const [failedItems, setFailedItems] = useState<Item[]>([]);
+    const [takeTen, setTakeTen] = useState<boolean>(false);
+    const [error, setError] = useState<string>('');
+    const [success, setSuccess] = useState<string>('');
 
     useEffect(() => {
         fetchActiveUserDetails();
@@ -50,7 +83,7 @@ const Identify = () => {
         }
     }, []);
 
-    const fetchActiveUserDetails = async () => {
+    const fetchActiveUserDetails = async (): Promise<void> => {
         const user = await fetchActiveUser();
         if (user && user.activeCharacterId) {
             setActiveUser(user);
@@ -59,7 +92,7 @@ const Identify = () => {
         }
     };
 
-    const fetchLoot = async () => {
+    const fetchLoot = async (): Promise<void> => {
         try {
             const isDMUser = isDM();
             let params = {isDM: isDMUser};
@@ -84,7 +117,7 @@ const Identify = () => {
         }
     };
 
-    const fetchItems = async () => {
+    const fetchItems = async (): Promise<void> => {
         try {
             const response = await lootService.getAllLoot();
             // API returns { summary: [], individual: [], count: number }
@@ -110,7 +143,7 @@ const Identify = () => {
         localStorage.setItem('spellcraftBonus', value);
     };
 
-    const handleIdentify = async (itemsToIdentify) => {
+    const handleIdentify = async (itemsToIdentify: Item[]): Promise<void> => {
         try {
             setError('');
             setSuccess('');
@@ -305,7 +338,13 @@ const Identify = () => {
                 setSelectedItems={setSelectedItems}
                 openItems={openItems}
                 setOpenItems={setOpenItems}
-                handleSelectItem={handleSelectItem}
+                handleSelectItem={(id: number) => {
+                    setSelectedItems(prevSelectedItems =>
+                        prevSelectedItems.includes(id)
+                            ? prevSelectedItems.filter(itemId => itemId !== id)
+                            : [...prevSelectedItems, id]
+                    );
+                }}
                 sortConfig={sortConfig}
                 setSortConfig={setSortConfig}
                 showColumns={{

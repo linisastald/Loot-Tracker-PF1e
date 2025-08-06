@@ -29,8 +29,52 @@ import {
 import {DatePicker, LocalizationProvider} from '@mui/x-date-pickers';
 import {AdapterDateFns} from '@mui/x-date-pickers/AdapterDateFns';
 
+interface TabPanelProps {
+    children?: React.ReactNode;
+    value: number;
+    index: number;
+}
+
+interface GoldEntry {
+    id: number;
+    session_date: string;
+    transaction_type: string;
+    platinum: number;
+    gold: number;
+    silver: number;
+    copper: number;
+    notes?: string;
+}
+
+interface GoldTotals {
+    platinum: number;
+    gold: number;
+    silver: number;
+    copper: number;
+    fullTotal: number;
+}
+
+interface NewEntry {
+    sessionDate: Date;
+    transactionType: string;
+    platinum: string;
+    gold: string;
+    silver: string;
+    copper: string;
+    notes: string;
+}
+
+interface LedgerEntry {
+    id: number;
+    date: string;
+    type: string;
+    description: string;
+    amount: number;
+    balance: number;
+}
+
 // Tab Panel component
-function TabPanel(props) {
+function TabPanel(props: TabPanelProps) {
     const {children, value, index, ...other} = props;
 
     return (
@@ -50,28 +94,28 @@ function TabPanel(props) {
     );
 }
 
-function a11yProps(index) {
+function a11yProps(index: number) {
     return {
         id: `gold-tab-${index}`,
         'aria-controls': `gold-tabpanel-${index}`,
     };
 }
 
-const GoldTransactions = () => {
-    const [goldEntries, setGoldEntries] = useState([]);
-    const [overviewTotals, setOverviewTotals] = useState({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
-    const [error, setError] = useState(null);
-    const [success, setSuccess] = useState(null);
-    const [totals, setTotals] = useState({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
-    const [userRole, setUserRole] = useState('');
-    const [startDate, setStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 6)));
-    const [endDate, setEndDate] = useState(new Date());
-    const [activeTab, setActiveTab] = useState(0);
-    const [ledgerData, setLedgerData] = useState([]);
-    const [ledgerLoading, setLedgerLoading] = useState(false);
+const GoldTransactions: React.FC = () => {
+    const [goldEntries, setGoldEntries] = useState<GoldEntry[]>([]);
+    const [overviewTotals, setOverviewTotals] = useState<GoldTotals>({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
+    const [error, setError] = useState<string | null>(null);
+    const [success, setSuccess] = useState<string | null>(null);
+    const [totals, setTotals] = useState<GoldTotals>({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
+    const [userRole, setUserRole] = useState<string>('');
+    const [startDate, setStartDate] = useState<Date>(new Date(new Date().setMonth(new Date().getMonth() - 6)));
+    const [endDate, setEndDate] = useState<Date>(new Date());
+    const [activeTab, setActiveTab] = useState<number>(0);
+    const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
+    const [ledgerLoading, setLedgerLoading] = useState<boolean>(false);
 
     // Memoized utility function to safely format numbers
-    const formatCurrency = useCallback((value, defaultValue = '0.00') => {
+    const formatCurrency = useCallback((value: number | string, defaultValue: string = '0.00'): string => {
         const num = parseFloat(value);
         if (isNaN(num) || !isFinite(num)) {
             return defaultValue;
@@ -80,7 +124,7 @@ const GoldTransactions = () => {
     }, []);
 
     // New gold entry form state
-    const [newEntry, setNewEntry] = useState({
+    const [newEntry, setNewEntry] = useState<NewEntry>({
         sessionDate: new Date(),
         transactionType: 'Deposit',
         platinum: '',
@@ -103,7 +147,7 @@ const GoldTransactions = () => {
         }
     }, [startDate, endDate, activeTab]);
 
-    const fetchGoldEntries = async () => {
+    const fetchGoldEntries = async (): Promise<void> => {
         try {
             setError(null);
             const response = await api.get(`/gold`, {
@@ -111,8 +155,8 @@ const GoldTransactions = () => {
             });
 
             // Sort entries by complete session_date timestamp (not just the date part)
-            const sortedEntries = [...response.data].sort((a, b) => {
-                return new Date(b.session_date) - new Date(a.session_date);
+            const sortedEntries = [...response.data].sort((a: GoldEntry, b: GoldEntry) => {
+                return new Date(b.session_date).getTime() - new Date(a.session_date).getTime();
             });
 
             setGoldEntries(sortedEntries);
@@ -123,7 +167,7 @@ const GoldTransactions = () => {
         }
     };
 
-    const fetchUserRole = async () => {
+    const fetchUserRole = async (): Promise<void> => {
         try {
             const response = await api.get(`/auth/status`);
             if (response.data && response.data.user) {
@@ -134,7 +178,7 @@ const GoldTransactions = () => {
         }
     };
 
-    const fetchOverviewTotals = async () => {
+    const fetchOverviewTotals = async (): Promise<void> => {
         try {
             setError(null);
             // Use the dedicated overview totals endpoint for efficiency
@@ -148,7 +192,7 @@ const GoldTransactions = () => {
         }
     };
 
-    const calculateTotals = (entries) => {
+    const calculateTotals = (entries: GoldEntry[]): void => {
         const totals = entries.reduce(
             (acc, entry) => {
                 acc.platinum += Number(entry.platinum) || 0;
@@ -166,7 +210,7 @@ const GoldTransactions = () => {
     };
 
 
-    const handleDistributeAll = async () => {
+    const handleDistributeAll = async (): Promise<void> => {
         try {
             setError(null);
             await api.post(`/gold/distribute-all`, {});
@@ -181,7 +225,7 @@ const GoldTransactions = () => {
         }
     };
 
-    const handleDistributePlusPartyLoot = async () => {
+    const handleDistributePlusPartyLoot = async (): Promise<void> => {
         try {
             setError(null);
             await api.post(`/gold/distribute-plus-party-loot`, {});
@@ -196,7 +240,7 @@ const GoldTransactions = () => {
         }
     };
 
-    const handleBalance = async () => {
+    const handleBalance = async (): Promise<void> => {
         try {
             setError(null);
             await api.post(`/gold/balance`, {});
@@ -273,7 +317,7 @@ const GoldTransactions = () => {
         }));
     };
 
-    const handleSubmitEntry = async (e) => {
+    const handleSubmitEntry = async (e: React.FormEvent): Promise<void> => {
         e.preventDefault();
 
         try {
@@ -330,7 +374,7 @@ const GoldTransactions = () => {
     };
 
     // Function to fetch character loot ledger data
-    const fetchLedgerData = async () => {
+    const fetchLedgerData = async (): Promise<void> => {
         try {
             setLedgerLoading(true);
             setError(null); // Clear any previous errors

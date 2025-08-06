@@ -16,8 +16,35 @@ import api from '../../utils/api';
 import lootService from '../../services/lootService';
 import {fetchActiveUser} from '../../utils/utils';
 
+interface TabPanelProps {
+    children?: React.ReactNode;
+    value: number;
+    index: number;
+}
+
+interface Imposition {
+    id: number;
+    name: string;
+    cost: number;
+    displayCost: string;
+    effect: string;
+    description?: string;
+}
+
+interface InfamyData {
+    infamy: number;
+    disrepute: number;
+    events: any[];
+}
+
+interface User {
+    id: number;
+    username: string;
+    role: string;
+}
+
 // Extract TabPanel component
-function TabPanel({children, value, index, ...other}) {
+function TabPanel({children, value, index, ...other}: TabPanelProps) {
     return (
         <div
             role="tabpanel"
@@ -35,8 +62,16 @@ function TabPanel({children, value, index, ...other}) {
     );
 }
 
-// Extract basic dialogs as reusable components
-const ImpositionDialog = ({open, onClose, onPurchase, imposition, disrepute}) => (
+// Extract basic dialogs as reusable components  
+interface ImpositionDialogProps {
+    open: boolean;
+    onClose: () => void;
+    onPurchase: () => void;
+    imposition: Imposition | null;
+    disrepute: number;
+}
+
+const ImpositionDialog: React.FC<ImpositionDialogProps> = ({open, onClose, onPurchase, imposition, disrepute}) => (
     <Dialog open={open} onClose={onClose}>
         <DialogTitle>Purchase Imposition</DialogTitle>
         <DialogContent>
@@ -68,7 +103,17 @@ const ImpositionDialog = ({open, onClose, onPurchase, imposition, disrepute}) =>
     </Dialog>
 );
 
-const PortDialog = ({open, onClose, onSubmit, value, onChange, availablePorts, favoredPorts}) => (
+interface PortDialogProps {
+    open: boolean;
+    onClose: () => void;
+    onSubmit: () => void;
+    value: string;
+    onChange: (e: any) => void;
+    availablePorts: any[];
+    favoredPorts: any[];
+}
+
+const PortDialog: React.FC<PortDialogProps> = ({open, onClose, onSubmit, value, onChange, availablePorts, favoredPorts}) => (
     <Dialog open={open} onClose={onClose}>
         <DialogTitle>Set Favored Port</DialogTitle>
         <DialogContent>
@@ -127,7 +172,14 @@ const SacrificeDialog = ({open, onClose, onSubmit, value, onChange}) => (
 );
 
 // Extract Impositions Table component
-const ImpositionsTable = ({impositions, infamyThreshold, canPurchase, onPurchase}) => (
+interface ImpositionsTableProps {
+    impositions: Imposition[];
+    infamyThreshold: number;
+    canPurchase: boolean;
+    onPurchase: (imposition: Imposition) => void;
+}
+
+const ImpositionsTable: React.FC<ImpositionsTableProps> = ({impositions, infamyThreshold, canPurchase, onPurchase}) => (
     <TableContainer>
         <Table>
             <TableHead>
@@ -161,7 +213,7 @@ const ImpositionsTable = ({impositions, infamyThreshold, canPurchase, onPurchase
     </TableContainer>
 );
 
-const Infamy = () => {
+const Infamy: React.FC = () => {
     // State variables - grouped by purpose
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -170,22 +222,22 @@ const Infamy = () => {
     const [isDM, setIsDM] = useState(false);
 
     // Infamy data
-    const [infamyStatus, setInfamyStatus] = useState({
+    const [infamyStatus, setInfamyStatus] = useState<{infamy: number; disrepute: number; threshold: string; favored_ports: string[]}>({
         infamy: 0,
         disrepute: 0,
         threshold: 'None',
         favored_ports: []
     });
-    const [impositions, setImpositions] = useState({
+    const [impositions, setImpositions] = useState<Record<string, Imposition[]>>({
         disgraceful: [],
         despicable: [],
         notorious: [],
         loathsome: [],
         vile: []
     });
-    const [ports, setPorts] = useState([]);
-    const [portHistory, setPortHistory] = useState({});
-    const [availablePorts, setAvailablePorts] = useState([
+    const [ports, setPorts] = useState<any[]>([]);
+    const [portHistory, setPortHistory] = useState<Record<string, any>>({});
+    const [availablePorts, setAvailablePorts] = useState<string[]>([
     'Alendruan Harbor', 'Arena', 'Banukmaud', 'Beachcomber', 'Blackblood Cay',
     'Bogsbridge', 'Chalk Harbor', 'Cho-Tzu', 'Colvaas Gibbet', 'Downpour',
     'Dragonsthrall', 'Drenchport', 'Drowning Rock', 'Falchion Point', 'Fort Benbem',
@@ -199,7 +251,7 @@ const Infamy = () => {
     'Tyvas-Devas', 'Vezhnu', 'Vilelock', 'Yelligo Wharf', 'Zeibo',
     'Zhenbarghua'
 ]);
-    const [infamyHistory, setInfamyHistory] = useState([]);
+    const [infamyHistory, setInfamyHistory] = useState<any[]>([]);
 
     // Form values
     const [selectedPort, setSelectedPort] = useState('');

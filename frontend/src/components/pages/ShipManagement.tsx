@@ -17,7 +17,25 @@ import crewService from '../../services/crewService';
 import ShipDialog from './ShipDialog';
 import { SHIP_IMPROVEMENTS } from '../../data/shipData';
 
-function TabPanel({ children, value, index, ...other }) {
+interface TabPanelProps {
+  children?: React.ReactNode;
+  value: number;
+  index: number;
+}
+
+interface Ship {
+  id: number;
+  name: string;
+  type: string;
+  status: string;
+  hull_points: number;
+  max_hull_points: number;
+  description?: string;
+  crew_min: number;
+  crew_max: number;
+}
+
+function TabPanel({ children, value, index, ...other }: TabPanelProps) {
   return (
     <div role="tabpanel" hidden={value !== index} {...other}>
       {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
@@ -25,9 +43,9 @@ function TabPanel({ children, value, index, ...other }) {
   );
 }
 
-const ShipManagement = () => {
-  const [ships, setShips] = useState([]);
-  const [loading, setLoading] = useState(true);
+const ShipManagement: React.FC = () => {
+  const [ships, setShips] = useState<Ship[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [tabValue, setTabValue] = useState(0);

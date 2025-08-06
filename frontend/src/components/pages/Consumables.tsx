@@ -1,4 +1,4 @@
-// src/components/Consumables.js
+// src/components/Consumables.tsx
 import React, { useEffect, useState } from 'react';
 import api from '../../utils/api';
 import {
@@ -32,15 +32,34 @@ import {
   BatteryAlert as BatteryAlertIcon
 } from '@mui/icons-material';
 
-const Consumables = () => {
-  const [wands, setWands] = useState([]);
-  const [potions, setPotions] = useState([]);
-  const [scrolls, setScrolls] = useState([]);
-  const [openChargesDialog, setOpenChargesDialog] = useState(false);
-  const [selectedWand, setSelectedWand] = useState(null);
-  const [newCharges, setNewCharges] = useState('');
-  const [openSections, setOpenSections] = useState({wands: true, potions: true, scrolls: true});
-  const [searchQuery, setSearchQuery] = useState('');
+interface Wand {
+  id: number;
+  name: string;
+  quantity: number;
+  charges?: number | null;
+}
+
+interface PotionScroll {
+  itemid: number;
+  name: string;
+  quantity: number;
+}
+
+interface OpenSections {
+  wands: boolean;
+  potions: boolean;
+  scrolls: boolean;
+}
+
+const Consumables: React.FC = () => {
+  const [wands, setWands] = useState<Wand[]>([]);
+  const [potions, setPotions] = useState<PotionScroll[]>([]);
+  const [scrolls, setScrolls] = useState<PotionScroll[]>([]);
+  const [openChargesDialog, setOpenChargesDialog] = useState<boolean>(false);
+  const [selectedWand, setSelectedWand] = useState<Wand | null>(null);
+  const [newCharges, setNewCharges] = useState<string>('');
+  const [openSections, setOpenSections] = useState<OpenSections>({wands: true, potions: true, scrolls: true});
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Maximum charges for wands
   const MAX_WAND_CHARGES = 50;
@@ -65,7 +84,7 @@ const Consumables = () => {
     }
   };
 
-  const handleUseConsumable = async (itemid, name) => {
+  const handleUseConsumable = async (itemid: number, name: string): Promise<void> => {
     try {
       const type = name.toLowerCase().includes('potion of') ? 'potion' :
         name.toLowerCase().includes('scroll of') ? 'scroll' : 'wand';
@@ -79,9 +98,9 @@ const Consumables = () => {
     }
   };
 
-  const handleOpenChargesDialog = (wand) => {
+  const handleOpenChargesDialog = (wand: Wand): void => {
     setSelectedWand(wand);
-    setNewCharges(wand.charges || '');
+    setNewCharges(wand.charges?.toString() || '');
     setOpenChargesDialog(true);
   };
 
@@ -91,10 +110,10 @@ const Consumables = () => {
     setNewCharges('');
   };
 
-  const handleUpdateCharges = async () => {
+  const handleUpdateCharges = async (): Promise<void> => {
     try {
       await api.put(`/consumables/wandcharges`, {
-        id: selectedWand.id,
+        id: selectedWand!.id,
         charges: parseInt(newCharges),
       });
       handleCloseChargesDialog();
@@ -104,12 +123,12 @@ const Consumables = () => {
     }
   };
 
-  const toggleSection = (section) => {
+  const toggleSection = (section: keyof OpenSections): void => {
     setOpenSections(prev => ({...prev, [section]: !prev[section]}));
   };
 
   // Filter consumables based on search query
-  const filterItems = (items) => {
+  const filterItems = <T extends { name: string }>(items: T[]): T[] => {
     if (!searchQuery) return items;
     return items.filter(item =>
       item.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -117,7 +136,7 @@ const Consumables = () => {
   };
 
   // Calculate progress color based on charges percentage
-  const getChargeProgressColor = (charges) => {
+  const getChargeProgressColor = (charges: number | null | undefined): 'success' | 'warning' | 'error' => {
     if (!charges) return 'error';
     const percentage = (charges / MAX_WAND_CHARGES) * 100;
     if (percentage > 75) return 'success';
@@ -126,7 +145,7 @@ const Consumables = () => {
   };
 
   // Render charge progress bar
-  const renderChargeProgress = (charges) => {
+  const renderChargeProgress = (charges: number | null | undefined): JSX.Element | null => {
     if (charges === null || charges === undefined) return null;
 
     const percentage = (charges / MAX_WAND_CHARGES) * 100;

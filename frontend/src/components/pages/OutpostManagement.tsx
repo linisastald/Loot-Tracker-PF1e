@@ -13,7 +13,22 @@ import {
 import outpostService from '../../services/outpostService';
 import crewService from '../../services/crewService';
 
-function TabPanel({ children, value, index, ...other }) {
+interface TabPanelProps {
+  children?: React.ReactNode;
+  value: number;
+  index: number;
+}
+
+interface Outpost {
+  id: number;
+  name: string;
+  location: string;
+  established_date: string;
+  description?: string;
+  status: string;
+}
+
+function TabPanel({ children, value, index, ...other }: TabPanelProps) {
   return (
     <div role="tabpanel" hidden={value !== index} {...other}>
       {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
@@ -21,13 +36,13 @@ function TabPanel({ children, value, index, ...other }) {
   );
 }
 
-const OutpostManagement = () => {
-  const [outposts, setOutposts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [tabValue, setTabValue] = useState(0);
-  const [page, setPage] = useState(0);
+const OutpostManagement: React.FC = () => {
+  const [outposts, setOutposts] = useState<Outpost[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>('');
+  const [success, setSuccess] = useState<string>('');
+  const [tabValue, setTabValue] = useState<number>(0);
+  const [page, setPage] = useState<number>(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
   // Dialog states

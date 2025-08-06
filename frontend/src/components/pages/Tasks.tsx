@@ -26,6 +26,23 @@ import PersonIcon from '@mui/icons-material/Person';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import {grey} from '@mui/material/colors';
 
+interface Character {
+    id: number;
+    name: string;
+    player_name: string;
+}
+
+interface TaskAssignment {
+    assignments: any[];
+    timestamp: string;
+}
+
+interface Alert {
+    show: boolean;
+    severity: 'info' | 'warning' | 'error' | 'success';
+    message: string;
+}
+
 const COLORS = {
     PRE_SESSION: 8311585,  // Purple
     DURING_SESSION: 16776960,  // Yellow
@@ -97,16 +114,16 @@ const CharacterChip = styled(Box)(({theme, selected, late}) => ({
     },
 }));
 
-const Tasks = () => {
-    const [activeCharacters, setActiveCharacters] = useState([]);
-    const [selectedCharacters, setSelectedCharacters] = useState({});
-    const [lateArrivals, setLateArrivals] = useState({});
-    const [assignedTasks, setAssignedTasks] = useState(null);
-    const [snackbarOpen, setSnackbarOpen] = useState(false);
-    const [snackbarMessage, setSnackbarMessage] = useState('');
-    const [alert, setAlert] = useState({show: false, severity: 'info', message: ''});
-    const [discordSendFailed, setDiscordSendFailed] = useState(false);
-    const [lastTaskAssignment, setLastTaskAssignment] = useState(null);
+const Tasks: React.FC = () => {
+    const [activeCharacters, setActiveCharacters] = useState<Character[]>([]);
+    const [selectedCharacters, setSelectedCharacters] = useState<Record<number, boolean>>({});
+    const [lateArrivals, setLateArrivals] = useState<Record<number, boolean>>({});
+    const [assignedTasks, setAssignedTasks] = useState<TaskAssignment | null>(null);
+    const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
+    const [snackbarMessage, setSnackbarMessage] = useState<string>('');
+    const [alert, setAlert] = useState<Alert>({show: false, severity: 'info', message: ''});
+    const [discordSendFailed, setDiscordSendFailed] = useState<boolean>(false);
+    const [lastTaskAssignment, setLastTaskAssignment] = useState<TaskAssignment | null>(null);
 
     useEffect(() => {
         fetchActiveCharacters();

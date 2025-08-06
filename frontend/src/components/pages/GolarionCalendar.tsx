@@ -36,7 +36,28 @@ import EventIcon from '@mui/icons-material/Event';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import api from '../../utils/api';
 
-const months = [
+interface Month {
+  name: string;
+  days: number;
+}
+
+interface DateObject {
+  year: number;
+  month: number;
+  day?: number;
+}
+
+interface Note {
+  [key: string]: string;
+}
+
+interface StyledDayProps {
+  isCurrentDay?: boolean;
+  isSelected?: boolean;
+  theme?: any;
+}
+
+const months: Month[] = [
     {name: 'Abadius', days: 31},
     {name: 'Calistril', days: 28},
     {name: 'Pharast', days: 31},
@@ -51,9 +72,9 @@ const months = [
     {name: 'Kuthona', days: 31}
 ];
 
-const daysOfWeek = ['Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'];
+const daysOfWeek: string[] = ['Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'];
 
-const StyledDay = styled(Paper)(({theme, isCurrentDay, isSelected}) => ({
+const StyledDay = styled(Paper)<StyledDayProps>(({theme, isCurrentDay, isSelected}) => ({
     height: '80px',
     display: 'flex',
     flexDirection: 'column',
@@ -83,13 +104,13 @@ const StyledDay = styled(Paper)(({theme, isCurrentDay, isSelected}) => ({
     borderRadius: theme.shape.borderRadius,
 }));
 
-const DayNumber = styled(Typography)(({theme, isCurrentDay}) => ({
+const DayNumber = styled(Typography)<{isCurrentDay?: boolean}>(({theme, isCurrentDay}) => ({
     fontWeight: 'bold',
     marginBottom: '2px',
     color: isCurrentDay ? theme.palette.primary.contrastText : theme.palette.text.primary,
 }));
 
-const NotePreview = styled(Typography)(({theme, isCurrentDay}) => ({
+const NotePreview = styled(Typography)<{isCurrentDay?: boolean}>(({theme, isCurrentDay}) => ({
     fontSize: '0.7rem',
     lineHeight: 1.2,
     overflow: 'hidden',
@@ -139,15 +160,15 @@ const InfoCardContent = styled(CardContent)(({theme}) => ({
     },
 }));
 
-const GolarionCalendar = () => {
-    const [currentDate, setCurrentDate] = useState({year: 4722, month: 0, day: 1});
-    const [displayedDate, setDisplayedDate] = useState({year: 4722, month: 0});
-    const [selectedDate, setSelectedDate] = useState(null);
-    const [notes, setNotes] = useState({});
-    const [noteText, setNoteText] = useState('');
-    const [error, setError] = useState(null);
-    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-    const [daysToAdd, setDaysToAdd] = useState('');
+const GolarionCalendar: React.FC = () => {
+    const [currentDate, setCurrentDate] = useState<DateObject & {day: number}>({year: 4722, month: 0, day: 1});
+    const [displayedDate, setDisplayedDate] = useState<DateObject>({year: 4722, month: 0});
+    const [selectedDate, setSelectedDate] = useState<DateObject & {day: number} | null>(null);
+    const [notes, setNotes] = useState<Note>({});
+    const [noteText, setNoteText] = useState<string>('');
+    const [error, setError] = useState<string | null>(null);
+    const [confirmDialogOpen, setConfirmDialogOpen] = useState<boolean>(false);
+    const [daysToAdd, setDaysToAdd] = useState<string>('');
     const [weather, setWeather] = useState({});
     const [currentRegion, setCurrentRegion] = useState('Varisia');
 
@@ -164,7 +185,7 @@ const GolarionCalendar = () => {
         }
     }, [displayedDate, currentRegion]);
 
-    const fetchCurrentDate = async () => {
+    const fetchCurrentDate = async (): Promise<void> => {
         try {
             const response = await api.get('/calendar/current-date');
             console.log('Current date response:', response.data);
@@ -181,7 +202,7 @@ const GolarionCalendar = () => {
         }
     };
 
-    const fetchNotes = async () => {
+    const fetchNotes = async (): Promise<void> => {
         try {
             const response = await api.get('/calendar/notes');
             console.log('Notes response:', response.data);
@@ -193,7 +214,7 @@ const GolarionCalendar = () => {
         }
     };
 
-    const fetchCurrentRegion = async () => {
+    const fetchCurrentRegion = async (): Promise<void> => {
         try {
             const response = await api.get('/settings/region');
             if (response.data && response.data.value) {
@@ -205,7 +226,7 @@ const GolarionCalendar = () => {
         }
     };
 
-    const fetchWeatherForMonth = async (year, month) => {
+    const fetchWeatherForMonth = async (year: number, month: number): Promise<void> => {
         try {
             // Calculate start and end dates for the month
             const startDay = 1;
@@ -232,7 +253,7 @@ const GolarionCalendar = () => {
         }
     };
 
-    const handleNextDay = async () => {
+    const handleNextDay = async (): Promise<void> => {
         try {
             const response = await api.post('/calendar/next-day');
             const {year, month, day} = response.data;
@@ -248,7 +269,7 @@ const GolarionCalendar = () => {
         }
     };
 
-    const handleSetCurrentDay = async () => {
+    const handleSetCurrentDay = async (): Promise<void> => {
         if (!selectedDate) return;
 
         try {
@@ -268,7 +289,7 @@ const GolarionCalendar = () => {
         }
     };
 
-    const handleIncreaseDays = async () => {
+    const handleIncreaseDays = async (): Promise<void> => {
         const days = parseInt(daysToAdd);
         if (isNaN(days) || days < 1) {
             setError('Please enter a valid number of days');
@@ -287,32 +308,32 @@ const GolarionCalendar = () => {
         }
     };
 
-    const handlePrevMonth = () => {
+    const handlePrevMonth = (): void => {
         setDisplayedDate(prev => ({
             year: prev.month > 0 ? prev.year : prev.year - 1,
             month: prev.month > 0 ? prev.month - 1 : 11
         }));
     };
 
-    const handleNextMonth = () => {
+    const handleNextMonth = (): void => {
         setDisplayedDate(prev => ({
             year: prev.month < 11 ? prev.year : prev.year + 1,
             month: prev.month < 11 ? prev.month + 1 : 0
         }));
     };
 
-    const handleGoToToday = () => {
+    const handleGoToToday = (): void => {
         setDisplayedDate({year: currentDate.year, month: currentDate.month});
         setSelectedDate(currentDate);
     };
 
-    const handleDayClick = (day) => {
+    const handleDayClick = (day: number): void => {
         const clickedDate = {...displayedDate, day};
         setSelectedDate(clickedDate);
         setNoteText(notes[`${clickedDate.year}-${clickedDate.month}-${clickedDate.day}`] || '');
     };
 
-    const handleSaveNote = async () => {
+    const handleSaveNote = async (): Promise<void> => {
         if (!selectedDate) return;
 
         try {
@@ -336,7 +357,7 @@ const GolarionCalendar = () => {
         }
     };
 
-    const getMoonPhase = (date) => {
+    const getMoonPhase = (date: DateObject & {day: number}): {name: string; emoji: string} => {
         const totalDays = date.year * 365 + date.month * 30 + date.day;
         const phase = totalDays % 28;
         if (phase < 3) return {name: 'New Moon', emoji: '🌑'};

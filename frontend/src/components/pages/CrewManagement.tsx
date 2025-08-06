@@ -18,7 +18,72 @@ import outpostService from '../../services/outpostService';
 import { STANDARD_RACES, generateRandomName, generateRandomRace, generateRandomAge } from '../../data/raceData';
 import { getTodayInInputFormat, golarionToInputFormat, inputFormatToGolarion } from '../../utils/golarionDate';
 
-const TabPanel = React.memo(({ children, value, index, ...other }) => {
+interface TabPanelProps {
+  children?: React.ReactNode;
+  value: number;
+  index: number;
+}
+
+interface CrewMember {
+  id: number;
+  name: string;
+  race: string;
+  age?: number;
+  description?: string;
+  location_id: number;
+  location_type: 'ship' | 'outpost';
+  ship_position?: string;
+  hire_date?: any;
+  death_date?: string;
+  departure_date?: string;
+  last_known_location?: string;
+  location_name?: string;
+}
+
+interface Ship {
+  id: number;
+  name: string;
+  status: string;
+  type: 'ship';
+}
+
+interface Outpost {
+  id: number;
+  name: string;
+  type: 'outpost';
+}
+
+type Location = Ship | Outpost;
+
+interface EditingCrew {
+  name: string;
+  race: string;
+  customRace: string;
+  age: string;
+  description: string;
+  location_id: string;
+  ship_position: string;
+  hire_date: string;
+}
+
+interface MoveData {
+  location_id: string;
+  ship_position: string;
+}
+
+interface StatusData {
+  type: 'dead' | 'departed';
+  date: string;
+  reason: string;
+}
+
+interface RecruitmentData {
+  skillType: 'bluff' | 'diplomacy' | 'intimidate';
+  rollResult: string;
+  location_id: string;
+}
+
+const TabPanel = React.memo(({ children, value, index, ...other }: TabPanelProps) => {
   return (
     <div role="tabpanel" hidden={value !== index} {...other}>
       {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
@@ -26,29 +91,29 @@ const TabPanel = React.memo(({ children, value, index, ...other }) => {
   );
 });
 
-const CrewManagement = () => {
-  const [crew, setCrew] = useState([]);
-  const [deceasedCrew, setDeceasedCrew] = useState([]);
-  const [ships, setShips] = useState([]);
-  const [outposts, setOutposts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [tabValue, setTabValue] = useState(0);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+const CrewManagement: React.FC = () => {
+  const [crew, setCrew] = useState<CrewMember[]>([]);
+  const [deceasedCrew, setDeceasedCrew] = useState<CrewMember[]>([]);
+  const [ships, setShips] = useState<Ship[]>([]);
+  const [outposts, setOutposts] = useState<Outpost[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>('');
+  const [success, setSuccess] = useState<string>('');
+  const [tabValue, setTabValue] = useState<number>(0);
+  const [page, setPage] = useState<number>(0);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(10);
 
   // Dialog states
-  const [crewDialogOpen, setCrewDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
-  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
-  const [recruitmentDialogOpen, setRecruitmentDialogOpen] = useState(false);
-  const [selectedCrew, setSelectedCrew] = useState(null);
-  const [currentGolarionDate, setCurrentGolarionDate] = useState('');
-  const [allLocations, setAllLocations] = useState([]);
+  const [crewDialogOpen, setCrewDialogOpen] = useState<boolean>(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
+  const [moveDialogOpen, setMoveDialogOpen] = useState<boolean>(false);
+  const [statusDialogOpen, setStatusDialogOpen] = useState<boolean>(false);
+  const [recruitmentDialogOpen, setRecruitmentDialogOpen] = useState<boolean>(false);
+  const [selectedCrew, setSelectedCrew] = useState<CrewMember | null>(null);
+  const [currentGolarionDate, setCurrentGolarionDate] = useState<string>('');
+  const [allLocations, setAllLocations] = useState<Location[]>([]);
   
-  const [editingCrew, setEditingCrew] = useState({
+  const [editingCrew, setEditingCrew] = useState<EditingCrew>({
     name: '',
     race: '',
     customRace: '',
@@ -59,39 +124,39 @@ const CrewManagement = () => {
     hire_date: ''
   });
 
-  const [moveData, setMoveData] = useState({
+  const [moveData, setMoveData] = useState<MoveData>({
     location_id: '',
     ship_position: ''
   });
 
-  const [statusData, setStatusData] = useState({
+  const [statusData, setStatusData] = useState<StatusData>({
     type: 'dead',
     date: '',
     reason: ''
   });
 
-  const [recruitmentData, setRecruitmentData] = useState({
+  const [recruitmentData, setRecruitmentData] = useState<RecruitmentData>({
     skillType: 'diplomacy',
     rollResult: '',
     location_id: ''
   });
 
-  const shipPositions = [
+  const shipPositions: string[] = [
     'Captain', 'First Mate', 'Quartermaster', 'Boatswain', 'Navigator',
     'Cook', 'Gunner', 'Rigger', 'Lookout', 'Crew'
   ];
 
   // Memoized computed values for performance
-  const paginatedCrew = useMemo(() => {
+  const paginatedCrew = useMemo((): CrewMember[] => {
     return crew.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
   }, [crew, page, rowsPerPage]);
 
-  const availableLocationsForMove = useMemo(() => {
+  const availableLocationsForMove = useMemo((): Location[] => {
     return allLocations.filter(loc => loc.id !== selectedCrew?.location_id);
   }, [allLocations, selectedCrew?.location_id]);
 
-  const locationLookup = useMemo(() => {
-    const lookup = {};
+  const locationLookup = useMemo((): Record<number, Location> => {
+    const lookup: Record<number, Location> = {};
     allLocations.forEach(location => {
       lookup[location.id] = location;
     });
@@ -102,7 +167,7 @@ const CrewManagement = () => {
     fetchData();
   }, [fetchData]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (): Promise<void> => {
     try {
       setLoading(true);
       const [crewResponse, shipsResponse, outpostsResponse, deceasedResponse] = await Promise.all([
@@ -158,7 +223,7 @@ const CrewManagement = () => {
     setCrewDialogOpen(true);
   }, [currentGolarionDate]);
 
-  const handleEditCrew = useCallback((crewMember) => {
+  const handleEditCrew = useCallback((crewMember: CrewMember): void => {
     const isCustomRace = !STANDARD_RACES.includes(crewMember.race);
     setEditingCrew({
       name: crewMember.name,
@@ -178,7 +243,7 @@ const CrewManagement = () => {
     setCrewDialogOpen(true);
   }, [currentGolarionDate]);
 
-  const handleSaveCrew = async () => {
+  const handleSaveCrew = async (): Promise<void> => {
     try {
       if (!editingCrew.name.trim()) {
         setError('Crew member name is required');
@@ -230,7 +295,7 @@ const CrewManagement = () => {
     }
   };
 
-  const handleMoveCrew = async () => {
+  const handleMoveCrew = async (): Promise<void> => {
     try {
       // Determine location type from the selected location
       const selectedLocation = allLocations.find(loc => loc.id === moveData.location_id);
@@ -240,7 +305,7 @@ const CrewManagement = () => {
       }
 
       await crewService.moveCrewToLocation(
-        selectedCrew.id,
+        selectedCrew!.id,
         selectedLocation.type,
         moveData.location_id,
         selectedLocation.type === 'ship' ? moveData.ship_position : null
@@ -254,7 +319,7 @@ const CrewManagement = () => {
     }
   };
 
-  const handleRecruitment = async () => {
+  const handleRecruitment = async (): Promise<void> => {
     try {
       if (!recruitmentData.location_id) {
         setError('Location is required for recruitment');
@@ -334,13 +399,13 @@ const CrewManagement = () => {
     }
   };
 
-  const handleUpdateStatus = async () => {
+  const handleUpdateStatus = async (): Promise<void> => {
     try {
       if (statusData.type === 'dead') {
-        await crewService.markCrewDead(selectedCrew.id, statusData.date || new Date());
+        await crewService.markCrewDead(selectedCrew!.id, statusData.date || new Date());
         setSuccess('Crew member marked as deceased');
       } else {
-        await crewService.markCrewDeparted(selectedCrew.id, statusData.date || new Date(), statusData.reason);
+        await crewService.markCrewDeparted(selectedCrew!.id, statusData.date || new Date(), statusData.reason);
         setSuccess('Crew member marked as departed');
       }
       setStatusDialogOpen(false);
@@ -351,9 +416,9 @@ const CrewManagement = () => {
     }
   };
 
-  const handleDeleteCrew = async () => {
+  const handleDeleteCrew = async (): Promise<void> => {
     try {
-      await crewService.deleteCrew(selectedCrew.id);
+      await crewService.deleteCrew(selectedCrew!.id);
       setSuccess('Crew member deleted successfully');
       setDeleteDialogOpen(false);
       fetchData();
@@ -363,7 +428,7 @@ const CrewManagement = () => {
     }
   };
 
-  const getLocationName = (crewMember) => {
+  const getLocationName = (crewMember: CrewMember): string => {
     if (crewMember.location_type === 'ship') {
       const ship = ships.find(s => s.id === crewMember.location_id);
       return ship ? ship.name : 'Unknown Ship';
@@ -420,7 +485,7 @@ const CrewManagement = () => {
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
-        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
+        <Tabs value={tabValue} onChange={(e: React.SyntheticEvent, newValue: number) => setTabValue(newValue)}>
           <Tab label="Active Crew" />
           <Tab label="Deceased/Departed" />
         </Tabs>
@@ -514,8 +579,8 @@ const CrewManagement = () => {
             count={crew.length}
             rowsPerPage={rowsPerPage}
             page={page}
-            onPageChange={(e, newPage) => setPage(newPage)}
-            onRowsPerPageChange={(e) => setRowsPerPage(parseInt(e.target.value, 10))}
+            onPageChange={(e: unknown, newPage: number) => setPage(newPage)}
+            onRowsPerPageChange={(e: React.ChangeEvent<HTMLInputElement>) => setRowsPerPage(parseInt(e.target.value, 10))}
           />
         </TabPanel>
 
@@ -580,7 +645,7 @@ const CrewManagement = () => {
                 fullWidth
                 options={[...STANDARD_RACES, 'Other']}
                 value={editingCrew.race}
-                onChange={(event, newValue) => {
+                onChange={(event: any, newValue: string | null) => {
                   setEditingCrew({ ...editingCrew, race: newValue || '', customRace: newValue === 'Other' ? editingCrew.customRace : '' });
                 }}
                 renderInput={(params) => (
@@ -627,11 +692,11 @@ const CrewManagement = () => {
                 fullWidth
                 options={allLocations}
                 getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
-                value={allLocations.find(loc => loc.id === editingCrew.location_id) || null}
-                onChange={(event, newValue) => {
+                value={allLocations.find(loc => loc.id.toString() === editingCrew.location_id) || null}
+                onChange={(event: any, newValue: Location | null) => {
                   setEditingCrew({ 
                     ...editingCrew, 
-                    location_id: newValue ? newValue.id : '',
+                    location_id: newValue ? newValue.id.toString() : '',
                     ship_position: newValue?.type !== 'ship' ? '' : editingCrew.ship_position
                   });
                 }}
@@ -641,14 +706,14 @@ const CrewManagement = () => {
               />
             </Grid>
 
-            {allLocations.find(loc => loc.id === editingCrew.location_id)?.type === 'ship' && (
+            {allLocations.find(loc => loc.id.toString() === editingCrew.location_id)?.type === 'ship' && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
                   <InputLabel>Ship Position</InputLabel>
                   <Select
                     value={editingCrew.ship_position}
                     label="Ship Position"
-                    onChange={(e) => setEditingCrew({ ...editingCrew, ship_position: e.target.value })}
+                    onChange={(e: any) => setEditingCrew({ ...editingCrew, ship_position: e.target.value as string })}
                   >
                     {shipPositions.map((position) => (
                       <MenuItem key={position} value={position}>{position}</MenuItem>
@@ -699,11 +764,11 @@ const CrewManagement = () => {
                 fullWidth
                 options={availableLocationsForMove}
                 getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
-                value={allLocations.find(loc => loc.id === moveData.location_id) || null}
-                onChange={(event, newValue) => {
+                value={allLocations.find(loc => loc.id.toString() === moveData.location_id) || null}
+                onChange={(event: any, newValue: Location | null) => {
                   setMoveData({ 
                     ...moveData, 
-                    location_id: newValue ? newValue.id : '',
+                    location_id: newValue ? newValue.id.toString() : '',
                     ship_position: newValue?.type !== 'ship' ? '' : moveData.ship_position
                   });
                 }}
@@ -718,14 +783,14 @@ const CrewManagement = () => {
                 )}
               />
             </Grid>
-            {allLocations.find(loc => loc.id === moveData.location_id)?.type === 'ship' && (
+            {allLocations.find(loc => loc.id.toString() === moveData.location_id)?.type === 'ship' && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
                   <InputLabel>Ship Position</InputLabel>
                   <Select
                     value={moveData.ship_position}
                     label="Ship Position"
-                    onChange={(e) => setMoveData({ ...moveData, ship_position: e.target.value })}
+                    onChange={(e: any) => setMoveData({ ...moveData, ship_position: e.target.value as string })}
                   >
                     {shipPositions.map((position) => (
                       <MenuItem key={position} value={position}>{position}</MenuItem>
@@ -753,7 +818,7 @@ const CrewManagement = () => {
                 <Select
                   value={statusData.type}
                   label="Status"
-                  onChange={(e) => setStatusData({ ...statusData, type: e.target.value })}
+                  onChange={(e: any) => setStatusData({ ...statusData, type: e.target.value as 'dead' | 'departed' })}
                 >
                   <MenuItem value="dead">Deceased</MenuItem>
                   <MenuItem value="departed">Departed</MenuItem>
@@ -829,7 +894,7 @@ const CrewManagement = () => {
                 <Select
                   value={recruitmentData.skillType}
                   label="Recruitment Method"
-                  onChange={(e) => setRecruitmentData({ ...recruitmentData, skillType: e.target.value })}
+                  onChange={(e: any) => setRecruitmentData({ ...recruitmentData, skillType: e.target.value as 'bluff' | 'diplomacy' | 'intimidate' })}
                 >
                   <MenuItem value="bluff">Bluff (trick sailors aboard)</MenuItem>
                   <MenuItem value="diplomacy">Diplomacy (convince to join)</MenuItem>
@@ -855,11 +920,11 @@ const CrewManagement = () => {
                 fullWidth
                 options={allLocations}
                 getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
-                value={allLocations.find(loc => loc.id === recruitmentData.location_id) || null}
-                onChange={(event, newValue) => {
+                value={allLocations.find(loc => loc.id.toString() === recruitmentData.location_id) || null}
+                onChange={(event: any, newValue: Location | null) => {
                   setRecruitmentData({ 
                     ...recruitmentData, 
-                    location_id: newValue ? newValue.id : ''
+                    location_id: newValue ? newValue.id.toString() : ''
                   });
                 }}
                 renderInput={(params) => (
