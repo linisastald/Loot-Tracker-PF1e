@@ -1,7 +1,8 @@
 -- Migration: Fix loot_view - convert from table back to proper view
 -- This fixes the issue where loot_view was incorrectly created as a table instead of a view
 
--- Drop the incorrect table
+-- Drop the incorrect table/view (handle both cases)
+DROP VIEW IF EXISTS public.loot_view;
 DROP TABLE IF EXISTS public.loot_view;
 
 -- Create the correct view
