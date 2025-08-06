@@ -15,15 +15,15 @@ const getAllLoot = async (req, res) => {
     
     // Define available fields and default selection for performance
     const availableFields = [
-      'id', 'name', 'quantity', 'statuspage', 'unidentified', 'masterwork', 'cursed',
-      'character_name', 'character_names', 'session_date', 'lastupdate', 'value', 
-      'item_type', 'item_subtype', 'modification_names', 'row_type'
+      'id', 'name', 'quantity', 'statuspage', 'unidentified', 'masterwork', 'size',
+      'character_name', 'character_names', 'session_date', 'lastupdate', 'value', 'itemid', 'modids',
+      'type', 'status', 'whoupdated', 'average_appraisal', 'notes', 'appraisals', 'row_type'
     ];
     
     // Default fields for list view (essential fields only)
     const defaultFields = [
       'id', 'name', 'quantity', 'statuspage', 'unidentified', 'character_name', 
-      'session_date', 'value', 'item_type', 'row_type'
+      'session_date', 'value', 'type', 'row_type'
     ];
     
     // Parse requested fields or use defaults
@@ -272,7 +272,7 @@ const updateLootStatus = async (req, res) => {
       let paramIndex = 2;
 
       if (characterId) {
-        updateQuery += `, character_id = $${paramIndex}`;
+        updateQuery += `, whohas = $${paramIndex}`;
         params.push(characterId);
         paramIndex++;
       }
