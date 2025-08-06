@@ -62,7 +62,7 @@ function App() {
         const response = await api.get('/auth/status');
 
         // Check if the response contains success flag
-        if (response && response.success && isMounted) {
+        if (response && response.data && response.data.success && isMounted) {
           setIsAuthenticated(true);
           setUser(response.data.user);
           localStorage.setItem('user', JSON.stringify(response.data.user));
@@ -72,10 +72,13 @@ function App() {
             handleLogout();
           }
         }
-      } catch (error) {
+      } catch (error: unknown) {
         // Only log out on 401 status
-        if (error.response && error.response.status === 401 && isMounted) {
-          handleLogout();
+        if (error && typeof error === 'object' && 'response' in error) {
+          const axiosError = error as any;
+          if (axiosError.response && axiosError.response.status === 401 && isMounted) {
+            handleLogout();
+          }
         }
       } finally {
         if (isMounted) {
@@ -91,7 +94,7 @@ function App() {
     };
   }, []);
 
-  const handleLogin = (user) => {
+  const handleLogin = (user: any) => {
     // Only store user info, token is in HTTP-only cookie
     localStorage.setItem('user', JSON.stringify(user));
     setIsAuthenticated(true);

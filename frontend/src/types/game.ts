@@ -73,7 +73,8 @@ export type LootStatus =
   | 'kept-party'
   | 'sold'
   | 'given-away'
-  | 'trashed';
+  | 'trashed'
+  | 'Pending Sale'; // Add this status that appears in the actual data
 
 export interface LootItem {
   id: number;
@@ -83,13 +84,15 @@ export interface LootItem {
   subtype?: ItemSubtype;
   description?: string;
   value: number;
-  identified: boolean;
+  identified?: boolean; // Make optional since some items use 'unidentified'
+  unidentified?: boolean; // Add this property that exists in actual data
   quantity: number;
   status: LootStatus;
   statuspage?: string;
   whohas?: number; // Character ID who has the item
   salevalue?: number;
   session_id?: number;
+  session_date?: string; // Add this property that exists in actual data
   character_id?: number;
   campaign_id?: number;
   
@@ -97,6 +100,14 @@ export interface LootItem {
   mod1?: number;
   mod2?: number;
   mod3?: number;
+  modids?: number[]; // Add modids array that's used in actual data
+  
+  // Additional item properties that exist in actual data
+  size?: string;
+  masterwork?: boolean;
+  cursed?: boolean;
+  notes?: string;
+  caster_level?: number;
   
   // Timestamps
   lastupdate: string;
@@ -104,12 +115,24 @@ export interface LootItem {
   
   // Joined data (from database views)
   character_name?: string;
+  character_names?: string[]; // Array of character names
   session_name?: string;
   mod1_name?: string;
   mod2_name?: string;
   mod3_name?: string;
+  modification_names?: string;
+  row_type?: 'summary' | 'individual'; // For loot_view
   base_item?: BaseItem;
   mods?: ItemModifier[];
+  
+  // Appraisal data
+  appraisals?: Array<{
+    character_id: number;
+    character_name: string;
+    believedvalue: number;
+  }>;
+  believedvalue?: number;
+  average_appraisal?: number;
 }
 
 // Character types

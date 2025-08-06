@@ -513,7 +513,7 @@ export const formatItemNameWithMods = (
   item: LootItem, 
   itemsMap: ItemsMap, 
   modsMap: ModsMap
-): string | JSX.Element => {
+): string | React.ReactElement => {
   if (!item?.itemid) {
     return React.createElement('span', { style: { color: 'red' } }, 'Not linked');
   }

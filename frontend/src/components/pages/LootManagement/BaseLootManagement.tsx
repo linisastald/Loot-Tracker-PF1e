@@ -66,8 +66,6 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
         setSortConfig={setSortConfig}
         showColumns={config.showColumns}
         showFilters={config.showFilters}
-        filters={config.hasFilters ? filters : undefined}
-        setFilters={config.hasFilters ? setFilters : undefined}
       />
 
       {/* Floating button container - only show when items are selected */}
