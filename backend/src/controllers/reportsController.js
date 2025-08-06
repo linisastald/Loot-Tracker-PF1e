@@ -136,7 +136,7 @@ const getTrashedLoot = async (req, res) => {
     const query = `
       SELECT *
       FROM loot_view
-      WHERE statuspage IN ('Trashed', 'Given Away')
+      WHERE statuspage IN ('Trash', 'Trashed', 'Given Away')
       ORDER BY statuspage, name
       LIMIT $1 OFFSET $2
     `;
@@ -144,7 +144,7 @@ const getTrashedLoot = async (req, res) => {
     const countQuery = `
       SELECT COUNT(*)
       FROM loot_view
-      WHERE statuspage IN ('Trashed', 'Given Away')
+      WHERE statuspage IN ('Trash', 'Trashed', 'Given Away')
     `;
 
     const [itemsResult, countResult] = await Promise.all([
