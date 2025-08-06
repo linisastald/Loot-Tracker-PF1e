@@ -111,11 +111,31 @@ class MigrationRunner {
           .replace(/\s*BEGIN\s*;?\s*/gim, '\n')
           .replace(/\s*COMMIT\s*;?\s*/gim, '\n');
         
-        // Split into individual statements and filter out empty ones
+        // Split into individual statements and filter properly
         const statements = cleanSQL
           .split(';')
-          .map(stmt => stmt.trim())
-          .filter(stmt => stmt.length > 0 && !stmt.startsWith('--') && stmt !== '\n');
+          .map(stmt => {
+            // Remove all comment lines and empty lines
+            return stmt
+              .split('\n')
+              .filter(line => {
+                const trimmed = line.trim();
+                return trimmed.length > 0 && !trimmed.startsWith('--');
+              })
+              .join('\n')
+              .trim();
+          })
+          .filter(stmt => {
+            // Only keep statements that have actual SQL content
+            return stmt.length > 0 && 
+                   !stmt.startsWith('--') && 
+                   (stmt.toUpperCase().includes('CREATE') ||
+                    stmt.toUpperCase().includes('ALTER') ||
+                    stmt.toUpperCase().includes('INSERT') ||
+                    stmt.toUpperCase().includes('UPDATE') ||
+                    stmt.toUpperCase().includes('DELETE') ||
+                    stmt.toUpperCase().includes('DROP'));
+          });
         
         // Execute each statement separately (not in a transaction)
         for (const statement of statements) {
