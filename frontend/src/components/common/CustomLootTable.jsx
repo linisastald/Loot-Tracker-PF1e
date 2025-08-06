@@ -332,18 +332,54 @@ const CustomLootTable = ({
         // Unidentified filter
         (!showOnlyUnidentified || item.unidentified === true) &&
 
-        // Type filter
-        Object.entries(typeFilters).some(([type, isChecked]) => {
-          const itemType = (item.type || '').toLowerCase();
-          const filterType = type.toLowerCase();
-          return isChecked && (
-            (filterType === 'other' && (!itemType || itemType === '')) ||
-            (itemType === filterType)
-          );
-        }) &&
+        // Type filter - if all filters are checked, show all items
+        // Otherwise, apply specific filtering
+        (Object.values(typeFilters).every(checked => checked) || 
+          Object.entries(typeFilters).some(([type, isChecked]) => {
+            if (!isChecked) return false;
+            
+            const itemType = (item.type || '').toLowerCase();
+            const filterType = type.toLowerCase();
+            
+            // Map item types to filter categories
+            const typeMapping = {
+              'weapon': 'weapon',
+              'armor': 'armor',
+              'shield': 'armor',
+              'wand': 'magic',
+              'rod': 'magic',
+              'staff': 'magic',
+              'ring': 'magic',
+              'wondrous': 'magic',
+              'potion': 'magic',
+              'scroll': 'magic',
+              'ammunition': 'gear',
+              'tool': 'gear',
+              'alchemical': 'gear',
+              'gem': 'trade good',
+              'treasure': 'trade good',
+              'art': 'trade good',
+              'coin': 'trade good',
+              'trade good': 'trade good'
+            };
+            
+            const mappedType = typeMapping[itemType] || 'other';
+            
+            return filterType === mappedType || 
+                   (filterType === 'other' && !typeMapping[itemType]);
+          })
+        ) &&
 
-        // Size filter
-        (sizeFilters[item.size] || (sizeFilters['Unknown'] && (!item.size || item.size === ''))) &&
+        // Size filter - handle case differences
+        (Object.values(sizeFilters).every(checked => checked) ||
+          (() => {
+            const itemSize = item.size ? 
+              item.size.charAt(0).toUpperCase() + item.size.slice(1).toLowerCase() : 
+              'Unknown';
+            return sizeFilters[itemSize] || 
+                   (sizeFilters['Unknown'] && (!item.size || item.size === ''));
+          })()
+        ) &&
 
         // Who has filter
         (whoHasFilters.every(filter => !filter.checked) ||
