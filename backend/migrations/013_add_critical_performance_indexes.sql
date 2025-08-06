@@ -34,8 +34,8 @@ CREATE INDEX IF NOT EXISTS idx_loot_status_character ON loot(status, whohas);
 CREATE INDEX IF NOT EXISTS idx_loot_status_session ON loot(status, session_date);
 
 -- Gold entries with character and date filtering (goldController patterns)
-CREATE INDEX IF NOT EXISTS idx_gold_character_created ON gold(character_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_gold_session_created ON gold(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_gold_character_session ON gold(character_id, session_date);
+CREATE INDEX IF NOT EXISTS idx_gold_session_character ON gold(session_date, character_id);
 
 -- Character active status filtering (userController patterns)
 CREATE INDEX IF NOT EXISTS idx_characters_active_user ON characters(active, user_id);
@@ -47,11 +47,11 @@ CREATE INDEX IF NOT EXISTS idx_session_attendance_session_status ON session_atte
 -- AGGREGATION OPTIMIZATION INDEXES
 -- =====================================================================================
 
--- Optimize consumable usage stats queries
-CREATE INDEX IF NOT EXISTS idx_consumableuse_loot_time ON consumableuse(lootid, consumed_on);
+-- Optimize consumable usage stats queries (if consumableuse table exists)
+-- CREATE INDEX IF NOT EXISTS idx_consumableuse_loot_time ON consumableuse(lootid, consumed_on);
 
--- Optimize appraisal statistics queries  
-CREATE INDEX IF NOT EXISTS idx_appraisal_character_time ON appraisal(characterid, appraised_on);
+-- Optimize appraisal statistics queries (check if appraised_on column exists)  
+CREATE INDEX IF NOT EXISTS idx_appraisal_character_time ON appraisal(characterid, time);
 
 -- Optimize sold items reporting
 CREATE INDEX IF NOT EXISTS idx_sold_loot_date ON sold(lootid, soldon);
@@ -61,9 +61,12 @@ CREATE INDEX IF NOT EXISTS idx_sold_loot_date ON sold(lootid, soldon);
 -- =====================================================================================
 
 -- These should exist but ensuring they're present for referential integrity performance
-CREATE INDEX IF NOT EXISTS idx_crew_ship_id ON crew(ship_id);
-CREATE INDEX IF NOT EXISTS idx_outposts_session_id ON outposts(session_id);
-CREATE INDEX IF NOT EXISTS idx_fame_history_character ON fame_history(character_id);
+-- crew(ship_id) doesn't exist - crew uses location_id with location_type
+CREATE INDEX IF NOT EXISTS idx_crew_location_id ON crew(location_id) WHERE location_type = 'ship';
+-- outposts doesn't have session_id - skip this index
+-- CREATE INDEX IF NOT EXISTS idx_outposts_session_id ON outposts(session_id);
+-- fame_history table might not exist - skip for now
+-- CREATE INDEX IF NOT EXISTS idx_fame_history_character ON fame_history(character_id);
 
 -- =====================================================================================
 -- PARTIAL INDEXES - Optimize Filtered Queries
