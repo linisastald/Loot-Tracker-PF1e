@@ -50,13 +50,13 @@ const getAllLoot = async (req, res) => {
     const params = [];
     let paramIndex = 1;
 
-    // If no status specified, default to unprocessed items (NULL status)
+    // If no status specified, default to unprocessed items (NULL status or Pending Sale)
     if (status) {
       conditions.push(`statuspage = $${paramIndex}`);
       params.push(status);
       paramIndex++;
     } else {
-      conditions.push(`statuspage IS NULL`);
+      conditions.push(`(statuspage IS NULL OR statuspage = 'Pending Sale')`);
     }
 
     if (character_id) {
