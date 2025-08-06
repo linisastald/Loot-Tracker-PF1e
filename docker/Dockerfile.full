@@ -99,6 +99,7 @@ RUN apk add --no-cache \
 
 # Create application directories with proper permissions
 RUN mkdir -p /app/backend /app/logs /app/data /app/database && \
+    mkdir -p /app/backend/logs /app/backend/migrations/rollbacks && \
     mkdir -p /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp && \
     mkdir -p /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp && \
     mkdir -p /var/cache/nginx/scgi_temp && \
@@ -212,8 +213,8 @@ RUN echo '[supervisord]' > /etc/supervisord.conf && \
     echo 'user=backend' >> /etc/supervisord.conf && \
     echo 'autostart=true' >> /etc/supervisord.conf && \
     echo 'autorestart=true' >> /etc/supervisord.conf && \
-    echo 'stderr_logfile=/app/logs/backend.err.log' >> /etc/supervisord.conf && \
-    echo 'stdout_logfile=/app/logs/backend.out.log' >> /etc/supervisord.conf && \
+    echo 'stderr_logfile=/app/backend/logs/backend.err.log' >> /etc/supervisord.conf && \
+    echo 'stdout_logfile=/app/backend/logs/backend.out.log' >> /etc/supervisord.conf && \
     echo '' >> /etc/supervisord.conf && \
     echo '[program:nginx]' >> /etc/supervisord.conf && \
     echo 'command=nginx -g "daemon off;"' >> /etc/supervisord.conf && \

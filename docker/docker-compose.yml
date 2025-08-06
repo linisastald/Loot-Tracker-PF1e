@@ -65,6 +65,7 @@ services:
       - ALLOWED_ORIGINS=https://rotr.kempsonandko.com,http://rotr.kempsonandko.com
       - FRONTEND_URL=https://rotr.kempsonandko.com
       - GROUP_NAME=Rise of the Runelords
+      - LOG_DIR=/app/backend/logs
     depends_on:
       rotr_db:
         condition: service_healthy
@@ -131,6 +132,7 @@ services:
       - ALLOWED_ORIGINS=https://sns.kempsonandko.com,http://sns.kempsonandko.com
       - FRONTEND_URL=https://sns.kempsonandko.com
       - GROUP_NAME=Skulls & Shackles
+      - LOG_DIR=/app/backend/logs
     depends_on:
       sns_db:
         condition: service_healthy
@@ -197,6 +199,7 @@ services:
       - ALLOWED_ORIGINS=https://test.kempsonandko.com,http://test.kempsonandko.com
       - FRONTEND_URL=https://test.kempsonandko.com
       - GROUP_NAME=Test Campaign
+      - LOG_DIR=/app/backend/logs
     depends_on:
       test_db:
         condition: service_healthy
