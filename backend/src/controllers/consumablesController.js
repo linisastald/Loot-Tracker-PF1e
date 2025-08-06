@@ -88,7 +88,7 @@ const useConsumable = async (req, res) => {
     }
 
     const insertUseQuery = `
-      INSERT INTO consumableuse (lootid, who, time)
+      INSERT INTO consumableuse (lootid, who, consumed_on)
       VALUES ($1, $2, CURRENT_TIMESTAMP)
     `;
 
@@ -139,11 +139,11 @@ const getConsumableUseHistory = async (req, res) => {
   const parsedLimit = Math.min(Math.max(parseInt(limit) || 100, 10), 500);
 
   const historyQuery = `
-    SELECT cu.id, cu.time, l.name as item_name, c.name as character_name
+    SELECT cu.id, cu.consumed_on, l.name as item_name, c.name as character_name
     FROM consumableuse cu
            JOIN loot l ON cu.lootid = l.id
            JOIN characters c ON cu.who = c.id
-    ORDER BY cu.time DESC
+    ORDER BY cu.consumed_on DESC
     LIMIT $1
   `;
 

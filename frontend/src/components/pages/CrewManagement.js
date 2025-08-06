@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -18,13 +18,13 @@ import outpostService from '../../services/outpostService';
 import { STANDARD_RACES, generateRandomName, generateRandomRace, generateRandomAge } from '../../data/raceData';
 import { getTodayInInputFormat, golarionToInputFormat, inputFormatToGolarion } from '../../utils/golarionDate';
 
-function TabPanel({ children, value, index, ...other }) {
+const TabPanel = React.memo(({ children, value, index, ...other }) => {
   return (
     <div role="tabpanel" hidden={value !== index} {...other}>
       {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
     </div>
   );
-}
+});
 
 const CrewManagement = () => {
   const [crew, setCrew] = useState([]);
@@ -81,11 +81,28 @@ const CrewManagement = () => {
     'Cook', 'Gunner', 'Rigger', 'Lookout', 'Crew'
   ];
 
+  // Memoized computed values for performance
+  const paginatedCrew = useMemo(() => {
+    return crew.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  }, [crew, page, rowsPerPage]);
+
+  const availableLocationsForMove = useMemo(() => {
+    return allLocations.filter(loc => loc.id !== selectedCrew?.location_id);
+  }, [allLocations, selectedCrew?.location_id]);
+
+  const locationLookup = useMemo(() => {
+    const lookup = {};
+    allLocations.forEach(location => {
+      lookup[location.id] = location;
+    });
+    return lookup;
+  }, [allLocations]);
+
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [crewResponse, shipsResponse, outpostsResponse, deceasedResponse] = await Promise.all([
@@ -124,9 +141,9 @@ const CrewManagement = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleCreateCrew = () => {
+  const handleCreateCrew = useCallback(() => {
     setEditingCrew({
       name: '',
       race: '',
@@ -139,9 +156,9 @@ const CrewManagement = () => {
     });
     setSelectedCrew(null);
     setCrewDialogOpen(true);
-  };
+  }, [currentGolarionDate]);
 
-  const handleEditCrew = (crewMember) => {
+  const handleEditCrew = useCallback((crewMember) => {
     const isCustomRace = !STANDARD_RACES.includes(crewMember.race);
     setEditingCrew({
       name: crewMember.name,
@@ -159,7 +176,7 @@ const CrewManagement = () => {
     });
     setSelectedCrew(crewMember);
     setCrewDialogOpen(true);
-  };
+  }, [currentGolarionDate]);
 
   const handleSaveCrew = async () => {
     try {
@@ -421,9 +438,7 @@ const CrewManagement = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {crew
-                  .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                  .map((crewMember) => (
+                {paginatedCrew.map((crewMember) => (
                   <TableRow key={crewMember.id}>
                     <TableCell>
                       <Box display="flex" alignItems="center">
@@ -673,7 +688,7 @@ const CrewManagement = () => {
               {selectedCrew.ship_position && ` (${selectedCrew.ship_position})`}
             </Alert>
           )}
-          {allLocations.filter(loc => loc.id !== selectedCrew?.location_id).length === 0 && (
+          {availableLocationsForMove.length === 0 && (
             <Alert severity="warning" sx={{ mb: 2 }}>
               No other locations available. Please create a ship or outpost first.
             </Alert>
@@ -682,7 +697,7 @@ const CrewManagement = () => {
             <Grid item xs={12}>
               <Autocomplete
                 fullWidth
-                options={allLocations.filter(loc => loc.id !== selectedCrew?.location_id)}
+                options={availableLocationsForMove}
                 getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
                 value={allLocations.find(loc => loc.id === moveData.location_id) || null}
                 onChange={(event, newValue) => {

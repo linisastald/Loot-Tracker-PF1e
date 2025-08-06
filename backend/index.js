@@ -23,7 +23,6 @@ process.on('uncaughtException', (error) => {
     stack: error.stack,
     name: error.name
   });
-  console.error('UNCAUGHT EXCEPTION:', error);
   
   // Gracefully close database connections before exiting
   try {
@@ -48,7 +47,6 @@ process.on('unhandledRejection', (reason, promise) => {
     reason: reason instanceof Error ? reason.message : reason,
     promise
   });
-  console.error('UNHANDLED REJECTION:', reason);
   
   // Don't exit on unhandled rejection, but log it for investigation
   // In production, you might want to exit after several unhandled rejections
@@ -72,7 +70,6 @@ const errorHandler = (err, req, res, next) => {
     method: req.method,
     path: req.path
   });
-  console.error('Unhandled Error:', err);
 
   // Send error response
   res.status(500).json({
@@ -343,7 +340,6 @@ const startServer = async () => {
     // Start the server
     const server = app.listen(port, () => {
       logger.info(`Server running on port ${port}`);
-      console.log(`Server running on port ${port}`);
       
       // Initialize cron jobs
       initCronJobs();
@@ -353,7 +349,6 @@ const startServer = async () => {
     return server;
   } catch (error) {
     logger.error('Failed to start server:', error);
-    console.error('Failed to start server:', error);
     process.exit(1);
   }
 };

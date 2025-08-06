@@ -1,5 +1,6 @@
 // backend/src/api/routes/config.js
 const express = require('express');
+const logger = require('../../utils/logger');
 const router = express.Router();
 
 /**
@@ -15,7 +16,7 @@ router.get('/', (req, res) => {
     
     res.success(config, 'Configuration retrieved successfully');
   } catch (error) {
-    console.error('Error retrieving configuration:', error);
+    logger.error('Error retrieving configuration:', error);
     res.error('Failed to retrieve configuration', 500);
   }
 });

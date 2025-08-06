@@ -128,30 +128,20 @@ const UnidentifiedItemsManagement = () => {
         }
     };
 
-    // Fallback method to fetch items individually
+    // Fetch items by IDs using the proper endpoint
     const fetchItemsIndividually = async (itemIds) => {
         try {
+            const response = await lootService.getItemsByIds(itemIds);
+            const items = response.data.items || [];
+            
             const newItemsMap = {};
-
-            // Fetch each item separately
-            for (const id of itemIds) {
-                try {
-                    const response = await lootService.getAllLoot({query: id});
-                    // API returns { summary: [], individual: [], count: number }
-                    const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
-                    const exactMatch = allItems.find(item => item.id === id);
-
-                    if (exactMatch) {
-                        newItemsMap[id] = exactMatch;
-                    }
-                } catch (err) {
-                    console.error(`Error fetching item ${id}:`, err);
-                }
-            }
+            items.forEach(item => {
+                newItemsMap[item.id] = item;
+            });
 
             setItemsMap(newItemsMap);
         } catch (error) {
-            console.error('Error in fallback item fetching:', error);
+            console.error('Error fetching items by IDs:', error);
         }
     };
 

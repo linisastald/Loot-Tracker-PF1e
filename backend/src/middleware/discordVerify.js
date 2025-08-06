@@ -1,5 +1,6 @@
 // middleware/discordVerify.js
 const crypto = require('crypto');
+const logger = require('../utils/logger');
 
 const verifyDiscordSignature = (req, res, next) => {
     try {
@@ -8,7 +9,7 @@ const verifyDiscordSignature = (req, res, next) => {
         const publicKey = process.env.DISCORD_PUBLIC_KEY;
         
         if (!signature || !timestamp || !publicKey) {
-            console.log('Missing Discord verification headers or public key');
+            logger.debug('Missing Discord verification headers or public key');
             return res.status(401).send('Unauthorized');
         }
 
@@ -16,13 +17,13 @@ const verifyDiscordSignature = (req, res, next) => {
         const isValidRequest = verifyKey(body, signature, timestamp, publicKey);
         
         if (!isValidRequest) {
-            console.log('Invalid Discord signature');
+            logger.debug('Invalid Discord signature');
             return res.status(401).send('Unauthorized');
         }
         
         next();
     } catch (error) {
-        console.error('Discord verification error:', error);
+        logger.error('Discord verification error:', error);
         res.status(401).send('Unauthorized');
     }
 };

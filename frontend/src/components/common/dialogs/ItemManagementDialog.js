@@ -53,17 +53,14 @@ const ItemManagementDialog = ({
                         setItemInputValue(existingItem.name);
                         setItemOptions([existingItem]);
                     } else {
-                        // Otherwise fetch it
-                        const response = await lootService.getAllLoot({query: updatedItem.itemid});
-                        // API returns { summary: [], individual: [], count: number }
-                        const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+                        // Otherwise fetch it by ID from base items
+                        const response = await lootService.getItemsByIds([updatedItem.itemid]);
+                        // API returns { items: [...], count: number }
+                        const allItems = response.data.items || [];
                         if (allItems && allItems.length > 0) {
-                            // Find the exact item
-                            const matchingItem = allItems.find(item => item.id === updatedItem.itemid);
-                            if (matchingItem) {
-                                setItemInputValue(matchingItem.name);
-                                setItemOptions([matchingItem]);
-                            }
+                            const matchingItem = allItems[0]; // Should be the exact item
+                            setItemInputValue(matchingItem.name);
+                            setItemOptions([matchingItem]);
                         }
                     }
                 } catch (error) {
@@ -117,9 +114,9 @@ const ItemManagementDialog = ({
 
         setItemsLoading(true);
         try {
-            const response = await lootService.getAllLoot({query: searchText});
-            // API returns { summary: [], individual: [], count: number }
-            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+            const response = await lootService.suggestItems({query: searchText});
+            // API returns { suggestions: [...], count: number }
+            const allItems = response.data.suggestions || [];
             setItemOptions(allItems);
         } catch (error) {
             console.error('Error fetching items:', error);

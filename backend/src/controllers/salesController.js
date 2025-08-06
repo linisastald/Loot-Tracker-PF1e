@@ -4,6 +4,7 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
 const SalesService = require('../services/salesService');
+const { calculateItemSaleValue, calculateTotalSaleValue } = require('../utils/saleValueCalculator');
 
 /**
  * Get all items pending sale
@@ -290,6 +291,71 @@ const cancelPendingSale = async (req, res) => {
   }
 };
 
+/**
+ * Calculate sale values for items without actually selling them
+ * Useful for frontend display purposes
+ */
+const calculateSaleValues = async (req, res) => {
+  try {
+    const { items } = req.body;
+    
+    if (!items || !Array.isArray(items)) {
+      throw controllerFactory.createValidationError('Items array is required');
+    }
+
+    if (items.length === 0) {
+      return controllerFactory.sendSuccessResponse(res, {
+        items: [],
+        totalSaleValue: 0,
+        validCount: 0,
+        invalidCount: 0
+      }, 'No items to calculate');
+    }
+
+    // Calculate sale values for each item
+    const calculatedItems = items.map(item => {
+      const saleValue = calculateItemSaleValue(item);
+      const quantity = parseInt(item.quantity) || 1;
+      const totalItemValue = saleValue * quantity;
+      
+      return {
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        value: parseFloat(item.value) || 0,
+        quantity: quantity,
+        saleValue: parseFloat(saleValue.toFixed(2)),
+        totalSaleValue: parseFloat(totalItemValue.toFixed(2)),
+        canSell: item.unidentified !== true && item.value !== null && item.value !== undefined
+      };
+    });
+
+    // Calculate totals
+    const totalSaleValue = calculateTotalSaleValue(items);
+    const validItems = calculatedItems.filter(item => item.canSell);
+    const invalidItems = calculatedItems.filter(item => !item.canSell);
+
+    return controllerFactory.sendSuccessResponse(res, {
+      items: calculatedItems,
+      totalSaleValue: parseFloat(totalSaleValue.toFixed(2)),
+      validCount: validItems.length,
+      invalidCount: invalidItems.length,
+      summary: {
+        validTotal: parseFloat(calculateTotalSaleValue(items.filter(item => 
+          item.unidentified !== true && item.value !== null && item.value !== undefined
+        )).toFixed(2)),
+        invalidTotal: parseFloat(calculateTotalSaleValue(items.filter(item => 
+          item.unidentified === true || item.value === null || item.value === undefined
+        )).toFixed(2))
+      }
+    }, `Calculated sale values for ${items.length} items`);
+
+  } catch (error) {
+    logger.error('Error calculating sale values:', error);
+    throw error;
+  }
+};
+
 // Export controller functions with factory wrappers
 module.exports = {
   getPendingSaleItems: controllerFactory.createHandler(getPendingSaleItems, {
@@ -322,5 +388,9 @@ module.exports = {
   
   cancelPendingSale: controllerFactory.createHandler(cancelPendingSale, {
     errorMessage: 'Error cancelling pending sale'
+  }),
+
+  calculateSaleValues: controllerFactory.createHandler(calculateSaleValues, {
+    errorMessage: 'Error calculating sale values'
   })
 };

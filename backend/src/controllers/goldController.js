@@ -3,6 +3,7 @@ const Gold = require('../models/Gold');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const GoldDistributionService = require('../services/goldDistributionService');
 
 /**
  * Create a new gold entry
@@ -11,7 +12,7 @@ const createGoldEntry = async (req, res) => {
     const {goldEntries} = req.body;
 
     if (!goldEntries || !Array.isArray(goldEntries) || goldEntries.length === 0) {
-        return res.validationError('Gold entries array is required');
+        throw controllerFactory.createValidationError('Gold entries array is required');
     }
 
     const createdEntries = [];
@@ -44,14 +45,14 @@ const createGoldEntry = async (req, res) => {
         const newCopper = currentCopper + adjustedEntry.copper;
 
         if (newPlatinum < 0 || newGold < 0 || newSilver < 0 || newCopper < 0) {
-            return res.validationError('Transaction would result in negative currency balance');
+            throw controllerFactory.createValidationError('Transaction would result in negative currency balance');
         }
 
         try {
             const createdEntry = await Gold.create(adjustedEntry);
             createdEntries.push(createdEntry);
         } catch (error) {
-            console.error('Error creating gold entry:', error);
+            logger.error('Error creating gold entry:', error);
             return res.error('Error creating gold entry', 500);
         }
     }
@@ -63,22 +64,63 @@ const createGoldEntry = async (req, res) => {
  * Get all gold entries with optional date filtering
  */
 const getAllGoldEntries = async (req, res) => {
-    // Get query parameters with defaults
-    const startDate = req.query.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default: 30 days ago
-    const endDate = req.query.endDate || new Date(); // Default: current date
+    // Only apply default date filtering if startDate or endDate are provided
+    // This allows the overview to get all data when no dates are specified
+    let startDate = req.query.startDate;
+    let endDate = req.query.endDate;
+    
+    // Pagination parameters with defaults
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 500); // Cap at 500 for performance
+
+    // If neither date is provided, get all entries (for overview)
+    // If only one date is provided, use defaults for the other
+    if (startDate && !endDate) {
+        endDate = new Date();
+    } else if (!startDate && endDate) {
+        startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    }
 
     try {
-        const entries = await Gold.findAll({startDate, endDate});
-        entries.sort((a, b) => new Date(b.session_date) - new Date(a.session_date));
-        return res.success(entries, 'Gold entries retrieved successfully');
+        const result = await Gold.findAll({ startDate, endDate, page, limit });
+        
+        // Return paginated response with metadata
+        return res.success({
+            data: result.transactions,
+            pagination: result.pagination
+        }, 'Gold entries retrieved successfully');
     } catch (error) {
-        console.error('Error fetching gold entries:', error);
+        logger.error('Error fetching gold entries:', error);
         return res.error('Error fetching gold entries', 500);
     }
 };
 
 /**
+ * Get gold overview totals using the database view for efficiency
+ */
+const getGoldOverviewTotals = async (req, res) => {
+    try {
+        const result = await dbUtils.executeQuery('SELECT * FROM gold_totals_view');
+        const totals = result.rows[0];
+
+        return res.success({
+            platinum: parseInt(totals.total_platinum) || 0,
+            gold: parseInt(totals.total_gold) || 0,
+            silver: parseInt(totals.total_silver) || 0,
+            copper: parseInt(totals.total_copper) || 0,
+            fullTotal: parseFloat(totals.total_value_in_gold) || 0,
+            totalTransactions: parseInt(totals.total_transactions) || 0,
+            lastTransactionDate: totals.last_transaction_date
+        }, 'Gold overview totals retrieved successfully');
+    } catch (error) {
+        logger.error('Error fetching gold overview totals:', error);
+        return res.error('Error fetching gold overview totals', 500);
+    }
+};
+
+/**
  * Helper function to distribute gold
+ * Refactored to use GoldDistributionService for better maintainability
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {boolean} includePartyShare - Whether to include a share for party loot
@@ -86,100 +128,15 @@ const getAllGoldEntries = async (req, res) => {
  */
 const distributeGold = async (req, res, includePartyShare) => {
     try {
-        // Get user ID from the req.user object (added by verifyToken middleware)
         const userId = req.user.id;
-
-        // Get active characters
-        const activeCharactersResult = await dbUtils.executeQuery(
-            'SELECT id, name FROM characters WHERE active = true'
-        );
-        const activeCharacters = activeCharactersResult.rows;
-
-        if (activeCharacters.length === 0) {
-            return res.validationError('No active characters found');
-        }
-
-        // Get total balance for each currency
-        const totalResult = await dbUtils.executeQuery(
-            'SELECT SUM(platinum) AS total_platinum, SUM(gold) AS total_gold, SUM(silver) AS total_silver, SUM(copper) AS total_copper FROM gold'
-        );
-
-        const totalPlatinum = parseFloat(totalResult.rows[0].total_platinum) || 0;
-        const totalGold = parseFloat(totalResult.rows[0].total_gold) || 0;
-        const totalSilver = parseFloat(totalResult.rows[0].total_silver) || 0;
-        const totalCopper = parseFloat(totalResult.rows[0].total_copper) || 0;
-
-        const numCharacters = activeCharacters.length;
-        // Calculate divisor based on whether to include a party share
-        const shareDivisor = includePartyShare ? numCharacters + 1 : numCharacters;
-
-        // Calculate distribution amounts
-        const distributePlatinum = Math.floor(totalPlatinum / shareDivisor);
-        const distributeGold = Math.floor(totalGold / shareDivisor);
-        const distributeSilver = Math.floor(totalSilver / shareDivisor);
-        const distributeCopper = Math.floor(totalCopper / shareDivisor);
-
-        if (distributePlatinum === 0 && distributeGold === 0 && distributeSilver === 0 && distributeCopper === 0) {
-            return res.validationError('No currency to distribute');
-        }
-
-        // Check if distribution would cause negative balances
-        const totalAfterDistribution = {
-            platinum: totalPlatinum - (distributePlatinum * numCharacters),
-            gold: totalGold - (distributeGold * numCharacters),
-            silver: totalSilver - (distributeSilver * numCharacters),
-            copper: totalCopper - (distributeCopper * numCharacters)
-        };
-
-        if (totalAfterDistribution.platinum < 0 || totalAfterDistribution.gold < 0 || 
-            totalAfterDistribution.silver < 0 || totalAfterDistribution.copper < 0) {
-            return res.validationError('Insufficient funds for distribution');
-        }
-
-        const createdEntries = [];
-
-        // Execute in a transaction
-        await dbUtils.executeTransaction(async (client) => {
-            for (const character of activeCharacters) {
-                const entry = {
-                    sessionDate: new Date(),
-                    transactionType: 'Withdrawal',
-                    platinum: -distributePlatinum,
-                    gold: -distributeGold,
-                    silver: -distributeSilver,
-                    copper: -distributeCopper,
-                    notes: `Distributed to ${character.name}`,
-                    userId,
-                };
-
-                const insertQuery = `
-                    INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    RETURNING *
-                `;
-
-                const insertResult = await client.query(insertQuery, [
-                    entry.sessionDate,
-                    entry.transactionType,
-                    entry.platinum,
-                    entry.gold,
-                    entry.silver,
-                    entry.copper,
-                    entry.notes
-                ]);
-
-                createdEntries.push(insertResult.rows[0]);
-            }
-        });
-
-        const successMessage = includePartyShare
-            ? 'Gold distributed with party loot share'
-            : 'Gold distributed successfully';
-
-        return res.success(createdEntries, successMessage);
+        
+        // Use GoldDistributionService to handle the complex distribution logic
+        const result = await GoldDistributionService.executeDistribution(userId, includePartyShare);
+        
+        return res.success(result.entries, result.message);
     } catch (error) {
-        console.error(`Error distributing gold${includePartyShare ? ' plus party loot' : ''}:`, error);
-        return res.error(`Error distributing gold${includePartyShare ? ' with party loot share' : ''}`, 500);
+        logger.error(`Error distributing gold${includePartyShare ? ' plus party loot' : ''}:`, error);
+        throw error; // Let controllerFactory handle the error response
     }
 };
 
@@ -267,7 +224,7 @@ const balance = async (req, res) => {
 
         return res.success(result.rows[0], 'Currencies balanced successfully');
     } catch (error) {
-        console.error('Error balancing currencies:', error);
+        logger.error('Error balancing currencies:', error);
         return res.error('Error balancing currencies', 500);
     }
 };
@@ -286,6 +243,9 @@ module.exports = {
     }),
     getAllGoldEntries: controllerFactory.createHandler(getAllGoldEntries, {
         errorMessage: 'Error fetching gold entries'
+    }),
+    getGoldOverviewTotals: controllerFactory.createHandler(getGoldOverviewTotals, {
+        errorMessage: 'Error fetching gold overview totals'
     }),
     distributeAllGold: controllerFactory.createHandler(distributeAllGold, {
         errorMessage: 'Error distributing gold'

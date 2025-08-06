@@ -137,10 +137,11 @@ const GoldTransactions = () => {
     const fetchOverviewTotals = async () => {
         try {
             setError(null);
-            // Fetch all gold entries without date filters for overview
-            const response = await api.get(`/gold`);
+            // Use the dedicated overview totals endpoint for efficiency
+            const response = await api.get(`/gold/overview-totals`);
             
-            calculateOverviewTotals(response.data);
+            // Response already contains calculated totals
+            setOverviewTotals(response.data);
         } catch (error) {
             console.error('Error fetching overview totals:', error);
             setError('Failed to fetch overview totals.');
@@ -164,22 +165,6 @@ const GoldTransactions = () => {
         setTotals(totals);
     };
 
-    const calculateOverviewTotals = (entries) => {
-        const totals = entries.reduce(
-            (acc, entry) => {
-                acc.platinum += Number(entry.platinum) || 0;
-                acc.gold += Number(entry.gold) || 0;
-                acc.silver += Number(entry.silver) || 0;
-                acc.copper += Number(entry.copper) || 0;
-                return acc;
-            },
-            {platinum: 0, gold: 0, silver: 0, copper: 0}
-        );
-
-        // Calculate full total in gold pieces
-        totals.fullTotal = (10 * totals.platinum) + totals.gold + (totals.silver / 10) + (totals.copper / 100);
-        setOverviewTotals(totals);
-    };
 
     const handleDistributeAll = async () => {
         try {

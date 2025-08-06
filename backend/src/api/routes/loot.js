@@ -9,6 +9,7 @@ const salesController = require('../../controllers/salesController');
 const identificationService = require('../../services/identificationService');
 const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
+const { createValidationMiddleware, validate } = require('../../middleware/validation');
 const logger = require('../../utils/logger');
 
 // Log deprecation warning
@@ -17,9 +18,9 @@ logger.warn('Legacy loot routes are being used. These routes will be deprecated.
 // Legacy route mappings to new controllers
 // TODO: Update frontend to use new API endpoints
 
-// Item creation routes -> itemCreationController
+// Item creation routes -> itemCreationController (with validation)
 router.post('/parse-item', verifyToken, itemCreationController.parseItemDescription);
-router.post('/', verifyToken, itemCreationController.createLoot);
+router.post('/', verifyToken, createValidationMiddleware('createLoot'), itemCreationController.createLoot);
 router.get('/items-by-id', verifyToken, itemCreationController.getItemsById);
 router.get('/mods-by-id', verifyToken, itemCreationController.getModsById);
 router.get('/mods', verifyToken, checkRole('DM'), itemCreationController.getMods);

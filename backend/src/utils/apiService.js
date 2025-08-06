@@ -88,19 +88,22 @@ class ApiService {
     const resourceName = this.resource.charAt(0).toUpperCase() + this.resource.slice(1);
 
     if (axios.isCancel(error)) {
-      console.log('Request cancelled');
+      // Request cancelled - no action needed
       return;
     }
 
     if (error.response) {
       // Server responded with an error status code
-      console.error(`${resourceName} API ${method} error: ${error.response.status}`, error.response.data);
+      // Log API error (consider using proper error tracking service)
+      // Error: ${resourceName} API ${method} error: ${error.response.status}
     } else if (error.request) {
       // Request was made but no response was received
-      console.error(`${resourceName} API ${method} error: No response received`, error.request);
+      // Log network error (consider using proper error tracking service)
+      // Error: ${resourceName} API ${method} error: No response received
     } else {
       // Something else happened while setting up the request
-      console.error(`${resourceName} API ${method} error:`, error.message);
+      // Log request setup error (consider using proper error tracking service)
+      // Error: ${resourceName} API ${method} error: ${error.message}
     }
   }
 

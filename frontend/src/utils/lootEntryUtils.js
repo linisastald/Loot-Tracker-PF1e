@@ -20,33 +20,20 @@ export const fetchInitialData = async (setItemOptions, setActiveCharacterId) => 
 
 export const fetchItemNames = async (query = '') => {
   try {
-    // If query is empty, return all items
-    const params = query.trim() ? {query} : {};
-    const response = await lootService.getAllLoot(params);
+    // Use suggestItems to get base items from the item table, not loot instances
+    const params = query.trim() ? { query: query.trim(), limit: 50 } : { query: '', limit: 50 };
+    const response = await lootService.suggestItems(params);
 
-    // Ensure we always return an array of objects with name and id
-    // API returns { summary: [], individual: [], count: number }
-    const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
-    const items = allItems.map(item => ({
+    // API returns { suggestions: [...], count: number }
+    const items = (response.data.suggestions || []).map(item => ({
       name: item.name,
       id: item.id,
       type: item.type,
+      subtype: item.subtype,
       value: item.value || null
     }));
 
-    // Sort items to prioritize matches by item name
-    if (query.trim()) {
-      const lowerQuery = query.toLowerCase();
-      items.sort((a, b) => {
-        const aStartsWith = a.name.toLowerCase().startsWith(lowerQuery);
-        const bStartsWith = b.name.toLowerCase().startsWith(lowerQuery);
-
-        if (aStartsWith && !bStartsWith) return -1;
-        if (!aStartsWith && bStartsWith) return 1;
-        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-      });
-    }
-
+    // Items are already sorted by relevance from the backend
     return items;
   } catch (error) {
     console.error('Error fetching item names:', error);

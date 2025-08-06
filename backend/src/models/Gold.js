@@ -34,27 +34,62 @@ class GoldModel extends BaseModel {
   }
 
   /**
-   * Get all gold transactions with date filtering
-   * @param {Object} options - Query options (e.g., date range)
-   * @return {Promise<Array>} - Array of gold transactions
+   * Get all gold transactions with date filtering and pagination
+   * @param {Object} options - Query options (e.g., date range, pagination)
+   * @return {Promise<Object>} - Object with transactions and pagination info
    */
   async findAll(options = {}) {
+    const { startDate, endDate, page = 1, limit = 50 } = options;
+    
+    // Calculate offset for pagination
+    const offset = (page - 1) * limit;
+    
+    // Build count query
+    let countQuery = 'SELECT COUNT(*) as total FROM gold';
+    const countValues = [];
+    let countParamCount = 1;
+    
+    // Build main query
     let query = 'SELECT * FROM gold';
     const values = [];
     let paramCount = 1;
 
     // Add WHERE clauses if options are provided
-    if (options.startDate && options.endDate) {
-      query += ` WHERE session_date BETWEEN $${paramCount} AND $${paramCount + 1}`;
-      values.push(options.startDate, options.endDate);
+    if (startDate && endDate) {
+      const whereClause = ` WHERE session_date BETWEEN $${paramCount} AND $${paramCount + 1}`;
+      query += whereClause;
+      countQuery += whereClause;
+      
+      values.push(startDate, endDate);
+      countValues.push(startDate, endDate);
       paramCount += 2;
+      countParamCount += 2;
     }
 
-    // Add ORDER BY clause
-    query += ' ORDER BY session_date DESC';
+    // Add ORDER BY and LIMIT clauses
+    query += ` ORDER BY session_date DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    values.push(limit, offset);
 
-    const result = await dbUtils.executeQuery(query, values, 'Error fetching gold transactions');
-    return result.rows;
+    // Execute both queries
+    const [transactionResult, countResult] = await Promise.all([
+      dbUtils.executeQuery(query, values, 'Error fetching gold transactions'),
+      dbUtils.executeQuery(countQuery, countValues, 'Error counting gold transactions')
+    ]);
+
+    const total = parseInt(countResult.rows[0].total);
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      transactions: transactionResult.rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
+    };
   }
 
   /**

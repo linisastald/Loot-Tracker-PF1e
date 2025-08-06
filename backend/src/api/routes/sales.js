@@ -21,4 +21,7 @@ router.post('/up-to', salesController.sellUpTo);
 router.get('/history', salesController.getSaleHistory);
 router.get('/statistics', salesController.getSaleStatistics);
 
+// Sale value calculations (without actually selling)
+router.post('/calculate', salesController.calculateSaleValues);
+
 module.exports = router;

@@ -1,56 +1,15 @@
 import React from 'react';
-import {Container,} from '@mui/material';
-import CustomLootTable from '../../common/CustomLootTable';
-import useLootManagement from '../../../hooks/useLootManagement';
+import BaseLootManagement from './BaseLootManagement';
+import { trashedLootConfig } from './configs';
 
 const GivenAwayOrTrashed = () => {
-    const {
-        loot,
-        selectedItems,
-        setSelectedItems,
-        openItems,
-        setOpenItems,
-        sortConfig,
-        setSortConfig,
-        handleSelectItem,
-    } = useLootManagement('Trashed');
+    // Trashed items typically have no actions, so we use the base config
+    const config = {
+        ...trashedLootConfig,
+        actions: [], // No actions for trashed items
+    };
 
-    return (
-        <Container maxWidth={false} component="main">
-            <CustomLootTable
-                loot={loot.summary}
-                individualLoot={loot.individual}
-                selectedItems={selectedItems}
-                setSelectedItems={setSelectedItems}
-                openItems={openItems}
-                setOpenItems={setOpenItems}
-                handleSelectItem={handleSelectItem}
-                sortConfig={sortConfig}
-                setSortConfig={setSortConfig}
-                showColumns={{
-                    select: false,
-                    quantity: true,
-                    name: true,
-                    type: true,
-                    size: false,
-                    whoHasIt: false,
-                    believedValue: false,
-                    averageAppraisal: false,
-                    sessionDate: true,
-                    lastUpdate: true,
-                    unidentified: false,
-                    pendingSale: false
-                }}
-                showFilters={{
-                    pendingSale: false,
-                    unidentified: false,
-                    type: true,
-                    size: false,
-                    whoHas: false,
-                }}
-            />
-        </Container>
-    );
+    return <BaseLootManagement config={config} />;
 };
 
 export default GivenAwayOrTrashed;

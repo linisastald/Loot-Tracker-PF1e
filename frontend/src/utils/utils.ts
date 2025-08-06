@@ -1,23 +1,81 @@
-// src/utils/utils.js
+// src/utils/utils.ts
 import React from 'react';
 import api from './api';
 import lootService from '../services/lootService';
+import { LootItem, Character, LootStatus, ItemType } from '../types/game';
 
-export const fetchActiveUser = async () => {
+// API Response types
+interface UserResponse {
+  data?: {
+    user?: User;
+  };
+}
+
+interface User {
+  id: number;
+  activeCharacterId?: number;
+  username?: string;
+  role?: string;
+}
+
+interface LootData {
+  summary: LootItem[];
+  individual: LootItem[];
+}
+
+interface Filters {
+  unidentified?: string | boolean;
+  type?: ItemType;
+  size?: string;
+  pendingSale?: string | boolean;
+}
+
+interface SplitQuantity {
+  quantity: number;
+}
+
+interface ItemsMap {
+  [key: number]: LootItem;
+}
+
+interface ModsMap {
+  [key: number]: {
+    id: number;
+    name: string;
+    casterlevel?: number;
+    plus?: number;
+  };
+}
+
+// Callback function types
+type SetStateCallback<T> = React.Dispatch<React.SetStateAction<T>>;
+type CallbackFunction = () => void;
+type ErrorCallback = (message: string) => void;
+type SuccessCallback = (message: string) => void;
+
+/**
+ * Fetch the currently active user from the authentication endpoint
+ */
+export const fetchActiveUser = async (): Promise<User | null> => {
   try {
-    const response = await api.get(`/auth/status`);
-    if (response && response.data && response.data.user) {
+    const response: UserResponse = await api.get('/auth/status');
+    if (response?.data?.user) {
       return response.data.user;
     }
-
     return null;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching active user:', error.message);
     return null;
   }
 };
 
-export const handleSelectItem = (id, setSelectedItems) => {
+/**
+ * Handle item selection for checkboxes/lists
+ */
+export const handleSelectItem = (
+  id: number, 
+  setSelectedItems: SetStateCallback<number[]>
+): void => {
   setSelectedItems(prevSelectedItems =>
     prevSelectedItems.includes(id)
       ? prevSelectedItems.filter(item => item !== id)
@@ -25,94 +83,150 @@ export const handleSelectItem = (id, setSelectedItems) => {
   );
 };
 
-export const handleSell = async (selectedItems, fetchLoot) => {
+/**
+ * Handle selling selected items
+ */
+export const handleSell = async (
+  selectedItems: number[], 
+  fetchLoot: CallbackFunction
+): Promise<void> => {
   try {
     const user = await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
-      status: 'Pending Sale',
-      characterId: user?.activeCharacterId || user?.id
+      status: 'Pending Sale' as LootStatus,
+      characterId: user?.activeCharacterId || user?.id || 0
     });
     fetchLoot();
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error selling items:', error);
   }
 };
 
-export const handleTrash = async (selectedItems, fetchLoot) => {
+/**
+ * Handle trashing selected items
+ */
+export const handleTrash = async (
+  selectedItems: number[], 
+  fetchLoot: CallbackFunction
+): Promise<void> => {
   try {
     const user = await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
-      status: 'Trashed',
-      characterId: user?.activeCharacterId || user?.id
+      status: 'trashed' as LootStatus,
+      characterId: user?.activeCharacterId || user?.id || 0
     });
     fetchLoot();
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error trashing items:', error);
   }
 };
 
-export const handleKeepSelf = async (selectedItems, fetchLoot, activeUser) => {
+/**
+ * Handle keeping items for self
+ */
+export const handleKeepSelf = async (
+  selectedItems: number[], 
+  fetchLoot: CallbackFunction, 
+  activeUser: User
+): Promise<void> => {
   try {
     const user = await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
-      status: 'Kept Self',
-      characterId: activeUser.activeCharacterId,
+      status: 'kept-character' as LootStatus,
+      characterId: activeUser.activeCharacterId || 0,
       saleValue: null
     });
     fetchLoot();
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error keeping items for self:', error);
   }
 };
 
-export const handleKeepParty = async (selectedItems, fetchLoot) => {
+/**
+ * Handle keeping items for party
+ */
+export const handleKeepParty = async (
+  selectedItems: number[], 
+  fetchLoot: CallbackFunction
+): Promise<void> => {
   try {
     const user = await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
-      status: 'Kept Party',
-      characterId: user?.activeCharacterId || user?.id
+      status: 'kept-party' as LootStatus,
+      characterId: user?.activeCharacterId || user?.id || 0
     });
     fetchLoot();
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error keeping items for party:', error);
   }
 };
 
-export const handleOpenUpdateDialog = (loot, selectedItems, setUpdatedEntry, setOpenUpdateDialog) => {
+/**
+ * Handle opening update dialog for selected item
+ */
+export const handleOpenUpdateDialog = (
+  loot: LootItem[], 
+  selectedItems: number[], 
+  setUpdatedEntry: SetStateCallback<LootItem | null>, 
+  setOpenUpdateDialog: SetStateCallback<boolean>
+): void => {
   const selectedItem = loot.find(item => item.id === selectedItems[0]);
-  setUpdatedEntry(selectedItem);
-  setOpenUpdateDialog(true);
+  if (selectedItem) {
+    setUpdatedEntry(selectedItem);
+    setOpenUpdateDialog(true);
+  }
 };
 
-export const handleUpdateDialogClose = (setOpenUpdateDialog) => {
+/**
+ * Handle closing update dialog
+ */
+export const handleUpdateDialogClose = (
+  setOpenUpdateDialog: SetStateCallback<boolean>
+): void => {
   setOpenUpdateDialog(false);
 };
 
-export const handleSplitDialogClose = (setOpenSplitDialog) => {
+/**
+ * Handle closing split dialog
+ */
+export const handleSplitDialogClose = (
+  setOpenSplitDialog: SetStateCallback<boolean>
+): void => {
   setOpenSplitDialog(false);
 };
 
-export const handleUpdateChange = (e, setUpdatedEntry) => {
+/**
+ * Handle form input changes in update dialog
+ */
+export const handleUpdateChange = (
+  e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>, 
+  setUpdatedEntry: SetStateCallback<LootItem | null>
+): void => {
   const { name, value } = e.target;
-  setUpdatedEntry((prevEntry) => ({
-    ...prevEntry,
-    [name]: value,
-  }));
+  setUpdatedEntry((prevEntry) => 
+    prevEntry ? {
+      ...prevEntry,
+      [name]: value,
+    } : null
+  );
 };
 
-export const applyFilters = (loot, filters) => {
+/**
+ * Apply filters to loot data
+ */
+export const applyFilters = (loot: LootData | null, filters: Filters): LootData => {
   // Ensure loot has the expected structure
-  if (!loot || !loot.individual || !loot.summary) {
+  if (!loot?.individual || !loot.summary) {
     return { summary: [], individual: [] };
   }
 
-  let filteredLoot = { 
-    summary: [...(loot.summary || [])],
-    individual: [...(loot.individual || [])]
+  let filteredLoot: LootData = { 
+    summary: [...loot.summary],
+    individual: [...loot.individual]
   };
 
   // Only apply filters if we have individual items
@@ -127,11 +241,11 @@ export const applyFilters = (loot, filters) => {
       }
       
       // Handle the filter for unidentified items
-      if (filters.unidentified === 'true') {
+      if (filters.unidentified === 'true' || filters.unidentified === true) {
         return item.unidentified === true;
       }
       
-      if (filters.unidentified === 'false') {
+      if (filters.unidentified === 'false' || filters.unidentified === false) {
         return item.unidentified === false;
       }
       
@@ -149,28 +263,51 @@ export const applyFilters = (loot, filters) => {
   }
 
   if (filters.pendingSale) {
-    filteredLoot.individual = filteredLoot.individual.filter(item => (item.status === 'Pending Sale') === (filters.pendingSale === 'true'));
+    const isPendingSale = filters.pendingSale === 'true' || filters.pendingSale === true;
+    filteredLoot.individual = filteredLoot.individual.filter(item => 
+      (item.status === 'Pending Sale') === isPendingSale
+    );
   }
-
-  // TODO: Update summary items based on filtered individual items
-  // For now, return all summary items
 
   return filteredLoot;
 };
 
-export const formatDate = (dateString) => {
+/**
+ * Format a date string for display
+ */
+export const formatDate = (dateString: string | Date | null | undefined): string => {
   if (!dateString) return '';
-  const options = { year: 'numeric', month: 'long', day: 'numeric' };
+  const options: Intl.DateTimeFormatOptions = { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  };
   return new Date(dateString).toLocaleDateString(undefined, options);
 };
 
-export const handleOpenSplitDialog = (item, setSplitItem, setSplitEntries, setSplitDialogOpen) => {
+/**
+ * Handle opening split dialog for an item
+ */
+export const handleOpenSplitDialog = (
+  item: LootItem, 
+  setSplitItem: SetStateCallback<LootItem | null>, 
+  setSplitEntries: SetStateCallback<SplitQuantity[]>, 
+  setSplitDialogOpen: SetStateCallback<boolean>
+): void => {
   setSplitItem(item);
   setSplitEntries([{ quantity: item.quantity }]);
   setSplitDialogOpen(true);
 };
 
-export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateDialog, setSelectedItems) => {
+/**
+ * Handle submitting item updates
+ */
+export const handleUpdateSubmit = async (
+  updatedEntry: LootItem, 
+  fetchLoot: CallbackFunction, 
+  setOpenUpdateDialog: SetStateCallback<boolean>, 
+  setSelectedItems: SetStateCallback<number[]>
+): Promise<void> => {
   try {
     await lootService.updateLootItem(updatedEntry.id, {
       session_date: updatedEntry.session_date,
@@ -185,17 +322,30 @@ export const handleUpdateSubmit = async (updatedEntry, fetchLoot, setOpenUpdateD
     fetchLoot();
     setOpenUpdateDialog(false);
     setSelectedItems([]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating item:', error);
   }
 };
 
-export const handleSplitSubmit = async (splitQuantities, selectedItems, originalItemQuantity, userId, fetchLoot, setOpenSplitDialog, setSelectedItems) => {
+/**
+ * Handle submitting stack splits
+ */
+export const handleSplitSubmit = async (
+  splitQuantities: SplitQuantity[], 
+  selectedItems: number[], 
+  originalItemQuantity: number, 
+  userId: number, 
+  fetchLoot: CallbackFunction, 
+  setOpenSplitDialog: SetStateCallback<boolean>, 
+  setSelectedItems: SetStateCallback<number[]>
+): Promise<void> => {
   // Calculate the sum of split quantities
-  const sumOfSplits = splitQuantities.reduce((total, current) => total + parseInt(current.quantity, 10), 0);
+  const sumOfSplits = splitQuantities.reduce((total, current) => 
+    total + parseInt(current.quantity.toString(), 10), 0
+  );
   
   // Ensure originalItemQuantity is a number for accurate comparison
-  const originalQuantity = parseInt(originalItemQuantity, 10);
+  const originalQuantity = parseInt(originalItemQuantity.toString(), 10);
 
   // Check if the sum of splits equals the original item quantity
   if (sumOfSplits !== originalQuantity) {
@@ -216,20 +366,21 @@ export const handleSplitSubmit = async (splitQuantities, selectedItems, original
     } else {
       console.error('Error splitting loot item:', response.data);
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error splitting loot item:', error);
   }
 };
 
 /**
  * Update an item using the DM update endpoint
- * @param {number} itemId - The ID of the item to update
- * @param {Object} updatedData - The updated item data
- * @param {Function} onSuccess - Callback to execute on successful update
- * @param {Function} onError - Callback to handle errors
- * @param {Function} onFinally - Callback to execute after update (success or error)
  */
-export const updateItemAsDM = async (itemId, updatedData, onSuccess, onError, onFinally) => {
+export const updateItemAsDM = async (
+  itemId: number, 
+  updatedData: Partial<LootItem>, 
+  onSuccess?: SuccessCallback, 
+  onError?: ErrorCallback, 
+  onFinally?: CallbackFunction
+): Promise<void> => {
   try {
     // Perform the update
     await lootService.updateLootItem(itemId, updatedData);
@@ -238,7 +389,7 @@ export const updateItemAsDM = async (itemId, updatedData, onSuccess, onError, on
     if (onSuccess) {
       onSuccess('Item updated successfully');
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating item:', error);
     
     // Call error callback if provided
@@ -257,12 +408,12 @@ export const updateItemAsDM = async (itemId, updatedData, onSuccess, onError, on
 /**
  * Calculate Spellcraft DC for an item based on its caster level
  * Uses the same logic as the backend for consistency
- * @param {Object} item - The loot item object with itemid and modids
- * @param {Object} itemsMap - Map of item ids to item objects
- * @param {Object} modsMap - Map of mod ids to mod objects (optional)
- * @returns {number|null} - The calculated DC or null if can't be calculated
  */
-export const calculateSpellcraftDC = (item, itemsMap, modsMap = {}) => {
+export const calculateSpellcraftDC = (
+  item: LootItem, 
+  itemsMap: ItemsMap, 
+  modsMap: ModsMap = {}
+): number | null => {
   console.log('calculateSpellcraftDC called with:', { item, itemsMap, modsMap });
   
   if (!item.itemid || !itemsMap[item.itemid]) {
@@ -273,17 +424,17 @@ export const calculateSpellcraftDC = (item, itemsMap, modsMap = {}) => {
   const selectedItem = itemsMap[item.itemid];
   console.log('selectedItem:', selectedItem);
   
-  let effectiveCasterLevel;
+  let effectiveCasterLevel: number;
   
   // For weapons and armor with mods, use mod caster levels
   if ((selectedItem.type === 'weapon' || selectedItem.type === 'armor') && 
-      item.modids && item.modids.length > 0 && modsMap) {
+      item.mod1 && modsMap) {
     
     console.log('Item is weapon/armor with mods, checking mod caster levels');
-    console.log('modids:', item.modids);
     
-    // Get caster levels from mods
-    const modCasterLevels = item.modids
+    // Get caster levels from mods (simplified - using mod1, mod2, mod3 instead of modids array)
+    const modIds = [item.mod1, item.mod2, item.mod3].filter(Boolean) as number[];
+    const modCasterLevels = modIds
       .map(modId => {
         const mod = modsMap[modId];
         console.log(`Mod ${modId}:`, mod);
@@ -292,7 +443,7 @@ export const calculateSpellcraftDC = (item, itemsMap, modsMap = {}) => {
       .filter(mod => mod && mod.casterlevel !== null && mod.casterlevel !== undefined)
       .map(mod => {
         console.log(`Using caster level ${mod.casterlevel} from mod:`, mod.name);
-        return mod.casterlevel;
+        return mod.casterlevel!;
       });
     
     console.log('modCasterLevels:', modCasterLevels);
@@ -303,12 +454,12 @@ export const calculateSpellcraftDC = (item, itemsMap, modsMap = {}) => {
       console.log('Using highest mod caster level:', effectiveCasterLevel);
     } else {
       // Fallback to base item caster level
-      effectiveCasterLevel = selectedItem.casterlevel || 1;
+      effectiveCasterLevel = selectedItem.caster_level || 1;
       console.log('No mod caster levels found, using base item caster level:', effectiveCasterLevel);
     }
   } else {
     // For other items or items without mods, use base item caster level
-    effectiveCasterLevel = selectedItem.casterlevel || 1;
+    effectiveCasterLevel = selectedItem.caster_level || 1;
     console.log('Using base item caster level (not weapon/armor with mods):', effectiveCasterLevel);
   }
   
@@ -320,18 +471,19 @@ export const calculateSpellcraftDC = (item, itemsMap, modsMap = {}) => {
 
 /**
  * Identify an unidentified item
- * @param {Object} item - The item to identify
- * @param {Object} itemsMap - Map of item ids to item objects
- * @param {Function} onSuccess - Callback to execute on successful identification
- * @param {Function} onError - Callback to handle errors
- * @param {Function} refreshData - Function to refresh data after identification
  */
-export const identifyItem = async (item, itemsMap, onSuccess, onError, refreshData) => {
+export const identifyItem = async (
+  item: LootItem, 
+  itemsMap: ItemsMap, 
+  onSuccess?: SuccessCallback, 
+  onError?: ErrorCallback, 
+  refreshData?: CallbackFunction
+): Promise<void> => {
   try {
     // Set unidentified to false and update item name if itemid exists
-    const selectedItem = itemsMap[item.itemid];
+    const selectedItem = item.itemid ? itemsMap[item.itemid] : null;
 
-    const updatedData = {
+    const updatedData: Partial<LootItem> = {
       unidentified: false,
       name: selectedItem ? selectedItem.name : item.name,
     };
@@ -345,7 +497,7 @@ export const identifyItem = async (item, itemsMap, onSuccess, onError, refreshDa
     if (refreshData) {
       refreshData();
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error identifying item:', error);
     
     if (onError) {
@@ -356,13 +508,13 @@ export const identifyItem = async (item, itemsMap, onSuccess, onError, refreshDa
 
 /**
  * Formats an item name with its mods
- * @param {Object} item - The item object
- * @param {Object} itemsMap - Map of item IDs to item objects
- * @param {Object} modsMap - Map of mod IDs to mod objects
- * @returns {string|JSX.Element} - Formatted item name or error message
  */
-export const formatItemNameWithMods = (item, itemsMap, modsMap) => {
-  if (!item || !item.itemid) {
+export const formatItemNameWithMods = (
+  item: LootItem, 
+  itemsMap: ItemsMap, 
+  modsMap: ModsMap
+): string | JSX.Element => {
+  if (!item?.itemid) {
     return React.createElement('span', { style: { color: 'red' } }, 'Not linked');
   }
 
@@ -373,12 +525,14 @@ export const formatItemNameWithMods = (item, itemsMap, modsMap) => {
 
   let displayName = selectedItem.name;
 
-  // If the item has mods, add them to the name
-  if (item.modids && item.modids.length > 0 && Array.isArray(item.modids)) {
-    let modNames = [];
+  // If the item has mods, add them to the name (using mod1, mod2, mod3)
+  const modIds = [item.mod1, item.mod2, item.mod3].filter(Boolean) as number[];
+  
+  if (modIds.length > 0) {
+    const modNames: string[] = [];
 
     // Get mod names from the map
-    item.modids.forEach(modId => {
+    modIds.forEach(modId => {
       const mod = modsMap[modId];
       if (mod) {
         modNames.push(mod.name);

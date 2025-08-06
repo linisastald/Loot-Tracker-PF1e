@@ -1,20 +1,34 @@
-// frontend/src/utils/api.js
-import axios from 'axios';
+// frontend/src/utils/api.ts
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { ApiResponse } from '@/types';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
-const api = axios.create({
+interface CsrfTokenResponse {
+  success: boolean;
+  data: {
+    csrfToken: string;
+  };
+}
+
+interface AuthConfig extends InternalAxiosRequestConfig {
+  _retryCount?: number;
+}
+
+const api: AxiosInstance = axios.create({
     baseURL: API_URL,
     withCredentials: true,
     timeout: 10000,
 });
 
 // Function to fetch CSRF token
-const fetchCsrfToken = async () => {
+const fetchCsrfToken = async (): Promise<string | null> => {
     try {
-        const response = await axios.get(`${API_URL}/csrf-token`, {withCredentials: true});
+        const response = await axios.get<CsrfTokenResponse>(`${API_URL}/csrf-token`, {
+            withCredentials: true
+        });
 
-        if (response.data && response.data.data && response.data.data.csrfToken) {
+        if (response.data?.data?.csrfToken) {
             const token = response.data.data.csrfToken;
             localStorage.setItem('csrfToken', token);
             return token;
@@ -30,7 +44,7 @@ const fetchCsrfToken = async () => {
 
 // Request interceptor
 api.interceptors.request.use(
-    async (config) => {
+    async (config: InternalAxiosRequestConfig): Promise<InternalAxiosRequestConfig> => {
         // Skip CSRF for auth routes
         if (config.url && (
             config.url.includes('/auth/login') ||
@@ -48,13 +62,13 @@ api.interceptors.request.use(
             csrfToken = await fetchCsrfToken();
         }
 
-        if (csrfToken) {
+        if (csrfToken && config.headers) {
             config.headers['X-CSRF-Token'] = csrfToken;
         }
 
         return config;
     },
-    (error) => Promise.reject(error)
+    (error: AxiosError) => Promise.reject(error)
 );
 
 // Response interceptor
@@ -62,27 +76,31 @@ api.interceptors.response.use(
     (response) => {
         return response.data;
     },
-    async (error) => {
+    async (error: AxiosError) => {
         console.error('API Error:', {
             message: error.message,
             status: error.response?.status
         });
 
+        const authConfig = error.config as AuthConfig;
+
         // Handle CSRF token errors (prevent infinite retry)
         if (error.response?.status === 403 &&
-            (error.response?.data?.error === 'invalid csrf token' ||
-                error.response?.data?.message === 'invalid csrf token') &&
-            !error.config._retryCount) {
+            (error.response?.data as any)?.error === 'invalid csrf token' ||
+            (error.response?.data as any)?.message === 'invalid csrf token' &&
+            !authConfig?._retryCount) {
 
             // Mark this request as retried to prevent infinite loops
-            error.config._retryCount = 1;
+            if (authConfig) {
+                authConfig._retryCount = 1;
+            }
             localStorage.removeItem('csrfToken');
             const newToken = await fetchCsrfToken();
 
-            if (newToken && error.config) {
+            if (newToken && authConfig && authConfig.headers) {
                 // Retry the request with new token
-                error.config.headers['X-CSRF-Token'] = newToken;
-                return axios(error.config);
+                authConfig.headers['X-CSRF-Token'] = newToken;
+                return axios(authConfig);
             }
         }
 

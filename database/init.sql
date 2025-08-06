@@ -119,7 +119,7 @@ CREATE TABLE loot (
 
 CREATE TABLE appraisal (
     id SERIAL PRIMARY KEY,
-    time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    appraised_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     characterid INTEGER REFERENCES characters(id),
     lootid INTEGER REFERENCES loot(id),
     appraisalroll INTEGER,
@@ -154,13 +154,13 @@ CREATE TABLE consumableuse (
     id SERIAL PRIMARY KEY,
     lootid INTEGER REFERENCES loot(id),
     who INTEGER REFERENCES characters(id),
-    time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    consumed_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create indexes for consumableuse
 CREATE INDEX idx_consumableuse_lootid ON consumableuse(lootid);
 CREATE INDEX idx_consumableuse_who ON consumableuse(who);
-CREATE INDEX idx_consumableuse_time ON consumableuse(time);
+CREATE INDEX idx_consumableuse_consumed_on ON consumableuse(consumed_on);
 
 CREATE TABLE identify (
     id SERIAL PRIMARY KEY,

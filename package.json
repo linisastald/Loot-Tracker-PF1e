@@ -15,7 +15,8 @@
     "teardown:test": "cd backend && npm run test:teardown",
     "validate-migrations": "bash scripts/validate-migrations.sh",
     "migration-status": "node backend/scripts/migration-status.js",
-    "pre-commit": "npm run validate-migrations"
+    "pre-commit": "npm run validate-migrations",
+    "prepare": "husky"
   },
   "keywords": [],
   "author": "",

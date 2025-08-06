@@ -1,8 +1,8 @@
 // frontend/src/components/pages/ItemManagement/PendingSaleManagement.js
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useCallback, useMemo} from 'react';
 import api from '../../../utils/api';
 import lootService from '../../../services/lootService';
-import {calculateItemSaleValue, calculateTotalSaleValue} from '../../../utils/saleValueCalculator';
+import * as salesService from '../../../services/salesService';
 import {formatDate, formatItemNameWithMods, updateItemAsDM} from '../../../utils/utils';
 import {
     Alert,
@@ -27,6 +27,7 @@ import ItemManagementDialog from '../../common/dialogs/ItemManagementDialog';
 
 const PendingSaleManagement = () => {
     const [pendingItems, setPendingItems] = useState([]);
+    const [saleValues, setSaleValues] = useState({}); // Store calculated sale values by item ID
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -47,7 +48,7 @@ const PendingSaleManagement = () => {
         fetchMods();
     }, []);
 
-    const fetchPendingItems = async () => {
+    const fetchPendingItems = useCallback(async () => {
         try {
             setLoading(true);
             console.log('Fetching pending items...');
@@ -57,7 +58,26 @@ const PendingSaleManagement = () => {
             // Check for proper data structure
             if (response.data && Array.isArray(response.data.items)) {
                 setPendingItems(response.data.items);
-                calculatePendingSaleSummary(response.data.items);
+                
+                // Calculate sale values for all items
+                try {
+                    const saleCalculation = await salesService.calculateSaleValues(response.data.items);
+                    const saleValuesMap = {};
+                    saleCalculation.items.forEach(item => {
+                        saleValuesMap[item.id] = item.saleValue;
+                    });
+                    setSaleValues(saleValuesMap);
+                    
+                    // Set the summary using the calculated total
+                    const roundedTotal = Math.ceil(saleCalculation.totalSaleValue * 100) / 100;
+                    setPendingSaleTotal(roundedTotal);
+                    setPendingSaleCount(saleCalculation.validCount);
+                } catch (error) {
+                    console.error('Error calculating sale values:', error);
+                    // Fallback to the old method if API fails
+                    await calculatePendingSaleSummary(response.data.items);
+                }
+                
                 console.log('Pending items set:', response.data.items.length);
             } else {
                 console.error('Unexpected data structure:', response.data);
@@ -71,9 +91,9 @@ const PendingSaleManagement = () => {
             setPendingItems([]);
             setLoading(false);
         }
-    };
+    }, []);
 
-    const fetchItems = async () => {
+    const fetchItems = useCallback(async () => {
         try {
             const response = await lootService.getAllLoot();
             // API returns { summary: [], individual: [], count: number }
@@ -89,9 +109,9 @@ const PendingSaleManagement = () => {
         } catch (error) {
             console.error('Error fetching all items:', error);
         }
-    };
+    }, []);
 
-    const fetchMods = async () => {
+    const fetchMods = useCallback(async () => {
         try {
             const response = await lootService.getMods();
 
@@ -116,9 +136,9 @@ const PendingSaleManagement = () => {
             console.error('Error fetching mods:', error);
             setMods([]);
         }
-    };
+    }, []);
 
-    const calculatePendingSaleSummary = (items) => {
+    const calculatePendingSaleSummary = async (items) => {
         if (!Array.isArray(items)) {
             console.error('Items is not an array:', items);
             setPendingSaleTotal(0);
@@ -128,12 +148,23 @@ const PendingSaleManagement = () => {
 
         const pendingItems = items.filter(item => item.status === 'Pending Sale' || item.status === null);
 
-        // Use the imported utility function to calculate total
-        const total = calculateTotalSaleValue(pendingItems);
+        if (pendingItems.length === 0) {
+            setPendingSaleTotal(0);
+            setPendingSaleCount(0);
+            return;
+        }
 
-        const roundedTotal = Math.ceil(total * 100) / 100;
-        setPendingSaleTotal(roundedTotal);
-        setPendingSaleCount(pendingItems.length);
+        try {
+            // Use the backend API to calculate total sale value
+            const total = await salesService.calculateTotalSaleValue(pendingItems);
+            const roundedTotal = Math.ceil(total * 100) / 100;
+            setPendingSaleTotal(roundedTotal);
+            setPendingSaleCount(pendingItems.length);
+        } catch (error) {
+            console.error('Error calculating pending sale summary:', error);
+            setPendingSaleTotal(0);
+            setPendingSaleCount(pendingItems.length);
+        }
     };
 
     const handleConfirmSale = async () => {
@@ -201,7 +232,7 @@ const PendingSaleManagement = () => {
             setError('');
             setSuccess('');
             
-            if (selectedPendingItems.length === 0) {
+            if (!selectedItemsInfo.hasSelectedItems) {
                 setError('No items selected to keep.');
                 setLoading(false);
                 return;
@@ -235,18 +266,14 @@ const PendingSaleManagement = () => {
             setError('');
             setSuccess('');
             
-            if (selectedPendingItems.length === 0) {
+            if (!selectedItemsInfo.hasSelectedItems) {
                 setError('No items selected to sell.');
                 setLoading(false);
                 return;
             }
 
-            // Check if all selected items are valid (need to be identified and have a value)
-            const validItems = pendingItems.filter(item =>
-                selectedPendingItems.includes(item.id) &&
-                item.unidentified !== true &&
-                item.value !== null
-            );
+            // Use memoized valid items
+            const validItems = selectedItemsInfo.validSelectedItems;
 
             if (validItems.length === 0) {
                 setError('None of the selected items can be sold. Items must be identified and have a value.');
@@ -287,13 +314,13 @@ const PendingSaleManagement = () => {
         }
     };
 
-    const handlePendingItemSelect = (itemId) => {
+    const handlePendingItemSelect = useCallback((itemId) => {
         setSelectedPendingItems(prev =>
             prev.includes(itemId)
                 ? prev.filter(id => id !== itemId)
                 : [...prev, itemId]
         );
-    };
+    }, []);
 
     const handleItemUpdateSubmit = async (updatedData) => {
         // Use the utility function for updating
@@ -312,10 +339,28 @@ const PendingSaleManagement = () => {
         );
     };
 
-    // Get the formatted item name with mods
-    const getRealItemName = (item) => {
+    // Memoized function to get formatted item names with mods
+    const getRealItemName = useCallback((item) => {
         return formatItemNameWithMods(item, itemsMap, modsMap);
-    };
+    }, [itemsMap, modsMap]);
+
+    // Memoized computation for selected items count and validation
+    const selectedItemsInfo = useMemo(() => {
+        const selectedCount = selectedPendingItems.length;
+        const hasSelectedItems = selectedCount > 0;
+        const validSelectedItems = pendingItems.filter(item =>
+            selectedPendingItems.includes(item.id) &&
+            item.unidentified !== true &&
+            item.value !== null &&
+            item.value !== undefined
+        );
+        return {
+            selectedCount,
+            hasSelectedItems,
+            validSelectedItems,
+            validSelectedCount: validSelectedItems.length
+        };
+    }, [selectedPendingItems, pendingItems]);
 
     return (
         <>
@@ -361,7 +406,7 @@ const PendingSaleManagement = () => {
                                     variant="outlined"
                                     color="primary"
                                     onClick={handleSellAllExcept}
-                                    disabled={loading || selectedPendingItems.length === 0}
+                                    disabled={loading || !selectedItemsInfo.hasSelectedItems}
                                 >
                                     Sell All Except Selected
                                 </Button>
@@ -369,7 +414,7 @@ const PendingSaleManagement = () => {
                                     variant="outlined"
                                     color="primary"
                                     onClick={handleSellSelected}
-                                    disabled={loading || selectedPendingItems.length === 0}
+                                    disabled={loading || !selectedItemsInfo.hasSelectedItems}
                                 >
                                     Sell Selected
                                 </Button>
@@ -401,7 +446,7 @@ const PendingSaleManagement = () => {
                         </TableHead>
                         <TableBody>
                             {pendingItems.map((item) => {
-                                const saleValue = calculateItemSaleValue(item);
+                                const saleValue = saleValues[item.id] || 0;
 
                                 return (
                                     <TableRow

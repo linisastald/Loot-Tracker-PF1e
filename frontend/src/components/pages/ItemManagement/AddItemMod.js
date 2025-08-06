@@ -108,9 +108,9 @@ const AddItemMod = () => {
 
         setItemsLoading(true);
         try {
-            const response = await lootService.getAllLoot({query: searchText});
-            // API returns { summary: [], individual: [], count: number }
-            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
+            const response = await lootService.suggestItems({query: searchText});
+            // API returns { suggestions: [...], count: number }
+            const allItems = response.data.suggestions || [];
             setItemOptions(allItems);
         } catch (error) {
             console.error('Error searching items:', error);
