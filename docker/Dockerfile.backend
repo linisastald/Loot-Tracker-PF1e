@@ -16,8 +16,8 @@ COPY frontend/tsconfig.json ./frontend/
 COPY frontend/vite.config.js ./frontend/
 COPY backend/package*.json ./backend/
 
-# Install dependencies for both
-RUN cd frontend && npm ci --ignore-scripts && \
+# Install dependencies for both (including dev deps for build)
+RUN cd frontend && npm ci --include=dev --ignore-scripts && \
     cd ../backend && npm ci --ignore-scripts
 
 # Copy source code
@@ -31,6 +31,9 @@ COPY backend/index.js ./backend/
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 ENV NODE_ENV=production
 RUN cd frontend && npm run build
+
+# Clean up dev dependencies to reduce image size
+RUN cd frontend && npm prune --production
 
 # Copy frontend build to backend location
 RUN mkdir -p backend/frontend && cp -r frontend/build backend/frontend/
