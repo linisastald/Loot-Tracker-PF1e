@@ -133,8 +133,8 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_mod_name_lower ON mod(lower(name));
 CREATE OR REPLACE VIEW index_usage_stats AS
 SELECT 
     schemaname,
-    tablename,
-    indexname,
+    relname as tablename,
+    indexrelname as indexname,
     idx_tup_read,
     idx_tup_fetch,
     idx_scan,
