@@ -341,32 +341,16 @@ const CustomLootTable = ({
             const itemType = (item.type || '').toLowerCase();
             const filterType = type.toLowerCase();
             
-            // Map item types to filter categories
-            const typeMapping = {
-              'weapon': 'weapon',
-              'armor': 'armor',
-              'shield': 'armor',
-              'wand': 'magic',
-              'rod': 'magic',
-              'staff': 'magic',
-              'ring': 'magic',
-              'wondrous': 'magic',
-              'potion': 'magic',
-              'scroll': 'magic',
-              'ammunition': 'gear',
-              'tool': 'gear',
-              'alchemical': 'gear',
-              'gem': 'trade good',
-              'treasure': 'trade good',
-              'art': 'trade good',
-              'coin': 'trade good',
-              'trade good': 'trade good'
-            };
+            // Direct match or 'other' for anything not explicitly defined
+            if (itemType === filterType) return true;
             
-            const mappedType = typeMapping[itemType] || 'other';
+            // 'other' catches everything that doesn't match a defined filter
+            if (filterType === 'other') {
+              const definedTypes = ['weapon', 'armor', 'magic', 'gear', 'trade good'];
+              return !definedTypes.includes(itemType);
+            }
             
-            return filterType === mappedType || 
-                   (filterType === 'other' && !typeMapping[itemType]);
+            return false;
           })
         ) &&
 
