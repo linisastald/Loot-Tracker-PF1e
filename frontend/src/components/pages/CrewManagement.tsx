@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Grid, Card, CardContent, CardHeader, Box, Alert, CircularProgress,
+  TextField, Box, Alert, CircularProgress,
   Tabs, Tab, TablePagination, FormControl, InputLabel, Select, MenuItem, Chip,
   Autocomplete
 } from '@mui/material';
+import Grid from '@mui/material/Grid';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, 
   Person as PersonIcon, DirectionsBoat as ShipIcon, Home as OutpostIcon,
@@ -163,10 +164,6 @@ const CrewManagement: React.FC = () => {
     return lookup;
   }, [allLocations]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
   const fetchData = useCallback(async (): Promise<void> => {
     try {
       setLoading(true);
@@ -208,6 +205,10 @@ const CrewManagement: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   const handleCreateCrew = useCallback(() => {
     setEditingCrew({
       name: '',
@@ -229,9 +230,9 @@ const CrewManagement: React.FC = () => {
       name: crewMember.name,
       race: isCustomRace ? 'Other' : (crewMember.race || ''),
       customRace: isCustomRace ? crewMember.race : '',
-      age: crewMember.age || '',
+      age: crewMember.age?.toString() || '',
       description: crewMember.description || '',
-      location_id: crewMember.location_id,
+      location_id: crewMember.location_id.toString(),
       ship_position: crewMember.ship_position || '',
       hire_date: crewMember.hire_date ? golarionToInputFormat(
         crewMember.hire_date.year || new Date(crewMember.hire_date).getFullYear(),
@@ -255,7 +256,7 @@ const CrewManagement: React.FC = () => {
       }
 
       // Determine location type from the selected location
-      const selectedLocation = allLocations.find(loc => loc.id === editingCrew.location_id);
+      const selectedLocation = allLocations.find(loc => loc.id.toString() === editingCrew.location_id);
       if (!selectedLocation) {
         setError('Invalid location selected');
         return;
@@ -273,7 +274,7 @@ const CrewManagement: React.FC = () => {
         age: editingCrew.age ? parseInt(editingCrew.age) : null,
         description: editingCrew.description,
         location_type: selectedLocation.type,
-        location_id: editingCrew.location_id,
+        location_id: parseInt(editingCrew.location_id),
         ship_position: selectedLocation.type === 'ship' ? editingCrew.ship_position : null,
         hire_date: hireDateParsed
       };
@@ -298,7 +299,7 @@ const CrewManagement: React.FC = () => {
   const handleMoveCrew = async (): Promise<void> => {
     try {
       // Determine location type from the selected location
-      const selectedLocation = allLocations.find(loc => loc.id === moveData.location_id);
+      const selectedLocation = allLocations.find(loc => loc.id.toString() === moveData.location_id);
       if (!selectedLocation) {
         setError('Invalid location selected');
         return;
@@ -307,7 +308,7 @@ const CrewManagement: React.FC = () => {
       await crewService.moveCrewToLocation(
         selectedCrew!.id,
         selectedLocation.type,
-        moveData.location_id,
+        parseInt(moveData.location_id),
         selectedLocation.type === 'ship' ? moveData.ship_position : null
       );
       setSuccess('Crew member moved successfully');
@@ -332,7 +333,7 @@ const CrewManagement: React.FC = () => {
         return;
       }
 
-      const selectedLocation = allLocations.find(loc => loc.id === recruitmentData.location_id);
+      const selectedLocation = allLocations.find(loc => loc.id.toString() === recruitmentData.location_id);
       if (!selectedLocation) {
         setError('Invalid location selected');
         return;
@@ -381,7 +382,7 @@ const CrewManagement: React.FC = () => {
           age: randomAge,
           description: `${recruitmentMethod} via ${skillTypeLabel} check`,
           location_type: selectedLocation.type,
-          location_id: recruitmentData.location_id,
+          location_id: parseInt(recruitmentData.location_id),
           ship_position: selectedLocation.type === 'ship' ? 'Crew' : null,
           hire_date: hireDateParsed
         };
@@ -465,7 +466,7 @@ const CrewManagement: React.FC = () => {
                 setRecruitmentData({ 
                   skillType: 'diplomacy', 
                   rollResult: '', 
-                  location_id: pcActiveShip ? pcActiveShip.id : '' 
+                  location_id: pcActiveShip ? pcActiveShip.id.toString() : '' 
                 });
                 setRecruitmentDialogOpen(true);
               }}
@@ -630,7 +631,7 @@ const CrewManagement: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <TextField
                 fullWidth
                 label="Name"
@@ -640,7 +641,7 @@ const CrewManagement: React.FC = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <Autocomplete
                 fullWidth
                 options={[...STANDARD_RACES, 'Other']}
@@ -655,7 +656,7 @@ const CrewManagement: React.FC = () => {
             </Grid>
 
             {editingCrew.race === 'Other' && (
-              <Grid item xs={12} md={6}>
+              <Grid size={{xs: 12, md: 6}}>
                 <TextField
                   fullWidth
                   label="Custom Race"
@@ -666,7 +667,7 @@ const CrewManagement: React.FC = () => {
               </Grid>
             )}
 
-            <Grid item xs={12} md={3}>
+            <Grid size={{xs: 12, md: 3}}>
               <TextField
                 fullWidth
                 label="Age"
@@ -676,7 +677,7 @@ const CrewManagement: React.FC = () => {
               />
             </Grid>
 
-            <Grid item xs={12} md={3}>
+            <Grid size={{xs: 12, md: 3}}>
               <TextField
                 fullWidth
                 label="Hire Date"
@@ -687,7 +688,7 @@ const CrewManagement: React.FC = () => {
               />
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Autocomplete
                 fullWidth
                 options={allLocations}
@@ -707,7 +708,7 @@ const CrewManagement: React.FC = () => {
             </Grid>
 
             {allLocations.find(loc => loc.id.toString() === editingCrew.location_id)?.type === 'ship' && (
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <FormControl fullWidth>
                   <InputLabel>Ship Position</InputLabel>
                   <Select
@@ -723,7 +724,7 @@ const CrewManagement: React.FC = () => {
               </Grid>
             )}
 
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Description"
@@ -759,7 +760,7 @@ const CrewManagement: React.FC = () => {
             </Alert>
           )}
           <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Autocomplete
                 fullWidth
                 options={availableLocationsForMove}
@@ -784,7 +785,7 @@ const CrewManagement: React.FC = () => {
               />
             </Grid>
             {allLocations.find(loc => loc.id.toString() === moveData.location_id)?.type === 'ship' && (
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <FormControl fullWidth>
                   <InputLabel>Ship Position</InputLabel>
                   <Select
@@ -812,7 +813,7 @@ const CrewManagement: React.FC = () => {
         <DialogTitle>Update Crew Status</DialogTitle>
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <FormControl fullWidth>
                 <InputLabel>Status</InputLabel>
                 <Select
@@ -825,7 +826,7 @@ const CrewManagement: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Date"
@@ -836,7 +837,7 @@ const CrewManagement: React.FC = () => {
               />
             </Grid>
             {statusData.type === 'departed' && (
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <TextField
                   fullWidth
                   label="Reason for Departure"
@@ -888,7 +889,7 @@ const CrewManagement: React.FC = () => {
           </Box>
 
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <FormControl fullWidth>
                 <InputLabel>Recruitment Method</InputLabel>
                 <Select
@@ -903,7 +904,7 @@ const CrewManagement: React.FC = () => {
               </FormControl>
             </Grid>
             
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <TextField
                 fullWidth
                 label="Total Roll Result"
@@ -915,7 +916,7 @@ const CrewManagement: React.FC = () => {
               />
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Autocomplete
                 fullWidth
                 options={allLocations}

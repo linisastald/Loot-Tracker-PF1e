@@ -275,7 +275,7 @@ const OutpostManagement: React.FC = () => {
         <TabPanel value={tabValue} index={1}>
           {selectedOutpost && (
             <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
+              <Grid size={{xs: 12, md: 6}}>
                 <Card>
                   <CardHeader title="Outpost Information" />
                   <CardContent>
@@ -290,7 +290,7 @@ const OutpostManagement: React.FC = () => {
                 </Card>
               </Grid>
 
-              <Grid item xs={12} md={6}>
+              <Grid size={{xs: 12, md: 6}}>
                 <Card>
                   <CardHeader 
                     title="Crew Members" 
@@ -330,7 +330,7 @@ const OutpostManagement: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Outpost Name"
@@ -339,7 +339,7 @@ const OutpostManagement: React.FC = () => {
                 required
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Location"
@@ -347,7 +347,7 @@ const OutpostManagement: React.FC = () => {
                 onChange={(e) => setEditingOutpost({ ...editingOutpost, location: e.target.value })}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
               <TextField
                 fullWidth
                 label="Access Date"

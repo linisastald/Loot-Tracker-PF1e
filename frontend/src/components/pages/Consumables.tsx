@@ -145,7 +145,7 @@ const Consumables: React.FC = () => {
   };
 
   // Render charge progress bar
-  const renderChargeProgress = (charges: number | null | undefined): JSX.Element | null => {
+  const renderChargeProgress = (charges: number | null | undefined): React.ReactElement | null => {
     if (charges === null || charges === undefined) return null;
 
     const percentage = (charges / MAX_WAND_CHARGES) * 100;
@@ -378,7 +378,7 @@ const Consumables: React.FC = () => {
           <Button onClick={handleCloseChargesDialog}>Cancel</Button>
           <Button
             onClick={handleUpdateCharges}
-            disabled={!newCharges || newCharges < 1 || newCharges > MAX_WAND_CHARGES}
+            disabled={!newCharges || parseInt(newCharges) < 1 || parseInt(newCharges) > MAX_WAND_CHARGES}
           >
             Update
           </Button>

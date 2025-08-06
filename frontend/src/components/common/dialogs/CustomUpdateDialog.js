@@ -19,7 +19,7 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
             <DialogTitle>Update Entry</DialogTitle>
             <DialogContent>
                 <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
+                    <Grid size={{xs: 12, sm: 6}}>
                         <TextField
                             label="Quantity"
                             type="number"
@@ -29,7 +29,7 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                             fullWidth
                         />
                     </Grid>
-                    <Grid item xs={12} sm={6}>
+                    <Grid size={{xs: 12, sm: 6}}>
                         <TextField
                             label="Item Name"
                             name="name"
@@ -38,7 +38,7 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                             fullWidth
                         />
                     </Grid>
-                    <Grid item xs={12} sm={6}>
+                    <Grid size={{xs: 12, sm: 6}}>
                         <FormControl fullWidth>
                             <InputLabel>Magical?</InputLabel>
                             <Select
@@ -52,7 +52,7 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} sm={6}>
+                    <Grid size={{xs: 12, sm: 6}}>
                         <FormControl fullWidth>
                             <InputLabel>Masterwork</InputLabel>
                             <Select
@@ -65,7 +65,7 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} sm={6}>
+                    <Grid size={{xs: 12, sm: 6}}>
                         <FormControl fullWidth>
                             <InputLabel>Type</InputLabel>
                             <Select
@@ -82,7 +82,7 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12} sm={6}>
+                    <Grid size={{xs: 12, sm: 6}}>
                         <FormControl fullWidth>
                             <InputLabel>Size</InputLabel>
                             <Select
@@ -102,7 +102,7 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                             </Select>
                         </FormControl>
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid size={12}>
                         <TextField
                             label="Notes"
                             name="notes"

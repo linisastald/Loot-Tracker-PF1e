@@ -539,7 +539,7 @@ const Tasks: React.FC = () => {
 
             {assignedTasks && (
                 <Grid container spacing={3}>
-                    <Grid item xs={12} md={4}>
+                    <Grid size={{xs: 12, md: 4}}>
                         <StyledCard>
                             <StyledCardHeader color="#673AB7">
                                 <Typography variant="h6">Pre-Session Tasks</Typography>
@@ -557,7 +557,7 @@ const Tasks: React.FC = () => {
                         </StyledCard>
                     </Grid>
 
-                    <Grid item xs={12} md={4}>
+                    <Grid size={{xs: 12, md: 4}}>
                         <StyledCard>
                             <StyledCardHeader color="#FFC107">
                                 <Typography variant="h6">During Session Tasks</Typography>
@@ -568,7 +568,7 @@ const Tasks: React.FC = () => {
                         </StyledCard>
                     </Grid>
 
-                    <Grid item xs={12} md={4}>
+                    <Grid size={{xs: 12, md: 4}}>
                         <StyledCard>
                             <StyledCardHeader color="#F44336">
                                 <Typography variant="h6">Post-Session Tasks</Typography>

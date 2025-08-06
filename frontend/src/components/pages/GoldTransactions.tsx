@@ -71,6 +71,10 @@ interface LedgerEntry {
     description: string;
     amount: number;
     balance: number;
+    character?: string;
+    lootvalue?: string;
+    payments?: string;
+    active?: boolean;
 }
 
 // Tab Panel component
@@ -116,7 +120,7 @@ const GoldTransactions: React.FC = () => {
 
     // Memoized utility function to safely format numbers
     const formatCurrency = useCallback((value: number | string, defaultValue: string = '0.00'): string => {
-        const num = parseFloat(value);
+        const num = typeof value === 'string' ? parseFloat(value) : value;
         if (isNaN(num) || !isFinite(num)) {
             return defaultValue;
         }
@@ -201,7 +205,7 @@ const GoldTransactions: React.FC = () => {
                 acc.copper += Number(entry.copper) || 0;
                 return acc;
             },
-            {platinum: 0, gold: 0, silver: 0, copper: 0}
+            {platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0}
         );
 
         // Calculate full total in gold pieces
@@ -262,8 +266,8 @@ const GoldTransactions: React.FC = () => {
         setEndDate(endDate);
     };
 
-    const formatDate = useCallback((dateString) => {
-        const options = {year: 'numeric', month: 'long', day: 'numeric'};
+    const formatDate = useCallback((dateString: string) => {
+        const options: Intl.DateTimeFormatOptions = {year: 'numeric', month: 'long', day: 'numeric'};
         return new Date(dateString).toLocaleDateString(undefined, options);
     }, []);
 
@@ -583,7 +587,12 @@ const GoldTransactions: React.FC = () => {
                                                 label="Session Date"
                                                 value={newEntry.sessionDate}
                                                 onChange={(date) => handleEntryChange('sessionDate', date)}
-                                                renderInput={(params) => <TextField {...params} fullWidth/>}
+                                                slots={{
+                                                    textField: TextField
+                                                }}
+                                                slotProps={{
+                                                    textField: { fullWidth: true }
+                                                }}
                                             />
                                         </LocalizationProvider>
                                     </Grid>
@@ -698,7 +707,12 @@ const GoldTransactions: React.FC = () => {
                                             label="Start Date"
                                             value={startDate}
                                             onChange={(date) => setStartDate(date)}
-                                            renderInput={(params) => <TextField {...params} fullWidth/>}
+                                            slots={{
+                                                textField: TextField
+                                            }}
+                                            slotProps={{
+                                                textField: { fullWidth: true }
+                                            }}
                                         />
                                     </Grid>
                                     <Grid size={{xs: 12, sm: 4}}>
@@ -706,7 +720,12 @@ const GoldTransactions: React.FC = () => {
                                             label="End Date"
                                             value={endDate}
                                             onChange={(date) => setEndDate(date)}
-                                            renderInput={(params) => <TextField {...params} fullWidth/>}
+                                            slots={{
+                                                textField: TextField
+                                            }}
+                                            slotProps={{
+                                                textField: { fullWidth: true }
+                                            }}
                                         />
                                     </Grid>
                                     <Grid size={{xs: 12, sm: 4}}>

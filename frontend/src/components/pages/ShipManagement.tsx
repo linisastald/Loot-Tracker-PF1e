@@ -634,36 +634,36 @@ const ShipManagement: React.FC = () => {
           {selectedShip && (
             <Grid container spacing={3}>
               {/* Basic Ship Information */}
-              <Grid item xs={12} md={6}>
+              <Grid size={{xs: 12, md: 6}}>
                 <Card>
                   <CardHeader title="Ship Information" />
                   <CardContent>
                     <Typography variant="h6">{selectedShip.name}</Typography>
                     
                     <Grid container spacing={2} sx={{ mt: 1 }}>
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="subtitle2" color="primary">Ship Type</Typography>
                         <Typography variant="body2">
                           {selectedShip.ship_type || 'Not specified'}
                         </Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Size</Typography>
                         <Typography variant="body2">{selectedShip.size || 'Colossal'}</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Cost</Typography>
                         <Typography variant="body2">{selectedShip.cost || 0} gp</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Location</Typography>
                         <Typography variant="body2">{selectedShip.location || 'Unknown'}</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Status</Typography>
                         <Chip
                           label={selectedShip.status || 'Active'}
@@ -679,14 +679,14 @@ const ShipManagement: React.FC = () => {
                       </Grid>
                       
                       {selectedShip.captain_name && (
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Typography variant="subtitle2" color="primary">Captain</Typography>
                           <Typography variant="body2">{selectedShip.captain_name}</Typography>
                         </Grid>
                       )}
                       
                       {selectedShip.ship_notes && (
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Typography variant="subtitle2" color="primary">Notes</Typography>
                           <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                             {selectedShip.ship_notes}
@@ -699,56 +699,56 @@ const ShipManagement: React.FC = () => {
               </Grid>
 
               {/* Physical Characteristics */}
-              <Grid item xs={12} md={6}>
+              <Grid size={{xs: 12, md: 6}}>
                 <Card>
                   <CardHeader title="Physical Characteristics" />
                   <CardContent>
                     <Grid container spacing={2}>
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Max Speed</Typography>
                         <Typography variant="body2">{selectedShip.max_speed || 30} ft.</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Acceleration</Typography>
                         <Typography variant="body2">{selectedShip.acceleration || 15} ft.</Typography>
                       </Grid>
                       
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="subtitle2" color="primary">Propulsion</Typography>
                         <Typography variant="body2">{selectedShip.propulsion || 'Not specified'}</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Crew Requirements</Typography>
                         <Typography variant="body2">
                           {selectedShip.min_crew || 1} - {selectedShip.max_crew || 10}
                         </Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Decks</Typography>
                         <Typography variant="body2">{selectedShip.decks || 1}</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Cargo Capacity</Typography>
                         <Typography variant="body2">{selectedShip.cargo_capacity || 10000} lbs</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Max Passengers</Typography>
                         <Typography variant="body2">{selectedShip.max_passengers || 10}</Typography>
                       </Grid>
                       
                       {selectedShip.sails_oars && (
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                           <Typography variant="subtitle2" color="primary">Sails/Oars</Typography>
                           <Typography variant="body2">{selectedShip.sails_oars}</Typography>
                         </Grid>
                       )}
                       
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="subtitle2" color="primary">Sailing Check Bonus</Typography>
                         <Typography variant="body2">
                           {selectedShip.sailing_check_bonus >= 0 ? '+' : ''}{selectedShip.sailing_check_bonus || 0}
@@ -760,60 +760,60 @@ const ShipManagement: React.FC = () => {
               </Grid>
 
               {/* Combat Statistics */}
-              <Grid item xs={12} md={6}>
+              <Grid size={{xs: 12, md: 6}}>
                 <Card>
                   <CardHeader title="Combat Statistics" />
                   <CardContent>
                     <Grid container spacing={2}>
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Hit Points</Typography>
                         <Typography variant="h6">
                           {selectedShip.current_hp || 0} / {selectedShip.max_hp || 100}
                         </Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Hardness</Typography>
                         <Typography variant="body2">{selectedShip.hardness || 0}</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Base AC</Typography>
                         <Typography variant="body2">{selectedShip.base_ac || 10}</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Touch AC</Typography>
                         <Typography variant="body2">{selectedShip.touch_ac || 10}</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">CMB</Typography>
                         <Typography variant="body2">
                           {selectedShip.cmb >= 0 ? '+' : ''}{selectedShip.cmb || 0}
                         </Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">CMD</Typography>
                         <Typography variant="body2">{selectedShip.cmd || 10}</Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Saves</Typography>
                         <Typography variant="body2">
                           {selectedShip.saves >= 0 ? '+' : ''}{selectedShip.saves || 0}
                         </Typography>
                       </Grid>
                       
-                      <Grid item xs={6}>
+                      <Grid size={{xs: 6}}>
                         <Typography variant="subtitle2" color="primary">Initiative</Typography>
                         <Typography variant="body2">
                           {selectedShip.initiative >= 0 ? '+' : ''}{selectedShip.initiative || 0}
                         </Typography>
                       </Grid>
                       
-                      <Grid item xs={12}>
+                      <Grid size={12}>
                         <Typography variant="subtitle2" color="primary">Ramming Damage</Typography>
                         <Typography variant="body2">{selectedShip.ramming_damage || '1d8'}</Typography>
                       </Grid>
@@ -847,7 +847,7 @@ const ShipManagement: React.FC = () => {
               </Grid>
 
               {/* Weapons */}
-              <Grid item xs={12} md={6}>
+              <Grid size={{xs: 12, md: 6}}>
                 <Card>
                   <CardHeader title="Ship Weapons" />
                   <CardContent>
@@ -896,7 +896,7 @@ const ShipManagement: React.FC = () => {
               </Grid>
 
               {/* Ship Improvements */}
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <Card>
                   <CardHeader title="Ship Improvements" />
                   <CardContent>
@@ -964,7 +964,7 @@ const ShipManagement: React.FC = () => {
 
               {/* Officers */}
               {selectedShip.officers && selectedShip.officers.length > 0 && (
-                <Grid item xs={12} md={6}>
+                <Grid size={{xs: 12, md: 6}}>
                   <Card>
                     <CardHeader title="Officers" />
                     <CardContent>
@@ -985,22 +985,22 @@ const ShipManagement: React.FC = () => {
 
               {/* Pirate Campaign Stats */}
               {(selectedShip.plunder > 0 || selectedShip.infamy > 0 || selectedShip.disrepute > 0) && (
-                <Grid item xs={12} md={6}>
+                <Grid size={{xs: 12, md: 6}}>
                   <Card>
                     <CardHeader title="Pirate Campaign Stats" />
                     <CardContent>
                       <Grid container spacing={2}>
-                        <Grid item xs={4}>
+                        <Grid size={{xs: 4}}>
                           <Typography variant="subtitle2" color="primary">Plunder</Typography>
                           <Typography variant="h6">{selectedShip.plunder || 0}</Typography>
                         </Grid>
                         
-                        <Grid item xs={4}>
+                        <Grid size={{xs: 4}}>
                           <Typography variant="subtitle2" color="primary">Infamy</Typography>
                           <Typography variant="h6">{selectedShip.infamy || 0}</Typography>
                         </Grid>
                         
-                        <Grid item xs={4}>
+                        <Grid size={{xs: 4}}>
                           <Typography variant="subtitle2" color="primary">Disrepute</Typography>
                           <Typography variant="h6">{selectedShip.disrepute || 0}</Typography>
                         </Grid>
@@ -1012,7 +1012,7 @@ const ShipManagement: React.FC = () => {
 
               {/* Flag Description */}
               {selectedShip.flag_description && (
-                <Grid item xs={12}>
+                <Grid size={12}>
                   <Card>
                     <CardHeader title="Ship's Flag" />
                     <CardContent>
@@ -1025,7 +1025,7 @@ const ShipManagement: React.FC = () => {
               )}
 
               {/* Crew Members */}
-              <Grid item xs={12}>
+              <Grid size={12}>
                 <Card>
                   <CardHeader 
                     title="Crew Members" 
@@ -1037,7 +1037,7 @@ const ShipManagement: React.FC = () => {
                     ) : selectedShipCrew.length > 0 ? (
                       <Grid container spacing={2}>
                         {selectedShipCrew.map((crew) => (
-                          <Grid item xs={12} sm={6} md={4} key={crew.id}>
+                          <Grid size={{xs: 12, sm: 6, md: 4}} key={crew.id}>
                             <Box sx={{ p: 2, border: '1px solid #eee', borderRadius: 1 }}>
                               <Typography variant="body2" fontWeight="bold">
                                 {crew.name}
