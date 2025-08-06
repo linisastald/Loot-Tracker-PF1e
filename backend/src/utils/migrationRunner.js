@@ -80,6 +80,13 @@ class MigrationRunner {
   }
 
   /**
+   * Check if migration contains CREATE INDEX CONCURRENTLY statements
+   */
+  containsConcurrentIndex(sql) {
+    return sql.toUpperCase().includes('CREATE INDEX CONCURRENTLY');
+  }
+
+  /**
    * Apply a single migration with enhanced error handling
    */
   async applyMigration(filename) {
@@ -91,24 +98,55 @@ class MigrationRunner {
 
     logger.info(`Applying migration: ${filename}`);
 
-    // Use a transaction to ensure atomicity
     const client = await pool.connect();
     try {
-      await client.query('BEGIN');
+      // Check if migration contains CONCURRENTLY operations
+      const hasConcurrentOps = this.containsConcurrentIndex(migrationSQL);
       
-      // Execute the migration
-      await client.query(migrationSQL);
+      if (hasConcurrentOps) {
+        logger.info(`Migration ${filename} contains CONCURRENT operations - running without transaction`);
+        
+        // Remove explicit BEGIN/COMMIT from the SQL if present
+        let cleanSQL = migrationSQL
+          .replace(/^\s*BEGIN\s*;\s*/gim, '')
+          .replace(/\s*COMMIT\s*;\s*$/gim, '');
+        
+        // Execute migration without transaction
+        await client.query(cleanSQL);
+        
+        // Record the migration as applied in a separate transaction
+        await client.query('BEGIN');
+        await client.query(
+          'INSERT INTO schema_migrations (filename) VALUES ($1)',
+          [filename]
+        );
+        await client.query('COMMIT');
+      } else {
+        // Use transaction for regular migrations
+        await client.query('BEGIN');
+        
+        // Execute the migration
+        await client.query(migrationSQL);
+        
+        // Record the migration as applied
+        await client.query(
+          'INSERT INTO schema_migrations (filename) VALUES ($1)',
+          [filename]
+        );
+        
+        await client.query('COMMIT');
+      }
       
-      // Record the migration as applied
-      await client.query(
-        'INSERT INTO schema_migrations (filename) VALUES ($1)',
-        [filename]
-      );
-      
-      await client.query('COMMIT');
       logger.info(`Migration applied successfully: ${filename}`);
     } catch (error) {
-      await client.query('ROLLBACK');
+      // Only rollback if we're in a transaction
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        // Ignore rollback errors (might not be in transaction)
+        logger.debug('Rollback failed (might not be in transaction):', rollbackError.message);
+      }
+      
       logger.error(`Failed to apply migration ${filename}:`, {
         error: error.message,
         detail: error.detail,
@@ -119,6 +157,10 @@ class MigrationRunner {
       // Provide specific guidance for common errors
       if (error.message.includes('unique or exclusion constraint')) {
         logger.error('MIGRATION HINT: This error often occurs when using ON CONFLICT without proper constraints. Consider using INSERT...WHERE NOT EXISTS instead.');
+      }
+      
+      if (error.message.includes('CREATE INDEX CONCURRENTLY')) {
+        logger.error('MIGRATION HINT: CREATE INDEX CONCURRENTLY cannot run inside a transaction block. The migration runner should handle this automatically.');
       }
       
       throw error;
