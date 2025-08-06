@@ -194,13 +194,14 @@ class MigrationRunner {
    * Create a rollback migration file template
    */
   async createRollbackTemplate(filename) {
-    const rollbackDir = path.join(this.migrationDir, 'rollbacks');
-    if (!fs.existsSync(rollbackDir)) {
-      fs.mkdirSync(rollbackDir, { recursive: true });
-    }
-    
-    const rollbackFilename = filename.replace('.sql', '_rollback.sql');
-    const rollbackPath = path.join(rollbackDir, rollbackFilename);
+    try {
+      const rollbackDir = path.join(this.migrationDir, 'rollbacks');
+      if (!fs.existsSync(rollbackDir)) {
+        fs.mkdirSync(rollbackDir, { recursive: true });
+      }
+      
+      const rollbackFilename = filename.replace('.sql', '_rollback.sql');
+      const rollbackPath = path.join(rollbackDir, rollbackFilename);
     
     if (!fs.existsSync(rollbackPath)) {
       const template = `-- Rollback for ${filename}
@@ -218,6 +219,12 @@ class MigrationRunner {
       
       fs.writeFileSync(rollbackPath, template);
       logger.info(`Created rollback template: ${rollbackPath}`);
+    }
+    } catch (error) {
+      // If we can't create rollback templates (e.g., in Docker with read-only filesystem),
+      // log a warning but don't fail the migration
+      logger.warn(`Could not create rollback template for ${filename}: ${error.message}`);
+      logger.warn('Continuing without rollback template - this is normal in containerized environments');
     }
   }
 
