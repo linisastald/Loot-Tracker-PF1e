@@ -24,11 +24,13 @@ import {isDM} from "../../utils/auth";
 
 interface LootItem {
   id: number;
+  itemid?: number;
   name: string;
   description?: string;
   value?: number;
   whohas?: string;
   identified?: boolean;
+  unidentified?: boolean;
 }
 
 interface LootData {
@@ -38,16 +40,22 @@ interface LootData {
 
 interface User {
   id: number;
-  username: string;
+  username?: string;
   role: string;
+  activeCharacterId?: number;
 }
 
 interface Item {
   id: number;
+  itemId?: number;
   name: string;
   description?: string;
   value?: number;
   dc?: number;
+  oldName?: string;
+  newName?: string;
+  spellcraftRoll?: number;
+  cursedDetected?: boolean;
 }
 
 interface SortConfig {
@@ -85,8 +93,8 @@ const Identify: React.FC = () => {
 
     const fetchActiveUserDetails = async (): Promise<void> => {
         const user = await fetchActiveUser();
-        if (user && user.activeCharacterId) {
-            setActiveUser(user);
+        if (user && (user as any).activeCharacterId) {
+            setActiveUser(user as User);
         } else {
             console.error('Active character ID is not available or user could not be fetched');
         }
@@ -99,8 +107,8 @@ const Identify: React.FC = () => {
 
             if (!isDMUser) {
                 const currentActiveUser = await fetchActiveUser();
-                if (currentActiveUser && currentActiveUser.activeCharacterId) {
-                    params.activeCharacterId = currentActiveUser.activeCharacterId;
+                if (currentActiveUser && (currentActiveUser as any).activeCharacterId) {
+                    (params as any).activeCharacterId = (currentActiveUser as any).activeCharacterId;
                 } else {
                     console.error('No active character ID available');
                     return;
@@ -129,7 +137,7 @@ const Identify: React.FC = () => {
         }
     };
 
-    const handleSelectItem = (id) => {
+    const handleSelectItem = (id: number) => {
         setSelectedItems(prevSelectedItems =>
             prevSelectedItems.includes(id)
                 ? prevSelectedItems.filter(item => item !== id)
@@ -137,13 +145,13 @@ const Identify: React.FC = () => {
         );
     };
 
-    const handleSpellcraftChange = (value) => {
+    const handleSpellcraftChange = (value: string) => {
         setSpellcraftValue(value);
         // Save to localStorage whenever the value changes
         localStorage.setItem('spellcraftBonus', value);
     };
 
-    const handleIdentify = async (itemsToIdentify: Item[]): Promise<void> => {
+    const handleIdentify = async (itemsToIdentify: number[]): Promise<void> => {
         try {
             setError('');
             setSuccess('');
@@ -175,7 +183,7 @@ const Identify: React.FC = () => {
                 }
 
                 // Calculate spellcraft roll for players
-                const spellcraftBonus = parseInt(spellcraftValue || 0);
+                const spellcraftBonus = parseInt(spellcraftValue || '0');
                 let spellcraftRoll;
 
                 if (takeTen) {
@@ -201,7 +209,7 @@ const Identify: React.FC = () => {
             // Log data being sent for debugging
             console.log('Sending identification data:', {
                 items: identifyData.map(item => item.itemId),
-                characterId: isDMUser ? null : activeUser.activeCharacterId,
+                characterId: isDMUser ? null : activeUser?.activeCharacterId,
                 spellcraftRolls: identifyData.map(item => item.spellcraftRoll),
                 takeTen
             });
@@ -210,11 +218,11 @@ const Identify: React.FC = () => {
                 // Send identification request to the server
                 const response = await lootService.identifyItems({
                     itemIds: identifyData.map(item => item.itemId),
-                    characterId: isDMUser ? null : activeUser.activeCharacterId,
+                    characterId: isDMUser ? null : activeUser?.activeCharacterId,
                     identifyResults: identifyData.map(item => ({
                         itemId: item.itemId,
                         spellcraftRoll: item.spellcraftRoll,
-                        takeTen: takeTen
+                        success: false
                     }))
                 });
 
@@ -321,8 +329,8 @@ const Identify: React.FC = () => {
     };
 
     const filteredLoot = {
-        summary: loot.summary.filter(item => item.unidentified === true && item.itemid !== null),
-        individual: loot.individual.filter(item => item.unidentified === true && item.itemid !== null)
+        summary: loot.summary.filter(item => !item.identified && item.itemid !== null),
+        individual: loot.individual.filter(item => !item.identified && item.itemid !== null)
     };
 
     return (

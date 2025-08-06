@@ -33,6 +33,12 @@ interface Ship {
   description?: string;
   crew_min: number;
   crew_max: number;
+  location?: string;
+  crew_count?: number;
+  current_hp?: number;
+  max_hp?: number;
+  base_ac?: number;
+  initiative?: number;
 }
 
 function TabPanel({ children, value, index, ...other }: TabPanelProps) {
@@ -1092,14 +1098,6 @@ const ShipManagement: React.FC = () => {
         loadingShipTypes={loadingShipTypes}
         onShipTypeChange={handleShipTypeChange}
         onSave={handleSaveShip}
-        onAddWeapon={handleAddWeapon}
-        onRemoveWeapon={handleRemoveWeapon}
-        onUpdateWeapon={handleUpdateWeapon}
-        onAddOfficer={handleAddOfficer}
-        onRemoveOfficer={handleRemoveOfficer}
-        onUpdateOfficer={handleUpdateOfficer}
-        onAddImprovement={handleAddImprovement}
-        onRemoveImprovement={handleRemoveImprovement}
       />
 
       {/* Delete Confirmation Dialog */}

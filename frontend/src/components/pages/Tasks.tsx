@@ -33,8 +33,9 @@ interface Character {
 }
 
 interface TaskAssignment {
-    assignments: any[];
-    timestamp: string;
+    pre: any;
+    during: any;
+    post: any;
 }
 
 interface Alert {
@@ -72,10 +73,12 @@ const StyledCard = styled(Card)(({theme}) => ({
     },
 }));
 
-const StyledCardHeader = styled(Box)(({theme, color}) => ({
+const StyledCardHeader = styled(Box, {
+    shouldForwardProp: (prop) => prop !== 'color',
+})<{ color: string }>(({ theme, color }) => ({
     padding: theme.spacing(2),
     backgroundColor: color,
-    color: theme.palette.getContrastText(color),
+    color: theme.palette.getContrastText?.(color) || '#fff',
     display: 'flex',
     alignItems: 'center',
     '& svg': {
@@ -90,7 +93,9 @@ const CharacterSelector = styled(Box)(({theme}) => ({
     margin: theme.spacing(2, 0),
 }));
 
-const CharacterChip = styled(Box)(({theme, selected, late}) => ({
+const CharacterChip = styled(Box, {
+    shouldForwardProp: (prop) => prop !== 'selected' && prop !== 'late',
+})<{ selected?: boolean; late?: boolean }>(({ theme, selected, late }) => ({
     padding: theme.spacing(1, 2),
     borderRadius: theme.shape.borderRadius,
     backgroundColor: theme.palette.background.paper,
@@ -169,7 +174,7 @@ const Tasks: React.FC = () => {
         }]
     });
 
-    const formatTasksForEmbed = (tasks) => {
+    const formatTasksForEmbed = (tasks: Record<string, string[]>) => {
         return Object.entries(tasks).map(([character, characterTasks]) => ({
             name: character,
             value: characterTasks.map(task => `• ${task}`).join('\n'),
@@ -177,7 +182,7 @@ const Tasks: React.FC = () => {
         }));
     };
 
-    const shuffleArray = (array) => {
+    const shuffleArray = (array: any[]) => {
         for (let i = array.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [array[i], array[j]] = [array[j], array[i]];
@@ -359,7 +364,7 @@ const Tasks: React.FC = () => {
         }
     };
 
-    const renderTaskList = (tasks) => (
+    const renderTaskList = (tasks: Record<string, string[]>) => (
         <List disablePadding>
             {Object.entries(tasks).map(([character, characterTasks]) => (
                 <CompactListItem key={character}>

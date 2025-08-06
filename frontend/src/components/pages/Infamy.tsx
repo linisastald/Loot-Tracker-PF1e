@@ -29,6 +29,7 @@ interface Imposition {
     displayCost: string;
     effect: string;
     description?: string;
+    isAvailable?: boolean;
 }
 
 interface InfamyData {
@@ -222,7 +223,7 @@ const Infamy: React.FC = () => {
     const [isDM, setIsDM] = useState(false);
 
     // Infamy data
-    const [infamyStatus, setInfamyStatus] = useState<{infamy: number; disrepute: number; threshold: string; favored_ports: string[]}>({
+    const [infamyStatus, setInfamyStatus] = useState<{infamy: number; disrepute: number; threshold: string; favored_ports: {port_name: string; bonus: number}[]}>({
         infamy: 0,
         disrepute: 0,
         threshold: 'None',
@@ -397,7 +398,7 @@ const Infamy: React.FC = () => {
             }
 
             // Ensure at least 3 plunder is spent when reroll is selected
-            let effectivePlunderSpent = parseInt(plunderSpent) || 0;
+            let effectivePlunderSpent = typeof plunderSpent === 'string' ? parseInt(plunderSpent) || 0 : plunderSpent;
             if (rerollWithPlunder && effectivePlunderSpent < 3) {
                 effectivePlunderSpent = 3; // Force minimum plunder to 3 for reroll
             }

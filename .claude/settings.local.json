@@ -21,7 +21,11 @@
       "Bash(cat:*)",
       "Bash(grep:*)",
       "Bash(mv:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(npm run build:*)",
+      "Bash(for file in *.js)",
+      "Bash(do mv \"$file\" \"$file%.js.jsx\")",
+      "Bash(done)"
     ],
     "deny": []
   }

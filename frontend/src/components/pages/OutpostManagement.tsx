@@ -26,6 +26,8 @@ interface Outpost {
   established_date: string;
   description?: string;
   status: string;
+  access_date?: string;
+  crew_count?: number;
 }
 
 function TabPanel({ children, value, index, ...other }: TabPanelProps) {
