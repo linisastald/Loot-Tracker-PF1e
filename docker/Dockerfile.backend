@@ -1,7 +1,7 @@
 # Simple frontend+backend single container (no nginx)
 # Compatible with existing TrueNAS deployment
 
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app
@@ -10,8 +10,10 @@ WORKDIR /app
 ARG NODE_ENV=production
 ARG REACT_APP_API_URL=/api
 
-# Copy package files for both frontend and backend
+# Copy package files and config files for both frontend and backend
 COPY frontend/package*.json ./frontend/
+COPY frontend/tsconfig.json ./frontend/
+COPY frontend/vite.config.js ./frontend/
 COPY backend/package*.json ./backend/
 
 # Install dependencies for both
@@ -20,8 +22,9 @@ RUN cd frontend && npm ci --ignore-scripts && \
 
 # Copy source code
 COPY frontend/src ./frontend/src
-COPY frontend/public ./frontend/public
+COPY frontend/index.html ./frontend/
 COPY backend/src ./backend/src
+COPY backend/migrations ./backend/migrations
 COPY backend/index.js ./backend/
 
 # Build frontend
