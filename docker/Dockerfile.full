@@ -116,11 +116,18 @@ COPY --from=backend-build --chown=backend:nodejs /app/index.js /app/backend/inde
 
 # Copy frontend build with proper ownership (static files only)
 COPY --from=frontend-build --chown=frontend:nginx /app/build /usr/share/nginx/html
+# Also copy frontend build to where backend expects it
+COPY --from=frontend-build --chown=backend:nodejs /app/build /app/backend/frontend/build
 
 # Copy database initialization scripts (essential runtime files only)
 COPY --chown=backend:nodejs database/init.sql /app/database/
 COPY --chown=backend:nodejs database/sessions.sql /app/database/
 COPY --chown=backend:nodejs database/*.sql /app/database/
+
+# Ensure required directories exist with proper permissions after all COPY operations
+RUN mkdir -p /app/backend/logs /app/backend/migrations/rollbacks && \
+    chown -R backend:nodejs /app/backend/logs /app/backend/migrations/rollbacks && \
+    chmod 755 /app/backend/logs /app/backend/migrations/rollbacks
 
 # Create optimized nginx configuration
 RUN echo 'user frontend;' > /etc/nginx/nginx.conf && \
