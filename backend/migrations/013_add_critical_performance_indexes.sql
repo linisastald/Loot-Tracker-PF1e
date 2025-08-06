@@ -50,8 +50,8 @@ CREATE INDEX IF NOT EXISTS idx_characters_active_user ON characters(active, user
 -- Optimize consumable usage stats queries (if consumableuse table exists)
 -- CREATE INDEX IF NOT EXISTS idx_consumableuse_loot_time ON consumableuse(lootid, consumed_on);
 
--- Optimize appraisal statistics queries (check if appraised_on column exists)  
-CREATE INDEX IF NOT EXISTS idx_appraisal_character_time ON appraisal(characterid, time);
+-- Optimize appraisal statistics queries (using correct column name)  
+CREATE INDEX IF NOT EXISTS idx_appraisal_character_time ON appraisal(characterid, appraised_on);
 
 -- Optimize sold items reporting
 CREATE INDEX IF NOT EXISTS idx_sold_loot_date ON sold(lootid, soldon);
