@@ -3,11 +3,6 @@ import {
     Autocomplete,
     Box,
     Checkbox,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogContentText,
-    DialogTitle,
     FormControl,
     FormControlLabel,
     Grid,
@@ -29,7 +24,8 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
     const [localEntry, setLocalEntry] = useState(entry.data);
     const [itemSuggestions, setItemSuggestions] = useState([]);
     const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
-    const [showMagicDialog, setShowMagicDialog] = useState(false);
+    const [magicDialogShown, setMagicDialogShown] = useState(false);
+    const [showMagicMessage, setShowMagicMessage] = useState(false);
 
     useEffect(() => {
         setLocalEntry(entry.data);
@@ -69,29 +65,25 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
             return; // Don't allow enabling if no OpenAI key
         }
 
-        // If changing type to 'magic' and not already unidentified, show dialog
-        if (field === 'type' && value === 'magic' && !localEntry.unidentified) {
-            setShowMagicDialog(true);
-            return; // Don't update yet, wait for user choice
+        // If changing type to 'magic' and not already unidentified, show message once per page load
+        // Skip if this is from autofill (parseItem is enabled) or already shown
+        if (field === 'type' && value === 'magic' && !localEntry.unidentified && !magicDialogShown && !localEntry.parseItem) {
+            setShowMagicMessage(true);
+            setMagicDialogShown(true);
+            // Auto-hide message after 8 seconds
+            setTimeout(() => setShowMagicMessage(false), 8000);
         }
 
         setLocalEntry(prev => ({...prev, [field]: value}));
         onChange(index, {[field]: value});
     };
 
-    const handleMagicDialogChoice = (useUnidentified) => {
-        setShowMagicDialog(false);
-        
-        if (useUnidentified) {
-            // Set as unidentified instead of magic type
-            const updates = { unidentified: true, parseItem: false, itemId: null };
-            setLocalEntry(prev => ({...prev, ...updates}));
-            onChange(index, updates);
-        } else {
-            // Proceed with magic type
-            setLocalEntry(prev => ({...prev, type: 'magic'}));
-            onChange(index, {type: 'magic'});
-        }
+    const handleMarkAsUnidentified = () => {
+        setShowMagicMessage(false);
+        // Set as unidentified instead of magic type
+        const updates = { unidentified: true, type: '', parseItem: false, itemId: null };
+        setLocalEntry(prev => ({...prev, ...updates}));
+        onChange(index, updates);
     };
 
     const handleItemSelect = (event, newValue) => {
@@ -437,28 +429,39 @@ const EntryForm = ({entry, index, onRemove, onChange}) => {
                 </Box>
             )}
 
-            {/* Magic Type Dialog */}
-            <Dialog open={showMagicDialog} onClose={() => setShowMagicDialog(false)}>
-                <DialogTitle>Magic Item Detection</DialogTitle>
-                <DialogContent>
-                    <DialogContentText>
-                        You selected "Magic" as the item type. For items that haven't been identified yet, 
-                        consider using the "Unidentified" checkbox instead. This helps track which items 
-                        still need identification rolls.
-                    </DialogContentText>
-                    <DialogContentText sx={{ mt: 2, fontWeight: 'bold' }}>
-                        What would you like to do?
-                    </DialogContentText>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => handleMagicDialogChoice(true)} color="primary" variant="outlined">
-                        Mark as Unidentified
-                    </Button>
-                    <Button onClick={() => handleMagicDialogChoice(false)} color="primary" variant="contained">
-                        Keep as Magic Type
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            {/* Magic Type Message */}
+            {showMagicMessage && (
+                <Box sx={{ 
+                    mt: 2, 
+                    p: 2, 
+                    bgcolor: 'info.light', 
+                    borderRadius: 1,
+                    border: '1px solid',
+                    borderColor: 'info.main'
+                }}>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>💡 Tip:</strong> You selected "Magic" as the item type. For items that haven't been identified yet, 
+                        consider marking them as "Unidentified" instead. This helps track which items still need identification rolls.
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                        <Button 
+                            size="small" 
+                            variant="outlined" 
+                            color="primary"
+                            onClick={handleMarkAsUnidentified}
+                        >
+                            Mark as Unidentified
+                        </Button>
+                        <Button 
+                            size="small" 
+                            variant="text" 
+                            onClick={() => setShowMagicMessage(false)}
+                        >
+                            Keep as Magic
+                        </Button>
+                    </Box>
+                </Box>
+            )}
         </Paper>
     );
 };
