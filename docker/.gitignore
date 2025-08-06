@@ -1,0 +1,13 @@
+# Ignore environment files with secrets
+.env
+.env.local
+.env.production
+
+# Ignore actual compose files (only templates should be committed)
+docker-compose.yml
+docker-compose.*.yml
+!docker-compose.template.yml
+
+# Ignore Docker volumes and data
+volumes/
+data/
