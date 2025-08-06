@@ -6,7 +6,11 @@ import api from '../../utils/api';
 import {Box, Button, Container, IconButton, InputAdornment, Link, Paper, TextField, Typography} from '@mui/material';
 import {Visibility, VisibilityOff} from '@mui/icons-material';
 
-const Login = ({onLogin}) => {
+interface LoginProps {
+  onLogin: (user: any) => void;
+}
+
+const Login: React.FC<LoginProps> = ({onLogin}) => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -33,11 +37,16 @@ const Login = ({onLogin}) => {
 
             // Navigate to the main page
             navigate('/loot-entry');
-        } catch (err) {
+        } catch (err: unknown) {
             // Display error message from API if available
-            setError(err.response?.data?.error ||
-                err.response?.data?.message ||
-                'Login failed. Please check your credentials.');
+            if (err && typeof err === 'object' && 'response' in err) {
+                const axiosError = err as any;
+                setError(axiosError.response?.data?.error ||
+                    axiosError.response?.data?.message ||
+                    'Login failed. Please check your credentials.');
+            } else {
+                setError('Login failed. Please check your credentials.');
+            }
         }
     };
 
@@ -47,7 +56,7 @@ const Login = ({onLogin}) => {
     };
 
     // Handle Enter key press for form submission
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             handleLogin();
         }
