@@ -55,7 +55,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
       }}
     >
       <CustomLootTable
-        loot={[...loot.summary, ...loot.individual]}
+        loot={loot.summary}
         individualLoot={loot.individual}
         selectedItems={selectedItems}
         setSelectedItems={setSelectedItems}
