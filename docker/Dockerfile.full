@@ -126,8 +126,9 @@ COPY --chown=backend:nodejs database/*.sql /app/database/
 
 # Ensure required directories exist with proper permissions after all COPY operations
 RUN mkdir -p /app/backend/logs /app/backend/migrations/rollbacks && \
-    chown -R backend:nodejs /app/backend/logs /app/backend/migrations/rollbacks && \
-    chmod 755 /app/backend/logs /app/backend/migrations/rollbacks
+    chown -R backend:nodejs /app/backend && \
+    chmod 755 /app/backend/logs /app/backend/migrations/rollbacks && \
+    chmod 755 /app/backend/migrations
 
 # Create optimized nginx configuration
 RUN echo 'user frontend;' > /etc/nginx/nginx.conf && \
