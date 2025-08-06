@@ -98,7 +98,6 @@ CREATE INDEX IF NOT EXISTS idx_loot_unidentified ON loot(itemid, session_date) W
 ANALYZE loot;
 ANALYZE gold; 
 ANALYZE characters;
-ANALYZE sessions;
 ANALYZE settings;
 ANALYZE session_messages;
 ANALYZE consumableuse;
