@@ -106,13 +106,24 @@ class MigrationRunner {
       if (hasConcurrentOps) {
         logger.info(`Migration ${filename} contains CONCURRENT operations - running without transaction`);
         
-        // Remove explicit BEGIN/COMMIT from the SQL if present
+        // Remove all BEGIN and COMMIT statements
         let cleanSQL = migrationSQL
-          .replace(/^\s*BEGIN\s*;\s*/gim, '')
-          .replace(/\s*COMMIT\s*;\s*$/gim, '');
+          .replace(/\s*BEGIN\s*;?\s*/gim, '\n')
+          .replace(/\s*COMMIT\s*;?\s*/gim, '\n');
         
-        // Execute migration without transaction
-        await client.query(cleanSQL);
+        // Split into individual statements and filter out empty ones
+        const statements = cleanSQL
+          .split(';')
+          .map(stmt => stmt.trim())
+          .filter(stmt => stmt.length > 0 && !stmt.startsWith('--') && stmt !== '\n');
+        
+        // Execute each statement separately (not in a transaction)
+        for (const statement of statements) {
+          if (statement.trim()) {
+            logger.debug(`Executing: ${statement.substring(0, 100)}...`);
+            await client.query(statement);
+          }
+        }
         
         // Record the migration as applied in a separate transaction
         await client.query('BEGIN');
