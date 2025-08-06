@@ -357,7 +357,7 @@ class IdentificationService {
       SELECT l.*, i.name as base_item_name, i.type as item_type
       FROM loot l
       LEFT JOIN item i ON l.itemid = i.id
-      WHERE l.unidentified = true
+      WHERE l.unidentified = true AND l.itemid IS NOT NULL
       ORDER BY l.name
       LIMIT $1 OFFSET $2
     `;
@@ -365,7 +365,7 @@ class IdentificationService {
     const countQuery = `
       SELECT COUNT(*)
       FROM loot l
-      WHERE l.unidentified = true
+      WHERE l.unidentified = true AND l.itemid IS NOT NULL
     `;
 
     const [itemsResult, countResult] = await Promise.all([

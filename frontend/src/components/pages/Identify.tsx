@@ -102,26 +102,21 @@ const Identify: React.FC = () => {
 
     const fetchLoot = async (): Promise<void> => {
         try {
-            const isDMUser = isDM();
-            let params = {isDM: isDMUser};
+            console.log("Fetching unidentified items for identify page");
 
-            if (!isDMUser) {
-                const currentActiveUser = await fetchActiveUser();
-                if (currentActiveUser && (currentActiveUser as any).activeCharacterId) {
-                    (params as any).activeCharacterId = (currentActiveUser as any).activeCharacterId;
-                } else {
-                    console.error('No active character ID available');
-                    return;
-                }
-            }
-
-            console.log("Fetching loot with params:", params);
-
-            const response = await lootService.getAllLoot(params);
-            setLoot(response.data);
+            // Use the specific unidentified items endpoint
+            const response = await api.get('/loot/unidentified');
+            
+            // The endpoint returns { items: [], pagination: {} }
+            // Convert to the expected format for the component
+            const items = response.data.items || [];
+            setLoot({
+                summary: [], // No summary for identify page
+                individual: items // Backend already filters for unidentified=true AND itemid IS NOT NULL
+            });
         } catch (error) {
-            console.error('Error fetching loot:', error);
-            setError('Error fetching loot. Please try again later.');
+            console.error('Error fetching unidentified items:', error);
+            setError('Error fetching unidentified items. Please try again later.');
         }
     };
 
@@ -328,9 +323,10 @@ const Identify: React.FC = () => {
         }
     };
 
+    // Items are already filtered by the backend to be unidentified with itemid
     const filteredLoot = {
-        summary: loot.summary.filter(item => item.unidentified === true),
-        individual: loot.individual.filter(item => item.unidentified === true)
+        summary: [], // No summary rows for identify page
+        individual: loot.individual
     };
 
     return (
