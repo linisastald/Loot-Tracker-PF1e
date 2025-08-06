@@ -12,18 +12,18 @@ BEGIN;
 -- Settings table - very frequent lookups by name
 CREATE INDEX IF NOT EXISTS idx_settings_name ON settings(name);
 
--- Session messages table - frequent lookups by session_id with ordering
-CREATE INDEX IF NOT EXISTS idx_session_messages_session_id ON session_messages(session_id);
-CREATE INDEX IF NOT EXISTS idx_session_messages_session_created ON session_messages(session_id, created_at);
+-- Session messages table - frequent lookups by session dates (actual schema uses session_date, not session_id)
+CREATE INDEX IF NOT EXISTS idx_session_messages_session_date ON session_messages(session_date);
+CREATE INDEX IF NOT EXISTS idx_session_messages_session_created ON session_messages(session_date, created_at);
 
--- Weather tables - frequent region-based lookups
-CREATE INDEX IF NOT EXISTS idx_golarion_weather_region ON golarion_weather(region);
-CREATE INDEX IF NOT EXISTS idx_golarion_weather_region_date ON golarion_weather(region, year, month, day);
+-- Weather tables - frequent region-based lookups (tables may not exist in all deployments)
+-- CREATE INDEX IF NOT EXISTS idx_golarion_weather_region ON golarion_weather(region);
+-- CREATE INDEX IF NOT EXISTS idx_golarion_weather_region_date ON golarion_weather(region, year, month, day);
 
--- Invites table - frequent lookups by token and email
-CREATE INDEX IF NOT EXISTS idx_invites_token ON invites(token);
-CREATE INDEX IF NOT EXISTS idx_invites_email ON invites(email);
-CREATE INDEX IF NOT EXISTS idx_invites_is_used ON invites(is_used);
+-- Invites table - frequent lookups by token and email (table may not exist in all deployments)
+-- CREATE INDEX IF NOT EXISTS idx_invites_token ON invites(token);
+-- CREATE INDEX IF NOT EXISTS idx_invites_email ON invites(email);
+-- CREATE INDEX IF NOT EXISTS idx_invites_is_used ON invites(is_used);
 
 -- =====================================================================================
 -- COMPOSITE INDEXES - Optimize Complex Queries
@@ -40,8 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_gold_session_character ON gold(session_date, char
 -- Character active status filtering (userController patterns)
 CREATE INDEX IF NOT EXISTS idx_characters_active_user ON characters(active, user_id);
 
--- Session attendance with status filtering
-CREATE INDEX IF NOT EXISTS idx_session_attendance_session_status ON session_attendance(session_id, status);
+-- Session attendance with status filtering (table may not exist in all deployments)
+-- CREATE INDEX IF NOT EXISTS idx_session_attendance_session_status ON session_attendance(session_id, status);
 
 -- =====================================================================================
 -- AGGREGATION OPTIMIZATION INDEXES
@@ -78,8 +78,8 @@ CREATE INDEX IF NOT EXISTS idx_characters_active_only ON characters(user_id, nam
 -- Only index unidentified loot (frequent filtering condition)
 CREATE INDEX IF NOT EXISTS idx_loot_unidentified ON loot(itemid, session_date) WHERE unidentified = true;
 
--- Only index unused invites (most common lookup pattern)
-CREATE INDEX IF NOT EXISTS idx_invites_unused ON invites(email, created_at) WHERE is_used = false;
+-- Only index unused invites (most common lookup pattern) - table may not exist
+-- CREATE INDEX IF NOT EXISTS idx_invites_unused ON invites(email, created_at) WHERE is_used = false;
 
 -- =====================================================================================
 -- TEXT SEARCH OPTIMIZATION
