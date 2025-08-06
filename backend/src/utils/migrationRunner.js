@@ -106,42 +106,58 @@ class MigrationRunner {
       if (hasConcurrentOps) {
         logger.info(`Migration ${filename} contains CONCURRENT operations - running without transaction`);
         
-        // Remove all BEGIN and COMMIT statements
+        // Remove all BEGIN and COMMIT statements and block comments
         let cleanSQL = migrationSQL
           .replace(/\s*BEGIN\s*;?\s*/gim, '\n')
-          .replace(/\s*COMMIT\s*;?\s*/gim, '\n');
+          .replace(/\s*COMMIT\s*;?\s*/gim, '\n')
+          // Remove block comments /* ... */
+          .replace(/\/\*[\s\S]*?\*\//gm, '\n');
         
         // Split into individual statements and filter properly
         const statements = cleanSQL
           .split(';')
           .map(stmt => {
-            // Remove all comment lines and empty lines
+            // Remove all comment lines, empty lines, and clean up
             return stmt
               .split('\n')
               .filter(line => {
                 const trimmed = line.trim();
-                return trimmed.length > 0 && !trimmed.startsWith('--');
+                // Filter out comments, empty lines, and lines that are just separators
+                return trimmed.length > 0 && 
+                       !trimmed.startsWith('--') && 
+                       !trimmed.startsWith('/*') &&
+                       !trimmed.match(/^[=\-\s]*$/); // Lines with just = or - characters
               })
               .join('\n')
               .trim();
           })
           .filter(stmt => {
-            // Only keep statements that have actual SQL content
-            return stmt.length > 0 && 
+            // Only keep statements that have actual SQL content and reasonable length
+            const upperStmt = stmt.toUpperCase();
+            return stmt.length > 10 && // Must be substantial
                    !stmt.startsWith('--') && 
-                   (stmt.toUpperCase().includes('CREATE') ||
-                    stmt.toUpperCase().includes('ALTER') ||
-                    stmt.toUpperCase().includes('INSERT') ||
-                    stmt.toUpperCase().includes('UPDATE') ||
-                    stmt.toUpperCase().includes('DELETE') ||
-                    stmt.toUpperCase().includes('DROP'));
+                   !stmt.startsWith('/*') &&
+                   (upperStmt.includes('CREATE') ||
+                    upperStmt.includes('ALTER') ||
+                    upperStmt.includes('INSERT') ||
+                    upperStmt.includes('UPDATE') ||
+                    upperStmt.includes('DELETE') ||
+                    upperStmt.includes('DROP'));
           });
         
         // Execute each statement separately (not in a transaction)
-        for (const statement of statements) {
+        logger.info(`Found ${statements.length} statements to execute`);
+        for (let i = 0; i < statements.length; i++) {
+          const statement = statements[i];
           if (statement.trim()) {
-            logger.debug(`Executing: ${statement.substring(0, 100)}...`);
-            await client.query(statement);
+            logger.info(`Executing statement ${i + 1}: ${statement.substring(0, 100).replace(/\s+/g, ' ')}...`);
+            try {
+              await client.query(statement);
+              logger.info(`Statement ${i + 1} executed successfully`);
+            } catch (stmtError) {
+              logger.error(`Error in statement ${i + 1}:`, statement);
+              throw stmtError;
+            }
           }
         }
         
