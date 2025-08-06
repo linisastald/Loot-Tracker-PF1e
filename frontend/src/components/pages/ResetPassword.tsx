@@ -201,7 +201,7 @@ const ResetPassword = () => {
                     color="primary"
                     sx={{ mt: 3, mb: 2 }}
                     onClick={handleSubmit}
-                    disabled={loading || success}
+                    disabled={Boolean(loading || success)}
                 >
                     {loading ? 'Resetting...' : 'Reset Password'}
                 </Button>

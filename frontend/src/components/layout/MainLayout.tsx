@@ -5,7 +5,11 @@ import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useConfig } from '../../contexts/ConfigContext';
 
-const MainLayout = ({ onLogout }) => {
+interface MainLayoutProps {
+  onLogout: () => void;
+}
+
+const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();

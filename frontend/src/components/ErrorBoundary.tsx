@@ -2,8 +2,19 @@ import React from 'react';
 import { Box, Button, Typography, Paper, Alert } from '@mui/material';
 import { Refresh, BugReport } from '@mui/icons-material';
 
-class ErrorBoundary extends React.Component {
-  constructor(props) {
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: React.ErrorInfo | null;
+  retryCount: number;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { 
       hasError: false, 

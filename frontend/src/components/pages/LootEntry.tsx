@@ -115,7 +115,6 @@ const LootEntry = () => {
                         key={index}
                         entry={entry}
                         index={index}
-                        itemOptions={itemOptions}
                         onRemove={() => handleRemoveEntry(index)}
                         onChange={handleEntryChange}
                     />

@@ -2,7 +2,16 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import configService from '../services/config.service';
 
-const ConfigContext = createContext();
+interface ConfigContextType {
+  config: any;
+  loading: boolean;
+}
+
+interface ConfigProviderProps {
+  children: React.ReactNode;
+}
+
+const ConfigContext = createContext<ConfigContextType | null>(null);
 
 export const useConfig = () => {
   const context = useContext(ConfigContext);
@@ -12,7 +21,7 @@ export const useConfig = () => {
   return context;
 };
 
-export const ConfigProvider = ({ children }) => {
+export const ConfigProvider: React.FC<ConfigProviderProps> = ({ children }) => {
   const [config, setConfig] = useState({
     groupName: 'Pathfinder Loot Tracker'
   });
