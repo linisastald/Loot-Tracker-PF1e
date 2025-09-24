@@ -122,7 +122,6 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
     const submitData = {
       name: data.name,
       quantity: parseInt(data.quantity) || 1,
-      description: data.description || null,
       notes: data.notes || null,
       cursed: Boolean(data.cursed),
       unidentified: Boolean(data.unidentified),
@@ -147,7 +146,6 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
           // Merge parsed data into submitData, maintaining proper format
           const parsedData = parseResponse.data;
           Object.assign(submitData, {
-            description: parsedData.description || submitData.description,
             type: parsedData.type
               ? parsedData.type.toLowerCase()
               : submitData.type,

@@ -10,7 +10,7 @@ const { calculateFinalValue } = require('../services/calculateFinalValue');
  * Create new loot item
  */
 const createLoot = async (req, res) => {
-  const { name, quantity, description, notes, cursed, unidentified, itemId, modIds, customValue } = req.body;
+  const { name, quantity, notes, cursed, unidentified, itemId, modIds, customValue } = req.body;
 
   try {
     // Validate required fields
@@ -18,7 +18,6 @@ const createLoot = async (req, res) => {
     const validatedQuantity = ValidationService.validateQuantity(quantity);
 
     // Validate optional fields
-    const validatedDescription = ValidationService.validateDescription(description, 'description');
     const validatedNotes = ValidationService.validateDescription(notes, 'notes');
     const validatedCursed = ValidationService.validateBoolean(cursed, 'cursed');
     const validatedUnidentified = ValidationService.validateBoolean(unidentified, 'unidentified');
@@ -78,7 +77,6 @@ const createLoot = async (req, res) => {
       const lootData = {
         name: validatedName,
         quantity: validatedQuantity,
-        description: validatedDescription,
         notes: validatedNotes,
         cursed: validatedCursed,
         unidentified: validatedUnidentified,
@@ -322,7 +320,6 @@ const bulkCreateLoot = async (req, res) => {
           const lootData = {
             name: validatedName,
             quantity: validatedQuantity,
-            description: ValidationService.validateDescription(itemData.description, 'description'),
             notes: ValidationService.validateDescription(itemData.notes, 'notes'),
             cursed: ValidationService.validateBoolean(itemData.cursed, 'cursed'),
             unidentified: ValidationService.validateBoolean(itemData.unidentified, 'unidentified'),
@@ -396,7 +393,6 @@ const createFromTemplate = async (req, res) => {
       const lootData = {
         name: customizations.name || template.name,
         quantity: quantity,
-        description: customizations.description || null,
         notes: customizations.notes || null,
         cursed: customizations.cursed || false,
         unidentified: customizations.unidentified || false,
