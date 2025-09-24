@@ -105,7 +105,9 @@ const Identify: React.FC = () => {
             console.log("Fetching unidentified items for identify page");
 
             // Use the loot service to get unidentified items that can be identified
-            const response = await lootService.getUnidentifiedItems({ identifiableOnly: 'true' });
+            const params = { identifiableOnly: 'true' };
+            console.log("Sending params to getUnidentifiedItems:", params);
+            const response = await lootService.getUnidentifiedItems(params);
             console.log("Unidentified items API response:", response);
             
             // The endpoint returns { items: [], pagination: {} }
