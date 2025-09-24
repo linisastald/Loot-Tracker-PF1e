@@ -121,7 +121,7 @@ const lootService = {
    * Get items by IDs (for reference data)
    */
   getItemsByIds: (ids: number[]): Promise<ApiResponse> => 
-    api.post('/item-creation/items/by-ids', { ids }),
+    api.post('/item-creation/items/by-ids', { itemIds: ids }),
   
   /**
    * Get mods by IDs
