@@ -13,7 +13,7 @@ const versionService = {
     try {
       const response = await api.get('/version');
       return response;
-    } catch (error) {
+    } catch {
       // Return fallback version info on error
       return {
         data: {
