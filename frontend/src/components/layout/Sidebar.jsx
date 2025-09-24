@@ -244,15 +244,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
         }}
       >
         {!isCollapsed && (
-          <Tooltip 
-            title={`v${versionInfo.fullVersion}${versionInfo.environment ? ` (${versionInfo.environment})` : ''}`} 
-            arrow 
-            placement="right"
-          >
-            <Typography variant="h6" color="primary" noWrap sx={{ fontWeight: 600 }}>
-              {groupName}
-            </Typography>
-          </Tooltip>
+          <Typography variant="h6" color="primary" noWrap sx={{ fontWeight: 600 }}>
+            {groupName}
+          </Typography>
         )}
         <IconButton 
           onClick={toggleSidebar} 
