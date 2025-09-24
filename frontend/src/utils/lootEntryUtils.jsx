@@ -88,7 +88,7 @@ export const validateLootEntries = entries => {
 };
 
 export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
-  let data = { ...entry.data, session_date: entry.data.sessionDate };
+  let data = { ...entry.data };
 
   if (entry.type === 'gold') {
     const { transactionType, platinum, gold, silver, copper } = data;
@@ -118,18 +118,23 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
 
     return await api.post('/gold', { goldEntries: [goldData] });
   } else {
-    // Convert type to lowercase before submission
-    data.type = data.type ? data.type.toLowerCase() : null;
-
-    // If item is marked as unidentified, set itemId to null regardless of autofill
-    if (data.unidentified) {
-      data.itemId = null;
-    } else {
-      data.itemId = data.itemId || null;
-    }
-
-    data.value = data.value || null;
-    data.modids = data.modids || []; // Ensure modids is always an array
+    // Fix data format for backend expectations
+    const submitData = {
+      name: data.name,
+      quantity: parseInt(data.quantity) || 1,
+      description: data.description || null,
+      notes: data.notes || null,
+      cursed: Boolean(data.cursed),
+      unidentified: Boolean(data.unidentified),
+      itemId: data.unidentified ? null : data.itemId || null,
+      modIds: data.modids || [], // Backend expects camelCase modIds
+      customValue: data.value ? parseFloat(data.value) : null,
+      type: data.type ? data.type.toLowerCase() : null,
+      size: data.size || null,
+      masterwork: data.masterwork || null,
+      charges: data.charges || null,
+      session_date: data.sessionDate || new Date().toISOString(),
+    };
 
     // Only parse if "Smart Item Detection" is checked and the item is not unidentified
     // (parseItem should be false if unidentified is true - this is enforced in the UI)
@@ -139,17 +144,28 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
           description: data.name,
         });
         if (parseResponse.data) {
-          data = { ...data, ...parseResponse.data };
-          // Ensure the type is lowercase if it was set by the parsing
-          if (data.type) {
-            data.type = data.type.toLowerCase();
-          }
+          // Merge parsed data into submitData, maintaining proper format
+          const parsedData = parseResponse.data;
+          Object.assign(submitData, {
+            description: parsedData.description || submitData.description,
+            type: parsedData.type
+              ? parsedData.type.toLowerCase()
+              : submitData.type,
+            itemId: parsedData.itemId || submitData.itemId,
+            modIds: parsedData.modIds || submitData.modIds,
+            customValue: parsedData.value
+              ? parseFloat(parsedData.value)
+              : submitData.customValue,
+            cursed: Boolean(parsedData.cursed) || submitData.cursed,
+            unidentified:
+              Boolean(parsedData.unidentified) || submitData.unidentified,
+          });
         }
       } catch (parseError) {
         console.error('Error parsing item:', parseError);
       }
     }
 
-    return await lootService.createLoot(data);
+    return await lootService.createLoot(submitData);
   }
 };
