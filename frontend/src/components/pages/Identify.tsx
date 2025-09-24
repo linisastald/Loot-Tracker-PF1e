@@ -329,8 +329,14 @@ const Identify: React.FC = () => {
   };
 
   // Items are already filtered by the backend to be unidentified with itemid
+  // For identify page, we need to convert individual items to summary format for CustomLootTable
   const filteredLoot = {
-    summary: [], // No summary rows for identify page
+    summary: loot.individual.map(item => ({
+      ...item,
+      row_type: 'summary',
+      quantity: item.quantity || 1,
+      character_names: item.character_name ? [item.character_name] : [],
+    })),
     individual: loot.individual,
   };
 
