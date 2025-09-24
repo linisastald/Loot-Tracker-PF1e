@@ -251,6 +251,7 @@ const salesRoutes = require('./src/api/routes/sales');
 const appraisalRoutes = require('./src/api/routes/appraisal');
 const reportsRoutes = require('./src/api/routes/reports');
 const testDataRoutes = require('./src/api/routes/testData');
+const versionRoutes = require('./src/api/routes/version');
 
 // Set up routes with appropriate protection
 // Auth routes with auth-specific rate limiting (applied before global rate limiting)
@@ -288,6 +289,7 @@ app.use('/api/sales', csrfProtection, salesRoutes);
 app.use('/api/appraisal', csrfProtection, appraisalRoutes);
 app.use('/api/reports', csrfProtection, reportsRoutes);
 app.use('/api/test-data', csrfProtection, testDataRoutes);
+app.use('/api/version', versionRoutes); // No auth or CSRF protection needed for version info
 
 // Serve React frontend static files (production)
 if (process.env.NODE_ENV === 'production') {

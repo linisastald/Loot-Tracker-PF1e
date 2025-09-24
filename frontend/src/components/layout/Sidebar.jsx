@@ -45,8 +45,7 @@ import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
-// Import version from package.json
-const packageVersion = '0.7.1';
+import versionService from '../../services/versionService';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [openBeta, setOpenBeta] = useState(false);
@@ -60,6 +59,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [activeCharacter, setActiveCharacter] = useState(null);
   const [infamyEnabled, setInfamyEnabled] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [versionInfo, setVersionInfo] = useState({ fullVersion: '0.7.1', version: '0.7.1', buildNumber: 0 });
   const location = useLocation();
 
   const handleToggle = (setter) => () => setter(prev => !prev);
@@ -83,11 +83,12 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     
     const fetchData = async () => {
       try {
-        const [lootCountRes, groupNameRes, activeCharRes, infamyRes] = await Promise.all([
+        const [lootCountRes, groupNameRes, activeCharRes, infamyRes, versionRes] = await Promise.all([
           lootService.getUnprocessedCount(),
           api.get('/settings/campaign-name'),
           api.get('/auth/status'),
-          api.get('/settings/infamy-system')
+          api.get('/settings/infamy-system'),
+          versionService.getVersion()
         ]);
         
         if (isMounted) {
@@ -98,6 +99,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
           }
           if (infamyRes.data?.value) {
             setInfamyEnabled(infamyRes.data.value === '1');
+          }
+          if (versionRes.data) {
+            setVersionInfo(versionRes.data);
           }
         }
       } catch (error) {
@@ -240,7 +244,11 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
         }}
       >
         {!isCollapsed && (
-          <Tooltip title="v0.6.0" arrow placement="right">
+          <Tooltip 
+            title={`v${versionInfo.fullVersion}${versionInfo.environment ? ` (${versionInfo.environment})` : ''}`} 
+            arrow 
+            placement="right"
+          >
             <Typography variant="h6" color="primary" noWrap sx={{ fontWeight: 600 }}>
               {groupName}
             </Typography>
@@ -346,7 +354,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
               fontWeight: 500,
             }}
           >
-            v{packageVersion}
+            v{versionInfo.fullVersion}
           </Typography>
         </Box>
       )}
