@@ -11,9 +11,12 @@ const versionService = {
    */
   async getVersion() {
     try {
+      console.log('Fetching version from /api/version');
       const response = await api.get('/version');
+      console.log('Version response:', response.data);
       return response;
-    } catch {
+    } catch (error) {
+      console.error('Version API call failed:', error);
       // Return fallback version info on error
       return {
         data: {

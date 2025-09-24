@@ -104,12 +104,14 @@ const Identify: React.FC = () => {
         try {
             console.log("Fetching unidentified items for identify page");
 
-            // Use the specific unidentified items endpoint, only get identifiable items
-            const response = await api.get('/loot/unidentified?identifiableOnly=true');
+            // Use the loot service to get unidentified items that can be identified
+            const response = await lootService.getUnidentifiedItems({ identifiableOnly: true });
+            console.log("Unidentified items API response:", response);
             
             // The endpoint returns { items: [], pagination: {} }
             // Convert to the expected format for the component
             const items = response.data.items || [];
+            console.log("Items found:", items.length, items);
             setLoot({
                 summary: [], // No summary for identify page
                 individual: items // Backend already filters for unidentified=true AND itemid IS NOT NULL
