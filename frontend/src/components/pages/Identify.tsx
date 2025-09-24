@@ -95,7 +95,8 @@ const Identify: React.FC = () => {
         const user = await fetchActiveUser();
         if (user && (user as any).activeCharacterId) {
             setActiveUser(user as User);
-        } else {
+        } else if (!isDM()) {
+            // Only log error for non-DM users who need an active character
             console.error('Active character ID is not available or user could not be fetched');
         }
     };
@@ -332,6 +333,9 @@ const Identify: React.FC = () => {
         summary: [], // No summary rows for identify page
         individual: loot.individual
     };
+
+    console.log("FilteredLoot being passed to CustomLootTable:", filteredLoot);
+    console.log("Loot state:", loot);
 
     return (
         <Container maxWidth={false} component="main">
