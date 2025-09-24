@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
  */
 const getVersion = async (req, res) => {
   try {
+    logger.info('Version endpoint called');
     // Read version from .docker-version file
     const versionFilePath = path.resolve(__dirname, '../../../.docker-version');
     let version = '0.7.1'; // Fallback version
