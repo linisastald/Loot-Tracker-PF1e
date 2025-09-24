@@ -2,9 +2,23 @@
 
 # Optimized Docker Image Build Script
 # Builds production-optimized single container with frontend + backend
-# Usage: ./build_image.sh [--stable] [--keep-cache] [--optimize]
+# 
+# IMPORTANT: This script requires bash, not sh!
+# Usage: bash ./build_image.sh [--stable] [--keep-cache] [--optimize]
+#        NOT: sh ./build_image.sh (this will fail)
 
 set -e
+
+# Check if running with bash (not sh)
+if [ -z "$BASH_VERSION" ]; then
+    echo "❌ ERROR: This script requires bash, not sh!"
+    echo ""
+    echo "You ran: sh $0"
+    echo "Instead run: bash $0"
+    echo ""
+    echo "Or make the script executable and run directly: ./$0"
+    exit 1
+fi
 
 # Default settings (builds unstable/dev image)
 BUILD_STABLE=false
@@ -129,7 +143,7 @@ cd "$SCRIPT_DIR"
 # Function to read current version from file
 read_version() {
     if [ -f "$VERSION_FILE" ]; then
-        source "$VERSION_FILE"
+        . "$VERSION_FILE"
         echo "$VERSION"
     else
         echo "0.1.0"
@@ -278,7 +292,7 @@ if [ "$AUTO_VERSION" = true ]; then
         echo "📦 Syncing version with package.json: v${VERSION}"
     elif [ -f "$VERSION_FILE" ]; then
         # Read current version and build number from version file
-        source "$VERSION_FILE"
+        . "$VERSION_FILE"
     else
         # Default version for new projects
         VERSION="0.1.0"
