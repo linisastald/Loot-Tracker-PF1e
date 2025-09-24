@@ -192,8 +192,8 @@ const updateLootItem = async (req, res) => {
       filteredData.value = ValidationService.validateOptionalNumber(filteredData.value, 'value', { min: 0 });
     }
 
-    if (filteredData.status) {
-      filteredData.status = ValidationService.validateLootStatus(filteredData.status);
+    if (filteredData.status !== undefined) {
+      filteredData.status = filteredData.status ? ValidationService.validateLootStatus(filteredData.status) : null;
     }
 
     if (filteredData.cursed !== undefined) {
@@ -222,12 +222,12 @@ const updateLootItem = async (req, res) => {
         filteredData.masterwork = ValidationService.validateBoolean(filteredData.masterwork, 'masterwork');
       }
 
-      if (filteredData.type) {
-        filteredData.type = ValidationService.validateRequiredString(filteredData.type, 'type');
+      if (filteredData.type !== undefined) {
+        filteredData.type = filteredData.type ? ValidationService.validateRequiredString(filteredData.type, 'type') : null;
       }
 
-      if (filteredData.size) {
-        filteredData.size = ValidationService.validateRequiredString(filteredData.size, 'size');
+      if (filteredData.size !== undefined) {
+        filteredData.size = filteredData.size ? ValidationService.validateRequiredString(filteredData.size, 'size') : null;
       }
 
       if (filteredData.itemid !== undefined) {
@@ -253,8 +253,8 @@ const updateLootItem = async (req, res) => {
         filteredData.spellcraft_dc = filteredData.spellcraft_dc ? ValidationService.validateOptionalNumber(filteredData.spellcraft_dc, 'spellcraft_dc', { min: 1 }) : null;
       }
 
-      if (filteredData.dm_notes) {
-        filteredData.dm_notes = ValidationService.validateDescription(filteredData.dm_notes, 'dm_notes');
+      if (filteredData.dm_notes !== undefined) {
+        filteredData.dm_notes = filteredData.dm_notes ? ValidationService.validateDescription(filteredData.dm_notes, 'dm_notes') : null;
       }
     }
 

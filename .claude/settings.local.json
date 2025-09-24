@@ -25,7 +25,11 @@
       "Bash(npm run build:*)",
       "Bash(for file in *.js)",
       "Bash(do mv \"$file\" \"$file%.js.jsx\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(bash -c:*)",
+      "Bash(bash:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node:*)"
     ],
     "deny": []
   }

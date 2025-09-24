@@ -382,8 +382,8 @@ export const updateItemAsDM = async (
   onFinally?: CallbackFunction
 ): Promise<void> => {
   try {
-    // Perform the update
-    await lootService.updateLootItem(itemId, updatedData);
+    // Perform the update using DM-specific endpoint
+    await lootService.updateLootItemAsDM(itemId, updatedData);
     
     // Call success callback if provided
     if (onSuccess) {

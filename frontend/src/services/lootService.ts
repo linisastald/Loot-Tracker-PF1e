@@ -148,6 +148,12 @@ const lootService = {
    */
   updateLootItem: (id: number, data: Partial<LootItem>): Promise<ApiResponse> => 
     api.put(`/items/${id}`, data),
+
+  /**
+   * Update loot item as DM (allows additional fields)
+   */
+  updateLootItemAsDM: (id: number, data: Partial<LootItem>): Promise<ApiResponse> => 
+    api.put(`/loot/dm-update/${id}`, data),
   
   /**
    * Split item stack

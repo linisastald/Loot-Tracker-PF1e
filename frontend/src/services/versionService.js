@@ -14,8 +14,7 @@ const versionService = {
       const response = await api.get('/version');
       return response;
     } catch (error) {
-      console.error('Error fetching version:', error);
-      // Return fallback version info
+      // Return fallback version info on error
       return {
         data: {
           version: '0.7.1',
