@@ -1,11 +1,14 @@
 import api from './api';
 import lootService from '../services/lootService';
 
-export const fetchInitialData = async (setItemOptions, setActiveCharacterId) => {
+export const fetchInitialData = async (
+  setItemOptions,
+  setActiveCharacterId
+) => {
   try {
     const [itemNames, characterResponse] = await Promise.all([
       fetchItemNames(),
-      api.get('/user/active-characters')
+      api.get('/user/active-characters'),
     ]);
 
     setItemOptions(itemNames);
@@ -21,7 +24,9 @@ export const fetchInitialData = async (setItemOptions, setActiveCharacterId) => 
 export const fetchItemNames = async (query = '') => {
   try {
     // Use suggestItems to get base items from the item table, not loot instances
-    const params = query.trim() ? { query: query.trim(), limit: 50 } : { query: '', limit: 50 };
+    const params = query.trim()
+      ? { query: query.trim(), limit: 50 }
+      : { query: '', limit: 50 };
     const response = await lootService.suggestItems(params);
 
     // API returns { suggestions: [...], count: number }
@@ -30,7 +35,7 @@ export const fetchItemNames = async (query = '') => {
       id: item.id,
       type: item.type,
       subtype: item.subtype,
-      value: item.value || null
+      value: item.value || null,
     }));
 
     // Items are already sorted by relevance from the backend
@@ -41,11 +46,11 @@ export const fetchItemNames = async (query = '') => {
   }
 };
 
-export const validateLootEntries = (entries) => {
+export const validateLootEntries = entries => {
   const validEntries = [];
   const invalidEntries = [];
 
-  entries.forEach((entry) => {
+  entries.forEach(entry => {
     let isValid = true;
     let entryError = null;
 
@@ -62,10 +67,10 @@ export const validateLootEntries = (entries) => {
         isValid = false;
         entryError = 'Transaction type is required';
       } else if (
-          !entry.data.platinum &&
-          !entry.data.gold &&
-          !entry.data.silver &&
-          !entry.data.copper
+        !entry.data.platinum &&
+        !entry.data.gold &&
+        !entry.data.silver &&
+        !entry.data.copper
       ) {
         isValid = false;
         entryError = 'At least one currency amount is required';
@@ -75,25 +80,29 @@ export const validateLootEntries = (entries) => {
     if (isValid) {
       validEntries.push(entry);
     } else {
-      invalidEntries.push({...entry, error: entryError});
+      invalidEntries.push({ ...entry, error: entryError });
     }
   });
 
-  return {validEntries, invalidEntries};
+  return { validEntries, invalidEntries };
 };
 
 export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
-  let data = {...entry.data, session_date: entry.data.sessionDate};
+  let data = { ...entry.data, session_date: entry.data.sessionDate };
 
   if (entry.type === 'gold') {
-    const {transactionType, platinum, gold, silver, copper} = data;
-    if (['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType)) {
+    const { transactionType, platinum, gold, silver, copper } = data;
+    if (
+      ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(
+        transactionType
+      )
+    ) {
       data = {
         ...data,
         platinum: platinum ? -Math.abs(platinum) : 0,
         gold: gold ? -Math.abs(gold) : 0,
         silver: silver ? -Math.abs(silver) : 0,
-        copper: copper ? -Math.abs(copper) : 0
+        copper: copper ? -Math.abs(copper) : 0,
       };
     }
 
@@ -103,10 +112,11 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
       gold: data.gold || null,
       silver: data.silver || null,
       copper: data.copper || null,
-      character_id: transactionType === 'Party Payment' ? activeCharacterId : null
+      character_id:
+        transactionType === 'Party Payment' ? activeCharacterId : null,
     };
 
-    return await api.post('/gold', {goldEntries: [goldData]});
+    return await api.post('/gold', { goldEntries: [goldData] });
   } else {
     // Convert type to lowercase before submission
     data.type = data.type ? data.type.toLowerCase() : null;
@@ -125,9 +135,11 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
     // (parseItem should be false if unidentified is true - this is enforced in the UI)
     if (data.parseItem && !data.unidentified) {
       try {
-        const parseResponse = await lootService.parseItem({description: data.name});
+        const parseResponse = await lootService.parseItem({
+          description: data.name,
+        });
         if (parseResponse.data) {
-          data = {...data, ...parseResponse.data};
+          data = { ...data, ...parseResponse.data };
           // Ensure the type is lowercase if it was set by the parsing
           if (data.type) {
             data.type = data.type.toLowerCase();
@@ -138,6 +150,6 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
       }
     }
 
-    return await lootService.createLoot({entries: [data]});
+    return await lootService.createLoot(data);
   }
 };
