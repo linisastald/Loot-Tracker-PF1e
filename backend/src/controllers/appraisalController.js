@@ -143,6 +143,8 @@ const getUnidentifiedItems = async (req, res) => {
     const { limit = 50, offset = 0, identifiableOnly } = req.query;
     const pagination = ValidationService.validatePagination(req.query.page, limit);
 
+    logger.info(`getUnidentifiedItems called with identifiableOnly: ${identifiableOnly}, evaluated to: ${identifiableOnly === 'true'}`);
+
     const result = await IdentificationService.getUnidentifiedItems({
       limit: pagination.limit,
       offset: pagination.offset,

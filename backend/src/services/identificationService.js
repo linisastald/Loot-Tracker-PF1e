@@ -353,10 +353,14 @@ class IdentificationService {
   static async getUnidentifiedItems(options = {}) {
     const { limit = 50, offset = 0, identifiableOnly = false } = options;
 
+    logger.info(`IdentificationService.getUnidentifiedItems called with identifiableOnly: ${identifiableOnly}`);
+
     // If identifiableOnly is true, only return items that have itemid (can actually be identified)
     const whereClause = identifiableOnly 
       ? 'WHERE l.unidentified = true AND l.itemid IS NOT NULL'
       : 'WHERE l.unidentified = true';
+    
+    logger.info(`Using where clause: ${whereClause}`);
 
     const query = `
       SELECT l.*, i.name as base_item_name, i.type as item_type
