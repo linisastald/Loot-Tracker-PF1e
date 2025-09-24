@@ -351,13 +351,18 @@ class IdentificationService {
    * @returns {Promise<Array>} - Array of unidentified items
    */
   static async getUnidentifiedItems(options = {}) {
-    const { limit = 50, offset = 0 } = options;
+    const { limit = 50, offset = 0, identifiableOnly = false } = options;
+
+    // If identifiableOnly is true, only return items that have itemid (can actually be identified)
+    const whereClause = identifiableOnly 
+      ? 'WHERE l.unidentified = true AND l.itemid IS NOT NULL'
+      : 'WHERE l.unidentified = true';
 
     const query = `
       SELECT l.*, i.name as base_item_name, i.type as item_type
       FROM loot l
       LEFT JOIN item i ON l.itemid = i.id
-      WHERE l.unidentified = true
+      ${whereClause}
       ORDER BY l.name
       LIMIT $1 OFFSET $2
     `;
@@ -365,7 +370,7 @@ class IdentificationService {
     const countQuery = `
       SELECT COUNT(*)
       FROM loot l
-      WHERE l.unidentified = true
+      ${whereClause}
     `;
 
     const [itemsResult, countResult] = await Promise.all([

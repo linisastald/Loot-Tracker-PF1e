@@ -140,12 +140,13 @@ const appraiseLoot = async (req, res) => {
  */
 const getUnidentifiedItems = async (req, res) => {
   try {
-    const { limit = 50, offset = 0 } = req.query;
+    const { limit = 50, offset = 0, identifiableOnly } = req.query;
     const pagination = ValidationService.validatePagination(req.query.page, limit);
 
     const result = await IdentificationService.getUnidentifiedItems({
       limit: pagination.limit,
-      offset: pagination.offset
+      offset: pagination.offset,
+      identifiableOnly: identifiableOnly === 'true'
     });
 
     return controllerFactory.sendSuccessResponse(res, {
