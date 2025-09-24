@@ -153,15 +153,24 @@ const updateLootItem = async (req, res) => {
   const updateData = req.body;
 
   try {
-    // Validate update fields
+    // Validate update fields - DMs can update additional fields
+    const isDM = req.user && req.user.role === 'DM';
     const allowedFields = [
       'name', 'quantity', 'value', 'description', 'notes', 
       'cursed', 'unidentified', 'status'
     ];
+    
+    // Additional fields that only DMs can update
+    const dmOnlyFields = [
+      'session_date', 'masterwork', 'type', 'size', 'itemid', 
+      'modids', 'charges', 'spellcraft_dc', 'dm_notes'
+    ];
+    
+    const finalAllowedFields = isDM ? [...allowedFields, ...dmOnlyFields] : allowedFields;
 
     const filteredData = {};
     for (const [key, value] of Object.entries(updateData)) {
-      if (allowedFields.includes(key) && value !== undefined) {
+      if (finalAllowedFields.includes(key) && value !== undefined) {
         filteredData[key] = value;
       }
     }
@@ -201,6 +210,52 @@ const updateLootItem = async (req, res) => {
 
     if (filteredData.notes) {
       filteredData.notes = ValidationService.validateDescription(filteredData.notes, 'notes');
+    }
+
+    // Additional validations for DM-only fields
+    if (isDM) {
+      if (filteredData.session_date) {
+        filteredData.session_date = ValidationService.validateDate(filteredData.session_date, 'session_date');
+      }
+
+      if (filteredData.masterwork !== undefined) {
+        filteredData.masterwork = ValidationService.validateBoolean(filteredData.masterwork, 'masterwork');
+      }
+
+      if (filteredData.type) {
+        filteredData.type = ValidationService.validateRequiredString(filteredData.type, 'type');
+      }
+
+      if (filteredData.size) {
+        filteredData.size = ValidationService.validateRequiredString(filteredData.size, 'size');
+      }
+
+      if (filteredData.itemid !== undefined) {
+        filteredData.itemid = filteredData.itemid ? ValidationService.validateItemId(parseInt(filteredData.itemid)) : null;
+      }
+
+      if (filteredData.modids !== undefined) {
+        // Handle modids array - expect array of integers or null
+        if (filteredData.modids === null || filteredData.modids === '') {
+          filteredData.modids = null;
+        } else if (Array.isArray(filteredData.modids)) {
+          filteredData.modids = filteredData.modids.map(id => ValidationService.validateItemId(parseInt(id)));
+        } else {
+          throw controllerFactory.createValidationError('modids must be an array of integers or null');
+        }
+      }
+
+      if (filteredData.charges !== undefined) {
+        filteredData.charges = filteredData.charges ? ValidationService.validateOptionalNumber(filteredData.charges, 'charges', { min: 0 }) : null;
+      }
+
+      if (filteredData.spellcraft_dc !== undefined) {
+        filteredData.spellcraft_dc = filteredData.spellcraft_dc ? ValidationService.validateOptionalNumber(filteredData.spellcraft_dc, 'spellcraft_dc', { min: 1 }) : null;
+      }
+
+      if (filteredData.dm_notes) {
+        filteredData.dm_notes = ValidationService.validateDescription(filteredData.dm_notes, 'dm_notes');
+      }
     }
 
     // Update the item
