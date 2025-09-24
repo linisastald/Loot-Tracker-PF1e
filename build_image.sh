@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Optimized Docker Image Build Script
 # Builds production-optimized single container with frontend + backend
@@ -71,7 +71,9 @@ while [ $# -gt 0 ]; do
             exit 0
             ;;
         -h|--help)
-            echo "Usage: $0 [--stable] [--keep-cache] [--tag TAG]"
+            echo "Usage: bash $0 [--stable] [--keep-cache] [--tag TAG]"
+            echo ""
+            echo "  NOTE: This script requires bash, not sh. Run with: bash $0"
             echo ""
             echo "  DEFAULT BEHAVIOR (dev/unstable build):"
             echo "    - Builds ${IMAGE_NAME}:dev"
@@ -102,14 +104,14 @@ while [ $# -gt 0 ]; do
             echo "    - Automatically updates package.json files to keep versions synced"
             echo ""
             echo "  EXAMPLES:"
-            echo "    $0                        # Build optimized dev image with latest git code"
-            echo "    $0 --stable               # Build optimized stable release from current code"
-            echo "    $0 --stable --tag v2.1.0  # Build and tag as specific version"
-            echo "    $0 --stable --version-type minor  # Increment minor version"
-            echo "    $0 --stable --version-type major  # Increment major version"
-            echo "    $0 --sync-version         # Reset to package.json version (v0.7.1)"
-            echo "    $0 --no-version           # Build without auto-versioning"
-            echo "    $0 --security-scan        # Build with security vulnerability scanning"
+            echo "    bash $0                        # Build optimized dev image with latest git code"
+            echo "    bash $0 --stable               # Build optimized stable release from current code"
+            echo "    bash $0 --stable --tag v2.1.0  # Build and tag as specific version"
+            echo "    bash $0 --stable --version-type minor  # Increment minor version"
+            echo "    bash $0 --stable --version-type major  # Increment major version"
+            echo "    bash $0 --sync-version         # Reset to package.json version (v0.7.1)"
+            echo "    bash $0 --no-version           # Build without auto-versioning"
+            echo "    bash $0 --security-scan        # Build with security vulnerability scanning"
             exit 0
             ;;
         *)
@@ -121,7 +123,7 @@ while [ $# -gt 0 ]; do
 done
 
 # Get the script directory to ensure we're in the right place
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Function to read current version from file
@@ -153,11 +155,15 @@ increment_version() {
     local version=$1
     local increment_type=$2
     
-    # Split version into parts
-    IFS='.' read -ra PARTS <<< "$version"
-    local major=${PARTS[0]:-0}
-    local minor=${PARTS[1]:-0}
-    local patch=${PARTS[2]:-0}
+    # Split version into parts using POSIX-compatible method
+    local major=$(echo "$version" | cut -d'.' -f1)
+    local minor=$(echo "$version" | cut -d'.' -f2)
+    local patch=$(echo "$version" | cut -d'.' -f3)
+    
+    # Set defaults if empty
+    major=${major:-0}
+    minor=${minor:-0}
+    patch=${patch:-0}
     
     case $increment_type in
         major)
@@ -208,22 +214,16 @@ EOF
 # Function to update package.json files with new version
 update_package_json_files() {
     local new_version=$1
-    local updated_files=()
+    local updated_count=0
     
-    # List of package.json files to update
-    local package_files=(
-        "package.json"
-        "frontend/package.json"
-        "backend/package.json"
-    )
-    
-    for file in "${package_files[@]}"; do
+    # Update each package.json file individually (POSIX-compatible)
+    for file in "package.json" "frontend/package.json" "backend/package.json"; do
         if [ -f "$file" ]; then
             # Use sed to update the version field
             if sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$new_version\"/g" "$file"; then
                 # Remove backup file
                 rm -f "$file.bak"
-                updated_files+=("$file")
+                updated_count=$((updated_count + 1))
                 echo "✅ Updated $file to v$new_version"
             else
                 echo "⚠️  Warning: Failed to update $file"
@@ -233,8 +233,8 @@ update_package_json_files() {
         fi
     done
     
-    if [ ${#updated_files[@]} -gt 0 ]; then
-        echo "📦 Updated ${#updated_files[@]} package.json file(s) to v$new_version"
+    if [ $updated_count -gt 0 ]; then
+        echo "📦 Updated $updated_count package.json file(s) to v$new_version"
     fi
 }
 
