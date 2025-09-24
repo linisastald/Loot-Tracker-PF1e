@@ -30,6 +30,13 @@ interface LootItem {
   whohas?: string;
   identified?: boolean;
   unidentified?: boolean;
+  quantity?: number;
+  character_name?: string;
+  type?: string;
+  size?: string;
+  session_date?: string;
+  lastupdate?: string;
+  row_type?: string;
 }
 
 interface LootData {
@@ -331,12 +338,17 @@ const Identify: React.FC = () => {
   // Items are already filtered by the backend to be unidentified with itemid
   // For identify page, we need to convert individual items to summary format for CustomLootTable
   const filteredLoot = {
-    summary: loot.individual.map(item => ({
-      ...item,
-      row_type: 'summary',
-      quantity: item.quantity || 1,
-      character_names: item.character_name ? [item.character_name] : [],
-    })),
+    summary: loot.individual.map(
+      item =>
+        ({
+          ...item,
+          row_type: 'summary' as const,
+          quantity: item.quantity || 1,
+          character_names: item.character_name
+            ? [item.character_name]
+            : ([] as string[]),
+        }) as any
+    ), // Type assertion to handle CustomLootTable expectations
     individual: loot.individual,
   };
 
