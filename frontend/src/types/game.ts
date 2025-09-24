@@ -68,12 +68,12 @@ export interface BaseItem {
 
 // Loot instance (actual items found/owned)
 export type LootStatus = 
-  | 'unprocessed'
-  | 'kept-character' 
-  | 'kept-party'
-  | 'sold'
-  | 'given-away'
-  | 'trashed'
+  | null // For unprocessed items
+  | 'Kept Self'
+  | 'Kept Party'
+  | 'Sold'
+  | 'Trash'
+  | 'Given Away'
   | 'Pending Sale'; // Add this status that appears in the actual data
 
 export interface LootItem {

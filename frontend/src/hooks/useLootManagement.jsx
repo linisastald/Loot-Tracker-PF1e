@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useState, useCallback} from 'react';
 import lootService from '../services/lootService';
 import {
   applyFilters,
@@ -33,7 +33,7 @@ const useLootManagement = (statusToFetch) => {
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
   // Fetch data based on the status
-  const fetchLoot = async () => {
+  const fetchLoot = useCallback(async () => {
     try {
       if (!statusToFetch) {
         // For unprocessed loot - use the default getAllLoot which now defaults to Unprocessed
@@ -45,7 +45,7 @@ const useLootManagement = (statusToFetch) => {
           if (currentActiveUser && currentActiveUser.activeCharacterId) {
             params.activeCharacterId = currentActiveUser.activeCharacterId;
           } else {
-            console.error('No active character ID available');
+            // No active character ID available
             return;
           }
         }
@@ -58,15 +58,15 @@ const useLootManagement = (statusToFetch) => {
       } else if (statusToFetch === 'Kept Self') {
         const response = await lootService.getKeptCharacterLoot();
         setLoot(response.data || { summary: [], individual: [] });
-      } else if (statusToFetch === 'Trashed') {
+      } else if (statusToFetch === 'Trash') {
         const response = await lootService.getTrashedLoot();
         setLoot(response.data || { summary: [], individual: [] });
       }
-    } catch (error) {
-      console.error(`Error fetching loot:`, error);
+    } catch {
+      // Error fetching loot
       setLoot({ summary: [], individual: [] });
     }
-  };
+  }, [statusToFetch]);
 
   const fetchActiveUserDetails = async () => {
     const user = await fetchActiveUser();
@@ -74,7 +74,7 @@ const useLootManagement = (statusToFetch) => {
       setActiveUser(user);
     } else if (!isDM()) {
       // Only log error for non-DM users who should have an active character
-      console.error('Active character ID is not available or user could not be fetched');
+      // Active character ID is not available or user could not be fetched
     }
     // DM users don't need an active character ID, so no error for them
   };
@@ -91,7 +91,7 @@ const useLootManagement = (statusToFetch) => {
     };
 
     initializeComponent();
-  }, []);
+  }, [fetchLoot]);
 
   const handleAction = async (actionFunc) => {
     await actionFunc(selectedItems, fetchLoot, activeUser);
@@ -141,7 +141,7 @@ const useLootManagement = (statusToFetch) => {
       const user = await fetchActiveUser();
 
       if (!user || !user.id) {
-        console.error('Unable to fetch user ID for appraisal');
+        // Unable to fetch user ID for appraisal
         return;
       }
 
@@ -153,8 +153,8 @@ const useLootManagement = (statusToFetch) => {
       });
 
       fetchLoot();
-    } catch (error) {
-      console.error('Error appraising loot:', error);
+    } catch {
+      // Error appraising loot
     }
   };
 

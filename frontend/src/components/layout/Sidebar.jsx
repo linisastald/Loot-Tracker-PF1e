@@ -45,6 +45,8 @@ import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
+// Import version from package.json
+const packageVersion = '0.7.1';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [openBeta, setOpenBeta] = useState(false);
@@ -150,7 +152,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     };
 
     return (
-      <>
+      <React.Fragment>
         <ListItemButton
           component={ComponentToUse}
           to={to}
@@ -203,7 +205,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             </List>
           </Collapse>
         )}
-      </>
+      </React.Fragment>
     );
   };
 
@@ -325,6 +327,29 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
       </Box>
 
       <Divider />
+
+      {/* Version Display */}
+      {!isCollapsed && (
+        <Box sx={{ 
+          px: 2, 
+          py: 1, 
+          display: 'flex', 
+          justifyContent: 'center',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}>
+          <Typography 
+            variant="caption" 
+            color="text.secondary"
+            sx={{ 
+              fontSize: '0.75rem',
+              fontWeight: 500,
+            }}
+          >
+            v{packageVersion}
+          </Typography>
+        </Box>
+      )}
 
       <Box sx={{
         p: 2,

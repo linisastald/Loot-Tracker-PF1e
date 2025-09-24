@@ -41,7 +41,7 @@ export const unprocessedLootConfig: LootManagementConfig = {
 
 // Configuration for Kept Party Loot page
 export const keptPartyLootConfig: LootManagementConfig = {
-  status: 'kept-party',
+  status: 'Kept Party',
   showColumns: {
     ...baseColumns,
     whoHasIt: false,
@@ -61,7 +61,7 @@ export const keptPartyLootConfig: LootManagementConfig = {
 
 // Configuration for Kept Character Loot page
 export const keptCharacterLootConfig: LootManagementConfig = {
-  status: 'kept-character',
+  status: 'Kept Self',
   showColumns: {
     ...baseColumns,
     whoHasIt: true,
@@ -82,7 +82,7 @@ export const keptCharacterLootConfig: LootManagementConfig = {
 
 // Configuration for Sold Loot page
 export const soldLootConfig: LootManagementConfig = {
-  status: 'sold',
+  status: 'Sold',
   showColumns: {
     ...baseColumns,
     whoHasIt: false,
@@ -102,7 +102,7 @@ export const soldLootConfig: LootManagementConfig = {
 
 // Configuration for Trashed/Given Away Loot page
 export const trashedLootConfig: LootManagementConfig = {
-  status: 'trashed',
+  status: 'Trash',
   showColumns: {
     select: false, // No selection for trashed items
     quantity: true,

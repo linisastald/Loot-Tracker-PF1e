@@ -12,10 +12,16 @@ USE_CACHE=false  # Default: no-cache for dev builds
 OPTIMIZE_BUILD=true  # Always optimize by default
 IMAGE_NAME="pathfinder-loot"
 TAG="dev"  # Default to dev/unstable tag
+AUTO_VERSION=true  # Auto-increment version numbers
+VERSION_TYPE="patch"  # Default version increment type (major, minor, patch)
+SYNC_PACKAGE_VERSION=false  # Sync version with package.json
 
 # Production optimization settings
 USE_BUILDKIT=true
 ENABLE_SECURITY_SCAN=false
+
+# Version file location
+VERSION_FILE=".docker-version"
 
 # Parse command line arguments
 while [ $# -gt 0 ]; do
@@ -43,7 +49,20 @@ while [ $# -gt 0 ]; do
             ;;
         --tag)
             TAG="$2"
+            AUTO_VERSION=false  # Disable auto-versioning when tag is manually specified
             shift 2
+            ;;
+        --no-version)
+            AUTO_VERSION=false
+            shift
+            ;;
+        --version-type)
+            VERSION_TYPE="$2"
+            shift 2
+            ;;
+        --sync-version)
+            SYNC_PACKAGE_VERSION=true
+            shift
             ;;
         --cleanup)
             echo "🧹 Cleaning up dangling images..."
@@ -68,13 +87,28 @@ while [ $# -gt 0 ]; do
             echo "    --no-optimize     Disable production optimizations"
             echo "    --security-scan   Enable container security scanning"
             echo "    --no-buildkit     Disable Docker BuildKit (use legacy builder)"
-            echo "    --tag TAG         Override default tag"
+            echo "    --tag TAG         Override default tag (disables auto-versioning)"
+            echo "    --no-version      Disable automatic version incrementing"
+            echo "    --version-type    Type of version increment: major, minor, patch (default: patch)"
+            echo "    --sync-version    Sync version with package.json (resets to app version)"
             echo "    --cleanup         Remove all dangling images and exit"
+            echo ""
+            echo "  AUTO-VERSIONING:"
+            echo "    - Dev builds: Creates v0.7.1-dev.N tags (increments build number)"
+            echo "    - Stable builds: Creates v0.X.Y tags (increments version)"
+            echo "    - Version file: .docker-version tracks current version"
+            echo "    - Use --version-type to control increment (major/minor/patch)"
+            echo "    - Use --sync-version to reset to package.json version"
+            echo "    - Automatically updates package.json files to keep versions synced"
             echo ""
             echo "  EXAMPLES:"
             echo "    $0                        # Build optimized dev image with latest git code"
             echo "    $0 --stable               # Build optimized stable release from current code"
             echo "    $0 --stable --tag v2.1.0  # Build and tag as specific version"
+            echo "    $0 --stable --version-type minor  # Increment minor version"
+            echo "    $0 --stable --version-type major  # Increment major version"
+            echo "    $0 --sync-version         # Reset to package.json version (v0.7.1)"
+            echo "    $0 --no-version           # Build without auto-versioning"
             echo "    $0 --security-scan        # Build with security vulnerability scanning"
             exit 0
             ;;
@@ -89,6 +123,120 @@ done
 # Get the script directory to ensure we're in the right place
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+# Function to read current version from file
+read_version() {
+    if [ -f "$VERSION_FILE" ]; then
+        source "$VERSION_FILE"
+        echo "$VERSION"
+    else
+        echo "0.1.0"
+    fi
+}
+
+# Function to sync version from package.json
+sync_version_from_package() {
+    if [ -f "package.json" ]; then
+        local pkg_version=$(grep '"version"' package.json | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')
+        if [ -n "$pkg_version" ]; then
+            echo "$pkg_version"
+        else
+            echo "0.1.0"
+        fi
+    else
+        echo "0.1.0"
+    fi
+}
+
+# Function to increment version
+increment_version() {
+    local version=$1
+    local increment_type=$2
+    
+    # Split version into parts
+    IFS='.' read -ra PARTS <<< "$version"
+    local major=${PARTS[0]:-0}
+    local minor=${PARTS[1]:-0}
+    local patch=${PARTS[2]:-0}
+    
+    case $increment_type in
+        major)
+            major=$((major + 1))
+            minor=0
+            patch=0
+            ;;
+        minor)
+            minor=$((minor + 1))
+            patch=0
+            ;;
+        patch)
+            patch=$((patch + 1))
+            ;;
+        *)
+            echo "Invalid version increment type: $increment_type" >&2
+            return 1
+            ;;
+    esac
+    
+    echo "${major}.${minor}.${patch}"
+}
+
+# Function to update version file
+update_version_file() {
+    local new_version=$1
+    local new_build_number=$2
+    local timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+    
+    cat > "$VERSION_FILE" << EOF
+# Docker Image Version Tracking
+# This file is used by build_image.sh to track and auto-increment version numbers
+# Format: MAJOR.MINOR.PATCH
+
+# Current version
+VERSION=$new_version
+
+# Last build timestamp
+LAST_BUILD=$timestamp
+
+# Build counter (incremented with each build)
+BUILD_NUMBER=$new_build_number
+EOF
+    
+    echo "Updated version file: v$new_version (build #$new_build_number)"
+}
+
+# Function to update package.json files with new version
+update_package_json_files() {
+    local new_version=$1
+    local updated_files=()
+    
+    # List of package.json files to update
+    local package_files=(
+        "package.json"
+        "frontend/package.json"
+        "backend/package.json"
+    )
+    
+    for file in "${package_files[@]}"; do
+        if [ -f "$file" ]; then
+            # Use sed to update the version field
+            if sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$new_version\"/g" "$file"; then
+                # Remove backup file
+                rm -f "$file.bak"
+                updated_files+=("$file")
+                echo "✅ Updated $file to v$new_version"
+            else
+                echo "⚠️  Warning: Failed to update $file"
+            fi
+        else
+            echo "⚠️  Warning: $file not found"
+        fi
+    done
+    
+    if [ ${#updated_files[@]} -gt 0 ]; then
+        echo "📦 Updated ${#updated_files[@]} package.json file(s) to v$new_version"
+    fi
+}
 
 # Function to get current git commit hash for versioning
 get_git_commit() {
@@ -121,15 +269,64 @@ archive_latest_image() {
     fi
 }
 
+# Handle auto-versioning
+if [ "$AUTO_VERSION" = true ]; then
+    # Check if we should sync with package.json
+    if [ "$SYNC_PACKAGE_VERSION" = true ]; then
+        VERSION=$(sync_version_from_package)
+        BUILD_NUMBER=0
+        echo "📦 Syncing version with package.json: v${VERSION}"
+    elif [ -f "$VERSION_FILE" ]; then
+        # Read current version and build number from version file
+        source "$VERSION_FILE"
+    else
+        # Default version for new projects
+        VERSION="0.1.0"
+        BUILD_NUMBER=0
+    fi
+    
+    # Increment version for stable builds, build number for dev builds
+    if [ "$BUILD_STABLE" = true ]; then
+        NEW_VERSION=$(increment_version "$VERSION" "$VERSION_TYPE")
+        NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+        VERSION_TAG="v${NEW_VERSION}"
+        
+        # Update the tag to include version
+        if [ "$TAG" = "latest" ]; then
+            # We'll tag with both 'latest' and version number
+            ADDITIONAL_TAG="${IMAGE_NAME}:${VERSION_TAG}"
+        fi
+    else
+        # For dev builds, just increment build number
+        NEW_VERSION="$VERSION"
+        NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+        VERSION_TAG="v${VERSION}-dev.${NEW_BUILD_NUMBER}"
+        TAG="dev"
+        ADDITIONAL_TAG="${IMAGE_NAME}:${VERSION_TAG}"
+    fi
+else
+    # No auto-versioning
+    NEW_VERSION=""
+    NEW_BUILD_NUMBER=""
+    VERSION_TAG=""
+    ADDITIONAL_TAG=""
+fi
+
 echo "===========================================" 
 if [ "$BUILD_STABLE" = true ]; then
     echo "🏗️  BUILDING STABLE/LATEST IMAGE"
     echo "Target: ${IMAGE_NAME}:${TAG}"
+    if [ -n "$VERSION_TAG" ]; then
+        echo "Version: ${VERSION_TAG}"
+    fi
     echo "Git pull: DISABLED (using current local code)"
     echo "Cache: $([ "$USE_CACHE" = true ] && echo "ENABLED" || echo "DISABLED")"
 else
     echo "🚧 BUILDING DEV/UNSTABLE IMAGE"
     echo "Target: ${IMAGE_NAME}:${TAG}"
+    if [ -n "$VERSION_TAG" ]; then
+        echo "Version: ${VERSION_TAG}"
+    fi
     echo "Git pull: ENABLED (fetching latest code)"
     echo "Cache: DISABLED (always fresh build)"
 fi
@@ -192,6 +389,9 @@ BUILD_CMD="$BUILD_CMD --build-arg GIT_COMMIT=$(get_git_commit)"
 BUILD_CMD="$BUILD_CMD --build-arg BUILD_TYPE=$([ "$BUILD_STABLE" = true ] && echo "stable" || echo "dev")"
 BUILD_CMD="$BUILD_CMD --build-arg NODE_ENV=production"
 BUILD_CMD="$BUILD_CMD --build-arg OPTIMIZE_BUILD=$([ "$OPTIMIZE_BUILD" = true ] && echo "true" || echo "false")"
+if [ -n "$VERSION_TAG" ]; then
+    BUILD_CMD="$BUILD_CMD --build-arg VERSION=${VERSION_TAG}"
+fi
 
 # Add optimization flags
 if [ "$OPTIMIZE_BUILD" = true ]; then
@@ -237,13 +437,38 @@ if [ $BUILD_EXIT_CODE -eq 0 ] && [ "$ENABLE_SECURITY_SCAN" = true ]; then
 fi
 
 if [ $BUILD_EXIT_CODE -eq 0 ]; then
+    # Tag with additional version tag if auto-versioning is enabled
+    if [ -n "$ADDITIONAL_TAG" ]; then
+        echo "🏷️  Adding version tag: ${ADDITIONAL_TAG}"
+        docker tag "${IMAGE_NAME}:${TAG}" "${ADDITIONAL_TAG}"
+        if [ $? -eq 0 ]; then
+            echo "✅ Successfully tagged as ${ADDITIONAL_TAG}"
+        else
+            echo "⚠️  Warning: Failed to add version tag"
+        fi
+    fi
+    
+    # Update version file if auto-versioning is enabled
+    if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ]; then
+        update_version_file "$NEW_VERSION" "$NEW_BUILD_NUMBER"
+        # Also update package.json files to keep versions in sync
+        update_package_json_files "$NEW_VERSION"
+    fi
+    
     # Verify the image was actually created and tagged
     if docker image inspect "${IMAGE_NAME}:${TAG}" >/dev/null 2>&1; then
         echo ""
         echo "✅ BUILD COMPLETED SUCCESSFULLY!"
         echo "================================"
         echo "Image created: ${IMAGE_NAME}:${TAG}"
+        if [ -n "$ADDITIONAL_TAG" ]; then
+            echo "Version tagged: ${ADDITIONAL_TAG}"
+        fi
         echo "Build type: $([ "$BUILD_STABLE" = true ] && echo "STABLE/PRODUCTION" || echo "DEV/UNSTABLE")"
+        if [ -n "$VERSION_TAG" ]; then
+            echo "Version: ${VERSION_TAG}"
+            echo "Build number: #${NEW_BUILD_NUMBER}"
+        fi
         echo "Git commit: $(get_git_commit)"
         echo "Build time: $(date)"
         echo ""
@@ -281,6 +506,9 @@ if [ $BUILD_EXIT_CODE -eq 0 ]; then
     echo "📋 USEFUL COMMANDS:"
     echo "   View all images:     docker images ${IMAGE_NAME}"
     echo "   Run test container:  docker run -d -p 8080:80 --name test-pathfinder ${IMAGE_NAME}:${TAG}"
+    if [ -n "$ADDITIONAL_TAG" ]; then
+        echo "   Run version:         docker run -d -p 8080:80 --name test-pathfinder ${ADDITIONAL_TAG}"
+    fi
     echo "   View image details:  docker image inspect ${IMAGE_NAME}:${TAG}"
     echo "   Check image layers:  docker history ${IMAGE_NAME}:${TAG}"
     if [ "$ENABLE_SECURITY_SCAN" = true ]; then
