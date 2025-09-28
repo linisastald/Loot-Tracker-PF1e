@@ -79,9 +79,6 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
     ) {
       setShowMagicMessage(true);
       setMagicDialogShown(true);
-      // Auto-hide message after 8 seconds
-      // eslint-disable-next-line no-undef
-      setTimeout(() => setShowMagicMessage(false), 8000);
     }
 
     // Clear isAutofill flag if it exists
