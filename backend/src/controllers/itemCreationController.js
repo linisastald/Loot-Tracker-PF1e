@@ -10,7 +10,7 @@ const { calculateFinalValue } = require('../services/calculateFinalValue');
  * Create new loot item
  */
 const createLoot = async (req, res) => {
-  const { name, quantity, notes, cursed, unidentified, itemId, modIds, customValue } = req.body;
+  const { name, quantity, notes, cursed, unidentified, itemId, modIds, customValue, charges, masterwork, type, size } = req.body;
 
   try {
     // Validate required fields
@@ -21,6 +21,10 @@ const createLoot = async (req, res) => {
     const validatedNotes = ValidationService.validateDescription(notes, 'notes');
     const validatedCursed = ValidationService.validateBoolean(cursed, 'cursed');
     const validatedUnidentified = ValidationService.validateBoolean(unidentified, 'unidentified');
+    const validatedMasterwork = ValidationService.validateBoolean(masterwork, 'masterwork');
+    const validatedCharges = charges ? parseInt(charges) : null;
+    const validatedType = type || null;
+    const validatedSize = size || null;
 
     if (customValue !== undefined) {
       ValidationService.validateOptionalNumber(customValue, 'customValue', { min: 0 });
@@ -83,6 +87,10 @@ const createLoot = async (req, res) => {
         itemid: finalItemId,
         modids: finalModIds,
         value: calculatedValue,
+        charges: validatedCharges,
+        masterwork: validatedMasterwork,
+        type: validatedType,
+        size: validatedSize,
         status: null,
         session_date: new Date()
       };
@@ -326,6 +334,10 @@ const bulkCreateLoot = async (req, res) => {
             itemid: itemData.itemId,
             modids: itemData.modIds || [],
             value: calculatedValue,
+            charges: itemData.charges ? parseInt(itemData.charges) : null,
+            masterwork: ValidationService.validateBoolean(itemData.masterwork, 'masterwork'),
+            type: itemData.type || null,
+            size: itemData.size || null,
             status: null,
             session_date: new Date()
           };
@@ -399,6 +411,10 @@ const createFromTemplate = async (req, res) => {
         itemid: templateId,
         modids: customizations.modIds || [],
         value: customizations.value || template.value,
+        charges: customizations.charges ? parseInt(customizations.charges) : null,
+        masterwork: customizations.masterwork || false,
+        type: customizations.type || template.type || null,
+        size: customizations.size || null,
         status: null,
         session_date: new Date()
       };
