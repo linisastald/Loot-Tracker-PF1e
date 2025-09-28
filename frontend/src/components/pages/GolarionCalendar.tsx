@@ -161,8 +161,8 @@ const InfoCardContent = styled(CardContent)(({theme}) => ({
 }));
 
 const GolarionCalendar: React.FC = () => {
-    const [currentDate, setCurrentDate] = useState<DateObject & {day: number}>({year: 4722, month: 0, day: 1});
-    const [displayedDate, setDisplayedDate] = useState<DateObject>({year: 4722, month: 0});
+    const [currentDate, setCurrentDate] = useState<DateObject & {day: number}>({year: 4722, month: 1, day: 1});
+    const [displayedDate, setDisplayedDate] = useState<DateObject>({year: 4722, month: 1});
     const [selectedDate, setSelectedDate] = useState<DateObject & {day: number} | null>(null);
     const [notes, setNotes] = useState<Note>({});
     const [noteText, setNoteText] = useState<string>('');
@@ -190,11 +190,10 @@ const GolarionCalendar: React.FC = () => {
             const response = await api.get('/calendar/current-date');
             console.log('Current date response:', response.data);
             const {year, month, day} = response.data;
-            // Backend uses 1-indexed months, frontend uses 0-indexed
-            const frontendMonth = month - 1;
-            setCurrentDate({year, month: frontendMonth, day});
-            setDisplayedDate({year, month: frontendMonth});
-            setSelectedDate({year, month: frontendMonth, day});
+            // Both backend and frontend now use 1-indexed months
+            setCurrentDate({year, month, day});
+            setDisplayedDate({year, month});
+            setSelectedDate({year, month, day});
             setError(null);
         } catch (error) {
             console.error('Error fetching current date:', error.response || error);
@@ -230,19 +229,18 @@ const GolarionCalendar: React.FC = () => {
         try {
             // Calculate start and end dates for the month
             const startDay = 1;
-            const endDay = months[month].days;
+            const endDay = months[month - 1].days; // Convert 1-indexed month to 0-indexed for months array
             
-            // Convert frontend 0-indexed month to backend 1-indexed month
-            const backendMonth = month + 1;
+            // Both frontend and backend now use 1-indexed months
             const response = await api.get(
-                `/weather/range/${year}/${backendMonth}/${startDay}/${year}/${backendMonth}/${endDay}/${currentRegion}`
+                `/weather/range/${year}/${month}/${startDay}/${year}/${month}/${endDay}/${currentRegion}`
             );
             
             if (response.data) {
                 const weatherData = {};
                 response.data.forEach(w => {
-                    // Convert backend 1-indexed month to frontend 0-indexed for key
-                    const key = `${w.year}-${w.month - 1}-${w.day}`;
+                    // Both frontend and backend use 1-indexed months
+                    const key = `${w.year}-${w.month}-${w.day}`;
                     weatherData[key] = w;
                 });
                 setWeather(weatherData);
@@ -257,11 +255,10 @@ const GolarionCalendar: React.FC = () => {
         try {
             const response = await api.post('/calendar/next-day');
             const {year, month, day} = response.data;
-            // Backend uses 1-indexed months, frontend uses 0-indexed
-            const frontendMonth = month - 1;
-            setCurrentDate({year, month: frontendMonth, day});
-            setDisplayedDate({year, month: frontendMonth});
-            setSelectedDate({year, month: frontendMonth, day});
+            // Both backend and frontend now use 1-indexed months
+            setCurrentDate({year, month, day});
+            setDisplayedDate({year, month});
+            setSelectedDate({year, month, day});
             setError(null);
         } catch (error) {
             console.error('Error advancing day:', error);
@@ -273,10 +270,10 @@ const GolarionCalendar: React.FC = () => {
         if (!selectedDate) return;
 
         try {
-            // Convert frontend 0-indexed month to backend 1-indexed month
+            // Both frontend and backend now use 1-indexed months
             await api.post('/calendar/set-current-date', {
                 year: selectedDate.year,
-                month: selectedDate.month + 1,
+                month: selectedDate.month,
                 day: selectedDate.day
             });
 
@@ -310,15 +307,15 @@ const GolarionCalendar: React.FC = () => {
 
     const handlePrevMonth = (): void => {
         setDisplayedDate(prev => ({
-            year: prev.month > 0 ? prev.year : prev.year - 1,
-            month: prev.month > 0 ? prev.month - 1 : 11
+            year: prev.month > 1 ? prev.year : prev.year - 1,
+            month: prev.month > 1 ? prev.month - 1 : 12
         }));
     };
 
     const handleNextMonth = (): void => {
         setDisplayedDate(prev => ({
-            year: prev.month < 11 ? prev.year : prev.year + 1,
-            month: prev.month < 11 ? prev.month + 1 : 0
+            year: prev.month < 12 ? prev.year : prev.year + 1,
+            month: prev.month < 12 ? prev.month + 1 : 1
         }));
     };
 
@@ -337,11 +334,11 @@ const GolarionCalendar: React.FC = () => {
         if (!selectedDate) return;
 
         try {
-            // Convert frontend 0-indexed month to backend 1-indexed month
+            // Both frontend and backend now use 1-indexed months
             await api.post('/calendar/notes', {
                 date: {
                     year: selectedDate.year,
-                    month: selectedDate.month + 1,
+                    month: selectedDate.month,
                     day: selectedDate.day
                 },
                 note: noteText
@@ -371,12 +368,12 @@ const GolarionCalendar: React.FC = () => {
     };
 
     const renderCalendar = () => {
-        const month = months[displayedDate.month];
+        const month = months[displayedDate.month - 1]; // Convert 1-indexed month to 0-indexed for months array
         if (!month) {
             return <div>Loading calendar...</div>;
         }
-        // Note: Date constructor uses 0-indexed months, Golarion uses 1-indexed
-        const firstDayOfMonth = new Date(displayedDate.year, displayedDate.month, 1).getDay();
+        // Note: Date constructor uses 0-indexed months, so convert from 1-indexed Golarion month
+        const firstDayOfMonth = new Date(displayedDate.year, displayedDate.month - 1, 1).getDay();
         const weeks = Math.ceil((month.days + firstDayOfMonth) / 7);
 
         return (
@@ -431,9 +428,9 @@ const GolarionCalendar: React.FC = () => {
                                         showMoonPhase = prevPhase?.name && moonPhaseData?.name && prevPhase.name !== moonPhaseData.name;
                                         } else if (day === 1) {
                                         // First day of month - check against last day of previous month
-                                        const prevMonth = displayedDate.month > 0 ? displayedDate.month - 1 : 11;
-                                        const prevYear = prevMonth === 11 ? displayedDate.year - 1 : displayedDate.year;
-                                        const lastDayOfPrevMonth = months[prevMonth].days;
+                                        const prevMonth = displayedDate.month > 1 ? displayedDate.month - 1 : 12;
+                                        const prevYear = prevMonth === 12 ? displayedDate.year - 1 : displayedDate.year;
+                                        const lastDayOfPrevMonth = months[prevMonth - 1].days; // Convert to 0-indexed for months array
                                         const prevPhase = getMoonPhase({
                                         year: prevYear,
                                         month: prevMonth,
@@ -554,7 +551,7 @@ const GolarionCalendar: React.FC = () => {
 
                     <CalendarTitle variant="h4">
                         <EventIcon color="primary"/>
-                        {months[displayedDate.month]?.name || 'Loading...'} {displayedDate.year}
+                        {months[displayedDate.month - 1]?.name || 'Loading...'} {displayedDate.year}
                     </CalendarTitle>
 
                     <Button
@@ -629,7 +626,7 @@ const GolarionCalendar: React.FC = () => {
                     <Typography variant="h5" gutterBottom color="primary"
                                 sx={{display: 'flex', alignItems: 'center', mb: 2}}>
                         <CalendarTodayIcon sx={{mr: 1}}/>
-                        {`${selectedDate.day} ${months[selectedDate.month]?.name || 'Unknown Month'} ${selectedDate.year}`}
+                        {`${selectedDate.day} ${months[selectedDate.month - 1]?.name || 'Unknown Month'} ${selectedDate.year}`}
                     </Typography>
 
                     <Grid container spacing={3} size={12}>
@@ -757,7 +754,7 @@ const GolarionCalendar: React.FC = () => {
                 <DialogContent>
                     <DialogContentText>
                         Are you sure you want to set the current date to {selectedDate ?
-                        `${selectedDate.day} ${months[selectedDate.month]?.name || 'Unknown Month'} ${selectedDate.year}` :
+                        `${selectedDate.day} ${months[selectedDate.month - 1]?.name || 'Unknown Month'} ${selectedDate.year}` :
                         ''
                     }?
                     </DialogContentText>
