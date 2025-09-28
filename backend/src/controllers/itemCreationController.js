@@ -83,7 +83,7 @@ const createLoot = async (req, res) => {
         itemid: finalItemId,
         modids: finalModIds,
         value: calculatedValue,
-        status: 'Unprocessed',
+        status: null,
         session_date: new Date()
       };
 
@@ -326,7 +326,7 @@ const bulkCreateLoot = async (req, res) => {
             itemid: itemData.itemId,
             modids: itemData.modIds || [],
             value: calculatedValue,
-            status: 'Unprocessed',
+            status: null,
             session_date: new Date()
           };
 
@@ -399,7 +399,7 @@ const createFromTemplate = async (req, res) => {
         itemid: templateId,
         modids: customizations.modIds || [],
         value: customizations.value || template.value,
-        status: 'Unprocessed',
+        status: null,
         session_date: new Date()
       };
 
