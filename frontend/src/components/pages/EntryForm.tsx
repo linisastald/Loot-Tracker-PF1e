@@ -66,20 +66,27 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
     }
 
     // If changing type to 'magic' and not already unidentified, show message once per page load
-    // Skip if this is from autofill (parseItem is enabled, itemId exists) or already shown
+    // Skip if this is from autofill (isAutofill flag or itemId exists) or already shown
+    // Also skip if the current entry has isAutofill flag set
     if (
       field === 'type' &&
       value === 'magic' &&
       !localEntry.unidentified &&
       !magicDialogShown &&
       !localEntry.parseItem &&
-      !localEntry.itemId
+      !localEntry.itemId &&
+      !localEntry.isAutofill
     ) {
       setShowMagicMessage(true);
       setMagicDialogShown(true);
       // Auto-hide message after 8 seconds
       // eslint-disable-next-line no-undef
       setTimeout(() => setShowMagicMessage(false), 8000);
+    }
+
+    // Clear isAutofill flag if it exists
+    if (localEntry.isAutofill) {
+      delete updatedEntry.isAutofill;
     }
 
     setLocalEntry(prev => ({ ...prev, [field]: value }));
@@ -151,10 +158,16 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
                   : newValue;
 
               if (selectedItem) {
-                handleChange('name', selectedItem.name);
-                handleChange('itemId', selectedItem.id);
-                handleChange('type', selectedItem.type || '');
-                handleChange('value', selectedItem.value || null);
+                // Batch update for autofill to prevent magic warning
+                const updates = {
+                  name: selectedItem.name,
+                  itemId: selectedItem.id,
+                  type: selectedItem.type || '',
+                  value: selectedItem.value || null,
+                  isAutofill: true, // Temporary flag to indicate this is from autofill
+                };
+                setLocalEntry(prev => ({ ...prev, ...updates }));
+                onChange(index, updates);
               } else {
                 handleChange(
                   'name',
