@@ -14,6 +14,7 @@ router.get('/trashed', reportsController.getTrashedLoot);
 
 // Character and ledger reports
 router.get('/ledger', reportsController.getCharacterLedger);
+router.get('/unidentified/count', reportsController.getUnidentifiedCount);
 router.get('/unprocessed/count', reportsController.getUnprocessedCount);
 
 // Statistics and analytics

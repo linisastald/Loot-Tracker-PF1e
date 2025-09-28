@@ -198,6 +198,12 @@ const lootService = {
     api.get('/reports/trashed', { params }),
 
   /**
+   * Get unidentified count
+   */
+  getUnidentifiedCount: (): Promise<ApiResponse> =>
+    api.get('/reports/unidentified/count'),
+
+  /**
    * Get unprocessed count
    */
   getUnprocessedCount: (): Promise<ApiResponse> =>

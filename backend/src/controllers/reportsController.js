@@ -229,12 +229,33 @@ const getCharacterLedger = async (req, res) => {
 };
 
 /**
+ * Get unidentified items count
+ */
+const getUnidentifiedCount = async (req, res) => {
+  try {
+    const countResult = await dbUtils.executeQuery(
+      "SELECT COUNT(*) as count FROM loot WHERE unidentified = true"
+    );
+
+    const count = parseInt(countResult.rows[0].count);
+
+    return controllerFactory.sendSuccessResponse(res, {
+      count,
+      hasUnidentified: count > 0
+    }, `${count} unidentified items found`);
+  } catch (error) {
+    logger.error('Error fetching unidentified count:', error);
+    throw error;
+  }
+};
+
+/**
  * Get unprocessed items count
  */
 const getUnprocessedCount = async (req, res) => {
   try {
     const countResult = await dbUtils.executeQuery(
-      "SELECT COUNT(*) as count FROM loot WHERE status = 'Unprocessed'"
+      "SELECT COUNT(*) as count FROM loot WHERE status IS NULL"
     );
 
     const count = parseInt(countResult.rows[0].count);
@@ -482,6 +503,10 @@ module.exports = {
   
   getCharacterLedger: controllerFactory.createHandler(getCharacterLedger, {
     errorMessage: 'Error fetching character ledger'
+  }),
+  
+  getUnidentifiedCount: controllerFactory.createHandler(getUnidentifiedCount, {
+    errorMessage: 'Error fetching unidentified count'
   }),
   
   getUnprocessedCount: controllerFactory.createHandler(getUnprocessedCount, {

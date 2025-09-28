@@ -29,7 +29,8 @@
       "Bash(bash -c:*)",
       "Bash(bash:*)",
       "Bash(npx tsc:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npm start)"
     ],
     "deny": []
   }

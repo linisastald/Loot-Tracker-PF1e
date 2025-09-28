@@ -54,6 +54,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [openFleetManagement, setOpenFleetManagement] = useState(false);
   const [isDM, setIsDM] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
+  const [unidentifiedLootCount, setUnidentifiedLootCount] = useState(0);
   const [groupName, setGroupName] = useState('Loot Tracker');
   const [username, setUsername] = useState('');
   const [activeCharacter, setActiveCharacter] = useState(null);
@@ -83,8 +84,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     
     const fetchData = async () => {
       try {
-        const [lootCountRes, groupNameRes, activeCharRes, infamyRes, versionRes] = await Promise.all([
+        const [lootCountRes, unidentifiedCountRes, groupNameRes, activeCharRes, infamyRes, versionRes] = await Promise.all([
           lootService.getUnprocessedCount(),
+          lootService.getUnidentifiedCount(),
           api.get('/settings/campaign-name'),
           api.get('/auth/status'),
           api.get('/settings/infamy-system'),
@@ -93,6 +95,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
         
         if (isMounted) {
           setUnprocessedLootCount(lootCountRes.data.count);
+          setUnidentifiedLootCount(unidentifiedCountRes.data.count);
           setGroupName(groupNameRes.data.value);
           if (activeCharRes.data?.user?.activeCharacter) {
             setActiveCharacter(activeCharRes.data.user.activeCharacter);
@@ -305,12 +308,18 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             icon={<AutoStoriesIcon/>}
             onClick={handleToggle(setOpenSessionTools)}
             open={openSessionTools}
+            badge={isCollapsed && unidentifiedLootCount > 0 ? unidentifiedLootCount : null}
             isCategory
           >
             <MenuItem to="/golarion-calendar" primary="Calendar" icon={<DateRange />} />
             <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
             <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
-            <MenuItem to="/identify" primary="Identify" icon={<PsychologyAlt />} />
+            <MenuItem 
+              to="/identify" 
+              primary="Identify" 
+              icon={<PsychologyAlt />} 
+              badge={unidentifiedLootCount > 0 ? unidentifiedLootCount : null}
+            />
           </MenuItem>
 
           {isDM && (

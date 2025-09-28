@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
   Alert,
   Box,
@@ -122,14 +122,6 @@ const NotePreview = styled(Typography)<{isCurrentDay?: boolean}>(({theme, isCurr
     color: isCurrentDay ? theme.palette.primary.contrastText : theme.palette.text.secondary,
 }));
 
-const NavButton = styled(Button)(({theme}) => ({
-    minWidth: '40px',
-    padding: theme.spacing(1),
-    borderRadius: theme.shape.borderRadius,
-    boxShadow: 'none',
-    textTransform: 'none',
-    fontWeight: 500,
-}));
 
 const CalendarHeader = styled(Box)(({theme}) => ({
     display: 'flex',
@@ -188,7 +180,6 @@ const GolarionCalendar: React.FC = () => {
     const fetchCurrentDate = async (): Promise<void> => {
         try {
             const response = await api.get('/calendar/current-date');
-            console.log('Current date response:', response.data);
             const {year, month, day} = response.data;
             // Both backend and frontend now use 1-indexed months
             setCurrentDate({year, month, day});
@@ -196,7 +187,6 @@ const GolarionCalendar: React.FC = () => {
             setSelectedDate({year, month, day});
             setError(null);
         } catch (error) {
-            console.error('Error fetching current date:', error.response || error);
             setError('Failed to fetch current date. Please try again later.');
         }
     };
@@ -204,11 +194,9 @@ const GolarionCalendar: React.FC = () => {
     const fetchNotes = async (): Promise<void> => {
         try {
             const response = await api.get('/calendar/notes');
-            console.log('Notes response:', response.data);
             setNotes(response.data);
             setError(null);
         } catch (error) {
-            console.error('Error fetching notes:', error.response || error);
             setError('Failed to fetch notes. Please try again later.');
         }
     };
@@ -220,12 +208,11 @@ const GolarionCalendar: React.FC = () => {
                 setCurrentRegion(response.data.value);
             }
         } catch (error) {
-            console.error('Error fetching current region:', error);
             // Don't show error for region fetch, use default
         }
     };
 
-    const fetchWeatherForMonth = async (year: number, month: number): Promise<void> => {
+    const fetchWeatherForMonth = useCallback(async (year: number, month: number): Promise<void> => {
         try {
             // Calculate start and end dates for the month
             const startDay = 1;
@@ -246,10 +233,9 @@ const GolarionCalendar: React.FC = () => {
                 setWeather(weatherData);
             }
         } catch (error) {
-            console.error('Error fetching weather:', error);
             // Don't show error for weather fetch
         }
-    };
+    }, [currentRegion]);
 
     const handleNextDay = async (): Promise<void> => {
         try {
@@ -261,7 +247,6 @@ const GolarionCalendar: React.FC = () => {
             setSelectedDate({year, month, day});
             setError(null);
         } catch (error) {
-            console.error('Error advancing day:', error);
             setError('Failed to advance day. Please try again later.');
         }
     };
@@ -281,7 +266,6 @@ const GolarionCalendar: React.FC = () => {
             setConfirmDialogOpen(false);
             setError(null);
         } catch (error) {
-            console.error('Error setting current date:', error);
             setError('Failed to set current date. Please try again later.');
         }
     };
@@ -300,7 +284,6 @@ const GolarionCalendar: React.FC = () => {
             setDaysToAdd('');
             setError(null);
         } catch (error) {
-            console.error('Error increasing days:', error);
             setError('Failed to increase days. Please try again later.');
         }
     };
@@ -349,7 +332,6 @@ const GolarionCalendar: React.FC = () => {
             }));
             setError(null);
         } catch (error) {
-            console.error('Error saving note:', error);
             setError('Failed to save note. Please try again later.');
         }
     };
@@ -401,7 +383,6 @@ const GolarionCalendar: React.FC = () => {
                                         selectedDate.month === displayedDate.month &&
                                         selectedDate.day === day;
                                     const note = notes[dateKey];
-                                    const hasNote = Boolean(note);
 
                                     if (isValidDay) {
                                         // For valid days, get weather and moon phase
