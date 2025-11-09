@@ -112,7 +112,7 @@ const GoldTransactions: React.FC = () => {
     const [success, setSuccess] = useState<string | null>(null);
     const [totals, setTotals] = useState<GoldTotals>({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
     const [userRole, setUserRole] = useState<string>('');
-    const [startDate, setStartDate] = useState<Date>(new Date('2024-01-01'));
+    const [startDate, setStartDate] = useState<Date>(new Date(new Date().setMonth(new Date().getMonth() - 6)));
     const [endDate, setEndDate] = useState<Date>(new Date());
     const [activeTab, setActiveTab] = useState<number>(0);
     const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
@@ -264,7 +264,8 @@ const GoldTransactions: React.FC = () => {
 
     const handleQuickFilter = (months) => {
         if (months === 'all') {
-            setStartDate(new Date('2024-01-01'));
+            // For "All Time", set a very early start date to get all transactions
+            setStartDate(new Date('2000-01-01'));
             setEndDate(new Date());
         } else {
             const startDate = new Date(new Date().setMonth(new Date().getMonth() - months));
