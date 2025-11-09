@@ -38,7 +38,11 @@ const useLootManagement = (statusToFetch) => {
       if (!statusToFetch) {
         // For unprocessed loot - use the default getAllLoot which now defaults to Unprocessed
         const isDMUser = isDM();
-        let params = { isDM: isDMUser };
+        let params = {
+          isDM: isDMUser,
+          // Request all fields needed for filtering
+          fields: 'id,name,quantity,statuspage,unidentified,character_name,character_names,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+        };
 
         if (!isDMUser) {
           const currentActiveUser = await fetchActiveUser();
@@ -53,13 +57,19 @@ const useLootManagement = (statusToFetch) => {
         const response = await lootService.getAllLoot(params);
         setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Kept Party') {
-        const response = await lootService.getKeptPartyLoot();
+        const response = await lootService.getKeptPartyLoot({
+          fields: 'id,name,quantity,statuspage,unidentified,character_name,character_names,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+        });
         setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Kept Self') {
-        const response = await lootService.getKeptCharacterLoot();
+        const response = await lootService.getKeptCharacterLoot({
+          fields: 'id,name,quantity,statuspage,unidentified,character_name,character_names,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+        });
         setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Trash') {
-        const response = await lootService.getTrashedLoot();
+        const response = await lootService.getTrashedLoot({
+          fields: 'id,name,quantity,statuspage,unidentified,character_name,character_names,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+        });
         setLoot(response.data || { summary: [], individual: [] });
       }
     } catch {

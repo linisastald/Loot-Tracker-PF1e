@@ -354,23 +354,43 @@ const CustomLootTable = ({
           })
         ) &&
 
-        // Size filter - handle case differences
+        // Size filter - handle case differences and various formats
         (Object.values(sizeFilters).every(checked => checked) ||
           (() => {
-            const itemSize = item.size ? 
-              item.size.charAt(0).toUpperCase() + item.size.slice(1).toLowerCase() : 
-              'Unknown';
-            return sizeFilters[itemSize] || 
-                   (sizeFilters['Unknown'] && (!item.size || item.size === ''));
+            // Handle null/undefined/empty sizes
+            if (!item.size || item.size === '') {
+              return sizeFilters['Unknown'] || false;
+            }
+
+            // Normalize size to proper case (e.g., "medium" -> "Medium")
+            const normalizedSize = item.size.trim()
+              .split(' ')
+              .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+              .join(' ');
+
+            // Check if the normalized size matches any filter
+            return sizeFilters[normalizedSize] || false;
           })()
         ) &&
 
-        // Who has filter
+        // Who has filter - handle both summary rows (character_names array) and individual rows (character_name string)
         (whoHasFilters.every(filter => !filter.checked) ||
-          whoHasFilters.some(filter =>
-            filter.checked && item.character_names &&
-            item.character_names.includes(filter.name)
-          )) &&
+          whoHasFilters.some(filter => {
+            if (!filter.checked) return false;
+
+            // For summary rows (have character_names array)
+            if (item.character_names && Array.isArray(item.character_names)) {
+              return item.character_names.includes(filter.name);
+            }
+
+            // For individual rows (have character_name string)
+            if (item.character_name) {
+              return item.character_name === filter.name;
+            }
+
+            return false;
+          })
+        ) &&
 
         // Pending sale filter
         (showPendingSales || item.statuspage !== 'Pending Sale')

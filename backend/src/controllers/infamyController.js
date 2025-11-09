@@ -260,9 +260,9 @@ const gainInfamy = async (req, res) => {
         if (plunderSpent > 0) {
             // Query for available plunder in loot table
             const plunderQuery = `
-                SELECT id, quantity 
-                FROM loot 
-                WHERE name = 'Plunder' 
+                SELECT id, quantity
+                FROM loot
+                WHERE itemid = 7807  -- Item ID for Plunder
                 AND status IS NULL
                 ORDER BY id ASC
             `;
@@ -306,8 +306,8 @@ const gainInfamy = async (req, res) => {
 
                         // Create a new entry for the spent portion
                         await client.query(
-                            "INSERT INTO loot (name, quantity, session_date, status, whoupdated) VALUES ($1, $2, CURRENT_DATE, $3, $4)",
-                            ['Plunder', remainingToSpend, 'Spent on Infamy', userId]
+                            "INSERT INTO loot (name, itemid, quantity, session_date, status, whoupdated) VALUES ($1, $2, $3, CURRENT_DATE, $4, $5)",
+                            ['Plunder', 7807, remainingToSpend, 'Spent on Infamy', userId]
                         );
 
                         remainingToSpend = 0;
