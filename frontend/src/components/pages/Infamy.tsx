@@ -333,7 +333,8 @@ const Infamy: React.FC = () => {
             let plunderCount = 0;
             if (plunderItems?.data?.items) {
                 plunderItems.data.items.forEach(item => {
-                    if (item.status !== 'Sold' && item.status !== 'Trashed') {
+                    // Only count items with null status (available for spending)
+                    if (item.status === null || item.status === undefined) {
                         plunderCount += parseInt(item.quantity) || 0;
                     }
                 });
