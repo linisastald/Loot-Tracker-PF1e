@@ -32,6 +32,8 @@ Size Filtering: Fixed inconsistent size filter behavior with proper case handlin
 Field Requests: Backend now returns all necessary fields for proper filtering
 Notification Badges: Real-time updates for unprocessed items and identification needs
 Item Creation: Enhanced form with charges, masterwork, type, and size fields
+Badge Logic: Improved sidebar notification badges for Session Tools submenu states
+Gold Management: Enhanced transaction history with better filtering and "All Time" view
 
 UI Improvement - Material-UI Modernization
 TypeScript Integration: Converted major components from .js to .tsx for better type safety
@@ -46,6 +48,7 @@ Plunder Counting: Resolved infamy system showing incorrect plunder amounts (item
 Filter Functionality: Fixed "who has" and size filters not working in loot tables
 Gold Overview: Corrected displaying filtered time period instead of all-time totals
 Transaction History: Fixed not showing most recent same-day transactions
+Unprocessed Loot View: Resolved 500 error caused by database view column mismatches
 
 Bug Fixes & Stability - User Experience
 DM Sell Page: Added auto-refresh after sale completion with proper data fetching
@@ -53,6 +56,11 @@ Crew Movement: Enhanced ship-to-outpost crew transfer functionality
 Tooltip Behavior: Removed auto-hide timeout from magic type warning tooltips
 Form Validation: Improved loot creation with proper status handling (null vs 'Unprocessed')
 Modal Dialogs: Fixed dialog close behavior and form state management
+Sidebar Badges: Fixed Session Tools badge to show when submenu is collapsed
+DatePicker Compatibility: Resolved MUI X DatePicker accessibility structure errors
+Gold Entry Validation: Fixed datetime format validation for loot entry form submissions
+Gold Transaction History: Added "All Time" quick filter and improved date range handling
+API Response Handling: Fixed paginated response structure parsing in gold transactions
 
 Bug Fixes & Stability - Security & Performance
 Credential Management: Removed hard-coded passwords from Docker compose files
