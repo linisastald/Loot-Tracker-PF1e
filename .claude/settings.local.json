@@ -1,37 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(chmod:*)",
-      "Bash(find:*)",
-      "Bash(git commit:*)",
-      "Bash(npm install:*)",
-      "Bash(npm test)",
-      "Bash(npm run test:unit:*)",
-      "Bash(npm test:*)",
+      "Bash(npm start)",
+      "Bash(npm run dev:*)",
       "Bash(git add:*)",
+      "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(ls:*)",
-      "Bash(npx jest:*)",
-      "Bash(timeout 10s npx jest src/utils/__tests__/saleValueCalculator.test.js --no-coverage)",
-      "Bash(timeout 15s npx jest tests/api/auth.test.js --no-coverage --verbose)",
-      "Bash(npm run test:*)",
-      "Bash(cp:*)",
-      "Bash(mkdir:*)",
-      "Bash(timeout:*)",
-      "Bash(cat:*)",
-      "Bash(grep:*)",
-      "Bash(mv:*)",
-      "Bash(touch:*)",
-      "Bash(npm run build:*)",
-      "Bash(for file in *.js)",
-      "Bash(do mv \"$file\" \"$file%.js.jsx\")",
-      "Bash(done)",
-      "Bash(bash -c:*)",
-      "Bash(bash:*)",
-      "Bash(npx tsc:*)",
-      "Bash(node:*)",
-      "Bash(npm start)"
+      "Bash(git log:*)",
+      "Bash(git rm:*)",
+      "Bash(git mv:*)",
+      "Bash(git reset:*)"
     ],
-    "deny": []
+    "deny": [],
+    "ask": []
   }
 }
