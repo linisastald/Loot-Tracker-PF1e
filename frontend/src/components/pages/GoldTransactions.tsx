@@ -158,8 +158,11 @@ const GoldTransactions: React.FC = () => {
                 params: {startDate, endDate}
             });
 
+            // Handle paginated response structure
+            const entries = response.data.data || response.data || [];
+
             // Sort entries by complete session_date timestamp (not just the date part)
-            const sortedEntries = [...response.data].sort((a: GoldEntry, b: GoldEntry) => {
+            const sortedEntries = [...entries].sort((a: GoldEntry, b: GoldEntry) => {
                 return new Date(b.session_date).getTime() - new Date(a.session_date).getTime();
             });
 
