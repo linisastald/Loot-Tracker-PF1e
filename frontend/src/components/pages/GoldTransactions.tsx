@@ -112,7 +112,7 @@ const GoldTransactions: React.FC = () => {
     const [success, setSuccess] = useState<string | null>(null);
     const [totals, setTotals] = useState<GoldTotals>({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
     const [userRole, setUserRole] = useState<string>('');
-    const [startDate, setStartDate] = useState<Date>(new Date(new Date().setMonth(new Date().getMonth() - 6)));
+    const [startDate, setStartDate] = useState<Date>(new Date('2024-01-01'));
     const [endDate, setEndDate] = useState<Date>(new Date());
     const [activeTab, setActiveTab] = useState<number>(0);
     const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
@@ -263,10 +263,15 @@ const GoldTransactions: React.FC = () => {
     };
 
     const handleQuickFilter = (months) => {
-        const startDate = new Date(new Date().setMonth(new Date().getMonth() - months));
-        const endDate = new Date();
-        setStartDate(startDate);
-        setEndDate(endDate);
+        if (months === 'all') {
+            setStartDate(new Date('2024-01-01'));
+            setEndDate(new Date());
+        } else {
+            const startDate = new Date(new Date().setMonth(new Date().getMonth() - months));
+            const endDate = new Date();
+            setStartDate(startDate);
+            setEndDate(endDate);
+        }
     };
 
     const formatDate = useCallback((dateString: string) => {
@@ -755,6 +760,22 @@ const GoldTransactions: React.FC = () => {
                                 </Grid>
                             </LocalizationProvider>
                             <Box sx={{mt: 2}}>
+                                <Button
+                                    variant="outlined"
+                                    onClick={() => handleQuickFilter('all')}
+                                    sx={{
+                                        mr: 1,
+                                        mb: 1,
+                                        borderColor: 'rgba(255, 255, 255, 0.23)',
+                                        color: 'text.secondary',
+                                        '&:hover': {
+                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                            borderColor: 'rgba(255, 255, 255, 0.5)'
+                                        }
+                                    }}
+                                >
+                                    All Time
+                                </Button>
                                 <Button
                                     variant="outlined"
                                     onClick={() => handleQuickFilter(1)}
