@@ -62,7 +62,13 @@ CREATE INDEX IF NOT EXISTS idx_sold_loot_date ON sold(lootid, soldon);
 
 -- These should exist but ensuring they're present for referential integrity performance
 -- crew(ship_id) doesn't exist - crew uses location_id with location_type
-CREATE INDEX IF NOT EXISTS idx_crew_location_id ON crew(location_id) WHERE location_type = 'ship';
+-- Only create if crew table exists (may not exist in all deployments)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'crew') THEN
+        CREATE INDEX IF NOT EXISTS idx_crew_location_id ON crew(location_id) WHERE location_type = 'ship';
+    END IF;
+END $$;
 -- outposts doesn't have session_id - skip this index
 -- CREATE INDEX IF NOT EXISTS idx_outposts_session_id ON outposts(session_id);
 -- fame_history table might not exist - skip for now
@@ -95,13 +101,33 @@ CREATE INDEX IF NOT EXISTS idx_loot_unidentified ON loot(itemid, session_date) W
 -- =====================================================================================
 
 -- Update table statistics to help query planner make better decisions
-ANALYZE loot;
-ANALYZE gold; 
-ANALYZE characters;
-ANALYZE settings;
-ANALYZE session_messages;
-ANALYZE consumableuse;
-ANALYZE appraisal;
+-- Only analyze tables that exist
+DO $$
+DECLARE
+    table_exists BOOLEAN;
+BEGIN
+    -- Always analyze core tables
+    ANALYZE loot;
+    ANALYZE gold;
+    ANALYZE characters;
+    ANALYZE appraisal;
+
+    -- Conditionally analyze tables that may not exist
+    SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'settings') INTO table_exists;
+    IF table_exists THEN
+        ANALYZE settings;
+    END IF;
+
+    SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'session_messages') INTO table_exists;
+    IF table_exists THEN
+        ANALYZE session_messages;
+    END IF;
+
+    SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'consumableuse') INTO table_exists;
+    IF table_exists THEN
+        ANALYZE consumableuse;
+    END IF;
+END $$;
 
 -- =====================================================================================
 -- PERFORMANCE MONITORING SETUP
