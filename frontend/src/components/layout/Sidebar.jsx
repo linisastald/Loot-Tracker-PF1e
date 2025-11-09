@@ -206,9 +206,13 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
           </ListItemIcon>
           {!isCollapsed && (
             <>
-              <Badge badgeContent={badge} color="error" sx={{ flexGrow: 1 }}>
-                <ListItemText primary={primary} />
-              </Badge>
+              {badge ? (
+                <Badge badgeContent={badge} color="error" sx={{ flexGrow: 1 }}>
+                  <ListItemText primary={primary} />
+                </Badge>
+              ) : (
+                <ListItemText primary={primary} sx={{ flexGrow: 1 }} />
+              )}
               {children && (open ? <ExpandLess /> : <ExpandMore />)}
             </>
           )}
