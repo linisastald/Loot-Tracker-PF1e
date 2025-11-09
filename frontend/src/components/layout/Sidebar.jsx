@@ -195,7 +195,15 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             },
           }}
         >
-          <ListItemIcon>{icon}</ListItemIcon>
+          <ListItemIcon>
+            {isCollapsed && badge ? (
+              <Badge badgeContent={badge} color="error">
+                {icon}
+              </Badge>
+            ) : (
+              icon
+            )}
+          </ListItemIcon>
           {!isCollapsed && (
             <>
               <Badge badgeContent={badge} color="error" sx={{ flexGrow: 1 }}>

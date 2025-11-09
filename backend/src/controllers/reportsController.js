@@ -234,7 +234,7 @@ const getCharacterLedger = async (req, res) => {
 const getUnidentifiedCount = async (req, res) => {
   try {
     const countResult = await dbUtils.executeQuery(
-      "SELECT COUNT(*) as count FROM loot WHERE unidentified = true"
+      "SELECT COUNT(*) as count FROM loot WHERE unidentified = true AND (itemid IS NOT NULL OR (modids IS NOT NULL AND modids != '{}'))"
     );
 
     const count = parseInt(countResult.rows[0].count);
