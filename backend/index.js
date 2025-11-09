@@ -13,7 +13,8 @@ const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
 const { initCronJobs } = require('./src/utils/cronJobs');
-const migrationRunner = require('./src/utils/migrationRunner');
+// Migration runner no longer needed - database schema is now fully consolidated in database/init_complete.sql
+// const migrationRunner = require('./src/utils/migrationRunner');
 const { RATE_LIMIT, SERVER, COOKIES } = require('./src/config/constants');
 
 // Enhanced error handling
@@ -242,7 +243,8 @@ const configRoutes = require('./src/api/routes/config');
 const shipRoutes = require('./src/api/routes/ships');
 const outpostRoutes = require('./src/api/routes/outposts');
 const crewRoutes = require('./src/api/routes/crew');
-const migrationRoutes = require('./src/api/routes/migrations');
+// Migration routes no longer needed - schema is consolidated
+// const migrationRoutes = require('./src/api/routes/migrations');
 
 // New refactored routes
 const itemRoutes = require('./src/api/routes/items');
@@ -280,7 +282,8 @@ app.use('/api/weather', csrfProtection, weatherRoutes);
 app.use('/api/ships', csrfProtection, shipRoutes);
 app.use('/api/outposts', csrfProtection, outpostRoutes);
 app.use('/api/crew', csrfProtection, crewRoutes);
-app.use('/api/migrations', migrationRoutes); // No CSRF protection for read-only endpoints
+// Migration endpoint disabled - using consolidated schema
+// app.use('/api/migrations', migrationRoutes);
 
 // New refactored routes
 app.use('/api/items', csrfProtection, itemRoutes);
@@ -334,10 +337,9 @@ app.use(errorHandler);
 // Start server
 const startServer = async () => {
   try {
-    // Run database migrations
-    logger.info('Running database migrations...');
-    await migrationRunner.runMigrations();
-    logger.info('Database migrations completed');
+    // Database migrations are no longer needed - schema is consolidated in database/init_complete.sql
+    // For new installations, run database/init_complete.sql to set up the complete schema
+    logger.info('Skipping migrations - using consolidated database schema');
     
     // Start the server
     const server = app.listen(port, () => {
