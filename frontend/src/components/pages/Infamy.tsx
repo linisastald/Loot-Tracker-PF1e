@@ -327,7 +327,7 @@ const Infamy: React.FC = () => {
     const fetchAvailablePlunder = async () => {
         try {
             const plunderItems = await lootService.searchLoot({
-                params: { itemid: '7807' }
+                itemid: '7807'
             });
 
             let plunderCount = 0;
