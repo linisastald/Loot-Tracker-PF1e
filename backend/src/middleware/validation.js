@@ -54,7 +54,7 @@ const validationSchemas = {
             gold: { type: 'number', required: false, min: 0 },
             silver: { type: 'number', required: false, min: 0 },
             copper: { type: 'number', required: false, min: 0 },
-            sessionDate: { type: 'string', required: true, format: 'date' }
+            sessionDate: { type: 'string', required: true, format: 'datetime' }
           }
         }
       }
