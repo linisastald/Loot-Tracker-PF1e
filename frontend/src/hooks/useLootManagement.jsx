@@ -40,8 +40,8 @@ const useLootManagement = (statusToFetch) => {
         const isDMUser = isDM();
         let params = {
           isDM: isDMUser,
-          // Request all fields needed for filtering
-          fields: 'id,name,quantity,statuspage,unidentified,character_name,character_names,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+          // Request all fields needed for filtering (excluding character_names due to view structure)
+          fields: 'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
         };
 
         if (!isDMUser) {
@@ -58,17 +58,17 @@ const useLootManagement = (statusToFetch) => {
         setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Kept Party') {
         const response = await lootService.getKeptPartyLoot({
-          fields: 'id,name,quantity,statuspage,unidentified,character_name,character_names,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+          fields: 'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
         });
         setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Kept Self') {
         const response = await lootService.getKeptCharacterLoot({
-          fields: 'id,name,quantity,statuspage,unidentified,character_name,character_names,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+          fields: 'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
         });
         setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Trash') {
         const response = await lootService.getTrashedLoot({
-          fields: 'id,name,quantity,statuspage,unidentified,character_name,character_names,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+          fields: 'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
         });
         setLoot(response.data || { summary: [], individual: [] });
       }

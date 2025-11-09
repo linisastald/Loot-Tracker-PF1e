@@ -373,17 +373,12 @@ const CustomLootTable = ({
           })()
         ) &&
 
-        // Who has filter - handle both summary rows (character_names array) and individual rows (character_name string)
+        // Who has filter - use character_name field only (works for both summary and individual rows)
         (whoHasFilters.every(filter => !filter.checked) ||
           whoHasFilters.some(filter => {
             if (!filter.checked) return false;
 
-            // For summary rows (have character_names array)
-            if (item.character_names && Array.isArray(item.character_names)) {
-              return item.character_names.includes(filter.name);
-            }
-
-            // For individual rows (have character_name string)
+            // Check character_name field (available in both summary and individual rows)
             if (item.character_name) {
               return item.character_name === filter.name;
             }
