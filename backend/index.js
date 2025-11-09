@@ -243,7 +243,7 @@ const configRoutes = require('./src/api/routes/config');
 const shipRoutes = require('./src/api/routes/ships');
 const outpostRoutes = require('./src/api/routes/outposts');
 const crewRoutes = require('./src/api/routes/crew');
-// Migration routes no longer needed - schema is consolidated
+// Migration routes no longer needed - using consolidated schema
 // const migrationRoutes = require('./src/api/routes/migrations');
 
 // New refactored routes
@@ -340,16 +340,16 @@ const startServer = async () => {
     // Database migrations are no longer needed - schema is consolidated in database/init_complete.sql
     // For new installations, run database/init_complete.sql to set up the complete schema
     logger.info('Skipping migrations - using consolidated database schema');
-    
+
     // Start the server
     const server = app.listen(port, () => {
       logger.info(`Server running on port ${port}`);
-      
+
       // Initialize cron jobs
       initCronJobs();
       logger.info('Cron jobs initialized');
     });
-    
+
     return server;
   } catch (error) {
     logger.error('Failed to start server:', error);
