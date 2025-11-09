@@ -97,14 +97,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
           setUnprocessedLootCount(lootCountRes.data.count);
           setUnidentifiedLootCount(unidentifiedCountRes.data.count);
 
-          // DEBUG: Log badge values
-          console.log('DEBUG - Sidebar Badge Values:', {
-            isCollapsed,
-            unidentifiedLootCount: unidentifiedCountRes.data.count,
-            sessionToolsBadge: isCollapsed && unidentifiedCountRes.data.count > 0 ? unidentifiedCountRes.data.count : null,
-            identifyBadge: unidentifiedCountRes.data.count > 0 ? unidentifiedCountRes.data.count : null
-          });
-
           setGroupName(groupNameRes.data.value);
           if (activeCharRes.data?.user?.activeCharacter) {
             setActiveCharacter(activeCharRes.data.user.activeCharacter);
@@ -158,15 +150,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     const active = to ? isActiveRoute(to) : false;
     const ComponentToUse = to ? Link : 'div';
 
-    // DEBUG: Log MenuItem badge info
-    if (primary === 'Session Tools' || primary === 'Identify') {
-      console.log(`DEBUG - MenuItem "${primary}":`, {
-        badge,
-        isCollapsed,
-        hasChildren: !!children
-      });
-    }
-    
     const handleKeyDown = (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -338,7 +321,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             icon={<AutoStoriesIcon/>}
             onClick={handleToggle(setOpenSessionTools)}
             open={openSessionTools}
-            badge={isCollapsed && unidentifiedLootCount > 0 ? unidentifiedLootCount : null}
+            badge={!openSessionTools && unidentifiedLootCount > 0 ? unidentifiedLootCount : null}
             isCategory
           >
             <MenuItem to="/golarion-calendar" primary="Calendar" icon={<DateRange />} />
