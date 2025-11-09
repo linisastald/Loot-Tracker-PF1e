@@ -587,6 +587,7 @@ const GoldTransactions: React.FC = () => {
                                                 label="Session Date"
                                                 value={newEntry.sessionDate}
                                                 onChange={(date) => handleEntryChange('sessionDate', date)}
+                                                enableAccessibleFieldDOMStructure={false}
                                                 slots={{
                                                     textField: TextField
                                                 }}
@@ -707,6 +708,7 @@ const GoldTransactions: React.FC = () => {
                                             label="Start Date"
                                             value={startDate}
                                             onChange={(date) => setStartDate(date)}
+                                            enableAccessibleFieldDOMStructure={false}
                                             slots={{
                                                 textField: TextField
                                             }}
@@ -720,6 +722,7 @@ const GoldTransactions: React.FC = () => {
                                             label="End Date"
                                             value={endDate}
                                             onChange={(date) => setEndDate(date)}
+                                            enableAccessibleFieldDOMStructure={false}
                                             slots={{
                                                 textField: TextField
                                             }}
