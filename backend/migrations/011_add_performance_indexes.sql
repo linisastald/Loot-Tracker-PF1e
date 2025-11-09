@@ -53,7 +53,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_appraisal_characterid ON appraisal(c
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_appraisal_lootid ON appraisal(lootid);
 
 -- Index for time-based appraisal queries
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_appraisal_time ON appraisal(appraised_on);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_appraisal_time ON appraisal(time);
 
 -- ====================================================================================
 -- GOLD TABLE INDEXES
