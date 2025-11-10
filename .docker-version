@@ -4,7 +4,7 @@
 # Note: Pre-1.0 software - version 0.x.x indicates beta/development status
 
 # Current version (matches app version)
-VERSION=0.7.1
+VERSION=0.8.1
 
 # Last build timestamp
 LAST_BUILD=
