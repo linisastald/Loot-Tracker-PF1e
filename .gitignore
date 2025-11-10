@@ -1,5 +1,6 @@
 /backend/node_modules/
 /frontend/node_modules/
+/discord-handler/node_modules/
 
 /node_modules/
 backend/.env
@@ -59,3 +60,6 @@ private/
 /backend/coverage/
 /frontend/coverage/
 *.lcov
+
+# Documentation folder (internal docs)
+/docs/
