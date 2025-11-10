@@ -12,7 +12,7 @@ const getVersion = async (req, res) => {
     logger.info('Version endpoint called');
     // Read version from .docker-version file
     const versionFilePath = path.resolve(__dirname, '../../../.docker-version');
-    let version = '0.7.1'; // Fallback version
+    let version = '0.8.1'; // Fallback version
     let buildNumber = 0;
     let lastBuild = null;
 
@@ -38,7 +38,7 @@ const getVersion = async (req, res) => {
         const packageJsonPath = path.resolve(__dirname, '../../../package.json');
         const packageContent = await fs.readFile(packageJsonPath, 'utf-8');
         const packageJson = JSON.parse(packageContent);
-        version = packageJson.version || '0.7.1';
+        version = packageJson.version || '0.8.1';
       } catch (packageError) {
         logger.warn('Could not read package.json either, using hardcoded fallback', packageError);
       }
