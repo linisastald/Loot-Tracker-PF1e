@@ -1,13 +1,12 @@
 # Docker Image Version Tracking
 # This file is used by build_image.sh to track and auto-increment version numbers
 # Format: MAJOR.MINOR.PATCH
-# Note: Pre-1.0 software - version 0.x.x indicates beta/development status
 
-# Current version (matches app version)
+# Current version
 VERSION=0.8.1
 
 # Last build timestamp
-LAST_BUILD=
+LAST_BUILD=2025-11-10T01:47:02Z
 
 # Build counter (incremented with each build)
-BUILD_NUMBER=0
+BUILD_NUMBER=1
