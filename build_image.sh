@@ -29,6 +29,7 @@ TAG="dev"  # Default to dev/unstable tag
 AUTO_VERSION=true  # Auto-increment version numbers
 VERSION_TYPE="patch"  # Default version increment type (major, minor, patch)
 SYNC_PACKAGE_VERSION=false  # Sync version with package.json
+GIT_BRANCH=""  # Branch to pull from (auto-detected if empty)
 
 # Production optimization settings
 USE_BUILDKIT=true
@@ -78,6 +79,10 @@ while [ $# -gt 0 ]; do
             SYNC_PACKAGE_VERSION=true
             shift
             ;;
+        --branch)
+            GIT_BRANCH="$2"
+            shift 2
+            ;;
         --cleanup)
             echo "🧹 Cleaning up dangling images..."
             docker image prune -f
@@ -107,6 +112,7 @@ while [ $# -gt 0 ]; do
             echo "    --no-version      Disable automatic version incrementing"
             echo "    --version-type    Type of version increment: major, minor, patch (default: patch)"
             echo "    --sync-version    Sync version with package.json (resets to app version)"
+            echo "    --branch BRANCH   Specify git branch to pull (auto-detects current branch if not specified)"
             echo "    --cleanup         Remove all dangling images and exit"
             echo ""
             echo "  AUTO-VERSIONING:"
@@ -119,6 +125,8 @@ while [ $# -gt 0 ]; do
             echo ""
             echo "  EXAMPLES:"
             echo "    bash $0                        # Build optimized dev image with latest git code"
+            echo "    bash $0 dev                    # Build dev image with auto-versioning (shorthand)"
+            echo "    bash $0 latest                 # Build latest image with auto-versioning"
             echo "    bash $0 --stable               # Build optimized stable release from current code"
             echo "    bash $0 --stable --tag v2.1.0  # Build and tag as specific version"
             echo "    bash $0 --stable --version-type minor  # Increment minor version"
@@ -126,12 +134,20 @@ while [ $# -gt 0 ]; do
             echo "    bash $0 --sync-version         # Reset to package.json version (v0.7.1)"
             echo "    bash $0 --no-version           # Build without auto-versioning"
             echo "    bash $0 --security-scan        # Build with security vulnerability scanning"
+            echo "    bash $0 --branch feature/discord-attendance  # Build from specific feature branch"
             exit 0
             ;;
         *)
-            echo "Unknown option: $1"
-            echo "Use --help for usage information"
-            exit 1
+            # Check if it's a positional argument (doesn't start with -)
+            if [[ ! "$1" =~ ^- ]]; then
+                TAG="$1"
+                echo "Using positional argument as tag: $TAG"
+                shift
+            else
+                echo "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+            fi
             ;;
     esac
 done
@@ -139,6 +155,11 @@ done
 # Get the script directory to ensure we're in the right place
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
+
+# Default to master branch if not specified
+if [ -z "$GIT_BRANCH" ]; then
+    GIT_BRANCH="master"
+fi
 
 # Function to read current version from file
 read_version() {
@@ -257,6 +278,11 @@ get_git_commit() {
     git rev-parse --short HEAD 2>/dev/null || echo "unknown"
 }
 
+# Function to get current git branch
+get_current_branch() {
+    git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"
+}
+
 # Function to get current timestamp for versioning
 get_timestamp() {
     date +"%Y%m%d-%H%M%S"
@@ -357,8 +383,8 @@ if [ "$BUILD_STABLE" = true ]; then
         archive_latest_image
     fi
 else
-    echo "Building dev image - pulling latest code from GitHub..."
-    git pull origin master || {
+    echo "Building dev image - pulling latest code from GitHub (branch: $GIT_BRANCH)..."
+    git pull origin $GIT_BRANCH || {
         echo "⚠️  Warning: Git pull failed. Continuing with current local code."
         echo "Make sure you're in the correct git repository and have proper permissions."
     }

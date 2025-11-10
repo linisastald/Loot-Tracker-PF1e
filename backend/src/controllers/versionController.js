@@ -22,11 +22,11 @@ const getVersion = async (req, res) => {
       
       for (const line of versionLines) {
         if (line.startsWith('VERSION=')) {
-          version = line.split('=')[1];
+          version = line.split('=')[1].trim();
         } else if (line.startsWith('BUILD_NUMBER=')) {
-          buildNumber = parseInt(line.split('=')[1]) || 0;
+          buildNumber = parseInt(line.split('=')[1].trim()) || 0;
         } else if (line.startsWith('LAST_BUILD=')) {
-          const buildValue = line.split('=')[1];
+          const buildValue = line.split('=')[1].trim();
           lastBuild = buildValue || null;
         }
       }
@@ -46,8 +46,13 @@ const getVersion = async (req, res) => {
 
     // Construct full version string
     let fullVersion = version;
+    const isDevelopment = process.env.NODE_ENV === 'development';
+
     if (buildNumber > 0) {
       fullVersion = `${version}-dev.${buildNumber}`;
+    } else if (isDevelopment) {
+      // In development mode without build number, show as dev
+      fullVersion = `${version}-dev`;
     }
 
     const versionInfo = {

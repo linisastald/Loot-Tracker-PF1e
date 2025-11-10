@@ -2,12 +2,63 @@
 const dbUtils = require('../utils/dbUtils');
 
 /**
+ * Parse ship JSON fields and detect weapon formats
+ * @param {Object} ship - Raw ship from database
+ * @return {Object} Ship with parsed JSON fields
+ */
+const parseShipData = (ship) => {
+  if (!ship) return null;
+
+  // Parse JSON fields
+  const parsedShip = { ...ship };
+
+  // Parse weapons and handle both formats
+  if (ship.weapons) {
+    try {
+      const weaponsData = typeof ship.weapons === 'string' ? JSON.parse(ship.weapons) : ship.weapons;
+
+      // Check if it's the new format (weapon_types with quantities)
+      if (Array.isArray(weaponsData) && weaponsData.length > 0 && weaponsData[0].type && weaponsData[0].quantity !== undefined) {
+        parsedShip.weapon_types = weaponsData;
+        parsedShip.weapons = []; // Clear legacy format
+      } else {
+        // It's the legacy format (detailed weapons)
+        parsedShip.weapons = weaponsData;
+        parsedShip.weapon_types = []; // Clear new format
+      }
+    } catch (e) {
+      console.error('Error parsing weapons data:', e);
+      parsedShip.weapons = [];
+      parsedShip.weapon_types = [];
+    }
+  } else {
+    parsedShip.weapons = [];
+    parsedShip.weapon_types = [];
+  }
+
+  // Parse other JSON fields
+  if (ship.officers) {
+    parsedShip.officers = typeof ship.officers === 'string' ? JSON.parse(ship.officers) : ship.officers;
+  }
+
+  if (ship.improvements) {
+    parsedShip.improvements = typeof ship.improvements === 'string' ? JSON.parse(ship.improvements) : ship.improvements;
+  }
+
+  if (ship.cargo_manifest) {
+    parsedShip.cargo_manifest = typeof ship.cargo_manifest === 'string' ? JSON.parse(ship.cargo_manifest) : ship.cargo_manifest;
+  }
+
+  return parsedShip;
+};
+
+/**
  * Get all ships with crew count
  * @return {Promise<Array>} Array of ships with crew counts
  */
 exports.getAllWithCrewCount = async () => {
   const query = `
-    SELECT s.*, 
+    SELECT s.*,
            COUNT(CASE WHEN c.location_type = 'ship' AND c.is_alive = true THEN 1 END) as crew_count
     FROM ships s
     LEFT JOIN crew c ON c.location_id = s.id AND c.location_type = 'ship'
@@ -15,29 +66,29 @@ exports.getAllWithCrewCount = async () => {
     ORDER BY s.name
   `;
   const result = await dbUtils.executeQuery(query);
-  return result.rows;
+  return result.rows.map(ship => parseShipData(ship));
 };
 
 /**
  * Get ship by ID with crew
- * @param {number} shipId 
+ * @param {number} shipId
  * @return {Promise<Object|null>} Ship with crew array
  */
 exports.getWithCrew = async (shipId) => {
   const shipQuery = 'SELECT * FROM ships WHERE id = $1';
   const shipResult = await dbUtils.executeQuery(shipQuery, [shipId]);
-  
+
   if (shipResult.rows.length === 0) {
     return null;
   }
-  
-  const ship = shipResult.rows[0];
+
+  const ship = parseShipData(shipResult.rows[0]);
 
   const crewQuery = `
-    SELECT * FROM crew 
+    SELECT * FROM crew
     WHERE location_type = 'ship' AND location_id = $1 AND is_alive = true
-    ORDER BY 
-      CASE ship_position 
+    ORDER BY
+      CASE ship_position
         WHEN 'captain' THEN 1
         WHEN 'first mate' THEN 2
         ELSE 3
@@ -45,7 +96,7 @@ exports.getWithCrew = async (shipId) => {
       name
   `;
   const crewResult = await dbUtils.executeQuery(crewQuery, [shipId]);
-  
+
   return {
     ...ship,
     crew: crewResult.rows
@@ -115,7 +166,7 @@ exports.create = async (shipData) => {
   ];
   
   const result = await dbUtils.executeQuery(query, values);
-  return result.rows[0];
+  return parseShipData(result.rows[0]);
 };
 
 /**
@@ -184,7 +235,7 @@ exports.update = async (id, shipData) => {
   ];
   
   const result = await dbUtils.executeQuery(query, values);
-  return result.rows.length > 0 ? result.rows[0] : null;
+  return result.rows.length > 0 ? parseShipData(result.rows[0]) : null;
 };
 
 /**
@@ -200,49 +251,49 @@ exports.delete = async (id) => {
 
 /**
  * Find ship by ID
- * @param {number} id 
+ * @param {number} id
  * @return {Promise<Object|null>} Ship or null
  */
 exports.findById = async (id) => {
   const query = 'SELECT * FROM ships WHERE id = $1';
   const result = await dbUtils.executeQuery(query, [id]);
-  return result.rows.length > 0 ? result.rows[0] : null;
+  return result.rows.length > 0 ? parseShipData(result.rows[0]) : null;
 };
 
 /**
  * Apply damage to a ship
- * @param {number} id 
- * @param {number} damageAmount 
+ * @param {number} id
+ * @param {number} damageAmount
  * @return {Promise<Object|null>} Updated ship
  */
 exports.applyDamage = async (id, damageAmount) => {
   const query = `
-    UPDATE ships 
+    UPDATE ships
     SET current_hp = GREATEST(0, current_hp - $1), updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *
   `;
-  
+
   const result = await dbUtils.executeQuery(query, [damageAmount, id]);
-  return result.rows.length > 0 ? result.rows[0] : null;
+  return result.rows.length > 0 ? parseShipData(result.rows[0]) : null;
 };
 
 /**
  * Repair a ship
- * @param {number} id 
- * @param {number} repairAmount 
+ * @param {number} id
+ * @param {number} repairAmount
  * @return {Promise<Object|null>} Updated ship
  */
 exports.repairShip = async (id, repairAmount) => {
   const query = `
-    UPDATE ships 
+    UPDATE ships
     SET current_hp = LEAST(max_hp, current_hp + $1), updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *
   `;
-  
+
   const result = await dbUtils.executeQuery(query, [repairAmount, id]);
-  return result.rows.length > 0 ? result.rows[0] : null;
+  return result.rows.length > 0 ? parseShipData(result.rows[0]) : null;
 };
 
 /**

@@ -74,8 +74,8 @@ const CharacterManagement = () => {
         setUpdateCharacter({
             name: char.name,
             appraisal_bonus: char.appraisal_bonus,
-            birthday: char.birthday,
-            deathday: char.deathday,
+            birthday: formatDateForInput(char.birthday),
+            deathday: formatDateForInput(char.deathday),
             active: char.active,
             user_id: char.user_id,
         });
@@ -99,6 +99,23 @@ const CharacterManagement = () => {
         } catch (err) {
             setError('Error updating character');
             setSuccess('');
+        }
+    };
+
+    const formatDateForInput = (dateString) => {
+        if (!dateString) return '';
+        try {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return '';
+
+            // Convert to YYYY-MM-DD format for HTML date input
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        } catch (error) {
+            console.error('Error formatting date for input:', error);
+            return '';
         }
     };
 
