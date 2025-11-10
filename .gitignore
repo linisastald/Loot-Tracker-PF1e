@@ -33,7 +33,7 @@ Thumbs.db
 # IDE files
 .vscode/
 .idea/
-.claude/settings.local.json
+.claude/
 
 # Temporary files
 *.tmp
