@@ -61,5 +61,3 @@ private/
 /frontend/coverage/
 *.lcov
 
-# Documentation folder (internal docs)
-/docs/

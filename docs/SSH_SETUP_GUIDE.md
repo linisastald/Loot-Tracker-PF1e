@@ -11,7 +11,7 @@ cd /path/to/your/pathfinder/source
 
 2. Generate a new SSH key (if you don't already have one):
 ```bash
-ssh-keygen -t ed25519 -C "your-email@example.com"
+ssh-keygen -t ed25519 -C "lavinaccuate@gmail.com"
 ```
 
 When prompted:
