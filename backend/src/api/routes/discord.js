@@ -5,6 +5,9 @@ const sessionController = require('../../controllers/sessionController');
 const verifyToken = require('../../middleware/auth');
 const logger = require('../../utils/logger');
 
+// Debug logging
+logger.info('Discord routes file loaded');
+
 router.post('/send-message', verifyToken, discordController.sendMessage);
 router.post('/send-event', verifyToken, discordController.sendEvent);
 router.get('/status', verifyToken, discordController.getIntegrationStatus);
@@ -12,6 +15,17 @@ router.put('/settings', verifyToken, discordController.updateSettings);
 
 // Handle Discord interactions (routed from discord-handler service)
 // Note: This endpoint is now called by the discord-handler service, not directly by Discord
+logger.info('Defining /interactions routes');
+
+// Add GET handler for testing/verification
+router.get('/interactions', (req, res) => {
+    res.json({
+        message: 'Discord interactions endpoint exists - use POST method for actual interactions',
+        method: req.method,
+        endpoint: '/api/discord/interactions'
+    });
+});
+
 router.post('/interactions', (req, res, next) => {
     // Log interactions routed from discord-handler (sanitized for security)
     logger.info('Discord interaction routed from handler', {
