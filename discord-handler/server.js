@@ -16,8 +16,11 @@ const PORT = process.env.PORT || 3000;
 app.use('/interactions', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
-// Campaign routing configuration
-const CAMPAIGN_CONFIG = {
+// Dynamic campaign registry - apps can register/unregister at runtime
+const registeredApps = new Map();
+
+// Legacy static configuration for backward compatibility
+const STATIC_CONFIG = {
   [process.env.ROTR_CHANNEL_ID]: {
     name: 'ROTR',
     endpoint: process.env.ROTR_API_ENDPOINT || 'http://localhost:5000/api',
@@ -33,6 +36,25 @@ const CAMPAIGN_CONFIG = {
     endpoint: process.env.TEST_API_ENDPOINT || 'http://localhost:5002/api',
     channelId: process.env.TEST_CHANNEL_ID
   }
+};
+
+// Build campaign configuration from both static and dynamic sources
+const getCampaignConfig = () => {
+  const config = { ...STATIC_CONFIG };
+
+  // Add dynamically registered apps
+  registeredApps.forEach((appConfig) => {
+    Object.keys(appConfig.channels).forEach(channelId => {
+      config[channelId] = {
+        name: appConfig.name,
+        endpoint: appConfig.endpoint,
+        channelId: channelId,
+        appId: appConfig.appId
+      };
+    });
+  });
+
+  return config;
 };
 
 // Discord signature verification middleware
@@ -115,6 +137,7 @@ app.post('/interactions', verifyDiscordRequest, async (req, res) => {
   // Handle component interactions (button clicks) - type 3
   if (interaction.type === 3) {
     const channelId = interaction.channel_id;
+    const CAMPAIGN_CONFIG = getCampaignConfig();
     const campaignConfig = CAMPAIGN_CONFIG[channelId];
 
     if (!campaignConfig) {
@@ -155,20 +178,116 @@ app.post('/interactions', verifyDiscordRequest, async (req, res) => {
   });
 });
 
+// App registration endpoint
+app.post('/register', (req, res) => {
+  const { appId, name, description, endpoint, channels } = req.body;
+
+  if (!appId || !name || !endpoint || !channels) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required fields: appId, name, endpoint, channels'
+    });
+  }
+
+  const appConfig = {
+    appId,
+    name,
+    description: description || '',
+    endpoint,
+    channels,
+    registeredAt: new Date().toISOString(),
+    lastHeartbeat: new Date().toISOString()
+  };
+
+  registeredApps.set(appId, appConfig);
+
+  console.log(`Registered app: ${name} (${appId}) with channels:`, Object.keys(channels));
+
+  res.json({
+    success: true,
+    message: 'App registered successfully',
+    appId,
+    registeredChannels: Object.keys(channels)
+  });
+});
+
+// App unregistration endpoint
+app.post('/unregister', (req, res) => {
+  const { appId } = req.body;
+
+  if (!appId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required field: appId'
+    });
+  }
+
+  const wasRegistered = registeredApps.delete(appId);
+
+  if (wasRegistered) {
+    console.log(`Unregistered app: ${appId}`);
+    res.json({
+      success: true,
+      message: 'App unregistered successfully',
+      appId
+    });
+  } else {
+    res.status(404).json({
+      success: false,
+      message: 'App not found',
+      appId
+    });
+  }
+});
+
+// Heartbeat endpoint
+app.post('/heartbeat', (req, res) => {
+  const { appId } = req.body;
+
+  if (!appId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required field: appId'
+    });
+  }
+
+  const app = registeredApps.get(appId);
+  if (!app) {
+    return res.status(404).json({
+      success: false,
+      message: 'App not registered',
+      appId
+    });
+  }
+
+  app.lastHeartbeat = new Date().toISOString();
+  registeredApps.set(appId, app);
+
+  res.json({
+    success: true,
+    message: 'Heartbeat received',
+    appId,
+    lastHeartbeat: app.lastHeartbeat
+  });
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
+  const CAMPAIGN_CONFIG = getCampaignConfig();
   const configuredChannels = Object.keys(CAMPAIGN_CONFIG).filter(key => key && key !== 'undefined');
 
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
     configuredCampaigns: configuredChannels.length,
+    registeredApps: registeredApps.size,
     campaigns: Object.entries(CAMPAIGN_CONFIG)
       .filter(([channelId]) => channelId && channelId !== 'undefined')
       .map(([channelId, config]) => ({
         name: config.name,
         channelId: channelId,
-        endpoint: config.endpoint
+        endpoint: config.endpoint,
+        appId: config.appId
       }))
   });
 });
