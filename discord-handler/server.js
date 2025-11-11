@@ -88,6 +88,7 @@ const verifyDiscordRequest = (req, res, next) => {
 const routeToInstance = async (interaction, campaignConfig) => {
   try {
     console.log(`Routing interaction to ${campaignConfig.name} campaign at ${campaignConfig.endpoint}`);
+    console.log(`Making POST request with interaction type: ${interaction.type}, id: ${interaction.id}`);
 
     const response = await axios.post(
       campaignConfig.endpoint,
@@ -98,13 +99,22 @@ const routeToInstance = async (interaction, campaignConfig) => {
           'X-Forwarded-From': 'discord-handler',
           'X-Campaign-Instance': campaignConfig.name
         },
-        timeout: parseInt(process.env.REQUEST_TIMEOUT) || 2500
+        timeout: parseInt(process.env.REQUEST_TIMEOUT) || 2500,
+        maxRedirects: 0 // Disable redirects to see if that's the issue
       }
     );
 
+    console.log(`Successfully routed interaction, response status: ${response.status}`);
     return response.data;
   } catch (error) {
+    if (error.response && error.response.status >= 300 && error.response.status < 400) {
+      console.error(`Redirect detected! Status: ${error.response.status}, Location: ${error.response.headers.location}`);
+    }
     console.error(`Failed to route to ${campaignConfig.name}:`, error.message);
+    if (error.response) {
+      console.error(`Response status: ${error.response.status}`);
+      console.error(`Response data:`, error.response.data);
+    }
 
     // Return a fallback response for Discord
     return {

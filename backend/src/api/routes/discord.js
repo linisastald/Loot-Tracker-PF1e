@@ -28,6 +28,7 @@ router.get('/interactions', (req, res) => {
 
 router.post('/interactions', (req, res, next) => {
     // Log interactions routed from discord-handler (sanitized for security)
+    logger.info('POST /interactions endpoint hit!');
     logger.info('Discord interaction routed from handler', {
         forwardedFrom: req.headers['x-forwarded-from'],
         userAgent: req.headers['user-agent'],
