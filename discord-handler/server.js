@@ -294,6 +294,7 @@ app.get('/health', (req, res) => {
 
 // Status endpoint for debugging
 app.get('/status', (req, res) => {
+  const CAMPAIGN_CONFIG = getCampaignConfig();
   res.json({
     service: 'Discord Interaction Handler',
     version: '1.0.0',
@@ -305,11 +306,13 @@ app.get('/status', (req, res) => {
       discordKeyConfigured: !!process.env.DISCORD_PUBLIC_KEY,
       requestTimeout: process.env.REQUEST_TIMEOUT || '2500ms'
     },
+    registeredApps: Array.from(registeredApps.values()),
     campaigns: Object.entries(CAMPAIGN_CONFIG).map(([channelId, config]) => ({
       name: config.name,
       configured: !!channelId && channelId !== 'undefined',
       channelId: channelId || 'NOT_CONFIGURED',
-      endpoint: config.endpoint
+      endpoint: config.endpoint,
+      appId: config.appId
     }))
   });
 });
@@ -326,6 +329,7 @@ app.use((error, req, res, next) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Discord Interaction Handler running on port ${PORT}`);
+  const CAMPAIGN_CONFIG = getCampaignConfig();
   console.log('Configured campaigns:', Object.entries(CAMPAIGN_CONFIG)
     .filter(([channelId]) => channelId && channelId !== 'undefined')
     .map(([channelId, config]) => `${config.name} (${channelId})`)
