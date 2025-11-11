@@ -269,7 +269,6 @@ app.use('/api', limiter);
 // Apply CSRF protection to all API routes except auth and csrf-token
 // Discord interactions endpoint (no CSRF protection for broker)
 const sessionController = require('./src/controllers/sessionController');
-const logger = require('./src/utils/logger');
 
 const discordInteractionsRouter = express.Router();
 discordInteractionsRouter.post('/interactions', (req, res, next) => {
