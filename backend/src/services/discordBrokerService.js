@@ -101,10 +101,16 @@ class DiscordBrokerService {
   }
 
   buildCallbackUrl() {
-    // Use HOST_IP environment variable or fallback
+    // Use DISCORD_CALLBACK_URL environment variable for full control,
+    // or build from HOST_IP/PORT for backward compatibility
+    if (process.env.DISCORD_CALLBACK_URL) {
+      return process.env.DISCORD_CALLBACK_URL;
+    }
+
+    // Fallback to building URL from HOST_IP/PORT
     const hostIp = process.env.HOST_IP || '127.0.0.1';
     const port = process.env.PORT || 5000;
-    return `http://${hostIp}:${port}/api/discord/events`;
+    return `http://${hostIp}:${port}/api/discord/interactions`;
   }
 
   buildChannelConfig(settings) {
