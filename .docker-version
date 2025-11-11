@@ -6,7 +6,7 @@
 VERSION=0.8.1
 
 # Last build timestamp
-LAST_BUILD=2025-11-11T21:32:55Z
+LAST_BUILD=2025-11-11T22:02:20Z
 
 # Build counter (incremented with each build)
-BUILD_NUMBER=7
+BUILD_NUMBER=8
