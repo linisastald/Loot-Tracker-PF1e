@@ -2,9 +2,10 @@
 
 # Optimized Docker Image Build Script
 # Builds production-optimized single container with frontend + backend
-# 
+# Also supports Discord broker container builds
+#
 # IMPORTANT: This script requires bash, not sh!
-# Usage: bash ./build_image.sh [--stable] [--keep-cache] [--optimize]
+# Usage: bash ./build_image.sh [--stable] [--keep-cache] [--optimize] [--discord-broker] [--branch BRANCH]
 #        NOT: sh ./build_image.sh (this will fail)
 
 set -e
@@ -30,6 +31,16 @@ AUTO_VERSION=true  # Auto-increment version numbers
 VERSION_TYPE="patch"  # Default version increment type (major, minor, patch)
 SYNC_PACKAGE_VERSION=false  # Sync version with package.json
 GIT_BRANCH=""  # Branch to pull from (auto-detected if empty)
+
+# Discord broker support
+BUILD_DISCORD_BROKER=false
+DISCORD_IMAGE_NAME="discord-broker"
+DISCORD_TAG="dev"
+
+# Worktree support for building from feature branches
+BUILD_PATH=""
+WORKTREE_BRANCH=""
+ORIGINAL_DIR=""
 
 # Production optimization settings
 USE_BUILDKIT=true
@@ -80,7 +91,20 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         --branch)
-            GIT_BRANCH="$2"
+            WORKTREE_BRANCH="$2"
+            shift 2
+            ;;
+        --discord-broker)
+            BUILD_DISCORD_BROKER=true
+            IMAGE_NAME="$DISCORD_IMAGE_NAME"
+            TAG="$DISCORD_TAG"
+            shift
+            ;;
+        --discord-tag)
+            DISCORD_TAG="$2"
+            if [ "$BUILD_DISCORD_BROKER" = true ]; then
+                TAG="$2"
+            fi
             shift 2
             ;;
         --cleanup)
@@ -90,13 +114,13 @@ while [ $# -gt 0 ]; do
             exit 0
             ;;
         -h|--help)
-            echo "Usage: bash $0 [--stable] [--keep-cache] [--tag TAG]"
+            echo "Usage: bash $0 [--stable] [--keep-cache] [--tag TAG] [--discord-broker] [--branch BRANCH]"
             echo ""
             echo "  NOTE: This script requires bash, not sh. Run with: bash $0"
             echo ""
             echo "  DEFAULT BEHAVIOR (dev/unstable build):"
             echo "    - Builds ${IMAGE_NAME}:dev"
-            echo "    - Always pulls latest code from git"
+            echo "    - Always pulls latest code from git or uses worktree"
             echo "    - Always builds with --no-cache"
             echo ""
             echo "  OPTIONS:"
@@ -112,8 +136,22 @@ while [ $# -gt 0 ]; do
             echo "    --no-version      Disable automatic version incrementing"
             echo "    --version-type    Type of version increment: major, minor, patch (default: patch)"
             echo "    --sync-version    Sync version with package.json (resets to app version)"
-            echo "    --branch BRANCH   Specify git branch to pull (auto-detects current branch if not specified)"
+            echo "    --branch BRANCH   Specify branch to build from (creates worktree if needed)"
+            echo "    --discord-broker  Build Discord broker container instead of main app"
+            echo "    --discord-tag TAG Override Discord broker tag (default: dev)"
             echo "    --cleanup         Remove all dangling images and exit"
+            echo ""
+            echo "  WORKTREE SUPPORT:"
+            echo "    - Use --branch to build from feature branches without switching"
+            echo "    - Creates temporary worktrees in ../worktrees/ directory"
+            echo "    - Preserves your current branch and working directory"
+            echo "    - Automatic cleanup of temporary worktrees"
+            echo ""
+            echo "  DISCORD BROKER:"
+            echo "    - Use --discord-broker to build the Discord integration service"
+            echo "    - Creates ${DISCORD_IMAGE_NAME} image instead of ${IMAGE_NAME}"
+            echo "    - Uses discord-handler directory with Node.js Discord.js bot"
+            echo "    - Can be combined with --branch for feature branch builds"
             echo ""
             echo "  AUTO-VERSIONING:"
             echo "    - Dev builds: Creates v0.7.1-dev.N tags (increments build number)"
@@ -154,10 +192,96 @@ done
 
 # Get the script directory to ensure we're in the right place
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+ORIGINAL_DIR="$SCRIPT_DIR"
 
-# Default to master branch if not specified
-if [ -z "$GIT_BRANCH" ]; then
+# Worktree setup for feature branch builds
+setup_worktree() {
+    local branch="$1"
+    local current_branch=$(git branch --show-current)
+
+    # If building the current branch, no worktree needed
+    if [ "$branch" = "$current_branch" ]; then
+        echo "🔄 Building from current branch ($current_branch), no worktree needed"
+        BUILD_PATH="$ORIGINAL_DIR"
+        return 0
+    fi
+
+    # Set up worktree path
+    local worktree_dir="../worktrees"
+    local worktree_path="$worktree_dir/$branch"
+
+    echo "🌲 Setting up worktree for branch: $branch"
+
+    # Create worktrees directory if it doesn't exist
+    mkdir -p "$worktree_dir"
+
+    # Check if worktree already exists
+    if [ -d "$worktree_path" ]; then
+        echo "📁 Worktree already exists at $worktree_path"
+        # Verify it's actually a git worktree
+        if git worktree list | grep -q "$worktree_path"; then
+            echo "✅ Using existing worktree"
+        else
+            echo "🧹 Cleaning up invalid worktree directory"
+            rm -rf "$worktree_path"
+            create_new_worktree "$branch" "$worktree_path"
+        fi
+    else
+        create_new_worktree "$branch" "$worktree_path"
+    fi
+
+    BUILD_PATH="$worktree_path"
+    echo "🎯 Build will use worktree at: $BUILD_PATH"
+}
+
+create_new_worktree() {
+    local branch="$1"
+    local path="$2"
+
+    echo "🆕 Creating new worktree for $branch at $path"
+
+    # Fetch latest to ensure branch exists
+    echo "📡 Fetching latest from remote..."
+    git fetch origin || echo "⚠️  Warning: Could not fetch from remote"
+
+    # Create worktree
+    if git worktree add "$path" "origin/$branch"; then
+        echo "✅ Worktree created successfully"
+    elif git worktree add "$path" "$branch"; then
+        echo "✅ Worktree created from local branch"
+    else
+        echo "❌ Failed to create worktree for branch: $branch"
+        echo "Available branches:"
+        git branch -a | head -10
+        exit 1
+    fi
+}
+
+cleanup_worktree() {
+    if [ -n "$WORKTREE_BRANCH" ] && [ -n "$BUILD_PATH" ] && [ "$BUILD_PATH" != "$ORIGINAL_DIR" ]; then
+        echo "🧹 Cleaning up worktree..."
+        cd "$ORIGINAL_DIR"
+        # Don't remove the worktree - leave it for future use
+        echo "💡 Worktree preserved at $BUILD_PATH for future builds"
+    fi
+}
+
+# Set up signal handling for cleanup
+trap cleanup_worktree EXIT INT TERM
+
+# Handle worktree setup if building from a different branch
+if [ -n "$WORKTREE_BRANCH" ]; then
+    setup_worktree "$WORKTREE_BRANCH"
+    cd "$BUILD_PATH"
+else
+    BUILD_PATH="$SCRIPT_DIR"
+    cd "$BUILD_PATH"
+fi
+
+# Set GIT_BRANCH for later operations
+if [ -n "$WORKTREE_BRANCH" ]; then
+    GIT_BRANCH="$WORKTREE_BRANCH"
+elif [ -z "$GIT_BRANCH" ]; then
     GIT_BRANCH="master"
 fi
 
@@ -371,8 +495,15 @@ else
     ADDITIONAL_TAG=""
 fi
 
-echo "===========================================" 
-if [ "$BUILD_STABLE" = true ]; then
+echo "==========================================="
+if [ "$BUILD_DISCORD_BROKER" = true ]; then
+    echo "🤖 BUILDING DISCORD BROKER IMAGE"
+    echo "Target: ${IMAGE_NAME}:${TAG}"
+    if [ -n "$VERSION_TAG" ]; then
+        echo "Version: ${VERSION_TAG}"
+    fi
+    echo "Type: Discord.js Bot Service"
+elif [ "$BUILD_STABLE" = true ]; then
     echo "🏗️  BUILDING STABLE/LATEST IMAGE"
     echo "Target: ${IMAGE_NAME}:${TAG}"
     if [ -n "$VERSION_TAG" ]; then
@@ -389,6 +520,11 @@ else
     echo "Git pull: ENABLED (fetching latest code)"
     echo "Cache: DISABLED (always fresh build)"
 fi
+if [ -n "$WORKTREE_BRANCH" ]; then
+    echo "Branch: $WORKTREE_BRANCH (via worktree)"
+else
+    echo "Branch: $GIT_BRANCH"
+fi
 echo "Working directory: $(pwd)"
 echo "==========================================="
 
@@ -396,11 +532,14 @@ echo "==========================================="
 if [ "$BUILD_STABLE" = true ]; then
     echo "Building stable image - using current local code (no git pull)"
     echo "Current commit: $(get_git_commit)"
-    
+
     # Archive existing latest image if building latest tag
     if [ "$TAG" = "latest" ]; then
         archive_latest_image
     fi
+elif [ -n "$WORKTREE_BRANCH" ]; then
+    echo "Building from worktree (branch: $WORKTREE_BRANCH) - code already at correct commit"
+    echo "Current commit: $(get_git_commit)"
 else
     echo "Building dev image - pulling latest code from GitHub (branch: $GIT_BRANCH)..."
     git pull origin $GIT_BRANCH || {
@@ -458,13 +597,25 @@ if [ "$OPTIMIZE_BUILD" = true ]; then
     BUILD_CMD="$BUILD_CMD --build-arg NODE_OPTIONS='--max-old-space-size=4096'"
 fi
 
-BUILD_CMD="$BUILD_CMD -f docker/Dockerfile.backend -t ${IMAGE_NAME}:${TAG} ."
+# Set Dockerfile and build context based on build type
+if [ "$BUILD_DISCORD_BROKER" = true ]; then
+    BUILD_CMD="$BUILD_CMD -f discord-handler/Dockerfile -t ${IMAGE_NAME}:${TAG} ./discord-handler"
+else
+    BUILD_CMD="$BUILD_CMD -f docker/Dockerfile.backend -t ${IMAGE_NAME}:${TAG} ."
+fi
 
 echo ""
 echo "🔧 Build Configuration:"
 echo "   Command: $BUILD_CMD"
-echo "   Dockerfile: docker/Dockerfile.backend"
-echo "   Context: $(pwd)"
+if [ "$BUILD_DISCORD_BROKER" = true ]; then
+    echo "   Dockerfile: discord-handler/Dockerfile"
+    echo "   Context: $(pwd)/discord-handler"
+    echo "   Build Type: Discord Broker Service"
+else
+    echo "   Dockerfile: docker/Dockerfile.backend"
+    echo "   Context: $(pwd)"
+    echo "   Build Type: Main Application"
+fi
 echo "   BuildKit: $([ "$USE_BUILDKIT" = true ] && echo "ENABLED" || echo "DISABLED")"
 echo "   Optimizations: $([ "$OPTIMIZE_BUILD" = true ] && echo "ENABLED" || echo "DISABLED")"
 echo "   Security Scan: $([ "$ENABLE_SECURITY_SCAN" = true ] && echo "ENABLED" || echo "DISABLED")"
