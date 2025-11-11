@@ -267,8 +267,6 @@ app.use('/api/config', configRoutes);
 app.use('/api', limiter);
 
 // Apply CSRF protection to all API routes except auth and csrf-token
-// Discord interactions endpoint (no CSRF protection for broker)
-const discordRoutes = require('./src/api/routes/discord');
 
 // Legacy routes (will be gradually deprecated)
 app.use('/api/loot', csrfProtection, lootRoutes);
