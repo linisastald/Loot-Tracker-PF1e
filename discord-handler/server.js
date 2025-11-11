@@ -90,7 +90,7 @@ const routeToInstance = async (interaction, campaignConfig) => {
     console.log(`Routing interaction to ${campaignConfig.name} campaign at ${campaignConfig.endpoint}`);
 
     const response = await axios.post(
-      `${campaignConfig.endpoint}/discord/interactions`,
+      campaignConfig.endpoint,
       interaction,
       {
         headers: {
