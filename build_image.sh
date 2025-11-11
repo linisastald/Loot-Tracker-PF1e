@@ -30,6 +30,12 @@ AUTO_VERSION=true  # Auto-increment version numbers
 VERSION_TYPE="patch"  # Default version increment type (major, minor, patch)
 SYNC_PACKAGE_VERSION=false  # Sync version with package.json
 
+# Worktree and branch support
+BRANCH_NAME=""
+USE_WORKTREE=false
+WORKTREE_PATH=""
+DISCORD_BROKER=false
+
 # Production optimization settings
 USE_BUILDKIT=true
 ENABLE_SECURITY_SCAN=false
@@ -76,6 +82,17 @@ while [ $# -gt 0 ]; do
             ;;
         --sync-version)
             SYNC_PACKAGE_VERSION=true
+            shift
+            ;;
+        --branch)
+            BRANCH_NAME="$2"
+            USE_WORKTREE=true
+            shift 2
+            ;;
+        --discord-broker)
+            DISCORD_BROKER=true
+            IMAGE_NAME="discord-broker"
+            TAG="dev"
             shift
             ;;
         --cleanup)
@@ -252,6 +269,84 @@ update_package_json_files() {
     fi
 }
 
+# Function to setup worktree for branch building
+setup_worktree() {
+    local branch_name="$1"
+    local worktree_path="../worktrees/$branch_name"
+
+    echo "🌲 Setting up worktree for branch: $branch_name"
+
+    # Create worktrees directory if it doesn't exist
+    mkdir -p "../worktrees"
+
+    # Check if worktree already exists
+    if [ -d "$worktree_path" ]; then
+        echo "📁 Worktree already exists at $worktree_path"
+
+        # Check if it's a valid git directory
+        if git -C "$worktree_path" rev-parse --git-dir >/dev/null 2>&1; then
+            echo "✅ Using existing worktree"
+
+            # Fetch latest changes and update the worktree
+            echo "🔄 Updating worktree with latest changes..."
+            (
+                cd "$worktree_path"
+                git fetch origin
+                git reset --hard "origin/$branch_name" || {
+                    echo "⚠️  Warning: Failed to reset to origin/$branch_name"
+                    echo "    Trying to pull instead..."
+                    git pull origin "$branch_name" || {
+                        echo "❌ Error: Failed to update worktree"
+                        exit 1
+                    }
+                }
+                echo "✅ Worktree updated to latest $branch_name"
+            )
+        else
+            echo "🔧 Worktree directory exists but is not a valid git repository, recreating..."
+            rm -rf "$worktree_path"
+            create_new_worktree "$branch_name" "$worktree_path"
+        fi
+    else
+        create_new_worktree "$branch_name" "$worktree_path"
+    fi
+
+    WORKTREE_PATH="$worktree_path"
+    echo "🎯 Build will use worktree at: $worktree_path"
+}
+
+# Function to create a new worktree
+create_new_worktree() {
+    local branch_name="$1"
+    local worktree_path="$2"
+
+    echo "🆕 Creating new worktree for $branch_name..."
+
+    # Fetch the branch first
+    git fetch origin "$branch_name" || {
+        echo "❌ Error: Failed to fetch branch $branch_name from remote"
+        exit 1
+    }
+
+    # Create worktree
+    git worktree add "$worktree_path" "$branch_name" || {
+        echo "❌ Error: Failed to create worktree for $branch_name"
+        exit 1
+    }
+
+    echo "✅ Worktree created successfully"
+}
+
+# Function to cleanup worktree
+cleanup_worktree() {
+    if [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
+        echo "🧹 Cleaning up worktree..."
+        echo "💡 Worktree preserved at $WORKTREE_PATH for future builds"
+        # Note: We don't remove the worktree to avoid re-downloading on every build
+        # Users can manually clean up with: git worktree remove <path>
+    fi
+}
+
 # Function to get current git commit hash for versioning
 get_git_commit() {
     git rev-parse --short HEAD 2>/dev/null || echo "unknown"
@@ -347,11 +442,58 @@ fi
 echo "Working directory: $(pwd)"
 echo "==========================================="
 
-# Handle git operations based on build type
-if [ "$BUILD_STABLE" = true ]; then
+# Handle git operations and worktree setup
+if [ "$USE_WORKTREE" = true ] && [ -n "$BRANCH_NAME" ]; then
+    echo "==========================================="
+    if [ "$BUILD_STABLE" = true ]; then
+        echo "🚧 BUILDING STABLE IMAGE FROM BRANCH"
+    else
+        echo "🚧 BUILDING DEV/UNSTABLE IMAGE"
+    fi
+    echo "Target: ${IMAGE_NAME}:${TAG}"
+    echo "Git pull: ENABLED (fetching latest code)"
+    echo "Cache: $([ "$USE_CACHE" = true ] && echo "ENABLED" || echo "DISABLED (always fresh build)")"
+    echo "Branch: $BRANCH_NAME (via worktree)"
+    echo "Working directory: $(pwd)"
+    echo "==========================================="
+
+    # Setup worktree for branch building
+    setup_worktree "$BRANCH_NAME"
+
+    # Change to worktree directory
+    cd "$WORKTREE_PATH" || {
+        echo "❌ Error: Failed to change to worktree directory: $WORKTREE_PATH"
+        exit 1
+    }
+
+    echo "Building from worktree (branch: $BRANCH_NAME) - code already at correct commit"
+    echo "Current commit: $(get_git_commit)"
+elif [ "$DISCORD_BROKER" = true ]; then
+    echo "==========================================="
+    echo "🚧 BUILDING DISCORD BROKER IMAGE"
+    echo "Target: ${IMAGE_NAME}:${TAG}"
+    echo "Context: discord-handler directory"
+    echo "==========================================="
+
+    # Verify discord-handler directory exists
+    if [ ! -d "discord-handler" ]; then
+        echo "❌ Error: discord-handler directory not found"
+        echo "Make sure you're running this from the project root and discord-handler exists"
+        exit 1
+    fi
+
+    # Change to discord-handler directory
+    cd discord-handler || {
+        echo "❌ Error: Failed to change to discord-handler directory"
+        exit 1
+    }
+
+    echo "Building Discord broker from: $(pwd)"
+    echo "Current commit: $(get_git_commit)"
+elif [ "$BUILD_STABLE" = true ]; then
     echo "Building stable image - using current local code (no git pull)"
     echo "Current commit: $(get_git_commit)"
-    
+
     # Archive existing latest image if building latest tag
     if [ "$TAG" = "latest" ]; then
         archive_latest_image
@@ -413,12 +555,23 @@ if [ "$OPTIMIZE_BUILD" = true ]; then
     BUILD_CMD="$BUILD_CMD --build-arg NODE_OPTIONS='--max-old-space-size=4096'"
 fi
 
-BUILD_CMD="$BUILD_CMD -f docker/Dockerfile.backend -t ${IMAGE_NAME}:${TAG} ."
+# Set dockerfile and context based on build type
+if [ "$DISCORD_BROKER" = true ]; then
+    BUILD_CMD="$BUILD_CMD -f Dockerfile -t ${IMAGE_NAME}:${TAG} ."
+else
+    BUILD_CMD="$BUILD_CMD -f docker/Dockerfile.backend -t ${IMAGE_NAME}:${TAG} ."
+fi
 
 echo ""
 echo "🔧 Build Configuration:"
 echo "   Command: $BUILD_CMD"
-echo "   Dockerfile: docker/Dockerfile.backend"
+if [ "$DISCORD_BROKER" = true ]; then
+    echo "   Dockerfile: Dockerfile"
+    echo "   Build Type: Discord Broker"
+else
+    echo "   Dockerfile: docker/Dockerfile.backend"
+    echo "   Build Type: Main Application"
+fi
 echo "   Context: $(pwd)"
 echo "   BuildKit: $([ "$USE_BUILDKIT" = true ] && echo "ENABLED" || echo "DISABLED")"
 echo "   Optimizations: $([ "$OPTIMIZE_BUILD" = true ] && echo "ENABLED" || echo "DISABLED")"
@@ -572,5 +725,9 @@ else
     echo "  - Missing dependencies in Dockerfile"
     echo "  - Network issues downloading base images"
     echo "  - BuildKit not available (try --no-buildkit)"
+    cleanup_worktree
     exit 1
 fi
+
+# Clean up worktree if used
+cleanup_worktree
