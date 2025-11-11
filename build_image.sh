@@ -221,6 +221,22 @@ setup_worktree() {
         # Verify it's actually a git worktree
         if git worktree list | grep -q "$worktree_path"; then
             echo "✅ Using existing worktree"
+
+            # Update worktree with latest changes
+            echo "🔄 Updating worktree with latest changes..."
+            (
+                cd "$worktree_path"
+                git fetch origin
+                git reset --hard "origin/$branch" || {
+                    echo "⚠️  Warning: Failed to reset to origin/$branch"
+                    echo "    Trying to pull instead..."
+                    git pull origin "$branch" || {
+                        echo "❌ Error: Failed to update worktree"
+                        exit 1
+                    }
+                }
+                echo "✅ Worktree updated to latest $branch"
+            )
         else
             echo "🧹 Cleaning up invalid worktree directory"
             rm -rf "$worktree_path"
