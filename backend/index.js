@@ -290,12 +290,14 @@ discordInteractionsRouter.post('/interactions', (req, res, next) => {
     next();
 }, sessionController.processSessionInteraction);
 
-app.use('/api/discord', discordInteractionsRouter);
-
 // Legacy routes (will be gradually deprecated)
 app.use('/api/loot', csrfProtection, lootRoutes);
 app.use('/api/user', csrfProtection, userRoutes);
 app.use('/api/gold', csrfProtection, goldRoutes);
+
+// Discord interactions (no CSRF protection, must come before main discord routes)
+app.use('/api/discord', discordInteractionsRouter);
+// Discord other routes (with CSRF protection)
 app.use('/api/discord', csrfProtection, discordRoutes);
 app.use('/api/settings', csrfProtection, settingsRoutes);
 app.use('/api/consumables', csrfProtection, consumablesRoutes);
