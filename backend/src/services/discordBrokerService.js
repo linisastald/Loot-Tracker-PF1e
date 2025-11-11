@@ -28,8 +28,8 @@ class DiscordBrokerService {
     try {
       // Get Discord settings from database
       const settings = await this.getDiscordSettings();
-      if (!settings || !settings.guild_id) {
-        logger.warn('Discord settings not configured in database, skipping registration');
+      if (!settings || !settings.session_channel_id) {
+        logger.warn('Discord channel ID not configured in database, skipping registration');
         return;
       }
 
@@ -38,7 +38,7 @@ class DiscordBrokerService {
         name: 'Pathfinder Loot Tracker',
         description: 'Session attendance tracking and loot management',
         endpoint: this.buildCallbackUrl(),
-        guildId: settings.guild_id,
+        guildId: settings.guild_id || 'unknown', // Will be determined by the broker
         channels: this.buildChannelConfig(settings),
         healthCheckInterval: 30000
       };
@@ -76,17 +76,21 @@ class DiscordBrokerService {
   async getDiscordSettings() {
     try {
       const query = `
-        SELECT setting_key, setting_value
+        SELECT name, value
         FROM settings
-        WHERE setting_key IN ('discord_guild_id', 'discord_session_channel_id', 'discord_webhook_url')
+        WHERE name IN ('discord_channel_id', 'campaign_role_id', 'discord_bot_token')
       `;
 
       const result = await pool.query(query);
       const settings = {};
 
       result.rows.forEach(row => {
-        const key = row.setting_key.replace('discord_', '');
-        settings[key] = row.setting_value;
+        // Map database names to expected keys
+        if (row.name === 'discord_channel_id') {
+          settings.session_channel_id = row.value;
+        } else if (row.name === 'campaign_role_id') {
+          settings.guild_id = row.value; // Using role_id as guild identifier for now
+        }
       });
 
       return settings;
