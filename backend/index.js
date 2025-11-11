@@ -268,37 +268,27 @@ app.use('/api', limiter);
 
 // Apply CSRF protection to all API routes except auth and csrf-token
 // Discord interactions endpoint (no CSRF protection for broker)
-const sessionController = require('./src/controllers/sessionController');
-
-const discordInteractionsRouter = express.Router();
-discordInteractionsRouter.post('/interactions', (req, res, next) => {
-    // Log interactions routed from discord-handler (sanitized for security)
-    logger.info('Discord interaction routed from handler', {
-        forwardedFrom: req.headers['x-forwarded-from'],
-        userAgent: req.headers['user-agent'],
-        contentType: req.headers['content-type'],
-        bodyType: typeof req.body,
-        hasBody: !!req.body,
-        timestamp: new Date().toISOString()
-    });
-
-    // Log detailed body only in development mode
-    if (process.env.NODE_ENV === 'development') {
-        logger.debug('Discord interaction body', { body: req.body });
-    }
-
-    next();
-}, sessionController.processSessionInteraction);
+const discordRoutes = require('./src/api/routes/discord');
 
 // Legacy routes (will be gradually deprecated)
 app.use('/api/loot', csrfProtection, lootRoutes);
 app.use('/api/user', csrfProtection, userRoutes);
 app.use('/api/gold', csrfProtection, goldRoutes);
 
-// Discord interactions (no CSRF protection, must come before main discord routes)
-app.use('/api/discord', discordInteractionsRouter);
-// Discord other routes (with CSRF protection)
-app.use('/api/discord', csrfProtection, discordRoutes);
+// Create selective CSRF middleware that skips /interactions endpoint
+const selectiveCSRFProtection = (req, res, next) => {
+  // Skip CSRF protection for Discord interactions endpoint
+  if (req.path === '/interactions' && req.method === 'POST') {
+    return next();
+  }
+  if (req.path === '/interactions/test' && req.method === 'GET') {
+    return next();
+  }
+  // Apply CSRF protection for all other routes
+  return csrfProtection(req, res, next);
+};
+
+app.use('/api/discord', selectiveCSRFProtection, discordRoutes);
 app.use('/api/settings', csrfProtection, settingsRoutes);
 app.use('/api/consumables', csrfProtection, consumablesRoutes);
 app.use('/api/calendar', csrfProtection, calendarRoutes);
