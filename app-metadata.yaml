@@ -26,6 +26,6 @@ environments:
       description: "Skull & Shackles campaign instance"
   development:
     test:
-      app_version: "dev"
+      app_version: "0.8.1"
       train: "unstable"
       description: "Development and testing instance"
