@@ -13,6 +13,7 @@ const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
 const { initCronJobs } = require('./src/utils/cronJobs');
+const discordBrokerService = require('./src/services/discordBrokerService');
 // Migration runner no longer needed - database schema is now fully consolidated in database/init_complete.sql
 // const migrationRunner = require('./src/utils/migrationRunner');
 const { RATE_LIMIT, SERVER, COOKIES } = require('./src/config/constants');
@@ -348,6 +349,11 @@ const startServer = async () => {
       // Initialize cron jobs
       initCronJobs();
       logger.info('Cron jobs initialized');
+
+      // Start Discord broker integration
+      discordBrokerService.start().catch(error => {
+        logger.error('Failed to start Discord broker service:', error);
+      });
     });
 
     return server;
@@ -362,16 +368,24 @@ startServer().then(server => {
   // Graceful shutdown
   const gracefulShutdown = (signal) => {
     logger.info(`${signal} signal received: closing HTTP server`);
-    
-    server.close(() => {
+
+    server.close(async () => {
       logger.info('HTTP server closed');
-      
+
+      // Stop Discord broker service
+      try {
+        await discordBrokerService.stop();
+        logger.info('Discord broker service stopped');
+      } catch (error) {
+        logger.error('Error stopping Discord broker service:', error);
+      }
+
       // Close database connection
       pool.end(() => {
         logger.info('Database pool closed');
         process.exit(0);
       });
-      
+
       // Force exit after configured timeout if pool doesn't close
       setTimeout(() => {
         logger.error('Forced exit - database pool did not close in time');

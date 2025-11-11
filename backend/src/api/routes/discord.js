@@ -36,4 +36,21 @@ router.get('/interactions/test', (req, res) => {
     res.json({ message: 'Discord interactions endpoint is reachable' });
 });
 
+// Discord broker events endpoint (called by Discord broker service)
+router.post('/events', (req, res) => {
+    logger.info('Discord event received from broker', {
+        eventType: req.body?.type,
+        channelId: req.body?.channelId,
+        timestamp: new Date().toISOString()
+    });
+
+    // For now, just acknowledge receipt
+    // TODO: Process specific event types
+    res.json({
+        success: true,
+        message: 'Event received',
+        processed: false
+    });
+});
+
 module.exports = router;
