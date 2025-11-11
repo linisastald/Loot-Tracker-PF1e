@@ -267,6 +267,32 @@ app.use('/api/config', configRoutes);
 app.use('/api', limiter);
 
 // Apply CSRF protection to all API routes except auth and csrf-token
+// Discord interactions endpoint (no CSRF protection for broker)
+const sessionController = require('./src/controllers/sessionController');
+const logger = require('./src/utils/logger');
+
+const discordInteractionsRouter = express.Router();
+discordInteractionsRouter.post('/interactions', (req, res, next) => {
+    // Log interactions routed from discord-handler (sanitized for security)
+    logger.info('Discord interaction routed from handler', {
+        forwardedFrom: req.headers['x-forwarded-from'],
+        userAgent: req.headers['user-agent'],
+        contentType: req.headers['content-type'],
+        bodyType: typeof req.body,
+        hasBody: !!req.body,
+        timestamp: new Date().toISOString()
+    });
+
+    // Log detailed body only in development mode
+    if (process.env.NODE_ENV === 'development') {
+        logger.debug('Discord interaction body', { body: req.body });
+    }
+
+    next();
+}, sessionController.processSessionInteraction);
+
+app.use('/api/discord', discordInteractionsRouter);
+
 // Legacy routes (will be gradually deprecated)
 app.use('/api/loot', csrfProtection, lootRoutes);
 app.use('/api/user', csrfProtection, userRoutes);
