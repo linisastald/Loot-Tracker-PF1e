@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  discord-broker:
+    image: discord-broker:dev
+    container_name: discord-broker
+    restart: unless-stopped
+
+    environment:
+      # Discord Bot Configuration (REQUIRED - Replace with your values)
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY}  # Required for signature verification
+
+      # Broker Service Configuration
+      - PORT=3000
+      - HOST=0.0.0.0
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+
+      # Database Configuration
+      - DATABASE_PATH=/data/registrations.db
+
+      # Registration Settings
+      - HEARTBEAT_INTERVAL=30000
+      - REGISTRATION_RETRY_INTERVAL=5000
+      - MAX_REGISTRATION_RETRIES=5
+      - CLEANUP_INTERVAL=300000  # Clean up dead apps every 5 minutes
+
+      # Optional: Authentication (if you want to secure app registrations)
+      - BROKER_AUTH_TOKEN=${BROKER_AUTH_TOKEN:-}  # Optional auth token for app registration
+
+    ports:
+      - "3000:3000"  # Change the first port if 3000 is already in use
+
+    volumes:
+      # Persistent storage for SQLite database
+      # Update this path to your desired TrueNAS dataset location
+      - /mnt/pool/appdata/discord-broker:/data
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+
+    # Run as non-root user
+    user: "1001:1001"
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    networks:
+      - discord-net
+
+networks:
+  discord-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

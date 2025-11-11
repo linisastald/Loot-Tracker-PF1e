@@ -1,0 +1,233 @@
+app_version: "1.0.0"
+capabilities: []
+categories:
+- gaming
+- communication
+description: "Discord broker service for Pathfinder Loot Tracker session attendance and event routing"
+home: "https://github.com/linisastald/Loot-Tracker-PF1e"
+icon: "https://raw.githubusercontent.com/linisastald/Loot-Tracker-PF1e/master/frontend/public/favicon.ico"
+keywords:
+- discord
+- pathfinder
+- rpg
+- session-management
+lib_version: "1.1.2"
+lib_version_hash: "3bf14311f7547731c94bce613c50dc4b5f969fbf5351576a94d8096ecef18804"
+maintainers:
+- email: "git@danielkempson.com"
+  name: "Daniel"
+  url: "https://github.com/linisastald"
+name: "discord-broker"
+run_as_context:
+- description: "Discord Broker runs as a non-root user with uid 1001"
+  gid: 1001
+  group_name: "nodejs"
+  uid: 1001
+  user_name: "discord"
+screenshots: []
+sources:
+- "https://github.com/linisastald/Loot-Tracker-PF1e"
+title: "Discord Broker for Pathfinder Loot Tracker"
+train: "community"
+version: "1.0.0"
+
+questions:
+- variable: "DISCORD_BOT_TOKEN"
+  label: "Discord Bot Token"
+  description: "The Discord bot token for authentication"
+  group: "Discord Configuration"
+  schema:
+    type: "string"
+    required: true
+    private: true
+
+- variable: "DISCORD_CLIENT_ID"
+  label: "Discord Client ID"
+  description: "The Discord application client ID"
+  group: "Discord Configuration"
+  schema:
+    type: "string"
+    required: true
+
+- variable: "DISCORD_GUILD_ID"
+  label: "Discord Guild ID"
+  description: "The Discord server (guild) ID where the bot operates"
+  group: "Discord Configuration"
+  schema:
+    type: "string"
+    required: true
+
+- variable: "BROKER_PORT"
+  label: "Broker Service Port"
+  description: "Port for the Discord broker HTTP service"
+  group: "Network Configuration"
+  schema:
+    type: "int"
+    default: 3000
+    min: 1024
+    max: 65535
+
+- variable: "BROKER_HOST"
+  label: "Broker Host"
+  description: "Host interface to bind the broker service"
+  group: "Network Configuration"
+  schema:
+    type: "string"
+    default: "0.0.0.0"
+
+- variable: "DATABASE_PATH"
+  label: "Database Storage Path"
+  description: "Path where SQLite database will be stored"
+  group: "Storage Configuration"
+  schema:
+    type: "hostpath"
+    required: true
+
+- variable: "LOG_LEVEL"
+  label: "Log Level"
+  description: "Logging verbosity level"
+  group: "Advanced Configuration"
+  schema:
+    type: "string"
+    default: "info"
+    enum:
+      - value: "error"
+        description: "Error messages only"
+      - value: "warn"
+        description: "Warning and error messages"
+      - value: "info"
+        description: "Informational, warning, and error messages"
+      - value: "debug"
+        description: "Debug, info, warning, and error messages"
+
+- variable: "NODE_ENV"
+  label: "Node Environment"
+  description: "Node.js environment setting"
+  group: "Advanced Configuration"
+  schema:
+    type: "string"
+    default: "production"
+    enum:
+      - value: "production"
+        description: "Production environment"
+      - value: "development"
+        description: "Development environment"
+
+portals:
+  open:
+    protocols:
+      - "$kubernetes-resource_configmap_portal_protocol"
+    host:
+      - "$kubernetes-resource_configmap_portal_host"
+    ports:
+      - "$kubernetes-resource_configmap_portal_port"
+    path: "/health"
+
+render: |-
+  {{- $values := .Values }}
+  ---
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: portal
+  data:
+    path: "/health"
+    port: {{ $values.BROKER_PORT | quote }}
+    protocol: "http"
+    host: {{ $values.BROKER_HOST | quote }}
+  ---
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: discord-broker
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: discord-broker
+    template:
+      metadata:
+        labels:
+          app: discord-broker
+      spec:
+        containers:
+        - name: discord-broker
+          image: "discord-broker:dev"
+          imagePullPolicy: Never
+          ports:
+          - containerPort: {{ $values.BROKER_PORT }}
+            name: http
+          env:
+          - name: DISCORD_BOT_TOKEN
+            value: {{ $values.DISCORD_BOT_TOKEN | quote }}
+          - name: DISCORD_CLIENT_ID
+            value: {{ $values.DISCORD_CLIENT_ID | quote }}
+          - name: DISCORD_GUILD_ID
+            value: {{ $values.DISCORD_GUILD_ID | quote }}
+          - name: PORT
+            value: {{ $values.BROKER_PORT | quote }}
+          - name: HOST
+            value: {{ $values.BROKER_HOST | quote }}
+          - name: LOG_LEVEL
+            value: {{ $values.LOG_LEVEL | quote }}
+          - name: NODE_ENV
+            value: {{ $values.NODE_ENV | quote }}
+          - name: DATABASE_PATH
+            value: "/data/registrations.db"
+          volumeMounts:
+          - name: data-storage
+            mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ $values.BROKER_PORT }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ $values.BROKER_PORT }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: false
+        volumes:
+        - name: data-storage
+          hostPath:
+            path: {{ $values.DATABASE_PATH | quote }}
+            type: DirectoryOrCreate
+        securityContext:
+          fsGroup: 1001
+        restartPolicy: Always
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: discord-broker-service
+  spec:
+    selector:
+      app: discord-broker
+    ports:
+    - port: {{ $values.BROKER_PORT }}
+      targetPort: {{ $values.BROKER_PORT }}
+      protocol: TCP
+      name: http
+    type: ClusterIP
