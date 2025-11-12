@@ -128,6 +128,153 @@ router.post('/check-notifications', verifyToken, checkRole('DM'), sessionControl
 // ========================================================================
 
 // ========================================================================
+// RECURRING SESSION ROUTES
+// ========================================================================
+
+// Create recurring session (DM only)
+router.post('/recurring', verifyToken, checkRole('DM'), [
+    body('title').notEmpty().withMessage('Title is required'),
+    body('start_time').isISO8601().withMessage('Invalid start time'),
+    body('end_time').isISO8601().withMessage('Invalid end time'),
+    body('recurring_pattern').isIn(['weekly', 'biweekly', 'monthly', 'custom']).withMessage('Invalid recurring pattern'),
+    body('recurring_day_of_week').isInt({ min: 0, max: 6 }).withMessage('Invalid day of week'),
+    body('recurring_interval').optional().isInt({ min: 1 }).withMessage('Invalid interval'),
+    body('recurring_end_date').optional().isISO8601().withMessage('Invalid end date'),
+    body('recurring_end_count').optional().isInt({ min: 1 }).withMessage('Invalid end count')
+], async (req, res) => {
+    try {
+        const sessionData = {
+            ...req.body,
+            created_by: req.user.id
+        };
+
+        const result = await sessionService.createRecurringSession(sessionData);
+
+        res.status(201).json({
+            success: true,
+            message: 'Recurring session created successfully',
+            data: result
+        });
+
+    } catch (error) {
+        logger.error('Failed to create recurring session:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to create recurring session'
+        });
+    }
+});
+
+// Get recurring session instances
+router.get('/recurring/:templateId/instances', verifyToken, [
+    param('templateId').notEmpty().withMessage('Template ID is required'),
+    query('upcoming_only').optional().isBoolean().withMessage('Invalid upcoming_only flag'),
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Invalid limit')
+], async (req, res) => {
+    try {
+        const { templateId } = req.params;
+        const filters = {
+            upcoming_only: req.query.upcoming_only === 'true',
+            limit: parseInt(req.query.limit) || 10
+        };
+
+        const instances = await sessionService.getRecurringSessionInstances(templateId, filters);
+
+        res.json({
+            success: true,
+            data: instances
+        });
+
+    } catch (error) {
+        logger.error('Failed to get recurring session instances:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get session instances'
+        });
+    }
+});
+
+// Update recurring session template (DM only)
+router.put('/recurring/:templateId', verifyToken, checkRole('DM'), [
+    param('templateId').notEmpty().withMessage('Template ID is required'),
+    body('title').optional().notEmpty().withMessage('Title cannot be empty'),
+    body('description').optional().isLength({ max: 1000 }).withMessage('Description too long'),
+    body('update_instances').optional().isBoolean().withMessage('Invalid update_instances flag')
+], async (req, res) => {
+    try {
+        const { templateId } = req.params;
+        const updateData = req.body;
+
+        const template = await sessionService.updateRecurringSession(templateId, updateData);
+
+        res.json({
+            success: true,
+            message: 'Recurring session updated successfully',
+            data: template
+        });
+
+    } catch (error) {
+        logger.error('Failed to update recurring session:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to update recurring session'
+        });
+    }
+});
+
+// Delete recurring session template (DM only)
+router.delete('/recurring/:templateId', verifyToken, checkRole('DM'), [
+    param('templateId').notEmpty().withMessage('Template ID is required'),
+    query('delete_instances').optional().isBoolean().withMessage('Invalid delete_instances flag')
+], async (req, res) => {
+    try {
+        const { templateId } = req.params;
+        const deleteFutureInstances = req.query.delete_instances !== 'false';
+
+        const template = await sessionService.deleteRecurringSession(templateId, deleteFutureInstances);
+
+        res.json({
+            success: true,
+            message: 'Recurring session deleted successfully',
+            data: template
+        });
+
+    } catch (error) {
+        logger.error('Failed to delete recurring session:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to delete recurring session'
+        });
+    }
+});
+
+// Generate additional instances for recurring session (DM only)
+router.post('/recurring/:templateId/generate', verifyToken, checkRole('DM'), [
+    param('templateId').notEmpty().withMessage('Template ID is required'),
+    body('count').optional().isInt({ min: 1, max: 52 }).withMessage('Invalid count (1-52)')
+], async (req, res) => {
+    try {
+        const { templateId } = req.params;
+        const count = req.body.count || 12;
+
+        const instances = await sessionService.generateAdditionalInstances(templateId, count);
+
+        res.json({
+            success: true,
+            message: `Generated ${instances.length} additional session instances`,
+            data: instances
+        });
+
+    } catch (error) {
+        logger.error('Failed to generate additional instances:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to generate additional instances'
+        });
+    }
+});
+
+// ========================================================================
 // DISCORD INTEGRATION ROUTES
 // ========================================================================
 

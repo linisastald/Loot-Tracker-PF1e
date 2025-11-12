@@ -5,6 +5,7 @@ import {
     Button,
     Card,
     CardContent,
+    Checkbox,
     CircularProgress,
     Container,
     Dialog,
@@ -23,10 +24,12 @@ import {
     TextField,
     Typography,
     Paper,
-    Alert
+    Alert,
+    Chip
 } from '@mui/material';
 import { format, formatDistance } from 'date-fns';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -62,6 +65,14 @@ const SessionsPage = () => {
     const [minimumPlayers, setMinimumPlayers] = useState(3);
     const [announcementDaysBefore, setAnnouncementDaysBefore] = useState(7);
     const [confirmationDaysBefore, setConfirmationDaysBefore] = useState(2);
+
+    // Recurring session state
+    const [isRecurring, setIsRecurring] = useState(false);
+    const [recurringPattern, setRecurringPattern] = useState('weekly');
+    const [recurringDayOfWeek, setRecurringDayOfWeek] = useState(0); // 0 = Sunday
+    const [recurringInterval, setRecurringInterval] = useState(1);
+    const [recurringEndDate, setRecurringEndDate] = useState(null);
+    const [recurringEndCount, setRecurringEndCount] = useState(12);
     
     // Attendance dialog state
     const [openAttendanceDialog, setOpenAttendanceDialog] = useState(false);
@@ -115,12 +126,17 @@ const SessionsPage = () => {
                 enqueueSnackbar('Please fill in all required fields', { variant: 'error' });
                 return;
             }
-            
+
             if (endTime <= startTime) {
                 enqueueSnackbar('End time must be after start time', { variant: 'error' });
                 return;
             }
-            
+
+            if (isRecurring && recurringPattern !== 'custom' && (recurringDayOfWeek < 0 || recurringDayOfWeek > 6)) {
+                enqueueSnackbar('Please select a valid day of the week for recurring sessions', { variant: 'error' });
+                return;
+            }
+
             const sessionData = {
                 title: sessionTitle,
                 start_time: startTime.toISOString(),
@@ -131,27 +147,57 @@ const SessionsPage = () => {
                 confirmation_days_before: confirmationDaysBefore,
                 send_discord_notification: sendDiscordNotification
             };
-            
-            await api.post('/sessions', sessionData);
-            enqueueSnackbar('Session created successfully', { variant: 'success' });
-            
+
+            // Add recurring fields if enabled
+            if (isRecurring) {
+                sessionData.recurring_pattern = recurringPattern;
+                sessionData.recurring_day_of_week = recurringDayOfWeek;
+                sessionData.recurring_interval = recurringInterval;
+                if (recurringEndDate) {
+                    sessionData.recurring_end_date = recurringEndDate.toISOString();
+                }
+                sessionData.recurring_end_count = recurringEndCount;
+            }
+
+            const endpoint = isRecurring ? '/sessions/recurring' : '/sessions';
+            await api.post(endpoint, sessionData);
+
+            const message = isRecurring
+                ? `Recurring session template created with ${recurringEndCount} instances`
+                : 'Session created successfully';
+            enqueueSnackbar(message, { variant: 'success' });
+
             // Reset form and close dialog
-            setSessionTitle('');
-            setStartTime(new Date());
-            setEndTime(new Date(new Date().setHours(new Date().getHours() + 5)));
-            setDescription('');
-            setSendDiscordNotification(true);
-            setMinimumPlayers(3);
-            setAnnouncementDaysBefore(7);
-            setConfirmationDaysBefore(2);
-            setOpenDialog(false);
-            
+            resetSessionForm();
+
             // Refresh sessions
             fetchSessions();
         } catch (err) {
             console.error('Error creating session:', err);
-            enqueueSnackbar('Failed to create session', { variant: 'error' });
+            const errorMessage = err.response?.data?.message || 'Failed to create session';
+            enqueueSnackbar(errorMessage, { variant: 'error' });
         }
+    };
+
+    const resetSessionForm = () => {
+        setSessionTitle('');
+        setStartTime(new Date());
+        setEndTime(new Date(new Date().setHours(new Date().getHours() + 5)));
+        setDescription('');
+        setSendDiscordNotification(true);
+        setMinimumPlayers(3);
+        setAnnouncementDaysBefore(7);
+        setConfirmationDaysBefore(2);
+
+        // Reset recurring fields
+        setIsRecurring(false);
+        setRecurringPattern('weekly');
+        setRecurringDayOfWeek(0);
+        setRecurringInterval(1);
+        setRecurringEndDate(null);
+        setRecurringEndCount(12);
+
+        setOpenDialog(false);
     };
     
     const handleOpenAttendanceDialog = (session) => {
@@ -311,12 +357,12 @@ const SessionsPage = () => {
         const formattedStartTime = format(startDate, 'h:mm a');
         const formattedEndTime = format(endDate, 'h:mm a');
         const timeUntil = formatDistance(startDate, new Date(), { addSuffix: true });
-        
+
         // Determine user's attendance status
         const userAttendance = findUserAttendance(session);
         let attendanceStatusText = 'Not Responded';
         let attendanceStatusColor = 'text.secondary';
-        
+
         if (userAttendance) {
             switch (userAttendance.status) {
                 case 'accepted':
@@ -333,14 +379,47 @@ const SessionsPage = () => {
                     break;
             }
         }
-        
+
         return (
             <Card key={session.id} sx={{ mb: 3, border: 1, borderColor: 'divider' }}>
                 <CardContent>
-                    <Typography variant="h5" component="div" gutterBottom>
-                        {session.title || 'Game Session'}
-                    </Typography>
-                    
+                    <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                        <Typography variant="h5" component="div">
+                            {session.title || 'Game Session'}
+                        </Typography>
+
+                        <Box display="flex" gap={1} flexWrap="wrap">
+                            {session.is_recurring && (
+                                <Chip
+                                    label="Recurring Template"
+                                    color="secondary"
+                                    variant="outlined"
+                                    size="small"
+                                />
+                            )}
+                            {session.created_from_recurring && (
+                                <Chip
+                                    label="Recurring Session"
+                                    color="info"
+                                    variant="outlined"
+                                    size="small"
+                                />
+                            )}
+                            {session.status && (
+                                <Chip
+                                    label={session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                                    color={
+                                        session.status === 'confirmed' ? 'success' :
+                                        session.status === 'cancelled' ? 'error' :
+                                        session.status === 'completed' ? 'default' : 'primary'
+                                    }
+                                    variant="outlined"
+                                    size="small"
+                                />
+                            )}
+                        </Box>
+                    </Box>
+
                     <Box mt={2} mb={2}>
                         <Typography variant="subtitle1" gutterBottom>
                             <strong>{formattedDate}</strong>
@@ -352,15 +431,27 @@ const SessionsPage = () => {
                             {timeUntil}
                         </Typography>
                     </Box>
-                    
+
                     {session.description && (
                         <Box mt={2} mb={2}>
                             <Typography variant="body1">{session.description}</Typography>
                         </Box>
                     )}
-                    
+
+                    {session.recurring_pattern && session.is_recurring && (
+                        <Box mt={2} mb={2}>
+                            <Typography variant="body2" color="text.secondary">
+                                <strong>Recurrence:</strong> {session.recurring_pattern}
+                                {session.recurring_day_of_week !== null && (
+                                    ` on ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][session.recurring_day_of_week]}`
+                                )}
+                                {session.recurring_end_count && ` (${session.recurring_end_count} sessions)`}
+                            </Typography>
+                        </Box>
+                    )}
+
                     <Divider sx={{ my: 2 }} />
-                    
+
                     <Grid container spacing={2} size={12}>
                         <Grid size={{xs: 12, md: 8}}>
                             {renderEnhancedAttendance(session)}
@@ -370,13 +461,15 @@ const SessionsPage = () => {
                                 <Typography variant="body2" sx={{ color: attendanceStatusColor, mb: 1 }}>
                                     Your Status: <strong>{attendanceStatusText}</strong>
                                 </Typography>
-                                <Button 
-                                    variant="contained" 
-                                    color="primary"
-                                    onClick={() => handleOpenAttendanceDialog(session)}
-                                >
-                                    Update Attendance
-                                </Button>
+                                {session.status !== 'recurring_template' && (
+                                    <Button
+                                        variant="contained"
+                                        color="primary"
+                                        onClick={() => handleOpenAttendanceDialog(session)}
+                                    >
+                                        Update Attendance
+                                    </Button>
+                                )}
                             </Box>
                         </Grid>
                     </Grid>
@@ -521,13 +614,136 @@ const SessionsPage = () => {
                                 </RadioGroup>
                             }
                             label="Send Discord Notification:"
-                            sx={{ display: 'flex' }}
+                            sx={{ display: 'flex', mb: 3 }}
                         />
+
+                        <Divider sx={{ my: 3 }} />
+
+                        {/* Recurring Session Options */}
+                        <Box mb={3}>
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={isRecurring}
+                                        onChange={(e) => setIsRecurring(e.target.checked)}
+                                    />
+                                }
+                                label="Make this a recurring session"
+                            />
+                        </Box>
+
+                        {isRecurring && (
+                            <Box sx={{ pl: 3, border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, mb: 3 }}>
+                                <Typography variant="subtitle2" gutterBottom>
+                                    Recurring Session Options
+                                </Typography>
+
+                                <Grid container spacing={2} size={12} sx={{ mb: 2 }}>
+                                    <Grid size={{xs: 12, md: 6}}>
+                                        <FormControl fullWidth>
+                                            <InputLabel id="recurring-pattern-label">Frequency</InputLabel>
+                                            <Select
+                                                labelId="recurring-pattern-label"
+                                                value={recurringPattern}
+                                                onChange={(e) => setRecurringPattern(e.target.value)}
+                                                label="Frequency"
+                                            >
+                                                <MenuItem value="weekly">Weekly</MenuItem>
+                                                <MenuItem value="biweekly">Every Other Week</MenuItem>
+                                                <MenuItem value="monthly">Monthly</MenuItem>
+                                                <MenuItem value="custom">Custom Interval</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+
+                                    <Grid size={{xs: 12, md: 6}}>
+                                        <FormControl fullWidth>
+                                            <InputLabel id="day-of-week-label">Day of Week</InputLabel>
+                                            <Select
+                                                labelId="day-of-week-label"
+                                                value={recurringDayOfWeek}
+                                                onChange={(e) => setRecurringDayOfWeek(e.target.value)}
+                                                label="Day of Week"
+                                            >
+                                                <MenuItem value={0}>Sunday</MenuItem>
+                                                <MenuItem value={1}>Monday</MenuItem>
+                                                <MenuItem value={2}>Tuesday</MenuItem>
+                                                <MenuItem value={3}>Wednesday</MenuItem>
+                                                <MenuItem value={4}>Thursday</MenuItem>
+                                                <MenuItem value={5}>Friday</MenuItem>
+                                                <MenuItem value={6}>Saturday</MenuItem>
+                                            </Select>
+                                        </FormControl>
+                                    </Grid>
+                                </Grid>
+
+                                {recurringPattern === 'custom' && (
+                                    <Grid container spacing={2} size={12} sx={{ mb: 2 }}>
+                                        <Grid size={{xs: 12, md: 6}}>
+                                            <TextField
+                                                label="Interval (weeks)"
+                                                type="number"
+                                                fullWidth
+                                                value={recurringInterval}
+                                                onChange={(e) => setRecurringInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                                                inputProps={{ min: 1, max: 52 }}
+                                                helperText="Number of weeks between sessions"
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                )}
+
+                                <Grid container spacing={2} size={12}>
+                                    <Grid size={{xs: 12, md: 6}}>
+                                        <TextField
+                                            label="Number of Sessions"
+                                            type="number"
+                                            fullWidth
+                                            value={recurringEndCount}
+                                            onChange={(e) => setRecurringEndCount(Math.max(1, parseInt(e.target.value) || 12))}
+                                            inputProps={{ min: 1, max: 100 }}
+                                            helperText="How many sessions to create"
+                                        />
+                                    </Grid>
+
+                                    <Grid size={{xs: 12, md: 6}}>
+                                        <DatePicker
+                                            label="End Date (Optional)"
+                                            value={recurringEndDate}
+                                            onChange={setRecurringEndDate}
+                                            slotProps={{
+                                                textField: {
+                                                    fullWidth: true,
+                                                    helperText: "Stop generating sessions after this date"
+                                                }
+                                            }}
+                                        />
+                                    </Grid>
+                                </Grid>
+
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                                    {isRecurring && (
+                                        <>
+                                            This will create {recurringEndCount} sessions occurring
+                                            {recurringPattern === 'weekly' && ' weekly'}
+                                            {recurringPattern === 'biweekly' && ' every other week'}
+                                            {recurringPattern === 'monthly' && ' monthly'}
+                                            {recurringPattern === 'custom' && ` every ${recurringInterval} week${recurringInterval > 1 ? 's' : ''}`}
+                                            {recurringDayOfWeek !== null && (
+                                                ` on ${['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'][recurringDayOfWeek]}`
+                                            )}
+                                            {recurringEndDate && `, ending no later than ${format(recurringEndDate, 'MMMM d, yyyy')}`}
+                                            .
+                                        </>
+                                    )}
+                                </Typography>
+                            </Box>
+                        )}
                     </DialogContent>
                     <DialogActions>
-                        <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
+                        <Button onClick={resetSessionForm}>Cancel</Button>
                         <Button onClick={handleCreateSession} color="primary" variant="contained">
-                            Create Session
+                            {isRecurring ? `Create ${recurringEndCount} Recurring Sessions` : 'Create Session'}
                         </Button>
                     </DialogActions>
                 </Dialog>
