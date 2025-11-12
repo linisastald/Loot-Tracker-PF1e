@@ -1,7 +1,8 @@
-const dbUtils = require('../utils/db');
+const pool = require('../config/database');
 const logger = require('../utils/logger');
-const discordService = require('./discordService');
+const discordService = require('./discord');
 const cron = require('node-cron');
+const { v4: uuidv4 } = require('uuid');
 
 class SessionService {
     constructor() {
@@ -37,37 +38,78 @@ class SessionService {
     // ========================================================================
 
     async createSession(sessionData) {
-        const {
-            title,
-            start_time,
-            end_time,
-            description,
-            minimum_players = 3,
-            announcement_days_before = 7,
-            confirmation_days_before = 2
-        } = sessionData;
+        const client = await pool.connect();
 
         try {
-            const result = await dbUtils.executeQuery(`
+            await client.query('BEGIN');
+
+            const {
+                title,
+                start_time,
+                end_time,
+                description,
+                minimum_players = 3,
+                maximum_players = 6,
+                auto_announce_hours = 168, // 1 week
+                reminder_hours = 24,
+                auto_cancel_hours = 2,
+                created_by
+            } = sessionData;
+
+            // Create the session with enhanced fields
+            const sessionResult = await client.query(`
                 INSERT INTO game_sessions (
-                    title, start_time, end_time, description,
-                    minimum_players, announcement_days_before,
-                    confirmation_days_before
+                    id, title, start_time, end_time, description, minimum_players, maximum_players,
+                    auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
+                    status, created_at, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'scheduled', NOW(), NOW())
                 RETURNING *
-            `, [title, start_time, end_time, description, minimum_players, announcement_days_before, confirmation_days_before]);
+            `, [
+                uuidv4(), title, start_time, end_time, description, minimum_players, maximum_players,
+                auto_announce_hours, reminder_hours, auto_cancel_hours, created_by
+            ]);
 
-            const session = result.rows[0];
+            const session = sessionResult.rows[0];
 
-            // Schedule automatic announcements and reminders
-            await this.scheduleSessionEvents(session);
+            // Schedule automatic announcement if configured
+            if (auto_announce_hours > 0) {
+                const announceTime = new Date(start_time);
+                announceTime.setHours(announceTime.getHours() - auto_announce_hours);
 
-            logger.info('Session created:', { sessionId: session.id, title: session.title });
+                if (announceTime > new Date()) {
+                    await client.query(`
+                        INSERT INTO session_automations (
+                            session_id, automation_type, scheduled_time, status, created_at
+                        ) VALUES ($1, 'announcement', $2, 'scheduled', NOW())
+                    `, [session.id, announceTime]);
+                }
+            }
+
+            // Schedule reminder if configured
+            if (reminder_hours > 0) {
+                const reminderTime = new Date(start_time);
+                reminderTime.setHours(reminderTime.getHours() - reminder_hours);
+
+                if (reminderTime > new Date()) {
+                    await client.query(`
+                        INSERT INTO session_automations (
+                            session_id, automation_type, scheduled_time, status, created_at
+                        ) VALUES ($1, 'reminder', $2, 'scheduled', NOW())
+                    `, [session.id, reminderTime]);
+                }
+            }
+
+            await client.query('COMMIT');
+            logger.info(`Created enhanced session: ${session.id} - ${title}`);
             return session;
+
         } catch (error) {
+            await client.query('ROLLBACK');
             logger.error('Failed to create session:', error);
             throw error;
+        } finally {
+            client.release();
         }
     }
 
@@ -139,35 +181,65 @@ class SessionService {
     // ========================================================================
 
     async recordAttendance(sessionId, userId, responseType, additionalData = {}) {
-        const {
-            late_arrival_time,
-            early_departure_time,
-            notes,
-            discord_id
-        } = additionalData;
+        const client = await pool.connect();
 
         try {
-            const result = await dbUtils.executeQuery(`
+            await client.query('BEGIN');
+
+            const {
+                late_arrival_time,
+                early_departure_time,
+                notes,
+                discord_id
+            } = additionalData;
+
+            // Upsert attendance record
+            const attendanceResult = await client.query(`
                 INSERT INTO session_attendance (
                     session_id, user_id, response_type, late_arrival_time,
-                    early_departure_time, notes, discord_id, response_timestamp
+                    early_departure_time, notes, response_timestamp
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())
                 ON CONFLICT (session_id, user_id)
                 DO UPDATE SET
                     response_type = EXCLUDED.response_type,
                     late_arrival_time = EXCLUDED.late_arrival_time,
                     early_departure_time = EXCLUDED.early_departure_time,
                     notes = EXCLUDED.notes,
-                    response_timestamp = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
+                    response_timestamp = NOW(),
+                    updated_at = NOW()
                 RETURNING *
-            `, [sessionId, userId, responseType, late_arrival_time, early_departure_time, notes, discord_id]);
+            `, [sessionId, userId, responseType, late_arrival_time, early_departure_time, notes]);
 
-            const attendance = result.rows[0];
+            const attendance = attendanceResult.rows[0];
 
-            // Check if session should be auto-cancelled
-            await this.checkAutoCancel(sessionId);
+            // Get updated attendance counts
+            const countsResult = await client.query(`
+                SELECT
+                    COUNT(*) FILTER (WHERE response_type = 'yes') as confirmed_count,
+                    COUNT(*) FILTER (WHERE response_type = 'no') as declined_count,
+                    COUNT(*) FILTER (WHERE response_type = 'maybe') as maybe_count,
+                    COUNT(*) FILTER (WHERE response_type = 'late') as late_count,
+                    COUNT(*) FILTER (WHERE response_type = 'early') as early_count,
+                    COUNT(*) FILTER (WHERE response_type = 'late_and_early') as late_and_early_count
+                FROM session_attendance
+                WHERE session_id = $1
+            `, [sessionId]);
+
+            const counts = countsResult.rows[0];
+
+            // Update session with new counts
+            await client.query(`
+                UPDATE game_sessions
+                SET
+                    confirmed_count = $2,
+                    declined_count = $3,
+                    maybe_count = $4,
+                    updated_at = NOW()
+                WHERE id = $1
+            `, [sessionId, counts.confirmed_count, counts.declined_count, counts.maybe_count]);
+
+            await client.query('COMMIT');
 
             logger.info('Attendance recorded:', {
                 sessionId,
@@ -176,16 +248,19 @@ class SessionService {
                 attendanceId: attendance.id
             });
 
-            return attendance;
+            return { attendance, counts };
         } catch (error) {
+            await client.query('ROLLBACK');
             logger.error('Failed to record attendance:', error);
             throw error;
+        } finally {
+            client.release();
         }
     }
 
     async getSessionAttendance(sessionId) {
         try {
-            const result = await dbUtils.executeQuery(`
+            const result = await pool.query(`
                 SELECT
                     sa.*,
                     u.username,
@@ -193,7 +268,7 @@ class SessionService {
                     c.name as character_name
                 FROM session_attendance sa
                 JOIN users u ON sa.user_id = u.id
-                LEFT JOIN characters c ON sa.character_id = c.id
+                LEFT JOIN characters c ON c.id = u.active_character
                 WHERE sa.session_id = $1
                 ORDER BY sa.response_timestamp
             `, [sessionId]);
@@ -875,7 +950,7 @@ class SessionService {
 
     async checkTaskGeneration() {
         // Get sessions that need task generation
-        const result = await dbUtils.executeQuery(`
+        const result = await pool.query(`
             SELECT gs.* FROM game_sessions gs
             LEFT JOIN session_tasks st ON gs.id = st.session_id
             WHERE gs.status = 'confirmed'
@@ -890,6 +965,105 @@ class SessionService {
             } catch (error) {
                 logger.error(`Failed to generate tasks for session ${session.id}:`, error);
             }
+        }
+    }
+
+    // Get enhanced session list with attendance counts
+    async getEnhancedSessions(filters = {}) {
+        try {
+            const {
+                status,
+                upcoming_only = false,
+                include_attendance = true,
+                limit = 50,
+                offset = 0
+            } = filters;
+
+            let whereConditions = [];
+            let queryParams = [];
+            let paramIndex = 1;
+
+            if (status) {
+                whereConditions.push(`gs.status = $${paramIndex++}`);
+                queryParams.push(status);
+            }
+
+            if (upcoming_only) {
+                whereConditions.push(`gs.start_time > NOW()`);
+            }
+
+            const whereClause = whereConditions.length > 0
+                ? `WHERE ${whereConditions.join(' AND ')}`
+                : '';
+
+            const attendanceSelect = include_attendance ? `
+                COUNT(sa.id) FILTER (WHERE sa.response_type = 'yes') as confirmed_count,
+                COUNT(sa.id) FILTER (WHERE sa.response_type = 'no') as declined_count,
+                COUNT(sa.id) FILTER (WHERE sa.response_type = 'maybe') as maybe_count,
+                COUNT(sa.id) FILTER (WHERE sa.response_type = 'late') as late_count,
+                COUNT(sa.id) FILTER (WHERE sa.response_type = 'early') as early_count,
+                COUNT(sa.id) FILTER (WHERE sa.response_type = 'late_and_early') as late_and_early_count,
+                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.response_timestamp > gs.updated_at) as modified_count,
+            ` : '';
+
+            const attendanceJoin = include_attendance
+                ? 'LEFT JOIN session_attendance sa ON sa.session_id = gs.id'
+                : '';
+
+            const groupBy = include_attendance
+                ? 'GROUP BY gs.id, u.username'
+                : '';
+
+            const query = `
+                SELECT
+                    gs.*,
+                    u.username as creator_username,
+                    ${attendanceSelect}
+                    CASE
+                        WHEN gs.start_time > NOW() THEN 'upcoming'
+                        WHEN gs.start_time <= NOW() AND gs.status != 'completed' THEN 'ongoing'
+                        ELSE 'past'
+                    END as time_status
+                FROM game_sessions gs
+                LEFT JOIN users u ON u.id = gs.created_by
+                ${attendanceJoin}
+                ${whereClause}
+                ${groupBy}
+                ORDER BY gs.start_time DESC
+                LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+            `;
+
+            queryParams.push(limit, offset);
+
+            const result = await pool.query(query, queryParams);
+            return result.rows;
+
+        } catch (error) {
+            logger.error('Error getting enhanced sessions:', error);
+            throw error;
+        }
+    }
+
+    // Get detailed attendance for a session
+    async getSessionAttendanceDetails(sessionId) {
+        try {
+            const result = await pool.query(`
+                SELECT
+                    sa.*,
+                    u.username,
+                    c.name as character_name
+                FROM session_attendance sa
+                JOIN users u ON u.id = sa.user_id
+                LEFT JOIN characters c ON c.id = u.active_character
+                WHERE sa.session_id = $1
+                ORDER BY sa.response_timestamp DESC
+            `, [sessionId]);
+
+            return result.rows;
+
+        } catch (error) {
+            logger.error('Error getting session attendance details:', error);
+            throw error;
         }
     }
 

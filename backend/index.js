@@ -81,7 +81,7 @@ const errorHandler = (err, req, res, next) => {
   });
 };
 
-// Detect host IP for Docker networking
+// Detect host IP for Docker networking (Linux containers only)
 let hostIp;
 try {
   hostIp = execSync("getent hosts host.docker.internal | awk '{ print $1 }' || hostname -i").toString().trim();

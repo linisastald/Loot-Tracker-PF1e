@@ -13,7 +13,7 @@ class EmailService {
         try {
             // Configure based on environment variables
             if (process.env.EMAIL_SERVICE === 'gmail') {
-                this.transporter = nodemailer.createTransporter({
+                this.transporter = nodemailer.createTransport({
                     service: 'gmail',
                     auth: {
                         user: process.env.EMAIL_USER,
@@ -21,7 +21,7 @@ class EmailService {
                     }
                 });
             } else if (process.env.SMTP_HOST) {
-                this.transporter = nodemailer.createTransporter({
+                this.transporter = nodemailer.createTransport({
                     host: process.env.SMTP_HOST,
                     port: process.env.SMTP_PORT || 587,
                     secure: process.env.SMTP_SECURE === 'true',
