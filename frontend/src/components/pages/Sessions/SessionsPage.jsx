@@ -91,8 +91,8 @@ const SessionsPage = () => {
     const fetchSessions = async () => {
         try {
             setLoading(true);
-            // Use enhanced session endpoint for better data
-            const response = await api.get('/sessions/enhanced?upcoming_only=true');
+            // Use enhanced session endpoint for better data - show all sessions, not just upcoming
+            const response = await api.get('/sessions/enhanced');
             setSessions(response.data.data || []);
             setError(null);
         } catch (err) {
@@ -510,11 +510,11 @@ const SessionsPage = () => {
             ) : sessions.length === 0 ? (
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
                     <Typography variant="h6" color="text.secondary">
-                        No upcoming sessions
+                        No sessions found
                     </Typography>
                     <Typography variant="body1" color="text.secondary" mt={1}>
-                        {user?.role === 'DM' 
-                            ? "Click 'Create Session' to schedule a new game session." 
+                        {user?.role === 'DM'
+                            ? "Click 'Create Session' to schedule a new game session."
                             : "No sessions have been scheduled yet."}
                     </Typography>
                 </Paper>
