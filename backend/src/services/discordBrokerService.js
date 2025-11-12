@@ -213,6 +213,140 @@ class DiscordBrokerService {
 
     this.isRegistered = false;
   }
+
+  /**
+   * Send a message to a Discord channel
+   * @param {Object} options - Message options
+   * @param {string} options.channelId - Discord channel ID
+   * @param {string} options.content - Message content (optional)
+   * @param {Object} options.embed - Message embed (optional)
+   * @param {Array} options.components - Message components/buttons (optional)
+   * @returns {Promise<Object>} - Result with success flag and message data
+   */
+  async sendMessage({ channelId, content = null, embed = null, components = null }) {
+    try {
+      // Get bot token from settings
+      const settingsQuery = await pool.query(
+        'SELECT value FROM settings WHERE name = $1',
+        ['discord_bot_token']
+      );
+
+      if (settingsQuery.rows.length === 0 || !settingsQuery.rows[0].value) {
+        throw new Error('Discord bot token not configured');
+      }
+
+      const botToken = settingsQuery.rows[0].value;
+
+      // Build message payload
+      const payload = {};
+      if (content) payload.content = content;
+      if (embed) payload.embeds = [embed];
+      if (components) payload.components = components;
+
+      // Send message via Discord API
+      const response = await axios.post(
+        `https://discord.com/api/v10/channels/${channelId}/messages`,
+        payload,
+        {
+          headers: {
+            'Authorization': `Bot ${botToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      logger.info('Discord message sent successfully', {
+        channelId,
+        messageId: response.data.id
+      });
+
+      return {
+        success: true,
+        data: response.data
+      };
+
+    } catch (error) {
+      logger.error('Failed to send Discord message:', {
+        error: error.message,
+        response: error.response?.data,
+        channelId
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        details: error.response?.data
+      };
+    }
+  }
+
+  /**
+   * Update an existing Discord message
+   * @param {Object} options - Update options
+   * @param {string} options.channelId - Discord channel ID
+   * @param {string} options.messageId - Discord message ID
+   * @param {string} options.content - Message content (optional)
+   * @param {Object} options.embed - Message embed (optional)
+   * @param {Array} options.components - Message components/buttons (optional)
+   * @returns {Promise<Object>} - Result with success flag and message data
+   */
+  async updateMessage({ channelId, messageId, content = null, embed = null, components = null }) {
+    try {
+      // Get bot token from settings
+      const settingsQuery = await pool.query(
+        'SELECT value FROM settings WHERE name = $1',
+        ['discord_bot_token']
+      );
+
+      if (settingsQuery.rows.length === 0 || !settingsQuery.rows[0].value) {
+        throw new Error('Discord bot token not configured');
+      }
+
+      const botToken = settingsQuery.rows[0].value;
+
+      // Build message payload
+      const payload = {};
+      if (content !== null) payload.content = content;
+      if (embed) payload.embeds = [embed];
+      if (components) payload.components = components;
+
+      // Update message via Discord API
+      const response = await axios.patch(
+        `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
+        payload,
+        {
+          headers: {
+            'Authorization': `Bot ${botToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      logger.info('Discord message updated successfully', {
+        channelId,
+        messageId
+      });
+
+      return {
+        success: true,
+        data: response.data
+      };
+
+    } catch (error) {
+      logger.error('Failed to update Discord message:', {
+        error: error.message,
+        response: error.response?.data,
+        channelId,
+        messageId
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        details: error.response?.data
+      };
+    }
+  }
 }
 
 module.exports = new DiscordBrokerService();

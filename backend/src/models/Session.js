@@ -4,7 +4,10 @@ const dbUtils = require('../utils/dbUtils');
 
 class Session extends BaseModel {
     constructor() {
-        super('game_sessions');
+        super({
+            tableName: 'game_sessions',
+            timestamps: { createdAt: true, updatedAt: true }
+        });
     }
 
     /**
