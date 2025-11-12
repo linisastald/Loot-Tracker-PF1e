@@ -633,6 +633,7 @@ class SessionService {
             }
 
             // Create the master recurring session (let database auto-generate the id)
+            // Use 'scheduled' status as templates are identified by is_recurring=true
             const sessionResult = await client.query(`
                 INSERT INTO game_sessions (
                     title, start_time, end_time, description, minimum_players, maximum_players,
@@ -640,7 +641,7 @@ class SessionService {
                     is_recurring, recurring_pattern, recurring_day_of_week, recurring_interval,
                     recurring_end_date, recurring_end_count, status, created_at, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE, $11, $12, $13, $14, $15, 'recurring_template', NOW(), NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE, $11, $12, $13, $14, $15, 'scheduled', NOW(), NOW())
                 RETURNING *
             `, [
                 title, start_time, end_time, description, minimum_players, maximum_players,
