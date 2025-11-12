@@ -2,7 +2,6 @@ const pool = require('../config/db');
 const logger = require('../utils/logger');
 const discordService = require('./discordBrokerService');
 const cron = require('node-cron');
-const { v4: uuidv4 } = require('uuid');
 
 class SessionService {
     constructor() {
@@ -633,18 +632,18 @@ class SessionService {
                 throw new Error('Custom interval must be at least 1');
             }
 
-            // Create the master recurring session
+            // Create the master recurring session (let database auto-generate the id)
             const sessionResult = await client.query(`
                 INSERT INTO game_sessions (
-                    id, title, start_time, end_time, description, minimum_players, maximum_players,
+                    title, start_time, end_time, description, minimum_players, maximum_players,
                     auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
                     is_recurring, recurring_pattern, recurring_day_of_week, recurring_interval,
                     recurring_end_date, recurring_end_count, status, created_at, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, $12, $13, $14, $15, $16, 'recurring_template', NOW(), NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE, $11, $12, $13, $14, $15, 'recurring_template', NOW(), NOW())
                 RETURNING *
             `, [
-                uuidv4(), title, start_time, end_time, description, minimum_players, maximum_players,
+                title, start_time, end_time, description, minimum_players, maximum_players,
                 auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
                 recurring_pattern, recurring_day_of_week, recurring_interval,
                 recurring_end_date, recurring_end_count
@@ -700,14 +699,13 @@ class SessionService {
                 try {
                     const instanceResult = await client.query(`
                         INSERT INTO game_sessions (
-                            id, title, start_time, end_time, description, minimum_players, maximum_players,
+                            title, start_time, end_time, description, minimum_players, maximum_players,
                             auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
                             parent_recurring_id, created_from_recurring, status, created_at, updated_at
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE, 'scheduled', NOW(), NOW())
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'scheduled', NOW(), NOW())
                         RETURNING *
                     `, [
-                        uuidv4(),
                         `${template.title} - ${this.formatDateForTitle(instanceStartTime)}`,
                         instanceStartTime.toISOString(),
                         instanceEndTime.toISOString(),
