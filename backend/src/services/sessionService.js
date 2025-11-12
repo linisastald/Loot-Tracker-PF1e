@@ -1,0 +1,927 @@
+const dbUtils = require('../utils/db');
+const logger = require('../utils/logger');
+const discordService = require('./discordService');
+const cron = require('node-cron');
+
+class SessionService {
+    constructor() {
+        this.scheduledJobs = new Map();
+        this.isInitialized = false;
+    }
+
+    async initialize() {
+        if (this.isInitialized) return;
+
+        try {
+            // Schedule automatic session announcements
+            this.scheduleSessionAnnouncements();
+
+            // Schedule reminder checks
+            this.scheduleReminderChecks();
+
+            // Schedule confirmation checks
+            this.scheduleConfirmationChecks();
+
+            // Schedule task generation
+            this.scheduleTaskGeneration();
+
+            this.isInitialized = true;
+            logger.info('Session service initialized successfully');
+        } catch (error) {
+            logger.error('Failed to initialize session service:', error);
+        }
+    }
+
+    // ========================================================================
+    // SESSION MANAGEMENT
+    // ========================================================================
+
+    async createSession(sessionData) {
+        const {
+            title,
+            start_time,
+            end_time,
+            description,
+            minimum_players = 3,
+            announcement_days_before = 7,
+            confirmation_days_before = 2
+        } = sessionData;
+
+        try {
+            const result = await dbUtils.executeQuery(`
+                INSERT INTO game_sessions (
+                    title, start_time, end_time, description,
+                    minimum_players, announcement_days_before,
+                    confirmation_days_before
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING *
+            `, [title, start_time, end_time, description, minimum_players, announcement_days_before, confirmation_days_before]);
+
+            const session = result.rows[0];
+
+            // Schedule automatic announcements and reminders
+            await this.scheduleSessionEvents(session);
+
+            logger.info('Session created:', { sessionId: session.id, title: session.title });
+            return session;
+        } catch (error) {
+            logger.error('Failed to create session:', error);
+            throw error;
+        }
+    }
+
+    async updateSession(sessionId, updateData) {
+        const allowedFields = [
+            'title', 'start_time', 'end_time', 'description',
+            'minimum_players', 'announcement_days_before',
+            'confirmation_days_before', 'status'
+        ];
+
+        const fields = Object.keys(updateData).filter(field => allowedFields.includes(field));
+        if (fields.length === 0) {
+            throw new Error('No valid fields provided for update');
+        }
+
+        const setClause = fields.map((field, index) => `${field} = $${index + 2}`).join(', ');
+        const values = [sessionId, ...fields.map(field => updateData[field])];
+
+        try {
+            const result = await dbUtils.executeQuery(`
+                UPDATE game_sessions
+                SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+                RETURNING *
+            `, values);
+
+            if (result.rows.length === 0) {
+                throw new Error('Session not found');
+            }
+
+            const session = result.rows[0];
+
+            // Reschedule events if timing changed
+            if (fields.some(field => ['start_time', 'announcement_days_before', 'confirmation_days_before'].includes(field))) {
+                await this.rescheduleSessionEvents(session);
+            }
+
+            logger.info('Session updated:', { sessionId: session.id });
+            return session;
+        } catch (error) {
+            logger.error('Failed to update session:', error);
+            throw error;
+        }
+    }
+
+    async deleteSession(sessionId) {
+        try {
+            // Cancel any scheduled announcements
+            this.cancelSessionEvents(sessionId);
+
+            const result = await dbUtils.executeQuery(`
+                DELETE FROM game_sessions WHERE id = $1 RETURNING *
+            `, [sessionId]);
+
+            if (result.rows.length === 0) {
+                throw new Error('Session not found');
+            }
+
+            logger.info('Session deleted:', { sessionId });
+            return result.rows[0];
+        } catch (error) {
+            logger.error('Failed to delete session:', error);
+            throw error;
+        }
+    }
+
+    // ========================================================================
+    // ATTENDANCE MANAGEMENT
+    // ========================================================================
+
+    async recordAttendance(sessionId, userId, responseType, additionalData = {}) {
+        const {
+            late_arrival_time,
+            early_departure_time,
+            notes,
+            discord_id
+        } = additionalData;
+
+        try {
+            const result = await dbUtils.executeQuery(`
+                INSERT INTO session_attendance (
+                    session_id, user_id, response_type, late_arrival_time,
+                    early_departure_time, notes, discord_id, response_timestamp
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+                ON CONFLICT (session_id, user_id)
+                DO UPDATE SET
+                    response_type = EXCLUDED.response_type,
+                    late_arrival_time = EXCLUDED.late_arrival_time,
+                    early_departure_time = EXCLUDED.early_departure_time,
+                    notes = EXCLUDED.notes,
+                    response_timestamp = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING *
+            `, [sessionId, userId, responseType, late_arrival_time, early_departure_time, notes, discord_id]);
+
+            const attendance = result.rows[0];
+
+            // Check if session should be auto-cancelled
+            await this.checkAutoCancel(sessionId);
+
+            logger.info('Attendance recorded:', {
+                sessionId,
+                userId,
+                responseType,
+                attendanceId: attendance.id
+            });
+
+            return attendance;
+        } catch (error) {
+            logger.error('Failed to record attendance:', error);
+            throw error;
+        }
+    }
+
+    async getSessionAttendance(sessionId) {
+        try {
+            const result = await dbUtils.executeQuery(`
+                SELECT
+                    sa.*,
+                    u.username,
+                    u.discord_id as user_discord_id,
+                    c.name as character_name
+                FROM session_attendance sa
+                JOIN users u ON sa.user_id = u.id
+                LEFT JOIN characters c ON sa.character_id = c.id
+                WHERE sa.session_id = $1
+                ORDER BY sa.response_timestamp
+            `, [sessionId]);
+
+            return result.rows;
+        } catch (error) {
+            logger.error('Failed to get session attendance:', error);
+            throw error;
+        }
+    }
+
+    // ========================================================================
+    // DISCORD INTEGRATION
+    // ========================================================================
+
+    async postSessionAnnouncement(sessionId) {
+        try {
+            const session = await this.getSession(sessionId);
+            if (!session) {
+                throw new Error('Session not found');
+            }
+
+            const settings = await this.getDiscordSettings();
+            if (!settings.discord_channel_id || !settings.discord_bot_token) {
+                logger.warn('Discord not configured for session announcements');
+                return null;
+            }
+
+            const embed = await this.createSessionEmbed(session);
+            const components = this.createAttendanceButtons();
+
+            const messageResult = await discordService.sendMessage({
+                channelId: settings.discord_channel_id,
+                content: settings.reminder_ping_role ? `<@&${settings.reminder_ping_role}> New session announced!` : null,
+                embed,
+                components
+            });
+
+            if (messageResult.success) {
+                // Store message ID for tracking
+                await dbUtils.executeQuery(`
+                    UPDATE game_sessions
+                    SET announcement_message_id = $1, discord_channel_id = $2
+                    WHERE id = $3
+                `, [messageResult.data.id, settings.discord_channel_id, sessionId]);
+
+                // Add reactions for attendance tracking
+                await this.addAttendanceReactions(messageResult.data.id);
+
+                logger.info('Session announcement posted:', {
+                    sessionId,
+                    messageId: messageResult.data.id
+                });
+
+                return messageResult.data;
+            }
+        } catch (error) {
+            logger.error('Failed to post session announcement:', error);
+            throw error;
+        }
+    }
+
+    async sendSessionReminder(sessionId, reminderType = 'followup') {
+        try {
+            const session = await this.getSession(sessionId);
+            const attendanceData = await this.getSessionAttendance(sessionId);
+
+            const nonResponders = await this.getNonResponders(sessionId);
+            const maybeResponders = attendanceData.filter(a => a.response_type === 'maybe');
+
+            let targetUsers = [];
+            let message = '';
+
+            switch (reminderType) {
+                case 'non_responders':
+                    targetUsers = nonResponders;
+                    message = `Reminder: Please respond to the session on ${this.formatSessionDate(session.start_time)}!`;
+                    break;
+                case 'maybe_responders':
+                    targetUsers = maybeResponders;
+                    message = `Reminder: Please confirm your attendance for the session on ${this.formatSessionDate(session.start_time)}!`;
+                    break;
+                default:
+                    targetUsers = [...nonResponders, ...maybeResponders];
+                    message = `Session reminder: ${this.formatSessionDate(session.start_time)}`;
+            }
+
+            if (targetUsers.length === 0) {
+                logger.info('No users to remind for session:', { sessionId, reminderType });
+                return;
+            }
+
+            // Create reminder message
+            const embed = await this.createReminderEmbed(session, targetUsers);
+
+            const settings = await this.getDiscordSettings();
+            const messageResult = await discordService.sendMessage({
+                channelId: settings.discord_channel_id,
+                content: `${targetUsers.map(u => `<@${u.discord_id}>`).join(' ')} ${message}`,
+                embed
+            });
+
+            // Record reminder
+            await this.recordReminder(sessionId, reminderType, targetUsers);
+
+            logger.info('Session reminder sent:', {
+                sessionId,
+                reminderType,
+                targetCount: targetUsers.length
+            });
+
+        } catch (error) {
+            logger.error('Failed to send session reminder:', error);
+            throw error;
+        }
+    }
+
+    async processDiscordReaction(messageId, userId, emoji, action) {
+        try {
+            // Map emoji to response type
+            const reactionMap = await this.getReactionMap();
+            const responseType = reactionMap[emoji];
+
+            if (!responseType) {
+                logger.warn('Unknown reaction emoji:', { emoji, messageId, userId });
+                return;
+            }
+
+            // Find session by message ID
+            const sessionResult = await dbUtils.executeQuery(`
+                SELECT id FROM game_sessions
+                WHERE announcement_message_id = $1 OR confirmation_message_id = $1
+            `, [messageId]);
+
+            if (sessionResult.rows.length === 0) {
+                logger.warn('Session not found for message:', { messageId });
+                return;
+            }
+
+            const sessionId = sessionResult.rows[0].id;
+
+            // Find user by Discord ID
+            const userResult = await dbUtils.executeQuery(`
+                SELECT id FROM users WHERE discord_id = $1
+            `, [userId]);
+
+            if (userResult.rows.length === 0) {
+                logger.warn('User not found for Discord ID:', { discordId: userId });
+                return;
+            }
+
+            const dbUserId = userResult.rows[0].id;
+
+            if (action === 'add') {
+                // Record attendance
+                await this.recordAttendance(sessionId, dbUserId, responseType, { discord_id: userId });
+
+                // Record reaction tracking
+                await dbUtils.executeQuery(`
+                    INSERT INTO discord_reaction_tracking
+                    (message_id, user_discord_id, reaction_emoji, session_id)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (message_id, user_discord_id, reaction_emoji)
+                    DO UPDATE SET reaction_time = CURRENT_TIMESTAMP
+                `, [messageId, userId, emoji, sessionId]);
+
+            } else if (action === 'remove') {
+                // Remove attendance
+                await dbUtils.executeQuery(`
+                    DELETE FROM session_attendance
+                    WHERE session_id = $1 AND user_id = $2
+                `, [sessionId, dbUserId]);
+
+                // Remove reaction tracking
+                await dbUtils.executeQuery(`
+                    DELETE FROM discord_reaction_tracking
+                    WHERE message_id = $1 AND user_discord_id = $2 AND reaction_emoji = $3
+                `, [messageId, userId, emoji]);
+            }
+
+            // Update the Discord message with new attendance counts
+            await this.updateSessionMessage(sessionId);
+
+        } catch (error) {
+            logger.error('Failed to process Discord reaction:', error);
+        }
+    }
+
+    // ========================================================================
+    // SCHEDULING AND AUTOMATION
+    // ========================================================================
+
+    scheduleSessionAnnouncements() {
+        // Run every hour to check for sessions to announce
+        cron.schedule('0 * * * *', async () => {
+            try {
+                await this.checkPendingAnnouncements();
+            } catch (error) {
+                logger.error('Error in scheduled announcement check:', error);
+            }
+        });
+    }
+
+    scheduleReminderChecks() {
+        // Run every 6 hours to check for reminders to send
+        cron.schedule('0 */6 * * *', async () => {
+            try {
+                await this.checkPendingReminders();
+            } catch (error) {
+                logger.error('Error in scheduled reminder check:', error);
+            }
+        });
+    }
+
+    scheduleConfirmationChecks() {
+        // Run daily at 9 AM to check for sessions to confirm/cancel
+        cron.schedule('0 9 * * *', async () => {
+            try {
+                await this.checkSessionConfirmations();
+            } catch (error) {
+                logger.error('Error in scheduled confirmation check:', error);
+            }
+        });
+    }
+
+    scheduleTaskGeneration() {
+        // Run every hour to check for sessions needing task generation
+        cron.schedule('0 * * * *', async () => {
+            try {
+                await this.checkTaskGeneration();
+            } catch (error) {
+                logger.error('Error in scheduled task generation:', error);
+            }
+        });
+    }
+
+    async checkPendingAnnouncements() {
+        const result = await dbUtils.executeQuery(`
+            SELECT gs.* FROM game_sessions gs
+            WHERE gs.status = 'scheduled'
+            AND gs.announcement_message_id IS NULL
+            AND gs.start_time > NOW()
+            AND gs.start_time <= NOW() + (gs.announcement_days_before || ' days')::INTERVAL
+        `);
+
+        for (const session of result.rows) {
+            try {
+                await this.postSessionAnnouncement(session.id);
+            } catch (error) {
+                logger.error(`Failed to post announcement for session ${session.id}:`, error);
+            }
+        }
+    }
+
+    async checkPendingReminders() {
+        // Get sessions that need reminders
+        const result = await dbUtils.executeQuery(`
+            SELECT DISTINCT sr.*, gs.title, gs.start_time
+            FROM session_reminders sr
+            JOIN game_sessions gs ON sr.session_id = gs.id
+            WHERE sr.sent = FALSE
+            AND gs.status IN ('scheduled', 'confirmed')
+            AND gs.start_time > NOW()
+            AND gs.start_time <= NOW() + (sr.days_before || ' days')::INTERVAL
+        `);
+
+        for (const reminder of result.rows) {
+            try {
+                await this.sendSessionReminder(reminder.session_id, reminder.reminder_type);
+
+                // Mark as sent
+                await dbUtils.executeQuery(`
+                    UPDATE session_reminders
+                    SET sent = TRUE, sent_at = CURRENT_TIMESTAMP
+                    WHERE id = $1
+                `, [reminder.id]);
+
+            } catch (error) {
+                logger.error(`Failed to send reminder for session ${reminder.session_id}:`, error);
+            }
+        }
+    }
+
+    async checkSessionConfirmations() {
+        // Get sessions that need confirmation
+        const result = await dbUtils.executeQuery(`
+            SELECT gs.* FROM game_sessions gs
+            WHERE gs.status = 'scheduled'
+            AND gs.confirmation_message_id IS NULL
+            AND gs.start_time > NOW()
+            AND gs.start_time <= NOW() + (gs.confirmation_days_before || ' days')::INTERVAL
+        `);
+
+        for (const session of result.rows) {
+            try {
+                const attendanceCount = await this.getConfirmedAttendanceCount(session.id);
+
+                if (attendanceCount >= session.minimum_players) {
+                    await this.confirmSession(session.id);
+                } else {
+                    await this.cancelSession(session.id, 'Insufficient confirmed players');
+                }
+            } catch (error) {
+                logger.error(`Failed to process confirmation for session ${session.id}:`, error);
+            }
+        }
+    }
+
+    // ========================================================================
+    // HELPER METHODS
+    // ========================================================================
+
+    async getSession(sessionId) {
+        const result = await dbUtils.executeQuery(
+            'SELECT * FROM game_sessions WHERE id = $1',
+            [sessionId]
+        );
+        return result.rows[0] || null;
+    }
+
+    async getDiscordSettings() {
+        const result = await dbUtils.executeQuery(`
+            SELECT name, value FROM settings
+            WHERE name IN ('discord_channel_id', 'discord_bot_token', 'campaign_role_id', 'campaign_name')
+        `);
+
+        const settings = {};
+        result.rows.forEach(row => {
+            settings[row.name] = row.value;
+        });
+
+        return settings;
+    }
+
+    async getReactionMap() {
+        const result = await dbUtils.executeQuery(`
+            SELECT setting_value FROM session_config
+            WHERE setting_name = 'attendance_reactions'
+        `);
+
+        if (result.rows.length === 0) {
+            return {
+                '✅': 'yes',
+                '❌': 'no',
+                '❓': 'maybe',
+                '⏰': 'late',
+                '🏃': 'early',
+                '⏳': 'late_and_early'
+            };
+        }
+
+        return JSON.parse(result.rows[0].setting_value);
+    }
+
+    formatSessionDate(dateTime) {
+        return new Date(dateTime).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+    }
+
+    async checkAutoCancel(sessionId) {
+        const result = await dbUtils.executeQuery(
+            'SELECT check_session_auto_cancel($1) as should_cancel',
+            [sessionId]
+        );
+
+        if (result.rows[0].should_cancel) {
+            await this.cancelSession(sessionId, 'Automatic cancellation due to insufficient players');
+        }
+    }
+
+    // ========================================================================
+    // MISSING HELPER METHODS
+    // ========================================================================
+
+    async getNonResponders(sessionId) {
+        try {
+            const result = await dbUtils.executeQuery(`
+                SELECT DISTINCT u.id, u.username, u.discord_id, u.discord_username
+                FROM users u
+                WHERE u.discord_id IS NOT NULL
+                AND u.id NOT IN (
+                    SELECT user_id FROM session_attendance WHERE session_id = $1
+                )
+            `, [sessionId]);
+
+            return result.rows;
+        } catch (error) {
+            logger.error('Failed to get non-responders:', error);
+            throw error;
+        }
+    }
+
+    async updateSessionMessage(sessionId) {
+        try {
+            const session = await this.getSession(sessionId);
+            if (!session || !session.announcement_message_id) {
+                logger.info('No message to update for session:', sessionId);
+                return;
+            }
+
+            const attendance = await this.getSessionAttendance(sessionId);
+            const embed = await this.createSessionEmbed(session, attendance);
+
+            const settings = await this.getDiscordSettings();
+            if (settings.discord_bot_token && settings.discord_channel_id) {
+                await discordService.updateMessage({
+                    channelId: settings.discord_channel_id,
+                    messageId: session.announcement_message_id,
+                    embed
+                });
+            }
+        } catch (error) {
+            logger.error('Failed to update session message:', error);
+        }
+    }
+
+    async recordReminder(sessionId, reminderType, targetUsers) {
+        try {
+            await dbUtils.executeQuery(`
+                INSERT INTO session_reminders (session_id, reminder_type, target_audience, sent, sent_at, days_before)
+                VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, 0)
+            `, [sessionId, reminderType, 'custom']);
+
+            logger.info('Reminder recorded:', { sessionId, reminderType, targetCount: targetUsers.length });
+        } catch (error) {
+            logger.error('Failed to record reminder:', error);
+            throw error;
+        }
+    }
+
+    async createReminderEmbed(session, targetUsers) {
+        const attendanceData = await this.getSessionAttendance(session.id);
+
+        const confirmedCount = attendanceData.filter(a => a.response_type === 'yes').length;
+        const declinedCount = attendanceData.filter(a => a.response_type === 'no').length;
+        const maybeCount = attendanceData.filter(a => a.response_type === 'maybe').length;
+
+        return {
+            title: `📅 Reminder: ${session.title}`,
+            description: session.description || 'Session reminder',
+            color: 0xFFA500, // Orange for reminders
+            fields: [
+                {
+                    name: '📅 Date & Time',
+                    value: this.formatSessionDate(session.start_time),
+                    inline: true
+                },
+                {
+                    name: '👥 Current Attendance',
+                    value: `✅ ${confirmedCount} confirmed\n❌ ${declinedCount} declined\n❓ ${maybeCount} maybe`,
+                    inline: true
+                },
+                {
+                    name: '📋 Status',
+                    value: `Minimum players: ${session.minimum_players}\nStatus: ${session.status}`,
+                    inline: true
+                }
+            ],
+            timestamp: new Date().toISOString()
+        };
+    }
+
+    async createSessionEmbed(session, attendance = null) {
+        if (!attendance) {
+            attendance = await this.getSessionAttendance(session.id);
+        }
+
+        const confirmedCount = attendance.filter(a => a.response_type === 'yes').length;
+        const declinedCount = attendance.filter(a => a.response_type === 'no').length;
+        const maybeCount = attendance.filter(a => a.response_type === 'maybe').length;
+        const modifiedCount = attendance.filter(a => ['late', 'early', 'late_and_early'].includes(a.response_type)).length;
+
+        // Determine embed color based on session status
+        let color = 0x00FF00; // Green for confirmed
+        if (session.status === 'cancelled') color = 0xFF0000; // Red for cancelled
+        else if (session.status === 'scheduled') color = 0x0099FF; // Blue for scheduled
+
+        return {
+            title: `🎲 ${session.title}`,
+            description: session.description || 'Pathfinder session',
+            color: color,
+            fields: [
+                {
+                    name: '📅 Date & Time',
+                    value: this.formatSessionDate(session.start_time),
+                    inline: true
+                },
+                {
+                    name: '👥 Attendance',
+                    value: `✅ ${confirmedCount}\n❌ ${declinedCount}\n❓ ${maybeCount}\n⏰ ${modifiedCount}`,
+                    inline: true
+                },
+                {
+                    name: '📋 Session Info',
+                    value: `Min players: ${session.minimum_players}\nStatus: ${session.status}`,
+                    inline: true
+                }
+            ],
+            footer: {
+                text: 'React with emojis to update your attendance!'
+            },
+            timestamp: new Date().toISOString()
+        };
+    }
+
+    createAttendanceButtons() {
+        return [
+            {
+                type: 1, // Action Row
+                components: [
+                    {
+                        type: 2, // Button
+                        style: 3, // Success (green)
+                        label: 'Attending',
+                        emoji: { name: '✅' },
+                        custom_id: 'session_attend_yes'
+                    },
+                    {
+                        type: 2, // Button
+                        style: 4, // Danger (red)
+                        label: 'Not Attending',
+                        emoji: { name: '❌' },
+                        custom_id: 'session_attend_no'
+                    },
+                    {
+                        type: 2, // Button
+                        style: 2, // Secondary (gray)
+                        label: 'Maybe',
+                        emoji: { name: '❓' },
+                        custom_id: 'session_attend_maybe'
+                    },
+                    {
+                        type: 2, // Button
+                        style: 1, // Primary (blue)
+                        label: 'Running Late',
+                        emoji: { name: '⏰' },
+                        custom_id: 'session_attend_late'
+                    }
+                ]
+            }
+        ];
+    }
+
+    async addAttendanceReactions(messageId) {
+        try {
+            const settings = await this.getDiscordSettings();
+            const reactionMap = await this.getReactionMap();
+
+            if (settings.discord_bot_token) {
+                const reactions = Object.values(reactionMap);
+                for (const emoji of reactions) {
+                    await discordService.addReaction({
+                        channelId: settings.discord_channel_id,
+                        messageId: messageId,
+                        emoji: emoji
+                    });
+                }
+            }
+        } catch (error) {
+            logger.error('Failed to add reactions to message:', error);
+        }
+    }
+
+    async getConfirmedAttendanceCount(sessionId) {
+        try {
+            const result = await dbUtils.executeQuery(`
+                SELECT COUNT(DISTINCT user_id) as count
+                FROM session_attendance
+                WHERE session_id = $1 AND response_type = 'yes'
+            `, [sessionId]);
+
+            return parseInt(result.rows[0].count) || 0;
+        } catch (error) {
+            logger.error('Failed to get confirmed attendance count:', error);
+            return 0;
+        }
+    }
+
+    async confirmSession(sessionId) {
+        try {
+            const result = await dbUtils.executeQuery(`
+                UPDATE game_sessions
+                SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+                RETURNING *
+            `, [sessionId]);
+
+            if (result.rows.length > 0) {
+                logger.info('Session confirmed:', { sessionId });
+                // Send confirmation message to Discord
+                await this.updateSessionMessage(sessionId);
+            }
+
+            return result.rows[0];
+        } catch (error) {
+            logger.error('Failed to confirm session:', error);
+            throw error;
+        }
+    }
+
+    async cancelSession(sessionId, reason) {
+        try {
+            const result = await dbUtils.executeQuery(`
+                UPDATE game_sessions
+                SET status = 'cancelled', cancelled = TRUE, cancel_reason = $2, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+                RETURNING *
+            `, [sessionId, reason]);
+
+            if (result.rows.length > 0) {
+                logger.info('Session cancelled:', { sessionId, reason });
+                // Send cancellation message to Discord
+                await this.updateSessionMessage(sessionId);
+            }
+
+            return result.rows[0];
+        } catch (error) {
+            logger.error('Failed to cancel session:', error);
+            throw error;
+        }
+    }
+
+    async scheduleSessionEvents(session) {
+        try {
+            // Create default reminders for the session
+            const reminders = [
+                { days_before: session.announcement_days_before || 7, reminder_type: 'initial', target_audience: 'all' },
+                { days_before: 2, reminder_type: 'followup', target_audience: 'non_responders' },
+                { days_before: 1, reminder_type: 'final', target_audience: 'maybe_responders' }
+            ];
+
+            for (const reminder of reminders) {
+                await dbUtils.executeQuery(`
+                    INSERT INTO session_reminders (session_id, days_before, reminder_type, target_audience)
+                    VALUES ($1, $2, $3, $4)
+                `, [session.id, reminder.days_before, reminder.reminder_type, reminder.target_audience]);
+            }
+
+            logger.info('Session events scheduled:', { sessionId: session.id });
+        } catch (error) {
+            logger.error('Failed to schedule session events:', error);
+        }
+    }
+
+    async rescheduleSessionEvents(session) {
+        try {
+            // Cancel existing reminders
+            this.cancelSessionEvents(session.id);
+
+            // Reschedule with new timing
+            await this.scheduleSessionEvents(session);
+
+            logger.info('Session events rescheduled:', { sessionId: session.id });
+        } catch (error) {
+            logger.error('Failed to reschedule session events:', error);
+        }
+    }
+
+    cancelSessionEvents(sessionId) {
+        try {
+            // Mark pending reminders as cancelled
+            dbUtils.executeQuery(`
+                UPDATE session_reminders
+                SET sent = TRUE, sent_at = CURRENT_TIMESTAMP
+                WHERE session_id = $1 AND sent = FALSE
+            `, [sessionId]);
+
+            logger.info('Session events cancelled:', { sessionId });
+        } catch (error) {
+            logger.error('Failed to cancel session events:', error);
+        }
+    }
+
+    async checkTaskGeneration() {
+        // Get sessions that need task generation
+        const result = await dbUtils.executeQuery(`
+            SELECT gs.* FROM game_sessions gs
+            LEFT JOIN session_tasks st ON gs.id = st.session_id
+            WHERE gs.status = 'confirmed'
+            AND gs.start_time > NOW()
+            AND gs.start_time <= NOW() + INTERVAL '4 hours'
+            AND st.id IS NULL
+        `);
+
+        for (const session of result.rows) {
+            try {
+                await this.generateSessionTasks(session);
+            } catch (error) {
+                logger.error(`Failed to generate tasks for session ${session.id}:`, error);
+            }
+        }
+    }
+
+    async generateSessionTasks(session) {
+        try {
+            // Generate automatic tasks for session
+            const tasks = [
+                {
+                    task_type: 'prep_check',
+                    task_description: 'Review session prep and materials',
+                    due_time: new Date(Date.parse(session.start_time) - 2 * 60 * 60 * 1000) // 2 hours before
+                },
+                {
+                    task_type: 'snack_master',
+                    task_description: 'Assign snack master for session',
+                    due_time: new Date(Date.parse(session.start_time) - 24 * 60 * 60 * 1000) // 24 hours before
+                }
+            ];
+
+            for (const task of tasks) {
+                await dbUtils.executeQuery(`
+                    INSERT INTO session_tasks (session_id, task_type, task_description, due_time)
+                    VALUES ($1, $2, $3, $4)
+                `, [session.id, task.task_type, task.task_description, task.due_time]);
+            }
+
+            logger.info('Session tasks generated:', { sessionId: session.id, taskCount: tasks.length });
+        } catch (error) {
+            logger.error('Failed to generate session tasks:', error);
+            throw error;
+        }
+    }
+}
+
+module.exports = new SessionService();

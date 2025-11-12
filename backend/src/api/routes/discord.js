@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const discordController = require('../../controllers/discordController');
 const sessionController = require('../../controllers/sessionController');
+const discordReactionRoutes = require('./discord/reactions');
 const verifyToken = require('../../middleware/auth');
 const logger = require('../../utils/logger');
 
@@ -67,5 +68,9 @@ router.post('/events', (req, res) => {
         processed: false
     });
 });
+
+// Discord reaction events (routed from discord-handler service)
+// Note: This endpoint does not require CSRF protection as it's called by the discord-handler
+router.use('/reactions', discordReactionRoutes);
 
 module.exports = router;

@@ -178,6 +178,82 @@ app.post('/interactions', verifyDiscordRequest, async (req, res) => {
   });
 });
 
+// Discord webhook endpoint for reaction events
+app.post('/webhook', express.json(), async (req, res) => {
+  const event = req.body;
+
+  console.log('Received Discord webhook event:', {
+    type: event.t,
+    eventId: event.s,
+    timestamp: new Date().toISOString()
+  });
+
+  // Handle reaction add/remove events
+  if (event.t === 'MESSAGE_REACTION_ADD' || event.t === 'MESSAGE_REACTION_REMOVE') {
+    const reaction = event.d;
+    const channelId = reaction.channel_id;
+    const messageId = reaction.message_id;
+    const userId = reaction.user_id;
+    const emoji = reaction.emoji.name || reaction.emoji.id;
+    const action = event.t === 'MESSAGE_REACTION_ADD' ? 'add' : 'remove';
+
+    console.log('Processing reaction event:', {
+      action,
+      emoji,
+      messageId,
+      userId,
+      channelId
+    });
+
+    const CAMPAIGN_CONFIG = getCampaignConfig();
+    const campaignConfig = CAMPAIGN_CONFIG[channelId];
+
+    if (!campaignConfig) {
+      console.log(`No campaign configuration found for channel ${channelId}, ignoring reaction`);
+      return res.status(200).send('OK');
+    }
+
+    // Route reaction event to appropriate campaign instance
+    try {
+      const reactionData = {
+        type: 'reaction_event',
+        action: action,
+        message_id: messageId,
+        user_id: userId,
+        emoji: emoji,
+        channel_id: channelId,
+        guild_id: reaction.guild_id,
+        timestamp: new Date().toISOString()
+      };
+
+      const response = await axios.post(
+        `${campaignConfig.endpoint}/discord/reactions`,
+        reactionData,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Forwarded-From': 'discord-handler',
+            'X-Campaign-Instance': campaignConfig.name,
+            'X-Event-Type': 'reaction'
+          },
+          timeout: parseInt(process.env.REQUEST_TIMEOUT) || 2500
+        }
+      );
+
+      console.log(`Successfully routed reaction event to ${campaignConfig.name}:`, response.status);
+      return res.status(200).send('OK');
+
+    } catch (error) {
+      console.error(`Failed to route reaction event to ${campaignConfig.name}:`, error.message);
+      return res.status(200).send('OK'); // Always return 200 to Discord to prevent retries
+    }
+  }
+
+  // Handle other webhook events
+  console.log(`Unhandled webhook event type: ${event.t}`);
+  return res.status(200).send('OK');
+});
+
 // App registration endpoint
 app.post('/register', (req, res) => {
   const { appId, name, description, endpoint, channels } = req.body;

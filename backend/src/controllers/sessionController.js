@@ -239,9 +239,11 @@ const updateAttendance = async (req, res) => {
 };
 
 /**
- * Process Discord interaction for session attendance (new format)
+ * Process Discord interaction for session attendance (enhanced version)
  */
 const processSessionInteraction = async (req, res) => {
+    const sessionService = require('../services/sessionService');
+
     // Add comprehensive logging
     logger.info('Discord interaction received:', {
         type: req.body.type,
@@ -253,12 +255,12 @@ const processSessionInteraction = async (req, res) => {
     });
 
     const { type, data, member, message, user } = req.body;
-    
+
     // Handle ping
     if (type === 1) {
         return res.json({ type: 1 });
     }
-    
+
     // Handle component interaction (button click)
     if (type === 3 && data?.custom_id?.startsWith('session_')) {
         try {
@@ -266,123 +268,106 @@ const processSessionInteraction = async (req, res) => {
             const messageId = message.id;
             const discordUserId = member?.user?.id || user?.id;
             const discordNickname = member?.nick || member?.user?.global_name || member?.user?.username || user?.username;
-            
+
             if (!discordUserId) {
                 return res.json({
                     type: 4,
                     data: { content: "Could not identify user.", flags: 64 }
                 });
             }
-            
-            // Get user info
-            let displayName = discordNickname;
-            const userResult = await dbUtils.executeQuery(
-                'SELECT id, username FROM users WHERE discord_id = $1',
-                [discordUserId]
-            );
-            
-            if (userResult.rows.length > 0) {
-                displayName = userResult.rows[0].username;
-            } else {
-                // Try character name match
-                const charResult = await dbUtils.executeQuery(
-                    'SELECT name FROM characters WHERE LOWER(name) = LOWER($1) AND active = true LIMIT 1',
-                    [discordNickname]
-                );
-                if (charResult.rows.length > 0) {
-                    displayName = charResult.rows[0].name;
-                }
-            }
-            
-            // Get session message
-            const sessionResult = await dbUtils.executeQuery(
-                'SELECT session_date, session_time, responses FROM session_messages WHERE message_id = $1',
-                [messageId]
-            );
-            
-            if (sessionResult.rows.length === 0) {
-                return res.json({
-                    type: 4,
-                    data: { content: "Session not found.", flags: 64 }
-                });
-            }
-            
-            const sessionMessage = sessionResult.rows[0];
-            let responses = {};
 
-            logger.info('Processing session interaction - before parsing:', {
-                messageId,
-                discordUserId,
-                displayName,
-                action,
-                rawResponses: sessionMessage.responses,
-                responseType: typeof sessionMessage.responses
-            });
+            // Map actions to new response types
+            const responseTypeMap = {
+                'yes': 'yes',
+                'no': 'no',
+                'maybe': 'maybe',
+                'late': 'late',
+                'early': 'early',
+                'late_and_early': 'late_and_early'
+            };
 
-            try {
-                responses = JSON.parse(sessionMessage.responses || '{}');
-            } catch (e) {
-                logger.error('Failed to parse responses JSON:', {
-                    error: e.message,
-                    rawResponses: sessionMessage.responses
-                });
-                responses = {};
-            }
-
-            logger.info('Parsed responses before update:', responses);
-
-            const statusMap = { 'yes': 'accepted', 'no': 'declined', 'maybe': 'tentative' };
-            const status = statusMap[action];
-
-            if (!status) {
+            const responseType = responseTypeMap[action];
+            if (!responseType) {
                 return res.json({
                     type: 4,
                     data: { content: "Invalid action.", flags: 64 }
                 });
             }
 
-            // Ensure all response arrays exist
-            if (!responses.accepted) responses.accepted = [];
-            if (!responses.declined) responses.declined = [];
-            if (!responses.tentative) responses.tentative = [];
+            // Find session by message ID
+            const sessionResult = await dbUtils.executeQuery(`
+                SELECT id FROM game_sessions
+                WHERE announcement_message_id = $1 OR confirmation_message_id = $1
+            `, [messageId]);
 
-            // Remove user from all lists
-            Object.keys(responses).forEach(key => {
-                if (Array.isArray(responses[key])) {
-                    const beforeCount = responses[key].length;
-                    responses[key] = responses[key].filter(u => u.discord_id !== discordUserId);
-                    const afterCount = responses[key].length;
-                    if (beforeCount !== afterCount) {
-                        logger.info(`Removed user from ${key}: ${beforeCount} -> ${afterCount}`);
-                    }
+            let sessionId = null;
+
+            if (sessionResult.rows.length > 0) {
+                // Enhanced session found
+                sessionId = sessionResult.rows[0].id;
+            } else {
+                // Fall back to legacy session_messages table
+                const legacyResult = await dbUtils.executeQuery(
+                    'SELECT session_date, session_time, responses FROM session_messages WHERE message_id = $1',
+                    [messageId]
+                );
+
+                if (legacyResult.rows.length === 0) {
+                    return res.json({
+                        type: 4,
+                        data: { content: "Session not found.", flags: 64 }
+                    });
                 }
-            });
 
-            // Add to new status
-            responses[status].push({
-                discord_id: discordUserId,
-                display_name: displayName
-            });
+                // Handle legacy format (existing code)
+                return await handleLegacySessionInteraction(req, res, legacyResult.rows[0], messageId, discordUserId, discordNickname, action);
+            }
 
-            logger.info('Responses after update:', responses);
-            
-            // Update database
-            await dbUtils.executeQuery(
-                'UPDATE session_messages SET responses = $1 WHERE message_id = $2',
-                [JSON.stringify(responses), messageId]
+            // Find user by Discord ID
+            let userId = null;
+            let displayName = discordNickname;
+
+            const userResult = await dbUtils.executeQuery(
+                'SELECT id, username FROM users WHERE discord_id = $1',
+                [discordUserId]
             );
-            
-            // Update Discord message
-            await updateSessionMessageEmbed(messageId, sessionMessage, responses);
-            
+
+            if (userResult.rows.length > 0) {
+                userId = userResult.rows[0].id;
+                displayName = userResult.rows[0].username;
+            } else {
+                // Auto-create user mapping if needed (optional feature)
+                logger.info('Discord user not found, using Discord nickname:', { discordUserId, discordNickname });
+                // For now, proceed without user mapping
+            }
+
+            // Record enhanced attendance if user is mapped
+            if (userId) {
+                await sessionService.recordAttendance(sessionId, userId, responseType, {
+                    discord_id: discordUserId
+                });
+            }
+
+            // Update Discord reaction tracking
+            await dbUtils.executeQuery(`
+                INSERT INTO discord_reaction_tracking
+                (message_id, user_discord_id, reaction_emoji, session_id)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (message_id, user_discord_id, reaction_emoji)
+                DO UPDATE SET reaction_time = CURRENT_TIMESTAMP
+            `, [messageId, discordUserId, getEmojiForResponseType(responseType), sessionId]);
+
+            // Update the Discord message
+            await sessionService.updateSessionMessage(sessionId);
+
             return res.json({
                 type: 4,
                 data: {
-                    content: `You are marked as **${status}** for this session.`,
+                    content: `You are marked as **${responseType}** for this session.`,
                     flags: 64
                 }
             });
-            
+
         } catch (error) {
             logger.error('Session interaction error:', error);
             return res.json({
@@ -391,8 +376,132 @@ const processSessionInteraction = async (req, res) => {
             });
         }
     }
-    
+
     return res.json({ type: 4, data: { content: "Unknown interaction", flags: 64 } });
+};
+
+/**
+ * Handle legacy session interactions (for backward compatibility)
+ */
+const handleLegacySessionInteraction = async (req, res, sessionMessage, messageId, discordUserId, discordNickname, action) => {
+    try {
+        // Get user info
+        let displayName = discordNickname;
+        const userResult = await dbUtils.executeQuery(
+            'SELECT id, username FROM users WHERE discord_id = $1',
+            [discordUserId]
+        );
+
+        if (userResult.rows.length > 0) {
+            displayName = userResult.rows[0].username;
+        } else {
+            // Try character name match
+            const charResult = await dbUtils.executeQuery(
+                'SELECT name FROM characters WHERE LOWER(name) = LOWER($1) AND active = true LIMIT 1',
+                [discordNickname]
+            );
+            if (charResult.rows.length > 0) {
+                displayName = charResult.rows[0].name;
+            }
+        }
+
+        let responses = {};
+
+        logger.info('Processing legacy session interaction - before parsing:', {
+            messageId,
+            discordUserId,
+            displayName,
+            action,
+            rawResponses: sessionMessage.responses,
+            responseType: typeof sessionMessage.responses
+        });
+
+        try {
+            responses = JSON.parse(sessionMessage.responses || '{}');
+        } catch (e) {
+            logger.error('Failed to parse responses JSON:', {
+                error: e.message,
+                rawResponses: sessionMessage.responses
+            });
+            responses = {};
+        }
+
+        logger.info('Parsed responses before update:', responses);
+
+        const statusMap = { 'yes': 'accepted', 'no': 'declined', 'maybe': 'tentative' };
+        const status = statusMap[action];
+
+        if (!status) {
+            return res.json({
+                type: 4,
+                data: { content: "Invalid action.", flags: 64 }
+            });
+        }
+
+        // Ensure all response arrays exist
+        if (!responses.accepted) responses.accepted = [];
+        if (!responses.declined) responses.declined = [];
+        if (!responses.tentative) responses.tentative = [];
+
+        // Remove user from all lists
+        Object.keys(responses).forEach(key => {
+            if (Array.isArray(responses[key])) {
+                const beforeCount = responses[key].length;
+                responses[key] = responses[key].filter(u => u.discord_id !== discordUserId);
+                const afterCount = responses[key].length;
+                if (beforeCount !== afterCount) {
+                    logger.info(`Removed user from ${key}: ${beforeCount} -> ${afterCount}`);
+                }
+            }
+        });
+
+        // Add to new status
+        responses[status].push({
+            discord_id: discordUserId,
+            display_name: displayName
+        });
+
+        logger.info('Responses after update:', responses);
+
+        // Update database
+        await dbUtils.executeQuery(
+            'UPDATE session_messages SET responses = $1 WHERE message_id = $2',
+            [JSON.stringify(responses), messageId]
+        );
+
+        // Update Discord message
+        await updateSessionMessageEmbed(messageId, sessionMessage, responses);
+
+        return res.json({
+            type: 4,
+            data: {
+                content: `You are marked as **${status}** for this session.`,
+                flags: 64
+            }
+        });
+
+    } catch (error) {
+        logger.error('Legacy session interaction error:', error);
+        return res.json({
+            type: 4,
+            data: { content: "An error occurred.", flags: 64 }
+        });
+    }
+};
+
+/**
+ * Get emoji for response type
+ */
+const getEmojiForResponseType = (responseType) => {
+    const emojiMap = {
+        'yes': '✅',
+        'no': '❌',
+        'maybe': '❓',
+        'late': '⏰',
+        'early': '🏃',
+        'late_and_early': '⏳'
+    };
+    return emojiMap[responseType] || '❓';
 };
 
 const processSessionAttendance = async (interactionData) => {

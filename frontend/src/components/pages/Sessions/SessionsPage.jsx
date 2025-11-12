@@ -48,12 +48,18 @@ const SessionsPage = () => {
     const [endTime, setEndTime] = useState(new Date(new Date().setHours(new Date().getHours() + 5)));
     const [description, setDescription] = useState('');
     const [sendDiscordNotification, setSendDiscordNotification] = useState(true);
+    const [minimumPlayers, setMinimumPlayers] = useState(3);
+    const [announcementDaysBefore, setAnnouncementDaysBefore] = useState(7);
+    const [confirmationDaysBefore, setConfirmationDaysBefore] = useState(2);
     
     // Attendance dialog state
     const [openAttendanceDialog, setOpenAttendanceDialog] = useState(false);
     const [currentSession, setCurrentSession] = useState(null);
     const [attendanceStatus, setAttendanceStatus] = useState('accepted');
     const [selectedCharacter, setSelectedCharacter] = useState('');
+    const [attendanceNotes, setAttendanceNotes] = useState('');
+    const [lateArrivalTime, setLateArrivalTime] = useState('');
+    const [earlyDepartureTime, setEarlyDepartureTime] = useState('');
     
     useEffect(() => {
         fetchSessions();
@@ -63,12 +69,20 @@ const SessionsPage = () => {
     const fetchSessions = async () => {
         try {
             setLoading(true);
-            const response = await api.get('/sessions');
+            // Use enhanced session endpoint for better data
+            const response = await api.get('/sessions/enhanced?upcoming_only=true');
             setSessions(response.data.data || []);
             setError(null);
         } catch (err) {
             console.error('Error fetching sessions:', err);
-            setError('Failed to load sessions. Please try again.');
+            // Fallback to legacy endpoint if enhanced fails
+            try {
+                const fallbackResponse = await api.get('/sessions');
+                setSessions(fallbackResponse.data.data || []);
+                setError(null);
+            } catch (fallbackErr) {
+                setError('Failed to load sessions. Please try again.');
+            }
         } finally {
             setLoading(false);
         }
@@ -101,6 +115,9 @@ const SessionsPage = () => {
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
                 description: description,
+                minimum_players: minimumPlayers,
+                announcement_days_before: announcementDaysBefore,
+                confirmation_days_before: confirmationDaysBefore,
                 send_discord_notification: sendDiscordNotification
             };
             
@@ -113,6 +130,9 @@ const SessionsPage = () => {
             setEndTime(new Date(new Date().setHours(new Date().getHours() + 5)));
             setDescription('');
             setSendDiscordNotification(true);
+            setMinimumPlayers(3);
+            setAnnouncementDaysBefore(7);
+            setConfirmationDaysBefore(2);
             setOpenDialog(false);
             
             // Refresh sessions
@@ -154,17 +174,41 @@ const SessionsPage = () => {
     const handleUpdateAttendance = async () => {
         try {
             if (!currentSession) return;
-            
+
+            // Map attendance status to response types
+            let responseType = 'yes';
+            if (attendanceStatus === 'declined') responseType = 'no';
+            if (attendanceStatus === 'tentative') responseType = 'maybe';
+            if (attendanceStatus === 'late') responseType = 'late';
+            if (attendanceStatus === 'early') responseType = 'early';
+
             const attendanceData = {
-                status: attendanceStatus,
-                character_id: attendanceStatus !== 'declined' ? selectedCharacter : null
+                response_type: responseType,
+                character_id: attendanceStatus !== 'declined' ? selectedCharacter : null,
+                notes: attendanceNotes || null,
+                late_arrival_time: lateArrivalTime || null,
+                early_departure_time: earlyDepartureTime || null
             };
-            
-            await api.post(`/sessions/${currentSession.id}/attendance`, attendanceData);
+
+            // Try enhanced endpoint first, fallback to legacy
+            try {
+                await api.post(`/sessions/${currentSession.id}/attendance/detailed`, attendanceData);
+            } catch (enhancedErr) {
+                // Fallback to legacy endpoint
+                const legacyData = {
+                    status: attendanceStatus,
+                    character_id: attendanceStatus !== 'declined' ? selectedCharacter : null
+                };
+                await api.post(`/sessions/${currentSession.id}/attendance`, legacyData);
+            }
+
             enqueueSnackbar('Attendance updated successfully', { variant: 'success' });
-            
+
             // Close dialog and refresh sessions
             setOpenAttendanceDialog(false);
+            setAttendanceNotes('');
+            setLateArrivalTime('');
+            setEarlyDepartureTime('');
             fetchSessions();
         } catch (err) {
             console.error('Error updating attendance:', err);
@@ -183,7 +227,7 @@ const SessionsPage = () => {
                 </Box>
             );
         }
-        
+
         return (
             <Box mt={1}>
                 <Typography variant="subtitle2" color="text.secondary">
@@ -192,10 +236,61 @@ const SessionsPage = () => {
                 {attendees.map((attendee, index) => (
                     <Typography key={index} variant="body2">
                         {attendee.character_name ? `${attendee.character_name} - ${attendee.username}` : attendee.username}
+                        {attendee.notes && (
+                            <Typography variant="caption" display="block" color="text.secondary">
+                                {attendee.notes}
+                            </Typography>
+                        )}
                     </Typography>
                 ))}
             </Box>
         );
+    };
+
+    // Enhanced attendance rendering for new format
+    const renderEnhancedAttendance = (session) => {
+        if (session.confirmed_count !== undefined) {
+            // Enhanced format with counts
+            return (
+                <>
+                    <Box mt={1}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                            Attending ({session.confirmed_count || 0})
+                        </Typography>
+                        <Typography variant="body2">✅ {session.confirmed_count || 0} confirmed</Typography>
+                    </Box>
+                    <Box mt={1}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                            Maybe ({session.maybe_count || 0})
+                        </Typography>
+                        <Typography variant="body2">❓ {session.maybe_count || 0} maybe</Typography>
+                    </Box>
+                    <Box mt={1}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                            Not Attending ({session.declined_count || 0})
+                        </Typography>
+                        <Typography variant="body2">❌ {session.declined_count || 0} declined</Typography>
+                    </Box>
+                    {session.modified_count > 0 && (
+                        <Box mt={1}>
+                            <Typography variant="subtitle2" color="text.secondary">
+                                Modified Attendance ({session.modified_count})
+                            </Typography>
+                            <Typography variant="body2">⏰ {session.modified_count} with timing changes</Typography>
+                        </Box>
+                    )}
+                </>
+            );
+        } else {
+            // Legacy format
+            return (
+                <>
+                    {renderAttendanceList(session.attendance?.accepted, 'Attending')}
+                    {renderAttendanceList(session.attendance?.tentative, 'Maybe')}
+                    {renderAttendanceList(session.attendance?.declined, 'Not Attending')}
+                </>
+            );
+        }
     };
     
     const renderSession = (session) => {
@@ -257,9 +352,7 @@ const SessionsPage = () => {
                     
                     <Grid container spacing={2} size={12}>
                         <Grid size={{xs: 12, md: 8}}>
-                            {renderAttendanceList(session.attendance?.accepted, 'Attending')}
-                            {renderAttendanceList(session.attendance?.tentative, 'Maybe')}
-                            {renderAttendanceList(session.attendance?.declined, 'Not Attending')}
+                            {renderEnhancedAttendance(session)}
                         </Grid>
                         <Grid size={{xs: 12, md: 4}}>
                             <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" height="100%">
@@ -371,6 +464,39 @@ const SessionsPage = () => {
                             onChange={(e) => setDescription(e.target.value)}
                             sx={{ mb: 3 }}
                         />
+
+                        <Grid container spacing={3} size={12} sx={{ mb: 3 }}>
+                            <Grid size={{xs: 12, md: 4}}>
+                                <TextField
+                                    label="Minimum Players"
+                                    type="number"
+                                    fullWidth
+                                    value={minimumPlayers}
+                                    onChange={(e) => setMinimumPlayers(Math.max(1, parseInt(e.target.value) || 3))}
+                                    inputProps={{ min: 1, max: 10 }}
+                                />
+                            </Grid>
+                            <Grid size={{xs: 12, md: 4}}>
+                                <TextField
+                                    label="Announcement Days Before"
+                                    type="number"
+                                    fullWidth
+                                    value={announcementDaysBefore}
+                                    onChange={(e) => setAnnouncementDaysBefore(Math.max(1, parseInt(e.target.value) || 7))}
+                                    inputProps={{ min: 1, max: 30 }}
+                                />
+                            </Grid>
+                            <Grid size={{xs: 12, md: 4}}>
+                                <TextField
+                                    label="Confirmation Days Before"
+                                    type="number"
+                                    fullWidth
+                                    value={confirmationDaysBefore}
+                                    onChange={(e) => setConfirmationDaysBefore(Math.max(1, parseInt(e.target.value) || 2))}
+                                    inputProps={{ min: 1, max: 14 }}
+                                />
+                            </Grid>
+                        </Grid>
                         
                         <FormControlLabel
                             control={
@@ -416,6 +542,8 @@ const SessionsPage = () => {
                                 <FormControlLabel value="accepted" control={<Radio />} label="Yes, I'll be there" />
                                 <FormControlLabel value="tentative" control={<Radio />} label="Maybe / Not sure yet" />
                                 <FormControlLabel value="declined" control={<Radio />} label="No, I can't make it" />
+                                <FormControlLabel value="late" control={<Radio />} label="Yes, but I'll be late" />
+                                <FormControlLabel value="early" control={<Radio />} label="Yes, but I need to leave early" />
                             </RadioGroup>
                         </FormControl>
                     </Box>
@@ -436,6 +564,41 @@ const SessionsPage = () => {
                                 ))}
                             </Select>
                         </FormControl>
+                    )}
+
+                    {(attendanceStatus === 'late') && (
+                        <TextField
+                            label="Arrival Time (e.g., 7:30 PM)"
+                            fullWidth
+                            value={lateArrivalTime}
+                            onChange={(e) => setLateArrivalTime(e.target.value)}
+                            sx={{ mt: 2 }}
+                            placeholder="When will you arrive?"
+                        />
+                    )}
+
+                    {(attendanceStatus === 'early') && (
+                        <TextField
+                            label="Departure Time (e.g., 9:30 PM)"
+                            fullWidth
+                            value={earlyDepartureTime}
+                            onChange={(e) => setEarlyDepartureTime(e.target.value)}
+                            sx={{ mt: 2 }}
+                            placeholder="When do you need to leave?"
+                        />
+                    )}
+
+                    {attendanceStatus !== 'declined' && (
+                        <TextField
+                            label="Notes (Optional)"
+                            fullWidth
+                            multiline
+                            rows={2}
+                            value={attendanceNotes}
+                            onChange={(e) => setAttendanceNotes(e.target.value)}
+                            sx={{ mt: 2 }}
+                            placeholder="Any additional comments..."
+                        />
                     )}
                 </DialogContent>
                 <DialogActions>

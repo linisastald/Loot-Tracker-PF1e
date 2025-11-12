@@ -273,7 +273,7 @@ app.use('/api/loot', csrfProtection, lootRoutes);
 app.use('/api/user', csrfProtection, userRoutes);
 app.use('/api/gold', csrfProtection, goldRoutes);
 
-// Create selective CSRF middleware that skips /interactions endpoint
+// Create selective CSRF middleware that skips Discord service endpoints
 const selectiveCSRFProtection = (req, res, next) => {
   logger.info(`Discord route middleware check - path: ${req.path}, method: ${req.method}, originalUrl: ${req.originalUrl}`);
 
@@ -284,6 +284,11 @@ const selectiveCSRFProtection = (req, res, next) => {
   }
   if (req.path === '/interactions/test' && req.method === 'GET') {
     logger.info('Skipping CSRF protection for Discord interactions test GET');
+    return next();
+  }
+  // Skip CSRF protection for Discord reaction events endpoint
+  if (req.path === '/reactions' && req.method === 'POST') {
+    logger.info('Skipping CSRF protection for Discord reactions POST');
     return next();
   }
   // Apply CSRF protection for all other routes
