@@ -1,0 +1,99 @@
+# More stable Dockerfile with better network handling
+# Compatible with existing TrueNAS deployment
+
+FROM node:20-alpine
+
+# Install system dependencies for better networking
+RUN apk add --no-cache curl wget
+
+# Set working directory
+WORKDIR /app
+
+# Build arguments
+ARG NODE_ENV=production
+ARG REACT_APP_API_URL=/api
+
+# Configure npm globally for better network handling
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set fetch-retries 10 && \
+    npm config set fetch-retry-factor 2 && \
+    npm config set fetch-retry-mintimeout 10000 && \
+    npm config set fetch-retry-maxtimeout 180000 && \
+    npm config set maxsockets 5
+
+# Copy package files
+COPY frontend/package*.json ./frontend/
+COPY frontend/tsconfig.json ./frontend/
+COPY frontend/vite.config.js ./frontend/
+COPY backend/package*.json ./backend/
+
+# Install frontend dependencies with robust retry logic
+RUN echo "Installing frontend dependencies..." && \
+    cd frontend && \
+    timeout 300 npm ci --include=dev --ignore-scripts || \
+    (echo "First attempt failed, clearing cache and retrying..." && \
+     npm cache clean --force && \
+     timeout 300 npm ci --include=dev --ignore-scripts) || \
+    (echo "Second attempt failed, using npm install as fallback..." && \
+     npm cache clean --force && \
+     timeout 300 npm install --include=dev --ignore-scripts)
+
+# Install backend dependencies with robust retry logic
+RUN echo "Installing backend dependencies..." && \
+    cd backend && \
+    timeout 300 npm ci --ignore-scripts || \
+    (echo "First attempt failed, clearing cache and retrying..." && \
+     npm cache clean --force && \
+     timeout 300 npm ci --ignore-scripts) || \
+    (echo "Second attempt failed, using npm install as fallback..." && \
+     npm cache clean --force && \
+     timeout 300 npm install --ignore-scripts)
+
+# Copy source code
+COPY frontend/src ./frontend/src
+COPY frontend/index.html ./frontend/
+COPY backend/src ./backend/src
+COPY backend/migrations ./backend/migrations
+COPY backend/index.js ./backend/
+
+# Build frontend
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ENV NODE_ENV=production
+RUN echo "Building frontend..." && \
+    cd frontend && \
+    npm run build
+
+# Clean up dev dependencies to reduce image size
+RUN cd frontend && npm prune --production
+
+# Copy frontend build to backend location
+RUN mkdir -p backend/frontend && cp -r frontend/build backend/frontend/
+
+# Copy database files with node user ownership
+COPY --chown=node:node database/ ./backend/database/
+
+# Create logs directory in backend folder with proper ownership
+RUN mkdir -p /app/backend/logs && chown -R node:node /app/backend/logs
+
+# Switch to non-root user
+USER node
+
+# Set working directory to backend
+WORKDIR /app/backend
+
+# Expose backend port
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "const http = require('http'); \
+    const options = { hostname: 'localhost', port: 5000, path: '/api/health', timeout: 2000 }; \
+    const req = http.request(options, (res) => { \
+      if (res.statusCode === 200) process.exit(0); else process.exit(1); \
+    }); \
+    req.on('error', () => process.exit(1)); \
+    req.on('timeout', () => process.exit(1)); \
+    req.end();"
+
+# Start backend server (which serves frontend too)
+CMD ["node", "index.js"]
