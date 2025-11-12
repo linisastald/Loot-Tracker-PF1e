@@ -397,12 +397,14 @@ class MigrationRunner {
     try {
       logger.info('Starting migration check...');
 
-      // Acquire lock to prevent concurrent migrations
+      // Initialize migration system first (this creates the necessary tables)
+      await this.initMigrationSystem();
+
+      // Then acquire lock to prevent concurrent migrations
       await this.acquireLock(processId);
 
       try {
-        // Initialize migration system
-        await this.initMigrationSystem();
+        // Migration system is now ready
 
         // Get applied and available migrations
         const appliedMigrations = await this.getAppliedMigrations();
