@@ -94,24 +94,26 @@ const createSession = async (req, res) => {
  */
 const updateSession = async (req, res) => {
     const { id } = req.params;
-    const { title, start_time, end_time, description } = req.body;
-    
+    const { title, start_time, end_time, description, status, cancel_reason } = req.body;
+
     if (!id || isNaN(parseInt(id))) {
         throw controllerFactory.createValidationError('Valid session ID is required');
     }
-    
+
     // Check if session exists
     const existing = await Session.findById(parseInt(id));
     if (!existing) {
         throw controllerFactory.createNotFoundError('Session not found');
     }
-    
+
     // Prepare update data
     const updateData = {};
-    
+
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
-    
+    if (status !== undefined) updateData.status = status;
+    if (cancel_reason !== undefined) updateData.cancel_reason = cancel_reason;
+
     if (start_time !== undefined) {
         const startDate = new Date(start_time);
         if (isNaN(startDate.getTime())) {
@@ -119,7 +121,7 @@ const updateSession = async (req, res) => {
         }
         updateData.start_time = startDate;
     }
-    
+
     if (end_time !== undefined) {
         const endDate = new Date(end_time);
         if (isNaN(endDate.getTime())) {
@@ -127,12 +129,12 @@ const updateSession = async (req, res) => {
         }
         updateData.end_time = endDate;
     }
-    
+
     // Validate that end time is after start time if both are being updated
     if (updateData.start_time && updateData.end_time && updateData.end_time <= updateData.start_time) {
         throw controllerFactory.createValidationError('End time must be after start time');
     }
-    
+
     // Update the session
     updateData.updated_at = new Date();
     const updated = await Session.update(parseInt(id), updateData);
