@@ -195,15 +195,25 @@ class SessionService {
                 discord_id
             } = additionalData;
 
+            // Map response type to status for database constraint
+            const statusMap = {
+                'yes': 'accepted',
+                'no': 'declined',
+                'maybe': 'tentative',
+                'late': 'accepted' // Late but still attending
+            };
+            const status = statusMap[responseType] || 'tentative';
+
             // Upsert attendance record
             const attendanceResult = await client.query(`
                 INSERT INTO session_attendance (
-                    session_id, user_id, response_type, late_arrival_time,
+                    session_id, user_id, status, response_type, late_arrival_time,
                     early_departure_time, notes, response_timestamp
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 ON CONFLICT (session_id, user_id)
                 DO UPDATE SET
+                    status = EXCLUDED.status,
                     response_type = EXCLUDED.response_type,
                     late_arrival_time = EXCLUDED.late_arrival_time,
                     early_departure_time = EXCLUDED.early_departure_time,
@@ -211,7 +221,7 @@ class SessionService {
                     response_timestamp = NOW(),
                     updated_at = NOW()
                 RETURNING *
-            `, [sessionId, userId, responseType, late_arrival_time, early_departure_time, notes]);
+            `, [sessionId, userId, status, responseType, late_arrival_time, early_departure_time, notes]);
 
             const attendance = attendanceResult.rows[0];
 

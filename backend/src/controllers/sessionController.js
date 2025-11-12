@@ -285,11 +285,17 @@ const processSessionInteraction = async (req, res) => {
                 'maybe': 'maybe',
                 'late': 'late',
                 'early': 'early',
-                'late_and_early': 'late_and_early'
+                'late_and_early': 'late_and_early',
+                // Handle "attend_" prefix from Discord buttons
+                'attend_yes': 'yes',
+                'attend_no': 'no',
+                'attend_maybe': 'maybe',
+                'attend_late': 'late'
             };
 
             const responseType = responseTypeMap[action];
             if (!responseType) {
+                logger.warn('Invalid action received from Discord button:', { action, customId: data.custom_id });
                 return res.json({
                     type: 4,
                     data: { content: "Invalid action.", flags: 64 }
