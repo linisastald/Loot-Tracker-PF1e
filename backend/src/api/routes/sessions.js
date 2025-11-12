@@ -36,10 +36,10 @@ router.get('/enhanced', verifyToken, async (req, res) => {
         const result = await dbUtils.executeQuery(`
             SELECT
                 gs.*,
-                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.response_type = 'yes') as confirmed_count,
-                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.response_type = 'no') as declined_count,
-                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.response_type = 'maybe') as maybe_count,
-                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.response_type IN ('late', 'early', 'late_and_early')) as modified_count
+                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.status = 'accepted') as confirmed_count,
+                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.status = 'declined') as declined_count,
+                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.status = 'tentative') as maybe_count,
+                0 as modified_count
             FROM game_sessions gs
             LEFT JOIN session_attendance sa ON gs.id = sa.session_id
             WHERE ${whereClause}
@@ -184,7 +184,7 @@ router.post('/:id/remind', verifyToken, checkRole('DM'), [
 // Record detailed attendance with timing and notes
 router.post('/:id/attendance/detailed', verifyToken, [
     param('id').isInt().withMessage('Session ID must be an integer'),
-    body('response_type').isIn(['yes', 'no', 'maybe', 'late', 'early', 'late_and_early']).withMessage('Invalid response type'),
+    body('response_type').isIn(['accepted', 'declined', 'tentative']).withMessage('Invalid response type'),
     body('late_arrival_time').optional().matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid time format'),
     body('early_departure_time').optional().matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid time format'),
     body('notes').optional().isLength({ max: 500 }).withMessage('Notes must be under 500 characters')
