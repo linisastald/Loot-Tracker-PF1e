@@ -93,16 +93,17 @@ const SessionsPage = () => {
             setLoading(true);
             // Use enhanced session endpoint for better data - show all sessions, not just upcoming
             const response = await api.get('/sessions/enhanced');
-            setSessions(response.data.data || []);
+            setSessions(response.data || []);
             setError(null);
         } catch (err) {
             console.error('Error fetching sessions:', err);
             // Fallback to legacy endpoint if enhanced fails
             try {
                 const fallbackResponse = await api.get('/sessions');
-                setSessions(fallbackResponse.data.data || []);
+                setSessions(fallbackResponse.data || []);
                 setError(null);
             } catch (fallbackErr) {
+                console.error('Fallback error:', fallbackErr);
                 setError('Failed to load sessions. Please try again.');
             }
         } finally {
@@ -113,7 +114,7 @@ const SessionsPage = () => {
     const fetchCharacters = async () => {
         try {
             const response = await api.get('/user/characters');
-            setCharacters(response.data.data.filter(char => char.active) || []);
+            setCharacters(response.data.filter(char => char.active) || []);
         } catch (err) {
             console.error('Error fetching characters:', err);
             // Non-critical, so just log the error
