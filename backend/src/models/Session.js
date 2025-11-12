@@ -89,11 +89,14 @@ class Session extends BaseModel {
         const query = `
             INSERT INTO session_attendance (session_id, user_id, character_id, status, updated_at)
             VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (session_id, user_id) 
-            DO UPDATE SET status = $4, character_id = $3, updated_at = NOW()
+            ON CONFLICT (session_id, user_id)
+            DO UPDATE SET
+                status = EXCLUDED.status,
+                character_id = EXCLUDED.character_id,
+                updated_at = EXCLUDED.updated_at
             RETURNING *
         `;
-        
+
         const result = await dbUtils.executeQuery(query, [sessionId, userId, characterId, status]);
         return result.rows[0];
     }

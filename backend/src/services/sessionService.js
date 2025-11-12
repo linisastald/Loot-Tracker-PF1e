@@ -200,9 +200,13 @@ class SessionService {
                 'yes': 'accepted',
                 'no': 'declined',
                 'maybe': 'tentative',
-                'late': 'accepted' // Late but still attending
+                'late': 'accepted', // Late but still attending
+                // Also handle direct status values (for backward compatibility)
+                'accepted': 'accepted',
+                'declined': 'declined',
+                'tentative': 'tentative'
             };
-            const status = statusMap[responseType] || 'tentative';
+            const status = statusMap[responseType] || statusMap[responseType?.toLowerCase()] || 'tentative';
 
             // Upsert attendance record
             const attendanceResult = await client.query(`
