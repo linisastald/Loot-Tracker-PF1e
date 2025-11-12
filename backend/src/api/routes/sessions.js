@@ -16,43 +16,7 @@ const logger = require('../../utils/logger');
 // Get all upcoming sessions
 router.get('/', verifyToken, sessionController.getUpcomingSessions);
 
-// Get a specific session with validation
-router.get('/:id', validate({
-  params: {
-    id: { type: 'number', required: true, min: 1 }
-  }
-}), verifyToken, sessionController.getSession);
-
-// Create a new session (DM only) with validation
-router.post('/', verifyToken, checkRole('DM'), createValidationMiddleware('createSession'), sessionController.createSession);
-
-// Update a session (DM only) with validation
-router.put('/:id', validate({
-  params: {
-    id: { type: 'number', required: true, min: 1 }
-  },
-  body: {
-    title: { type: 'string', required: true, minLength: 1, maxLength: 255 },
-    start_time: { type: 'string', required: true, format: 'datetime' },
-    end_time: { type: 'string', required: true, format: 'datetime' },
-    description: { type: 'string', required: false, maxLength: 1000 }
-  }
-}), verifyToken, checkRole('DM'), sessionController.updateSession);
-
-// Delete a session (DM only)
-router.delete('/:id', verifyToken, checkRole('DM'), sessionController.deleteSession);
-
-// Update attendance for a session
-router.post('/:id/attendance', verifyToken, sessionController.updateAttendance);
-
-// Trigger manual check for sessions that need notifications (DM only)
-router.post('/check-notifications', verifyToken, checkRole('DM'), sessionController.checkAndSendSessionNotifications);
-
-// ========================================================================
-// ENHANCED SESSION MANAGEMENT ROUTES
-// ========================================================================
-
-// Get enhanced session list with attendance counts
+// Get enhanced session list with attendance counts (must come before /:id)
 router.get('/enhanced', verifyToken, async (req, res) => {
     try {
         const { status, upcoming_only = 'false' } = req.query;
@@ -103,6 +67,65 @@ router.get('/upcoming-detailed', verifyToken, async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to fetch upcoming sessions' });
     }
 });
+
+// Get user's Discord mapping
+router.get('/discord-mapping', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const result = await dbUtils.executeQuery(`
+            SELECT id, username, discord_id, discord_username
+            FROM users
+            WHERE id = $1
+        `, [userId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        res.json({ success: true, data: result.rows[0] });
+
+    } catch (error) {
+        logger.error('Failed to fetch Discord mapping:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch Discord mapping' });
+    }
+});
+
+// Get a specific session with validation
+router.get('/:id', validate({
+  params: {
+    id: { type: 'number', required: true, min: 1 }
+  }
+}), verifyToken, sessionController.getSession);
+
+// Create a new session (DM only) with validation
+router.post('/', verifyToken, checkRole('DM'), createValidationMiddleware('createSession'), sessionController.createSession);
+
+// Update a session (DM only) with validation
+router.put('/:id', validate({
+  params: {
+    id: { type: 'number', required: true, min: 1 }
+  },
+  body: {
+    title: { type: 'string', required: true, minLength: 1, maxLength: 255 },
+    start_time: { type: 'string', required: true, format: 'datetime' },
+    end_time: { type: 'string', required: true, format: 'datetime' },
+    description: { type: 'string', required: false, maxLength: 1000 }
+  }
+}), verifyToken, checkRole('DM'), sessionController.updateSession);
+
+// Delete a session (DM only)
+router.delete('/:id', verifyToken, checkRole('DM'), sessionController.deleteSession);
+
+// Update attendance for a session
+router.post('/:id/attendance', verifyToken, sessionController.updateAttendance);
+
+// Trigger manual check for sessions that need notifications (DM only)
+router.post('/check-notifications', verifyToken, checkRole('DM'), sessionController.checkAndSendSessionNotifications);
+
+// ========================================================================
+// ENHANCED SESSION MANAGEMENT ROUTES
+// ========================================================================
 
 // ========================================================================
 // DISCORD INTEGRATION ROUTES
@@ -359,29 +382,6 @@ router.post('/link-discord', verifyToken, [
         }
         logger.error('Failed to link Discord account:', error);
         res.status(500).json({ success: false, message: 'Failed to link Discord account' });
-    }
-});
-
-// Get user's Discord mapping
-router.get('/discord-mapping', verifyToken, async (req, res) => {
-    try {
-        const userId = req.user.id;
-
-        const result = await dbUtils.executeQuery(`
-            SELECT id, username, discord_id, discord_username
-            FROM users
-            WHERE id = $1
-        `, [userId]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-
-        res.json({ success: true, data: result.rows[0] });
-
-    } catch (error) {
-        logger.error('Failed to fetch Discord mapping:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch Discord mapping' });
     }
 });
 
