@@ -15,8 +15,8 @@ const crypto = require('crypto');
 const { initCronJobs } = require('./src/utils/cronJobs');
 const discordBrokerService = require('./src/services/discordBrokerService');
 const sessionService = require('./src/services/sessionService');
-// Migration runner no longer needed - database schema is now fully consolidated in database/init_complete.sql
-// const migrationRunner = require('./src/utils/migrationRunner');
+// Migration runner for handling database schema updates
+const migrationRunner = require('./src/utils/migrationRunner');
 const { RATE_LIMIT, SERVER, COOKIES } = require('./src/config/constants');
 
 // Enhanced error handling
@@ -366,9 +366,10 @@ app.use(errorHandler);
 // Start server
 const startServer = async () => {
   try {
-    // Database migrations are no longer needed - schema is consolidated in database/init_complete.sql
-    // For new installations, run database/init_complete.sql to set up the complete schema
-    logger.info('Skipping migrations - using consolidated database schema');
+    // Run database migrations to ensure schema is up to date
+    logger.info('Running database migrations...');
+    await migrationRunner.runMigrations();
+    logger.info('Database migrations completed');
 
     // Start the server
     const server = app.listen(port, () => {
