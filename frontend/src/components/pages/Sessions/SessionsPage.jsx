@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../../../contexts/AuthContext';
 import api from '../../../utils/api';
 import {
     Box,
@@ -38,8 +37,20 @@ const SessionsPage = () => {
     const [characters, setCharacters] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const { user } = useAuth();
+    const [user, setUser] = useState(null);
     const { enqueueSnackbar } = useSnackbar();
+
+    // Get user from localStorage
+    useEffect(() => {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch (e) {
+                console.error('Error parsing stored user data:', e);
+            }
+        }
+    }, []);
     
     // New session dialog state
     const [openDialog, setOpenDialog] = useState(false);
@@ -160,14 +171,14 @@ const SessionsPage = () => {
     };
     
     const findUserAttendance = (session) => {
-        if (!session || !session.attendance) return null;
-        
+        if (!session || !session.attendance || !user) return null;
+
         // Check all attendance statuses
         for (const status of ['accepted', 'declined', 'tentative']) {
             const found = session.attendance[status]?.find(attendee => attendee.user_id === user.id);
             if (found) return { ...found, status };
         }
-        
+
         return null;
     };
     

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../utils/api';
-import { useAuth } from '../../../contexts/AuthContext';
 import {
     Alert,
     Box,
@@ -46,8 +45,20 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
     const [notes, setNotes] = useState([]);
     const [addNoteDialog, setAddNoteDialog] = useState(false);
     const [error, setError] = useState('');
-    const { user } = useAuth();
+    const [user, setUser] = useState(null);
     const { enqueueSnackbar } = useSnackbar();
+
+    // Get user from localStorage
+    useEffect(() => {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            try {
+                setUser(JSON.parse(storedUser));
+            } catch (e) {
+                console.error('Error parsing stored user data:', e);
+            }
+        }
+    }, []);
 
     // Add note form state
     const [newNoteType, setNewNoteType] = useState('general');
