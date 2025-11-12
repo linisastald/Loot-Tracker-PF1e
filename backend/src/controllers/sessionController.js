@@ -309,35 +309,62 @@ const processSessionInteraction = async (req, res) => {
             
             const sessionMessage = sessionResult.rows[0];
             let responses = {};
+
+            logger.info('Processing session interaction - before parsing:', {
+                messageId,
+                discordUserId,
+                displayName,
+                action,
+                rawResponses: sessionMessage.responses,
+                responseType: typeof sessionMessage.responses
+            });
+
             try {
                 responses = JSON.parse(sessionMessage.responses || '{}');
             } catch (e) {
+                logger.error('Failed to parse responses JSON:', {
+                    error: e.message,
+                    rawResponses: sessionMessage.responses
+                });
                 responses = {};
             }
-            
+
+            logger.info('Parsed responses before update:', responses);
+
             const statusMap = { 'yes': 'accepted', 'no': 'declined', 'maybe': 'tentative' };
             const status = statusMap[action];
-            
+
             if (!status) {
                 return res.json({
                     type: 4,
                     data: { content: "Invalid action.", flags: 64 }
                 });
             }
-            
+
+            // Ensure all response arrays exist
+            if (!responses.accepted) responses.accepted = [];
+            if (!responses.declined) responses.declined = [];
+            if (!responses.tentative) responses.tentative = [];
+
             // Remove user from all lists
             Object.keys(responses).forEach(key => {
                 if (Array.isArray(responses[key])) {
+                    const beforeCount = responses[key].length;
                     responses[key] = responses[key].filter(u => u.discord_id !== discordUserId);
+                    const afterCount = responses[key].length;
+                    if (beforeCount !== afterCount) {
+                        logger.info(`Removed user from ${key}: ${beforeCount} -> ${afterCount}`);
+                    }
                 }
             });
-            
+
             // Add to new status
-            if (!responses[status]) responses[status] = [];
             responses[status].push({
                 discord_id: discordUserId,
                 display_name: displayName
             });
+
+            logger.info('Responses after update:', responses);
             
             // Update database
             await dbUtils.executeQuery(
