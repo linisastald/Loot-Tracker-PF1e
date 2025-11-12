@@ -14,6 +14,7 @@ const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
 const { initCronJobs } = require('./src/utils/cronJobs');
 const discordBrokerService = require('./src/services/discordBrokerService');
+const sessionService = require('./src/services/sessionService');
 // Migration runner no longer needed - database schema is now fully consolidated in database/init_complete.sql
 // const migrationRunner = require('./src/utils/migrationRunner');
 const { RATE_LIMIT, SERVER, COOKIES } = require('./src/config/constants');
@@ -376,6 +377,10 @@ const startServer = async () => {
       // Initialize cron jobs
       initCronJobs();
       logger.info('Cron jobs initialized');
+
+      // Initialize enhanced session service
+      sessionService.initialize();
+      logger.info('Session service initialized');
 
       // Start Discord broker integration
       discordBrokerService.start().catch(error => {

@@ -26,6 +26,9 @@ class SessionService {
             // Schedule task generation
             this.scheduleTaskGeneration();
 
+            // Schedule session completion checks
+            this.scheduleSessionCompletions();
+
             this.isInitialized = true;
             logger.info('Session service initialized successfully');
         } catch (error) {
@@ -505,6 +508,17 @@ class SessionService {
         });
     }
 
+    scheduleSessionCompletions() {
+        // Run every hour to check for sessions that need to be marked as completed
+        cron.schedule('0 * * * *', async () => {
+            try {
+                await this.checkSessionCompletions();
+            } catch (error) {
+                logger.error('Error in scheduled session completion check:', error);
+            }
+        });
+    }
+
     async checkPendingAnnouncements() {
         const result = await dbUtils.executeQuery(`
             SELECT gs.* FROM game_sessions gs
@@ -965,6 +979,160 @@ class SessionService {
             } catch (error) {
                 logger.error(`Failed to generate tasks for session ${session.id}:`, error);
             }
+        }
+    }
+
+    async checkSessionCompletions() {
+        try {
+            // Find sessions that have ended but are not yet marked as completed
+            const result = await pool.query(`
+                SELECT gs.*
+                FROM game_sessions gs
+                WHERE gs.status IN ('scheduled', 'confirmed')
+                AND gs.start_time + INTERVAL '6 hours' < NOW()
+                AND gs.start_time < NOW()
+            `);
+
+            for (const session of result.rows) {
+                try {
+                    await this.completeSession(session.id);
+                    logger.info(`Auto-completed session: ${session.id} - ${session.title}`);
+                } catch (error) {
+                    logger.error(`Failed to auto-complete session ${session.id}:`, error);
+                }
+            }
+
+        } catch (error) {
+            logger.error('Error checking session completions:', error);
+        }
+    }
+
+    async completeSession(sessionId) {
+        const client = await pool.connect();
+
+        try {
+            await client.query('BEGIN');
+
+            // Mark session as completed
+            const sessionResult = await client.query(`
+                UPDATE game_sessions
+                SET
+                    status = 'completed',
+                    completed_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = $1 AND status IN ('scheduled', 'confirmed')
+                RETURNING *
+            `, [sessionId]);
+
+            if (sessionResult.rows.length === 0) {
+                throw new Error('Session not found or already completed');
+            }
+
+            const session = sessionResult.rows[0];
+
+            // Generate post-session summary
+            const attendanceResult = await client.query(`
+                SELECT
+                    COUNT(*) FILTER (WHERE response_type = 'yes') as confirmed_count,
+                    COUNT(*) FILTER (WHERE response_type = 'no') as declined_count,
+                    COUNT(*) FILTER (WHERE response_type = 'maybe') as maybe_count,
+                    array_agg(u.username) FILTER (WHERE sa.response_type = 'yes') as attendee_names
+                FROM session_attendance sa
+                JOIN users u ON u.id = sa.user_id
+                WHERE sa.session_id = $1
+            `, [sessionId]);
+
+            const attendance = attendanceResult.rows[0];
+
+            // Create completion record
+            await client.query(`
+                INSERT INTO session_completions (
+                    session_id, completed_at, final_attendance_count,
+                    completion_summary
+                ) VALUES ($1, NOW(), $2, $3)
+                ON CONFLICT (session_id) DO NOTHING
+            `, [
+                sessionId,
+                attendance.confirmed_count,
+                JSON.stringify({
+                    confirmed: attendance.confirmed_count,
+                    declined: attendance.declined_count,
+                    maybe: attendance.maybe_count,
+                    attendees: attendance.attendee_names || []
+                })
+            ]);
+
+            await client.query('COMMIT');
+
+            // Send post-session completion notification to Discord
+            try {
+                await this.sendSessionCompletionNotification(session, attendance);
+            } catch (discordError) {
+                logger.error('Failed to send session completion notification:', discordError);
+                // Don't throw here - session completion succeeded
+            }
+
+            logger.info(`Session completed successfully: ${sessionId}`);
+            return session;
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            logger.error('Error completing session:', error);
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async sendSessionCompletionNotification(session, attendance) {
+        try {
+            const settings = await this.getDiscordSettings();
+            if (!settings.discord_channel_id) {
+                logger.info('Discord not configured for session completion notifications');
+                return;
+            }
+
+            const embed = {
+                title: `✅ Session Completed: ${session.title}`,
+                description: `The session has been automatically marked as completed.`,
+                color: 0x4CAF50, // Green
+                fields: [
+                    {
+                        name: '📅 Session Date',
+                        value: this.formatSessionDate(session.start_time),
+                        inline: true
+                    },
+                    {
+                        name: '👥 Final Attendance',
+                        value: `✅ ${attendance.confirmed_count} confirmed\n❌ ${attendance.declined_count} declined\n❓ ${attendance.maybe_count} maybe`,
+                        inline: true
+                    }
+                ],
+                footer: {
+                    text: 'Session automatically completed 6 hours after start time'
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            if (attendance.attendee_names && attendance.attendee_names.length > 0) {
+                embed.fields.push({
+                    name: '🎉 Attendees',
+                    value: attendance.attendee_names.join(', '),
+                    inline: false
+                });
+            }
+
+            await discordService.sendMessage({
+                channelId: settings.discord_channel_id,
+                content: `🎲 **${session.title}** has been completed!`,
+                embed
+            });
+
+            logger.info('Session completion notification sent to Discord');
+
+        } catch (error) {
+            logger.error('Failed to send session completion notification:', error);
+            throw error;
         }
     }
 
