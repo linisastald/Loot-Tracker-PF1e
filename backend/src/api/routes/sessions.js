@@ -6,7 +6,7 @@ const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
 const { createValidationMiddleware, validate } = require('../../middleware/validation');
 const { body, param, query } = require('express-validator');
-const dbUtils = require('../../utils/db');
+const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
 
 // ========================================================================

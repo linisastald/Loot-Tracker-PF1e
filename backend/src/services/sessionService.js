@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const logger = require('../utils/logger');
-const discordService = require('./discord');
+const discordService = require('./discordBrokerService');
 const cron = require('node-cron');
 const { v4: uuidv4 } = require('uuid');
 
