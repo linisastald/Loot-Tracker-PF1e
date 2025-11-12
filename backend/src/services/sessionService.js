@@ -270,7 +270,7 @@ class SessionService {
                     c.name as character_name
                 FROM session_attendance sa
                 JOIN users u ON sa.user_id = u.id
-                LEFT JOIN characters c ON c.id = u.active_character
+                LEFT JOIN characters c ON c.id = sa.character_id
                 WHERE sa.session_id = $1
                 ORDER BY sa.response_timestamp
             `, [sessionId]);

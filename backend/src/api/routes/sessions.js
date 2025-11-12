@@ -107,10 +107,12 @@ router.put('/:id', validate({
     id: { type: 'number', required: true, min: 1 }
   },
   body: {
-    title: { type: 'string', required: true, minLength: 1, maxLength: 255 },
-    start_time: { type: 'string', required: true, format: 'datetime' },
-    end_time: { type: 'string', required: true, format: 'datetime' },
-    description: { type: 'string', required: false, maxLength: 1000 }
+    title: { type: 'string', required: false, minLength: 1, maxLength: 255 },
+    start_time: { type: 'string', required: false, format: 'datetime' },
+    end_time: { type: 'string', required: false, format: 'datetime' },
+    description: { type: 'string', required: false, maxLength: 1000 },
+    status: { type: 'string', required: false },
+    cancel_reason: { type: 'string', required: false, maxLength: 500 }
   }
 }), verifyToken, checkRole('DM'), sessionController.updateSession);
 
