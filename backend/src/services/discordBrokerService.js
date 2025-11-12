@@ -347,6 +347,70 @@ class DiscordBrokerService {
       };
     }
   }
+
+  /**
+   * Add a reaction emoji to a Discord message
+   * @param {Object} options - Reaction options
+   * @param {string} options.channelId - Discord channel ID
+   * @param {string} options.messageId - Discord message ID
+   * @param {string} options.emoji - Emoji to add (unicode emoji or custom emoji ID)
+   * @returns {Promise<Object>} - Result with success flag
+   */
+  async addReaction({ channelId, messageId, emoji }) {
+    try {
+      // Get bot token from settings
+      const settingsQuery = await pool.query(
+        'SELECT value FROM settings WHERE name = $1',
+        ['discord_bot_token']
+      );
+
+      if (settingsQuery.rows.length === 0 || !settingsQuery.rows[0].value) {
+        throw new Error('Discord bot token not configured');
+      }
+
+      const botToken = settingsQuery.rows[0].value;
+
+      // URL encode the emoji for the API request
+      const encodedEmoji = encodeURIComponent(emoji);
+
+      // Add reaction via Discord API
+      await axios.put(
+        `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/reactions/${encodedEmoji}/@me`,
+        {},
+        {
+          headers: {
+            'Authorization': `Bot ${botToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      logger.debug('Discord reaction added successfully', {
+        channelId,
+        messageId,
+        emoji
+      });
+
+      return {
+        success: true
+      };
+
+    } catch (error) {
+      logger.error('Failed to add Discord reaction:', {
+        error: error.message,
+        response: error.response?.data,
+        channelId,
+        messageId,
+        emoji
+      });
+
+      return {
+        success: false,
+        error: error.message,
+        details: error.response?.data
+      };
+    }
+  }
 }
 
 module.exports = new DiscordBrokerService();
