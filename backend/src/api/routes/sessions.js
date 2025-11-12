@@ -143,10 +143,20 @@ router.post('/recurring', verifyToken, checkRole('DM'), [
     body('recurring_end_count').optional().isInt({ min: 1 }).withMessage('Invalid end count')
 ], async (req, res) => {
     try {
+        // Convert frontend field names to backend field names
         const sessionData = {
             ...req.body,
-            created_by: req.user.id
+            created_by: req.user.id,
+            // Convert days to hours for backend compatibility
+            auto_announce_hours: req.body.announcement_days_before ? req.body.announcement_days_before * 24 : 168,
+            reminder_hours: req.body.confirmation_days_before ? req.body.confirmation_days_before * 24 : 24,
+            auto_cancel_hours: 2, // Default value
+            maximum_players: req.body.maximum_players || 6 // Default maximum players
         };
+
+        // Remove the frontend field names to avoid confusion
+        delete sessionData.announcement_days_before;
+        delete sessionData.confirmation_days_before;
 
         const result = await sessionService.createRecurringSession(sessionData);
 
@@ -157,10 +167,15 @@ router.post('/recurring', verifyToken, checkRole('DM'), [
         });
 
     } catch (error) {
-        logger.error('Failed to create recurring session:', error);
+        logger.error('Failed to create recurring session:', {
+            error: error.message,
+            stack: error.stack,
+            data: req.body
+        });
         res.status(500).json({
             success: false,
-            message: error.message || 'Failed to create recurring session'
+            message: error.message || 'Failed to create recurring session',
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 });

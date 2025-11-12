@@ -625,8 +625,8 @@ class SessionService {
                 throw new Error('Invalid recurring pattern');
             }
 
-            if (recurring_day_of_week < 0 || recurring_day_of_week > 6) {
-                throw new Error('Invalid day of week (must be 0-6)');
+            if (recurring_day_of_week === null || recurring_day_of_week === undefined || recurring_day_of_week < 0 || recurring_day_of_week > 6) {
+                throw new Error(`Invalid day of week (must be 0-6), received: ${recurring_day_of_week}`);
             }
 
             if (recurring_pattern === 'custom' && recurring_interval < 1) {
