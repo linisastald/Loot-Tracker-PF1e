@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+const pool = require('../config/db');
 const logger = require('../utils/logger');
 const discordService = require('./discord');
 const cron = require('node-cron');
@@ -132,7 +132,7 @@ class SessionService {
         const values = [sessionId, ...fields.map(field => updateData[field])];
 
         try {
-            const result = await dbUtils.executeQuery(`
+            const result = await pool.query(`
                 UPDATE game_sessions
                 SET ${setClause}, updated_at = CURRENT_TIMESTAMP
                 WHERE id = $1
@@ -163,7 +163,7 @@ class SessionService {
             // Cancel any scheduled announcements
             this.cancelSessionEvents(sessionId);
 
-            const result = await dbUtils.executeQuery(`
+            const result = await pool.query(`
                 DELETE FROM game_sessions WHERE id = $1 RETURNING *
             `, [sessionId]);
 
@@ -312,7 +312,7 @@ class SessionService {
 
             if (messageResult.success) {
                 // Store message ID for tracking
-                await dbUtils.executeQuery(`
+                await pool.query(`
                     UPDATE game_sessions
                     SET announcement_message_id = $1, discord_channel_id = $2
                     WHERE id = $3
@@ -401,7 +401,7 @@ class SessionService {
             }
 
             // Find session by message ID
-            const sessionResult = await dbUtils.executeQuery(`
+            const sessionResult = await pool.query(`
                 SELECT id FROM game_sessions
                 WHERE announcement_message_id = $1 OR confirmation_message_id = $1
             `, [messageId]);
@@ -414,7 +414,7 @@ class SessionService {
             const sessionId = sessionResult.rows[0].id;
 
             // Find user by Discord ID
-            const userResult = await dbUtils.executeQuery(`
+            const userResult = await pool.query(`
                 SELECT id FROM users WHERE discord_id = $1
             `, [userId]);
 
@@ -430,7 +430,7 @@ class SessionService {
                 await this.recordAttendance(sessionId, dbUserId, responseType, { discord_id: userId });
 
                 // Record reaction tracking
-                await dbUtils.executeQuery(`
+                await pool.query(`
                     INSERT INTO discord_reaction_tracking
                     (message_id, user_discord_id, reaction_emoji, session_id)
                     VALUES ($1, $2, $3, $4)
@@ -440,13 +440,13 @@ class SessionService {
 
             } else if (action === 'remove') {
                 // Remove attendance
-                await dbUtils.executeQuery(`
+                await pool.query(`
                     DELETE FROM session_attendance
                     WHERE session_id = $1 AND user_id = $2
                 `, [sessionId, dbUserId]);
 
                 // Remove reaction tracking
-                await dbUtils.executeQuery(`
+                await pool.query(`
                     DELETE FROM discord_reaction_tracking
                     WHERE message_id = $1 AND user_discord_id = $2 AND reaction_emoji = $3
                 `, [messageId, userId, emoji]);
@@ -520,7 +520,7 @@ class SessionService {
     }
 
     async checkPendingAnnouncements() {
-        const result = await dbUtils.executeQuery(`
+        const result = await pool.query(`
             SELECT gs.* FROM game_sessions gs
             WHERE gs.status = 'scheduled'
             AND gs.announcement_message_id IS NULL
@@ -539,7 +539,7 @@ class SessionService {
 
     async checkPendingReminders() {
         // Get sessions that need reminders
-        const result = await dbUtils.executeQuery(`
+        const result = await pool.query(`
             SELECT DISTINCT sr.*, gs.title, gs.start_time
             FROM session_reminders sr
             JOIN game_sessions gs ON sr.session_id = gs.id
@@ -554,7 +554,7 @@ class SessionService {
                 await this.sendSessionReminder(reminder.session_id, reminder.reminder_type);
 
                 // Mark as sent
-                await dbUtils.executeQuery(`
+                await pool.query(`
                     UPDATE session_reminders
                     SET sent = TRUE, sent_at = CURRENT_TIMESTAMP
                     WHERE id = $1
@@ -568,7 +568,7 @@ class SessionService {
 
     async checkSessionConfirmations() {
         // Get sessions that need confirmation
-        const result = await dbUtils.executeQuery(`
+        const result = await pool.query(`
             SELECT gs.* FROM game_sessions gs
             WHERE gs.status = 'scheduled'
             AND gs.confirmation_message_id IS NULL
@@ -596,7 +596,7 @@ class SessionService {
     // ========================================================================
 
     async getSession(sessionId) {
-        const result = await dbUtils.executeQuery(
+        const result = await pool.query(
             'SELECT * FROM game_sessions WHERE id = $1',
             [sessionId]
         );
@@ -604,7 +604,7 @@ class SessionService {
     }
 
     async getDiscordSettings() {
-        const result = await dbUtils.executeQuery(`
+        const result = await pool.query(`
             SELECT name, value FROM settings
             WHERE name IN ('discord_channel_id', 'discord_bot_token', 'campaign_role_id', 'campaign_name')
         `);
@@ -618,7 +618,7 @@ class SessionService {
     }
 
     async getReactionMap() {
-        const result = await dbUtils.executeQuery(`
+        const result = await pool.query(`
             SELECT setting_value FROM session_config
             WHERE setting_name = 'attendance_reactions'
         `);
@@ -649,7 +649,7 @@ class SessionService {
     }
 
     async checkAutoCancel(sessionId) {
-        const result = await dbUtils.executeQuery(
+        const result = await pool.query(
             'SELECT check_session_auto_cancel($1) as should_cancel',
             [sessionId]
         );
@@ -665,7 +665,7 @@ class SessionService {
 
     async getNonResponders(sessionId) {
         try {
-            const result = await dbUtils.executeQuery(`
+            const result = await pool.query(`
                 SELECT DISTINCT u.id, u.username, u.discord_id, u.discord_username
                 FROM users u
                 WHERE u.discord_id IS NOT NULL
@@ -707,7 +707,7 @@ class SessionService {
 
     async recordReminder(sessionId, reminderType, targetUsers) {
         try {
-            await dbUtils.executeQuery(`
+            await pool.query(`
                 INSERT INTO session_reminders (session_id, reminder_type, target_audience, sent, sent_at, days_before)
                 VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, 0)
             `, [sessionId, reminderType, 'custom']);
@@ -854,7 +854,7 @@ class SessionService {
 
     async getConfirmedAttendanceCount(sessionId) {
         try {
-            const result = await dbUtils.executeQuery(`
+            const result = await pool.query(`
                 SELECT COUNT(DISTINCT user_id) as count
                 FROM session_attendance
                 WHERE session_id = $1 AND response_type = 'yes'
@@ -869,7 +869,7 @@ class SessionService {
 
     async confirmSession(sessionId) {
         try {
-            const result = await dbUtils.executeQuery(`
+            const result = await pool.query(`
                 UPDATE game_sessions
                 SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
                 WHERE id = $1
@@ -891,7 +891,7 @@ class SessionService {
 
     async cancelSession(sessionId, reason) {
         try {
-            const result = await dbUtils.executeQuery(`
+            const result = await pool.query(`
                 UPDATE game_sessions
                 SET status = 'cancelled', cancelled = TRUE, cancel_reason = $2, updated_at = CURRENT_TIMESTAMP
                 WHERE id = $1
@@ -921,7 +921,7 @@ class SessionService {
             ];
 
             for (const reminder of reminders) {
-                await dbUtils.executeQuery(`
+                await pool.query(`
                     INSERT INTO session_reminders (session_id, days_before, reminder_type, target_audience)
                     VALUES ($1, $2, $3, $4)
                 `, [session.id, reminder.days_before, reminder.reminder_type, reminder.target_audience]);
@@ -950,7 +950,7 @@ class SessionService {
     cancelSessionEvents(sessionId) {
         try {
             // Mark pending reminders as cancelled
-            dbUtils.executeQuery(`
+            pool.query(`
                 UPDATE session_reminders
                 SET sent = TRUE, sent_at = CURRENT_TIMESTAMP
                 WHERE session_id = $1 AND sent = FALSE
