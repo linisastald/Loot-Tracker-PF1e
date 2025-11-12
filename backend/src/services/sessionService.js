@@ -1069,30 +1069,184 @@ class SessionService {
 
     async generateSessionTasks(session) {
         try {
-            // Generate automatic tasks for session
-            const tasks = [
+            // Get confirmed attendees for task assignment
+            const attendanceResult = await pool.query(`
+                SELECT
+                    u.id as user_id,
+                    u.username,
+                    c.name as character_name,
+                    sa.response_type,
+                    sa.late_arrival_time
+                FROM session_attendance sa
+                JOIN users u ON u.id = sa.user_id
+                LEFT JOIN characters c ON c.id = u.active_character
+                WHERE sa.session_id = $1 AND sa.response_type = 'yes'
+                ORDER BY sa.response_timestamp
+            `, [session.id]);
+
+            const attendees = attendanceResult.rows;
+
+            if (attendees.length === 0) {
+                logger.info('No confirmed attendees for session tasks:', { sessionId: session.id });
+                return;
+            }
+
+            // Get attendees who are not arriving late for pre-session tasks
+            const onTimeAttendees = attendees.filter(a => !a.late_arrival_time);
+
+            // Define task templates similar to the existing task system
+            const preTasks = [
+                'Get Dice Trays',
+                'Put Initiative name tags on tracker',
+                'Wipe TV',
+                'Recap'
+            ];
+
+            if (attendees.length >= 6) {
+                preTasks.push('Bring in extra chairs if needed');
+            }
+
+            const duringTasks = [
+                'Calendar Master',
+                'Loot Master',
+                'Lore Master',
+                'Rule & Battle Master',
+                'Inspiration Master'
+            ];
+
+            const postTasks = [
+                'Food, Drink, and Trash Clear Check',
+                'TV(s) wiped and turned off',
+                'Dice Trays and Books put away',
+                'Clean Initiative tracker and put away name labels',
+                'Chairs pushed in and extra chairs put back',
+                'Windows shut and locked and Post Discord Reminders',
+                'Ensure no duplicate snacks for next session'
+            ];
+
+            // Helper function to assign tasks to attendees
+            const assignTasksToAttendees = (tasks, people) => {
+                if (people.length === 0) return {};
+
+                const shuffledTasks = [...tasks].sort(() => Math.random() - 0.5);
+                const assignments = {};
+
+                people.forEach(person => {
+                    assignments[person.username] = [];
+                });
+
+                shuffledTasks.forEach((task, index) => {
+                    const assignee = people[index % people.length];
+                    assignments[assignee.username].push(task);
+                });
+
+                return assignments;
+            };
+
+            // Generate task assignments
+            const allAttendees = [...attendees, { username: 'DM', character_name: 'DM' }];
+
+            const preTaskAssignments = assignTasksToAttendees(preTasks, onTimeAttendees);
+            const duringTaskAssignments = assignTasksToAttendees(duringTasks, attendees);
+            const postTaskAssignments = assignTasksToAttendees(postTasks, allAttendees);
+
+            // Store task assignments in database
+            const taskAssignments = {
+                session_id: session.id,
+                pre_tasks: preTaskAssignments,
+                during_tasks: duringTaskAssignments,
+                post_tasks: postTaskAssignments,
+                generated_at: new Date(),
+                attendee_count: attendees.length
+            };
+
+            await pool.query(`
+                INSERT INTO session_task_assignments (
+                    session_id, task_assignments, generated_at, attendee_count
+                ) VALUES ($1, $2, NOW(), $3)
+                ON CONFLICT (session_id)
+                DO UPDATE SET
+                    task_assignments = EXCLUDED.task_assignments,
+                    generated_at = NOW(),
+                    attendee_count = EXCLUDED.attendee_count
+            `, [session.id, JSON.stringify(taskAssignments), attendees.length]);
+
+            // Send to Discord if configured
+            try {
+                await this.sendTaskAssignmentsToDiscord(session, taskAssignments);
+            } catch (discordError) {
+                logger.error('Failed to send task assignments to Discord:', discordError);
+                // Don't throw here - task generation succeeded even if Discord failed
+            }
+
+            logger.info('Session tasks generated and assigned:', {
+                sessionId: session.id,
+                attendeeCount: attendees.length,
+                onTimeCount: onTimeAttendees.length
+            });
+
+        } catch (error) {
+            logger.error('Failed to generate session tasks:', error);
+            throw error;
+        }
+    }
+
+    async sendTaskAssignmentsToDiscord(session, assignments) {
+        try {
+            const settings = await this.getDiscordSettings();
+            if (!settings.discord_channel_id) {
+                logger.info('Discord not configured for task assignments');
+                return;
+            }
+
+            const formatTasksForEmbed = (tasks) => {
+                return Object.entries(tasks).map(([character, characterTasks]) => ({
+                    name: character,
+                    value: characterTasks.length > 0 ? characterTasks.map(task => `• ${task}`).join('\n') : '• No tasks',
+                    inline: false
+                }));
+            };
+
+            const colors = {
+                PRE_SESSION: 0x673AB7,   // Purple
+                DURING_SESSION: 0xFFC107, // Yellow
+                POST_SESSION: 0xF44336    // Red
+            };
+
+            const embeds = [
                 {
-                    task_type: 'prep_check',
-                    task_description: 'Review session prep and materials',
-                    due_time: new Date(Date.parse(session.start_time) - 2 * 60 * 60 * 1000) // 2 hours before
+                    title: `🏁 Pre-Session Tasks for ${session.title}`,
+                    description: '',
+                    fields: formatTasksForEmbed(assignments.pre_tasks),
+                    color: colors.PRE_SESSION,
+                    footer: { text: 'Complete before session starts' }
                 },
                 {
-                    task_type: 'snack_master',
-                    task_description: 'Assign snack master for session',
-                    due_time: new Date(Date.parse(session.start_time) - 24 * 60 * 60 * 1000) // 24 hours before
+                    title: `🎲 During Session Tasks for ${session.title}`,
+                    description: '',
+                    fields: formatTasksForEmbed(assignments.during_tasks),
+                    color: colors.DURING_SESSION,
+                    footer: { text: 'Assigned for the duration of the session' }
+                },
+                {
+                    title: `🧹 Post-Session Tasks for ${session.title}`,
+                    description: '',
+                    fields: formatTasksForEmbed(assignments.post_tasks),
+                    color: colors.POST_SESSION,
+                    footer: { text: 'Complete after session ends' }
                 }
             ];
 
-            for (const task of tasks) {
-                await dbUtils.executeQuery(`
-                    INSERT INTO session_tasks (session_id, task_type, task_description, due_time)
-                    VALUES ($1, $2, $3, $4)
-                `, [session.id, task.task_type, task.task_description, task.due_time]);
-            }
+            await discordService.sendMessage({
+                channelId: settings.discord_channel_id,
+                content: `📋 **Task assignments have been generated for ${session.title}!**`,
+                embeds
+            });
 
-            logger.info('Session tasks generated:', { sessionId: session.id, taskCount: tasks.length });
+            logger.info('Task assignments sent to Discord successfully');
+
         } catch (error) {
-            logger.error('Failed to generate session tasks:', error);
+            logger.error('Failed to send task assignments to Discord:', error);
             throw error;
         }
     }
