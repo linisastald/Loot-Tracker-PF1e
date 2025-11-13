@@ -98,6 +98,44 @@ const changePassword = async (req, res) => {
 };
 
 /**
+ * Update user's Discord ID
+ */
+const updateDiscordId = async (req, res) => {
+    const { discord_id } = req.body;
+    const userId = req.user.id;
+
+    // Get the user
+    const result = await dbUtils.executeQuery('SELECT * FROM users WHERE id = $1', [userId]);
+    const user = result.rows[0];
+
+    if (!user) {
+        throw controllerFactory.createNotFoundError('User not found');
+    }
+
+    // Validate Discord ID format (should be a numeric string)
+    if (discord_id && !/^\d{17,19}$/.test(discord_id)) {
+        throw controllerFactory.createValidationError('Invalid Discord ID format');
+    }
+
+    // Check if Discord ID is already in use by another user
+    if (discord_id) {
+        const discordCheck = await dbUtils.executeQuery(
+            'SELECT * FROM users WHERE discord_id = $1 AND id != $2',
+            [discord_id, userId]
+        );
+        if (discordCheck.rows.length > 0) {
+            throw controllerFactory.createValidationError('This Discord ID is already linked to another account');
+        }
+    }
+
+    // Update Discord ID (null to unlink, or the new ID)
+    await dbUtils.executeQuery('UPDATE users SET discord_id = $1 WHERE id = $2', [discord_id || null, userId]);
+
+    logger.info(`Discord ID ${discord_id ? 'updated' : 'removed'} for user ID ${userId}`);
+    controllerFactory.sendSuccessMessage(res, discord_id ? 'Discord ID linked successfully' : 'Discord ID unlinked successfully');
+};
+
+/**
  * Get user's characters
  */
 const getCharacters = async (req, res) => {
@@ -547,6 +585,10 @@ const changeEmailValidation = {
     requiredFields: ['email', 'password']
 };
 
+const updateDiscordIdValidation = {
+    requiredFields: [] // discord_id can be null to unlink
+};
+
 const addCharacterValidation = {
     requiredFields: ['name']
 };
@@ -581,6 +623,11 @@ module.exports = {
     changePassword: controllerFactory.createHandler(changePassword, {
         errorMessage: 'Error changing password',
         validation: changePasswordValidation
+    }),
+
+    updateDiscordId: controllerFactory.createHandler(updateDiscordId, {
+        errorMessage: 'Error updating Discord ID',
+        validation: updateDiscordIdValidation
     }),
 
     getCharacters: controllerFactory.createHandler(getCharacters, {

@@ -53,6 +53,11 @@ const UserSettings = () => {
     const [emailError, setEmailError] = useState('');
     const [emailSuccess, setEmailSuccess] = useState('');
 
+    // State for Discord ID
+    const [discordId, setDiscordId] = useState('');
+    const [discordError, setDiscordError] = useState('');
+    const [discordSuccess, setDiscordSuccess] = useState('');
+
     useEffect(() => {
         fetchUserData();
     }, []);
@@ -63,6 +68,7 @@ const UserSettings = () => {
             if (response.data && response.data.user) {
                 setUser(response.data.user);
                 setCurrentEmail(response.data.user.email || '');
+                setDiscordId(response.data.user.discord_id || '');
             }
         } catch (error) {
             console.error('Error fetching user data:', error);
@@ -153,6 +159,33 @@ const UserSettings = () => {
         } catch (error) {
             console.error('Error changing email:', error);
             setEmailError(error.response?.data?.message || 'Error changing email');
+        }
+    };
+
+    // Function to handle Discord ID update
+    const handleUpdateDiscordId = async (e) => {
+        e.preventDefault();
+        setDiscordError('');
+        setDiscordSuccess('');
+
+        // Validate Discord ID format (17-19 digit number)
+        if (discordId && !/^\d{17,19}$/.test(discordId)) {
+            setDiscordError('Invalid Discord ID format. It should be a 17-19 digit number.');
+            return;
+        }
+
+        try {
+            await api.put('/user/update-discord-id', {
+                discord_id: discordId || null
+            });
+
+            setDiscordSuccess(discordId ? 'Discord ID linked successfully' : 'Discord ID unlinked successfully');
+
+            // Refresh user data
+            fetchUserData();
+        } catch (error) {
+            console.error('Error updating Discord ID:', error);
+            setDiscordError(error.response?.data?.message || 'Error updating Discord ID');
         }
     };
 
@@ -310,6 +343,53 @@ const UserSettings = () => {
                                     >
                                         Change Email
                                     </Button>
+                                </form>
+                            </Paper>
+                        </Grid>
+
+                        {/* Discord ID Section */}
+                        <Grid size={{xs: 12, md: 6}}>
+                            <Paper elevation={2} sx={{p: 3, height: '100%'}}>
+                                <Typography variant="h6" gutterBottom>
+                                    Discord Integration
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
+                                    Link your Discord account to track session attendance via Discord buttons.
+                                </Typography>
+                                {discordError && <Alert severity="error" sx={{mb: 2}}>{discordError}</Alert>}
+                                {discordSuccess && <Alert severity="success" sx={{mb: 2}}>{discordSuccess}</Alert>}
+                                <form onSubmit={handleUpdateDiscordId}>
+                                    <TextField
+                                        margin="normal"
+                                        fullWidth
+                                        label="Discord ID"
+                                        value={discordId}
+                                        onChange={(e) => setDiscordId(e.target.value)}
+                                        placeholder="Right-click your name in Discord and Copy ID"
+                                        helperText="Your Discord ID is a 17-19 digit number. Enable Developer Mode in Discord to copy your ID."
+                                    />
+                                    <Box sx={{mt: 2, display: 'flex', gap: 1}}>
+                                        <Button
+                                            type="submit"
+                                            variant="outlined"
+                                            color="primary"
+                                        >
+                                            {discordId ? 'Update Discord ID' : 'Link Discord ID'}
+                                        </Button>
+                                        {discordId && (
+                                            <Button
+                                                variant="outlined"
+                                                color="error"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    setDiscordId('');
+                                                    handleUpdateDiscordId(e);
+                                                }}
+                                            >
+                                                Unlink
+                                            </Button>
+                                        )}
+                                    </Box>
                                 </form>
                             </Paper>
                         </Grid>

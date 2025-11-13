@@ -263,6 +263,81 @@ const processSessionInteraction = async (req, res) => {
         return res.json({ type: 1 });
     }
 
+    // Handle character linking select menu
+    if (type === 3 && data?.custom_id?.startsWith('link_character_')) {
+        try {
+            const discordUserId = member?.user?.id || user?.id;
+            const characterId = parseInt(data.values?.[0]);
+
+            if (!discordUserId || !characterId) {
+                return res.json({
+                    type: 4,
+                    data: { content: "Invalid selection.", flags: 64 }
+                });
+            }
+
+            // Get the user who owns this character
+            const characterResult = await dbUtils.executeQuery(
+                'SELECT user_id, name FROM characters WHERE id = $1',
+                [characterId]
+            );
+
+            if (characterResult.rows.length === 0) {
+                return res.json({
+                    type: 4,
+                    data: { content: "Character not found.", flags: 64 }
+                });
+            }
+
+            const ownerId = characterResult.rows[0].user_id;
+            const characterName = characterResult.rows[0].name;
+
+            // Check if this Discord ID is already linked to another account
+            const existingLink = await dbUtils.executeQuery(
+                'SELECT username FROM users WHERE discord_id = $1',
+                [discordUserId]
+            );
+
+            if (existingLink.rows.length > 0) {
+                return res.json({
+                    type: 4,
+                    data: {
+                        content: `⚠️ Your Discord account is already linked to ${existingLink.rows[0].username}.`,
+                        flags: 64
+                    }
+                });
+            }
+
+            // Link the Discord ID to the character's owner
+            await dbUtils.executeQuery(
+                'UPDATE users SET discord_id = $1 WHERE id = $2',
+                [discordUserId, ownerId]
+            );
+
+            logger.info('Discord account linked via character selection:', {
+                discordUserId,
+                userId: ownerId,
+                characterId,
+                characterName
+            });
+
+            return res.json({
+                type: 4,
+                data: {
+                    content: `✅ Your Discord account has been linked to ${characterName}'s account! You can now use the attendance buttons.`,
+                    flags: 64
+                }
+            });
+
+        } catch (error) {
+            logger.error('Character linking error:', error);
+            return res.json({
+                type: 4,
+                data: { content: "An error occurred while linking your account.", flags: 64 }
+            });
+        }
+    }
+
     // Handle component interaction (button click)
     if (type === 3 && data?.custom_id?.startsWith('session_')) {
         try {
@@ -344,14 +419,45 @@ const processSessionInteraction = async (req, res) => {
                 userId = userResult.rows[0].id;
                 displayName = userResult.rows[0].username;
             } else {
-                // User not found - need to link Discord account
-                logger.warn('Discord user not linked to account:', { discordUserId, discordNickname });
+                // User not found - offer character selection to link account
+                logger.warn('Discord user not linked to account, showing character selection:', { discordUserId, discordNickname });
+
+                // Get all active characters for selection
+                const charactersResult = await dbUtils.executeQuery(
+                    'SELECT c.id, c.name, u.username FROM characters c JOIN users u ON c.user_id = u.id WHERE c.active = true ORDER BY c.name ASC'
+                );
+
+                if (charactersResult.rows.length === 0) {
+                    return res.json({
+                        type: 4,
+                        data: {
+                            content: `⚠️ No active characters found. Please log into the web app and create a character, then link your Discord account in your profile settings.`,
+                            flags: 64
+                        }
+                    });
+                }
+
+                // Create select menu with characters
+                const options = charactersResult.rows.map(char => ({
+                    label: `${char.name} (${char.username})`,
+                    value: char.id.toString(),
+                    description: `Link to ${char.username}'s account`
+                }));
 
                 return res.json({
                     type: 4,
                     data: {
-                        content: `⚠️ Your Discord account is not linked to the app. Please log into the web app and link your Discord account in your profile settings to track attendance.`,
-                        flags: 64
+                        content: `⚠️ Your Discord account is not linked. Please select your character to link your account:`,
+                        components: [{
+                            type: 1, // Action Row
+                            components: [{
+                                type: 3, // Select Menu
+                                custom_id: `link_character_${messageId}_${discordUserId}`,
+                                placeholder: 'Select your character',
+                                options: options.slice(0, 25) // Discord limit is 25 options
+                            }]
+                        }],
+                        flags: 64 // Ephemeral
                     }
                 });
             }
