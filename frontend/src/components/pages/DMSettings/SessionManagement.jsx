@@ -397,19 +397,41 @@ const SessionManagement = () => {
                     </Grid>
 
                     {/* Attendance Summary */}
-                    <Box sx={{ mt: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                        <Typography variant="body2">
-                            ✅ {session.confirmed_count || 0} confirmed
-                        </Typography>
-                        <Typography variant="body2">
-                            ❓ {session.maybe_count || 0} maybe
-                        </Typography>
-                        <Typography variant="body2">
-                            ❌ {session.declined_count || 0} declined
-                        </Typography>
-                        {session.modified_count > 0 && (
+                    <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        {session.confirmed_names && (
                             <Typography variant="body2">
-                                ⏰ {session.modified_count} timing changes
+                                ✅ <strong>Attending ({session.confirmed_count || 0}):</strong> {session.confirmed_names}
+                            </Typography>
+                        )}
+                        {!session.confirmed_names && (session.confirmed_count || 0) > 0 && (
+                            <Typography variant="body2">
+                                ✅ {session.confirmed_count} confirmed
+                            </Typography>
+                        )}
+                        {session.maybe_names && (
+                            <Typography variant="body2">
+                                ❓ <strong>Maybe ({session.maybe_count || 0}):</strong> {session.maybe_names}
+                            </Typography>
+                        )}
+                        {!session.maybe_names && (session.maybe_count || 0) > 0 && (
+                            <Typography variant="body2">
+                                ❓ {session.maybe_count} maybe
+                            </Typography>
+                        )}
+                        {session.declined_names && (
+                            <Typography variant="body2">
+                                ❌ <strong>Declined ({session.declined_count || 0}):</strong> {session.declined_names}
+                            </Typography>
+                        )}
+                        {!session.declined_names && (session.declined_count || 0) > 0 && (
+                            <Typography variant="body2">
+                                ❌ {session.declined_count} declined
+                            </Typography>
+                        )}
+                        {!session.confirmed_names && !session.maybe_names && !session.declined_names &&
+                         (session.confirmed_count || 0) === 0 && (session.maybe_count || 0) === 0 && (session.declined_count || 0) === 0 && (
+                            <Typography variant="body2" color="text.secondary">
+                                No responses yet
                             </Typography>
                         )}
                     </Box>

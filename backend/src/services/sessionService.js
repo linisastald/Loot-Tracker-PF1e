@@ -1230,10 +1230,42 @@ class SessionService {
             attendance = await this.getSessionAttendance(session.id);
         }
 
-        const confirmedCount = attendance.filter(a => a.response_type === 'yes').length;
-        const declinedCount = attendance.filter(a => a.response_type === 'no').length;
-        const maybeCount = attendance.filter(a => a.response_type === 'maybe').length;
-        const modifiedCount = attendance.filter(a => ['late', 'early', 'late_and_early'].includes(a.response_type)).length;
+        // Group attendance by response type
+        const confirmed = attendance.filter(a => a.response_type === 'yes');
+        const declined = attendance.filter(a => a.response_type === 'no');
+        const maybe = attendance.filter(a => a.response_type === 'maybe');
+        const late = attendance.filter(a => ['late', 'early', 'late_and_early'].includes(a.response_type));
+
+        // Helper to format name list
+        const formatNames = (list) => {
+            if (list.length === 0) return 'None';
+            return list.map(a => {
+                const name = a.character_name || a.username;
+                // Add indicator for late/early
+                if (a.response_type === 'late') return `${name} (late)`;
+                if (a.response_type === 'early') return `${name} (leaving early)`;
+                if (a.response_type === 'late_and_early') return `${name} (late/early)`;
+                return name;
+            }).join(', ');
+        };
+
+        // Build attendance field value
+        let attendanceText = '';
+        if (confirmed.length > 0) {
+            attendanceText += `✅ **Attending (${confirmed.length}):** ${formatNames(confirmed)}\n`;
+        }
+        if (late.length > 0) {
+            attendanceText += `⏰ **Modified (${late.length}):** ${formatNames(late)}\n`;
+        }
+        if (maybe.length > 0) {
+            attendanceText += `❓ **Maybe (${maybe.length}):** ${formatNames(maybe)}\n`;
+        }
+        if (declined.length > 0) {
+            attendanceText += `❌ **Not Attending (${declined.length}):** ${formatNames(declined)}\n`;
+        }
+        if (attendanceText === '') {
+            attendanceText = 'No responses yet';
+        }
 
         // Determine embed color based on session status
         let color = 0x00FF00; // Green for confirmed
@@ -1248,17 +1280,17 @@ class SessionService {
                 {
                     name: '📅 Date & Time',
                     value: this.formatSessionDate(session.start_time),
-                    inline: true
+                    inline: false
                 },
                 {
                     name: '👥 Attendance',
-                    value: `✅ ${confirmedCount}\n❌ ${declinedCount}\n❓ ${maybeCount}\n⏰ ${modifiedCount}`,
-                    inline: true
+                    value: attendanceText,
+                    inline: false
                 },
                 {
                     name: '📋 Session Info',
                     value: `Min players: ${session.minimum_players}\nStatus: ${session.status}`,
-                    inline: true
+                    inline: false
                 }
             ],
             footer: {

@@ -39,9 +39,25 @@ router.get('/enhanced', verifyToken, async (req, res) => {
                 COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.status = 'accepted') as confirmed_count,
                 COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.status = 'declined') as declined_count,
                 COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.status = 'tentative') as maybe_count,
-                0 as modified_count
+                0 as modified_count,
+                string_agg(
+                    DISTINCT CASE WHEN sa.status = 'accepted'
+                    THEN COALESCE(c.name, u.username) || CASE WHEN sa.response_type = 'late' THEN ' (late)' ELSE '' END
+                    END,
+                    ', ' ORDER BY CASE WHEN sa.status = 'accepted' THEN COALESCE(c.name, u.username) || CASE WHEN sa.response_type = 'late' THEN ' (late)' ELSE '' END END
+                ) as confirmed_names,
+                string_agg(
+                    DISTINCT CASE WHEN sa.status = 'declined' THEN COALESCE(c.name, u.username) END,
+                    ', ' ORDER BY CASE WHEN sa.status = 'declined' THEN COALESCE(c.name, u.username) END
+                ) as declined_names,
+                string_agg(
+                    DISTINCT CASE WHEN sa.status = 'tentative' THEN COALESCE(c.name, u.username) END,
+                    ', ' ORDER BY CASE WHEN sa.status = 'tentative' THEN COALESCE(c.name, u.username) END
+                ) as maybe_names
             FROM game_sessions gs
             LEFT JOIN session_attendance sa ON gs.id = sa.session_id
+            LEFT JOIN users u ON sa.user_id = u.id
+            LEFT JOIN characters c ON sa.character_id = c.id
             WHERE ${whereClause}
             GROUP BY gs.id
             ORDER BY gs.start_time
