@@ -344,17 +344,22 @@ const processSessionInteraction = async (req, res) => {
                 userId = userResult.rows[0].id;
                 displayName = userResult.rows[0].username;
             } else {
-                // Auto-create user mapping if needed (optional feature)
-                logger.info('Discord user not found, using Discord nickname:', { discordUserId, discordNickname });
-                // For now, proceed without user mapping
-            }
+                // User not found - need to link Discord account
+                logger.warn('Discord user not linked to account:', { discordUserId, discordNickname });
 
-            // Record enhanced attendance if user is mapped
-            if (userId) {
-                await sessionService.recordAttendance(sessionId, userId, responseType, {
-                    discord_id: discordUserId
+                return res.json({
+                    type: 4,
+                    data: {
+                        content: `⚠️ Your Discord account is not linked to the app. Please log into the web app and link your Discord account in your profile settings to track attendance.`,
+                        flags: 64
+                    }
                 });
             }
+
+            // Record attendance
+            await sessionService.recordAttendance(sessionId, userId, responseType, {
+                discord_id: discordUserId
+            });
 
             // Update Discord reaction tracking
             await dbUtils.executeQuery(`
@@ -371,7 +376,7 @@ const processSessionInteraction = async (req, res) => {
             return res.json({
                 type: 4,
                 data: {
-                    content: `You are marked as **${responseType}** for this session.`,
+                    content: `✅ You are marked as **${responseType}** for this session.`,
                     flags: 64
                 }
             });

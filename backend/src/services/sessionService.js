@@ -331,8 +331,8 @@ class SessionService {
                     WHERE id = $3
                 `, [messageResult.data.id, settings.discord_channel_id, sessionId]);
 
-                // Add reactions for attendance tracking
-                await this.addAttendanceReactions(messageResult.data.id);
+                // Note: Emoji reactions removed - using buttons only for cleaner UI
+                // await this.addAttendanceReactions(messageResult.data.id);
 
                 logger.info('Session announcement posted:', {
                     sessionId,
@@ -1163,13 +1163,15 @@ class SessionService {
 
             const attendance = await this.getSessionAttendance(sessionId);
             const embed = await this.createSessionEmbed(session, attendance);
+            const components = this.createAttendanceButtons(); // Keep buttons when updating
 
             const settings = await this.getDiscordSettings();
             if (settings.discord_bot_token && settings.discord_channel_id) {
                 await discordService.updateMessage({
                     channelId: settings.discord_channel_id,
                     messageId: session.announcement_message_id,
-                    embed
+                    embed,
+                    components // Include buttons in update
                 });
             }
         } catch (error) {
@@ -1260,7 +1262,7 @@ class SessionService {
                 }
             ],
             footer: {
-                text: 'React with emojis to update your attendance!'
+                text: 'Click the buttons below to update your attendance!'
             },
             timestamp: new Date().toISOString()
         };
