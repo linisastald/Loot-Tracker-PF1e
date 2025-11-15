@@ -383,7 +383,7 @@ class SessionService {
             const settings = await this.getDiscordSettings();
             const messageResult = await discordService.sendMessage({
                 channelId: settings.discord_channel_id,
-                content: `${targetUsers.map(u => `<@${u.discord_id}>`).join(' ')} ${message}`,
+                content: `${targetUsers.map(u => `<@${u.user_discord_id || u.discord_id}>`).filter(mention => !mention.includes('null')).join(' ')} ${message}`,
                 embed
             });
 
