@@ -67,6 +67,9 @@ const SessionManagement = () => {
     const [reminderDialog, setReminderDialog] = useState(false);
     const [confirmDialog, setConfirmDialog] = useState(false);
     const [createSessionDialog, setCreateSessionDialog] = useState(false);
+    const [cancelDialog, setCancelDialog] = useState(false);
+    const [cancelReason, setCancelReason] = useState('');
+    const [sessionToCancel, setSessionToCancel] = useState(null);
 
     // Create session dialog state
     const [sessionTitle, setSessionTitle] = useState('');
@@ -261,12 +264,14 @@ const SessionManagement = () => {
         }
     };
 
-    const handleCancelSession = async (sessionId, reason = 'Cancelled by DM') => {
+    const handleCancelSession = async () => {
         try {
-            setCancelingSession(sessionId);
-            await api.put(`/sessions/${sessionId}`, {
+            if (!sessionToCancel) return;
+
+            setCancelingSession(sessionToCancel.id);
+            await api.put(`/sessions/${sessionToCancel.id}`, {
                 status: 'cancelled',
-                cancel_reason: reason
+                cancel_reason: cancelReason || 'Cancelled by DM'
             });
             enqueueSnackbar('Session cancelled successfully', { variant: 'success' });
             fetchSessions();
@@ -275,7 +280,16 @@ const SessionManagement = () => {
             enqueueSnackbar('Failed to cancel session', { variant: 'error' });
         } finally {
             setCancelingSession(null);
+            setCancelDialog(false);
+            setCancelReason('');
+            setSessionToCancel(null);
         }
+    };
+
+    const openCancelDialog = (session) => {
+        setSessionToCancel(session);
+        setCancelReason('');
+        setCancelDialog(true);
     };
 
     const viewAttendance = async (sessionId) => {
@@ -442,7 +456,7 @@ const SessionManagement = () => {
                                 {isUpcoming && session.status !== 'cancelled' && (
                                     <IconButton
                                         size="small"
-                                        onClick={() => handleCancelSession(session.id)}
+                                        onClick={() => openCancelDialog(session)}
                                         disabled={cancelingSession === session.id}
                                         title="Cancel Session"
                                         color="error"
@@ -755,6 +769,40 @@ const SessionManagement = () => {
                         startIcon={sendingReminder ? <CircularProgress size={16} /> : <SendIcon />}
                     >
                         Send Reminder
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Cancel Session Dialog */}
+            <Dialog open={cancelDialog} onClose={() => setCancelDialog(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Cancel Session</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body1" gutterBottom>
+                        Cancel: {sessionToCancel?.title}
+                    </Typography>
+                    <TextField
+                        autoFocus
+                        margin="dense"
+                        label="Cancellation Reason"
+                        fullWidth
+                        multiline
+                        rows={3}
+                        value={cancelReason}
+                        onChange={(e) => setCancelReason(e.target.value)}
+                        placeholder="e.g., Not enough players, DM unavailable, etc."
+                        helperText="This reason will be shown in Discord and the app"
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setCancelDialog(false)}>Back</Button>
+                    <Button
+                        onClick={handleCancelSession}
+                        disabled={cancelingSession}
+                        variant="contained"
+                        color="error"
+                        startIcon={cancelingSession ? <CircularProgress size={16} /> : <CancelIcon />}
+                    >
+                        Cancel Session
                     </Button>
                 </DialogActions>
             </Dialog>
