@@ -138,13 +138,29 @@ const updateSession = async (req, res) => {
     // Update the session
     updateData.updated_at = new Date();
     const updated = await Session.update(parseInt(id), updateData);
-    
+
     // If session has Discord message, update it
-    if (existing.discord_message_id && existing.discord_channel_id) {
+    if (existing.announcement_message_id) {
         try {
-            // Get updated session with attendance
-            const sessionWithAttendance = await Session.getSessionWithAttendance(parseInt(id));
-            await updateDiscordSessionMessage(sessionWithAttendance);
+            // Use sessionService's updateSessionMessage for proper handling
+            const sessionService = require('../services/sessionService');
+            await sessionService.updateSessionMessage(parseInt(id));
+
+            // If session was just cancelled, send a cancellation ping
+            if (status === 'cancelled' && existing.status !== 'cancelled') {
+                const settings = await sessionService.getDiscordSettings();
+                if (settings.campaign_role_id && settings.discord_channel_id) {
+                    const discordService = require('../services/discordBrokerService');
+                    const cancelMessage = cancel_reason
+                        ? `<@&${settings.campaign_role_id}> Session "${updated.title}" has been cancelled. Reason: ${cancel_reason}`
+                        : `<@&${settings.campaign_role_id}> Session "${updated.title}" has been cancelled.`;
+
+                    await discordService.sendMessage({
+                        channelId: settings.discord_channel_id,
+                        content: cancelMessage
+                    });
+                }
+            }
         } catch (error) {
             logger.error('Failed to update Discord message for session', {
                 error: error.message,
@@ -153,7 +169,7 @@ const updateSession = async (req, res) => {
             // Continue - we don't want to fail the session update if Discord fails
         }
     }
-    
+
     controllerFactory.sendSuccessResponse(res, updated, 'Session updated successfully');
 };
 
