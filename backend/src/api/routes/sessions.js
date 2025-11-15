@@ -168,7 +168,7 @@ router.post('/recurring', verifyToken, checkRole('DM'), [
             // Convert days to hours for backend compatibility
             auto_announce_hours: req.body.announcement_days_before ? req.body.announcement_days_before * 24 : 168,
             reminder_hours: req.body.confirmation_days_before ? req.body.confirmation_days_before * 24 : 24,
-            auto_cancel_hours: 2, // Default value
+            auto_cancel_hours: req.body.auto_cancel_hours || 48, // Default 48 hours
             maximum_players: req.body.maximum_players || 6 // Default maximum players
         };
 

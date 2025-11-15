@@ -28,6 +28,9 @@ class SessionService {
             // Schedule session completion checks
             this.scheduleSessionCompletions();
 
+            // Schedule auto-cancel checks
+            this.scheduleAutoCancelChecks();
+
             this.isInitialized = true;
             logger.info('Session service initialized successfully');
         } catch (error) {
@@ -538,6 +541,17 @@ class SessionService {
         });
     }
 
+    scheduleAutoCancelChecks() {
+        // Run every 15 minutes to check for sessions that should be auto-cancelled
+        cron.schedule('*/15 * * * *', async () => {
+            try {
+                await this.checkAutoCancelSessions();
+            } catch (error) {
+                logger.error('Error in scheduled auto-cancel check:', error);
+            }
+        });
+    }
+
     async checkPendingAnnouncements() {
         const result = await pool.query(`
             SELECT gs.* FROM game_sessions gs
@@ -607,6 +621,43 @@ class SessionService {
                 }
             } catch (error) {
                 logger.error(`Failed to process confirmation for session ${session.id}:`, error);
+            }
+        }
+    }
+
+    async checkAutoCancelSessions() {
+        // Get sessions within their auto-cancel window
+        const result = await pool.query(`
+            SELECT gs.* FROM game_sessions gs
+            WHERE gs.status IN ('scheduled', 'confirmed')
+            AND gs.start_time > NOW()
+            AND gs.start_time <= NOW() + (COALESCE(gs.auto_cancel_hours, 48) || ' hours')::INTERVAL
+        `);
+
+        logger.info(`Checking ${result.rows.length} sessions for auto-cancel`);
+
+        for (const session of result.rows) {
+            try {
+                // Get confirmed attendance count
+                const attendanceResult = await pool.query(`
+                    SELECT COUNT(DISTINCT sa.user_id) as confirmed_count
+                    FROM session_attendance sa
+                    WHERE sa.session_id = $1
+                    AND sa.response_type = 'yes'
+                `, [session.id]);
+
+                const confirmedCount = parseInt(attendanceResult.rows[0].confirmed_count) || 0;
+
+                // Cancel if below minimum players
+                if (confirmedCount < session.minimum_players) {
+                    await this.cancelSession(
+                        session.id,
+                        `Automatically cancelled: only ${confirmedCount} of ${session.minimum_players} minimum players confirmed`
+                    );
+                    logger.info(`Session ${session.id} auto-cancelled: ${confirmedCount}/${session.minimum_players} players`);
+                }
+            } catch (error) {
+                logger.error(`Failed to check auto-cancel for session ${session.id}:`, error);
             }
         }
     }

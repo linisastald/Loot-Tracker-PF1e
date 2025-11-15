@@ -77,6 +77,7 @@ const SessionManagement = () => {
     const [minimumPlayers, setMinimumPlayers] = useState(3);
     const [announcementDaysBefore, setAnnouncementDaysBefore] = useState(7);
     const [confirmationDaysBefore, setConfirmationDaysBefore] = useState(2);
+    const [autoCancelHours, setAutoCancelHours] = useState(48);
 
     // Recurring session state
     const [isRecurring, setIsRecurring] = useState(false);
@@ -159,6 +160,7 @@ const SessionManagement = () => {
                 minimum_players: minimumPlayers,
                 announcement_days_before: announcementDaysBefore,
                 confirmation_days_before: confirmationDaysBefore,
+                auto_cancel_hours: autoCancelHours,
                 send_discord_notification: sendDiscordNotification
             };
 
@@ -202,6 +204,7 @@ const SessionManagement = () => {
         setMinimumPlayers(3);
         setAnnouncementDaysBefore(7);
         setConfirmationDaysBefore(2);
+        setAutoCancelHours(48);
 
         // Reset recurring fields
         setIsRecurring(false);
@@ -830,6 +833,19 @@ const SessionManagement = () => {
                                     value={confirmationDaysBefore}
                                     onChange={(e) => setConfirmationDaysBefore(Math.max(1, parseInt(e.target.value) || 2))}
                                     inputProps={{ min: 1, max: 14 }}
+                                />
+                            </Grid>
+                        </Grid>
+                        <Grid container spacing={2} sx={{ mt: 1 }}>
+                            <Grid size={{xs: 12}}>
+                                <TextField
+                                    label="Auto-Cancel Hours Before"
+                                    type="number"
+                                    fullWidth
+                                    value={autoCancelHours}
+                                    onChange={(e) => setAutoCancelHours(Math.max(1, parseInt(e.target.value) || 48))}
+                                    inputProps={{ min: 1, max: 168 }}
+                                    helperText="Session will auto-cancel if minimum players not met within this many hours before start time (minimum 24 hours recommended)"
                                 />
                             </Grid>
                         </Grid>
