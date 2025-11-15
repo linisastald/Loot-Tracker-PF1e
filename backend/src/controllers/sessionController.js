@@ -139,6 +139,16 @@ const updateSession = async (req, res) => {
     updateData.updated_at = new Date();
     const updated = await Session.update(parseInt(id), updateData);
 
+    // Debug logging for cancellation
+    logger.info('Session update - checking for Discord updates', {
+        sessionId: id,
+        hasAnnouncementId: !!existing.announcement_message_id,
+        announcementId: existing.announcement_message_id,
+        newStatus: status,
+        oldStatus: existing.status,
+        cancelReason: cancel_reason
+    });
+
     // If session has Discord message, update it
     if (existing.announcement_message_id) {
         try {
@@ -148,26 +158,56 @@ const updateSession = async (req, res) => {
 
             // If session was just cancelled, send a cancellation ping
             if (status === 'cancelled' && existing.status !== 'cancelled') {
+                logger.info('Session cancelled - preparing to send Discord ping', {
+                    sessionId: id,
+                    title: updated.title,
+                    cancelReason: cancel_reason
+                });
+
                 const settings = await sessionService.getDiscordSettings();
+                logger.info('Discord settings retrieved', {
+                    hasCampaignRole: !!settings.campaign_role_id,
+                    hasChannel: !!settings.discord_channel_id,
+                    campaignRoleId: settings.campaign_role_id,
+                    channelId: settings.discord_channel_id
+                });
+
                 if (settings.campaign_role_id && settings.discord_channel_id) {
                     const discordService = require('../services/discordBrokerService');
                     const cancelMessage = cancel_reason
                         ? `<@&${settings.campaign_role_id}> Session "${updated.title}" has been cancelled. Reason: ${cancel_reason}`
                         : `<@&${settings.campaign_role_id}> Session "${updated.title}" has been cancelled.`;
 
+                    logger.info('Sending Discord cancellation message', {
+                        channelId: settings.discord_channel_id,
+                        message: cancelMessage
+                    });
+
                     await discordService.sendMessage({
                         channelId: settings.discord_channel_id,
                         content: cancelMessage
+                    });
+
+                    logger.info('Discord cancellation message sent successfully');
+                } else {
+                    logger.warn('Missing Discord settings for cancellation ping', {
+                        hasCampaignRole: !!settings.campaign_role_id,
+                        hasChannel: !!settings.discord_channel_id
                     });
                 }
             }
         } catch (error) {
             logger.error('Failed to update Discord message for session', {
                 error: error.message,
+                stack: error.stack,
                 sessionId: id
             });
             // Continue - we don't want to fail the session update if Discord fails
         }
+    } else {
+        logger.info('No announcement message ID - skipping Discord updates', {
+            sessionId: id
+        });
     }
 
     controllerFactory.sendSuccessResponse(res, updated, 'Session updated successfully');
