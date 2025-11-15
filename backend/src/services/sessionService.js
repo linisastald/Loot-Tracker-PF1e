@@ -377,14 +377,11 @@ class SessionService {
                 return;
             }
 
-            // Create reminder message
-            const embed = await this.createReminderEmbed(session, targetUsers);
-
+            // Send simple reminder message without embed
             const settings = await this.getDiscordSettings();
             const messageResult = await discordService.sendMessage({
                 channelId: settings.discord_channel_id,
-                content: `${targetUsers.map(u => `<@${u.user_discord_id || u.discord_id}>`).filter(mention => !mention.includes('null')).join(' ')} ${message}`,
-                embed
+                content: `${targetUsers.map(u => `<@${u.user_discord_id || u.discord_id}>`).filter(mention => !mention.includes('null')).join(' ')} ${message}`
             });
 
             // Record reminder
