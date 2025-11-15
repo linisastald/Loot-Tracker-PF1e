@@ -24,9 +24,15 @@ import {
     Typography,
     Paper,
     Alert,
-    Chip
+    Chip,
+    Checkbox,
+    Collapse,
+    IconButton
 } from '@mui/material';
-import { format, formatDistance } from 'date-fns';
+import { format, formatDistance, addMonths } from 'date-fns';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useSnackbar } from 'notistack';
 
 const SessionsPage = () => {
@@ -36,6 +42,17 @@ const SessionsPage = () => {
     const [error, setError] = useState(null);
     const [user, setUser] = useState(null);
     const { enqueueSnackbar } = useSnackbar();
+
+    // Filter state
+    const [showFilters, setShowFilters] = useState(false);
+    const [filterStatus, setFilterStatus] = useState({
+        scheduled: true,
+        confirmed: true,
+        completed: true,
+        cancelled: false
+    });
+    const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
+    const [dateTo, setDateTo] = useState(format(addMonths(new Date(), 2), 'yyyy-MM-dd'));
 
     // Get user from localStorage
     useEffect(() => {
@@ -202,39 +219,106 @@ const SessionsPage = () => {
         );
     };
 
+    // Filter sessions based on current filter settings
+    const filteredSessions = sessions.filter(session => {
+        // Filter by status
+        const status = session.status || 'scheduled';
+        if (!filterStatus[status]) {
+            return false;
+        }
+
+        // Filter by date range
+        const sessionDate = new Date(session.start_time);
+        const fromDate = dateFrom ? new Date(dateFrom) : null;
+        const toDate = dateTo ? new Date(dateTo + 'T23:59:59') : null;
+
+        if (fromDate && sessionDate < fromDate) {
+            return false;
+        }
+        if (toDate && sessionDate > toDate) {
+            return false;
+        }
+
+        return true;
+    });
+
+    const handleStatusFilterChange = (status) => {
+        setFilterStatus(prev => ({
+            ...prev,
+            [status]: !prev[status]
+        }));
+    };
+
+    const resetFilters = () => {
+        setFilterStatus({
+            scheduled: true,
+            confirmed: true,
+            completed: true,
+            cancelled: false
+        });
+        setDateFrom(format(new Date(), 'yyyy-MM-dd'));
+        setDateTo(format(addMonths(new Date(), 2), 'yyyy-MM-dd'));
+    };
+
     // Enhanced attendance rendering for new format
     const renderEnhancedAttendance = (session) => {
-        if (session.confirmed_count !== undefined) {
-            // Enhanced format with counts
+        // Don't show attendance details for cancelled sessions
+        if (session.status === 'cancelled') {
             return (
-                <>
-                    <Box mt={1}>
-                        <Typography variant="subtitle2" color="text.secondary">
-                            Attending ({session.confirmed_count || 0})
+                <Box mt={1}>
+                    <Typography variant="body2" color="error.main">
+                        This session has been cancelled
+                    </Typography>
+                    {session.cancel_reason && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                            Reason: {session.cancel_reason}
                         </Typography>
-                        <Typography variant="body2">✅ {session.confirmed_count || 0} confirmed</Typography>
-                    </Box>
-                    <Box mt={1}>
-                        <Typography variant="subtitle2" color="text.secondary">
-                            Maybe ({session.maybe_count || 0})
-                        </Typography>
-                        <Typography variant="body2">❓ {session.maybe_count || 0} maybe</Typography>
-                    </Box>
-                    <Box mt={1}>
-                        <Typography variant="subtitle2" color="text.secondary">
-                            Not Attending ({session.declined_count || 0})
-                        </Typography>
-                        <Typography variant="body2">❌ {session.declined_count || 0} declined</Typography>
-                    </Box>
-                    {session.modified_count > 0 && (
-                        <Box mt={1}>
-                            <Typography variant="subtitle2" color="text.secondary">
-                                Modified Attendance ({session.modified_count})
-                            </Typography>
-                            <Typography variant="body2">⏰ {session.modified_count} with timing changes</Typography>
-                        </Box>
                     )}
-                </>
+                </Box>
+            );
+        }
+
+        if (session.confirmed_count !== undefined) {
+            // Enhanced format with names
+            return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {session.confirmed_names && (
+                        <Typography variant="body2">
+                            ✅ <strong>Attending ({session.confirmed_count || 0}):</strong> {session.confirmed_names}
+                        </Typography>
+                    )}
+                    {!session.confirmed_names && (session.confirmed_count || 0) > 0 && (
+                        <Typography variant="body2">
+                            ✅ {session.confirmed_count} confirmed
+                        </Typography>
+                    )}
+                    {session.maybe_names && (
+                        <Typography variant="body2">
+                            ❓ <strong>Maybe ({session.maybe_count || 0}):</strong> {session.maybe_names}
+                        </Typography>
+                    )}
+                    {!session.maybe_names && (session.maybe_count || 0) > 0 && (
+                        <Typography variant="body2">
+                            ❓ {session.maybe_count} maybe
+                        </Typography>
+                    )}
+                    {session.declined_names && (
+                        <Typography variant="body2">
+                            ❌ <strong>Not Attending ({session.declined_count || 0}):</strong> {session.declined_names}
+                        </Typography>
+                    )}
+                    {!session.declined_names && (session.declined_count || 0) > 0 && (
+                        <Typography variant="body2">
+                            ❌ {session.declined_count} declined
+                        </Typography>
+                    )}
+                    {!session.confirmed_names && !session.maybe_names && !session.declined_names &&
+                     (session.confirmed_count || 0) === 0 && (session.maybe_count || 0) === 0 && (session.declined_count || 0) === 0 && (
+                        <Typography variant="body2" color="text.secondary">
+                            No responses yet
+                        </Typography>
+                    )}
+                </Box>
             );
         } else {
             // Legacy format
@@ -356,10 +440,12 @@ const SessionsPage = () => {
                         </Grid>
                         <Grid size={{xs: 12, md: 4}}>
                             <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" height="100%">
-                                <Typography variant="body2" sx={{ color: attendanceStatusColor, mb: 1 }}>
-                                    Your Status: <strong>{attendanceStatusText}</strong>
-                                </Typography>
-                                {session.status !== 'recurring_template' && (
+                                {session.status !== 'cancelled' && (
+                                    <Typography variant="body2" sx={{ color: attendanceStatusColor, mb: 1 }}>
+                                        Your Status: <strong>{attendanceStatusText}</strong>
+                                    </Typography>
+                                )}
+                                {session.status !== 'recurring_template' && session.status !== 'cancelled' && (
                                     <Button
                                         variant="contained"
                                         color="primary"
@@ -382,14 +468,102 @@ const SessionsPage = () => {
                 <Typography variant="h4" component="h1" gutterBottom>
                     Game Sessions
                 </Typography>
+                <Button
+                    variant="outlined"
+                    startIcon={<FilterListIcon />}
+                    endIcon={showFilters ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    onClick={() => setShowFilters(!showFilters)}
+                >
+                    Filters
+                </Button>
             </Box>
-            
+
+            {/* Filters Panel */}
+            <Collapse in={showFilters}>
+                <Paper sx={{ p: 2, mb: 3 }}>
+                    <Grid container spacing={2} alignItems="center">
+                        <Grid size={12}>
+                            <Typography variant="subtitle1" gutterBottom>
+                                Session Status
+                            </Typography>
+                            <Box display="flex" gap={2} flexWrap="wrap">
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={filterStatus.scheduled}
+                                            onChange={() => handleStatusFilterChange('scheduled')}
+                                        />
+                                    }
+                                    label="Scheduled"
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={filterStatus.confirmed}
+                                            onChange={() => handleStatusFilterChange('confirmed')}
+                                        />
+                                    }
+                                    label="Confirmed"
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={filterStatus.completed}
+                                            onChange={() => handleStatusFilterChange('completed')}
+                                        />
+                                    }
+                                    label="Completed"
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={filterStatus.cancelled}
+                                            onChange={() => handleStatusFilterChange('cancelled')}
+                                        />
+                                    }
+                                    label="Cancelled"
+                                />
+                            </Box>
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 5}}>
+                            <TextField
+                                label="From Date"
+                                type="date"
+                                fullWidth
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 5}}>
+                            <TextField
+                                label="To Date"
+                                type="date"
+                                fullWidth
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 2}}>
+                            <Button
+                                variant="outlined"
+                                fullWidth
+                                onClick={resetFilters}
+                            >
+                                Reset
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Paper>
+            </Collapse>
+
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }}>
                     {error}
                 </Alert>
             )}
-            
+
             {loading ? (
                 <Box display="flex" justifyContent="center" my={4}>
                     <CircularProgress />
@@ -403,9 +577,21 @@ const SessionsPage = () => {
                         No sessions have been scheduled yet.
                     </Typography>
                 </Paper>
+            ) : filteredSessions.length === 0 ? (
+                <Paper sx={{ p: 3, textAlign: 'center' }}>
+                    <Typography variant="h6" color="text.secondary">
+                        No sessions match your filters
+                    </Typography>
+                    <Typography variant="body1" color="text.secondary" mt={1}>
+                        Try adjusting your filter settings to see more sessions.
+                    </Typography>
+                </Paper>
             ) : (
                 <Box>
-                    {sessions.map(session => renderSession(session))}
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Showing {filteredSessions.length} of {sessions.length} sessions
+                    </Typography>
+                    {filteredSessions.map(session => renderSession(session))}
                 </Box>
             )}
 

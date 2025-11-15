@@ -10,6 +10,7 @@ import {
     Checkbox,
     Chip,
     CircularProgress,
+    Collapse,
     Dialog,
     DialogActions,
     DialogContent,
@@ -38,13 +39,16 @@ import {
     Cancel as CancelIcon,
     CheckCircle as ConfirmIcon,
     Event as EventIcon,
+    ExpandLess as ExpandLessIcon,
+    ExpandMore as ExpandMoreIcon,
+    FilterList as FilterListIcon,
     Group as GroupIcon,
     NotificationImportant as ReminderIcon,
     Refresh as RefreshIcon,
     Send as SendIcon,
     Visibility as ViewIcon
 } from '@mui/icons-material';
-import { format } from 'date-fns';
+import { format, addMonths } from 'date-fns';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -90,6 +94,17 @@ const SessionManagement = () => {
     const [announcingSession, setAnnouncingSession] = useState(null);
     const [cancelingSession, setCancelingSession] = useState(null);
     const [confirmingSession, setConfirmingSession] = useState(null);
+
+    // Filter state
+    const [showFilters, setShowFilters] = useState(false);
+    const [filterStatus, setFilterStatus] = useState({
+        scheduled: true,
+        confirmed: true,
+        completed: true,
+        cancelled: false
+    });
+    const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
+    const [dateTo, setDateTo] = useState(format(addMonths(new Date(), 2), 'yyyy-MM-dd'));
 
     useEffect(() => {
         fetchSessions();
@@ -294,6 +309,47 @@ const SessionManagement = () => {
         }
     };
 
+    // Filter sessions based on current filter settings
+    const filteredSessions = sessions.filter(session => {
+        // Filter by status
+        const status = session.status || 'scheduled';
+        if (!filterStatus[status]) {
+            return false;
+        }
+
+        // Filter by date range
+        const sessionDate = new Date(session.start_time);
+        const fromDate = dateFrom ? new Date(dateFrom) : null;
+        const toDate = dateTo ? new Date(dateTo + 'T23:59:59') : null;
+
+        if (fromDate && sessionDate < fromDate) {
+            return false;
+        }
+        if (toDate && sessionDate > toDate) {
+            return false;
+        }
+
+        return true;
+    });
+
+    const handleStatusFilterChange = (status) => {
+        setFilterStatus(prev => ({
+            ...prev,
+            [status]: !prev[status]
+        }));
+    };
+
+    const resetFilters = () => {
+        setFilterStatus({
+            scheduled: true,
+            confirmed: true,
+            completed: true,
+            cancelled: false
+        });
+        setDateFrom(format(new Date(), 'yyyy-MM-dd'));
+        setDateTo(format(addMonths(new Date(), 2), 'yyyy-MM-dd'));
+    };
+
     const renderSessionCard = (session) => {
         const isUpcoming = new Date(session.start_time) > new Date();
         const attendanceTotal = (session.confirmed_count || 0) + (session.declined_count || 0) + (session.maybe_count || 0);
@@ -455,6 +511,14 @@ const SessionManagement = () => {
                 <Typography variant="h6">Session Management</Typography>
                 <Box display="flex" gap={2}>
                     <Button
+                        variant="outlined"
+                        startIcon={<FilterListIcon />}
+                        endIcon={showFilters ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                        onClick={() => setShowFilters(!showFilters)}
+                    >
+                        Filters
+                    </Button>
+                    <Button
                         variant="contained"
                         color="primary"
                         startIcon={<AddIcon />}
@@ -472,6 +536,86 @@ const SessionManagement = () => {
                 </Box>
             </Box>
 
+            {/* Filters Panel */}
+            <Collapse in={showFilters}>
+                <Paper sx={{ p: 2, mb: 3 }}>
+                    <Grid container spacing={2} alignItems="center">
+                        <Grid size={12}>
+                            <Typography variant="subtitle1" gutterBottom>
+                                Session Status
+                            </Typography>
+                            <Box display="flex" gap={2} flexWrap="wrap">
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={filterStatus.scheduled}
+                                            onChange={() => handleStatusFilterChange('scheduled')}
+                                        />
+                                    }
+                                    label="Scheduled"
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={filterStatus.confirmed}
+                                            onChange={() => handleStatusFilterChange('confirmed')}
+                                        />
+                                    }
+                                    label="Confirmed"
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={filterStatus.completed}
+                                            onChange={() => handleStatusFilterChange('completed')}
+                                        />
+                                    }
+                                    label="Completed"
+                                />
+                                <FormControlLabel
+                                    control={
+                                        <Checkbox
+                                            checked={filterStatus.cancelled}
+                                            onChange={() => handleStatusFilterChange('cancelled')}
+                                        />
+                                    }
+                                    label="Cancelled"
+                                />
+                            </Box>
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 5}}>
+                            <TextField
+                                label="From Date"
+                                type="date"
+                                fullWidth
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 5}}>
+                            <TextField
+                                label="To Date"
+                                type="date"
+                                fullWidth
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                InputLabelProps={{ shrink: true }}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 2}}>
+                            <Button
+                                variant="outlined"
+                                fullWidth
+                                onClick={resetFilters}
+                            >
+                                Reset
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Paper>
+            </Collapse>
+
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }}>
                     {error}
@@ -487,9 +631,21 @@ const SessionManagement = () => {
                         Create a session from the Sessions page to see it here.
                     </Typography>
                 </Paper>
+            ) : filteredSessions.length === 0 ? (
+                <Paper sx={{ p: 3, textAlign: 'center' }}>
+                    <Typography variant="h6" color="text.secondary">
+                        No sessions match your filters
+                    </Typography>
+                    <Typography variant="body1" color="text.secondary" mt={1}>
+                        Try adjusting your filter settings to see more sessions.
+                    </Typography>
+                </Paper>
             ) : (
                 <Box>
-                    {sessions.map(renderSessionCard)}
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Showing {filteredSessions.length} of {sessions.length} sessions
+                    </Typography>
+                    {filteredSessions.map(renderSessionCard)}
                 </Box>
             )}
 
