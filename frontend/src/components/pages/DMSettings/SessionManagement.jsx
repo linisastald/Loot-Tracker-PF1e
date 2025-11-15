@@ -235,12 +235,12 @@ const SessionManagement = () => {
                 reminder_type: reminderType
             });
             enqueueSnackbar('Reminder sent successfully', { variant: 'success' });
-            setReminderDialog(false);
         } catch (err) {
             console.error('Error sending reminder:', err);
             enqueueSnackbar('Failed to send reminder', { variant: 'error' });
         } finally {
             setSendingReminder(false);
+            setReminderDialog(false);
         }
     };
 
