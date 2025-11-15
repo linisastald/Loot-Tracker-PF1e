@@ -318,7 +318,7 @@ class SessionService {
 
             const messageResult = await discordService.sendMessage({
                 channelId: settings.discord_channel_id,
-                content: settings.campaign_role_id ? `<@&${settings.campaign_role_id}> New session announced!` : null,
+                content: settings.campaign_role_id ? `<@&${settings.campaign_role_id}> next session!` : null,
                 embed,
                 components
             });
@@ -1258,50 +1258,56 @@ class SessionService {
             }).join(', ');
         };
 
-        // Build attendance field value
-        let attendanceText = '';
-        if (confirmed.length > 0) {
-            attendanceText += `✅ **Attending (${confirmed.length}):** ${formatNames(confirmed)}\n`;
-        }
-        if (late.length > 0) {
-            attendanceText += `⏰ **Modified (${late.length}):** ${formatNames(late)}\n`;
-        }
-        if (maybe.length > 0) {
-            attendanceText += `❓ **Maybe (${maybe.length}):** ${formatNames(maybe)}\n`;
-        }
-        if (declined.length > 0) {
-            attendanceText += `❌ **Not Attending (${declined.length}):** ${formatNames(declined)}\n`;
-        }
-        if (attendanceText === '') {
-            attendanceText = 'No responses yet';
-        }
-
         // Determine embed color based on session status
         let color = 0x00FF00; // Green for confirmed
         if (session.status === 'cancelled') color = 0xFF0000; // Red for cancelled
         else if (session.status === 'scheduled') color = 0x0099FF; // Blue for scheduled
 
+        // Build fields array with attendance in separate columns
+        const fields = [
+            {
+                name: '📅 Date & Time',
+                value: this.formatSessionDate(session.start_time),
+                inline: false
+            },
+            {
+                name: `✅ Attending (${confirmed.length + late.length})`,
+                value: confirmed.length > 0 || late.length > 0
+                    ? [...confirmed.map(a => a.character_name || a.username), ...late.map(a => {
+                        const name = a.character_name || a.username;
+                        if (a.response_type === 'late') return `${name} (late)`;
+                        if (a.response_type === 'early') return `${name} (early)`;
+                        return `${name} (late/early)`;
+                    })].join('\n')
+                    : 'None',
+                inline: true
+            },
+            {
+                name: `❓ Maybe (${maybe.length})`,
+                value: maybe.length > 0
+                    ? maybe.map(a => a.character_name || a.username).join('\n')
+                    : 'None',
+                inline: true
+            },
+            {
+                name: `❌ Not Attending (${declined.length})`,
+                value: declined.length > 0
+                    ? declined.map(a => a.character_name || a.username).join('\n')
+                    : 'None',
+                inline: true
+            },
+            {
+                name: '📋 Session Info',
+                value: `Min players: ${session.minimum_players}\nStatus: ${session.status}`,
+                inline: false
+            }
+        ];
+
         return {
             title: `🎲 ${session.title}`,
             description: session.description || 'Pathfinder session',
             color: color,
-            fields: [
-                {
-                    name: '📅 Date & Time',
-                    value: this.formatSessionDate(session.start_time),
-                    inline: false
-                },
-                {
-                    name: '👥 Attendance',
-                    value: attendanceText,
-                    inline: false
-                },
-                {
-                    name: '📋 Session Info',
-                    value: `Min players: ${session.minimum_players}\nStatus: ${session.status}`,
-                    inline: false
-                }
-            ],
+            fields,
             footer: {
                 text: 'Click the buttons below to update your attendance!'
             },
