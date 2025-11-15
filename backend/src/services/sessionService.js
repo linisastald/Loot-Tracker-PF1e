@@ -318,7 +318,7 @@ class SessionService {
 
             const messageResult = await discordService.sendMessage({
                 channelId: settings.discord_channel_id,
-                content: settings.reminder_ping_role ? `<@&${settings.reminder_ping_role}> New session announced!` : null,
+                content: settings.campaign_role_id ? `<@&${settings.campaign_role_id}> New session announced!` : null,
                 embed,
                 components
             });
@@ -379,9 +379,18 @@ class SessionService {
 
             // Send simple reminder message without embed
             const settings = await this.getDiscordSettings();
+
+            // For "all" reminders, ping the role. For specific groups, ping individual users
+            let content = '';
+            if (reminderType === 'all' && settings.campaign_role_id) {
+                content = `<@&${settings.campaign_role_id}> ${message}`;
+            } else {
+                content = `${targetUsers.map(u => `<@${u.user_discord_id || u.discord_id}>`).filter(mention => !mention.includes('null')).join(' ')} ${message}`;
+            }
+
             const messageResult = await discordService.sendMessage({
                 channelId: settings.discord_channel_id,
-                content: `${targetUsers.map(u => `<@${u.user_discord_id || u.discord_id}>`).filter(mention => !mention.includes('null')).join(' ')} ${message}`
+                content
             });
 
             // Record reminder
@@ -561,7 +570,8 @@ class SessionService {
 
         for (const reminder of result.rows) {
             try {
-                await this.sendSessionReminder(reminder.session_id, reminder.reminder_type);
+                // Use target_audience for automated reminders to properly target users
+                await this.sendSessionReminder(reminder.session_id, reminder.target_audience || reminder.reminder_type);
 
                 // Mark as sent
                 await pool.query(`
@@ -1160,7 +1170,9 @@ class SessionService {
 
             const attendance = await this.getSessionAttendance(sessionId);
             const embed = await this.createSessionEmbed(session, attendance);
-            const components = this.createAttendanceButtons(); // Keep buttons when updating
+
+            // Remove buttons if session is cancelled, otherwise keep them
+            const components = session.status === 'cancelled' ? [] : this.createAttendanceButtons();
 
             const settings = await this.getDiscordSettings();
             if (settings.discord_bot_token && settings.discord_channel_id) {
@@ -1168,7 +1180,7 @@ class SessionService {
                     channelId: settings.discord_channel_id,
                     messageId: session.announcement_message_id,
                     embed,
-                    components // Include buttons in update
+                    components
                 });
             }
         } catch (error) {
