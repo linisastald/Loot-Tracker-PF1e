@@ -145,17 +145,19 @@ class Session extends BaseModel {
     
     /**
      * Find sessions that need Discord notifications to be sent
-     * (7 days before the session with no Discord message ID)
+     * Uses each session's announcement_days_before setting (default 7 days)
      * @returns {Promise<Array>} - Sessions that need notifications
      */
     async findSessionsNeedingNotifications() {
         const query = `
             SELECT * FROM game_sessions
-            WHERE start_time BETWEEN NOW() AND NOW() + INTERVAL '7 days 1 hour'
+            WHERE status = 'scheduled'
             AND (discord_message_id IS NULL OR discord_message_id = '')
+            AND start_time > NOW()
+            AND start_time <= NOW() + (COALESCE(announcement_days_before, 7) || ' days')::INTERVAL
             ORDER BY start_time ASC
         `;
-        
+
         const result = await dbUtils.executeQuery(query);
         return result.rows;
     }
