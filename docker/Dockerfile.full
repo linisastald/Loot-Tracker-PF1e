@@ -107,6 +107,10 @@ RUN mkdir -p /app/backend /app/logs /app/data /app/database && \
     chown -R frontend:nginx /var/cache/nginx && \
     chown -R frontend:nginx /usr/share/nginx/html
 
+# Copy version files for version endpoint
+COPY --chown=backend:nodejs .docker-version /app/
+COPY --chown=backend:nodejs package.json /app/
+
 # Copy backend with proper ownership (production files only)
 COPY --from=backend-build --chown=backend:nodejs /app/node_modules /app/backend/node_modules
 COPY --from=backend-build --chown=backend:nodejs /app/package.json /app/backend/package.json

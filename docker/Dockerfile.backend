@@ -6,6 +6,10 @@ FROM node:20-alpine
 # Set working directory
 WORKDIR /app
 
+# Copy version files for version endpoint
+COPY .docker-version ./
+COPY package.json ./
+
 # Build arguments
 ARG NODE_ENV=production
 ARG REACT_APP_API_URL=/api
