@@ -2,6 +2,7 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 const pool = require('../config/db');
+const { discordRateLimiter } = require('../utils/rateLimiter');
 
 class DiscordBrokerService {
   constructor() {
@@ -243,6 +244,9 @@ class DiscordBrokerService {
       if (embed) payload.embeds = [embed];
       if (components) payload.components = components;
 
+      // Apply rate limiting before Discord API call
+      await discordRateLimiter.acquire();
+
       // Send message via Discord API
       const response = await axios.post(
         `https://discord.com/api/v10/channels/${channelId}/messages`,
@@ -310,6 +314,9 @@ class DiscordBrokerService {
       if (embed) payload.embeds = [embed];
       if (components) payload.components = components;
 
+      // Apply rate limiting before Discord API call
+      await discordRateLimiter.acquire();
+
       // Update message via Discord API
       const response = await axios.patch(
         `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
@@ -372,6 +379,9 @@ class DiscordBrokerService {
 
       // URL encode the emoji for the API request
       const encodedEmoji = encodeURIComponent(emoji);
+
+      // Apply rate limiting before Discord API call
+      await discordRateLimiter.acquire();
 
       // Add reaction via Discord API
       await axios.put(
