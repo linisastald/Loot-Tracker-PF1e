@@ -121,6 +121,17 @@ const SessionManagement = () => {
 
     useEffect(() => {
         fetchSessions();
+
+        // Load default settings from localStorage
+        const savedDefaults = localStorage.getItem('sessionDefaults');
+        if (savedDefaults) {
+            try {
+                const parsed = JSON.parse(savedDefaults);
+                setDefaultSettings(parsed);
+            } catch (err) {
+                console.error('Failed to load saved defaults:', err);
+            }
+        }
     }, []);
 
     const fetchSessions = async () => {
@@ -518,6 +529,17 @@ const SessionManagement = () => {
                 </CardContent>
             </Card>
         );
+    };
+
+    const saveDefaultSettings = () => {
+        try {
+            localStorage.setItem('sessionDefaults', JSON.stringify(defaultSettings));
+            setSettingsDialog(false);
+            enqueueSnackbar('Default settings saved', { variant: 'success' });
+        } catch (err) {
+            console.error('Failed to save defaults:', err);
+            enqueueSnackbar('Failed to save default settings', { variant: 'error' });
+        }
     };
 
     if (loading) {
@@ -1096,11 +1118,7 @@ const SessionManagement = () => {
                     </DialogContent>
                     <DialogActions>
                         <Button onClick={() => setSettingsDialog(false)}>Cancel</Button>
-                        <Button onClick={() => {
-                            // TODO: Save defaults to user settings
-                            setSettingsDialog(false);
-                            enqueueSnackbar('Default settings saved', { variant: 'success' });
-                        }} variant="contained" color="primary">
+                        <Button onClick={saveDefaultSettings} variant="contained" color="primary">
                             Save Defaults
                         </Button>
                     </DialogActions>
