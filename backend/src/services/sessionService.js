@@ -38,6 +38,26 @@ class SessionService {
         }
     }
 
+    async stop() {
+        logger.info('Stopping session service and cleaning up cron jobs...');
+
+        // Stop all scheduled cron jobs
+        for (const [jobName, job] of this.scheduledJobs.entries()) {
+            try {
+                job.stop();
+                logger.info(`Stopped cron job: ${jobName}`);
+            } catch (error) {
+                logger.error(`Failed to stop cron job ${jobName}:`, error);
+            }
+        }
+
+        // Clear the jobs map
+        this.scheduledJobs.clear();
+        this.isInitialized = false;
+
+        logger.info('Session service stopped successfully');
+    }
+
     // ========================================================================
     // SESSION MANAGEMENT
     // ========================================================================
@@ -64,14 +84,14 @@ class SessionService {
             // Create the session with enhanced fields
             const sessionResult = await client.query(`
                 INSERT INTO game_sessions (
-                    id, title, start_time, end_time, description, minimum_players, maximum_players,
+                    title, start_time, end_time, description, minimum_players, maximum_players,
                     auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
                     status, created_at, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'scheduled', NOW(), NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', NOW(), NOW())
                 RETURNING *
             `, [
-                uuidv4(), title, start_time, end_time, description, minimum_players, maximum_players,
+                title, start_time, end_time, description, minimum_players, maximum_players,
                 auto_announce_hours, reminder_hours, auto_cancel_hours, created_by
             ]);
 
@@ -488,68 +508,86 @@ class SessionService {
 
     scheduleSessionAnnouncements() {
         // Run every hour to check for sessions to announce
-        cron.schedule('0 * * * *', async () => {
+        const job = cron.schedule('0 * * * *', async () => {
             try {
                 await this.checkPendingAnnouncements();
             } catch (error) {
                 logger.error('Error in scheduled announcement check:', error);
             }
         });
+
+        this.scheduledJobs.set('sessionAnnouncements', job);
+        logger.info('Scheduled session announcements check job (every hour)');
     }
 
     scheduleReminderChecks() {
         // Run every 6 hours to check for reminders to send
-        cron.schedule('0 */6 * * *', async () => {
+        const job = cron.schedule('0 */6 * * *', async () => {
             try {
                 await this.checkPendingReminders();
             } catch (error) {
                 logger.error('Error in scheduled reminder check:', error);
             }
         });
+
+        this.scheduledJobs.set('reminderChecks', job);
+        logger.info('Scheduled reminder check job (every 6 hours)');
     }
 
     scheduleConfirmationChecks() {
         // Run daily at 9 AM to check for sessions to confirm/cancel
-        cron.schedule('0 9 * * *', async () => {
+        const job = cron.schedule('0 9 * * *', async () => {
             try {
                 await this.checkSessionConfirmations();
             } catch (error) {
                 logger.error('Error in scheduled confirmation check:', error);
             }
         });
+
+        this.scheduledJobs.set('confirmationChecks', job);
+        logger.info('Scheduled confirmation check job (daily at 9 AM)');
     }
 
     scheduleTaskGeneration() {
         // Run every hour to check for sessions needing task generation
-        cron.schedule('0 * * * *', async () => {
+        const job = cron.schedule('0 * * * *', async () => {
             try {
                 await this.checkTaskGeneration();
             } catch (error) {
                 logger.error('Error in scheduled task generation:', error);
             }
         });
+
+        this.scheduledJobs.set('taskGeneration', job);
+        logger.info('Scheduled task generation check job (every hour)');
     }
 
     scheduleSessionCompletions() {
         // Run every hour to check for sessions that need to be marked as completed
-        cron.schedule('0 * * * *', async () => {
+        const job = cron.schedule('0 * * * *', async () => {
             try {
                 await this.checkSessionCompletions();
             } catch (error) {
                 logger.error('Error in scheduled session completion check:', error);
             }
         });
+
+        this.scheduledJobs.set('sessionCompletions', job);
+        logger.info('Scheduled session completion check job (every hour)');
     }
 
     scheduleAutoCancelChecks() {
         // Run every 15 minutes to check for sessions that should be auto-cancelled
-        cron.schedule('*/15 * * * *', async () => {
+        const job = cron.schedule('*/15 * * * *', async () => {
             try {
                 await this.checkAutoCancelSessions();
             } catch (error) {
                 logger.error('Error in scheduled auto-cancel check:', error);
             }
         });
+
+        this.scheduledJobs.set('autoCancelCheck', job);
+        logger.info('Scheduled auto-cancel check job (every 15 minutes)');
     }
 
     async checkPendingAnnouncements() {
@@ -626,39 +664,59 @@ class SessionService {
     }
 
     async checkAutoCancelSessions() {
-        // Get sessions within their auto-cancel window
-        const result = await pool.query(`
-            SELECT gs.* FROM game_sessions gs
-            WHERE gs.status IN ('scheduled', 'confirmed')
-            AND gs.start_time > NOW()
-            AND gs.start_time <= NOW() + (COALESCE(gs.auto_cancel_hours, 48) || ' hours')::INTERVAL
-        `);
+        const client = await pool.connect();
 
-        logger.info(`Checking ${result.rows.length} sessions for auto-cancel`);
+        try {
+            // Use PostgreSQL advisory lock to prevent concurrent execution
+            // Lock ID: 1001 (arbitrary number for auto-cancel job)
+            const lockResult = await client.query('SELECT pg_try_advisory_lock($1) as acquired', [1001]);
 
-        for (const session of result.rows) {
-            try {
-                // Get confirmed attendance count
-                const attendanceResult = await pool.query(`
-                    SELECT COUNT(DISTINCT sa.user_id) as confirmed_count
-                    FROM session_attendance sa
-                    WHERE sa.session_id = $1
-                    AND sa.response_type = 'yes'
-                `, [session.id]);
-
-                const confirmedCount = parseInt(attendanceResult.rows[0].confirmed_count) || 0;
-
-                // Cancel if below minimum players
-                if (confirmedCount < session.minimum_players) {
-                    await this.cancelSession(
-                        session.id,
-                        `Automatically cancelled: only ${confirmedCount} of ${session.minimum_players} minimum players confirmed`
-                    );
-                    logger.info(`Session ${session.id} auto-cancelled: ${confirmedCount}/${session.minimum_players} players`);
-                }
-            } catch (error) {
-                logger.error(`Failed to check auto-cancel for session ${session.id}:`, error);
+            if (!lockResult.rows[0].acquired) {
+                logger.debug('Auto-cancel check already running, skipping this execution');
+                return;
             }
+
+            try {
+                // Get sessions within their auto-cancel window
+                const result = await client.query(`
+                    SELECT gs.* FROM game_sessions gs
+                    WHERE gs.status IN ('scheduled', 'confirmed')
+                    AND gs.start_time > NOW()
+                    AND gs.start_time <= NOW() + (COALESCE(gs.auto_cancel_hours, 48) || ' hours')::INTERVAL
+                `);
+
+                logger.info(`Checking ${result.rows.length} sessions for auto-cancel`);
+
+                for (const session of result.rows) {
+                    try {
+                        // Get confirmed attendance count
+                        const attendanceResult = await client.query(`
+                            SELECT COUNT(DISTINCT sa.user_id) as confirmed_count
+                            FROM session_attendance sa
+                            WHERE sa.session_id = $1
+                            AND sa.response_type = 'yes'
+                        `, [session.id]);
+
+                        const confirmedCount = parseInt(attendanceResult.rows[0].confirmed_count) || 0;
+
+                        // Cancel if below minimum players
+                        if (confirmedCount < session.minimum_players) {
+                            await this.cancelSession(
+                                session.id,
+                                `Automatically cancelled: only ${confirmedCount} of ${session.minimum_players} minimum players confirmed`
+                            );
+                            logger.info(`Session ${session.id} auto-cancelled: ${confirmedCount}/${session.minimum_players} players`);
+                        }
+                    } catch (error) {
+                        logger.error(`Failed to check auto-cancel for session ${session.id}:`, error);
+                    }
+                }
+            } finally {
+                // Always release the advisory lock
+                await client.query('SELECT pg_advisory_unlock($1)', [1001]);
+            }
+        } finally {
+            client.release();
         }
     }
 
@@ -1072,14 +1130,13 @@ class SessionService {
 
                     const instanceResult = await client.query(`
                         INSERT INTO game_sessions (
-                            id, title, start_time, end_time, description, minimum_players, maximum_players,
+                            title, start_time, end_time, description, minimum_players, maximum_players,
                             auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
                             parent_recurring_id, created_from_recurring, status, created_at, updated_at
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE, 'scheduled', NOW(), NOW())
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'scheduled', NOW(), NOW())
                         RETURNING *
                     `, [
-                        uuidv4(),
                         `${template.title} - ${this.formatDateForTitle(lastDate)}`,
                         lastDate.toISOString(),
                         instanceEndTime.toISOString(),
