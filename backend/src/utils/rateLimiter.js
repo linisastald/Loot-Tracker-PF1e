@@ -8,6 +8,7 @@ class RateLimiter {
         this.maxRequests = maxRequests; // Slightly below Discord's limit for safety
         this.windowMs = windowMs;
         this.requests = [];
+        this.MAX_TRACKED_REQUESTS = 1000; // Prevent unbounded memory growth
     }
 
     /**
@@ -16,6 +17,11 @@ class RateLimiter {
      */
     async acquire() {
         const now = Date.now();
+
+        // Limit array size to prevent unbounded memory growth
+        if (this.requests.length > this.MAX_TRACKED_REQUESTS) {
+            this.requests = this.requests.slice(-this.MAX_TRACKED_REQUESTS);
+        }
 
         // Remove requests outside the current window
         this.requests = this.requests.filter(time => now - time < this.windowMs);

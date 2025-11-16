@@ -33,25 +33,28 @@ router.get('/enhanced', verifyToken, async (req, res) => {
     try {
         const { status, upcoming_only = 'false' } = req.query;
 
-        // Whitelist valid status values to prevent SQL injection and invalid queries
-        if (status && !VALID_SESSION_STATUSES.includes(status)) {
+        // Build WHERE clause conditions using array pattern for safer SQL construction
+        const whereConditions = ['1=1'];
+        const queryParams = [];
+
+        // Only add status condition if value is valid (defensive programming)
+        if (status && VALID_SESSION_STATUSES.includes(status)) {
+            queryParams.push(status);
+            whereConditions.push(`gs.status = $${queryParams.length}`);
+        } else if (status) {
+            // Invalid status provided
             const response = ApiResponse.validationError(
                 `Invalid status value. Must be one of: ${VALID_SESSION_STATUSES.join(', ')}`
             );
             return ApiResponse.send(res, response);
         }
 
-        let whereClause = '1=1';
-        const queryParams = [];
-
-        if (status) {
-            whereClause += ' AND gs.status = $' + (queryParams.length + 1);
-            queryParams.push(status);
-        }
-
         if (upcoming_only === 'true') {
-            whereClause += ' AND gs.start_time > NOW()';
+            whereConditions.push('gs.start_time > NOW()');
         }
+
+        // Join conditions with AND - safer than string concatenation
+        const whereClause = whereConditions.join(' AND ');
 
         const result = await dbUtils.executeQuery(`
             SELECT

@@ -277,9 +277,14 @@ class SessionService {
                 WHERE id = $1
             `, [sessionId, counts.confirmed_count, counts.declined_count, counts.maybe_count]);
 
+            // Enqueue Discord message update in outbox (within transaction)
+            // This ensures Discord updates are never lost if the transaction succeeds
+            const discordOutboxService = require('./discordOutboxService');
+            await discordOutboxService.enqueue(client, 'session_update', { sessionId }, sessionId);
+
             await client.query('COMMIT');
 
-            logger.info('Attendance recorded:', {
+            logger.info('Attendance recorded and Discord update enqueued:', {
                 sessionId,
                 userId,
                 responseType,
@@ -664,57 +669,59 @@ class SessionService {
 
     async checkAutoCancelSessions() {
         const client = await pool.connect();
+        let lockAcquired = false;
 
         try {
             // Use PostgreSQL advisory lock to prevent concurrent execution
             // Lock ID: 1001 (arbitrary number for auto-cancel job)
             const lockResult = await client.query('SELECT pg_try_advisory_lock($1) as acquired', [1001]);
+            lockAcquired = lockResult.rows[0].acquired;
 
-            if (!lockResult.rows[0].acquired) {
+            if (!lockAcquired) {
                 logger.debug('Auto-cancel check already running, skipping this execution');
                 return;
             }
 
-            try {
-                // Get sessions within their auto-cancel window
-                const result = await client.query(`
-                    SELECT gs.* FROM game_sessions gs
-                    WHERE gs.status IN ('scheduled', 'confirmed')
-                    AND gs.start_time > NOW()
-                    AND gs.start_time <= NOW() + (COALESCE(gs.auto_cancel_hours, 48) || ' hours')::INTERVAL
-                `);
+            // Get sessions within their auto-cancel window
+            // Query inside the lock to prevent race conditions
+            const result = await client.query(`
+                SELECT gs.* FROM game_sessions gs
+                WHERE gs.status IN ('scheduled', 'confirmed')
+                AND gs.start_time > NOW()
+                AND gs.start_time <= NOW() + (COALESCE(gs.auto_cancel_hours, 48) || ' hours')::INTERVAL
+            `);
 
-                logger.info(`Checking ${result.rows.length} sessions for auto-cancel`);
+            logger.info(`Checking ${result.rows.length} sessions for auto-cancel`);
 
-                for (const session of result.rows) {
-                    try {
-                        // Get confirmed attendance count
-                        const attendanceResult = await client.query(`
-                            SELECT COUNT(DISTINCT sa.user_id) as confirmed_count
-                            FROM session_attendance sa
-                            WHERE sa.session_id = $1
-                            AND sa.response_type = 'yes'
-                        `, [session.id]);
+            for (const session of result.rows) {
+                try {
+                    // Get confirmed attendance count
+                    const attendanceResult = await client.query(`
+                        SELECT COUNT(DISTINCT sa.user_id) as confirmed_count
+                        FROM session_attendance sa
+                        WHERE sa.session_id = $1
+                        AND sa.response_type = 'yes'
+                    `, [session.id]);
 
-                        const confirmedCount = parseInt(attendanceResult.rows[0].confirmed_count) || 0;
+                    const confirmedCount = parseInt(attendanceResult.rows[0].confirmed_count) || 0;
 
-                        // Cancel if below minimum players
-                        if (confirmedCount < session.minimum_players) {
-                            await this.cancelSession(
-                                session.id,
-                                `Automatically cancelled: only ${confirmedCount} of ${session.minimum_players} minimum players confirmed`
-                            );
-                            logger.info(`Session ${session.id} auto-cancelled: ${confirmedCount}/${session.minimum_players} players`);
-                        }
-                    } catch (error) {
-                        logger.error(`Failed to check auto-cancel for session ${session.id}:`, error);
+                    // Cancel if below minimum players
+                    if (confirmedCount < session.minimum_players) {
+                        await this.cancelSession(
+                            session.id,
+                            `Automatically cancelled: only ${confirmedCount} of ${session.minimum_players} minimum players confirmed`
+                        );
+                        logger.info(`Session ${session.id} auto-cancelled: ${confirmedCount}/${session.minimum_players} players`);
                     }
+                } catch (error) {
+                    logger.error(`Failed to check auto-cancel for session ${session.id}:`, error);
                 }
-            } finally {
-                // Always release the advisory lock
-                await client.query('SELECT pg_advisory_unlock($1)', [1001]);
             }
         } finally {
+            // Always release the advisory lock if it was acquired
+            if (lockAcquired) {
+                await client.query('SELECT pg_advisory_unlock($1)', [1001]);
+            }
             client.release();
         }
     }

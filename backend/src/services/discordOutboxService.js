@@ -7,7 +7,6 @@
 
 const pool = require('../config/db');
 const logger = require('../utils/logger');
-const sessionService = require('./sessionService');
 const cron = require('node-cron');
 
 class DiscordOutboxService {
@@ -60,6 +59,18 @@ class DiscordOutboxService {
     }
 
     /**
+     * Calculate exponential backoff delay in milliseconds
+     * @param {number} retryCount - Number of retries attempted
+     * @returns {number} - Delay in milliseconds
+     */
+    calculateBackoffDelay(retryCount) {
+        // Exponential backoff: 5 minutes * 2^retryCount, capped at 1 hour
+        const baseDelayMs = 5 * 60 * 1000; // 5 minutes
+        const maxDelayMs = 60 * 60 * 1000; // 1 hour
+        return Math.min(baseDelayMs * Math.pow(2, retryCount), maxDelayMs);
+    }
+
+    /**
      * Process pending messages in the outbox
      */
     async processOutbox() {
@@ -67,16 +78,31 @@ class DiscordOutboxService {
 
         try {
             // Get pending and failed messages that are ready for retry
+            // Uses exponential backoff based on retry_count
             const result = await pool.query(`
-                SELECT * FROM discord_outbox
+                SELECT *,
+                    CASE
+                        WHEN retry_count = 0 THEN INTERVAL '5 minutes'
+                        WHEN retry_count = 1 THEN INTERVAL '10 minutes'
+                        WHEN retry_count = 2 THEN INTERVAL '20 minutes'
+                        WHEN retry_count = 3 THEN INTERVAL '40 minutes'
+                        ELSE INTERVAL '60 minutes'
+                    END as retry_delay
+                FROM discord_outbox
                 WHERE status IN ('pending', 'failed')
                 AND retry_count < max_retries
-                AND (last_attempt_at IS NULL OR last_attempt_at < NOW() - INTERVAL '5 minutes')
+                AND (last_attempt_at IS NULL OR last_attempt_at < NOW() - CASE
+                    WHEN retry_count = 0 THEN INTERVAL '5 minutes'
+                    WHEN retry_count = 1 THEN INTERVAL '10 minutes'
+                    WHEN retry_count = 2 THEN INTERVAL '20 minutes'
+                    WHEN retry_count = 3 THEN INTERVAL '40 minutes'
+                    ELSE INTERVAL '60 minutes'
+                END)
                 ORDER BY created_at ASC
                 LIMIT 10
             `);
 
-            logger.debug(`Processing ${result.rows.length} outbox messages`);
+            logger.debug(`Processing ${result.rows.length} outbox messages (with exponential backoff)`);
 
             for (const message of result.rows) {
                 await this.processMessage(message);
@@ -101,6 +127,9 @@ class DiscordOutboxService {
                 SET status = 'processing', last_attempt_at = NOW()
                 WHERE id = $1
             `, [message.id]);
+
+            // Lazy load sessionService to avoid circular dependency
+            const sessionService = require('./sessionService');
 
             // Process based on message type
             const payload = message.payload;

@@ -429,6 +429,15 @@ const processSessionInteraction = async (req, res) => {
                 });
             }
 
+            // Validate Discord message ID format (Discord snowflakes are 17-19 digits)
+            if (!messageId || !/^\d{17,19}$/.test(messageId)) {
+                logger.warn('Invalid Discord message ID format:', { messageId, userId: discordUserId });
+                return res.json({
+                    type: 4,
+                    data: { content: "Invalid request.", flags: 64 }
+                });
+            }
+
             // Map actions to new response types
             const responseTypeMap = {
                 'yes': 'yes',
@@ -538,7 +547,7 @@ const processSessionInteraction = async (req, res) => {
                 });
             }
 
-            // Record attendance
+            // Record attendance (Discord update is now queued in outbox within transaction)
             await sessionService.recordAttendance(sessionId, userId, responseType, {
                 discord_id: discordUserId
             });
@@ -552,8 +561,8 @@ const processSessionInteraction = async (req, res) => {
                 DO UPDATE SET reaction_time = CURRENT_TIMESTAMP
             `, [messageId, discordUserId, getEmojiForResponseType(responseType), sessionId]);
 
-            // Update the Discord message
-            await sessionService.updateSessionMessage(sessionId);
+            // Discord message update is now handled by outbox pattern (no manual call needed)
+            // The outbox processor will update the message asynchronously
 
             // Return success without sending an ephemeral message
             // The updated message shows the attendance, so no need for confirmation
