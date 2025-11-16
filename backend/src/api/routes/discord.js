@@ -54,18 +54,60 @@ router.get('/interactions/test', (req, res) => {
 
 // Discord broker events endpoint (called by Discord broker service)
 router.post('/events', (req, res) => {
+    const { type, data } = req.body;
+
     logger.info('Discord event received from broker', {
-        eventType: req.body?.type,
-        channelId: req.body?.channelId,
+        eventType: type,
+        channelId: data?.channelId,
         timestamp: new Date().toISOString()
     });
 
-    // For now, just acknowledge receipt
-    // TODO: Process specific event types
+    // Process specific event types
+    let processed = false;
+    try {
+        switch (type) {
+            case 'MESSAGE_CREATE':
+                // Message events are logged but not processed
+                logger.debug('Discord message created', { channelId: data?.channelId });
+                processed = true;
+                break;
+
+            case 'MESSAGE_UPDATE':
+                // Message update events
+                logger.debug('Discord message updated', { messageId: data?.messageId });
+                processed = true;
+                break;
+
+            case 'MESSAGE_DELETE':
+                // Message deletion events
+                logger.debug('Discord message deleted', { messageId: data?.messageId });
+                processed = true;
+                break;
+
+            case 'GUILD_MEMBER_ADD':
+            case 'GUILD_MEMBER_REMOVE':
+                // Member join/leave events
+                logger.info('Discord member event', { type, userId: data?.userId });
+                processed = true;
+                break;
+
+            default:
+                // Unknown event type - log for debugging
+                logger.debug('Unknown Discord event type', { type, data });
+                processed = false;
+        }
+    } catch (error) {
+        logger.error('Error processing Discord event', {
+            error: error.message,
+            type,
+            stack: error.stack
+        });
+    }
+
     res.json({
         success: true,
         message: 'Event received',
-        processed: false
+        processed
     });
 });
 

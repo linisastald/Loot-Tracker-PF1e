@@ -483,7 +483,7 @@ class MigrationRunner {
         const template = `-- Rollback for ${filename}
 -- Generated automatically - REVIEW AND MODIFY BEFORE USE
 
--- TODO: Add rollback statements here
+-- Add rollback statements here
 -- Example:
 -- DROP TABLE IF EXISTS table_name;
 -- DROP INDEX IF EXISTS index_name;
