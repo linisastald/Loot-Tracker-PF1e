@@ -8,6 +8,7 @@ const verifyToken = require('../../middleware/auth');
 router.get('/me', verifyToken, userController.getCurrentUser);
 router.put('/change-password', verifyToken, userController.changePassword);
 router.put('/change-email', verifyToken, userController.changeEmail); // New route for changing email
+router.put('/update-discord-id', verifyToken, userController.updateDiscordId); // Update Discord ID
 router.get('/characters', verifyToken, userController.getCharacters);
 router.post('/characters', verifyToken, userController.addCharacter);
 router.put('/characters', verifyToken, userController.updateCharacter);

@@ -1,0 +1,17 @@
+{
+  "type": 3,
+  "id": "test_interaction_id",
+  "channel_id": "test_channel",
+  "data": {
+    "custom_id": "session_yes"
+  },
+  "member": {
+    "user": {
+      "id": "test_user_123",
+      "username": "testuser"
+    }
+  },
+  "message": {
+    "id": "test_message_123"
+  }
+}

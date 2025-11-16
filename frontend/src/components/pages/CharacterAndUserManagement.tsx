@@ -7,7 +7,6 @@ import SystemSettings from './DMSettings/SystemSettings';
 import UserManagement from './DMSettings/UserManagement';
 import CharacterManagement from './DMSettings/CharacterManagement';
 import CampaignSettings from './DMSettings/CampaignSettings';
-import SessionSettings from './DMSettings/SessionSettings';
 
 const CharacterAndUserManagement = () => {
     const location = useLocation();
@@ -18,7 +17,6 @@ const CharacterAndUserManagement = () => {
         if (path.includes('/user-management')) return 1;
         if (path.includes('/character-management')) return 2;
         if (path.includes('/campaign-settings')) return 3;
-        if (path.includes('/session-settings')) return 4;
         return 0; // Default to system settings
     });
 
@@ -37,9 +35,6 @@ const CharacterAndUserManagement = () => {
             case 3:
                 navigate('/character-user-management/campaign-settings');
                 break;
-            case 4:
-                navigate('/character-user-management/session-settings');
-                break;
             default:
                 navigate('/character-user-management');
         }
@@ -54,7 +49,6 @@ const CharacterAndUserManagement = () => {
                         <Tab label="User Management"/>
                         <Tab label="Character Management"/>
                         <Tab label="Campaign Settings"/>
-                        <Tab label="Session Settings"/>
                     </Tabs>
                 </Box>
 
@@ -63,7 +57,6 @@ const CharacterAndUserManagement = () => {
                     <Route path="/user-management" element={<UserManagement/>}/>
                     <Route path="/character-management" element={<CharacterManagement/>}/>
                     <Route path="/campaign-settings" element={<CampaignSettings/>}/>
-                    <Route path="/session-settings" element={<SessionSettings/>}/>
                 </Routes>
             </Paper>
         </Container>

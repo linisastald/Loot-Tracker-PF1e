@@ -4,7 +4,10 @@ const dbUtils = require('../utils/dbUtils');
 
 class Session extends BaseModel {
     constructor() {
-        super('game_sessions');
+        super({
+            tableName: 'game_sessions',
+            timestamps: { createdAt: true, updatedAt: true }
+        });
     }
 
     /**
@@ -86,11 +89,14 @@ class Session extends BaseModel {
         const query = `
             INSERT INTO session_attendance (session_id, user_id, character_id, status, updated_at)
             VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (session_id, user_id) 
-            DO UPDATE SET status = $4, character_id = $3, updated_at = NOW()
+            ON CONFLICT (session_id, user_id)
+            DO UPDATE SET
+                status = EXCLUDED.status,
+                character_id = EXCLUDED.character_id,
+                updated_at = EXCLUDED.updated_at
             RETURNING *
         `;
-        
+
         const result = await dbUtils.executeQuery(query, [sessionId, userId, characterId, status]);
         return result.rows[0];
     }
@@ -139,17 +145,19 @@ class Session extends BaseModel {
     
     /**
      * Find sessions that need Discord notifications to be sent
-     * (7 days before the session with no Discord message ID)
+     * Uses each session's announcement_days_before setting (default 7 days)
      * @returns {Promise<Array>} - Sessions that need notifications
      */
     async findSessionsNeedingNotifications() {
         const query = `
             SELECT * FROM game_sessions
-            WHERE start_time BETWEEN NOW() AND NOW() + INTERVAL '7 days 1 hour'
+            WHERE status = 'scheduled'
             AND (discord_message_id IS NULL OR discord_message_id = '')
+            AND start_time > NOW()
+            AND start_time <= NOW() + (COALESCE(announcement_days_before, 7) || ' days')::INTERVAL
             ORDER BY start_time ASC
         `;
-        
+
         const result = await dbUtils.executeQuery(query);
         return result.rows;
     }

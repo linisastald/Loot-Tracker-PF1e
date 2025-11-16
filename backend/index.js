@@ -13,8 +13,11 @@ const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
 const { initCronJobs } = require('./src/utils/cronJobs');
-// Migration runner no longer needed - database schema is now fully consolidated in database/init_complete.sql
-// const migrationRunner = require('./src/utils/migrationRunner');
+const discordBrokerService = require('./src/services/discordBrokerService');
+const sessionService = require('./src/services/sessionService');
+const discordOutboxService = require('./src/services/discordOutboxService');
+// Migration runner for handling database schema updates
+const migrationRunner = require('./src/utils/migrationRunner');
 const { RATE_LIMIT, SERVER, COOKIES } = require('./src/config/constants');
 
 // Enhanced error handling
@@ -80,7 +83,7 @@ const errorHandler = (err, req, res, next) => {
   });
 };
 
-// Detect host IP for Docker networking
+// Detect host IP for Docker networking (Linux containers only)
 let hostIp;
 try {
   hostIp = execSync("getent hosts host.docker.internal | awk '{ print $1 }' || hostname -i").toString().trim();
@@ -266,11 +269,38 @@ app.use('/api/config', configRoutes);
 app.use('/api', limiter);
 
 // Apply CSRF protection to all API routes except auth and csrf-token
+
 // Legacy routes (will be gradually deprecated)
 app.use('/api/loot', csrfProtection, lootRoutes);
 app.use('/api/user', csrfProtection, userRoutes);
 app.use('/api/gold', csrfProtection, goldRoutes);
-app.use('/api/discord', csrfProtection, discordRoutes);
+
+// Create selective CSRF middleware that skips Discord service endpoints
+const selectiveCSRFProtection = (req, res, next) => {
+  logger.info(`Discord route middleware check - path: ${req.path}, method: ${req.method}, originalUrl: ${req.originalUrl}`);
+
+  // Skip CSRF protection for Discord interactions endpoint
+  if (req.path === '/interactions' && (req.method === 'POST' || req.method === 'GET')) {
+    logger.info(`Skipping CSRF protection for Discord interactions ${req.method}`);
+    return next();
+  }
+  if (req.path === '/interactions/test' && req.method === 'GET') {
+    logger.info('Skipping CSRF protection for Discord interactions test GET');
+    return next();
+  }
+  // Skip CSRF protection for Discord reaction events endpoint
+  if (req.path === '/reactions' && req.method === 'POST') {
+    logger.info('Skipping CSRF protection for Discord reactions POST');
+    return next();
+  }
+  // Apply CSRF protection for all other routes
+  logger.info('Applying CSRF protection for Discord route');
+  return csrfProtection(req, res, next);
+};
+
+// Add debug logging to see if routes are being registered
+logger.info('Registering Discord routes with selective CSRF protection');
+app.use('/api/discord', selectiveCSRFProtection, discordRoutes);
 app.use('/api/settings', csrfProtection, settingsRoutes);
 app.use('/api/consumables', csrfProtection, consumablesRoutes);
 app.use('/api/calendar', csrfProtection, calendarRoutes);
@@ -337,9 +367,10 @@ app.use(errorHandler);
 // Start server
 const startServer = async () => {
   try {
-    // Database migrations are no longer needed - schema is consolidated in database/init_complete.sql
-    // For new installations, run database/init_complete.sql to set up the complete schema
-    logger.info('Skipping migrations - using consolidated database schema');
+    // Run database migrations to ensure schema is up to date
+    logger.info('Running database migrations...');
+    await migrationRunner.runMigrations();
+    logger.info('Database migrations completed');
 
     // Start the server
     const server = app.listen(port, () => {
@@ -348,6 +379,19 @@ const startServer = async () => {
       // Initialize cron jobs
       initCronJobs();
       logger.info('Cron jobs initialized');
+
+      // Initialize enhanced session service
+      sessionService.initialize();
+      logger.info('Session service initialized');
+
+      // Start Discord broker integration
+      discordBrokerService.start().catch(error => {
+        logger.error('Failed to start Discord broker service:', error);
+      });
+
+      // Start Discord outbox processor for reliable messaging
+      discordOutboxService.start();
+      logger.info('Discord outbox service started');
     });
 
     return server;
@@ -362,16 +406,24 @@ startServer().then(server => {
   // Graceful shutdown
   const gracefulShutdown = (signal) => {
     logger.info(`${signal} signal received: closing HTTP server`);
-    
-    server.close(() => {
+
+    server.close(async () => {
       logger.info('HTTP server closed');
-      
+
+      // Stop Discord broker service
+      try {
+        await discordBrokerService.stop();
+        logger.info('Discord broker service stopped');
+      } catch (error) {
+        logger.error('Error stopping Discord broker service:', error);
+      }
+
       // Close database connection
       pool.end(() => {
         logger.info('Database pool closed');
         process.exit(0);
       });
-      
+
       // Force exit after configured timeout if pool doesn't close
       setTimeout(() => {
         logger.error('Forced exit - database pool did not close in time');

@@ -397,12 +397,14 @@ class MigrationRunner {
     try {
       logger.info('Starting migration check...');
 
-      // Acquire lock to prevent concurrent migrations
+      // Initialize migration system first (this creates the necessary tables)
+      await this.initMigrationSystem();
+
+      // Then acquire lock to prevent concurrent migrations
       await this.acquireLock(processId);
 
       try {
-        // Initialize migration system
-        await this.initMigrationSystem();
+        // Migration system is now ready
 
         // Get applied and available migrations
         const appliedMigrations = await this.getAppliedMigrations();
@@ -481,7 +483,7 @@ class MigrationRunner {
         const template = `-- Rollback for ${filename}
 -- Generated automatically - REVIEW AND MODIFY BEFORE USE
 
--- TODO: Add rollback statements here
+-- Add rollback statements here
 -- Example:
 -- DROP TABLE IF EXISTS table_name;
 -- DROP INDEX IF EXISTS index_name;

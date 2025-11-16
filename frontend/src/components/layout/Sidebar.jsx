@@ -316,6 +316,8 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             </MenuItem>
           )}
 
+          <MenuItem to="/sessions" primary="Sessions" icon={<EmojiEvents />} isCategory />
+
           <MenuItem
             primary="Session Tools"
             icon={<AutoStoriesIcon/>}
@@ -327,10 +329,10 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             <MenuItem to="/golarion-calendar" primary="Calendar" icon={<DateRange />} />
             <MenuItem to="/tasks" primary="Tasks" icon={<AssignmentIcon />} />
             <MenuItem to="/consumables" primary="Consumables" icon={<Inventory />} />
-            <MenuItem 
-              to="/identify" 
-              primary="Identify" 
-              icon={<PsychologyAlt />} 
+            <MenuItem
+              to="/identify"
+              primary="Identify"
+              icon={<PsychologyAlt />}
               badge={unidentifiedLootCount > 0 ? unidentifiedLootCount : null}
             />
           </MenuItem>
@@ -345,6 +347,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
             >
               <MenuItem to="/character-user-management" primary="Gen Management" icon={<Groups2 />} />
               <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
+              <MenuItem to="/session-management" primary="Session Management" icon={<EmojiEvents />} />
             </MenuItem>
           )}
         </List>

@@ -244,6 +244,40 @@ services:
     networks:
       - default
 
+  # Discord Interaction Handler
+  discord-handler:
+    build:
+      context: ../discord-handler
+      dockerfile: Dockerfile
+    container_name: discord_interaction_handler
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - PORT=3000
+      - DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY}
+      - ROTR_CHANNEL_ID=${ROTR_CHANNEL_ID}
+      - SNS_CHANNEL_ID=${SNS_CHANNEL_ID}
+      - TEST_CHANNEL_ID=${TEST_CHANNEL_ID}
+      - ROTR_API_ENDPOINT=http://rotr_app:5000/api
+      - SNS_API_ENDPOINT=http://sns_app:5000/api
+      - TEST_API_ENDPOINT=http://test_app:5000/api
+      - REQUEST_TIMEOUT=2500
+      - NODE_ENV=production
+    depends_on:
+      - rotr_app
+      - sns_app
+      - test_app
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - proxy-network
+      - default
+
 networks:
   proxy-network:
     external: true

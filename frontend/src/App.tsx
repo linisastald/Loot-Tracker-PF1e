@@ -26,6 +26,8 @@ import Infamy from './components/pages/Infamy';
 import ShipManagement from './components/pages/ShipManagement';
 import OutpostManagement from './components/pages/OutpostManagement';
 import CrewManagement from './components/pages/CrewManagement';
+import SessionsPage from './components/pages/Sessions/SessionsPage';
+import SessionManagement from './components/pages/DMSettings/SessionManagement';
 import ErrorBoundary from './components/ErrorBoundary';
 
 
@@ -179,6 +181,8 @@ function App() {
               <Route path="ships" element={<ErrorBoundary><ShipManagement /></ErrorBoundary>} />
               <Route path="outposts" element={<ErrorBoundary><OutpostManagement /></ErrorBoundary>} />
               <Route path="crew" element={<ErrorBoundary><CrewManagement /></ErrorBoundary>} />
+              <Route path="sessions" element={<ErrorBoundary><SessionsPage /></ErrorBoundary>} />
+              <Route path="session-management" element={<ErrorBoundary><SessionManagement /></ErrorBoundary>} />
             </Route>
           </Routes>
           </Router>

@@ -12,8 +12,8 @@ const initCronJobs = () => {
     // Initialize session cleanup
     initSessionCleanup();
     
-    // Check for sessions needing Discord notifications every hour
-    cron.schedule('0 * * * *', async () => {
+    // Check for sessions needing Discord notifications every 15 minutes
+    cron.schedule('*/15 * * * *', async () => {
         try {
             logger.info('Running cron job: Check for sessions needing Discord notifications');
             
