@@ -561,13 +561,23 @@ const processSessionInteraction = async (req, res) => {
                 DO UPDATE SET reaction_time = CURRENT_TIMESTAMP
             `, [messageId, discordUserId, getEmojiForResponseType(responseType), sessionId]);
 
-            // Discord message update is now handled by outbox pattern (no manual call needed)
-            // The outbox processor will update the message asynchronously
+            // Get updated session and attendance data for immediate embed update
+            const session = await sessionService.getSession(sessionId);
+            const attendance = await sessionService.getSessionAttendance(sessionId);
 
-            // Return success without sending an ephemeral message
-            // The updated message shows the attendance, so no need for confirmation
+            // Create updated embed
+            const sessionDiscordService = require('../services/discord/SessionDiscordService');
+            const embed = await sessionDiscordService.createSessionEmbed(session, attendance);
+            const components = sessionDiscordService.createAttendanceButtons();
+
+            // Return immediate update with type 7 (UPDATE_MESSAGE)
+            // This updates the message immediately without waiting for outbox processor
             return res.json({
-                type: 6 // DEFERRED_UPDATE_MESSAGE - acknowledges the interaction without showing a message
+                type: 7, // UPDATE_MESSAGE - immediately updates the message
+                data: {
+                    embeds: [embed],
+                    components: components
+                }
             });
 
         } catch (error) {
