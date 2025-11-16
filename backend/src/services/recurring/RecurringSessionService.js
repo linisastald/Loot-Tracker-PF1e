@@ -43,12 +43,16 @@ class RecurringSessionService {
                 throw new Error('Invalid recurring pattern');
             }
 
-            if (recurring_day_of_week === null || recurring_day_of_week === undefined || recurring_day_of_week < 0 || recurring_day_of_week > 6) {
+            // Ensure day of week is a valid number
+            const dayOfWeek = parseInt(recurring_day_of_week);
+            if (isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
                 throw new Error(`Invalid day of week (must be 0-6), received: ${recurring_day_of_week}`);
             }
 
-            if (recurring_pattern === 'custom' && recurring_interval < 1) {
-                throw new Error('Custom interval must be at least 1');
+            // Ensure interval is a valid positive number
+            const interval = parseInt(recurring_interval);
+            if (recurring_pattern === 'custom' && (isNaN(interval) || interval < 1)) {
+                throw new Error(`Custom interval must be at least 1, received: ${recurring_interval}`);
             }
 
             // Create the master recurring session (let database auto-generate the id)
@@ -65,7 +69,7 @@ class RecurringSessionService {
             `, [
                 title, start_time, end_time, description, minimum_players, maximum_players,
                 auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
-                recurring_pattern, recurring_day_of_week, recurring_interval,
+                recurring_pattern, dayOfWeek, interval,
                 recurring_end_date, recurring_end_count
             ]);
 
