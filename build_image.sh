@@ -773,6 +773,24 @@ echo ""
 echo "🧹 Cleaning up any dangling images..."
 docker image prune -f 2>/dev/null || true
 
+# Update version files BEFORE build so they're included in the Docker image
+if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ]; then
+    echo "📝 Updating version files before build..."
+
+    # Backup current version files in case build fails
+    cp "$VERSION_FILE" "${VERSION_FILE}.backup" 2>/dev/null || true
+    cp "package.json" "package.json.backup" 2>/dev/null || true
+    cp "frontend/package.json" "frontend/package.json.backup" 2>/dev/null || true
+    cp "backend/package.json" "backend/package.json.backup" 2>/dev/null || true
+
+    # Update version files with new version
+    update_version_file "$NEW_VERSION" "$NEW_BUILD_NUMBER"
+    update_package_json_files "$NEW_VERSION"
+    update_truenas_metadata "$NEW_VERSION"
+
+    echo "✅ Version files updated to v${NEW_VERSION}"
+fi
+
 # Execute the build
 echo "🚀 Starting optimized Docker build..."
 eval $BUILD_CMD
@@ -805,14 +823,11 @@ if [ $BUILD_EXIT_CODE -eq 0 ]; then
             echo "⚠️  Warning: Failed to add version tag"
         fi
     fi
-    
-    # Update version file if auto-versioning is enabled
+
+    # Build succeeded - clean up backup files and commit changes
     if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ]; then
-        update_version_file "$NEW_VERSION" "$NEW_BUILD_NUMBER"
-        # Also update package.json files to keep versions in sync
-        update_package_json_files "$NEW_VERSION"
-        # Update TrueNAS app metadata to keep versions in sync
-        update_truenas_metadata "$NEW_VERSION"
+        echo "🧹 Removing version file backups (build succeeded)..."
+        rm -f "${VERSION_FILE}.backup" "package.json.backup" "frontend/package.json.backup" "backend/package.json.backup"
 
         # Commit and push version changes back to repository
         echo "📤 Committing version updates to repository..."
@@ -928,6 +943,35 @@ else
     echo ""
     echo "❌ BUILD FAILED!"
     echo "=============="
+
+    # Restore version files from backup
+    if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ]; then
+        echo "🔄 Restoring version files from backup (build failed)..."
+
+        if [ -f "${VERSION_FILE}.backup" ]; then
+            mv "${VERSION_FILE}.backup" "$VERSION_FILE"
+            echo "   ✅ Restored .docker-version"
+        fi
+
+        if [ -f "package.json.backup" ]; then
+            mv "package.json.backup" "package.json"
+            echo "   ✅ Restored package.json"
+        fi
+
+        if [ -f "frontend/package.json.backup" ]; then
+            mv "frontend/package.json.backup" "frontend/package.json"
+            echo "   ✅ Restored frontend/package.json"
+        fi
+
+        if [ -f "backend/package.json.backup" ]; then
+            mv "backend/package.json.backup" "backend/package.json"
+            echo "   ✅ Restored backend/package.json"
+        fi
+
+        echo "   Version files rolled back to previous state"
+        echo ""
+    fi
+
     echo "Check the output above for error details"
     echo "Common issues:"
     echo "  - Docker daemon not running"
