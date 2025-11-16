@@ -465,7 +465,9 @@ const processSessionInteraction = async (req, res) => {
             // Find session by message ID
             const sessionResult = await dbUtils.executeQuery(`
                 SELECT id FROM game_sessions
-                WHERE announcement_message_id = $1 OR confirmation_message_id = $1
+                WHERE announcement_message_id = $1
+                   OR confirmation_message_id = $1
+                   OR discord_message_id = $1
             `, [messageId]);
 
             let sessionId = null;
