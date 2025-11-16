@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const { initCronJobs } = require('./src/utils/cronJobs');
 const discordBrokerService = require('./src/services/discordBrokerService');
 const sessionService = require('./src/services/sessionService');
+const discordOutboxService = require('./src/services/discordOutboxService');
 // Migration runner for handling database schema updates
 const migrationRunner = require('./src/utils/migrationRunner');
 const { RATE_LIMIT, SERVER, COOKIES } = require('./src/config/constants');
@@ -387,6 +388,10 @@ const startServer = async () => {
       discordBrokerService.start().catch(error => {
         logger.error('Failed to start Discord broker service:', error);
       });
+
+      // Start Discord outbox processor for reliable messaging
+      discordOutboxService.start();
+      logger.info('Discord outbox service started');
     });
 
     return server;
