@@ -46,7 +46,17 @@ const getSession = async (req, res) => {
  * Create a new session
  */
 const createSession = async (req, res) => {
-    const { title, start_time, end_time, description } = req.body;
+    const {
+        title,
+        start_time,
+        end_time,
+        description,
+        minimum_players,
+        maximum_players,
+        announcement_days_before,
+        confirmation_days_before,
+        auto_cancel_hours
+    } = req.body;
 
     // Validate required fields
     if (!title || !start_time || !end_time) {
@@ -70,14 +80,22 @@ const createSession = async (req, res) => {
         throw controllerFactory.createValidationError('End time must be after start time');
     }
 
-    // Create session in database
-    const session = await Session.createSession({
+    // Use sessionService directly to create session with all fields
+    // SessionService handles the enhanced fields properly
+    // Convert frontend field names (days) to backend field names (hours)
+    const sessionService = require('../services/sessionService');
+    const session = await sessionService.createSession({
         title,
         start_time: startDate,
         end_time: endDate,
         description: description || '',
-        discord_message_id: null,
-        discord_channel_id: null
+        minimum_players,
+        maximum_players,
+        // Convert days to hours for backend compatibility
+        auto_announce_hours: announcement_days_before ? announcement_days_before * 24 : undefined,
+        reminder_hours: confirmation_days_before ? confirmation_days_before * 24 : undefined,
+        auto_cancel_hours,
+        created_by: req.user?.id || 1 // Use authenticated user ID or default to 1
     });
 
     // Note: Sessions are announced either:
@@ -537,12 +555,10 @@ const processSessionInteraction = async (req, res) => {
             // Update the Discord message
             await sessionService.updateSessionMessage(sessionId);
 
+            // Return success without sending an ephemeral message
+            // The updated message shows the attendance, so no need for confirmation
             return res.json({
-                type: 4,
-                data: {
-                    content: `✅ You are marked as **${responseType}** for this session.`,
-                    flags: 64
-                }
+                type: 6 // DEFERRED_UPDATE_MESSAGE - acknowledges the interaction without showing a message
             });
 
         } catch (error) {
