@@ -3,6 +3,7 @@ const axios = require('axios');
 const logger = require('../utils/logger');
 const pool = require('../config/db');
 const { discordRateLimiter } = require('../utils/rateLimiter');
+const ServiceResult = require('../utils/ServiceResult');
 
 class DiscordBrokerService {
   constructor() {
@@ -264,10 +265,7 @@ class DiscordBrokerService {
         messageId: response.data.id
       });
 
-      return {
-        success: true,
-        data: response.data
-      };
+      return ServiceResult.success(response.data, 'Discord message sent successfully');
 
     } catch (error) {
       logger.error('Failed to send Discord message:', {
@@ -276,11 +274,11 @@ class DiscordBrokerService {
         channelId
       });
 
-      return {
-        success: false,
-        error: error.message,
-        details: error.response?.data
-      };
+      return ServiceResult.failure(
+        error.response?.data?.message || error.message,
+        error,
+        error.response?.status === 429 ? 'RATE_LIMITED' : 'DISCORD_API_ERROR'
+      );
     }
   }
 
@@ -334,10 +332,7 @@ class DiscordBrokerService {
         messageId
       });
 
-      return {
-        success: true,
-        data: response.data
-      };
+      return ServiceResult.success(response.data, 'Discord message updated successfully');
 
     } catch (error) {
       logger.error('Failed to update Discord message:', {
@@ -347,11 +342,11 @@ class DiscordBrokerService {
         messageId
       });
 
-      return {
-        success: false,
-        error: error.message,
-        details: error.response?.data
-      };
+      return ServiceResult.failure(
+        error.response?.data?.message || error.message,
+        error,
+        error.response?.status === 429 ? 'RATE_LIMITED' : 'DISCORD_API_ERROR'
+      );
     }
   }
 
@@ -401,9 +396,7 @@ class DiscordBrokerService {
         emoji
       });
 
-      return {
-        success: true
-      };
+      return ServiceResult.success(null, 'Discord reaction added successfully');
 
     } catch (error) {
       logger.error('Failed to add Discord reaction:', {
@@ -414,11 +407,11 @@ class DiscordBrokerService {
         emoji
       });
 
-      return {
-        success: false,
-        error: error.message,
-        details: error.response?.data
-      };
+      return ServiceResult.failure(
+        error.response?.data?.message || error.message,
+        error,
+        error.response?.status === 429 ? 'RATE_LIMITED' : 'DISCORD_API_ERROR'
+      );
     }
   }
 }
