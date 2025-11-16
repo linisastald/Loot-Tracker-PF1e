@@ -5,6 +5,12 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const axios = require('axios');
 const { format, formatDistance } = require('date-fns');
+const {
+    ATTENDANCE_STATUS,
+    VALID_ATTENDANCE_STATUSES,
+    RESPONSE_TYPE_MAP,
+    RESPONSE_EMOJI_MAP
+} = require('../constants/sessionConstants');
 
 /**
  * Get all upcoming sessions
@@ -256,8 +262,8 @@ const updateAttendance = async (req, res) => {
         throw controllerFactory.createValidationError('Valid session ID is required');
     }
 
-    if (!status || !['accepted', 'declined', 'tentative'].includes(status)) {
-        throw controllerFactory.createValidationError('Valid status is required (accepted, declined, or tentative)');
+    if (!status || !VALID_ATTENDANCE_STATUSES.includes(status)) {
+        throw controllerFactory.createValidationError(`Valid status is required (${VALID_ATTENDANCE_STATUSES.join(', ')})`);
     }
 
     // Check if session exists
@@ -599,8 +605,7 @@ const handleLegacySessionInteraction = async (req, res, sessionMessage, messageI
 
         logger.info('Parsed responses before update:', responses);
 
-        const statusMap = { 'yes': 'accepted', 'no': 'declined', 'maybe': 'tentative' };
-        const status = statusMap[action];
+        const status = RESPONSE_TYPE_MAP[action];
 
         if (!status) {
             return res.json({
@@ -664,15 +669,7 @@ const handleLegacySessionInteraction = async (req, res, sessionMessage, messageI
  * Get emoji for response type
  */
 const getEmojiForResponseType = (responseType) => {
-    const emojiMap = {
-        'yes': '✅',
-        'no': '❌',
-        'maybe': '❓',
-        'late': '⏰',
-        'early': '🏃',
-        'late_and_early': '⏳'
-    };
-    return emojiMap[responseType] || '❓';
+    return RESPONSE_EMOJI_MAP[responseType] || '❓';
 };
 
 /**
@@ -870,13 +867,7 @@ const processDiscordInteraction = async (req, res) => {
         const characterId = characterResult.rows.length > 0 ? characterResult.rows[0].id : null;
         
         // Map action to status
-        const statusMap = {
-            'yes': 'accepted',
-            'no': 'declined',
-            'maybe': 'tentative'
-        };
-        
-        const status = statusMap[action];
+        const status = RESPONSE_TYPE_MAP[action];
         
         if (!status) {
             return res.json({ type: 4, data: { content: "Invalid action", flags: 64 } });

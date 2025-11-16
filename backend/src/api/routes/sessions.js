@@ -8,16 +8,15 @@ const { createValidationMiddleware, validate } = require('../../middleware/valid
 const { body, param, query, validationResult } = require('express-validator');
 const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
+const ApiResponse = require('../../utils/apiResponse');
+const { VALID_SESSION_STATUSES, VALID_RECURRING_PATTERNS } = require('../../constants/sessionConstants');
 
 // Middleware to check express-validator validation results
 const validateRequest = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        return res.status(400).json({
-            success: false,
-            message: 'Validation failed',
-            errors: errors.array()
-        });
+        const response = ApiResponse.validationError(errors.array());
+        return ApiResponse.send(res, response);
     }
     next();
 };
@@ -35,12 +34,11 @@ router.get('/enhanced', verifyToken, async (req, res) => {
         const { status, upcoming_only = 'false' } = req.query;
 
         // Whitelist valid status values to prevent SQL injection and invalid queries
-        const VALID_STATUSES = ['scheduled', 'confirmed', 'cancelled', 'completed'];
-        if (status && !VALID_STATUSES.includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: `Invalid status value. Must be one of: ${VALID_STATUSES.join(', ')}`
-            });
+        if (status && !VALID_SESSION_STATUSES.includes(status)) {
+            const response = ApiResponse.validationError(
+                `Invalid status value. Must be one of: ${VALID_SESSION_STATUSES.join(', ')}`
+            );
+            return ApiResponse.send(res, response);
         }
 
         let whereClause = '1=1';
@@ -85,11 +83,13 @@ router.get('/enhanced', verifyToken, async (req, res) => {
             ORDER BY gs.start_time
         `, queryParams);
 
-        res.json({ success: true, data: result.rows });
+        const response = ApiResponse.success(result.rows, 'Sessions retrieved successfully');
+        return ApiResponse.send(res, response);
 
     } catch (error) {
         logger.error('Failed to fetch enhanced sessions:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch sessions' });
+        const response = ApiResponse.error('Failed to fetch sessions');
+        return ApiResponse.send(res, response);
     }
 });
 
@@ -176,7 +176,7 @@ router.post('/recurring', verifyToken, checkRole('DM'), [
     body('title').notEmpty().withMessage('Title is required'),
     body('start_time').isISO8601().withMessage('Invalid start time'),
     body('end_time').isISO8601().withMessage('Invalid end time'),
-    body('recurring_pattern').isIn(['weekly', 'biweekly', 'monthly', 'custom']).withMessage('Invalid recurring pattern'),
+    body('recurring_pattern').isIn(VALID_RECURRING_PATTERNS).withMessage('Invalid recurring pattern'),
     body('recurring_day_of_week').isInt({ min: 0, max: 6 }).withMessage('Invalid day of week'),
     body('recurring_interval').optional().isInt({ min: 1 }).withMessage('Invalid interval'),
     body('recurring_end_date').optional().isISO8601().withMessage('Invalid end date'),

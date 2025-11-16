@@ -2,6 +2,12 @@ const pool = require('../config/db');
 const logger = require('../utils/logger');
 const discordService = require('./discordBrokerService');
 const cron = require('node-cron');
+const {
+    SESSION_STATUS,
+    ATTENDANCE_STATUS,
+    RESPONSE_TYPE_MAP,
+    DEFAULT_VALUES
+} = require('../constants/sessionConstants');
 
 class SessionService {
     constructor() {
@@ -73,11 +79,11 @@ class SessionService {
                 start_time,
                 end_time,
                 description,
-                minimum_players = 3,
-                maximum_players = 6,
-                auto_announce_hours = 168, // 1 week
-                reminder_hours = 24,
-                auto_cancel_hours = 2,
+                minimum_players = DEFAULT_VALUES.MINIMUM_PLAYERS,
+                maximum_players = DEFAULT_VALUES.MAXIMUM_PLAYERS,
+                auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
+                reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
+                auto_cancel_hours = DEFAULT_VALUES.AUTO_CANCEL_HOURS,
                 created_by
             } = sessionData;
 
@@ -219,17 +225,10 @@ class SessionService {
             } = additionalData;
 
             // Map response type to status for database constraint
-            const statusMap = {
-                'yes': 'accepted',
-                'no': 'declined',
-                'maybe': 'tentative',
-                'late': 'accepted', // Late but still attending
-                // Also handle direct status values (for backward compatibility)
-                'accepted': 'accepted',
-                'declined': 'declined',
-                'tentative': 'tentative'
-            };
-            const status = statusMap[responseType] || statusMap[responseType?.toLowerCase()] || 'tentative';
+            // Use constants but keep backward compatibility for direct status values
+            const status = RESPONSE_TYPE_MAP[responseType] ||
+                          RESPONSE_TYPE_MAP[responseType?.toLowerCase()] ||
+                          (Object.values(ATTENDANCE_STATUS).includes(responseType) ? responseType : ATTENDANCE_STATUS.TENTATIVE);
 
             // Upsert attendance record
             const attendanceResult = await client.query(`
@@ -735,11 +734,11 @@ class SessionService {
                 start_time,
                 end_time,
                 description,
-                minimum_players = 3,
-                maximum_players = 6,
-                auto_announce_hours = 168, // 1 week
-                reminder_hours = 24,
-                auto_cancel_hours = 2,
+                minimum_players = DEFAULT_VALUES.MINIMUM_PLAYERS,
+                maximum_players = DEFAULT_VALUES.MAXIMUM_PLAYERS,
+                auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
+                reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
+                auto_cancel_hours = DEFAULT_VALUES.AUTO_CANCEL_HOURS,
                 created_by,
                 // Recurring fields
                 recurring_pattern, // 'weekly', 'biweekly', 'monthly', 'custom'
