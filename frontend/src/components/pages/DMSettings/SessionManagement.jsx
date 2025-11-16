@@ -76,7 +76,6 @@ const SessionManagement = () => {
     const [startTime, setStartTime] = useState(new Date());
     const [endTime, setEndTime] = useState(new Date(new Date().setHours(new Date().getHours() + 5)));
     const [description, setDescription] = useState('');
-    const [sendDiscordNotification, setSendDiscordNotification] = useState(true);
     const [minimumPlayers, setMinimumPlayers] = useState(3);
     const [announcementDaysBefore, setAnnouncementDaysBefore] = useState(7);
     const [confirmationDaysBefore, setConfirmationDaysBefore] = useState(2);
@@ -163,8 +162,7 @@ const SessionManagement = () => {
                 minimum_players: minimumPlayers,
                 announcement_days_before: announcementDaysBefore,
                 confirmation_days_before: confirmationDaysBefore,
-                auto_cancel_hours: autoCancelHours,
-                send_discord_notification: sendDiscordNotification
+                auto_cancel_hours: autoCancelHours
             };
 
             // Add recurring fields if enabled
@@ -203,7 +201,6 @@ const SessionManagement = () => {
         setStartTime(new Date());
         setEndTime(new Date(new Date().setHours(new Date().getHours() + 5)));
         setDescription('');
-        setSendDiscordNotification(true);
         setMinimumPlayers(3);
         setAnnouncementDaysBefore(7);
         setConfirmationDaysBefore(2);
@@ -897,21 +894,6 @@ const SessionManagement = () => {
                                 />
                             </Grid>
                         </Grid>
-
-                        <FormControlLabel
-                            control={
-                                <RadioGroup
-                                    value={sendDiscordNotification.toString()}
-                                    onChange={(e) => setSendDiscordNotification(e.target.value === 'true')}
-                                    row
-                                >
-                                    <FormControlLabel value="true" control={<Radio />} label="Yes" />
-                                    <FormControlLabel value="false" control={<Radio />} label="No" />
-                                </RadioGroup>
-                            }
-                            label="Send Discord Notification:"
-                            sx={{ display: 'flex', mb: 3 }}
-                        />
 
                         <Divider sx={{ my: 3 }} />
 

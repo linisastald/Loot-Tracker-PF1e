@@ -39,30 +39,30 @@ const getSession = async (req, res) => {
  * Create a new session
  */
 const createSession = async (req, res) => {
-    const { title, start_time, end_time, description, send_discord_notification } = req.body;
-    
+    const { title, start_time, end_time, description } = req.body;
+
     // Validate required fields
     if (!title || !start_time || !end_time) {
         throw controllerFactory.createValidationError('Title, start time, and end time are required');
     }
-    
+
     // Validate date format
     const startDate = new Date(start_time);
     const endDate = new Date(end_time);
-    
+
     if (isNaN(startDate.getTime())) {
         throw controllerFactory.createValidationError('Invalid start time format');
     }
-    
+
     if (isNaN(endDate.getTime())) {
         throw controllerFactory.createValidationError('Invalid end time format');
     }
-    
+
     // Validate that end time is after start time
     if (endDate <= startDate) {
         throw controllerFactory.createValidationError('End time must be after start time');
     }
-    
+
     // Create session in database
     const session = await Session.createSession({
         title,
@@ -72,20 +72,11 @@ const createSession = async (req, res) => {
         discord_message_id: null,
         discord_channel_id: null
     });
-    
-    // If immediate Discord notification is requested and start date is within 7 days
-    if (send_discord_notification && startDate <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) {
-        try {
-            await sendDiscordSessionNotification(session);
-        } catch (error) {
-            logger.error('Failed to send Discord notification for new session', {
-                error: error.message,
-                sessionId: session.id
-            });
-            // Continue - we don't want to fail the session creation if Discord fails
-        }
-    }
-    
+
+    // Note: Sessions are announced either:
+    // 1. Automatically via cron job based on announcement_days_before setting
+    // 2. Manually via the "Send Notification" button on DM sessions screen
+
     controllerFactory.sendSuccessResponse(res, session, 'Session created successfully');
 };
 
