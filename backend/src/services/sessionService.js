@@ -193,7 +193,7 @@ class SessionService {
     async deleteSession(sessionId) {
         try {
             // Cancel any scheduled events
-            this.cancelSessionEvents(sessionId);
+            await this.cancelSessionEvents(sessionId);
 
             const result = await pool.query(`
                 DELETE FROM game_sessions WHERE id = $1 RETURNING *

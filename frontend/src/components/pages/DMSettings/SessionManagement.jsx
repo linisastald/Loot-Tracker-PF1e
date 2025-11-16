@@ -29,7 +29,6 @@ import {
     Radio,
     RadioGroup,
     Select,
-    Switch,
     TextField,
     Typography
 } from '@mui/material';

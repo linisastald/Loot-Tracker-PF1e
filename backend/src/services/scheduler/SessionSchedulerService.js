@@ -7,6 +7,14 @@ const pool = require('../../config/db');
 const logger = require('../../utils/logger');
 const cron = require('node-cron');
 
+// Cron schedule constants for self-documenting job timing
+const CRON_SCHEDULES = {
+    HOURLY: '0 * * * *',              // Top of every hour
+    EVERY_6_HOURS: '0 */6 * * *',     // Every 6 hours on the hour
+    DAILY_9AM: '0 9 * * *',           // Daily at 9:00 AM
+    EVERY_15_MINUTES: '*/15 * * * *'  // Every 15 minutes
+};
+
 class SessionSchedulerService {
     constructor() {
         this.scheduledJobs = new Map();
@@ -72,7 +80,7 @@ class SessionSchedulerService {
      * Schedule session announcements check (runs every hour)
      */
     scheduleSessionAnnouncements() {
-        const job = cron.schedule('0 * * * *', async () => {
+        const job = cron.schedule(CRON_SCHEDULES.HOURLY, async () => {
             try {
                 await this.checkPendingAnnouncements();
             } catch (error) {
@@ -88,7 +96,7 @@ class SessionSchedulerService {
      * Schedule reminder checks (runs every 6 hours)
      */
     scheduleReminderChecks() {
-        const job = cron.schedule('0 */6 * * *', async () => {
+        const job = cron.schedule(CRON_SCHEDULES.EVERY_6_HOURS, async () => {
             try {
                 await this.checkPendingReminders();
             } catch (error) {
@@ -104,7 +112,7 @@ class SessionSchedulerService {
      * Schedule confirmation checks (runs daily at 9 AM)
      */
     scheduleConfirmationChecks() {
-        const job = cron.schedule('0 9 * * *', async () => {
+        const job = cron.schedule(CRON_SCHEDULES.DAILY_9AM, async () => {
             try {
                 await this.checkSessionConfirmations();
             } catch (error) {
@@ -120,7 +128,7 @@ class SessionSchedulerService {
      * Schedule task generation (runs every hour)
      */
     scheduleTaskGeneration() {
-        const job = cron.schedule('0 * * * *', async () => {
+        const job = cron.schedule(CRON_SCHEDULES.HOURLY, async () => {
             try {
                 await this.checkTaskGeneration();
             } catch (error) {
@@ -136,7 +144,7 @@ class SessionSchedulerService {
      * Schedule session completions (runs every hour)
      */
     scheduleSessionCompletions() {
-        const job = cron.schedule('0 * * * *', async () => {
+        const job = cron.schedule(CRON_SCHEDULES.HOURLY, async () => {
             try {
                 await this.checkSessionCompletions();
             } catch (error) {
@@ -152,7 +160,7 @@ class SessionSchedulerService {
      * Schedule auto-cancel checks (runs every 15 minutes)
      */
     scheduleAutoCancelChecks() {
-        const job = cron.schedule('*/15 * * * *', async () => {
+        const job = cron.schedule(CRON_SCHEDULES.EVERY_15_MINUTES, async () => {
             try {
                 await this.checkAutoCancelSessions();
             } catch (error) {
