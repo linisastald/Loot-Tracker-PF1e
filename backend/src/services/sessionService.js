@@ -263,7 +263,7 @@ class SessionService {
                 COUNT(sa.id) FILTER (WHERE sa.response_type = 'late') as late_count,
                 COUNT(sa.id) FILTER (WHERE sa.response_type = 'early') as early_count,
                 COUNT(sa.id) FILTER (WHERE sa.response_type = 'late_and_early') as late_and_early_count,
-                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.response_timestamp > gs.updated_at) as modified_count,
+                COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.response_timestamp > gs.updated_at) as modified_count
             ` : '';
 
             const attendanceJoin = include_attendance
