@@ -28,7 +28,9 @@ const RESPONSE_TYPE_MAP = {
     yes: ATTENDANCE_STATUS.ACCEPTED,
     no: ATTENDANCE_STATUS.DECLINED,
     maybe: ATTENDANCE_STATUS.TENTATIVE,
-    late: ATTENDANCE_STATUS.ACCEPTED
+    late: ATTENDANCE_STATUS.ACCEPTED,
+    early: ATTENDANCE_STATUS.ACCEPTED,
+    late_and_early: ATTENDANCE_STATUS.ACCEPTED
 };
 
 // Reverse mapping (attendance status to response type)
@@ -43,7 +45,9 @@ const RESPONSE_EMOJI_MAP = {
     yes: '✅',
     no: '❌',
     maybe: '❓',
-    late: '🕐'
+    late: '🕐',
+    early: '⏰',
+    late_and_early: '🕐⏰'
 };
 
 // Recurring session patterns
