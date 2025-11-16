@@ -572,9 +572,9 @@ if [ "$AUTO_VERSION" = true ]; then
     # Increment version for stable builds, build number for dev builds
     if [ "$BUILD_STABLE" = true ]; then
         NEW_VERSION=$(increment_version "$VERSION" "$VERSION_TYPE")
-        NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+        NEW_BUILD_NUMBER=0  # Reset build number for stable releases
         VERSION_TAG="v${NEW_VERSION}"
-        
+
         # Update the tag to include version
         if [ "$TAG" = "latest" ]; then
             # We'll tag with both 'latest' and version number
