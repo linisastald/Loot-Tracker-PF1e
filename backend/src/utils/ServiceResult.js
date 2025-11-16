@@ -13,6 +13,39 @@
  *       // Handle failure - error info in result.error
  *       logger.error(result.error.message);
  *   }
+ *
+ * Standard Error Codes:
+ *
+ * HTTP-Mapped Errors (map to specific HTTP status codes):
+ *   - VALIDATION_ERROR: Input validation failed (400 Bad Request)
+ *   - NOT_FOUND: Resource not found (404 Not Found)
+ *   - UNAUTHORIZED: Authentication required or failed (401 Unauthorized)
+ *   - FORBIDDEN: User lacks permission to access resource (403 Forbidden)
+ *   - CONFLICT: Request conflicts with current state (409 Conflict)
+ *   - RATE_LIMITED: Too many requests (429 Too Many Requests)
+ *
+ * Database Errors:
+ *   - DB_ERROR: General database operation failure
+ *   - DB_CONSTRAINT_VIOLATION: Database constraint violation (unique, foreign key, etc.)
+ *   - DB_CONNECTION_ERROR: Unable to connect to database
+ *   - DB_TRANSACTION_ERROR: Transaction commit or rollback failed
+ *
+ * External Service Errors:
+ *   - DISCORD_API_ERROR: Discord API request failed
+ *   - OPENAI_API_ERROR: OpenAI API request failed
+ *   - NETWORK_ERROR: Network request failed (timeout, connection refused, etc.)
+ *   - TIMEOUT: Operation timed out
+ *
+ * Business Logic Errors:
+ *   - INSUFFICIENT_PLAYERS: Not enough players for session
+ *   - SESSION_CANCELLED: Session was cancelled
+ *   - DUPLICATE_ATTENDANCE: User already recorded attendance
+ *   - INVALID_STATE: Operation not valid in current state
+ *
+ * General Errors:
+ *   - UNKNOWN_ERROR: Unclassified error (500 Internal Server Error)
+ *   - NOT_IMPLEMENTED: Feature not yet implemented
+ *   - CONFIGURATION_ERROR: Invalid or missing configuration
  */
 
 class ServiceResult {
