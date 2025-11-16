@@ -21,17 +21,18 @@ const getUpcomingSessions = async (req, res) => {
  */
 const getSession = async (req, res) => {
     const { id } = req.params;
-    
-    if (!id || isNaN(parseInt(id))) {
+    const sessionId = parseInt(id);
+
+    if (!id || isNaN(sessionId)) {
         throw controllerFactory.createValidationError('Valid session ID is required');
     }
-    
-    const session = await Session.getSessionWithAttendance(parseInt(id));
-    
+
+    const session = await Session.getSessionWithAttendance(sessionId);
+
     if (!session) {
         throw controllerFactory.createNotFoundError('Session not found');
     }
-    
+
     controllerFactory.sendSuccessResponse(res, session, 'Session retrieved successfully');
 };
 
@@ -85,14 +86,15 @@ const createSession = async (req, res) => {
  */
 const updateSession = async (req, res) => {
     const { id } = req.params;
+    const sessionId = parseInt(id);
     const { title, start_time, end_time, description, status, cancel_reason } = req.body;
 
-    if (!id || isNaN(parseInt(id))) {
+    if (!id || isNaN(sessionId)) {
         throw controllerFactory.createValidationError('Valid session ID is required');
     }
 
     // Check if session exists
-    const existing = await Session.findById(parseInt(id));
+    const existing = await Session.findById(sessionId);
     if (!existing) {
         throw controllerFactory.createNotFoundError('Session not found');
     }
@@ -128,11 +130,11 @@ const updateSession = async (req, res) => {
 
     // Update the session
     updateData.updated_at = new Date();
-    const updated = await Session.update(parseInt(id), updateData);
+    const updated = await Session.update(sessionId, updateData);
 
     // Debug logging for cancellation
     logger.info('Session update - checking for Discord updates', {
-        sessionId: id,
+        sessionId: sessionId,
         hasAnnouncementId: !!existing.announcement_message_id,
         announcementId: existing.announcement_message_id,
         newStatus: status,
@@ -145,7 +147,7 @@ const updateSession = async (req, res) => {
         try {
             // Use sessionService's updateSessionMessage for proper handling
             const sessionService = require('../services/sessionService');
-            await sessionService.updateSessionMessage(parseInt(id));
+            await sessionService.updateSessionMessage(sessionId);
 
             // If session was just cancelled, send a cancellation ping
             if (status === 'cancelled' && existing.status !== 'cancelled') {
@@ -209,17 +211,18 @@ const updateSession = async (req, res) => {
  */
 const deleteSession = async (req, res) => {
     const { id } = req.params;
-    
-    if (!id || isNaN(parseInt(id))) {
+    const sessionId = parseInt(id);
+
+    if (!id || isNaN(sessionId)) {
         throw controllerFactory.createValidationError('Valid session ID is required');
     }
-    
+
     // Check if session exists and get Discord info before deletion
-    const session = await Session.findById(parseInt(id));
+    const session = await Session.findById(sessionId);
     if (!session) {
         throw controllerFactory.createNotFoundError('Session not found');
     }
-    
+
     // If session has Discord message, delete it
     if (session.discord_message_id && session.discord_channel_id) {
         try {
@@ -227,16 +230,16 @@ const deleteSession = async (req, res) => {
         } catch (error) {
             logger.error('Failed to delete Discord message for session', {
                 error: error.message,
-                sessionId: id
+                sessionId: sessionId
             });
             // Continue - we don't want to fail the session deletion if Discord fails
         }
     }
-    
+
     // Delete the session
-    await Session.delete(parseInt(id));
-    
-    controllerFactory.sendSuccessResponse(res, { id: parseInt(id) }, 'Session deleted successfully');
+    await Session.delete(sessionId);
+
+    controllerFactory.sendSuccessResponse(res, { id: sessionId }, 'Session deleted successfully');
 };
 
 /**
@@ -244,41 +247,43 @@ const deleteSession = async (req, res) => {
  */
 const updateAttendance = async (req, res) => {
     const { id } = req.params;
+    const sessionId = parseInt(id);
     const { status, character_id } = req.body;
     const userId = req.user.id;
-    
-    if (!id || isNaN(parseInt(id))) {
+    const characterId = character_id ? parseInt(character_id) : null;
+
+    if (!id || isNaN(sessionId)) {
         throw controllerFactory.createValidationError('Valid session ID is required');
     }
-    
+
     if (!status || !['accepted', 'declined', 'tentative'].includes(status)) {
         throw controllerFactory.createValidationError('Valid status is required (accepted, declined, or tentative)');
     }
-    
+
     // Check if session exists
-    const session = await Session.findById(parseInt(id));
+    const session = await Session.findById(sessionId);
     if (!session) {
         throw controllerFactory.createNotFoundError('Session not found');
     }
-    
+
     // Update attendance
     const attendance = await Session.updateAttendance(
-        parseInt(id),
+        sessionId,
         userId,
-        character_id ? parseInt(character_id) : null,
+        characterId,
         status
     );
-    
+
     // If session has Discord message, update it
     if (session.discord_message_id && session.discord_channel_id) {
         try {
-            // Get updated session with attendance
-            const sessionWithAttendance = await Session.getSessionWithAttendance(parseInt(id));
-            await updateDiscordSessionMessage(sessionWithAttendance);
+            // Use sessionService to update Discord message
+            const sessionService = require('../services/sessionService');
+            await sessionService.updateSessionMessage(sessionId);
         } catch (error) {
             logger.error('Failed to update Discord message for attendance update', {
                 error: error.message,
-                sessionId: id
+                sessionId: sessionId
             });
             // Continue - we don't want to fail the attendance update if Discord fails
         }
@@ -670,106 +675,6 @@ const getEmojiForResponseType = (responseType) => {
     return emojiMap[responseType] || '❓';
 };
 
-const processSessionAttendance = async (interactionData) => {
-    const { data, member, message } = interactionData;
-    
-    const customId = data.custom_id;
-    const action = customId.replace('session_', '');
-    const messageId = message.id;
-    
-    // Get Discord user info
-    const discordUserId = member?.user?.id || interactionData.user?.id;
-    const discordNickname = member?.nick || member?.user?.global_name || member?.user?.username || interactionData.user?.username;
-    
-    if (!discordUserId) {
-        return;
-    }
-    
-    // Try to find user by Discord ID first
-    let userResult = await dbUtils.executeQuery(
-        'SELECT id, username FROM users WHERE discord_id = $1',
-        [discordUserId]
-    );
-    
-    let userId = null;
-    let displayName = discordNickname;
-    
-    if (userResult.rows.length > 0) {
-        userId = userResult.rows[0].id;
-        displayName = userResult.rows[0].username;
-    } else {
-        // Try to match by nickname to character name
-        const characterResult = await dbUtils.executeQuery(
-            'SELECT user_id, name FROM characters WHERE LOWER(name) = LOWER($1) AND active = true LIMIT 1',
-            [discordNickname]
-        );
-        
-        if (characterResult.rows.length > 0) {
-            userId = characterResult.rows[0].user_id;
-            displayName = characterResult.rows[0].name;
-        }
-    }
-    
-    // Get session message info
-    const sessionMessageResult = await dbUtils.executeQuery(
-        'SELECT session_date, session_time, responses FROM session_messages WHERE message_id = $1',
-        [messageId]
-    );
-    
-    if (sessionMessageResult.rows.length === 0) {
-        return;
-    }
-    
-    const sessionMessage = sessionMessageResult.rows[0];
-    let responses = {};
-    
-    try {
-        responses = JSON.parse(sessionMessage.responses || '{}');
-    } catch (e) {
-        responses = {};
-    }
-    
-    // Map action to status
-    const statusMap = {
-        'yes': 'accepted',
-        'no': 'declined', 
-        'maybe': 'tentative'
-    };
-    
-    const status = statusMap[action];
-    
-    if (!status) {
-        return;
-    }
-    
-    // Remove user from all status lists first
-    Object.keys(responses).forEach(key => {
-        if (Array.isArray(responses[key])) {
-            responses[key] = responses[key].filter(user => user.discord_id !== discordUserId);
-        }
-    });
-    
-    // Add user to appropriate status list
-    if (!responses[status]) {
-        responses[status] = [];
-    }
-    
-    responses[status].push({
-        discord_id: discordUserId,
-        display_name: displayName,
-        user_id: userId
-    });
-    
-    // Update responses in database
-    await dbUtils.executeQuery(
-        'UPDATE session_messages SET responses = $1 WHERE message_id = $2',
-        [JSON.stringify(responses), messageId]
-    );
-    
-    // Update the Discord message embed
-    await updateSessionMessageEmbed(messageId, sessionMessage, responses);
-};
-
 /**
  * Helper function to update session message embed with responses
  */
@@ -928,12 +833,13 @@ const processDiscordInteraction = async (req, res) => {
     
     try {
         // Parse the custom_id which should be in format: action:sessionId
-        const [action, sessionId] = data.custom_id.split(':');
-        
-        if (!action || !sessionId || isNaN(parseInt(sessionId))) {
+        const [action, sessionIdStr] = data.custom_id.split(':');
+        const sessionId = parseInt(sessionIdStr);
+
+        if (!action || !sessionIdStr || isNaN(sessionId)) {
             return res.json({ type: 4, data: { content: "Invalid button data", flags: 64 } });
         }
-        
+
         // Get Discord user ID
         const discordUserId = member.user.id;
         
@@ -977,13 +883,11 @@ const processDiscordInteraction = async (req, res) => {
         }
         
         // Update attendance
-        await Session.updateAttendance(parseInt(sessionId), userId, characterId, status);
-        
-        // Get updated session data
-        const sessionWithAttendance = await Session.getSessionWithAttendance(parseInt(sessionId));
-        
-        // Update the Discord message with new attendance
-        await updateDiscordSessionMessage(sessionWithAttendance);
+        await Session.updateAttendance(sessionId, userId, characterId, status);
+
+        // Update the Discord message with new attendance using sessionService
+        const sessionService = require('../services/sessionService');
+        await sessionService.updateSessionMessage(sessionId);
         
         // Send ephemeral response to user
         return res.json({
@@ -1006,260 +910,6 @@ const processDiscordInteraction = async (req, res) => {
                 flags: 64
             }
         });
-    }
-};
-
-/**
- * Helper function to send a Discord notification for a session
- */
-const sendDiscordSessionNotification = async (session) => {
-    // Fetch Discord settings
-    const settings = await dbUtils.executeQuery(
-        'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\', \'campaign_name\')'
-    );
-    
-    // Convert rows to a settings object
-    const configMap = {};
-    settings.rows.forEach(row => {
-        configMap[row.name] = row.value;
-    });
-    
-    const discord_bot_token = configMap['discord_bot_token'];
-    const discord_channel_id = configMap['discord_channel_id'];
-    const campaign_name = configMap['campaign_name'] || 'Game Session';
-    
-    if (!discord_bot_token || !discord_channel_id) {
-        throw new Error('Discord integration not configured');
-    }
-    
-    // Format dates
-    const startDate = new Date(session.start_time);
-    const endDate = new Date(session.end_time);
-    const formattedDate = format(startDate, 'EEEE, MMMM d, yyyy h:mm a');
-    const formattedEndTime = format(endDate, 'h:mm a');
-    const daysUntil = formatDistance(startDate, new Date(), { addSuffix: false });
-    
-    // Create message embed
-    const embed = {
-        title: campaign_name,
-        description: "Time for a session",
-        color: 0x0099ff,
-        fields: [
-            {
-                name: "Time",
-                value: `${formattedDate} - ${formattedEndTime} [Add to Google] in ${daysUntil}`
-            },
-            {
-                name: "Accepted (0)",
-                value: "-"
-            },
-            {
-                name: "Declined (0)",
-                value: "-"
-            },
-            {
-                name: "Tentative (0)",
-                value: "-"
-            }
-        ],
-        footer: {
-            text: "Click the buttons below to mark your attendance"
-        }
-    };
-    
-    // Create component with buttons
-    const components = [
-        {
-            type: 1, // Action Row
-            components: [
-                {
-                    type: 2, // Button
-                    style: 3, // Success - green
-                    label: "Yes",
-                    custom_id: `yes:${session.id}`
-                },
-                {
-                    type: 2, // Button
-                    style: 4, // Danger - red 
-                    label: "No",
-                    custom_id: `no:${session.id}`
-                },
-                {
-                    type: 2, // Button
-                    style: 1, // Primary - blue
-                    label: "Maybe",
-                    custom_id: `maybe:${session.id}`
-                }
-            ]
-        }
-    ];
-    
-    try {
-        const response = await axios.post(
-            `https://discord.com/api/channels/${discord_channel_id}/messages`,
-            {
-                embeds: [embed],
-                components: components
-            },
-            {
-                headers: {
-                    'Authorization': `Bot ${discord_bot_token}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-        
-        // Update session with Discord message details
-        await Session.updateDiscordMessage(session.id, response.data.id, discord_channel_id);
-        
-        logger.info('Discord session notification sent', {
-            sessionId: session.id,
-            discordMessageId: response.data.id
-        });
-        
-        return response.data;
-    } catch (error) {
-        logger.error('Error sending Discord session notification', {
-            error: error.message,
-            response: error.response?.data,
-            sessionId: session.id
-        });
-        throw error;
-    }
-};
-
-/**
- * Helper function to update a Discord message for a session
- */
-const updateDiscordSessionMessage = async (session) => {
-    // Only proceed if Discord message details exist
-    if (!session.discord_message_id || !session.discord_channel_id) {
-        return null;
-    }
-    
-    // Fetch Discord settings
-    const settings = await dbUtils.executeQuery(
-        'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'campaign_name\')'
-    );
-    
-    // Convert rows to a settings object
-    const configMap = {};
-    settings.rows.forEach(row => {
-        configMap[row.name] = row.value;
-    });
-    
-    const discord_bot_token = configMap['discord_bot_token'];
-    const campaign_name = configMap['campaign_name'] || 'Game Session';
-    
-    if (!discord_bot_token) {
-        throw new Error('Discord bot token not configured');
-    }
-    
-    // Format dates
-    const startDate = new Date(session.start_time);
-    const endDate = new Date(session.end_time);
-    const formattedDate = format(startDate, 'EEEE, MMMM d, yyyy h:mm a');
-    const formattedEndTime = format(endDate, 'h:mm a');
-    const daysUntil = formatDistance(startDate, new Date(), { addSuffix: false });
-    
-    // Format attendance lists
-    const formatAttendanceList = (attendees) => {
-        if (!attendees || attendees.length === 0) {
-            return "-";
-        }
-        
-        return attendees.map(user => {
-            if (user.character_name) {
-                return `${user.character_name} - ${user.username}`;
-            }
-            return user.username;
-        }).join('\n');
-    };
-    
-    // Create message embed
-    const embed = {
-        title: campaign_name,
-        description: session.title || "Time for a session",
-        color: 0x0099ff,
-        fields: [
-            {
-                name: "Time",
-                value: `${formattedDate} - ${formattedEndTime} [Add to Google] in ${daysUntil}`
-            },
-            {
-                name: `Accepted (${session.attendance.accepted.length})`,
-                value: formatAttendanceList(session.attendance.accepted)
-            },
-            {
-                name: `Declined (${session.attendance.declined.length})`,
-                value: formatAttendanceList(session.attendance.declined)
-            },
-            {
-                name: `Tentative (${session.attendance.tentative.length})`,
-                value: formatAttendanceList(session.attendance.tentative)
-            }
-        ],
-        footer: {
-            text: "Click the buttons below to mark your attendance"
-        }
-    };
-    
-    // Create component with buttons
-    const components = [
-        {
-            type: 1, // Action Row
-            components: [
-                {
-                    type: 2, // Button
-                    style: 3, // Success - green
-                    label: "Yes",
-                    custom_id: `yes:${session.id}`
-                },
-                {
-                    type: 2, // Button
-                    style: 4, // Danger - red 
-                    label: "No",
-                    custom_id: `no:${session.id}`
-                },
-                {
-                    type: 2, // Button
-                    style: 1, // Primary - blue
-                    label: "Maybe",
-                    custom_id: `maybe:${session.id}`
-                }
-            ]
-        }
-    ];
-    
-    try {
-        // Update the Discord message
-        const response = await axios.patch(
-            `https://discord.com/api/channels/${session.discord_channel_id}/messages/${session.discord_message_id}`,
-            {
-                embeds: [embed],
-                components: components
-            },
-            {
-                headers: {
-                    'Authorization': `Bot ${discord_bot_token}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-        
-        logger.info('Discord session message updated', {
-            sessionId: session.id,
-            discordMessageId: session.discord_message_id
-        });
-        
-        return response.data;
-    } catch (error) {
-        logger.error('Error updating Discord session message', {
-            error: error.message,
-            response: error.response?.data,
-            sessionId: session.id
-        });
-        throw error;
     }
 };
 
@@ -1323,10 +973,12 @@ const checkAndSendSessionNotifications = async (req, res) => {
         
         // Send notifications for each session
         const results = [];
-        
+
         for (const session of sessions) {
             try {
-                await sendDiscordSessionNotification(session);
+                // Use sessionService for Discord notifications
+                const sessionService = require('../services/sessionService');
+                await sessionService.postSessionAnnouncement(session.id);
                 results.push({
                     sessionId: session.id,
                     status: 'success'

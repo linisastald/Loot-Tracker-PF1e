@@ -596,7 +596,7 @@ class SessionService {
             WHERE gs.status = 'scheduled'
             AND gs.announcement_message_id IS NULL
             AND gs.start_time > NOW()
-            AND gs.start_time <= NOW() + (gs.announcement_days_before || ' days')::INTERVAL
+            AND gs.start_time <= NOW() + (COALESCE(gs.announcement_days_before, 7) || ' days')::INTERVAL
         `);
 
         for (const session of result.rows) {
@@ -617,7 +617,7 @@ class SessionService {
             WHERE sr.sent = FALSE
             AND gs.status IN ('scheduled', 'confirmed')
             AND gs.start_time > NOW()
-            AND gs.start_time <= NOW() + (sr.days_before || ' days')::INTERVAL
+            AND gs.start_time <= NOW() + (COALESCE(sr.days_before, 1) || ' days')::INTERVAL
         `);
 
         for (const reminder of result.rows) {
@@ -645,7 +645,7 @@ class SessionService {
             WHERE gs.status = 'scheduled'
             AND gs.confirmation_message_id IS NULL
             AND gs.start_time > NOW()
-            AND gs.start_time <= NOW() + (gs.confirmation_days_before || ' days')::INTERVAL
+            AND gs.start_time <= NOW() + (COALESCE(gs.confirmation_days_before, 2) || ' days')::INTERVAL
         `);
 
         for (const session of result.rows) {

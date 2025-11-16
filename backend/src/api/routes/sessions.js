@@ -5,9 +5,22 @@ const sessionService = require('../../services/sessionService');
 const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
 const { createValidationMiddleware, validate } = require('../../middleware/validation');
-const { body, param, query } = require('express-validator');
+const { body, param, query, validationResult } = require('express-validator');
 const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
+
+// Middleware to check express-validator validation results
+const validateRequest = (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({
+            success: false,
+            message: 'Validation failed',
+            errors: errors.array()
+        });
+    }
+    next();
+};
 
 // ========================================================================
 // EXISTING ROUTES (maintained for backward compatibility)
@@ -20,6 +33,15 @@ router.get('/', verifyToken, sessionController.getUpcomingSessions);
 router.get('/enhanced', verifyToken, async (req, res) => {
     try {
         const { status, upcoming_only = 'false' } = req.query;
+
+        // Whitelist valid status values to prevent SQL injection and invalid queries
+        const VALID_STATUSES = ['scheduled', 'confirmed', 'cancelled', 'completed'];
+        if (status && !VALID_STATUSES.includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid status value. Must be one of: ${VALID_STATUSES.join(', ')}`
+            });
+        }
 
         let whereClause = '1=1';
         const queryParams = [];
@@ -159,7 +181,7 @@ router.post('/recurring', verifyToken, checkRole('DM'), [
     body('recurring_interval').optional().isInt({ min: 1 }).withMessage('Invalid interval'),
     body('recurring_end_date').optional().isISO8601().withMessage('Invalid end date'),
     body('recurring_end_count').optional().isInt({ min: 1 }).withMessage('Invalid end count')
-], async (req, res) => {
+], validateRequest, async (req, res) => {
     try {
         // Convert frontend field names to backend field names
         const sessionData = {
