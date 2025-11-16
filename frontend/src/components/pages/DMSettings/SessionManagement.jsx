@@ -73,15 +73,23 @@ const SessionManagement = () => {
     const [sessionToCancel, setSessionToCancel] = useState(null);
     const [settingsDialog, setSettingsDialog] = useState(false);
 
+    // Default session settings (defined first so they can be used below)
+    const [defaultSettings, setDefaultSettings] = useState({
+        minimumPlayers: 3,
+        announcementDaysBefore: 7,
+        confirmationDaysBefore: 2,
+        autoCancelHours: 48
+    });
+
     // Create session dialog state
     const [sessionTitle, setSessionTitle] = useState('');
     const [startTime, setStartTime] = useState(new Date());
     const [endTime, setEndTime] = useState(new Date(new Date().setHours(new Date().getHours() + 5)));
     const [description, setDescription] = useState('');
-    const [minimumPlayers, setMinimumPlayers] = useState(3);
-    const [announcementDaysBefore, setAnnouncementDaysBefore] = useState(7);
-    const [confirmationDaysBefore, setConfirmationDaysBefore] = useState(2);
-    const [autoCancelHours, setAutoCancelHours] = useState(48);
+    const [minimumPlayers, setMinimumPlayers] = useState(defaultSettings.minimumPlayers);
+    const [announcementDaysBefore, setAnnouncementDaysBefore] = useState(defaultSettings.announcementDaysBefore);
+    const [confirmationDaysBefore, setConfirmationDaysBefore] = useState(defaultSettings.confirmationDaysBefore);
+    const [autoCancelHours, setAutoCancelHours] = useState(defaultSettings.autoCancelHours);
 
     // Recurring session state
     const [isRecurring, setIsRecurring] = useState(false);
@@ -110,18 +118,6 @@ const SessionManagement = () => {
     });
     const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [dateTo, setDateTo] = useState(format(addMonths(new Date(), 2), 'yyyy-MM-dd'));
-
-    // Default session settings
-    const [defaultSettings, setDefaultSettings] = useState({
-        minimumPlayers: 3,
-        announcementDaysBefore: 7,
-        confirmationDaysBefore: 2,
-        autoCancelHours: 48,
-        reminderEnabled: true,
-        firstReminderDays: 3,
-        secondReminderDays: 1,
-        reminderTime: '18:00'
-    });
 
     useEffect(() => {
         fetchSessions();
@@ -215,10 +211,10 @@ const SessionManagement = () => {
         setStartTime(new Date());
         setEndTime(new Date(new Date().setHours(new Date().getHours() + 5)));
         setDescription('');
-        setMinimumPlayers(3);
-        setAnnouncementDaysBefore(7);
-        setConfirmationDaysBefore(2);
-        setAutoCancelHours(48);
+        setMinimumPlayers(defaultSettings.minimumPlayers);
+        setAnnouncementDaysBefore(defaultSettings.announcementDaysBefore);
+        setConfirmationDaysBefore(defaultSettings.confirmationDaysBefore);
+        setAutoCancelHours(defaultSettings.autoCancelHours);
 
         // Reset recurring fields
         setIsRecurring(false);
@@ -1097,58 +1093,6 @@ const SessionManagement = () => {
                                 />
                             </Grid>
                         </Grid>
-
-                        <Divider sx={{ my: 3 }} />
-
-                        <Typography variant="subtitle1" gutterBottom>
-                            Reminder Settings
-                        </Typography>
-
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={defaultSettings.reminderEnabled}
-                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, reminderEnabled: e.target.checked })}
-                                />
-                            }
-                            label="Enable Automatic Reminders"
-                            sx={{ mb: 2 }}
-                        />
-
-                        {defaultSettings.reminderEnabled && (
-                            <Grid container spacing={2}>
-                                <Grid size={{ xs: 12, md: 4 }}>
-                                    <TextField
-                                        label="First Reminder (days before)"
-                                        type="number"
-                                        fullWidth
-                                        value={defaultSettings.firstReminderDays}
-                                        onChange={(e) => setDefaultSettings({ ...defaultSettings, firstReminderDays: Math.max(1, parseInt(e.target.value) || 3) })}
-                                        inputProps={{ min: 1, max: 14 }}
-                                    />
-                                </Grid>
-                                <Grid size={{ xs: 12, md: 4 }}>
-                                    <TextField
-                                        label="Second Reminder (days before)"
-                                        type="number"
-                                        fullWidth
-                                        value={defaultSettings.secondReminderDays}
-                                        onChange={(e) => setDefaultSettings({ ...defaultSettings, secondReminderDays: Math.max(1, parseInt(e.target.value) || 1) })}
-                                        inputProps={{ min: 1, max: 7 }}
-                                    />
-                                </Grid>
-                                <Grid size={{ xs: 12, md: 4 }}>
-                                    <TextField
-                                        label="Reminder Time"
-                                        type="time"
-                                        fullWidth
-                                        value={defaultSettings.reminderTime}
-                                        onChange={(e) => setDefaultSettings({ ...defaultSettings, reminderTime: e.target.value })}
-                                        InputLabelProps={{ shrink: true }}
-                                    />
-                                </Grid>
-                            </Grid>
-                        )}
                     </DialogContent>
                     <DialogActions>
                         <Button onClick={() => setSettingsDialog(false)}>Cancel</Button>
