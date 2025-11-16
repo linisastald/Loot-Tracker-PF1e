@@ -85,6 +85,7 @@ const SessionManagement = () => {
     const [sessionTitle, setSessionTitle] = useState('');
     const [startTime, setStartTime] = useState(new Date());
     const [endTime, setEndTime] = useState(new Date(new Date().setHours(new Date().getHours() + 5)));
+    const [endTimeManuallySet, setEndTimeManuallySet] = useState(false);
     const [description, setDescription] = useState('');
     const [minimumPlayers, setMinimumPlayers] = useState(defaultSettings.minimumPlayers);
     const [announcementDaysBefore, setAnnouncementDaysBefore] = useState(defaultSettings.announcementDaysBefore);
@@ -133,6 +134,14 @@ const SessionManagement = () => {
             }
         }
     }, []);
+
+    // Update form fields when defaultSettings changes (after loading from localStorage)
+    useEffect(() => {
+        setMinimumPlayers(defaultSettings.minimumPlayers);
+        setAnnouncementDaysBefore(defaultSettings.announcementDaysBefore);
+        setConfirmationDaysBefore(defaultSettings.confirmationDaysBefore);
+        setAutoCancelHours(defaultSettings.autoCancelHours);
+    }, [defaultSettings]);
 
     const fetchSessions = async () => {
         try {
@@ -217,10 +226,32 @@ const SessionManagement = () => {
         }
     };
 
+    const handleStartTimeChange = (newStartTime) => {
+        setStartTime(newStartTime);
+
+        // If end time hasn't been manually set, auto-update it to match the new start date
+        if (!endTimeManuallySet && newStartTime) {
+            const currentEndTime = endTime || new Date();
+            const newEndTime = new Date(newStartTime);
+
+            // Preserve the time portion from the current end time
+            newEndTime.setHours(currentEndTime.getHours());
+            newEndTime.setMinutes(currentEndTime.getMinutes());
+
+            setEndTime(newEndTime);
+        }
+    };
+
+    const handleEndTimeChange = (newEndTime) => {
+        setEndTime(newEndTime);
+        setEndTimeManuallySet(true);
+    };
+
     const resetSessionForm = () => {
         setSessionTitle('');
         setStartTime(new Date());
         setEndTime(new Date(new Date().setHours(new Date().getHours() + 5)));
+        setEndTimeManuallySet(false);
         setDescription('');
         setMinimumPlayers(defaultSettings.minimumPlayers);
         setAnnouncementDaysBefore(defaultSettings.announcementDaysBefore);
@@ -864,7 +895,7 @@ const SessionManagement = () => {
                                 <DateTimePicker
                                     label="Start Time"
                                     value={startTime}
-                                    onChange={setStartTime}
+                                    onChange={handleStartTimeChange}
                                     slotProps={{ textField: { fullWidth: true } }}
                                 />
                             </Grid>
@@ -872,7 +903,7 @@ const SessionManagement = () => {
                                 <DateTimePicker
                                     label="End Time"
                                     value={endTime}
-                                    onChange={setEndTime}
+                                    onChange={handleEndTimeChange}
                                     slotProps={{ textField: { fullWidth: true } }}
                                 />
                             </Grid>
