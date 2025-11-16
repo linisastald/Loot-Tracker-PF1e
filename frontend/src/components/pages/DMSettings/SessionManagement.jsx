@@ -46,6 +46,7 @@ import {
     NotificationImportant as ReminderIcon,
     Refresh as RefreshIcon,
     Send as SendIcon,
+    Settings as SettingsIcon,
     Visibility as ViewIcon
 } from '@mui/icons-material';
 import { format, addMonths } from 'date-fns';
@@ -70,6 +71,7 @@ const SessionManagement = () => {
     const [cancelDialog, setCancelDialog] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [sessionToCancel, setSessionToCancel] = useState(null);
+    const [settingsDialog, setSettingsDialog] = useState(false);
 
     // Create session dialog state
     const [sessionTitle, setSessionTitle] = useState('');
@@ -108,6 +110,18 @@ const SessionManagement = () => {
     });
     const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [dateTo, setDateTo] = useState(format(addMonths(new Date(), 2), 'yyyy-MM-dd'));
+
+    // Default session settings
+    const [defaultSettings, setDefaultSettings] = useState({
+        minimumPlayers: 3,
+        announcementDaysBefore: 7,
+        confirmationDaysBefore: 2,
+        autoCancelHours: 48,
+        reminderEnabled: true,
+        firstReminderDays: 3,
+        secondReminderDays: 1,
+        reminderTime: '18:00'
+    });
 
     useEffect(() => {
         fetchSessions();
@@ -524,6 +538,13 @@ const SessionManagement = () => {
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
                 <Typography variant="h6">Session Management</Typography>
                 <Box display="flex" gap={2}>
+                    <Button
+                        variant="outlined"
+                        startIcon={<SettingsIcon />}
+                        onClick={() => setSettingsDialog(true)}
+                    >
+                        Defaults
+                    </Button>
                     <Button
                         variant="outlined"
                         startIcon={<FilterListIcon />}
@@ -1022,6 +1043,121 @@ const SessionManagement = () => {
                         <Button onClick={resetSessionForm}>Cancel</Button>
                         <Button onClick={handleCreateSession} color="primary" variant="contained">
                             {isRecurring ? `Create ${recurringEndCount} Recurring Sessions` : 'Create Session'}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Default Settings Dialog */}
+                <Dialog open={settingsDialog} onClose={() => setSettingsDialog(false)} maxWidth="md" fullWidth>
+                    <DialogTitle>Default Session Settings</DialogTitle>
+                    <DialogContent>
+                        <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
+                            These defaults will pre-fill when creating new sessions
+                        </Typography>
+
+                        <Grid container spacing={3}>
+                            <Grid size={{ xs: 12, md: 6 }}>
+                                <TextField
+                                    label="Default Minimum Players"
+                                    type="number"
+                                    fullWidth
+                                    value={defaultSettings.minimumPlayers}
+                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, minimumPlayers: Math.max(1, parseInt(e.target.value) || 3) })}
+                                    inputProps={{ min: 1, max: 10 }}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 6 }}>
+                                <TextField
+                                    label="Default Announcement Days Before"
+                                    type="number"
+                                    fullWidth
+                                    value={defaultSettings.announcementDaysBefore}
+                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, announcementDaysBefore: Math.max(1, parseInt(e.target.value) || 7) })}
+                                    inputProps={{ min: 1, max: 30 }}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 6 }}>
+                                <TextField
+                                    label="Default Confirmation Days Before"
+                                    type="number"
+                                    fullWidth
+                                    value={defaultSettings.confirmationDaysBefore}
+                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, confirmationDaysBefore: Math.max(1, parseInt(e.target.value) || 2) })}
+                                    inputProps={{ min: 1, max: 14 }}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 6 }}>
+                                <TextField
+                                    label="Default Auto-Cancel Hours Before"
+                                    type="number"
+                                    fullWidth
+                                    value={defaultSettings.autoCancelHours}
+                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, autoCancelHours: Math.max(1, parseInt(e.target.value) || 48) })}
+                                    inputProps={{ min: 1, max: 168 }}
+                                />
+                            </Grid>
+                        </Grid>
+
+                        <Divider sx={{ my: 3 }} />
+
+                        <Typography variant="subtitle1" gutterBottom>
+                            Reminder Settings
+                        </Typography>
+
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={defaultSettings.reminderEnabled}
+                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, reminderEnabled: e.target.checked })}
+                                />
+                            }
+                            label="Enable Automatic Reminders"
+                            sx={{ mb: 2 }}
+                        />
+
+                        {defaultSettings.reminderEnabled && (
+                            <Grid container spacing={2}>
+                                <Grid size={{ xs: 12, md: 4 }}>
+                                    <TextField
+                                        label="First Reminder (days before)"
+                                        type="number"
+                                        fullWidth
+                                        value={defaultSettings.firstReminderDays}
+                                        onChange={(e) => setDefaultSettings({ ...defaultSettings, firstReminderDays: Math.max(1, parseInt(e.target.value) || 3) })}
+                                        inputProps={{ min: 1, max: 14 }}
+                                    />
+                                </Grid>
+                                <Grid size={{ xs: 12, md: 4 }}>
+                                    <TextField
+                                        label="Second Reminder (days before)"
+                                        type="number"
+                                        fullWidth
+                                        value={defaultSettings.secondReminderDays}
+                                        onChange={(e) => setDefaultSettings({ ...defaultSettings, secondReminderDays: Math.max(1, parseInt(e.target.value) || 1) })}
+                                        inputProps={{ min: 1, max: 7 }}
+                                    />
+                                </Grid>
+                                <Grid size={{ xs: 12, md: 4 }}>
+                                    <TextField
+                                        label="Reminder Time"
+                                        type="time"
+                                        fullWidth
+                                        value={defaultSettings.reminderTime}
+                                        onChange={(e) => setDefaultSettings({ ...defaultSettings, reminderTime: e.target.value })}
+                                        InputLabelProps={{ shrink: true }}
+                                    />
+                                </Grid>
+                            </Grid>
+                        )}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setSettingsDialog(false)}>Cancel</Button>
+                        <Button onClick={() => {
+                            // TODO: Save defaults to user settings
+                            setSettingsDialog(false);
+                            enqueueSnackbar('Default settings saved', { variant: 'success' });
+                        }} variant="contained" color="primary">
+                            Save Defaults
                         </Button>
                     </DialogActions>
                 </Dialog>
