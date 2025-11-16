@@ -41,15 +41,22 @@ class SessionDiscordService {
 
             if (messageResult.success) {
                 // Store message ID for tracking
-                await pool.query(`
+                const updateResult = await pool.query(`
                     UPDATE game_sessions
                     SET announcement_message_id = $1, discord_channel_id = $2
                     WHERE id = $3
+                    RETURNING id, announcement_message_id, discord_channel_id
                 `, [messageResult.data.id, settings.discord_channel_id, sessionId]);
+
+                if (updateResult.rowCount === 0) {
+                    logger.error('Failed to update session with message ID - session not found:', { sessionId });
+                    throw new Error('Session not found when updating message ID');
+                }
 
                 logger.info('Session announcement posted:', {
                     sessionId,
-                    messageId: messageResult.data.id
+                    messageId: messageResult.data.id,
+                    updated: updateResult.rows[0]
                 });
 
                 return messageResult.data;
