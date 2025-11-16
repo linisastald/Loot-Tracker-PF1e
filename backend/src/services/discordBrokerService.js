@@ -8,7 +8,10 @@ const ServiceResult = require('../utils/ServiceResult');
 class DiscordBrokerService {
   constructor() {
     this.brokerUrl = process.env.DISCORD_BROKER_URL;
-    this.appId = 'pathfinder-loot-tracker';
+    // Use GROUP_NAME to create unique appId per instance
+    const groupName = process.env.GROUP_NAME || 'default';
+    this.appId = `pathfinder-loot-tracker-${groupName.toLowerCase().replace(/\s+/g, '-')}`;
+    this.groupName = groupName;
     this.isRegistered = false;
     this.heartbeatInterval = null;
     this.retryAttempts = 0;
@@ -37,7 +40,7 @@ class DiscordBrokerService {
 
       const registrationData = {
         appId: this.appId,
-        name: 'Pathfinder Loot Tracker',
+        name: `Pathfinder Loot Tracker - ${this.groupName}`,
         description: 'Session attendance tracking and loot management',
         endpoint: this.buildCallbackUrl(),
         guildId: settings.guild_id || 'unknown', // Will be determined by the broker
@@ -48,7 +51,8 @@ class DiscordBrokerService {
       logger.info('Registering with Discord broker...', {
         appId: this.appId,
         guildId: settings.guild_id,
-        endpoint: registrationData.endpoint
+        endpoint: registrationData.endpoint,
+        channels: Object.keys(registrationData.channels)
       });
 
       const response = await this.makeRequest('/register', 'POST', registrationData);
