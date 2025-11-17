@@ -28,6 +28,7 @@ import OutpostManagement from './components/pages/OutpostManagement';
 import CrewManagement from './components/pages/CrewManagement';
 import SessionsPage from './components/pages/Sessions/SessionsPage';
 import SessionManagement from './components/pages/DMSettings/SessionManagement';
+import CityServices from './components/pages/CityServices';
 import ErrorBoundary from './components/ErrorBoundary';
 
 
@@ -183,6 +184,7 @@ function App() {
               <Route path="crew" element={<ErrorBoundary><CrewManagement /></ErrorBoundary>} />
               <Route path="sessions" element={<ErrorBoundary><SessionsPage /></ErrorBoundary>} />
               <Route path="session-management" element={<ErrorBoundary><SessionManagement /></ErrorBoundary>} />
+              <Route path="city-services" element={<ErrorBoundary><CityServices /></ErrorBoundary>} />
             </Route>
           </Routes>
           </Router>
