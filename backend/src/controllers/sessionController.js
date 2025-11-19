@@ -53,8 +53,9 @@ const createSession = async (req, res) => {
         description,
         minimum_players,
         maximum_players,
-        announcement_days_before,
-        confirmation_days_before,
+        auto_announce_hours,
+        reminder_hours,
+        confirmation_hours,
         auto_cancel_hours
     } = req.body;
 
@@ -82,7 +83,6 @@ const createSession = async (req, res) => {
 
     // Use sessionService directly to create session with all fields
     // SessionService handles the enhanced fields properly
-    // Convert frontend field names (days) to backend field names (hours)
     const sessionService = require('../services/sessionService');
     const session = await sessionService.createSession({
         title,
@@ -91,9 +91,10 @@ const createSession = async (req, res) => {
         description: description || '',
         minimum_players,
         maximum_players,
-        // Convert days to hours for backend compatibility
-        auto_announce_hours: announcement_days_before ? announcement_days_before * 24 : undefined,
-        reminder_hours: confirmation_days_before ? confirmation_days_before * 24 : undefined,
+        // Use hours-based timing (defaults handled by service layer)
+        auto_announce_hours,
+        reminder_hours,
+        confirmation_hours,
         auto_cancel_hours,
         created_by: req.user?.id || 1 // Use authenticated user ID or default to 1
     });

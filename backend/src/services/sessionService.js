@@ -76,6 +76,7 @@ class SessionService {
                 maximum_players = DEFAULT_VALUES.MAXIMUM_PLAYERS,
                 auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
                 reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
+                confirmation_hours = 48, // Default: 2 days before
                 auto_cancel_hours = DEFAULT_VALUES.AUTO_CANCEL_HOURS,
                 created_by
             } = sessionData;
@@ -84,14 +85,14 @@ class SessionService {
             const sessionResult = await client.query(`
                 INSERT INTO game_sessions (
                     title, start_time, end_time, description, minimum_players, maximum_players,
-                    auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
+                    auto_announce_hours, reminder_hours, confirmation_hours, auto_cancel_hours, created_by,
                     status, created_at, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', NOW(), NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'scheduled', NOW(), NOW())
                 RETURNING *
             `, [
                 title, start_time, end_time, description, minimum_players, maximum_players,
-                auto_announce_hours, reminder_hours, auto_cancel_hours, created_by
+                auto_announce_hours, reminder_hours, confirmation_hours, auto_cancel_hours, created_by
             ]);
 
             const session = sessionResult.rows[0];
@@ -124,6 +125,20 @@ class SessionService {
                 }
             }
 
+            // Schedule confirmation request if configured
+            if (confirmation_hours > 0) {
+                const confirmationTime = new Date(start_time);
+                confirmationTime.setHours(confirmationTime.getHours() - confirmation_hours);
+
+                if (confirmationTime > new Date()) {
+                    await client.query(`
+                        INSERT INTO session_automations (
+                            session_id, automation_type, scheduled_time, status, created_at
+                        ) VALUES ($1, 'confirmation', $2, 'scheduled', NOW())
+                    `, [session.id, confirmationTime]);
+                }
+            }
+
             await client.query('COMMIT');
             logger.info(`Created enhanced session: ${session.id} - ${title}`);
             return session;
@@ -146,8 +161,9 @@ class SessionService {
     async updateSession(sessionId, updateData) {
         const allowedFields = [
             'title', 'start_time', 'end_time', 'description',
-            'minimum_players', 'announcement_days_before',
-            'confirmation_days_before', 'status'
+            'minimum_players', 'maximum_players',
+            'auto_announce_hours', 'reminder_hours', 'confirmation_hours',
+            'auto_cancel_hours', 'status'
         ];
 
         const fields = Object.keys(updateData).filter(field => allowedFields.includes(field));
@@ -173,7 +189,7 @@ class SessionService {
             const session = result.rows[0];
 
             // Reschedule events if timing changed
-            if (fields.some(field => ['start_time', 'announcement_days_before', 'confirmation_days_before'].includes(field))) {
+            if (fields.some(field => ['start_time', 'auto_announce_hours', 'reminder_hours', 'confirmation_hours', 'auto_cancel_hours'].includes(field))) {
                 await this.rescheduleSessionEvents(session);
             }
 
@@ -455,9 +471,9 @@ class SessionService {
      */
     async scheduleSessionEvents(session) {
         try {
-            // Create default reminders for the session
+            // Create default reminders for the session (convert hours to days for this legacy system)
             const reminders = [
-                { days_before: session.announcement_days_before || 7, reminder_type: 'initial', target_audience: 'all' },
+                { days_before: Math.ceil((session.auto_announce_hours || 168) / 24), reminder_type: 'initial', target_audience: 'all' },
                 { days_before: 2, reminder_type: 'followup', target_audience: 'non_responders' },
                 { days_before: 1, reminder_type: 'final', target_audience: 'maybe_responders' }
             ];

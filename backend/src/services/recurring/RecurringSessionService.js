@@ -28,6 +28,7 @@ class RecurringSessionService {
                 maximum_players = DEFAULT_VALUES.MAXIMUM_PLAYERS,
                 auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
                 reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
+                confirmation_hours = 48, // Default: 2 days before
                 auto_cancel_hours = DEFAULT_VALUES.AUTO_CANCEL_HOURS,
                 created_by,
                 // Recurring fields
@@ -60,15 +61,15 @@ class RecurringSessionService {
             const sessionResult = await client.query(`
                 INSERT INTO game_sessions (
                     title, start_time, end_time, description, minimum_players, maximum_players,
-                    auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
+                    auto_announce_hours, reminder_hours, confirmation_hours, auto_cancel_hours, created_by,
                     is_recurring, recurring_pattern, recurring_day_of_week, recurring_interval,
                     recurring_end_date, recurring_end_count, status, created_at, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE, $11, $12, $13, $14, $15, 'scheduled', NOW(), NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, $12, $13, $14, $15, $16, 'scheduled', NOW(), NOW())
                 RETURNING *
             `, [
                 title, start_time, end_time, description, minimum_players, maximum_players,
-                auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
+                auto_announce_hours, reminder_hours, confirmation_hours, auto_cancel_hours, created_by,
                 recurring_pattern, dayOfWeek, interval,
                 recurring_end_date, recurring_end_count
             ]);
@@ -133,10 +134,10 @@ class RecurringSessionService {
                     const instanceResult = await client.query(`
                         INSERT INTO game_sessions (
                             title, start_time, end_time, description, minimum_players, maximum_players,
-                            auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
+                            auto_announce_hours, reminder_hours, confirmation_hours, auto_cancel_hours, created_by,
                             parent_recurring_id, created_from_recurring, status, created_at, updated_at
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'scheduled', NOW(), NOW())
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE, 'scheduled', NOW(), NOW())
                         RETURNING *
                     `, [
                         `${template.title} - ${this.formatDateForTitle(instanceStartTime)}`,
@@ -147,6 +148,7 @@ class RecurringSessionService {
                         template.maximum_players,
                         template.auto_announce_hours,
                         template.reminder_hours,
+                        template.confirmation_hours,
                         template.auto_cancel_hours,
                         template.created_by,
                         template.id
@@ -411,10 +413,10 @@ class RecurringSessionService {
                     const instanceResult = await client.query(`
                         INSERT INTO game_sessions (
                             title, start_time, end_time, description, minimum_players, maximum_players,
-                            auto_announce_hours, reminder_hours, auto_cancel_hours, created_by,
+                            auto_announce_hours, reminder_hours, confirmation_hours, auto_cancel_hours, created_by,
                             parent_recurring_id, created_from_recurring, status, created_at, updated_at
                         )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'scheduled', NOW(), NOW())
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, TRUE, 'scheduled', NOW(), NOW())
                         RETURNING *
                     `, [
                         `${template.title} - ${this.formatDateForTitle(lastDate)}`,
@@ -425,6 +427,7 @@ class RecurringSessionService {
                         template.maximum_players,
                         template.auto_announce_hours,
                         template.reminder_hours,
+                        template.confirmation_hours,
                         template.auto_cancel_hours,
                         template.created_by,
                         template.id

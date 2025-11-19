@@ -186,20 +186,17 @@ router.post('/recurring', verifyToken, checkRole('DM'), [
     body('recurring_end_count').optional().isInt({ min: 1 }).withMessage('Invalid end count')
 ], validateRequest, async (req, res) => {
     try {
-        // Convert frontend field names to backend field names
+        // Use hours-based timing (no conversion needed)
         const sessionData = {
             ...req.body,
             created_by: req.user.id,
-            // Convert days to hours for backend compatibility
-            auto_announce_hours: req.body.announcement_days_before ? req.body.announcement_days_before * 24 : 168,
-            reminder_hours: req.body.confirmation_days_before ? req.body.confirmation_days_before * 24 : 24,
-            auto_cancel_hours: req.body.auto_cancel_hours || 48, // Default 48 hours
+            // Use hours directly from frontend (or defaults)
+            auto_announce_hours: req.body.auto_announce_hours || 168, // Default: 1 week
+            reminder_hours: req.body.reminder_hours || 48, // Default: 2 days
+            confirmation_hours: req.body.confirmation_hours || 48, // Default: 2 days
+            auto_cancel_hours: req.body.auto_cancel_hours || 48, // Default: 2 days
             maximum_players: req.body.maximum_players || 6 // Default maximum players
         };
-
-        // Remove the frontend field names to avoid confusion
-        delete sessionData.announcement_days_before;
-        delete sessionData.confirmation_days_before;
 
         const result = await sessionService.createRecurringSession(sessionData);
 
