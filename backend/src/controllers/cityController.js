@@ -141,12 +141,31 @@ const getSettlementSizes = async (req, res) => {
   res.json(sizes);
 };
 
-module.exports = controllerFactory.wrapAsync({
-  getAllCities,
-  getCityById,
-  searchCities,
-  createCity,
-  updateCity,
-  deleteCity,
-  getSettlementSizes
+// Export wrapped controllers
+exports.getAllCities = controllerFactory.createHandler(getAllCities, {
+  errorMessage: 'Error fetching cities'
+});
+
+exports.getCityById = controllerFactory.createHandler(getCityById, {
+  errorMessage: 'Error fetching city'
+});
+
+exports.searchCities = controllerFactory.createHandler(searchCities, {
+  errorMessage: 'Error searching cities'
+});
+
+exports.createCity = controllerFactory.createHandler(createCity, {
+  errorMessage: 'Error creating city'
+});
+
+exports.updateCity = controllerFactory.createHandler(updateCity, {
+  errorMessage: 'Error updating city'
+});
+
+exports.deleteCity = controllerFactory.createHandler(deleteCity, {
+  errorMessage: 'Error deleting city'
+});
+
+exports.getSettlementSizes = controllerFactory.createHandler(getSettlementSizes, {
+  errorMessage: 'Error fetching settlement sizes'
 });

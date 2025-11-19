@@ -153,9 +153,19 @@ const deleteSearch = async (req, res) => {
   res.json({ message: 'Search record deleted successfully' });
 };
 
-module.exports = controllerFactory.wrapAsync({
-  checkItemAvailability,
-  getAllSearches,
-  getSearchById,
-  deleteSearch
+// Export wrapped controllers
+exports.checkItemAvailability = controllerFactory.createHandler(checkItemAvailability, {
+  errorMessage: 'Error checking item availability'
+});
+
+exports.getAllSearches = controllerFactory.createHandler(getAllSearches, {
+  errorMessage: 'Error fetching item searches'
+});
+
+exports.getSearchById = controllerFactory.createHandler(getSearchById, {
+  errorMessage: 'Error fetching item search'
+});
+
+exports.deleteSearch = controllerFactory.createHandler(deleteSearch, {
+  errorMessage: 'Error deleting item search'
 });

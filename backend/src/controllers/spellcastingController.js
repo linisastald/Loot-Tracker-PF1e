@@ -175,10 +175,23 @@ const getAvailableSpells = async (req, res) => {
   res.json(result.rows);
 };
 
-module.exports = controllerFactory.wrapAsync({
-  checkSpellcastingService,
-  getAllServices,
-  getServiceById,
-  deleteService,
-  getAvailableSpells
+// Export wrapped controllers
+exports.checkSpellcastingService = controllerFactory.createHandler(checkSpellcastingService, {
+  errorMessage: 'Error checking spellcasting service'
+});
+
+exports.getAllServices = controllerFactory.createHandler(getAllServices, {
+  errorMessage: 'Error fetching spellcasting services'
+});
+
+exports.getServiceById = controllerFactory.createHandler(getServiceById, {
+  errorMessage: 'Error fetching spellcasting service'
+});
+
+exports.deleteService = controllerFactory.createHandler(deleteService, {
+  errorMessage: 'Error deleting spellcasting service'
+});
+
+exports.getAvailableSpells = controllerFactory.createHandler(getAvailableSpells, {
+  errorMessage: 'Error fetching available spells'
 });
