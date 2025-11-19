@@ -43,9 +43,9 @@ class SessionDiscordService {
                 // Store message ID for tracking
                 const updateResult = await pool.query(`
                     UPDATE game_sessions
-                    SET announcement_message_id = $1, discord_channel_id = $2
+                    SET discord_message_id = $1, discord_channel_id = $2
                     WHERE id = $3
-                    RETURNING id, announcement_message_id, discord_channel_id
+                    RETURNING id, discord_message_id, discord_channel_id
                 `, [messageResult.data.id, settings.discord_channel_id, sessionId]);
 
                 if (updateResult.rowCount === 0) {
@@ -147,7 +147,7 @@ class SessionDiscordService {
             const attendanceService = require('../attendance/AttendanceService');
 
             const session = await sessionService.getSession(sessionId);
-            if (!session || !session.announcement_message_id) {
+            if (!session || !session.discord_message_id) {
                 logger.info('No message to update for session:', sessionId);
                 return;
             }
@@ -162,7 +162,7 @@ class SessionDiscordService {
             if (settings.discord_bot_token && settings.discord_channel_id) {
                 await discordService.updateMessage({
                     channelId: settings.discord_channel_id,
-                    messageId: session.announcement_message_id,
+                    messageId: session.discord_message_id,
                     embed,
                     components
                 });
@@ -315,7 +315,7 @@ class SessionDiscordService {
             // Find session by message ID
             const sessionResult = await pool.query(`
                 SELECT id FROM game_sessions
-                WHERE announcement_message_id = $1 OR confirmation_message_id = $1
+                WHERE discord_message_id = $1 OR confirmation_message_id = $1
             `, [messageId]);
 
             if (sessionResult.rows.length === 0) {

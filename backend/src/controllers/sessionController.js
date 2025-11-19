@@ -158,15 +158,15 @@ const updateSession = async (req, res) => {
     // Debug logging for cancellation
     logger.info('Session update - checking for Discord updates', {
         sessionId: sessionId,
-        hasAnnouncementId: !!existing.announcement_message_id,
-        announcementId: existing.announcement_message_id,
+        hasAnnouncementId: !!existing.discord_message_id,
+        announcementId: existing.discord_message_id,
         newStatus: status,
         oldStatus: existing.status,
         cancelReason: cancel_reason
     });
 
     // If session has Discord message, update it
-    if (existing.announcement_message_id) {
+    if (existing.discord_message_id) {
         try {
             // Use sessionService's updateSessionMessage for proper handling
             const sessionService = require('../services/sessionService');
@@ -464,9 +464,8 @@ const processSessionInteraction = async (req, res) => {
             // Find session by message ID
             const sessionResult = await dbUtils.executeQuery(`
                 SELECT id FROM game_sessions
-                WHERE announcement_message_id = $1
+                WHERE discord_message_id = $1
                    OR confirmation_message_id = $1
-                   OR discord_message_id = $1
             `, [messageId]);
 
             let sessionId = null;
