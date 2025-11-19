@@ -75,9 +75,10 @@ const SessionManagement = () => {
     // Default session settings (defined first so they can be used below)
     const [defaultSettings, setDefaultSettings] = useState({
         minimumPlayers: 3,
-        announcementDaysBefore: 7,
-        confirmationDaysBefore: 2,
-        autoCancelHours: 48
+        autoAnnounceHours: 168,      // 1 week
+        reminderHours: 48,            // 2 days
+        confirmationHours: 48,        // 2 days
+        autoCancelHours: 48           // 2 days
     });
 
     // Create session dialog state
@@ -87,8 +88,9 @@ const SessionManagement = () => {
     const [endTimeManuallySet, setEndTimeManuallySet] = useState(false);
     const [description, setDescription] = useState('');
     const [minimumPlayers, setMinimumPlayers] = useState(defaultSettings.minimumPlayers);
-    const [announcementDaysBefore, setAnnouncementDaysBefore] = useState(defaultSettings.announcementDaysBefore);
-    const [confirmationDaysBefore, setConfirmationDaysBefore] = useState(defaultSettings.confirmationDaysBefore);
+    const [autoAnnounceHours, setAutoAnnounceHours] = useState(defaultSettings.autoAnnounceHours);
+    const [reminderHours, setReminderHours] = useState(defaultSettings.reminderHours);
+    const [confirmationHours, setConfirmationHours] = useState(defaultSettings.confirmationHours);
     const [autoCancelHours, setAutoCancelHours] = useState(defaultSettings.autoCancelHours);
 
     // Recurring session state
@@ -137,8 +139,9 @@ const SessionManagement = () => {
     // Update form fields when defaultSettings changes (after loading from localStorage)
     useEffect(() => {
         setMinimumPlayers(defaultSettings.minimumPlayers);
-        setAnnouncementDaysBefore(defaultSettings.announcementDaysBefore);
-        setConfirmationDaysBefore(defaultSettings.confirmationDaysBefore);
+        setAutoAnnounceHours(defaultSettings.autoAnnounceHours);
+        setReminderHours(defaultSettings.reminderHours);
+        setConfirmationHours(defaultSettings.confirmationHours);
         setAutoCancelHours(defaultSettings.autoCancelHours);
     }, [defaultSettings]);
 
@@ -189,8 +192,9 @@ const SessionManagement = () => {
                 end_time: endTime.toISOString(),
                 description: description,
                 minimum_players: minimumPlayers,
-                announcement_days_before: announcementDaysBefore,
-                confirmation_days_before: confirmationDaysBefore,
+                auto_announce_hours: autoAnnounceHours,
+                reminder_hours: reminderHours,
+                confirmation_hours: confirmationHours,
                 auto_cancel_hours: autoCancelHours
             };
 
@@ -253,8 +257,9 @@ const SessionManagement = () => {
         setEndTimeManuallySet(false);
         setDescription('');
         setMinimumPlayers(defaultSettings.minimumPlayers);
-        setAnnouncementDaysBefore(defaultSettings.announcementDaysBefore);
-        setConfirmationDaysBefore(defaultSettings.confirmationDaysBefore);
+        setAutoAnnounceHours(defaultSettings.autoAnnounceHours);
+        setReminderHours(defaultSettings.reminderHours);
+        setConfirmationHours(defaultSettings.confirmationHours);
         setAutoCancelHours(defaultSettings.autoCancelHours);
 
         // Reset recurring fields
@@ -931,35 +936,48 @@ const SessionManagement = () => {
                             </Grid>
                             <Grid size={{xs: 12, md: 4}}>
                                 <TextField
-                                    label="Announcement Days Before"
+                                    label="Auto-Announce Hours Before"
                                     type="number"
                                     fullWidth
-                                    value={announcementDaysBefore}
-                                    onChange={(e) => setAnnouncementDaysBefore(Math.max(1, parseInt(e.target.value) || 7))}
-                                    inputProps={{ min: 1, max: 30 }}
+                                    value={autoAnnounceHours}
+                                    onChange={(e) => setAutoAnnounceHours(Math.max(1, parseInt(e.target.value) || 168))}
+                                    inputProps={{ min: 1, max: 720 }}
+                                    helperText="Hours before session to post announcement (168 = 1 week)"
                                 />
                             </Grid>
                             <Grid size={{xs: 12, md: 4}}>
                                 <TextField
-                                    label="Confirmation Days Before"
+                                    label="Reminder Hours Before"
                                     type="number"
                                     fullWidth
-                                    value={confirmationDaysBefore}
-                                    onChange={(e) => setConfirmationDaysBefore(Math.max(1, parseInt(e.target.value) || 2))}
-                                    inputProps={{ min: 1, max: 14 }}
+                                    value={reminderHours}
+                                    onChange={(e) => setReminderHours(Math.max(1, parseInt(e.target.value) || 48))}
+                                    inputProps={{ min: 1, max: 336 }}
+                                    helperText="Hours before session to send reminder (48 = 2 days)"
                                 />
                             </Grid>
                         </Grid>
-                        <Grid container spacing={2} sx={{ mt: 1 }}>
-                            <Grid size={{xs: 12}}>
+                        <Grid container spacing={3} sx={{ mt: 1 }} size={12}>
+                            <Grid size={{xs: 12, md: 6}}>
+                                <TextField
+                                    label="Confirmation Hours Before"
+                                    type="number"
+                                    fullWidth
+                                    value={confirmationHours}
+                                    onChange={(e) => setConfirmationHours(Math.max(1, parseInt(e.target.value) || 48))}
+                                    inputProps={{ min: 1, max: 336 }}
+                                    helperText="Hours before session to request final confirmation (48 = 2 days)"
+                                />
+                            </Grid>
+                            <Grid size={{xs: 12, md: 6}}>
                                 <TextField
                                     label="Auto-Cancel Hours Before"
                                     type="number"
                                     fullWidth
                                     value={autoCancelHours}
                                     onChange={(e) => setAutoCancelHours(Math.max(1, parseInt(e.target.value) || 48))}
-                                    inputProps={{ min: 1, max: 168 }}
-                                    helperText="Session will auto-cancel if minimum players not met within this many hours before start time (minimum 24 hours recommended)"
+                                    inputProps={{ min: 1, max: 336 }}
+                                    helperText="Hours before session to auto-cancel if minimum players not met (48 = 2 days)"
                                 />
                             </Grid>
                         </Grid>
@@ -1116,22 +1134,35 @@ const SessionManagement = () => {
                             </Grid>
                             <Grid size={{ xs: 12, md: 6 }}>
                                 <TextField
-                                    label="Default Announcement Days Before"
+                                    label="Default Auto-Announce Hours Before"
                                     type="number"
                                     fullWidth
-                                    value={defaultSettings.announcementDaysBefore}
-                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, announcementDaysBefore: Math.max(1, parseInt(e.target.value) || 7) })}
-                                    inputProps={{ min: 1, max: 30 }}
+                                    value={defaultSettings.autoAnnounceHours}
+                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, autoAnnounceHours: Math.max(1, parseInt(e.target.value) || 168) })}
+                                    inputProps={{ min: 1, max: 720 }}
+                                    helperText="168 hours = 1 week"
                                 />
                             </Grid>
                             <Grid size={{ xs: 12, md: 6 }}>
                                 <TextField
-                                    label="Default Confirmation Days Before"
+                                    label="Default Reminder Hours Before"
                                     type="number"
                                     fullWidth
-                                    value={defaultSettings.confirmationDaysBefore}
-                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, confirmationDaysBefore: Math.max(1, parseInt(e.target.value) || 2) })}
-                                    inputProps={{ min: 1, max: 14 }}
+                                    value={defaultSettings.reminderHours}
+                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, reminderHours: Math.max(1, parseInt(e.target.value) || 48) })}
+                                    inputProps={{ min: 1, max: 336 }}
+                                    helperText="48 hours = 2 days"
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, md: 6 }}>
+                                <TextField
+                                    label="Default Confirmation Hours Before"
+                                    type="number"
+                                    fullWidth
+                                    value={defaultSettings.confirmationHours}
+                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, confirmationHours: Math.max(1, parseInt(e.target.value) || 48) })}
+                                    inputProps={{ min: 1, max: 336 }}
+                                    helperText="48 hours = 2 days"
                                 />
                             </Grid>
                             <Grid size={{ xs: 12, md: 6 }}>
@@ -1141,7 +1172,8 @@ const SessionManagement = () => {
                                     fullWidth
                                     value={defaultSettings.autoCancelHours}
                                     onChange={(e) => setDefaultSettings({ ...defaultSettings, autoCancelHours: Math.max(1, parseInt(e.target.value) || 48) })}
-                                    inputProps={{ min: 1, max: 168 }}
+                                    inputProps={{ min: 1, max: 336 }}
+                                    helperText="48 hours = 2 days"
                                 />
                             </Grid>
                         </Grid>
