@@ -137,7 +137,7 @@ This project uses a domain-specific agent architecture for efficient development
 - Backend configuration files
 
 **Code Standards**:
-- Use `controllerFactory.wrapAsync()` for all controller exports
+- Use `controllerFactory.createHandler()` to wrap each exported function
 - Implement proper error handling with `controllerFactory.createValidationError()`, `createNotFoundError()`
 - Use logger instead of console.log/console.error
 - All API responses use standardized format via `apiResponseMiddleware`
@@ -150,6 +150,7 @@ This project uses a domain-specific agent architecture for efficient development
 - Use logger for all output, never console.log
 - Always validate input before database operations
 - Remember rate limiting is applied globally
+- Use `controllerFactory.createHandler()` not `wrapAsync()` (doesn't exist)
 
 **Coordination Points**:
 - Calls Database Agent for schema changes and complex queries
@@ -284,7 +285,7 @@ This project uses a domain-specific agent architecture for efficient development
 - On explicit request for backend review
 
 **Review Checklist**:
-- Controllers use `controllerFactory.wrapAsync()`
+- Controllers use `controllerFactory.createHandler()` for each export
 - Proper error handling with appropriate error types
 - Logger used instead of console statements
 - CSRF protection applied to routes
@@ -430,9 +431,18 @@ const getAll = async (req, res) => {
   res.json(items);
 };
 
-module.exports = controllerFactory.wrapAsync({
-  getAll,
-  // ... other functions
+const create = async (req, res) => {
+  const item = await Model.create(req.body);
+  controllerFactory.sendCreatedResponse(res, item, 'Item created successfully');
+};
+
+// Export wrapped controllers
+exports.getAll = controllerFactory.createHandler(getAll, {
+  errorMessage: 'Error fetching items'
+});
+
+exports.create = controllerFactory.createHandler(create, {
+  errorMessage: 'Error creating item'
 });
 ```
 
@@ -584,7 +594,7 @@ Creating new tables and columns is acceptable when required for new features, bu
 1. **Console logging** - Use logger, never console.log
 2. **Unregistered routes** - Add route imports and app.use() in backend/index.js
 3. **Missing CSRF protection** - Apply csrfProtection middleware to routes
-4. **Unwrapped controllers** - Must use controllerFactory.wrapAsync()
+4. **Unwrapped controllers** - Must use controllerFactory.createHandler() for each export
 5. **Direct SQL in controllers** - Put queries in models
 6. **Validation errors** - Use controllerFactory.createValidationError()
 
