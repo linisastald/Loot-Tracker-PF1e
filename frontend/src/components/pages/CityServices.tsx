@@ -350,7 +350,7 @@ const CityServices: React.FC = () => {
           Settlement Information
         </Typography>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
+          <Grid size={{xs: 12, md: 6}}>
             <Autocomplete
               freeSolo
               options={cities}
@@ -378,7 +378,7 @@ const CityServices: React.FC = () => {
               )}
             />
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid size={{xs: 12, md: 4}}>
             <FormControl fullWidth required>
               <InputLabel>Settlement Size</InputLabel>
               <Select
@@ -394,7 +394,7 @@ const CityServices: React.FC = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid item xs={12} md={2}>
+          <Grid size={{xs: 12, md: 2}}>
             <TextField
               fullWidth
               label="Golarion Date"
@@ -409,25 +409,25 @@ const CityServices: React.FC = () => {
         {selectedCity && (
           <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
             <Grid container spacing={2}>
-              <Grid item xs={6} md={3}>
+              <Grid size={{xs: 6, md: 3}}>
                 <Typography variant="caption" color="text.secondary">
                   Base Value
                 </Typography>
                 <Typography variant="body1">{selectedCity.base_value.toLocaleString()} gp</Typography>
               </Grid>
-              <Grid item xs={6} md={3}>
+              <Grid size={{xs: 6, md: 3}}>
                 <Typography variant="caption" color="text.secondary">
                   Purchase Limit
                 </Typography>
                 <Typography variant="body1">{selectedCity.purchase_limit.toLocaleString()} gp</Typography>
               </Grid>
-              <Grid item xs={6} md={3}>
+              <Grid size={{xs: 6, md: 3}}>
                 <Typography variant="caption" color="text.secondary">
                   Max Spell Level
                 </Typography>
                 <Typography variant="body1">{selectedCity.max_spell_level}</Typography>
               </Grid>
-              <Grid item xs={6} md={3}>
+              <Grid size={{xs: 6, md: 3}}>
                 <Typography variant="caption" color="text.secondary">
                   Population
                 </Typography>
@@ -447,7 +447,7 @@ const CityServices: React.FC = () => {
             Item Search
           </Typography>
           <Grid container spacing={2}>
-            <Grid item xs={12} md={8}>
+            <Grid size={{xs: 12, md: 8}}>
               <Autocomplete
                 options={items}
                 getOptionLabel={(option) => `${option.name} (${option.value} gp)`}
@@ -458,7 +458,7 @@ const CityServices: React.FC = () => {
                 )}
               />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid size={{xs: 12, md: 4}}>
               <Autocomplete
                 multiple
                 options={mods}
@@ -470,7 +470,7 @@ const CityServices: React.FC = () => {
                 )}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={{xs: 12}}>
               <Button
                 variant="contained"
                 color="primary"
@@ -556,7 +556,7 @@ const CityServices: React.FC = () => {
             Spellcasting Service Request
           </Typography>
           <Grid container spacing={2}>
-            <Grid item xs={12} md={8}>
+            <Grid size={{xs: 12, md: 8}}>
               <Autocomplete
                 options={spells}
                 getOptionLabel={(option) => `${option.name} (Level ${option.spelllevel})`}
@@ -575,7 +575,7 @@ const CityServices: React.FC = () => {
                 )}
               />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid size={{xs: 12, md: 4}}>
               <TextField
                 fullWidth
                 label="Caster Level"
@@ -587,7 +587,7 @@ const CityServices: React.FC = () => {
                 helperText="Required caster level"
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <Button
                 variant="outlined"
                 color="primary"
@@ -599,7 +599,7 @@ const CityServices: React.FC = () => {
                 Check Availability & Cost
               </Button>
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid size={{xs: 12, md: 6}}>
               <Button
                 variant="contained"
                 color="primary"
