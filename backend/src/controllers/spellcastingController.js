@@ -57,9 +57,18 @@ const checkSpellcastingService = async (req, res) => {
   const city = await City.getOrCreate(city_name.trim(), city_size);
 
   // Check if spell is available in this city
-  const isAvailable = SpellcastingService.isSpellAvailable(spell_level, city.max_spell_level);
+  const availabilityCheck = SpellcastingService.isSpellAvailable(spell_level, city.max_spell_level);
 
-  if (!isAvailable) {
+  if (!availabilityCheck.available) {
+    let message;
+    if (availabilityCheck.reason === 'exceeds_max_level') {
+      message = `${spell_name} (level ${spell_level}) is not available in ${city.name}. ` +
+                `Maximum spell level available: ${city.max_spell_level}`;
+    } else if (availabilityCheck.reason === 'level_9_not_found') {
+      message = `${spell_name} is a 9th level spell. After searching ${city.name}, ` +
+                `no caster capable of casting it was found (rolled ${availabilityCheck.roll}/100, needed 1 or less).`;
+    }
+
     return res.json({
       available: false,
       city,
@@ -67,8 +76,8 @@ const checkSpellcastingService = async (req, res) => {
       spell_level,
       caster_level,
       max_spell_level: city.max_spell_level,
-      message: `${spell_name} (level ${spell_level}) is not available in ${city.name}. ` +
-               `Maximum spell level available: ${city.max_spell_level}`
+      message,
+      availability_check: availabilityCheck
     });
   }
 
@@ -95,6 +104,13 @@ const checkSpellcastingService = async (req, res) => {
     );
   }
 
+  // Build response message for level 9 spells
+  let successMessage = null;
+  if (availabilityCheck.reason === 'level_9_found') {
+    successMessage = `Lucky find! A caster capable of casting this 9th level spell was found in ${city.name} ` +
+                    `(rolled ${availabilityCheck.roll}/100).`;
+  }
+
   res.json({
     available: true,
     city,
@@ -105,7 +121,9 @@ const checkSpellcastingService = async (req, res) => {
     service: serviceRecord,
     formula: spell_level === 0
       ? `${caster_level} × 5 gp (min 10 gp)`
-      : `${spell_level} × ${caster_level} × 10 gp`
+      : `${spell_level} × ${caster_level} × 10 gp`,
+    availability_check: availabilityCheck,
+    message: successMessage
   });
 };
 

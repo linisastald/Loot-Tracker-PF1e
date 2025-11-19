@@ -27,7 +27,6 @@ import {
   SelectChangeEvent,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
 import api from '../../utils/api';
 import { fetchActiveUser } from '../../utils/utils';
@@ -139,7 +138,6 @@ const CityServices: React.FC = () => {
   const [casterLevel, setCasterLevel] = useState<number>(1);
   const [spellcastingResult, setSpellcastingResult] = useState<SpellcastingResult | null>(null);
   const [spellcastingLoading, setSpellcastingLoading] = useState(false);
-  const [purchaseSpell, setPurchaseSpell] = useState(false);
 
 
   // Messages
@@ -259,7 +257,7 @@ const CityServices: React.FC = () => {
     }
   };
 
-  const handleSpellcastingCheck = async (purchase = false) => {
+  const handleSpellcastingCheck = async () => {
     setError('');
     setSuccess('');
     setSpellcastingResult(null);
@@ -280,7 +278,6 @@ const CityServices: React.FC = () => {
     }
 
     setSpellcastingLoading(true);
-    setPurchaseSpell(purchase);
 
     try {
       const response: any = await api.post('/spellcasting/check', {
@@ -291,7 +288,7 @@ const CityServices: React.FC = () => {
         city_name: cityName.trim(),
         city_size: citySize,
         character_id: activeUser?.activeCharacterId,
-        purchase: purchase,
+        purchase: false,
       });
 
       const data = response.data || response;
@@ -299,13 +296,9 @@ const CityServices: React.FC = () => {
       setSelectedCity(data.city);
 
       if (data.available) {
-        if (purchase) {
-          setSuccess(
-            `Purchased ${data.spell_name} (CL ${data.caster_level}) in ${data.city.name} for ${data.cost} gp`
-          );
-        } else {
-          setSuccess(`${data.spell_name} is available for ${data.cost} gp`);
-        }
+        // Show special message for level 9 spells if provided by backend
+        const message = data.message || `${data.spell_name} is available for ${data.cost} gp`;
+        setSuccess(message);
       } else {
         setError(data.message || 'Spell not available');
       }
@@ -313,7 +306,6 @@ const CityServices: React.FC = () => {
       setError(err.response?.data?.message || 'Failed to check spellcasting service');
     } finally {
       setSpellcastingLoading(false);
-      setPurchaseSpell(false);
     }
   };
 
@@ -447,8 +439,16 @@ const CityServices: React.FC = () => {
                 getOptionLabel={(option) => `${option.name} (${option.value} gp)`}
                 value={selectedItem}
                 onChange={(event, newValue) => setSelectedItem(newValue)}
+                filterOptions={(options, state) => {
+                  // Filter items based on input value
+                  const inputValue = state.inputValue.toLowerCase();
+                  if (!inputValue) return options.slice(0, 50); // Show first 50 if no search
+                  return options.filter(option =>
+                    option.name.toLowerCase().includes(inputValue)
+                  ).slice(0, 50); // Limit to 50 results
+                }}
                 renderInput={(params) => (
-                  <TextField {...params} label="Item" required helperText="Select the base item" />
+                  <TextField {...params} label="Item" required helperText="Start typing to search for items" />
                 )}
               />
             </Grid>
@@ -459,8 +459,16 @@ const CityServices: React.FC = () => {
                 getOptionLabel={(option) => option.name}
                 value={selectedMods}
                 onChange={(event, newValue) => setSelectedMods(newValue)}
+                filterOptions={(options, state) => {
+                  // Filter mods based on input value
+                  const inputValue = state.inputValue.toLowerCase();
+                  if (!inputValue) return options.slice(0, 50); // Show first 50 if no search
+                  return options.filter(option =>
+                    option.name.toLowerCase().includes(inputValue)
+                  ).slice(0, 50); // Limit to 50 results
+                }}
                 renderInput={(params) => (
-                  <TextField {...params} label="Modifications" helperText="Optional enhancements" />
+                  <TextField {...params} label="Modifications" helperText="Start typing to search" />
                 )}
               />
             </Grid>
@@ -588,28 +596,16 @@ const CityServices: React.FC = () => {
                 helperText="Required caster level"
               />
             </Grid>
-            <Grid size={{xs: 12, md: 6}}>
+            <Grid size={{xs: 12}}>
               <Button
-                variant="outlined"
+                variant="contained"
                 color="primary"
                 fullWidth
                 onClick={() => handleSpellcastingCheck(false)}
                 disabled={spellcastingLoading}
                 startIcon={<SearchIcon />}
               >
-                Check Availability & Cost
-              </Button>
-            </Grid>
-            <Grid size={{xs: 12, md: 6}}>
-              <Button
-                variant="contained"
-                color="primary"
-                fullWidth
-                onClick={() => handleSpellcastingCheck(true)}
-                disabled={spellcastingLoading || purchaseSpell}
-                startIcon={<AutoAwesomeIcon />}
-              >
-                {purchaseSpell ? 'Purchasing...' : 'Purchase Service'}
+                {spellcastingLoading ? 'Checking...' : 'Check Availability & Cost'}
               </Button>
             </Grid>
           </Grid>
@@ -671,6 +667,9 @@ const CityServices: React.FC = () => {
                           <TableCell>
                             <Typography variant="caption" color="text.secondary">
                               {spellcastingResult.formula}
+                            </Typography>
+                            <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
+                              Note: Material costs not included
                             </Typography>
                           </TableCell>
                         </TableRow>

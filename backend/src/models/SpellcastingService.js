@@ -19,12 +19,31 @@ const calculateCost = (spellLevel, casterLevel) => {
 
 /**
  * Check if a spell is available in a city of given size
+ * Level 9 spells have only a 1% chance of being available, even in metropolises
  * @param {number} spellLevel - Spell level
  * @param {number} cityMaxSpellLevel - City's max spell level
- * @return {boolean} Whether the spell is available
+ * @return {Object} Availability result with available flag and optional roll info
  */
 const isSpellAvailable = (spellLevel, cityMaxSpellLevel) => {
-  return spellLevel <= cityMaxSpellLevel;
+  // Spell level exceeds city's maximum
+  if (spellLevel > cityMaxSpellLevel) {
+    return { available: false, reason: 'exceeds_max_level' };
+  }
+
+  // Level 9 spells have only a 1% chance of being available
+  if (spellLevel === 9) {
+    const roll = Math.floor(Math.random() * 100) + 1; // 1d100
+    const available = roll <= 1; // 1% chance
+    return {
+      available,
+      reason: available ? 'level_9_found' : 'level_9_not_found',
+      roll,
+      threshold: 1
+    };
+  }
+
+  // All other spells are available if within city's max level
+  return { available: true, reason: 'available' };
 };
 
 /**
