@@ -3,33 +3,39 @@ const dbUtils = require('../utils/dbUtils');
 
 /**
  * Calculate item availability based on Pathfinder 1e settlement rules
+ * Items above 5x base value are never available in the settlement
  * @param {number} itemValue - Total value of the item
  * @param {number} baseValue - City's base value
- * @return {Object} Availability info with threshold and percentage
+ * @return {Object} Availability info with threshold, percentage, and reason
  */
 const calculateAvailability = (itemValue, baseValue) => {
   const maxValue = baseValue * 5; // Hard cap at 5x base value
 
   // Items above max value are not available
   if (itemValue > maxValue) {
-    return { threshold: 0, percentage: 0, description: 'Not Available' };
+    return {
+      threshold: 0,
+      percentage: 0,
+      description: 'Not Available',
+      reason: 'too_expensive'
+    };
   }
 
   // Below base value - progressively easier
-  if (itemValue <= baseValue * 0.125) return { threshold: 95, percentage: 95, description: '95%' };
-  if (itemValue <= baseValue * 0.25) return { threshold: 90, percentage: 90, description: '90%' };
-  if (itemValue <= baseValue * 0.5) return { threshold: 85, percentage: 85, description: '85%' };
-  if (itemValue <= baseValue * 0.75) return { threshold: 80, percentage: 80, description: '80%' };
-  if (itemValue <= baseValue) return { threshold: 75, percentage: 75, description: '75%' };
+  if (itemValue <= baseValue * 0.125) return { threshold: 95, percentage: 95, description: '95%', reason: 'available' };
+  if (itemValue <= baseValue * 0.25) return { threshold: 90, percentage: 90, description: '90%', reason: 'available' };
+  if (itemValue <= baseValue * 0.5) return { threshold: 85, percentage: 85, description: '85%', reason: 'available' };
+  if (itemValue <= baseValue * 0.75) return { threshold: 80, percentage: 80, description: '80%', reason: 'available' };
+  if (itemValue <= baseValue) return { threshold: 75, percentage: 75, description: '75%', reason: 'available' };
 
   // Above base value - exponentially harder
-  if (itemValue <= baseValue * 1.5) return { threshold: 40, percentage: 40, description: '40%' };
-  if (itemValue <= baseValue * 2) return { threshold: 20, percentage: 20, description: '20%' };
-  if (itemValue <= baseValue * 3) return { threshold: 10, percentage: 10, description: '10%' };
-  if (itemValue <= baseValue * 4) return { threshold: 5, percentage: 5, description: '5%' };
-  if (itemValue <= baseValue * 5) return { threshold: 2, percentage: 2, description: '2%' };
+  if (itemValue <= baseValue * 1.5) return { threshold: 40, percentage: 40, description: '40%', reason: 'available' };
+  if (itemValue <= baseValue * 2) return { threshold: 20, percentage: 20, description: '20%', reason: 'available' };
+  if (itemValue <= baseValue * 3) return { threshold: 10, percentage: 10, description: '10%', reason: 'available' };
+  if (itemValue <= baseValue * 4) return { threshold: 5, percentage: 5, description: '5%', reason: 'available' };
+  if (itemValue <= baseValue * 5) return { threshold: 2, percentage: 2, description: '2%', reason: 'available' };
 
-  return { threshold: 0, percentage: 0, description: 'Not Available' };
+  return { threshold: 0, percentage: 0, description: 'Not Available', reason: 'too_expensive' };
 };
 
 /**

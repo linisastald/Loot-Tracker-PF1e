@@ -261,7 +261,11 @@ const CityServices: React.FC = () => {
 
       if (data.found) {
         setSuccess(`Success! ${data.item_name} was found in ${data.city.name}!`);
+      } else if (data.too_expensive) {
+        // Item can never be found in this settlement
+        setError(data.message || `${data.item_name} is too expensive to be found in ${data.city.name}.`);
       } else {
+        // Item wasn't found this time, but could be found with another roll
         setError(`${data.item_name} was not found in ${data.city.name}. Try again in 1 week.`);
       }
     } catch (err: any) {

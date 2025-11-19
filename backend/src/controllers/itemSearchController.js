@@ -78,6 +78,28 @@ const checkItemAvailability = async (req, res) => {
   // Calculate availability
   const availability = ItemSearch.calculateAvailability(itemValue, city.base_value);
 
+  // If item is too expensive for this settlement (threshold = 0), return immediately
+  if (availability.reason === 'too_expensive') {
+    logger.info(
+      `Item search: ${itemName} in ${city.name} - ` +
+      `Value: ${itemValue}gp exceeds maximum (${city.base_value * 5}gp) - not available`
+    );
+
+    return res.json({
+      search: null,
+      city,
+      item_name: itemName,
+      item_value: itemValue,
+      availability,
+      roll_result: null,
+      found: false,
+      too_expensive: true,
+      message: `${itemName} (${itemValue} gp) is too expensive to ever be found in ${city.name}. ` +
+               `Maximum item value: ${city.base_value * 5} gp (5× base value of ${city.base_value} gp). ` +
+               `Try a larger settlement or a specific buyer.`
+    });
+  }
+
   // Roll d100
   const rollResult = Math.floor(Math.random() * 100) + 1;
   const found = rollResult <= availability.threshold;
@@ -108,7 +130,8 @@ const checkItemAvailability = async (req, res) => {
     item_value: itemValue,
     availability,
     roll_result: rollResult,
-    found
+    found,
+    too_expensive: false
   });
 };
 
