@@ -620,19 +620,18 @@ class SessionDiscordService {
     }
 
     /**
-     * Format session date for display
+     * Format session date for display using Discord timestamp format
+     * Discord automatically converts timestamps to each user's local timezone
      * @param {Date} dateTime - Session date/time
-     * @returns {string} - Formatted date string
+     * @returns {string} - Discord timestamp format string
      */
     formatSessionDate(dateTime) {
-        return new Date(dateTime).toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit'
-        });
+        // Convert to Unix timestamp (seconds since epoch)
+        const unixTimestamp = Math.floor(new Date(dateTime).getTime() / 1000);
+
+        // Return Discord timestamp format: <t:TIMESTAMP:F>
+        // F = Full date/time format (e.g., "Friday, December 6, 2024 2:00 PM")
+        return `<t:${unixTimestamp}:F>`;
     }
 }
 
