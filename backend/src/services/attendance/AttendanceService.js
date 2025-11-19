@@ -171,7 +171,7 @@ class AttendanceService {
         const result = await pool.query(`
             SELECT u.id, u.username, u.discord_id
             FROM users u
-            WHERE u.active = true
+            WHERE u.discord_id IS NOT NULL
             AND NOT EXISTS (
                 SELECT 1 FROM session_attendance sa
                 WHERE sa.session_id = $1
