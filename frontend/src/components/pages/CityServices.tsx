@@ -29,7 +29,7 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
-import axios from 'axios';
+import api from '../../utils/api';
 import { fetchActiveUser } from '../../utils/utils';
 
 interface City {
@@ -164,8 +164,8 @@ const CityServices: React.FC = () => {
 
   const fetchCities = async () => {
     try {
-      const response = await axios.get('/api/cities');
-      setCities(response.data);
+      const response: any = await api.get('/cities');
+      setCities(response.data || response);
     } catch (err) {
       console.error('Failed to fetch cities:', err);
     }
@@ -173,8 +173,8 @@ const CityServices: React.FC = () => {
 
   const fetchItems = async () => {
     try {
-      const response = await axios.get('/api/items');
-      setItems(response.data.items || []);
+      const response: any = await api.get('/items');
+      setItems(response.data?.items || response.items || []);
     } catch (err) {
       console.error('Failed to fetch items:', err);
     }
@@ -182,8 +182,8 @@ const CityServices: React.FC = () => {
 
   const fetchMods = async () => {
     try {
-      const response = await axios.get('/api/items/mods');
-      setMods(response.data || []);
+      const response: any = await api.get('/items/mods');
+      setMods(response.data || response || []);
     } catch (err) {
       console.error('Failed to fetch mods:', err);
     }
@@ -196,10 +196,10 @@ const CityServices: React.FC = () => {
     }
 
     try {
-      const response = await axios.get('/api/spellcasting/spells', {
+      const response: any = await api.get('/spellcasting/spells', {
         params: { search: searchTerm },
       });
-      setSpells(response.data);
+      setSpells(response.data || response);
     } catch (err) {
       console.error('Failed to search spells:', err);
     }
@@ -235,7 +235,7 @@ const CityServices: React.FC = () => {
     setItemSearchLoading(true);
 
     try {
-      const response = await axios.post('/api/item-search/check', {
+      const response: any = await api.post('/item-search/check', {
         item_id: selectedItem.id,
         mod_ids: selectedMods.map((m) => m.id),
         city_name: cityName.trim(),
@@ -243,13 +243,14 @@ const CityServices: React.FC = () => {
         character_id: activeUser?.activeCharacterId,
       });
 
-      setItemSearchResult(response.data);
-      setSelectedCity(response.data.city);
+      const data = response.data || response;
+      setItemSearchResult(data);
+      setSelectedCity(data.city);
 
-      if (response.data.found) {
-        setSuccess(`Success! ${response.data.item_name} was found in ${response.data.city.name}!`);
+      if (data.found) {
+        setSuccess(`Success! ${data.item_name} was found in ${data.city.name}!`);
       } else {
-        setError(`${response.data.item_name} was not found in ${response.data.city.name}. Try again in 1 week.`);
+        setError(`${data.item_name} was not found in ${data.city.name}. Try again in 1 week.`);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to check item availability');
@@ -282,7 +283,7 @@ const CityServices: React.FC = () => {
     setPurchaseSpell(purchase);
 
     try {
-      const response = await axios.post('/api/spellcasting/check', {
+      const response: any = await api.post('/spellcasting/check', {
         spell_id: selectedSpell.id,
         spell_name: selectedSpell.name,
         spell_level: selectedSpell.spelllevel,
@@ -293,19 +294,20 @@ const CityServices: React.FC = () => {
         purchase: purchase,
       });
 
-      setSpellcastingResult(response.data);
-      setSelectedCity(response.data.city);
+      const data = response.data || response;
+      setSpellcastingResult(data);
+      setSelectedCity(data.city);
 
-      if (response.data.available) {
+      if (data.available) {
         if (purchase) {
           setSuccess(
-            `Purchased ${response.data.spell_name} (CL ${response.data.caster_level}) in ${response.data.city.name} for ${response.data.cost} gp`
+            `Purchased ${data.spell_name} (CL ${data.caster_level}) in ${data.city.name} for ${data.cost} gp`
           );
         } else {
-          setSuccess(`${response.data.spell_name} is available for ${response.data.cost} gp`);
+          setSuccess(`${data.spell_name} is available for ${data.cost} gp`);
         }
       } else {
-        setError(response.data.message || 'Spell not available');
+        setError(data.message || 'Spell not available');
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to check spellcasting service');
