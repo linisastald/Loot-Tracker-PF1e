@@ -77,7 +77,6 @@ class SessionService {
                 auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
                 reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
                 confirmation_hours = 48, // Default: 2 days before
-                auto_cancel_hours = DEFAULT_VALUES.AUTO_CANCEL_HOURS,
                 created_by
             } = sessionData;
 
@@ -85,14 +84,14 @@ class SessionService {
             const sessionResult = await client.query(`
                 INSERT INTO game_sessions (
                     title, start_time, end_time, description, minimum_players, maximum_players,
-                    auto_announce_hours, reminder_hours, confirmation_hours, auto_cancel_hours, created_by,
+                    auto_announce_hours, reminder_hours, confirmation_hours, created_by,
                     status, created_at, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'scheduled', NOW(), NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', NOW(), NOW())
                 RETURNING *
             `, [
                 title, start_time, end_time, description, minimum_players, maximum_players,
-                auto_announce_hours, reminder_hours, confirmation_hours, auto_cancel_hours, created_by
+                auto_announce_hours, reminder_hours, confirmation_hours, created_by
             ]);
 
             const session = sessionResult.rows[0];
@@ -162,8 +161,7 @@ class SessionService {
         const allowedFields = [
             'title', 'start_time', 'end_time', 'description',
             'minimum_players', 'maximum_players',
-            'auto_announce_hours', 'reminder_hours', 'confirmation_hours',
-            'auto_cancel_hours', 'status'
+            'auto_announce_hours', 'reminder_hours', 'confirmation_hours', 'status'
         ];
 
         const fields = Object.keys(updateData).filter(field => allowedFields.includes(field));
@@ -189,7 +187,7 @@ class SessionService {
             const session = result.rows[0];
 
             // Reschedule events if timing changed
-            if (fields.some(field => ['start_time', 'auto_announce_hours', 'reminder_hours', 'confirmation_hours', 'auto_cancel_hours'].includes(field))) {
+            if (fields.some(field => ['start_time', 'auto_announce_hours', 'reminder_hours', 'confirmation_hours'].includes(field))) {
                 await this.rescheduleSessionEvents(session);
             }
 

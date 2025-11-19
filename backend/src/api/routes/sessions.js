@@ -194,7 +194,6 @@ router.post('/recurring', verifyToken, checkRole('DM'), [
             auto_announce_hours: req.body.auto_announce_hours || 168, // Default: 1 week
             reminder_hours: req.body.reminder_hours || 48, // Default: 2 days
             confirmation_hours: req.body.confirmation_hours || 48, // Default: 2 days
-            auto_cancel_hours: req.body.auto_cancel_hours || 48, // Default: 2 days
             maximum_players: req.body.maximum_players || 6 // Default maximum players
         };
 

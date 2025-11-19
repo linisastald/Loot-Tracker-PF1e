@@ -55,8 +55,7 @@ const createSession = async (req, res) => {
         maximum_players,
         auto_announce_hours,
         reminder_hours,
-        confirmation_hours,
-        auto_cancel_hours
+        confirmation_hours
     } = req.body;
 
     // Validate required fields
@@ -95,7 +94,6 @@ const createSession = async (req, res) => {
         auto_announce_hours,
         reminder_hours,
         confirmation_hours,
-        auto_cancel_hours,
         created_by: req.user?.id || 1 // Use authenticated user ID or default to 1
     });
 

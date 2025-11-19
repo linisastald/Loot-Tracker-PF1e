@@ -11,7 +11,9 @@ const cron = require('node-cron');
 const CRON_SCHEDULES = {
     HOURLY: '0 * * * *',              // Top of every hour
     EVERY_6_HOURS: '0 */6 * * *',     // Every 6 hours on the hour
-    DAILY_9AM: '0 9 * * *',           // Daily at 9:00 AM
+    DAILY_NOON: '0 12 * * *',         // Daily at 12:00 PM (noon)
+    DAILY_5PM: '0 17 * * *',          // Daily at 5:00 PM
+    DAILY_10PM: '0 22 * * *',         // Daily at 10:00 PM
     EVERY_15_MINUTES: '*/15 * * * *'  // Every 15 minutes
 };
 
@@ -42,9 +44,6 @@ class SessionSchedulerService {
 
             // Schedule session completion checks
             this.scheduleSessionCompletions();
-
-            // Schedule auto-cancel checks
-            this.scheduleAutoCancelChecks();
 
             this.isInitialized = true;
             logger.info('Session scheduler service initialized successfully');
@@ -109,19 +108,40 @@ class SessionSchedulerService {
     }
 
     /**
-     * Schedule confirmation checks (runs daily at 9 AM)
+     * Schedule confirmation checks (runs three times daily at noon, 5pm, and 10pm)
      */
     scheduleConfirmationChecks() {
-        const job = cron.schedule(CRON_SCHEDULES.DAILY_9AM, async () => {
+        // Schedule for 12:00 PM (noon)
+        const jobNoon = cron.schedule(CRON_SCHEDULES.DAILY_NOON, async () => {
             try {
                 await this.checkSessionConfirmations();
             } catch (error) {
-                logger.error('Error in scheduled confirmation check:', error);
+                logger.error('Error in scheduled confirmation check (noon):', error);
             }
         });
 
-        this.scheduledJobs.set('confirmationChecks', job);
-        logger.info('Scheduled confirmation check job (daily at 9 AM)');
+        // Schedule for 5:00 PM
+        const job5PM = cron.schedule(CRON_SCHEDULES.DAILY_5PM, async () => {
+            try {
+                await this.checkSessionConfirmations();
+            } catch (error) {
+                logger.error('Error in scheduled confirmation check (5pm):', error);
+            }
+        });
+
+        // Schedule for 10:00 PM
+        const job10PM = cron.schedule(CRON_SCHEDULES.DAILY_10PM, async () => {
+            try {
+                await this.checkSessionConfirmations();
+            } catch (error) {
+                logger.error('Error in scheduled confirmation check (10pm):', error);
+            }
+        });
+
+        this.scheduledJobs.set('confirmationChecksNoon', jobNoon);
+        this.scheduledJobs.set('confirmationChecks5PM', job5PM);
+        this.scheduledJobs.set('confirmationChecks10PM', job10PM);
+        logger.info('Scheduled confirmation check jobs (daily at noon, 5pm, and 10pm)');
     }
 
     /**
@@ -156,21 +176,6 @@ class SessionSchedulerService {
         logger.info('Scheduled session completion check job (every hour)');
     }
 
-    /**
-     * Schedule auto-cancel checks (runs every 15 minutes)
-     */
-    scheduleAutoCancelChecks() {
-        const job = cron.schedule(CRON_SCHEDULES.EVERY_15_MINUTES, async () => {
-            try {
-                await this.checkAutoCancelSessions();
-            } catch (error) {
-                logger.error('Error in scheduled auto-cancel check:', error);
-            }
-        });
-
-        this.scheduledJobs.set('autoCancelCheck', job);
-        logger.info('Scheduled auto-cancel check job (every 15 minutes)');
-    }
 
     /**
      * Check for sessions that need announcements
@@ -182,9 +187,9 @@ class SessionSchedulerService {
         const result = await pool.query(`
             SELECT gs.* FROM game_sessions gs
             WHERE gs.status = 'scheduled'
-            AND gs.announcement_message_id IS NULL
+            AND gs.discord_message_id IS NULL
             AND gs.start_time > NOW()
-            AND gs.start_time <= NOW() + (COALESCE(gs.announcement_days_before, 7) || ' days')::INTERVAL
+            AND gs.start_time <= NOW() + (COALESCE(gs.auto_announce_hours, 168) || ' hours')::INTERVAL
         `);
 
         for (const session of result.rows) {
@@ -203,50 +208,53 @@ class SessionSchedulerService {
         // Lazy load to avoid circular dependency
         const sessionDiscordService = require('../discord/SessionDiscordService');
 
-        // Get sessions that need reminders
+        // Get sessions that need reminders based on reminder_hours
         const result = await pool.query(`
-            SELECT DISTINCT sr.*, gs.title, gs.start_time
-            FROM session_reminders sr
-            JOIN game_sessions gs ON sr.session_id = gs.id
-            WHERE sr.sent = FALSE
-            AND gs.status IN ('scheduled', 'confirmed')
+            SELECT DISTINCT gs.id as session_id, gs.title, gs.start_time, gs.reminder_hours
+            FROM game_sessions gs
+            WHERE gs.status IN ('scheduled', 'confirmed')
             AND gs.start_time > NOW()
-            AND gs.start_time <= NOW() + (COALESCE(sr.days_before, 1) || ' days')::INTERVAL
+            AND gs.start_time <= NOW() + (COALESCE(gs.reminder_hours, 48) || ' hours')::INTERVAL
+            AND NOT EXISTS (
+                SELECT 1 FROM session_reminders sr
+                WHERE sr.session_id = gs.id
+                AND sr.sent = TRUE
+                AND sr.reminder_type = 'auto'
+            )
         `);
 
-        for (const reminder of result.rows) {
+        for (const session of result.rows) {
             try {
-                // Use target_audience for automated reminders to properly target users
-                await sessionDiscordService.sendSessionReminder(reminder.session_id, reminder.target_audience || reminder.reminder_type);
+                // Send automatic reminder to all users
+                await sessionDiscordService.sendSessionReminder(session.session_id, 'all');
 
-                // Mark as sent
+                // Mark as sent by creating a reminder record
                 await pool.query(`
-                    UPDATE session_reminders
-                    SET sent = TRUE, sent_at = CURRENT_TIMESTAMP
-                    WHERE id = $1
-                `, [reminder.id]);
+                    INSERT INTO session_reminders (session_id, reminder_type, sent, sent_at)
+                    VALUES ($1, 'auto', TRUE, CURRENT_TIMESTAMP)
+                `, [session.session_id]);
 
             } catch (error) {
-                logger.error(`Failed to send reminder for session ${reminder.session_id}:`, error);
+                logger.error(`Failed to send reminder for session ${session.session_id}:`, error);
             }
         }
     }
 
     /**
      * Check sessions for confirmation/auto-cancel based on attendance
+     * This now handles both confirmation AND auto-cancellation in a single check
      */
     async checkSessionConfirmations() {
         // Lazy load to avoid circular dependency
         const sessionService = require('../sessionService');
         const attendanceService = require('../attendance/AttendanceService');
 
-        // Get sessions that need confirmation
+        // Get sessions within their confirmation_hours window
         const result = await pool.query(`
             SELECT gs.* FROM game_sessions gs
             WHERE gs.status = 'scheduled'
-            AND gs.confirmation_message_id IS NULL
             AND gs.start_time > NOW()
-            AND gs.start_time <= NOW() + (COALESCE(gs.confirmation_days_before, 2) || ' days')::INTERVAL
+            AND gs.start_time <= NOW() + (COALESCE(gs.confirmation_hours, 48) || ' hours')::INTERVAL
         `);
 
         for (const session of result.rows) {
@@ -256,7 +264,7 @@ class SessionSchedulerService {
                 if (attendanceCount >= session.minimum_players) {
                     await sessionService.confirmSession(session.id);
                 } else {
-                    await sessionService.cancelSession(session.id, 'Insufficient confirmed players');
+                    await sessionService.cancelSession(session.id, `Insufficient confirmed players: ${attendanceCount} of ${session.minimum_players} minimum required`);
                 }
             } catch (error) {
                 logger.error(`Failed to process confirmation for session ${session.id}:`, error);
@@ -264,70 +272,6 @@ class SessionSchedulerService {
         }
     }
 
-    /**
-     * Check for sessions that should be auto-cancelled
-     */
-    async checkAutoCancelSessions() {
-        const client = await pool.connect();
-        let lockAcquired = false;
-
-        try {
-            // Use PostgreSQL advisory lock to prevent concurrent execution
-            // Lock ID: 1001 (arbitrary number for auto-cancel job)
-            const lockResult = await client.query('SELECT pg_try_advisory_lock($1) as acquired', [1001]);
-            lockAcquired = lockResult.rows[0].acquired;
-
-            if (!lockAcquired) {
-                logger.debug('Auto-cancel check already running, skipping this execution');
-                return;
-            }
-
-            // Get sessions within their auto-cancel window
-            // Query inside the lock to prevent race conditions
-            const result = await client.query(`
-                SELECT gs.* FROM game_sessions gs
-                WHERE gs.status IN ('scheduled', 'confirmed')
-                AND gs.start_time > NOW()
-                AND gs.start_time <= NOW() + (COALESCE(gs.auto_cancel_hours, 48) || ' hours')::INTERVAL
-            `);
-
-            logger.info(`Checking ${result.rows.length} sessions for auto-cancel`);
-
-            // Lazy load to avoid circular dependency
-            const sessionService = require('../sessionService');
-
-            for (const session of result.rows) {
-                try {
-                    // Get confirmed attendance count
-                    const attendanceResult = await client.query(`
-                        SELECT COUNT(DISTINCT sa.user_id) as confirmed_count
-                        FROM session_attendance sa
-                        WHERE sa.session_id = $1
-                        AND sa.response_type = 'yes'
-                    `, [session.id]);
-
-                    const confirmedCount = parseInt(attendanceResult.rows[0].confirmed_count) || 0;
-
-                    // Cancel if below minimum players
-                    if (confirmedCount < session.minimum_players) {
-                        await sessionService.cancelSession(
-                            session.id,
-                            `Automatically cancelled: only ${confirmedCount} of ${session.minimum_players} minimum players confirmed`
-                        );
-                        logger.info(`Session ${session.id} auto-cancelled: ${confirmedCount}/${session.minimum_players} players`);
-                    }
-                } catch (error) {
-                    logger.error(`Failed to check auto-cancel for session ${session.id}:`, error);
-                }
-            }
-        } finally {
-            // Always release the advisory lock if it was acquired
-            if (lockAcquired) {
-                await client.query('SELECT pg_advisory_unlock($1)', [1001]);
-            }
-            client.release();
-        }
-    }
 
     /**
      * Check for sessions that need task generation

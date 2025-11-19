@@ -77,8 +77,7 @@ const SessionManagement = () => {
         minimumPlayers: 3,
         autoAnnounceHours: 168,      // 1 week
         reminderHours: 48,            // 2 days
-        confirmationHours: 48,        // 2 days
-        autoCancelHours: 48           // 2 days
+        confirmationHours: 48         // 2 days
     });
 
     // Create session dialog state
@@ -91,7 +90,6 @@ const SessionManagement = () => {
     const [autoAnnounceHours, setAutoAnnounceHours] = useState(defaultSettings.autoAnnounceHours);
     const [reminderHours, setReminderHours] = useState(defaultSettings.reminderHours);
     const [confirmationHours, setConfirmationHours] = useState(defaultSettings.confirmationHours);
-    const [autoCancelHours, setAutoCancelHours] = useState(defaultSettings.autoCancelHours);
 
     // Recurring session state
     const [isRecurring, setIsRecurring] = useState(false);
@@ -142,7 +140,6 @@ const SessionManagement = () => {
         setAutoAnnounceHours(defaultSettings.autoAnnounceHours);
         setReminderHours(defaultSettings.reminderHours);
         setConfirmationHours(defaultSettings.confirmationHours);
-        setAutoCancelHours(defaultSettings.autoCancelHours);
     }, [defaultSettings]);
 
     const fetchSessions = async () => {
@@ -194,8 +191,7 @@ const SessionManagement = () => {
                 minimum_players: minimumPlayers,
                 auto_announce_hours: autoAnnounceHours,
                 reminder_hours: reminderHours,
-                confirmation_hours: confirmationHours,
-                auto_cancel_hours: autoCancelHours
+                confirmation_hours: confirmationHours
             };
 
             // Add recurring fields if enabled
@@ -260,7 +256,6 @@ const SessionManagement = () => {
         setAutoAnnounceHours(defaultSettings.autoAnnounceHours);
         setReminderHours(defaultSettings.reminderHours);
         setConfirmationHours(defaultSettings.confirmationHours);
-        setAutoCancelHours(defaultSettings.autoCancelHours);
 
         // Reset recurring fields
         setIsRecurring(false);
@@ -966,18 +961,7 @@ const SessionManagement = () => {
                                     value={confirmationHours}
                                     onChange={(e) => setConfirmationHours(Math.max(1, parseInt(e.target.value) || 48))}
                                     inputProps={{ min: 1, max: 336 }}
-                                    helperText="Hours before session to request final confirmation (48 = 2 days)"
-                                />
-                            </Grid>
-                            <Grid size={{xs: 12, md: 6}}>
-                                <TextField
-                                    label="Auto-Cancel Hours Before"
-                                    type="number"
-                                    fullWidth
-                                    value={autoCancelHours}
-                                    onChange={(e) => setAutoCancelHours(Math.max(1, parseInt(e.target.value) || 48))}
-                                    inputProps={{ min: 1, max: 336 }}
-                                    helperText="Hours before session to auto-cancel if minimum players not met (48 = 2 days)"
+                                    helperText="Hours before session to check attendance. Will confirm if enough players, cancel if not (48 = 2 days)"
                                 />
                             </Grid>
                         </Grid>
@@ -1162,18 +1146,7 @@ const SessionManagement = () => {
                                     value={defaultSettings.confirmationHours}
                                     onChange={(e) => setDefaultSettings({ ...defaultSettings, confirmationHours: Math.max(1, parseInt(e.target.value) || 48) })}
                                     inputProps={{ min: 1, max: 336 }}
-                                    helperText="48 hours = 2 days"
-                                />
-                            </Grid>
-                            <Grid size={{ xs: 12, md: 6 }}>
-                                <TextField
-                                    label="Default Auto-Cancel Hours Before"
-                                    type="number"
-                                    fullWidth
-                                    value={defaultSettings.autoCancelHours}
-                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, autoCancelHours: Math.max(1, parseInt(e.target.value) || 48) })}
-                                    inputProps={{ min: 1, max: 336 }}
-                                    helperText="48 hours = 2 days"
+                                    helperText="48 hours = 2 days. Checks attendance and auto-confirms or auto-cancels."
                                 />
                             </Grid>
                         </Grid>
