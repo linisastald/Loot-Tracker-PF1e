@@ -15,6 +15,8 @@ This is a Pathfinder 1st Edition (PF1e) Loot and Gold Management System, a full-
   - Always check existing components for current API patterns
 - **React Router v6** - Routing
 - **Axios** - HTTP client
+  - **CRITICAL**: Always use the configured `api` utility (`frontend/src/utils/api.ts`), NEVER raw `axios`
+  - The `api` utility handles CSRF token fetching and injection automatically
 - **Vite** - Build tool and dev server
 - **Vitest** - Testing framework
 
@@ -107,6 +109,7 @@ This project uses a domain-specific agent architecture for efficient development
 - Avoid `any` types - use proper TypeScript interfaces
 
 **Common Pitfalls**:
+- **CSRF Token Errors** - NEVER use raw `axios`, always import and use `api` utility from `utils/api.ts`
 - MUI Grid API changed in v7 - always use `size={{}}` format
 - SelectChangeEvent type required for Select onChange handlers
 - Always wrap new routes in ErrorBoundary components
@@ -265,14 +268,16 @@ This project uses a domain-specific agent architecture for efficient development
 - On explicit request for frontend review
 
 **Review Checklist**:
+- **CSRF Protection**: All API calls use `api` utility from `utils/api.ts`, not raw `axios`
 - TypeScript types are properly defined (no `any` unless justified)
-- Material-UI v7 API is used correctly
+- Material-UI v7 API is used correctly (Grid uses `size={{}}`)
 - Components are properly memoized where needed
 - Error boundaries are in place
 - Accessibility attributes are present
 - No console.log statements in final code
 - Proper error handling for async operations
 - Routes are registered and protected appropriately
+- API endpoints do not include `/api` prefix (handled by api utility)
 
 ---
 
@@ -462,7 +467,7 @@ exports.getAll = async () => {
 ```typescript
 import React, { useState, useEffect } from 'react';
 import { Container, Typography, Box } from '@mui/material';
-import axios from 'axios';
+import api from '../../utils/api'; // IMPORTANT: Use api utility, not raw axios
 
 interface DataType {
   id: number;
@@ -479,8 +484,12 @@ const PageName: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get('/api/endpoint');
-      setData(response.data);
+      // Use api utility - it handles CSRF tokens automatically
+      // Note: No /api prefix needed (api utility adds it)
+      const response: any = await api.get('/endpoint');
+      // Handle response unwrapping from api interceptor
+      const result = response.data || response;
+      setData(result);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to fetch data');
     }
@@ -553,6 +562,63 @@ REACT_APP_API_URL=/api
 
 ---
 
+## CSRF Token Handling
+
+The application uses CSRF (Cross-Site Request Forgery) protection for all API requests. This is handled automatically through a configured axios instance.
+
+### Frontend API Utility (`frontend/src/utils/api.ts`)
+
+**CRITICAL**: Always use the `api` utility for all HTTP requests, NEVER use raw `axios`.
+
+```typescript
+import api from '../../utils/api'; // Correct
+// import axios from 'axios';  // WRONG - will cause CSRF errors
+
+// GET request
+const response = await api.get('/endpoint');
+const data = response.data || response;
+
+// POST request
+const response = await api.post('/endpoint', { data });
+const result = response.data || response;
+```
+
+### How it Works
+
+The `api` utility is a configured axios instance with request interceptors that:
+1. **Fetches CSRF token** from `/api/auth/csrf-token` endpoint on first request
+2. **Caches token** in localStorage for subsequent requests
+3. **Automatically injects** the token in `X-CSRF-Token` header for every request
+4. **Handles token refresh** if token becomes invalid
+
+### Important Notes
+
+- **No `/api` prefix needed**: The api utility automatically adds `/api` to all endpoints
+  ```typescript
+  api.get('/cities')  // Correct - requests /api/cities
+  api.get('/api/cities')  // Wrong - requests /api/api/cities
+  ```
+
+- **Response unwrapping**: The api utility may unwrap response data, so use:
+  ```typescript
+  const data = response.data || response;
+  ```
+
+- **Error handling**: CSRF errors will show as `ForbiddenError: invalid csrf token`
+  - This indicates raw axios usage or missing CSRF token
+  - Solution: Replace axios with api utility
+
+### Backend CSRF Protection
+
+All routes except authentication endpoints are protected with `csrfProtection` middleware:
+```javascript
+router.post('/', verifyToken, csrfProtection, controller.create);
+```
+
+Auth endpoints (`/api/auth/*`) are excluded from CSRF protection to allow initial login.
+
+---
+
 ## Important Development Guidelines
 
 ### Database Schema Management
@@ -583,12 +649,16 @@ Creating new tables and columns is acceptable when required for new features, bu
 ### Common Pitfalls by Domain
 
 #### Frontend Pitfalls
-1. **MUI Grid API** - Use `size={{xs: 12, md: 6}}` not `item xs={12} md={6}`
-2. **TypeScript anys** - Always define proper interfaces
-3. **Missing ErrorBoundary** - Wrap all routes in ErrorBoundary
-4. **Console statements** - Remove before committing
-5. **Unregistered routes** - Add new routes to App.tsx AND Sidebar navigation
-6. **Missing page title** - Update getPageTitle() in MainLayout.tsx
+1. **Raw axios usage** - NEVER use `import axios from 'axios'` - always use `import api from '../../utils/api'`
+   - The `api` utility automatically handles CSRF token fetching and injection
+   - Using raw axios will result in "invalid csrf token" errors
+   - Remove `/api` prefix from endpoints when using api utility (it adds it automatically)
+2. **MUI Grid API** - Use `size={{xs: 12, md: 6}}` not `item xs={12} md={6}`
+3. **TypeScript anys** - Always define proper interfaces
+4. **Missing ErrorBoundary** - Wrap all routes in ErrorBoundary
+5. **Console statements** - Remove before committing
+6. **Unregistered routes** - Add new routes to App.tsx AND Sidebar navigation
+7. **Missing page title** - Update getPageTitle() in MainLayout.tsx
 
 #### Backend Pitfalls
 1. **Console logging** - Use logger, never console.log
@@ -699,12 +769,14 @@ A complete full-stack feature demonstrating proper patterns:
 - Material-UI v7 components with proper types
 - Error handling and user feedback
 - Integrated into App.tsx routing and Sidebar navigation
+- Uses `api` utility for proper CSRF token handling
 
 This feature demonstrates:
 - Complete vertical slice from database to UI
 - Proper agent coordination
 - MUI v7 API compliance
 - TypeScript best practices
+- CSRF token handling with api utility
 - Game mechanics implementation
 
 ---
