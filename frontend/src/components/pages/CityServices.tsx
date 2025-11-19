@@ -30,6 +30,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
 import api from '../../utils/api';
+import lootService from '../../services/lootService';
 import { fetchActiveUser } from '../../utils/utils';
 
 interface City {
@@ -124,6 +125,8 @@ const CityServices: React.FC = () => {
   // Item Availability States
   const [cities, setCities] = useState<City[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [itemInputValue, setItemInputValue] = useState('');
+  const [itemsLoading, setItemsLoading] = useState(false);
   const [mods, setMods] = useState<Mod[]>([]);
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [cityName, setCityName] = useState('');
@@ -148,7 +151,6 @@ const CityServices: React.FC = () => {
   useEffect(() => {
     fetchActiveUserDetails();
     fetchCities();
-    fetchItems();
     fetchMods();
   }, []);
 
@@ -170,12 +172,23 @@ const CityServices: React.FC = () => {
     }
   };
 
-  const fetchItems = async () => {
+  const handleItemSearch = async (searchText: string) => {
+    if (!searchText || searchText.length < 2) {
+      setItems([]);
+      return;
+    }
+
+    setItemsLoading(true);
     try {
-      const response: any = await api.get('/items');
-      setItems(response.data?.items || response.items || []);
+      const response = await lootService.suggestItems({ query: searchText });
+      // API returns { suggestions: [...], count: number }
+      const allItems = response.data.suggestions || [];
+      setItems(allItems);
     } catch (err) {
-      console.error('Failed to fetch items:', err);
+      console.error('Error searching items:', err);
+      setItems([]);
+    } finally {
+      setItemsLoading(false);
     }
   };
 
@@ -437,17 +450,26 @@ const CityServices: React.FC = () => {
             <Grid size={{xs: 12, md: 8}}>
               <Autocomplete
                 options={items}
-                getOptionLabel={(option) => `${option.name} (${option.value} gp)`}
-                value={selectedItem}
-                onChange={(event, newValue) => setSelectedItem(newValue)}
-                filterOptions={(options, state) => {
-                  // Filter items based on input value
-                  const inputValue = state.inputValue.toLowerCase();
-                  if (!inputValue) return options.slice(0, 50); // Show first 50 if no search
-                  return options.filter(option =>
-                    option.name.toLowerCase().includes(inputValue)
-                  ).slice(0, 50); // Limit to 50 results
+                getOptionLabel={(option) => {
+                  if (typeof option === 'string') return option;
+                  return `${option.name} (${option.value} gp)`;
                 }}
+                value={selectedItem}
+                inputValue={itemInputValue}
+                onInputChange={(_, newInputValue) => {
+                  setItemInputValue(newInputValue);
+                  handleItemSearch(newInputValue);
+                }}
+                onChange={(_, newValue) => {
+                  if (newValue && typeof newValue === 'object') {
+                    setSelectedItem(newValue);
+                  } else {
+                    setSelectedItem(null);
+                  }
+                }}
+                loading={itemsLoading}
+                filterOptions={(x) => x} // Disable built-in filtering - API does it
+                noOptionsText="Type at least 2 characters to search items"
                 renderInput={(params) => (
                   <TextField {...params} label="Item" required helperText="Start typing to search for items" />
                 )}
@@ -459,17 +481,9 @@ const CityServices: React.FC = () => {
                 options={mods}
                 getOptionLabel={(option) => option.name}
                 value={selectedMods}
-                onChange={(event, newValue) => setSelectedMods(newValue)}
-                filterOptions={(options, state) => {
-                  // Filter mods based on input value
-                  const inputValue = state.inputValue.toLowerCase();
-                  if (!inputValue) return options.slice(0, 50); // Show first 50 if no search
-                  return options.filter(option =>
-                    option.name.toLowerCase().includes(inputValue)
-                  ).slice(0, 50); // Limit to 50 results
-                }}
+                onChange={(_, newValue) => setSelectedMods(newValue)}
                 renderInput={(params) => (
-                  <TextField {...params} label="Modifications" helperText="Start typing to search" />
+                  <TextField {...params} label="Modifications" helperText="Optional enhancements" />
                 )}
               />
             </Grid>
