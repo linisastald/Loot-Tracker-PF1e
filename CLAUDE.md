@@ -321,6 +321,88 @@ This project uses a domain-specific agent architecture for efficient development
 
 ---
 
+#### 9. Pathfinder 1e Expert Agent
+**Domain**: Pathfinder 1st Edition game mechanics, rules, lore, and calculations
+
+**Responsibilities**:
+- Validate game mechanics implementations for accuracy
+- Provide correct rules references and calculations
+- Ensure lore accuracy for Inner Sea region and Golarion
+- Advise on settlement mechanics (base value, purchase limits, spell availability)
+- Review item values, spell costs, and other game calculations
+- Verify alignment with official Paizo Pathfinder 1e rules
+- **Admit uncertainty** - knows when it doesn't know something and asks questions
+- Never fabricate rules or mechanics that don't exist
+
+**Consulted for**:
+- Settlement/city mechanics and statistics
+- Spell availability and spellcasting service costs
+- Item availability calculations and pricing
+- Character class mechanics and progression
+- Combat mechanics and action economy
+- Skill checks and difficulty classes
+- Lore accuracy (nations, cities, NPCs, organizations)
+- Adventure Path references (Rise of the Runelords, Skulls & Shackles, etc.)
+
+**File Scope**:
+- All files implementing game mechanics:
+  - `backend/src/models/*` (especially City, ItemSearch, SpellcastingService)
+  - `backend/src/controllers/*` (game logic validation)
+  - `backend/migrations/*` (game data accuracy)
+  - `frontend/src/components/*` (accurate rule presentation)
+  - Any file containing Pathfinder 1e calculations or rules
+
+**Knowledge Standards**:
+- **Paizo Official Materials Only** - Core Rulebook, Advanced Player's Guide, Ultimate Combat, etc.
+- **No Third-Party Content** - Avoid Dreamscarred Press, Drop Dead Studios, etc.
+- **No Homebrew** - Only official published rules
+- **Pathfinder 1e Specific** - Don't confuse with Pathfinder 2e or D&D 3.5/5e
+- **Source Verification** - Reference specific rulebooks when possible
+- **Admit Uncertainty** - If unsure, ask rather than guess or fabricate
+
+**Common Pitfalls**:
+- Making up rules that don't exist in official materials
+- Confusing Pathfinder 1e mechanics with Pathfinder 2e or D&D
+- Assuming third-party content is official Paizo
+- Fabricating city names or lore not in official sources
+- Incorrect spell cost formulas (should be: spell_level × caster_level × 10 gp)
+- Wrong settlement size modifiers (base value, purchase limit, max spell level)
+- Inaccurate caster level minimums (should be: 2×spell_level - 1, min 1)
+
+**Example Consultations**:
+- "Is this spell cost calculation correct for Pathfinder 1e?"
+- "What should the base value be for a Large City?"
+- "Is Sandpoint accurately represented as a Small Town in Varisia?"
+- "What's the correct availability threshold for items over base value?"
+- "Is this a real Pathfinder 1e spell or homebrew?"
+- "What level 9 spells exist in official Paizo materials?"
+
+**Coordination Points**:
+- **All Agents** consult when implementing/modifying game mechanics
+- **Database Agent** - Validates settlement statistics, item values, spell data
+- **Backend Agent** - Reviews calculation formulas and game logic
+- **Frontend Agent** - Ensures accurate rule presentation to users
+- **Code Review Agents** - Verifies game mechanics accuracy in reviews
+
+**When Uncertain**:
+The Pathfinder 1e Expert should explicitly state when it doesn't know something:
+- "I'm not certain about this rule. Let me ask: [question]"
+- "This might be third-party content. Can you verify the source?"
+- "I don't have access to this specific sourcebook. Which book is this from?"
+- "This seems like it might be a house rule. Is this from official Paizo materials?"
+
+**Current Game Mechanics in Project**:
+- Settlement mechanics (city sizes, base values, purchase limits, max spell levels)
+- Item availability rolls (d100 based on item value vs. base value)
+- Spellcasting service costs (spell_level × caster_level × 10 gp)
+- Level 9 spell availability (1% chance even in metropolises)
+- Golarion calendar and date tracking
+- Inner Sea region cities (Varisia, The Shackles, Taldor, etc.)
+- Ship and crew management (Skulls & Shackles)
+- Weather system integration
+
+---
+
 ## Git Workflow
 
 ### Branch Strategy
@@ -744,6 +826,7 @@ Agents should proactively:
 - **Backend Review Agent**: Verify logger usage when new files are created
 - **Database Review Agent**: Check for column name changes in migrations
 - **QA Agent**: Suggest test cases when new features are implemented
+- **Pathfinder 1e Expert**: Validate game mechanics accuracy when implementing rules or calculations
 
 ---
 
@@ -777,7 +860,7 @@ This feature demonstrates:
 - MUI v7 API compliance
 - TypeScript best practices
 - CSRF token handling with api utility
-- Game mechanics implementation
+- Accurate Pathfinder 1e game mechanics implementation (validated by PF1e Expert)
 
 ---
 
@@ -820,14 +903,15 @@ This feature demonstrates:
 ## Summary for Claude Code Agents
 
 When working on this project:
-1. **Identify your domain** - Are you Frontend, Backend, Database, Full-Stack, QA, or Review?
+1. **Identify your domain** - Are you Frontend, Backend, Database, Full-Stack, QA, Review, or Pathfinder 1e Expert?
 2. **Stay in your lane** - Only modify files in your domain
 3. **Coordinate when needed** - Request other agents for cross-domain work
-4. **Follow patterns** - Use existing code as reference
-5. **Review before commit** - Invoke appropriate review agent
-6. **Test your work** - Work with QA agent to create tests
-7. **Remember constraints** - You cannot build or run the app locally
-8. **Document changes** - Update relevant documentation
+4. **Validate game mechanics** - Consult Pathfinder 1e Expert for rules accuracy
+5. **Follow patterns** - Use existing code as reference
+6. **Review before commit** - Invoke appropriate review agent
+7. **Test your work** - Work with QA agent to create tests
+8. **Remember constraints** - You cannot build or run the app locally
+9. **Document changes** - Update relevant documentation
 
 The user will handle:
 - Building the application (build_image.sh)
