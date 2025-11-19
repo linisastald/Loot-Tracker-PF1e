@@ -96,7 +96,7 @@ const checkItemAvailability = async (req, res) => {
       too_expensive: true,
       message: `${itemName} (${itemValue} gp) is too expensive to ever be found in ${city.name}. ` +
                `Maximum item value: ${city.base_value * 5} gp (5× base value of ${city.base_value} gp). ` +
-               `Try a larger settlement or a specific buyer.`
+               `Try a larger settlement.`
     });
   }
 
