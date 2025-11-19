@@ -61,7 +61,12 @@ const checkSpellcastingService = async (req, res) => {
 
   if (!availabilityCheck.available) {
     let message;
-    if (availabilityCheck.reason === 'exceeds_max_level') {
+    if (availabilityCheck.reason === 'no_spellcasters') {
+      message = `${city.name} is a village with no spellcasters available for ${spell_name}.`;
+    } else if (availabilityCheck.reason === 'village_no_spellcaster') {
+      message = `${city.name} is a village. After searching, no spellcaster capable of casting ` +
+                `${spell_name} was found (rolled ${availabilityCheck.roll}/100, needed 5 or less).`;
+    } else if (availabilityCheck.reason === 'exceeds_max_level') {
       message = `${spell_name} (level ${spell_level}) is not available in ${city.name}. ` +
                 `Maximum spell level available: ${city.max_spell_level}`;
     } else if (availabilityCheck.reason === 'level_9_not_found') {
@@ -104,9 +109,12 @@ const checkSpellcastingService = async (req, res) => {
     );
   }
 
-  // Build response message for level 9 spells
+  // Build response message for special availability cases
   let successMessage = null;
-  if (availabilityCheck.reason === 'level_9_found') {
+  if (availabilityCheck.reason === 'village_spellcaster_found') {
+    successMessage = `Lucky find! A wandering spellcaster capable of casting ${spell_name} was found in ` +
+                    `${city.name} (rolled ${availabilityCheck.roll}/100, needed 5 or less).`;
+  } else if (availabilityCheck.reason === 'level_9_found') {
     successMessage = `Lucky find! A caster capable of casting this 9th level spell was found in ${city.name} ` +
                     `(rolled ${availabilityCheck.roll}/100).`;
   }

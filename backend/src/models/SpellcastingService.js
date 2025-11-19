@@ -19,12 +19,31 @@ const calculateCost = (spellLevel, casterLevel) => {
 
 /**
  * Check if a spell is available in a city of given size
- * Level 9 spells have only a 1% chance of being available, even in metropolises
+ * Special cases:
+ * - Villages (max_spell_level = 0): No guaranteed spellcasters, but 5% chance for 1st-level spell
+ * - Metropolis + 9th-level: Only 1% chance of finding a capable caster
  * @param {number} spellLevel - Spell level
  * @param {number} cityMaxSpellLevel - City's max spell level
  * @return {Object} Availability result with available flag and optional roll info
  */
 const isSpellAvailable = (spellLevel, cityMaxSpellLevel) => {
+  // Villages (max_spell_level = 0) - special handling
+  if (cityMaxSpellLevel === 0) {
+    // 1st-level spells have a 5% chance (wandering spellcaster)
+    if (spellLevel === 1) {
+      const roll = Math.floor(Math.random() * 100) + 1; // 1d100
+      const available = roll <= 5; // 5% chance
+      return {
+        available,
+        reason: available ? 'village_spellcaster_found' : 'village_no_spellcaster',
+        roll,
+        threshold: 5
+      };
+    }
+    // No spellcasters for any other spell level
+    return { available: false, reason: 'no_spellcasters' };
+  }
+
   // Spell level exceeds city's maximum
   if (spellLevel > cityMaxSpellLevel) {
     return { available: false, reason: 'exceeds_max_level' };

@@ -749,42 +749,52 @@ const CityServices: React.FC = () => {
                 <TableCell>Village</TableCell>
                 <TableCell align="right">500 gp</TableCell>
                 <TableCell align="right">2,500 gp</TableCell>
-                <TableCell align="center">1st</TableCell>
+                <TableCell align="center">
+                  None
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    (1st: 5% chance)
+                  </Typography>
+                </TableCell>
                 <TableCell align="right">20-200</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Small Town</TableCell>
                 <TableCell align="right">1,000 gp</TableCell>
                 <TableCell align="right">5,000 gp</TableCell>
-                <TableCell align="center">2nd</TableCell>
+                <TableCell align="center">1st</TableCell>
                 <TableCell align="right">201-2,000</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Large Town</TableCell>
                 <TableCell align="right">2,000 gp</TableCell>
                 <TableCell align="right">10,000 gp</TableCell>
-                <TableCell align="center">3rd-4th</TableCell>
+                <TableCell align="center">2nd</TableCell>
                 <TableCell align="right">2,001-5,000</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Small City</TableCell>
                 <TableCell align="right">4,000 gp</TableCell>
                 <TableCell align="right">25,000 gp</TableCell>
-                <TableCell align="center">4th-5th</TableCell>
+                <TableCell align="center">3rd-4th</TableCell>
                 <TableCell align="right">5,001-10,000</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Large City</TableCell>
                 <TableCell align="right">12,800 gp</TableCell>
                 <TableCell align="right">75,000 gp</TableCell>
-                <TableCell align="center">6th-7th</TableCell>
+                <TableCell align="center">5th-6th</TableCell>
                 <TableCell align="right">10,001-25,000</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Metropolis</TableCell>
                 <TableCell align="right">16,000 gp</TableCell>
                 <TableCell align="right">100,000 gp</TableCell>
-                <TableCell align="center">8th-9th</TableCell>
+                <TableCell align="center">
+                  7th-8th
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    (9th: 1% chance)
+                  </Typography>
+                </TableCell>
                 <TableCell align="right">25,001+</TableCell>
               </TableRow>
             </TableBody>

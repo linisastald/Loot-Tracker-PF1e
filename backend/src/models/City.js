@@ -3,13 +3,21 @@ const dbUtils = require('../utils/dbUtils');
 
 /**
  * Settlement size configuration with Pathfinder 1e values
+ * Source: Pathfinder 1e Core Rulebook / GameMastery Guide
+ * Spell levels based on official rules:
+ * - Village: No guaranteed spellcasters (0)
+ * - Small Town: 1st-level spells
+ * - Large Town: 2nd-level spells
+ * - Small City: 3rd-4th level spells (max: 4th)
+ * - Large City: 5th-6th level spells (max: 6th)
+ * - Metropolis: 7th-8th level guaranteed, 9th-level not guaranteed (1% chance)
  */
 const SETTLEMENT_SIZES = {
-  'Village': { baseValue: 500, purchaseLimit: 2500, maxSpellLevel: 1, population: [20, 200] },
-  'Small Town': { baseValue: 1000, purchaseLimit: 5000, maxSpellLevel: 2, population: [201, 2000] },
-  'Large Town': { baseValue: 2000, purchaseLimit: 10000, maxSpellLevel: 4, population: [2001, 5000] },
-  'Small City': { baseValue: 4000, purchaseLimit: 25000, maxSpellLevel: 5, population: [5001, 10000] },
-  'Large City': { baseValue: 12800, purchaseLimit: 75000, maxSpellLevel: 7, population: [10001, 25000] },
+  'Village': { baseValue: 500, purchaseLimit: 2500, maxSpellLevel: 0, population: [20, 200] },
+  'Small Town': { baseValue: 1000, purchaseLimit: 5000, maxSpellLevel: 1, population: [201, 2000] },
+  'Large Town': { baseValue: 2000, purchaseLimit: 10000, maxSpellLevel: 2, population: [2001, 5000] },
+  'Small City': { baseValue: 4000, purchaseLimit: 25000, maxSpellLevel: 4, population: [5001, 10000] },
+  'Large City': { baseValue: 12800, purchaseLimit: 75000, maxSpellLevel: 6, population: [10001, 25000] },
   'Metropolis': { baseValue: 16000, purchaseLimit: 100000, maxSpellLevel: 9, population: [25001, 999999] }
 };
 
