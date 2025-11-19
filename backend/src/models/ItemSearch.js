@@ -109,6 +109,12 @@ exports.getAll = async (options = {}) => {
     values.push(options.found);
   }
 
+  if (options.date) {
+    // Filter by date (YYYY-MM-DD format)
+    conditions.push(`DATE(s.search_datetime) = $${paramIndex++}`);
+    values.push(options.date);
+  }
+
   if (conditions.length > 0) {
     query += ' WHERE ' + conditions.join(' AND ');
   }

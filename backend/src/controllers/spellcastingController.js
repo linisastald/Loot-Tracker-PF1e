@@ -139,12 +139,13 @@ const checkSpellcastingService = async (req, res) => {
  * Get all spellcasting services
  */
 const getAllServices = async (req, res) => {
-  const { city_id, character_id, limit } = req.query;
+  const { city_id, character_id, limit, date } = req.query;
 
   const options = {};
   if (city_id) options.city_id = parseInt(city_id);
   if (character_id) options.character_id = parseInt(character_id);
   if (limit) options.limit = parseInt(limit);
+  if (date) options.date = date; // YYYY-MM-DD format
 
   const services = await SpellcastingService.getAll(options);
   res.json(services);

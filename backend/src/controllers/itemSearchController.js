@@ -139,13 +139,14 @@ const checkItemAvailability = async (req, res) => {
  * Get all item searches
  */
 const getAllSearches = async (req, res) => {
-  const { city_id, character_id, found, limit } = req.query;
+  const { city_id, character_id, found, limit, date } = req.query;
 
   const options = {};
   if (city_id) options.city_id = parseInt(city_id);
   if (character_id) options.character_id = parseInt(character_id);
   if (found !== undefined) options.found = found === 'true';
   if (limit) options.limit = parseInt(limit);
+  if (date) options.date = date; // YYYY-MM-DD format
 
   const searches = await ItemSearch.getAll(options);
   res.json(searches);
