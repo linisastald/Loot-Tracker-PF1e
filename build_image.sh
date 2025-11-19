@@ -31,6 +31,7 @@ AUTO_VERSION=true  # Auto-increment version numbers
 VERSION_TYPE="patch"  # Default version increment type (major, minor, patch)
 SYNC_PACKAGE_VERSION=false  # Sync version with package.json
 GIT_BRANCH=""  # Branch to pull from (auto-detected if empty)
+VERBOSE=false  # Show detailed Docker build output
 
 # Discord broker support
 BUILD_DISCORD_BROKER=false
@@ -109,7 +110,10 @@ while [ $# -gt 0 ]; do
             fi
             shift 2
             ;;
-
+        --verbose|-v)
+            VERBOSE=true
+            shift
+            ;;
         --cleanup)
             echo "🧹 Cleaning up dangling images..."
             docker image prune -f
@@ -142,6 +146,7 @@ while [ $# -gt 0 ]; do
             echo "    --branch BRANCH   Specify branch to build from (creates worktree if needed)"
             echo "    --discord-broker  Build Discord broker container instead of main app"
             echo "    --discord-tag TAG Override Discord broker tag (default: dev)"
+            echo "    --verbose, -v     Show detailed Docker build output"
             echo "    --cleanup         Remove all dangling images and exit"
             echo ""
             echo "  WORKTREE SUPPORT:"
@@ -516,79 +521,27 @@ else
     ADDITIONAL_TAG=""
 fi
 
-echo "==========================================="
-if [ "$BUILD_DISCORD_BROKER" = true ]; then
-    echo "🤖 BUILDING DISCORD BROKER IMAGE"
-    echo "Target: ${IMAGE_NAME}:${TAG}"
-    if [ -n "$VERSION_TAG" ]; then
-        echo "Version: ${VERSION_TAG}"
-    fi
-    echo "Type: Discord.js Bot Service"
-elif [ "$BUILD_STABLE" = true ]; then
-    echo "🏗️  BUILDING STABLE/LATEST IMAGE"
-    echo "Target: ${IMAGE_NAME}:${TAG}"
-    if [ -n "$VERSION_TAG" ]; then
-        echo "Version: ${VERSION_TAG}"
-    fi
-    echo "Git pull: DISABLED (using current local code)"
-    echo "Cache: $([ "$USE_CACHE" = true ] && echo "ENABLED" || echo "DISABLED")"
-else
-    echo "🚧 BUILDING DEV/UNSTABLE IMAGE"
-    echo "Target: ${IMAGE_NAME}:${TAG}"
-    if [ -n "$VERSION_TAG" ]; then
-        echo "Version: ${VERSION_TAG}"
-    fi
-    echo "Git pull: ENABLED (fetching latest code)"
-    echo "Cache: DISABLED (always fresh build)"
+echo "🚀 Building ${IMAGE_NAME}:${TAG}"
+if [ -n "$VERSION_TAG" ]; then
+    echo "   Version: ${VERSION_TAG}"
 fi
 if [ -n "$WORKTREE_BRANCH" ]; then
-    echo "Branch: $WORKTREE_BRANCH (via worktree)"
-else
-    echo "Branch: $GIT_BRANCH"
+    echo "   Branch: $WORKTREE_BRANCH"
 fi
-echo "Working directory: $(pwd)"
-echo "==========================================="
 
 # Handle git operations and worktree setup
 if [ "$BUILD_STABLE" = true ]; then
-    echo "Building stable image - using current local code (no git pull)"
-    echo "Current commit: $(get_git_commit)"
-
-    # Archive existing latest image if building latest tag
     if [ "$TAG" = "latest" ]; then
         archive_latest_image
     fi
-elif [ -n "$WORKTREE_BRANCH" ]; then
-    echo "Building from worktree (branch: $WORKTREE_BRANCH) - code already at correct commit"
-    echo "Current commit: $(get_git_commit)"
-else
-    echo "Building dev image - pulling latest code from GitHub (branch: $GIT_BRANCH)..."
-    git pull origin $GIT_BRANCH || {
-        echo "⚠️  Warning: Git pull failed. Continuing with current local code."
-        echo "Make sure you're in the correct git repository and have proper permissions."
-    }
-    echo "Updated to commit: $(get_git_commit)"
+elif [ -z "$WORKTREE_BRANCH" ]; then
+    git pull origin $GIT_BRANCH 2>&1 | grep -q "Already up to date" || echo "   Pulled latest from $GIT_BRANCH"
 fi
 
 # Enable Docker BuildKit for better performance and features
 if [ "$USE_BUILDKIT" = true ]; then
     export DOCKER_BUILDKIT=1
     export BUILDKIT_PROGRESS=plain
-    echo "🚀 Using Docker BuildKit for optimized builds"
-fi
-
-# Prepare production package files if optimizing
-if [ "$OPTIMIZE_BUILD" = true ]; then
-    echo "📦 Preparing production-optimized build..."
-    
-    # Verify production package files exist
-    if [ ! -f "frontend/package.prod.json" ]; then
-        echo "⚠️  Warning: frontend/package.prod.json not found. Using regular package.json"
-    fi
-    
-    if [ ! -f "backend/package.prod.json" ]; then
-        echo "⚠️  Warning: backend/package.prod.json not found. Using regular package.json"
-    fi
 fi
 
 # Prepare build command
@@ -625,25 +578,7 @@ else
     BUILD_CMD="$BUILD_CMD -f docker/Dockerfile.backend -t ${IMAGE_NAME}:${TAG} ."
 fi
 
-echo ""
-echo "🔧 Build Configuration:"
-echo "   Command: $BUILD_CMD"
-if [ "$BUILD_DISCORD_BROKER" = true ]; then
-    echo "   Dockerfile: discord-handler/Dockerfile"
-    echo "   Context: $(pwd)/discord-handler"
-    echo "   Build Type: Discord Broker Service"
-else
-    echo "   Dockerfile: docker/Dockerfile.backend"
-    echo "   Context: $(pwd)"
-    echo "   Build Type: Main Application"
-fi
-echo "   BuildKit: $([ "$USE_BUILDKIT" = true ] && echo "ENABLED" || echo "DISABLED")"
-echo "   Optimizations: $([ "$OPTIMIZE_BUILD" = true ] && echo "ENABLED" || echo "DISABLED")"
-echo "   Security Scan: $([ "$ENABLE_SECURITY_SCAN" = true ] && echo "ENABLED" || echo "DISABLED")"
-echo ""
-
 # Clean up dangling images before build
-echo "🧹 Cleaning up any dangling images..."
 docker image prune -f 2>/dev/null || true
 
 # Update version files BEFORE build so they're included in the Docker image
@@ -660,15 +595,31 @@ if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ]; then
     update_version_file "$NEW_VERSION" "$NEW_BUILD_NUMBER"
     update_package_json_files "$NEW_VERSION"
     update_truenas_metadata "$NEW_VERSION"
-
-    echo "✅ Version files updated to v${NEW_VERSION}"
 fi
 
 # Execute the build
-echo "🚀 Starting optimized Docker build..."
-eval $BUILD_CMD
+echo ""
+if [ "$VERBOSE" = true ]; then
+    # Show all build output
+    eval $BUILD_CMD
+    BUILD_EXIT_CODE=$?
+else
+    # Hide build output unless build fails
+    BUILD_LOG=$(mktemp)
+    echo "   Building... (use --verbose to see detailed output)"
+    eval $BUILD_CMD > "$BUILD_LOG" 2>&1
+    BUILD_EXIT_CODE=$?
 
-BUILD_EXIT_CODE=$?
+    if [ $BUILD_EXIT_CODE -ne 0 ]; then
+        # Build failed, show the output
+        echo ""
+        echo "❌ Build failed! Showing build output:"
+        echo "===================================="
+        cat "$BUILD_LOG"
+        echo "===================================="
+    fi
+    rm -f "$BUILD_LOG"
+fi
 
 # Run security scan if enabled and build succeeded
 if [ $BUILD_EXIT_CODE -eq 0 ] && [ "$ENABLE_SECURITY_SCAN" = true ]; then
@@ -738,6 +689,12 @@ if [ $BUILD_EXIT_CODE -eq 0 ]; then
         echo "Git commit: $(get_git_commit)"
         echo "Build time: $(date)"
         echo ""
+        # Show image size information
+        IMAGE_SIZE=$(docker image inspect ${IMAGE_NAME}:${TAG} --format='{{.Size}}' | numfmt --to=iec 2>/dev/null || echo "Unknown")
+        echo "📊 IMAGE INFORMATION:"
+        echo "   Image size: $IMAGE_SIZE"
+        echo "   Layers: $(docker history ${IMAGE_NAME}:${TAG} --quiet 2>/dev/null | wc -l || echo "Unknown")"
+        echo ""
     else
         echo ""
         echo "⚠️ BUILD WARNING: Image built but not properly tagged"
@@ -760,58 +717,6 @@ if [ $BUILD_EXIT_CODE -eq 0 ]; then
             exit 1
         fi
     fi
-    # Show image size information
-    IMAGE_SIZE=$(docker image inspect ${IMAGE_NAME}:${TAG} --format='{{.Size}}' | numfmt --to=iec --suffix=B 2>/dev/null || echo "Unknown")
-    echo "📊 IMAGE INFORMATION:"
-    echo "   Image size: $IMAGE_SIZE"
-    echo "   Layers: $(docker history ${IMAGE_NAME}:${TAG} --quiet 2>/dev/null | wc -l || echo "Unknown")"
-    if [ "$OPTIMIZE_BUILD" = true ]; then
-        echo "   Optimizations: Production-only dependencies, multi-stage build, Alpine base"
-    fi
-    echo ""
-    echo "📋 USEFUL COMMANDS:"
-    echo "   View all images:     docker images ${IMAGE_NAME}"
-    echo "   Run test container:  docker run -d -p 8080:80 --name test-pathfinder ${IMAGE_NAME}:${TAG}"
-    if [ -n "$ADDITIONAL_TAG" ]; then
-        echo "   Run version:         docker run -d -p 8080:80 --name test-pathfinder ${ADDITIONAL_TAG}"
-    fi
-    echo "   View image details:  docker image inspect ${IMAGE_NAME}:${TAG}"
-    echo "   Check image layers:  docker history ${IMAGE_NAME}:${TAG}"
-    if [ "$ENABLE_SECURITY_SCAN" = true ]; then
-        echo "   Run security scan:   trivy image ${IMAGE_NAME}:${TAG}"
-    fi
-    echo ""
-    
-    if [ "$BUILD_STABLE" = true ]; then
-        echo "🏷️  STABLE BUILD NOTES:"
-        echo "   This image is tagged as: ${IMAGE_NAME}:${TAG}"
-        if [ "$TAG" = "latest" ]; then
-            echo "   Previous 'latest' has been archived with timestamp"
-        fi
-        echo "   Production-optimized: Single container with frontend + backend"
-        echo "   Security: Non-root users, minimal attack surface"
-        echo "   Consider tagging with version: docker tag ${IMAGE_NAME}:${TAG} ${IMAGE_NAME}:v1.x.x"
-    else
-        echo "🚧 DEV BUILD NOTES:"
-        echo "   This is a development build with latest code"
-        echo "   Production-optimized but includes latest commits"
-        echo "   Build includes latest commits from master branch"
-        echo "   Run with: docker run -d -p 8080:80 ${IMAGE_NAME}:${TAG}"
-    fi
-    
-    if [ "$OPTIMIZE_BUILD" = true ]; then
-        echo ""
-        echo "⚡ OPTIMIZATION FEATURES:"
-        echo "   ✅ Multi-stage build (excludes dev dependencies)"
-        echo "   ✅ Alpine Linux base (~70% size reduction)"
-        echo "   ✅ Production npm dependencies only"
-        echo "   ✅ Non-root user execution (security)"
-        echo "   ✅ Gzip compression enabled"
-        echo "   ✅ Static asset caching (1-year)"
-        echo "   ✅ Security headers configured"
-        echo "   ✅ Rate limiting enabled (10 req/sec)"
-    fi
-    echo ""
 else
     echo ""
     echo "❌ BUILD FAILED!"
