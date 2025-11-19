@@ -40,6 +40,7 @@ import {
   DirectionsBoat as ShipIcon,
   People as CrewIcon,
   Home as OutpostIcon,
+  LocationCity as LocationCityIcon,
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -336,6 +337,8 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
               badge={unidentifiedLootCount > 0 ? unidentifiedLootCount : null}
             />
           </MenuItem>
+
+          <MenuItem to="/city-services" primary="City Services" icon={<LocationCityIcon />} isCategory />
 
           {isDM && (
             <MenuItem

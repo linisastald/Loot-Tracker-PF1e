@@ -45,6 +45,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
               return 'Character Loot Ledger';
           case '/infamy':
               return 'Infamy';
+          case '/city-services':
+              return 'City Services';
           default:
               if (path.includes('/loot-management')) return 'Loot Management';
               if (path.includes('/item-management')) return 'Item Management';

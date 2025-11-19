@@ -258,6 +258,11 @@ const reportsRoutes = require('./src/api/routes/reports');
 const testDataRoutes = require('./src/api/routes/testData');
 const versionRoutes = require('./src/api/routes/version');
 
+// City Services routes
+const cityRoutes = require('./src/api/routes/cities');
+const itemSearchRoutes = require('./src/api/routes/itemSearch');
+const spellcastingRoutes = require('./src/api/routes/spellcasting');
+
 // Set up routes with appropriate protection
 // Auth routes with auth-specific rate limiting (applied before global rate limiting)
 app.use('/api/auth', authRoutes);
@@ -323,6 +328,11 @@ app.use('/api/appraisal', csrfProtection, appraisalRoutes);
 app.use('/api/reports', csrfProtection, reportsRoutes);
 app.use('/api/test-data', csrfProtection, testDataRoutes);
 app.use('/api/version', versionRoutes); // No auth or CSRF protection needed for version info
+
+// City Services routes
+app.use('/api/cities', csrfProtection, cityRoutes);
+app.use('/api/item-search', csrfProtection, itemSearchRoutes);
+app.use('/api/spellcasting', csrfProtection, spellcastingRoutes);
 
 // Serve React frontend static files (production)
 if (process.env.NODE_ENV === 'production') {
