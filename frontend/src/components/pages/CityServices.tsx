@@ -27,6 +27,7 @@ import {
   SelectChangeEvent,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
 import api from '../../utils/api';
 import { fetchActiveUser } from '../../utils/utils';
@@ -601,7 +602,7 @@ const CityServices: React.FC = () => {
                 variant="contained"
                 color="primary"
                 fullWidth
-                onClick={() => handleSpellcastingCheck(false)}
+                onClick={handleSpellcastingCheck}
                 disabled={spellcastingLoading}
                 startIcon={<SearchIcon />}
               >
