@@ -141,8 +141,6 @@ const CityServices: React.FC = () => {
   const [spellcastingLoading, setSpellcastingLoading] = useState(false);
   const [purchaseSpell, setPurchaseSpell] = useState(false);
 
-  // Golarion Date
-  const [golarionDate, setGolarionDate] = useState('');
 
   // Messages
   const [error, setError] = useState('');
@@ -207,6 +205,12 @@ const CityServices: React.FC = () => {
     }
   };
 
+  // Calculate minimum caster level for a spell
+  const getMinCasterLevel = (spellLevel: number): number => {
+    if (spellLevel <= 1) return 1;
+    return spellLevel * 2 - 1;
+  };
+
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
     setError('');
@@ -237,7 +241,6 @@ const CityServices: React.FC = () => {
         city_name: cityName.trim(),
         city_size: citySize,
         character_id: activeUser?.activeCharacterId,
-        golarion_date: golarionDate || null,
       });
 
       setItemSearchResult(response.data);
@@ -287,7 +290,6 @@ const CityServices: React.FC = () => {
         city_name: cityName.trim(),
         city_size: citySize,
         character_id: activeUser?.activeCharacterId,
-        golarion_date: golarionDate || null,
         purchase: purchase,
       });
 
@@ -393,16 +395,6 @@ const CityServices: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
-          </Grid>
-          <Grid size={{xs: 12, md: 2}}>
-            <TextField
-              fullWidth
-              label="Golarion Date"
-              value={golarionDate}
-              onChange={(e) => setGolarionDate(e.target.value)}
-              placeholder="Optional"
-              helperText="In-game date"
-            />
           </Grid>
         </Grid>
 
@@ -561,7 +553,14 @@ const CityServices: React.FC = () => {
                 options={spells}
                 getOptionLabel={(option) => `${option.name} (Level ${option.spelllevel})`}
                 value={selectedSpell}
-                onChange={(event, newValue) => setSelectedSpell(newValue)}
+                onChange={(event, newValue) => {
+                  setSelectedSpell(newValue);
+                  // Set default caster level to minimum for the spell
+                  if (newValue) {
+                    const minCL = getMinCasterLevel(newValue.spelllevel);
+                    setCasterLevel(minCL);
+                  }
+                }}
                 onInputChange={(event, value) => {
                   searchSpells(value);
                 }}

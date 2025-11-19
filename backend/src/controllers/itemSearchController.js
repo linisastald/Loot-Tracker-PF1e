@@ -15,7 +15,6 @@ const checkItemAvailability = async (req, res) => {
     city_name,
     city_size,
     character_id,
-    golarion_date,
     notes
   } = req.body;
 
@@ -27,6 +26,12 @@ const checkItemAvailability = async (req, res) => {
   if (!city_size) {
     throw controllerFactory.createValidationError('City size is required');
   }
+
+  // Get current Golarion date
+  const currentDateResult = await dbUtils.executeQuery('SELECT * FROM golarion_current_date LIMIT 1');
+  const golarionDate = currentDateResult.rows.length > 0
+    ? `${currentDateResult.rows[0].year}-${String(currentDateResult.rows[0].month).padStart(2, '0')}-${String(currentDateResult.rows[0].day).padStart(2, '0')}`
+    : null;
 
   // Get or create the city
   let city = await City.getOrCreate(city_name.trim(), city_size);
@@ -82,7 +87,7 @@ const checkItemAvailability = async (req, res) => {
     item_id: item_id || null,
     mod_ids: mod_ids || null,
     city_id: city.id,
-    golarion_date: golarion_date || null,
+    golarion_date: golarionDate,
     found,
     roll_result: rollResult,
     availability_threshold: availability.threshold,

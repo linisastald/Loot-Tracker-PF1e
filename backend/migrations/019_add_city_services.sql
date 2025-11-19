@@ -79,12 +79,26 @@ COMMENT ON COLUMN item_search.availability_threshold IS 'The number the roll nee
 COMMENT ON TABLE spellcasting_service IS 'Tracks spellcasting services purchased in cities';
 COMMENT ON COLUMN spellcasting_service.cost IS 'Cost calculated as: spell_level × caster_level × 10 gp (minimum 10 gp for 0-level spells)';
 
--- Insert default cities with standard Pathfinder 1e values
-INSERT INTO city (name, size, population, region, base_value, purchase_limit, max_spell_level) VALUES
-    ('Village (Generic)', 'Village', 200, 'Generic', 500, 2500, 1),
-    ('Small Town (Generic)', 'Small Town', 1000, 'Generic', 1000, 5000, 2),
-    ('Large Town (Generic)', 'Large Town', 3500, 'Generic', 2000, 10000, 4),
-    ('Small City (Generic)', 'Small City', 7500, 'Generic', 4000, 25000, 5),
-    ('Large City (Generic)', 'Large City', 15000, 'Generic', 12800, 75000, 7),
-    ('Metropolis (Generic)', 'Metropolis', 50000, 'Generic', 16000, 100000, 9)
+-- Insert well-known Pathfinder 1e Inner Sea cities
+INSERT INTO city (name, size, population, region, alignment, base_value, purchase_limit, max_spell_level) VALUES
+    -- Varisia
+    ('Sandpoint', 'Small Town', 1200, 'Varisia', 'NG', 1000, 5000, 2),
+    ('Magnimar', 'Large City', 16000, 'Varisia', 'CN', 12800, 75000, 7),
+    ('Korvosa', 'Large City', 18000, 'Varisia', 'LE', 12800, 75000, 7),
+    ('Riddleport', 'Large City', 10000, 'Varisia', 'CN', 12800, 75000, 7),
+
+    -- The Shackles (Skulls & Shackles region)
+    ('Port Peril', 'Small City', 8300, 'The Shackles', 'CN', 4000, 25000, 5),
+    ('Bloodcove', 'Small City', 8000, 'The Shackles', 'CN', 4000, 25000, 5),
+
+    -- Major Inner Sea Cities
+    ('Absalom', 'Metropolis', 300000, 'Isle of Kortos', 'N', 16000, 100000, 9),
+    ('Oppara', 'Metropolis', 109000, 'Taldor', 'N', 16000, 100000, 9),
+    ('Katapesh', 'Metropolis', 85000, 'Katapesh', 'N', 16000, 100000, 9),
+
+    -- Other Notable Cities
+    ('Almas', 'Large City', 76600, 'Andoran', 'NG', 12800, 75000, 7),
+    ('Westcrown', 'Large City', 60000, 'Cheliax', 'LE', 12800, 75000, 7),
+    ('Egorian', 'Large City', 82000, 'Cheliax', 'LE', 12800, 75000, 7),
+    ('Ilizmagorti', 'Large Town', 4800, 'Mediogalti Island', 'NE', 2000, 10000, 4)
 ON CONFLICT (name) DO NOTHING;

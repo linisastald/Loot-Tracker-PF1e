@@ -17,7 +17,6 @@ const checkSpellcastingService = async (req, res) => {
     city_name,
     city_size,
     character_id,
-    golarion_date,
     notes,
     purchase = false // If true, record the service purchase
   } = req.body;
@@ -47,6 +46,12 @@ const checkSpellcastingService = async (req, res) => {
   if (spell_level < 0 || spell_level > 9) {
     throw controllerFactory.createValidationError('Spell level must be between 0 and 9');
   }
+
+  // Get current Golarion date
+  const currentDateResult = await dbUtils.executeQuery('SELECT * FROM golarion_current_date LIMIT 1');
+  const golarionDate = currentDateResult.rows.length > 0
+    ? `${currentDateResult.rows[0].year}-${String(currentDateResult.rows[0].month).padStart(2, '0')}-${String(currentDateResult.rows[0].day).padStart(2, '0')}`
+    : null;
 
   // Get or create the city
   const city = await City.getOrCreate(city_name.trim(), city_size);
@@ -80,7 +85,7 @@ const checkSpellcastingService = async (req, res) => {
       caster_level,
       city_id: city.id,
       character_id: character_id || null,
-      golarion_date: golarion_date || null,
+      golarion_date: golarionDate,
       notes: notes || null
     });
 
