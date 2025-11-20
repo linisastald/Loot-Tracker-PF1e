@@ -2,8 +2,8 @@
 # This file contains metadata for proper display in TrueNAS
 app_metadata:
   name: "Pathfinder Loot Tracker"
-  version: "0.10.1"
-  app_version: "0.10.1"
+  version: "0.10.2"
+  app_version: "0.10.2"
   description: "Pathfinder 1e loot and campaign management system"
   source: "https://github.com/linisastald/Loot-Tracker-PF1e"
   train: "stable"
@@ -17,15 +17,15 @@ app_metadata:
 environments:
   production:
     rotr:
-      app_version: "0.10.1"
+      app_version: "0.10.2"
       train: "stable"
       description: "Rise of the Runelords campaign instance"
     sns:
-      app_version: "0.10.1"
+      app_version: "0.10.2"
       train: "stable"
       description: "Skull & Shackles campaign instance"
   development:
     test:
-      app_version: "0.10.1"
+      app_version: "0.10.2"
       train: "unstable"
       description: "Development and testing instance"
