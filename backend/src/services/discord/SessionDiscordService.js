@@ -89,6 +89,16 @@ class SessionDiscordService {
             let message = '';
 
             switch (reminderType) {
+                case 'auto':
+                    // Automated reminder - send to non-responders and maybes ONLY
+                    targetUsers = [...nonResponders, ...maybeResponders];
+                    message = `Session reminder: Please respond if you plan to attend on ${this.formatSessionDate(session.start_time)}`;
+                    break;
+                case 'all':
+                    // Manual "remind all" - explicitly requested by DM
+                    targetUsers = attendanceData; // Everyone
+                    message = `Session reminder for everyone: ${this.formatSessionDate(session.start_time)}`;
+                    break;
                 case 'non_responders':
                     targetUsers = nonResponders;
                     message = `Reminder: Please respond to the session on ${this.formatSessionDate(session.start_time)}!`;
@@ -97,13 +107,12 @@ class SessionDiscordService {
                     targetUsers = maybeResponders;
                     message = `Reminder: Please confirm your attendance for the session on ${this.formatSessionDate(session.start_time)}!`;
                     break;
-                case 'auto':
-                    // Automated reminder - send to non-responders and maybes
-                    targetUsers = [...nonResponders, ...maybeResponders];
-                    message = `Automated session reminder: ${this.formatSessionDate(session.start_time)}`;
-                    break;
                 default:
-                    // Manual reminders and other types
+                    // Unknown reminder type - default to non-responders and maybes for safety
+                    logger.warn('Unknown reminder type, defaulting to non-responders + maybes:', {
+                        sessionId,
+                        reminderType
+                    });
                     targetUsers = [...nonResponders, ...maybeResponders];
                     message = `Session reminder: ${this.formatSessionDate(session.start_time)}`;
             }
@@ -115,12 +124,23 @@ class SessionDiscordService {
 
             const settings = await this.getDiscordSettings();
 
-            // For "all" reminders, ping the role. For specific groups, ping individual users
+            // For "all" reminders, ping the role if configured, otherwise ping all attendees individually
             let content = '';
             if (reminderType === 'all' && settings.campaign_role_id) {
                 content = `<@&${settings.campaign_role_id}> ${message}`;
             } else {
-                content = `${targetUsers.map(u => `<@${u.user_discord_id || u.discord_id}>`).filter(mention => !mention.includes('null')).join(' ')} ${message}`;
+                // Always ping individual users, never the role for auto/targeted reminders
+                const mentions = targetUsers
+                    .map(u => `<@${u.user_discord_id || u.discord_id}>`)
+                    .filter(mention => mention && !mention.includes('null') && !mention.includes('undefined'))
+                    .join(' ');
+
+                if (!mentions) {
+                    logger.warn('No valid Discord IDs found for reminder:', { sessionId, reminderType, targetCount: targetUsers.length });
+                    return;
+                }
+
+                content = `${mentions} ${message}`;
             }
 
             const messageResult = await discordService.sendMessage({
@@ -619,7 +639,7 @@ class SessionDiscordService {
         try {
             // Determine target audience based on reminderType
             // Note: Must use values allowed by CHECK constraint: 'all', 'non_responders', 'maybe_responders', 'active_players'
-            let targetAudience = 'custom';
+            let targetAudience;
             if (reminderType === 'auto') {
                 // Use 'non_responders' as the descriptive label for automated reminders
                 // The actual user list (non-responders + maybes) is determined by sendSessionReminder()
@@ -628,6 +648,12 @@ class SessionDiscordService {
                 targetAudience = 'non_responders';
             } else if (reminderType === 'maybe_responders') {
                 targetAudience = 'maybe_responders';
+            } else if (reminderType === 'all') {
+                targetAudience = 'all';
+            } else {
+                // Fallback for manual reminders with unknown types (e.g., 'followup')
+                // Default to 'all' to match CHECK constraint allowed values
+                targetAudience = 'all';
             }
 
             await pool.query(`

@@ -365,7 +365,8 @@ router.post('/:id/remind', verifyToken, checkRole('DM'), [
         const sessionId = req.params.id;
         const reminderType = req.body.reminder_type || 'all';
 
-        await sessionService.sendSessionReminder(sessionId, reminderType);
+        // Manual reminders sent via API should be marked as manual for cooldown tracking
+        await sessionService.sendSessionReminder(sessionId, reminderType, { isManual: true });
 
         res.json({
             success: true,

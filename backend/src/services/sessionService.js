@@ -571,8 +571,8 @@ class SessionService {
         return sessionDiscordService.postSessionAnnouncement(sessionId);
     }
 
-    async sendSessionReminder(sessionId, reminderType = 'followup') {
-        return sessionDiscordService.sendSessionReminder(sessionId, reminderType);
+    async sendSessionReminder(sessionId, reminderType = 'followup', options = {}) {
+        return sessionDiscordService.sendSessionReminder(sessionId, reminderType, options);
     }
 
     async updateSessionMessage(sessionId) {

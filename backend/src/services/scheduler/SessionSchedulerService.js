@@ -92,56 +92,89 @@ class SessionSchedulerService {
     }
 
     /**
-     * Schedule reminder checks (runs every 6 hours)
+     * Schedule reminder checks (runs three times daily at noon, 5pm, and 10pm Eastern)
      */
     scheduleReminderChecks() {
-        const job = cron.schedule(CRON_SCHEDULES.EVERY_6_HOURS, async () => {
+        // Schedule for 12:00 PM Eastern (12 PM EST = 17:00 UTC, 12 PM EDT = 16:00 UTC)
+        const jobNoon = cron.schedule(CRON_SCHEDULES.DAILY_NOON, async () => {
             try {
                 await this.checkPendingReminders();
             } catch (error) {
-                logger.error('Error in scheduled reminder check:', error);
+                logger.error('Error in scheduled reminder check (noon):', error);
             }
+        }, {
+            timezone: 'America/New_York'
         });
 
-        this.scheduledJobs.set('reminderChecks', job);
-        logger.info('Scheduled reminder check job (every 6 hours)');
+        // Schedule for 5:00 PM Eastern
+        const job5PM = cron.schedule(CRON_SCHEDULES.DAILY_5PM, async () => {
+            try {
+                await this.checkPendingReminders();
+            } catch (error) {
+                logger.error('Error in scheduled reminder check (5pm):', error);
+            }
+        }, {
+            timezone: 'America/New_York'
+        });
+
+        // Schedule for 10:00 PM Eastern
+        const job10PM = cron.schedule(CRON_SCHEDULES.DAILY_10PM, async () => {
+            try {
+                await this.checkPendingReminders();
+            } catch (error) {
+                logger.error('Error in scheduled reminder check (10pm):', error);
+            }
+        }, {
+            timezone: 'America/New_York'
+        });
+
+        this.scheduledJobs.set('reminderChecksNoon', jobNoon);
+        this.scheduledJobs.set('reminderChecks5PM', job5PM);
+        this.scheduledJobs.set('reminderChecks10PM', job10PM);
+        logger.info('Scheduled reminder check jobs (daily at noon, 5pm, and 10pm Eastern)');
     }
 
     /**
-     * Schedule confirmation checks (runs three times daily at noon, 5pm, and 10pm)
+     * Schedule confirmation checks (runs three times daily at noon, 5pm, and 10pm Eastern)
      */
     scheduleConfirmationChecks() {
-        // Schedule for 12:00 PM (noon)
+        // Schedule for 12:00 PM Eastern
         const jobNoon = cron.schedule(CRON_SCHEDULES.DAILY_NOON, async () => {
             try {
                 await this.checkSessionConfirmations();
             } catch (error) {
                 logger.error('Error in scheduled confirmation check (noon):', error);
             }
+        }, {
+            timezone: 'America/New_York'
         });
 
-        // Schedule for 5:00 PM
+        // Schedule for 5:00 PM Eastern
         const job5PM = cron.schedule(CRON_SCHEDULES.DAILY_5PM, async () => {
             try {
                 await this.checkSessionConfirmations();
             } catch (error) {
                 logger.error('Error in scheduled confirmation check (5pm):', error);
             }
+        }, {
+            timezone: 'America/New_York'
         });
 
-        // Schedule for 10:00 PM
+        // Schedule for 10:00 PM Eastern
         const job10PM = cron.schedule(CRON_SCHEDULES.DAILY_10PM, async () => {
             try {
                 await this.checkSessionConfirmations();
             } catch (error) {
                 logger.error('Error in scheduled confirmation check (10pm):', error);
             }
+        }, {
+            timezone: 'America/New_York'
         });
 
         this.scheduledJobs.set('confirmationChecksNoon', jobNoon);
         this.scheduledJobs.set('confirmationChecks5PM', job5PM);
         this.scheduledJobs.set('confirmationChecks10PM', job10PM);
-        logger.info('Scheduled confirmation check jobs (daily at noon, 5pm, and 10pm)');
+        logger.info('Scheduled confirmation check jobs (daily at noon, 5pm, and 10pm Eastern)');
     }
 
     /**
@@ -209,6 +242,7 @@ class SessionSchedulerService {
         const sessionDiscordService = require('../discord/SessionDiscordService');
 
         // Get sessions that need reminders based on reminder_hours
+        // Only send ONE automatic reminder per session - no duplicates
         const result = await pool.query(`
             SELECT DISTINCT gs.id as session_id, gs.title, gs.start_time, gs.reminder_hours
             FROM game_sessions gs
@@ -231,16 +265,21 @@ class SessionSchedulerService {
             )
         `);
 
+        logger.info(`Found ${result.rows.length} sessions needing automated reminders`);
+
         for (const session of result.rows) {
             try {
-                // Send automatic reminder to non-responders and maybes only (not 'all')
+                // Send automatic reminder to non-responders and maybes ONLY
                 // Using 'auto' type which will be recorded by SessionDiscordService.recordReminder()
+                logger.info(`Sending automated reminder for session ${session.session_id}: ${session.title}`);
+
                 await sessionDiscordService.sendSessionReminder(
                     session.session_id,
                     'auto',
                     { isManual: false }
                 );
 
+                logger.info(`Successfully sent reminder for session ${session.session_id}`);
             } catch (error) {
                 logger.error(`Failed to send reminder for session ${session.session_id}:`, error);
             }
