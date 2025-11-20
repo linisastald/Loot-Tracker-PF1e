@@ -219,20 +219,27 @@ class SessionSchedulerService {
                 SELECT 1 FROM session_reminders sr
                 WHERE sr.session_id = gs.id
                 AND sr.sent = TRUE
+                AND sr.is_manual = FALSE
                 AND sr.reminder_type = 'auto'
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM session_reminders sr
+                WHERE sr.session_id = gs.id
+                AND sr.sent = TRUE
+                AND sr.is_manual = TRUE
+                AND sr.sent_at > NOW() - INTERVAL '12 hours'
             )
         `);
 
         for (const session of result.rows) {
             try {
-                // Send automatic reminder to all users
-                await sessionDiscordService.sendSessionReminder(session.session_id, 'all');
-
-                // Mark as sent by creating a reminder record
-                await pool.query(`
-                    INSERT INTO session_reminders (session_id, reminder_type, sent, sent_at)
-                    VALUES ($1, 'auto', TRUE, CURRENT_TIMESTAMP)
-                `, [session.session_id]);
+                // Send automatic reminder to non-responders and maybes only (not 'all')
+                // Using 'auto' type which will be recorded by SessionDiscordService.recordReminder()
+                await sessionDiscordService.sendSessionReminder(
+                    session.session_id,
+                    'auto',
+                    { isManual: false }
+                );
 
             } catch (error) {
                 logger.error(`Failed to send reminder for session ${session.session_id}:`, error);

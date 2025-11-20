@@ -70,9 +70,10 @@ class SessionDiscordService {
     /**
      * Send session reminder to Discord
      * @param {number} sessionId - Session ID
-     * @param {string} reminderType - Reminder type (non_responders, maybe_responders, all)
+     * @param {string} reminderType - Reminder type (non_responders, maybe_responders, auto, all)
+     * @param {Object} options - Additional options (isManual, etc.)
      */
-    async sendSessionReminder(sessionId, reminderType = 'followup') {
+    async sendSessionReminder(sessionId, reminderType = 'followup', options = {}) {
         try {
             // Lazy load sessionService to avoid circular dependency
             const sessionService = require('../sessionService');
@@ -96,7 +97,13 @@ class SessionDiscordService {
                     targetUsers = maybeResponders;
                     message = `Reminder: Please confirm your attendance for the session on ${this.formatSessionDate(session.start_time)}!`;
                     break;
+                case 'auto':
+                    // Automated reminder - send to non-responders and maybes
+                    targetUsers = [...nonResponders, ...maybeResponders];
+                    message = `Automated session reminder: ${this.formatSessionDate(session.start_time)}`;
+                    break;
                 default:
+                    // Manual reminders and other types
                     targetUsers = [...nonResponders, ...maybeResponders];
                     message = `Session reminder: ${this.formatSessionDate(session.start_time)}`;
             }
@@ -122,7 +129,7 @@ class SessionDiscordService {
             });
 
             // Record reminder
-            await this.recordReminder(sessionId, reminderType, targetUsers);
+            await this.recordReminder(sessionId, reminderType, targetUsers, options);
 
             logger.info('Session reminder sent:', {
                 sessionId,
@@ -604,15 +611,45 @@ class SessionDiscordService {
      * @param {number} sessionId - Session ID
      * @param {string} reminderType - Reminder type
      * @param {Array} targetUsers - Users reminded
+     * @param {Object} options - Additional options (isManual, etc.)
      */
-    async recordReminder(sessionId, reminderType, targetUsers) {
-        try {
-            await pool.query(`
-                INSERT INTO session_reminders (session_id, reminder_type, target_audience, sent, sent_at, days_before)
-                VALUES ($1, $2, $3, TRUE, CURRENT_TIMESTAMP, 0)
-            `, [sessionId, reminderType, 'custom']);
+    async recordReminder(sessionId, reminderType, targetUsers, options = {}) {
+        const { isManual = false } = options;
 
-            logger.info('Reminder recorded:', { sessionId, reminderType, targetCount: targetUsers.length });
+        try {
+            // Determine target audience based on reminderType
+            // Note: Must use values allowed by CHECK constraint: 'all', 'non_responders', 'maybe_responders', 'active_players'
+            let targetAudience = 'custom';
+            if (reminderType === 'auto') {
+                // Use 'non_responders' as the descriptive label for automated reminders
+                // The actual user list (non-responders + maybes) is determined by sendSessionReminder()
+                targetAudience = 'non_responders';
+            } else if (reminderType === 'non_responders') {
+                targetAudience = 'non_responders';
+            } else if (reminderType === 'maybe_responders') {
+                targetAudience = 'maybe_responders';
+            }
+
+            await pool.query(`
+                INSERT INTO session_reminders (
+                    session_id,
+                    reminder_type,
+                    is_manual,
+                    target_audience,
+                    sent,
+                    sent_at,
+                    days_before
+                )
+                VALUES ($1, $2, $3, $4, TRUE, CURRENT_TIMESTAMP, NULL)
+            `, [sessionId, reminderType, isManual, targetAudience]);
+
+            logger.info('Reminder recorded:', {
+                sessionId,
+                reminderType,
+                isManual,
+                targetAudience,
+                targetCount: targetUsers.length
+            });
         } catch (error) {
             logger.error('Failed to record reminder:', error);
             throw error;
