@@ -2,6 +2,8 @@
 -- Date: 2025-11-19
 -- Description: Removes auto_cancel_hours column as confirmation_hours now handles both confirmation and auto-cancellation
 
+BEGIN;
+
 -- Step 1: Drop the dependent view before dropping the column
 -- The upcoming_sessions view uses gs.* which includes all columns including auto_cancel_hours
 DROP VIEW IF EXISTS upcoming_sessions;
@@ -35,6 +37,8 @@ ORDER BY gs.start_time;
 
 -- Step 6: Update confirmation_hours comment to reflect new behavior
 COMMENT ON COLUMN game_sessions.confirmation_hours IS 'Hours before session to check attendance and confirm/cancel (default: 48 = 2 days). Checks run at 12pm, 5pm, and 10pm daily.';
+
+COMMIT;
 
 -- Migration summary:
 -- ✅ Dropped upcoming_sessions view (depended on auto_cancel_hours)

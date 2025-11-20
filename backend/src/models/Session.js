@@ -145,7 +145,7 @@ class Session extends BaseModel {
     
     /**
      * Find sessions that need Discord notifications to be sent
-     * Uses each session's announcement_days_before setting (default 7 days)
+     * Uses each session's auto_announce_hours setting (default 168 hours = 7 days)
      * @returns {Promise<Array>} - Sessions that need notifications
      */
     async findSessionsNeedingNotifications() {
@@ -154,7 +154,7 @@ class Session extends BaseModel {
             WHERE status = 'scheduled'
             AND (discord_message_id IS NULL OR discord_message_id = '')
             AND start_time > NOW()
-            AND start_time <= NOW() + (COALESCE(announcement_days_before, 7) || ' days')::INTERVAL
+            AND start_time <= NOW() + (COALESCE(auto_announce_hours, 168) || ' hours')::INTERVAL
             ORDER BY start_time ASC
         `;
 

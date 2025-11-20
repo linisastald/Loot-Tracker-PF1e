@@ -98,7 +98,7 @@ const createSession = async (req, res) => {
     });
 
     // Note: Sessions are announced either:
-    // 1. Automatically via cron job based on announcement_days_before setting
+    // 1. Automatically via cron job based on auto_announce_hours setting
     // 2. Manually via the "Send Notification" button on DM sessions screen
 
     controllerFactory.sendSuccessResponse(res, session, 'Session created successfully');

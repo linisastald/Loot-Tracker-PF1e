@@ -2,6 +2,8 @@
 -- Date: 2025-11-19
 -- Description: Removes duplicate day/hour columns, fixes reminder_hours bug, standardizes on hours
 
+BEGIN;
+
 -- Step 1: Add confirmation_hours column (hours before session to request final confirmation)
 ALTER TABLE game_sessions
 ADD COLUMN IF NOT EXISTS confirmation_hours INTEGER DEFAULT 48;
@@ -10,6 +12,11 @@ ADD COLUMN IF NOT EXISTS confirmation_hours INTEGER DEFAULT 48;
 UPDATE game_sessions
 SET confirmation_hours = confirmation_days_before * 24
 WHERE confirmation_days_before IS NOT NULL;
+
+-- Step 2b: Backfill NULL confirmation_hours with default value
+UPDATE game_sessions
+SET confirmation_hours = 48
+WHERE confirmation_hours IS NULL;
 
 -- Step 3: Fix incorrect reminder_hours values
 -- Any reminder_hours > 168 (1 week) is likely a bug from the confirmation_days_before calculation
@@ -64,6 +71,8 @@ COMMENT ON COLUMN game_sessions.discord_message_id IS 'Discord message ID for th
 
 -- Step 10: Create index on timing columns for scheduler queries
 CREATE INDEX IF NOT EXISTS idx_game_sessions_timing ON game_sessions(start_time, auto_announce_hours, reminder_hours, confirmation_hours, auto_cancel_hours);
+
+COMMIT;
 
 -- Migration summary:
 -- ✅ Added confirmation_hours column
