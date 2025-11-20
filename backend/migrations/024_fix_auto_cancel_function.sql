@@ -83,8 +83,7 @@ CREATE TRIGGER session_attendance_status_check
 
 -- Update comments to reflect the change
 COMMENT ON FUNCTION check_session_auto_cancel(integer) IS
-    'Checks if a session should be auto-cancelled based on confirmed attendance and confirmation window. ' ||
-    'Uses confirmation_hours (default 48) as the window before session start to check for auto-cancellation.';
+    'Checks if a session should be auto-cancelled based on confirmed attendance and confirmation window. Uses confirmation_hours (default 48) as the window before session start to check for auto-cancellation.';
 
 COMMENT ON FUNCTION update_session_status_trigger() IS
     'Trigger function that runs auto-cancel check when attendance changes';
