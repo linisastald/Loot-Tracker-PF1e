@@ -84,10 +84,25 @@ api.interceptors.response.use(
 
         const authConfig = error.config as AuthConfig;
 
-        // Handle CSRF token errors (prevent infinite retry)
+        // Handle authentication errors (401 Unauthorized - expired/invalid JWT)
+        if (error.response?.status === 401) {
+            // Skip redirect for auth-related endpoints to prevent loops
+            const isAuthEndpoint = authConfig?.url?.includes('/auth/');
+
+            if (!isAuthEndpoint) {
+                console.warn('Authentication expired or invalid. Redirecting to login...');
+                // Clear tokens
+                localStorage.removeItem('csrfToken');
+                // Redirect to login page
+                window.location.href = '/login';
+                return Promise.reject(error);
+            }
+        }
+
+        // Handle CSRF token errors (403 Forbidden - prevent infinite retry)
         if (error.response?.status === 403 &&
-            (error.response?.data as any)?.error === 'invalid csrf token' ||
-            (error.response?.data as any)?.message === 'invalid csrf token' &&
+            ((error.response?.data as any)?.error === 'invalid csrf token' ||
+            (error.response?.data as any)?.message === 'invalid csrf token') &&
             !authConfig?._retryCount) {
 
             // Mark this request as retried to prevent infinite loops
@@ -101,6 +116,11 @@ api.interceptors.response.use(
                 // Retry the request with new token
                 authConfig.headers['X-CSRF-Token'] = newToken;
                 return axios(authConfig);
+            } else {
+                // If CSRF token refresh fails, might indicate session expired
+                console.warn('Failed to refresh CSRF token. Session may have expired. Redirecting to login...');
+                window.location.href = '/login';
+                return Promise.reject(error);
             }
         }
 
