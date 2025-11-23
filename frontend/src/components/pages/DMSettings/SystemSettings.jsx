@@ -10,9 +10,13 @@ import {
   CardHeader,
   CircularProgress,
   Divider,
+  FormControl,
   FormControlLabel,
   Grid,
   IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
   Snackbar,
   Switch,
   TextField,
@@ -25,7 +29,8 @@ import {
   FileCopy as FileCopyIcon,
   Message as ChatIcon,
   Settings as SettingsIcon,
-  DataObject as TestDataIcon
+  DataObject as TestDataIcon,
+  Schedule as ScheduleIcon
 } from '@mui/icons-material';
 
 const SystemSettings = () => {
@@ -44,6 +49,12 @@ const SystemSettings = () => {
     const [quickInviteData, setQuickInviteData] = useState(null);
     const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
     const [isGeneratingTestData, setIsGeneratingTestData] = useState(false);
+
+    // Timezone settings
+    const [currentTimezone, setCurrentTimezone] = useState('');
+    const [timezoneOptions, setTimezoneOptions] = useState([]);
+    const [selectedTimezone, setSelectedTimezone] = useState('');
+    const [savingTimezone, setSavingTimezone] = useState(false);
 
     // Discord integration settings
     const [discordSettings, setDiscordSettings] = useState({
@@ -95,11 +106,15 @@ const SystemSettings = () => {
             const [
                 settingsResponse,
                 discordResponse,
-                openaiResponse
+                openaiResponse,
+                timezoneResponse,
+                timezoneOptionsResponse
             ] = await Promise.all([
                 api.get(`/user/settings`),
                 api.get('/settings/discord'),
-                api.get('/settings/openai-key')
+                api.get('/settings/openai-key'),
+                api.get('/settings/campaign-timezone'),
+                api.get('/settings/timezone-options')
             ]);
 
             // Handle registration setting
@@ -158,6 +173,14 @@ const SystemSettings = () => {
                 autoAppraisalEnabled: autoAppraisal ? autoAppraisal.value === '1' : true,
                 autoSplitStacksEnabled: autoSplitStacks ? autoSplitStacks.value === '1' : false
             });
+
+            // Load timezone settings
+            const timezone = timezoneResponse.data?.timezone || timezoneResponse?.timezone || 'America/New_York';
+            const options = timezoneOptionsResponse.data?.options || timezoneOptionsResponse?.options || [];
+
+            setCurrentTimezone(timezone);
+            setSelectedTimezone(timezone);
+            setTimezoneOptions(options);
         } catch (error) {
             console.error('Error fetching data', error);
             setError('Error loading settings data. Please try again.');
@@ -308,6 +331,25 @@ const SystemSettings = () => {
         } catch (err) {
             setError('Error updating general settings');
             setSuccess('');
+        }
+    };
+
+    // Timezone settings handler
+    const handleSaveTimezone = async () => {
+        setSavingTimezone(true);
+        try {
+            await api.post('/settings/campaign-timezone', {
+                timezone: selectedTimezone
+            });
+
+            setCurrentTimezone(selectedTimezone);
+            setSuccess('Campaign timezone updated successfully! All scheduled tasks have been restarted.');
+            setError('');
+        } catch (err) {
+            setError(err.response?.data?.message || 'Failed to update timezone');
+            setSuccess('');
+        } finally {
+            setSavingTimezone(false);
         }
     };
 
@@ -734,6 +776,73 @@ const SystemSettings = () => {
                             >
                                 Save General Settings
                             </Button>
+                        </CardContent>
+                    </Card>
+                </Grid>
+
+                {/* Timezone Settings */}
+                <Grid size={{xs: 12, md: 4}}>
+                    <Card variant="outlined">
+                        <CardHeader title="Campaign Timezone" avatar={<ScheduleIcon/>}/>
+                        <CardContent>
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                                All session times and automated reminders will use this timezone.
+                                Changing this setting will restart all scheduled tasks.
+                            </Alert>
+
+                            <FormControl fullWidth sx={{ mb: 2 }}>
+                                <InputLabel id="timezone-select-label">Timezone</InputLabel>
+                                <Select
+                                    labelId="timezone-select-label"
+                                    id="timezone-select"
+                                    value={selectedTimezone}
+                                    label="Timezone"
+                                    onChange={(e) => setSelectedTimezone(e.target.value)}
+                                    disabled={savingTimezone}
+                                >
+                                    {timezoneOptions.map((option) => (
+                                        <MenuItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+
+                            <Button
+                                variant="outlined"
+                                color="primary"
+                                onClick={handleSaveTimezone}
+                                disabled={savingTimezone || selectedTimezone === currentTimezone}
+                                fullWidth
+                                sx={{ mb: 2 }}
+                            >
+                                {savingTimezone ? (
+                                    <>
+                                        <CircularProgress size={20} sx={{ mr: 1 }} />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    'Save Timezone'
+                                )}
+                            </Button>
+
+                            {currentTimezone && (
+                                <Box
+                                    sx={{
+                                        p: 2,
+                                        backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                                        borderRadius: 1,
+                                        textAlign: 'center'
+                                    }}
+                                >
+                                    <Typography variant="body2" color="text.secondary">
+                                        Current timezone:
+                                    </Typography>
+                                    <Typography variant="body1" fontWeight="medium">
+                                        {timezoneOptions.find(opt => opt.value === currentTimezone)?.label || currentTimezone}
+                                    </Typography>
+                                </Box>
+                            )}
                         </CardContent>
                     </Card>
                 </Grid>

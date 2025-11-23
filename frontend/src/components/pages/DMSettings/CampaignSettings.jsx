@@ -15,7 +15,6 @@ import {
     Typography,
     Paper
 } from '@mui/material';
-import TimezoneSettings from './TimezoneSettings';
 
 const CampaignSettings = () => {
     const [campaignName, setCampaignName] = useState('');
@@ -262,9 +261,6 @@ const CampaignSettings = () => {
                     </Box>
                 )}
             </Paper>
-
-            {/* Timezone Settings */}
-            <TimezoneSettings />
         </div>
     );
 };
