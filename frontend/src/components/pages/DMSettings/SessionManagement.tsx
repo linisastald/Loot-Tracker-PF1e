@@ -60,6 +60,7 @@ const SessionManagement = () => {
     const [sessions, setSessions] = useState([]);
     const [selectedSession, setSelectedSession] = useState(null);
     const [error, setError] = useState('');
+    const [currentTimezone, setCurrentTimezone] = useState<string>('');
     const { enqueueSnackbar } = useSnackbar();
 
     // Dialog states
@@ -121,6 +122,7 @@ const SessionManagement = () => {
 
     useEffect(() => {
         fetchSessions();
+        fetchCurrentTimezone();
 
         // Load default settings from localStorage
         const savedDefaults = localStorage.getItem('sessionDefaults');
@@ -129,10 +131,21 @@ const SessionManagement = () => {
                 const parsed = JSON.parse(savedDefaults);
                 setDefaultSettings(parsed);
             } catch (err) {
-                console.error('Failed to load saved defaults:', err);
+                // Failed to load saved defaults - using hardcoded defaults
             }
         }
     }, []);
+
+    const fetchCurrentTimezone = async () => {
+        try {
+            const response = await api.get('/settings/campaign-timezone');
+            const timezone = response.data?.timezone || response?.timezone || 'America/New_York';
+            setCurrentTimezone(timezone);
+        } catch (err) {
+            // Default to Eastern Time if fetch fails
+            setCurrentTimezone('America/New_York');
+        }
+    };
 
     // Update form fields when defaultSettings changes (after loading from localStorage)
     useEffect(() => {
@@ -151,14 +164,12 @@ const SessionManagement = () => {
             setSessions(response.data?.data || response.data || []);
             setError('');
         } catch (err) {
-            console.error('Error fetching sessions:', err);
             // Fallback to legacy endpoint if enhanced fails
             try {
                 const fallbackResponse = await api.get('/sessions');
                 setSessions(fallbackResponse.data || []);
                 setError('');
             } catch (fallbackErr) {
-                console.error('Fallback error:', fallbackErr);
                 setError('Failed to load sessions. Please try again.');
             }
         } finally {
@@ -219,7 +230,6 @@ const SessionManagement = () => {
             // Refresh sessions
             fetchSessions();
         } catch (err) {
-            console.error('Error creating session:', err);
             const errorMessage = err.response?.data?.message || 'Failed to create session';
             enqueueSnackbar(errorMessage, { variant: 'error' });
         }
@@ -275,7 +285,6 @@ const SessionManagement = () => {
             enqueueSnackbar('Session announcement posted successfully', { variant: 'success' });
             fetchSessions(); // Refresh to get updated data
         } catch (err) {
-            console.error('Error announcing session:', err);
             enqueueSnackbar('Failed to post announcement', { variant: 'error' });
         } finally {
             setAnnouncingSession(null);
@@ -290,7 +299,6 @@ const SessionManagement = () => {
             });
             enqueueSnackbar('Reminder sent successfully', { variant: 'success' });
         } catch (err) {
-            console.error('Error sending reminder:', err);
             enqueueSnackbar('Failed to send reminder', { variant: 'error' });
         } finally {
             setSendingReminder(false);
@@ -305,7 +313,6 @@ const SessionManagement = () => {
             enqueueSnackbar('Session confirmed successfully', { variant: 'success' });
             fetchSessions();
         } catch (err) {
-            console.error('Error confirming session:', err);
             enqueueSnackbar('Failed to confirm session', { variant: 'error' });
         } finally {
             setConfirmingSession(null);
@@ -324,7 +331,6 @@ const SessionManagement = () => {
             enqueueSnackbar('Session cancelled successfully', { variant: 'success' });
             fetchSessions();
         } catch (err) {
-            console.error('Error cancelling session:', err);
             enqueueSnackbar('Failed to cancel session', { variant: 'error' });
         } finally {
             setCancelingSession(null);
@@ -349,7 +355,6 @@ const SessionManagement = () => {
             });
             setAttendanceDialog(true);
         } catch (err) {
-            console.error('Error fetching attendance:', err);
             enqueueSnackbar('Failed to load attendance details', { variant: 'error' });
         }
     };
@@ -434,7 +439,7 @@ const SessionManagement = () => {
                 />
                 <CardContent>
                     <Grid container spacing={2}>
-                        <Grid item xs={12} md={6}>
+                        <Grid size={{ xs: 12, md: 6 }}>
                             <Typography variant="body2" color="text.secondary">
                                 Description: {session.description || 'No description'}
                             </Typography>
@@ -445,7 +450,7 @@ const SessionManagement = () => {
                                 Responses: {attendanceTotal} total
                             </Typography>
                         </Grid>
-                        <Grid item xs={12} md={6}>
+                        <Grid size={{ xs: 12, md: 6 }}>
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                                 {/* View Attendance */}
                                 <IconButton
@@ -567,7 +572,6 @@ const SessionManagement = () => {
             setSettingsDialog(false);
             enqueueSnackbar('Default settings saved', { variant: 'success' });
         } catch (err) {
-            console.error('Failed to save defaults:', err);
             enqueueSnackbar('Failed to save default settings', { variant: 'error' });
         }
     };
@@ -583,7 +587,7 @@ const SessionManagement = () => {
 
     return (
         <Box>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                 <Typography variant="h6">Session Management</Typography>
                 <Box display="flex" gap={2}>
                     <Button
@@ -618,6 +622,14 @@ const SessionManagement = () => {
                     </Button>
                 </Box>
             </Box>
+
+            {/* Timezone Display */}
+            {currentTimezone && (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                    All session times are displayed in <strong>{currentTimezone}</strong>.
+                    You can change this in Campaign Settings.
+                </Alert>
+            )}
 
             {/* Filters Panel */}
             <Collapse in={showFilters}>

@@ -6,6 +6,7 @@
 const pool = require('../../config/db');
 const logger = require('../../utils/logger');
 const cron = require('node-cron');
+const timezoneUtils = require('../../utils/timezoneUtils');
 
 // Cron schedule constants for self-documenting job timing
 const CRON_SCHEDULES = {
@@ -21,6 +22,8 @@ class SessionSchedulerService {
     constructor() {
         this.scheduledJobs = new Map();
         this.isInitialized = false;
+        this.campaignTimezone = null;
+        this.isRestarting = false;
     }
 
     /**
@@ -30,6 +33,10 @@ class SessionSchedulerService {
         if (this.isInitialized) return;
 
         try {
+            // Load campaign timezone from settings
+            this.campaignTimezone = await timezoneUtils.getCampaignTimezone();
+            logger.info(`Initializing session scheduler with timezone: ${this.campaignTimezone}`);
+
             // Schedule automatic session announcements
             this.scheduleSessionAnnouncements();
 
@@ -76,6 +83,27 @@ class SessionSchedulerService {
     }
 
     /**
+     * Restart the scheduler (used when timezone changes)
+     * Protected against race conditions with restart lock
+     */
+    async restart() {
+        if (this.isRestarting) {
+            logger.warn('Scheduler restart already in progress, skipping duplicate restart request');
+            return;
+        }
+
+        try {
+            this.isRestarting = true;
+            logger.info('Restarting session scheduler due to timezone change...');
+            await this.stop();
+            await this.initialize();
+            logger.info('Session scheduler restarted successfully');
+        } finally {
+            this.isRestarting = false;
+        }
+    }
+
+    /**
      * Schedule session announcements check (runs every hour)
      */
     scheduleSessionAnnouncements() {
@@ -85,14 +113,16 @@ class SessionSchedulerService {
             } catch (error) {
                 logger.error('Error in scheduled announcement check:', error);
             }
+        }, {
+            timezone: this.campaignTimezone
         });
 
         this.scheduledJobs.set('sessionAnnouncements', job);
-        logger.info('Scheduled session announcements check job (every hour)');
+        logger.info(`Scheduled session announcements check job (every hour in ${this.campaignTimezone} timezone)`);
     }
 
     /**
-     * Schedule reminder checks (runs every hour in America/New_York timezone)
+     * Schedule reminder checks (runs every hour in campaign timezone)
      */
     scheduleReminderChecks() {
         const job = cron.schedule(CRON_SCHEDULES.HOURLY, async () => {
@@ -102,18 +132,18 @@ class SessionSchedulerService {
                 logger.error('Error in scheduled reminder check:', error);
             }
         }, {
-            timezone: 'America/New_York'  // Match confirmation checks timezone
+            timezone: this.campaignTimezone
         });
 
         this.scheduledJobs.set('reminderChecks', job);
-        logger.info('Scheduled reminder check job (every hour in America/New_York timezone)');
+        logger.info(`Scheduled reminder check job (every hour in ${this.campaignTimezone} timezone)`);
     }
 
     /**
-     * Schedule confirmation checks (runs three times daily at noon, 5pm, and 10pm Eastern)
+     * Schedule confirmation checks (runs three times daily at noon, 5pm, and 10pm in campaign timezone)
      */
     scheduleConfirmationChecks() {
-        // Schedule for 12:00 PM Eastern
+        // Schedule for 12:00 PM
         const jobNoon = cron.schedule(CRON_SCHEDULES.DAILY_NOON, async () => {
             try {
                 await this.checkSessionConfirmations();
@@ -121,10 +151,10 @@ class SessionSchedulerService {
                 logger.error('Error in scheduled confirmation check (noon):', error);
             }
         }, {
-            timezone: 'America/New_York'
+            timezone: this.campaignTimezone
         });
 
-        // Schedule for 5:00 PM Eastern
+        // Schedule for 5:00 PM
         const job5PM = cron.schedule(CRON_SCHEDULES.DAILY_5PM, async () => {
             try {
                 await this.checkSessionConfirmations();
@@ -132,10 +162,10 @@ class SessionSchedulerService {
                 logger.error('Error in scheduled confirmation check (5pm):', error);
             }
         }, {
-            timezone: 'America/New_York'
+            timezone: this.campaignTimezone
         });
 
-        // Schedule for 10:00 PM Eastern
+        // Schedule for 10:00 PM
         const job10PM = cron.schedule(CRON_SCHEDULES.DAILY_10PM, async () => {
             try {
                 await this.checkSessionConfirmations();
@@ -143,13 +173,13 @@ class SessionSchedulerService {
                 logger.error('Error in scheduled confirmation check (10pm):', error);
             }
         }, {
-            timezone: 'America/New_York'
+            timezone: this.campaignTimezone
         });
 
         this.scheduledJobs.set('confirmationChecksNoon', jobNoon);
         this.scheduledJobs.set('confirmationChecks5PM', job5PM);
         this.scheduledJobs.set('confirmationChecks10PM', job10PM);
-        logger.info('Scheduled confirmation check jobs (daily at noon, 5pm, and 10pm Eastern)');
+        logger.info(`Scheduled confirmation check jobs (daily at noon, 5pm, and 10pm in ${this.campaignTimezone} timezone)`);
     }
 
     /**
@@ -162,10 +192,12 @@ class SessionSchedulerService {
             } catch (error) {
                 logger.error('Error in scheduled task generation:', error);
             }
+        }, {
+            timezone: this.campaignTimezone
         });
 
         this.scheduledJobs.set('taskGeneration', job);
-        logger.info('Scheduled task generation check job (every hour)');
+        logger.info(`Scheduled task generation check job (every hour in ${this.campaignTimezone} timezone)`);
     }
 
     /**
@@ -178,10 +210,12 @@ class SessionSchedulerService {
             } catch (error) {
                 logger.error('Error in scheduled session completion check:', error);
             }
+        }, {
+            timezone: this.campaignTimezone
         });
 
         this.scheduledJobs.set('sessionCompletions', job);
-        logger.info('Scheduled session completion check job (every hour)');
+        logger.info(`Scheduled session completion check job (every hour in ${this.campaignTimezone} timezone)`);
     }
 
 
@@ -216,7 +250,7 @@ class SessionSchedulerService {
      * Example: If session starts 2025-11-30 19:55:05 and reminder_hours is 167,
      *          reminder will be sent at 2025-11-23 20:55:05 (exactly 167 hours before)
      *
-     * NOTE: Runs in America/New_York timezone. All times must be stored consistently.
+     * NOTE: Runs in configured campaign timezone. All times must be stored consistently.
      */
     async checkPendingReminders() {
         // Lazy load to avoid circular dependency

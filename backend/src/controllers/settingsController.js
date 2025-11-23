@@ -2,6 +2,7 @@
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const timezoneUtils = require('../utils/timezoneUtils');
 
 /**
  * Get Discord settings
@@ -267,10 +268,10 @@ const getOpenAiKey = async (req, res) => {
     try {
         const settings = await fetchSettingsByNames(['openai_key']);
         const openaiKey = settings.openai_key;
-        
+
         // Return masked key or empty if not set
         const maskedKey = openaiKey ? maskSensitiveValue(decryptValue(openaiKey)) : '';
-        
+
         controllerFactory.sendSuccessResponse(res, {
             value: maskedKey,
             hasKey: !!openaiKey
@@ -279,6 +280,67 @@ const getOpenAiKey = async (req, res) => {
         logger.error('Error fetching OpenAI key setting:', error);
         throw error;
     }
+};
+
+/**
+ * Get campaign timezone setting
+ */
+const getCampaignTimezone = async (req, res) => {
+    const timezone = await timezoneUtils.getCampaignTimezone();
+    controllerFactory.sendSuccessResponse(res, { timezone }, 'Campaign timezone retrieved');
+};
+
+/**
+ * Get available timezone options
+ */
+const getTimezoneOptions = async (req, res) => {
+    const options = timezoneUtils.getTimezoneOptions();
+    controllerFactory.sendSuccessResponse(res, { options }, 'Timezone options retrieved');
+};
+
+/**
+ * Update campaign timezone
+ * Requires DM role
+ */
+const updateCampaignTimezone = async (req, res) => {
+    const { timezone } = req.body;
+
+    // Validate user has DM permissions
+    if (req.user.role !== 'DM') {
+        throw controllerFactory.createAuthorizationError('Only DMs can update timezone settings');
+    }
+
+    if (!timezone) {
+        throw controllerFactory.createValidationError('Timezone is required');
+    }
+
+    // Validate timezone using the same validation logic as timezoneUtils
+    if (!timezoneUtils.isValidTimezone(timezone)) {
+        const validOptions = timezoneUtils.getTimezoneOptions();
+        const validTimezones = validOptions.map(opt => opt.value).join(', ');
+        throw controllerFactory.createValidationError(
+            `Invalid timezone. Valid options are: ${validTimezones}`
+        );
+    }
+
+    // Update setting in database
+    await dbUtils.executeQuery(
+        'UPDATE settings SET value = $1 WHERE name = $2',
+        [timezone, 'campaign_timezone']
+    );
+
+    // Clear cache and restart scheduler
+    timezoneUtils.clearTimezoneCache();
+
+    const sessionSchedulerService = require('../services/scheduler/SessionSchedulerService');
+    await sessionSchedulerService.restart();
+
+    logger.info('Campaign timezone updated and scheduler restarted', {
+        timezone,
+        userId: req.user.id
+    });
+
+    controllerFactory.sendSuccessResponse(res, { timezone }, 'Campaign timezone updated successfully');
 };
 
 // Define validation rules
@@ -323,6 +385,18 @@ module.exports = {
 
     getOpenAiKey: controllerFactory.createHandler(getOpenAiKey, {
         errorMessage: 'Error fetching OpenAI key setting'
+    }),
+
+    getCampaignTimezone: controllerFactory.createHandler(getCampaignTimezone, {
+        errorMessage: 'Error retrieving campaign timezone'
+    }),
+
+    getTimezoneOptions: controllerFactory.createHandler(getTimezoneOptions, {
+        errorMessage: 'Error retrieving timezone options'
+    }),
+
+    updateCampaignTimezone: controllerFactory.createHandler(updateCampaignTimezone, {
+        errorMessage: 'Error updating campaign timezone'
     }),
 
     // Export helper functions for internal use
