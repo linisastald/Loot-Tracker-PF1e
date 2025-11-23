@@ -6,6 +6,7 @@
 const pool = require('../../config/db');
 const logger = require('../../utils/logger');
 const discordService = require('../discordBrokerService');
+const { DISCORD_EMBED_COLORS } = require('../../constants/discordConstants');
 
 class SessionDiscordService {
     /**
@@ -243,7 +244,7 @@ class SessionDiscordService {
             const embed = {
                 title: `✅ Session Completed: ${session.title}`,
                 description: `The session has been automatically marked as completed.`,
-                color: 0x4CAF50, // Green
+                color: DISCORD_EMBED_COLORS.COMPLETED, // Green
                 fields: [
                     {
                         name: '📅 Session Date',
@@ -306,9 +307,9 @@ class SessionDiscordService {
             };
 
             const colors = {
-                PRE_SESSION: 0x673AB7,   // Purple
-                DURING_SESSION: 0xFFC107, // Yellow
-                POST_SESSION: 0xF44336    // Red
+                PRE_SESSION: DISCORD_EMBED_COLORS.PRE_SESSION_TASK,   // Purple
+                DURING_SESSION: DISCORD_EMBED_COLORS.DURING_SESSION_TASK, // Yellow
+                POST_SESSION: DISCORD_EMBED_COLORS.POST_SESSION_TASK    // Red
             };
 
             const embeds = [
@@ -450,20 +451,20 @@ class SessionDiscordService {
         const late = attendance.filter(a => ['late', 'early', 'late_and_early'].includes(a.response_type));
 
         // Determine embed color and title based on session status
-        let color = 0x00FF00; // Green for confirmed
+        let color = DISCORD_EMBED_COLORS.CONFIRMED; // Green for confirmed
         let titleEmoji = '🎲';
         let description = session.description || 'Pathfinder session';
         let footerText = 'Click the buttons below to update your attendance!';
 
         if (session.status === 'cancelled') {
-            color = 0xFF0000; // Red for cancelled
+            color = DISCORD_EMBED_COLORS.CANCELLED; // Red for cancelled
             titleEmoji = '❌';
             description = `**⚠️ THIS SESSION HAS BEEN CANCELLED ⚠️**\n\n${session.cancel_reason || 'No reason provided'}`;
             footerText = 'This session has been cancelled';
         } else if (session.status === 'scheduled') {
-            color = 0x0099FF; // Blue for scheduled
+            color = DISCORD_EMBED_COLORS.SCHEDULED; // Blue for scheduled
         } else if (session.status === 'confirmed') {
-            color = 0x00FF00; // Green for confirmed
+            color = DISCORD_EMBED_COLORS.CONFIRMED; // Green for confirmed
         }
 
         // Build fields array with attendance in separate columns
@@ -536,7 +537,7 @@ class SessionDiscordService {
         return {
             title: `📅 Reminder: ${session.title}`,
             description: session.description || 'Session reminder',
-            color: 0xFFA500, // Orange for reminders
+            color: DISCORD_EMBED_COLORS.REMINDER, // Orange for reminders
             fields: [
                 {
                     name: '📅 Date & Time',

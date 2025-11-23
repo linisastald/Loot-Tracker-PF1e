@@ -398,9 +398,19 @@ class SessionService {
                         });
                     }
                 } catch (discordError) {
-                    logger.error('Failed to send Discord cancellation notification:', discordError);
+                    logger.error('Failed to send Discord cancellation notification:', {
+                        error: discordError.message,
+                        stack: discordError.stack,
+                        sessionId,
+                        reason
+                    });
                     // Don't throw - we still want to return the cancelled session
                 }
+            }
+
+            if (result.rows.length === 0) {
+                logger.warn('Attempted to cancel non-existent session', { sessionId });
+                return null;
             }
 
             return result.rows[0];
