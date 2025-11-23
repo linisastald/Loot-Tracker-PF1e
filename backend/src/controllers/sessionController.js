@@ -547,9 +547,43 @@ const processSessionInteraction = async (req, res) => {
                 });
             }
 
+            // Look up user's active character
+            let characterId = null;
+            try {
+                const characterResult = await dbUtils.executeQuery(
+                    'SELECT id FROM characters WHERE user_id = $1 AND active = true ORDER BY id ASC LIMIT 1',
+                    [userId]
+                );
+
+                if (characterResult.rows.length > 0) {
+                    characterId = characterResult.rows[0].id;
+                    logger.info('Found active character for Discord attendance:', {
+                        userId,
+                        characterId,
+                        discordUserId
+                    });
+                } else {
+                    logger.warn('No active character found for user attending via Discord:', {
+                        userId,
+                        discordUserId
+                    });
+                }
+            } catch (charError) {
+                logger.error('Error looking up character for Discord attendance:', {
+                    error: charError.message,
+                    stack: charError.stack,
+                    userId,
+                    discordUserId,
+                    sessionId
+                });
+                // Continue without character_id - attendance will still be recorded
+            }
+
             // Record attendance (Discord update is now queued in outbox within transaction)
+            // Note: characterId may be null if user has no active character - Discord will display username as fallback
             await sessionService.recordAttendance(sessionId, userId, responseType, {
-                discord_id: discordUserId
+                discord_id: discordUserId,
+                character_id: characterId  // May be null - handled gracefully by AttendanceService
             });
 
             // Update Discord reaction tracking

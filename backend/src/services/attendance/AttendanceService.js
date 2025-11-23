@@ -16,7 +16,7 @@ class AttendanceService {
      * @param {number} sessionId - Session ID
      * @param {number} userId - User ID
      * @param {string} responseType - Response type (yes, no, maybe, late, etc.)
-     * @param {Object} additionalData - Additional data (late_arrival_time, notes, etc.)
+     * @param {Object} additionalData - Additional data (late_arrival_time, notes, character_id, etc.)
      * @returns {Promise<Object>} - Attendance record and counts
      */
     async recordAttendance(sessionId, userId, responseType, additionalData = {}) {
@@ -29,7 +29,8 @@ class AttendanceService {
                 late_arrival_time,
                 early_departure_time,
                 notes,
-                discord_id
+                discord_id,
+                character_id
             } = additionalData;
 
             // Map response type to status for database constraint
@@ -40,12 +41,13 @@ class AttendanceService {
             // Upsert attendance record
             const attendanceResult = await client.query(`
                 INSERT INTO session_attendance (
-                    session_id, user_id, status, response_type, late_arrival_time,
+                    session_id, user_id, character_id, status, response_type, late_arrival_time,
                     early_departure_time, notes, response_timestamp
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
                 ON CONFLICT (session_id, user_id)
                 DO UPDATE SET
+                    character_id = EXCLUDED.character_id,
                     status = EXCLUDED.status,
                     response_type = EXCLUDED.response_type,
                     late_arrival_time = EXCLUDED.late_arrival_time,
@@ -54,7 +56,7 @@ class AttendanceService {
                     response_timestamp = NOW(),
                     updated_at = NOW()
                 RETURNING *
-            `, [sessionId, userId, status, responseType, late_arrival_time, early_departure_time, notes]);
+            `, [sessionId, userId, character_id, status, responseType, late_arrival_time, early_departure_time, notes]);
 
             const attendance = attendanceResult.rows[0];
 
@@ -81,6 +83,7 @@ class AttendanceService {
             logger.info('Attendance recorded and Discord update enqueued:', {
                 sessionId,
                 userId,
+                characterId: character_id,
                 responseType,
                 attendanceId: attendance.id
             });
