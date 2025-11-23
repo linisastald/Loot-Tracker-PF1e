@@ -54,9 +54,9 @@ const initCronJobs = () => {
  * Helper function to send a Discord notification for a session
  */
 const sendDiscordSessionNotification = async (session) => {
-    const { sendDiscordSessionNotification } = require('../controllers/sessionController');
+    const sessionDiscordService = require('../services/discord/SessionDiscordService');
     try {
-        await sendDiscordSessionNotification(session);
+        await sessionDiscordService.postSessionAnnouncement(session.id);
         return true;
     } catch (error) {
         logger.error('Error sending Discord session notification from cron job', {

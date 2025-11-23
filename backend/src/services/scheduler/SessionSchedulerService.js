@@ -92,46 +92,21 @@ class SessionSchedulerService {
     }
 
     /**
-     * Schedule reminder checks (runs three times daily at noon, 5pm, and 10pm Eastern)
+     * Schedule reminder checks (runs every hour in America/New_York timezone)
      */
     scheduleReminderChecks() {
-        // Schedule for 12:00 PM Eastern (12 PM EST = 17:00 UTC, 12 PM EDT = 16:00 UTC)
-        const jobNoon = cron.schedule(CRON_SCHEDULES.DAILY_NOON, async () => {
+        const job = cron.schedule(CRON_SCHEDULES.HOURLY, async () => {
             try {
                 await this.checkPendingReminders();
             } catch (error) {
-                logger.error('Error in scheduled reminder check (noon):', error);
+                logger.error('Error in scheduled reminder check:', error);
             }
         }, {
-            timezone: 'America/New_York'
+            timezone: 'America/New_York'  // Match confirmation checks timezone
         });
 
-        // Schedule for 5:00 PM Eastern
-        const job5PM = cron.schedule(CRON_SCHEDULES.DAILY_5PM, async () => {
-            try {
-                await this.checkPendingReminders();
-            } catch (error) {
-                logger.error('Error in scheduled reminder check (5pm):', error);
-            }
-        }, {
-            timezone: 'America/New_York'
-        });
-
-        // Schedule for 10:00 PM Eastern
-        const job10PM = cron.schedule(CRON_SCHEDULES.DAILY_10PM, async () => {
-            try {
-                await this.checkPendingReminders();
-            } catch (error) {
-                logger.error('Error in scheduled reminder check (10pm):', error);
-            }
-        }, {
-            timezone: 'America/New_York'
-        });
-
-        this.scheduledJobs.set('reminderChecksNoon', jobNoon);
-        this.scheduledJobs.set('reminderChecks5PM', job5PM);
-        this.scheduledJobs.set('reminderChecks10PM', job10PM);
-        logger.info('Scheduled reminder check jobs (daily at noon, 5pm, and 10pm Eastern)');
+        this.scheduledJobs.set('reminderChecks', job);
+        logger.info('Scheduled reminder check job (every hour in America/New_York timezone)');
     }
 
     /**
@@ -236,19 +211,31 @@ class SessionSchedulerService {
 
     /**
      * Check for pending reminders to send
+     *
+     * Sends reminders exactly at (start_time - reminder_hours).
+     * Example: If session starts 2025-11-30 19:55:05 and reminder_hours is 167,
+     *          reminder will be sent at 2025-11-23 20:55:05 (exactly 167 hours before)
+     *
+     * NOTE: Runs in America/New_York timezone. All times must be stored consistently.
      */
     async checkPendingReminders() {
         // Lazy load to avoid circular dependency
         const sessionDiscordService = require('../discord/SessionDiscordService');
 
-        // Get sessions that need reminders based on reminder_hours
-        // Only send ONE automatic reminder per session - no duplicates
+        // Get sessions needing automated reminders
+        // Logic: Send reminder when current time reaches exactly (start_time - reminder_hours)
+        // Example: If session starts 2025-11-30 19:55:05 and reminder_hours is 167,
+        //          reminder will be sent at 2025-11-23 20:55:05 (exactly 167 hours before)
+        // Prevents sending if:
+        //   1. An automatic reminder was already sent for this session
+        //   2. A manual reminder was sent within the last 12 hours (cooldown period)
         const result = await pool.query(`
-            SELECT DISTINCT gs.id as session_id, gs.title, gs.start_time, gs.reminder_hours
+            SELECT gs.id as session_id, gs.title, gs.start_time, gs.reminder_hours
             FROM game_sessions gs
             WHERE gs.status IN ('scheduled', 'confirmed')
-            AND gs.start_time > NOW()
-            AND gs.start_time <= NOW() + (COALESCE(gs.reminder_hours, 48) || ' hours')::INTERVAL
+            AND gs.start_time > NOW()  -- Session hasn't started yet
+            AND gs.start_time - (COALESCE(gs.reminder_hours, 48) || ' hours')::INTERVAL <= NOW()  -- Reminder time has passed
+            -- Prevent duplicate auto-reminders
             AND NOT EXISTS (
                 SELECT 1 FROM session_reminders sr
                 WHERE sr.session_id = gs.id
@@ -256,6 +243,7 @@ class SessionSchedulerService {
                 AND sr.is_manual = FALSE
                 AND sr.reminder_type = 'auto'
             )
+            -- Cooldown: Don't send auto-reminder within 12 hours of manual reminder
             AND NOT EXISTS (
                 SELECT 1 FROM session_reminders sr
                 WHERE sr.session_id = gs.id
@@ -281,7 +269,15 @@ class SessionSchedulerService {
 
                 logger.info(`Successfully sent reminder for session ${session.session_id}`);
             } catch (error) {
-                logger.error(`Failed to send reminder for session ${session.session_id}:`, error);
+                logger.error(`Failed to send reminder for session ${session.session_id}:`, {
+                    error: error.message,
+                    stack: error.stack,
+                    sessionId: session.session_id,
+                    sessionTitle: session.title,
+                    startTime: session.start_time,
+                    reminderHours: session.reminder_hours,
+                    calculatedReminderTime: new Date(new Date(session.start_time) - session.reminder_hours * 60 * 60 * 1000)
+                });
             }
         }
     }
