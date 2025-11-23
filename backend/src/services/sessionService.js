@@ -365,9 +365,42 @@ class SessionService {
             `, [sessionId, reason]);
 
             if (result.rows.length > 0) {
+                const session = result.rows[0];
                 logger.info('Session cancelled:', { sessionId, reason });
-                // Update Discord message
+
+                // Update Discord embed to show cancelled status
                 await sessionDiscordService.updateSessionMessage(sessionId);
+
+                // Send cancellation notification ping
+                try {
+                    const settings = await sessionDiscordService.getDiscordSettings();
+                    if (settings.campaign_role_id && settings.discord_channel_id) {
+                        const discordService = require('./discordBrokerService');
+                        const cancelMessage = reason
+                            ? `<@&${settings.campaign_role_id}> Session "${session.title}" has been cancelled. Reason: ${reason}`
+                            : `<@&${settings.campaign_role_id}> Session "${session.title}" has been cancelled.`;
+
+                        logger.info('Sending Discord cancellation notification', {
+                            sessionId,
+                            reason
+                        });
+
+                        await discordService.sendMessage({
+                            channelId: settings.discord_channel_id,
+                            content: cancelMessage
+                        });
+
+                        logger.info('Discord cancellation notification sent successfully');
+                    } else {
+                        logger.warn('Missing Discord settings for cancellation notification', {
+                            hasCampaignRole: !!settings.campaign_role_id,
+                            hasChannel: !!settings.discord_channel_id
+                        });
+                    }
+                } catch (discordError) {
+                    logger.error('Failed to send Discord cancellation notification:', discordError);
+                    // Don't throw - we still want to return the cancelled session
+                }
             }
 
             return result.rows[0];

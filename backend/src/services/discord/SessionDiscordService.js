@@ -179,11 +179,25 @@ class SessionDiscordService {
                 return;
             }
 
+            logger.info('Updating Discord message for session', {
+                sessionId,
+                status: session.status,
+                messageId: session.discord_message_id,
+                isCancelled: session.status === 'cancelled'
+            });
+
             const attendance = await attendanceService.getSessionAttendance(sessionId);
             const embed = await this.createSessionEmbed(session, attendance);
 
             // Remove buttons if session is cancelled, otherwise keep them
             const components = session.status === 'cancelled' ? [] : this.createAttendanceButtons();
+
+            logger.info('Discord embed created for session update', {
+                sessionId,
+                embedColor: embed.color,
+                embedStatusField: embed.fields.find(f => f.name === '📋 Session Info')?.value,
+                hasButtons: components.length > 0
+            });
 
             const settings = await this.getDiscordSettings();
             if (settings.discord_bot_token && settings.discord_channel_id) {
@@ -193,9 +207,23 @@ class SessionDiscordService {
                     embed,
                     components
                 });
+
+                logger.info('Discord message updated successfully', {
+                    sessionId,
+                    messageId: session.discord_message_id
+                });
+            } else {
+                logger.warn('Missing Discord settings for message update', {
+                    hasToken: !!settings.discord_bot_token,
+                    hasChannel: !!settings.discord_channel_id
+                });
             }
         } catch (error) {
-            logger.error('Failed to update session message:', error);
+            logger.error('Failed to update session message:', {
+                error: error.message,
+                stack: error.stack,
+                sessionId
+            });
         }
     }
 
@@ -421,10 +449,22 @@ class SessionDiscordService {
         const maybe = attendance.filter(a => a.response_type === 'maybe');
         const late = attendance.filter(a => ['late', 'early', 'late_and_early'].includes(a.response_type));
 
-        // Determine embed color based on session status
+        // Determine embed color and title based on session status
         let color = 0x00FF00; // Green for confirmed
-        if (session.status === 'cancelled') color = 0xFF0000; // Red for cancelled
-        else if (session.status === 'scheduled') color = 0x0099FF; // Blue for scheduled
+        let titleEmoji = '🎲';
+        let description = session.description || 'Pathfinder session';
+        let footerText = 'Click the buttons below to update your attendance!';
+
+        if (session.status === 'cancelled') {
+            color = 0xFF0000; // Red for cancelled
+            titleEmoji = '❌';
+            description = `**⚠️ THIS SESSION HAS BEEN CANCELLED ⚠️**\n\n${session.cancel_reason || 'No reason provided'}`;
+            footerText = 'This session has been cancelled';
+        } else if (session.status === 'scheduled') {
+            color = 0x0099FF; // Blue for scheduled
+        } else if (session.status === 'confirmed') {
+            color = 0x00FF00; // Green for confirmed
+        }
 
         // Build fields array with attendance in separate columns
         const fields = [
@@ -461,18 +501,18 @@ class SessionDiscordService {
             },
             {
                 name: '📋 Session Info',
-                value: `Min players: ${session.minimum_players}\nStatus: ${session.status}`,
+                value: `Min players: ${session.minimum_players}\nStatus: **${session.status.toUpperCase()}**`,
                 inline: false
             }
         ];
 
         return {
-            title: `🎲 ${session.title}`,
-            description: session.description || 'Pathfinder session',
+            title: `${titleEmoji} ${session.title}`,
+            description: description,
             color: color,
             fields,
             footer: {
-                text: 'Click the buttons below to update your attendance!'
+                text: footerText
             },
             timestamp: new Date().toISOString()
         };
