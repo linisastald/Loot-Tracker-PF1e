@@ -21,6 +21,18 @@ interface TimezoneOption {
     label: string;
 }
 
+interface TimezoneResponse {
+    timezone: string;
+}
+
+interface TimezoneOptionsResponse {
+    options: TimezoneOption[];
+}
+
+interface ApiResponse<T> {
+    data?: T;
+}
+
 const TimezoneSettings: React.FC = () => {
     const [currentTimezone, setCurrentTimezone] = useState<string>('');
     const [timezoneOptions, setTimezoneOptions] = useState<TimezoneOption[]>([]);
@@ -41,21 +53,22 @@ const TimezoneSettings: React.FC = () => {
         try {
             setLoading(true);
             const [timezoneRes, optionsRes] = await Promise.all([
-                api.get('/settings/campaign-timezone'),
-                api.get('/settings/timezone-options')
+                api.get('/settings/campaign-timezone') as Promise<ApiResponse<TimezoneResponse> | TimezoneResponse>,
+                api.get('/settings/timezone-options') as Promise<ApiResponse<TimezoneOptionsResponse> | TimezoneOptionsResponse>
             ]);
 
             // Handle response unwrapping from api interceptor
-            const timezone = timezoneRes.data?.timezone || timezoneRes?.timezone || 'America/New_York';
-            const options = optionsRes.data?.options || optionsRes?.options || [];
+            const timezone = (timezoneRes as ApiResponse<TimezoneResponse>).data?.timezone || (timezoneRes as TimezoneResponse)?.timezone || 'America/New_York';
+            const options = (optionsRes as ApiResponse<TimezoneOptionsResponse>).data?.options || (optionsRes as TimezoneOptionsResponse)?.options || [];
 
             setCurrentTimezone(timezone);
             setSelectedTimezone(timezone);
             setTimezoneOptions(options);
-        } catch (error: any) {
+        } catch (error) {
+            const err = error as { response?: { data?: { message?: string } } };
             setSnackbar({
                 open: true,
-                message: error.response?.data?.message || 'Failed to load timezone settings',
+                message: err.response?.data?.message || 'Failed to load timezone settings',
                 severity: 'error'
             });
         } finally {
@@ -80,11 +93,11 @@ const TimezoneSettings: React.FC = () => {
                 message: 'Campaign timezone updated successfully! All scheduled tasks have been restarted.',
                 severity: 'success'
             });
-        } catch (error: any) {
-            console.error('Error updating timezone:', error);
+        } catch (error) {
+            const err = error as { response?: { data?: { message?: string } } };
             setSnackbar({
                 open: true,
-                message: error.response?.data?.message || 'Failed to update timezone',
+                message: err.response?.data?.message || 'Failed to update timezone',
                 severity: 'error'
             });
         } finally {

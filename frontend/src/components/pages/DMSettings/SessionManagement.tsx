@@ -55,6 +55,30 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { useSnackbar } from 'notistack';
 
+interface TimezoneResponse {
+    timezone: string;
+}
+
+interface ApiResponse<T> {
+    data?: T;
+}
+
+interface SessionCreateData {
+    title: string;
+    start_time: string;
+    end_time: string;
+    description: string;
+    minimum_players: number;
+    auto_announce_hours: number;
+    reminder_hours: number;
+    confirmation_hours: number;
+    recurring_pattern?: string;
+    recurring_day_of_week?: number;
+    recurring_interval?: number;
+    recurring_end_date?: string;
+    recurring_end_count?: number;
+}
+
 const SessionManagement = () => {
     const [loading, setLoading] = useState(true);
     const [sessions, setSessions] = useState([]);
@@ -138,8 +162,8 @@ const SessionManagement = () => {
 
     const fetchCurrentTimezone = async () => {
         try {
-            const response = await api.get('/settings/campaign-timezone');
-            const timezone = response.data?.timezone || response?.timezone || 'America/New_York';
+            const response = await api.get('/settings/campaign-timezone') as ApiResponse<TimezoneResponse> | TimezoneResponse;
+            const timezone = (response as ApiResponse<TimezoneResponse>).data?.timezone || (response as TimezoneResponse)?.timezone || 'America/New_York';
             setCurrentTimezone(timezone);
         } catch (err) {
             // Default to Eastern Time if fetch fails
@@ -194,7 +218,7 @@ const SessionManagement = () => {
                 return;
             }
 
-            const sessionData = {
+            const sessionData: SessionCreateData = {
                 title: sessionTitle,
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
@@ -230,7 +254,8 @@ const SessionManagement = () => {
             // Refresh sessions
             fetchSessions();
         } catch (err) {
-            const errorMessage = err.response?.data?.message || 'Failed to create session';
+            const error = err as { response?: { data?: { message?: string } } };
+            const errorMessage = error.response?.data?.message || 'Failed to create session';
             enqueueSnackbar(errorMessage, { variant: 'error' });
         }
     };
