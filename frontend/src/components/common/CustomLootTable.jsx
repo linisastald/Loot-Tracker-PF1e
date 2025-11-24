@@ -123,7 +123,7 @@ const FormatBelievedValue = ({ item }) => {
           setActiveCharacterId(response.data.activeCharacterId);
         }
       } catch (error) {
-        console.error('Error fetching active character:', error);
+        // Error fetching active character - using default behavior
       }
     };
     fetchActiveCharacter();
@@ -156,13 +156,10 @@ const FormatBelievedValue = ({ item }) => {
   // Format the value
   const value = parseFloat(rawValue);
   if (isNaN(value)) {
-    console.log('Parsed value is NaN');
     return null;
   }
 
   const formattedValue = value.toFixed(2).replace(/\.0+$/, '');
-  console.log('Formatted value:', formattedValue);
-
   return <span>{formattedValue}</span>;
 };
 
@@ -259,7 +256,7 @@ const CustomLootTable = ({
           checked: false,
         })));
       } catch (error) {
-        console.error('Error fetching characters:', error);
+        // Error fetching characters - filters remain empty
       }
     };
 
@@ -601,7 +598,13 @@ const CustomLootTable = ({
 
                     {showColumns.sessionDate && (
                       <TableCell style={mainCellStyle}>
-                        {summaryItem.session_date && timezone ? formatInCampaignTimezone(summaryItem.session_date, timezone, 'PP') : ''}
+                        {/* session_date is a DATE type (no time component), format in UTC to prevent timezone shifts */}
+                        {summaryItem.session_date ? new Date(summaryItem.session_date + 'T00:00:00').toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          timeZone: 'UTC'
+                        }) : ''}
                       </TableCell>
                     )}
 
@@ -652,7 +655,13 @@ const CustomLootTable = ({
                                   </TableCell>
                                   {showColumns.sessionDate && (
                                     <TableCell style={subCellStyle}>
-                                      {subItem.session_date && timezone ? formatInCampaignTimezone(subItem.session_date, timezone, 'PP') : ''}
+                                      {/* session_date is a DATE type (no time component), format in UTC to prevent timezone shifts */}
+                                      {subItem.session_date ? new Date(subItem.session_date + 'T00:00:00').toLocaleDateString('en-US', {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        timeZone: 'UTC'
+                                      }) : ''}
                                     </TableCell>
                                   )}
                                   {showColumns.lastUpdate && (
