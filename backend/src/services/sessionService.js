@@ -482,14 +482,6 @@ class SessionService {
 
             await client.query('COMMIT');
 
-            // Send post-session completion notification to Discord
-            try {
-                await sessionDiscordService.sendSessionCompletionNotification(session, attendance);
-            } catch (discordError) {
-                logger.error('Failed to send session completion notification:', discordError);
-                // Don't throw here - session completion succeeded
-            }
-
             logger.info(`Session completed successfully: ${sessionId}`);
             return session;
 

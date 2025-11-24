@@ -229,63 +229,6 @@ class SessionDiscordService {
     }
 
     /**
-     * Send session completion notification to Discord
-     * @param {Object} session - Session data
-     * @param {Object} attendance - Attendance summary
-     */
-    async sendSessionCompletionNotification(session, attendance) {
-        try {
-            const settings = await this.getDiscordSettings();
-            if (!settings.discord_channel_id) {
-                logger.info('Discord not configured for session completion notifications');
-                return;
-            }
-
-            const embed = {
-                title: `✅ Session Completed: ${session.title}`,
-                description: `The session has been automatically marked as completed.`,
-                color: DISCORD_EMBED_COLORS.COMPLETED, // Green
-                fields: [
-                    {
-                        name: '📅 Session Date',
-                        value: this.formatSessionDate(session.start_time),
-                        inline: true
-                    },
-                    {
-                        name: '👥 Final Attendance',
-                        value: `✅ ${attendance.confirmed_count} confirmed\n❌ ${attendance.declined_count} declined\n❓ ${attendance.maybe_count} maybe`,
-                        inline: true
-                    }
-                ],
-                footer: {
-                    text: 'Session automatically completed 6 hours after start time'
-                },
-                timestamp: new Date().toISOString()
-            };
-
-            if (attendance.attendee_names && attendance.attendee_names.length > 0) {
-                embed.fields.push({
-                    name: '🎉 Attendees',
-                    value: attendance.attendee_names.join(', '),
-                    inline: false
-                });
-            }
-
-            await discordService.sendMessage({
-                channelId: settings.discord_channel_id,
-                content: `🎲 **${session.title}** has been completed!`,
-                embed
-            });
-
-            logger.info('Session completion notification sent to Discord');
-
-        } catch (error) {
-            logger.error('Failed to send session completion notification:', error);
-            throw error;
-        }
-    }
-
-    /**
      * Send task assignments to Discord
      * @param {Object} session - Session data
      * @param {Object} assignments - Task assignments
