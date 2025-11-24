@@ -554,3 +554,19 @@ export const formatItemNameWithMods = (
 
   return displayName;
 };
+/**
+ * Format a date string for display with time
+ * Note: This uses browser local timezone. For campaign timezone, use formatInCampaignTimezone from timezoneUtils
+ */
+export const formatDateTime = (dateString: string | Date | null | undefined): string => {
+  if (!dateString) return '';
+  const options: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  };
+  return new Date(dateString).toLocaleDateString(undefined, options);
+};

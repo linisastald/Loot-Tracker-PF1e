@@ -28,6 +28,8 @@ import {
 } from '@mui/material';
 import {DatePicker, LocalizationProvider} from '@mui/x-date-pickers';
 import {AdapterDateFns} from '@mui/x-date-pickers/AdapterDateFns';
+import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -115,6 +117,8 @@ const GoldTransactions: React.FC = () => {
     const [startDate, setStartDate] = useState<Date>(new Date(new Date().setMonth(new Date().getMonth() - 6)));
     const [endDate, setEndDate] = useState<Date>(new Date());
     const [activeTab, setActiveTab] = useState<number>(0);
+    // Get campaign timezone
+    const { timezone } = useCampaignTimezone();
     const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
     const [ledgerLoading, setLedgerLoading] = useState<boolean>(false);
 
