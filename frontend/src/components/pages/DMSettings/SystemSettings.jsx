@@ -32,8 +32,11 @@ import {
   DataObject as TestDataIcon,
   Schedule as ScheduleIcon
 } from '@mui/icons-material';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const SystemSettings = () => {
+    const { timezone: campaignTimezone } = useCampaignTimezone();
     const [registrationOpen, setRegistrationOpen] = useState(false);
     const [inviteRequired, setInviteRequired] = useState(false);
     const [error, setError] = useState('');
@@ -505,9 +508,7 @@ const SystemSettings = () => {
 
     const formatExpirationDate = (dateString) => {
         if (!dateString) return '';
-
-        const date = new Date(dateString);
-        return date.toLocaleString();
+        return campaignTimezone ? formatInCampaignTimezone(dateString, campaignTimezone, 'PPpp z') : new Date(dateString).toLocaleString();
     };
 
     if (isLoading) {

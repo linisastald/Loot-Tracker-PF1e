@@ -14,12 +14,16 @@ import {
   Typography,
 } from '@mui/material';
 import {KeyboardArrowDown, KeyboardArrowUp} from '@mui/icons-material';
-import {formatDate} from '../../../utils/utils';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const SoldLoot = () => {
     const [soldSummary, setSoldSummary] = useState([]);
     const [soldDetails, setSoldDetails] = useState({});
     const [openItems, setOpenItems] = useState({});
+
+    // Campaign timezone hook
+    const { timezone, loading: timezoneLoading } = useCampaignTimezone();
 
     useEffect(() => {
         const fetchSoldSummary = async () => {
@@ -129,7 +133,9 @@ const SoldLoot = () => {
                             {soldSummary.map((item, index) => (
                                 <React.Fragment key={`summary-${item.soldon || index}`}>
                                     <TableRow>
-                                        <TableCell>{formatDate(item.soldon)}</TableCell>
+                                        <TableCell>
+                                            {timezone && formatInCampaignTimezone(item.soldon, timezone, 'PP')}
+                                        </TableCell>
                                         <TableCell>{item.number_of_items}</TableCell>
                                         <TableCell>{item.total}</TableCell>
                                         <TableCell>
@@ -158,7 +164,9 @@ const SoldLoot = () => {
                                                         {soldDetails[item.soldon]?.map((detail, detailIndex) => (
                                                             <TableRow
                                                                 key={`detail-${detail.id || `${item.soldon}-${detailIndex}`}`}>
-                                                                <TableCell>{formatDate(detail.session_date)}</TableCell>
+                                                                <TableCell>
+                                                                    {timezone && formatInCampaignTimezone(detail.session_date, timezone, 'PP')}
+                                                                </TableCell>
                                                                 <TableCell>{detail.quantity}</TableCell>
                                                                 <TableCell>{detail.name}</TableCell>
                                                                 <TableCell>{detail.soldfor}</TableCell>

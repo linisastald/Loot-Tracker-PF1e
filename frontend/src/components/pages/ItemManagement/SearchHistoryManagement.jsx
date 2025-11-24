@@ -16,8 +16,11 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const SearchHistoryManagement = () => {
+  const { timezone } = useCampaignTimezone();
   const [itemSearches, setItemSearches] = useState([]);
   const [spellcastingServices, setSpellcastingServices] = useState([]);
   const [error, setError] = useState('');
@@ -62,15 +65,7 @@ const SearchHistoryManagement = () => {
 
   const formatDateTime = (datetime) => {
     if (!datetime) return '-';
-    const date = new Date(datetime);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
+    return timezone ? formatInCampaignTimezone(datetime, timezone, 'PPp z') : '-';
   };
 
   return (

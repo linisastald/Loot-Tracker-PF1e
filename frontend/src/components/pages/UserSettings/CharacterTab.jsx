@@ -28,6 +28,8 @@ import {
 } from '@mui/material';
 import {Add as AddIcon, Edit as EditIcon, Star as StarIcon, StarBorder as StarBorderIcon} from '@mui/icons-material';
 import HeartBrokenIcon from '@mui/icons-material/HeartBroken';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const CharacterTab = () => {
     const [characters, setCharacters] = useState([]);
@@ -36,6 +38,9 @@ const CharacterTab = () => {
     const [selectedCharacter, setSelectedCharacter] = useState(null);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    // Campaign timezone hook
+    const { timezone, loading: timezoneLoading } = useCampaignTimezone();
 
     // Form state
     const [characterForm, setCharacterForm] = useState({
@@ -185,20 +190,7 @@ const CharacterTab = () => {
         }
     };
 
-    const formatDate = (dateString) => {
-        if (!dateString) return 'Not set';
-
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
-        } catch (e) {
-            return 'Invalid date';
-        }
-    };
+    // Format date for display is now handled by formatInCampaignTimezone
 
     return (
         <div>
@@ -258,8 +250,16 @@ const CharacterTab = () => {
                                         {character.deathday ? 'Deceased' : 'Alive'}
                                     </TableCell>
                                     <TableCell>+{character.appraisal_bonus || 0}</TableCell>
-                                    <TableCell>{formatDate(character.birthday)}</TableCell>
-                                    <TableCell>{formatDate(character.deathday)}</TableCell>
+                                    <TableCell>
+                                        {timezone && character.birthday
+                                            ? formatInCampaignTimezone(character.birthday, timezone, 'PPPP')
+                                            : 'Not set'}
+                                    </TableCell>
+                                    <TableCell>
+                                        {timezone && character.deathday
+                                            ? formatInCampaignTimezone(character.deathday, timezone, 'PPPP')
+                                            : 'Not set'}
+                                    </TableCell>
                                     <TableCell>
                                         <Box sx={{display: 'flex'}}>
                                             <Tooltip title="Set as Active Character">

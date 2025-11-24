@@ -15,6 +15,8 @@ import {
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
 import {fetchActiveUser} from '../../utils/utils';
+import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -221,6 +223,9 @@ const Infamy: React.FC = () => {
     const [success, setSuccess] = useState('');
     const [tabValue, setTabValue] = useState(0);
     const [isDM, setIsDM] = useState(false);
+
+    // Campaign timezone hook
+    const { timezone, loading: timezoneLoading } = useCampaignTimezone();
 
     // Infamy data
     const [infamyStatus, setInfamyStatus] = useState<{infamy: number; disrepute: number; threshold: string; favored_ports: {port_name: string; bonus: number}[]}>({
@@ -562,12 +567,7 @@ const Infamy: React.FC = () => {
         }
     };
 
-    // Format date for display
-    const formatDate = (dateString) => {
-        if (!dateString) return '';
-        const date = new Date(dateString);
-        return date.toLocaleString();
-    };
+    // Format date for display is now handled by formatInCampaignTimezone
 
     // Get sphere of influence based on infamy level
     const getSphereOfInfluence = () => {
@@ -1009,7 +1009,9 @@ const Infamy: React.FC = () => {
                                 ) : (
                                     infamyHistory.map((entry) => (
                                         <TableRow key={entry.id}>
-                                            <TableCell>{formatDate(entry.created_at)}</TableCell>
+                                            <TableCell>
+                                                {timezone && formatInCampaignTimezone(entry.created_at, timezone, 'PPpp z')}
+                                            </TableCell>
                                             <TableCell>{entry.reason}</TableCell>
                                             <TableCell>
                                                 {entry.infamy_change > 0 && '+'}

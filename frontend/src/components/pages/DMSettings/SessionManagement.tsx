@@ -54,6 +54,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { useSnackbar } from 'notistack';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 interface TimezoneResponse {
     timezone: string;
@@ -84,8 +86,10 @@ const SessionManagement = () => {
     const [sessions, setSessions] = useState([]);
     const [selectedSession, setSelectedSession] = useState(null);
     const [error, setError] = useState('');
-    const [currentTimezone, setCurrentTimezone] = useState<string>('');
     const { enqueueSnackbar } = useSnackbar();
+
+    // Campaign timezone hook
+    const { timezone: currentTimezone, loading: timezoneLoading } = useCampaignTimezone();
 
     // Dialog states
     const [attendanceDialog, setAttendanceDialog] = useState(false);
@@ -146,7 +150,6 @@ const SessionManagement = () => {
 
     useEffect(() => {
         fetchSessions();
-        fetchCurrentTimezone();
 
         // Load default settings from localStorage
         const savedDefaults = localStorage.getItem('sessionDefaults');
@@ -159,17 +162,6 @@ const SessionManagement = () => {
             }
         }
     }, []);
-
-    const fetchCurrentTimezone = async () => {
-        try {
-            const response = await api.get('/settings/campaign-timezone') as ApiResponse<TimezoneResponse> | TimezoneResponse;
-            const timezone = (response as ApiResponse<TimezoneResponse>).data?.timezone || (response as TimezoneResponse)?.timezone || 'America/New_York';
-            setCurrentTimezone(timezone);
-        } catch (err) {
-            // Default to Eastern Time if fetch fails
-            setCurrentTimezone('America/New_York');
-        }
-    };
 
     // Update form fields when defaultSettings changes (after loading from localStorage)
     useEffect(() => {
@@ -453,7 +445,7 @@ const SessionManagement = () => {
             <Card key={session.id} variant="outlined" sx={{ mb: 2 }}>
                 <CardHeader
                     title={session.title || 'Game Session'}
-                    subtitle={format(new Date(session.start_time), 'PPpp')}
+                    subtitle={currentTimezone && formatInCampaignTimezone(session.start_time, currentTimezone, 'PPpp z')}
                     action={
                         <Chip
                             label={getStatusLabel(session.status)}
@@ -810,7 +802,7 @@ const SessionManagement = () => {
                                                     </Typography>
                                                 )}
                                                 <Typography variant="caption" color="text.secondary">
-                                                    Responded: {format(new Date(attendee.response_timestamp), 'PPp')}
+                                                    Responded: {currentTimezone && formatInCampaignTimezone(attendee.response_timestamp, currentTimezone, 'PPp')}
                                                 </Typography>
                                             </Box>
                                         }
@@ -833,8 +825,8 @@ const SessionManagement = () => {
                         Send a reminder for: {selectedSession?.title}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
-                        {selectedSession?.start_time &&
-                            format(new Date(selectedSession.start_time), 'PPpp')}
+                        {selectedSession?.start_time && currentTimezone &&
+                            formatInCampaignTimezone(selectedSession.start_time, currentTimezone, 'PPpp z')}
                     </Typography>
 
                     <FormControl component="fieldset" sx={{ mt: 2 }}>

@@ -6,12 +6,14 @@ import {
   Tabs, Tab, TablePagination
 } from '@mui/material';
 import {
-  Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, 
+  Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
   Home as OutpostIcon, People as PeopleIcon, LocationOn as LocationIcon,
   DateRange as DateIcon
 } from '@mui/icons-material';
 import outpostService from '../../services/outpostService';
 import crewService from '../../services/crewService';
+import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -46,6 +48,9 @@ const OutpostManagement: React.FC = () => {
   const [tabValue, setTabValue] = useState<number>(0);
   const [page, setPage] = useState<number>(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  // Campaign timezone hook
+  const { timezone, loading: timezoneLoading } = useCampaignTimezone();
 
   // Dialog states
   const [outpostDialogOpen, setOutpostDialogOpen] = useState(false);
@@ -156,10 +161,7 @@ const OutpostManagement: React.FC = () => {
     await fetchOutpostCrew(outpost.id);
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Unknown';
-    return new Date(dateString).toLocaleDateString();
-  };
+  // Format date for display is now handled by formatInCampaignTimezone
 
   if (loading) {
     return (
@@ -233,7 +235,7 @@ const OutpostManagement: React.FC = () => {
                     <TableCell>
                       <Box display="flex" alignItems="center">
                         <DateIcon sx={{ mr: 1, fontSize: 16 }} />
-                        {formatDate(outpost.access_date)}
+                        {timezone ? formatInCampaignTimezone(outpost.access_date, timezone, 'PP') : 'Unknown'}
                       </Box>
                     </TableCell>
                     <TableCell>
@@ -286,7 +288,7 @@ const OutpostManagement: React.FC = () => {
                       Location: {selectedOutpost.location || 'Unknown'}
                     </Typography>
                     <Typography color="text.secondary">
-                      Access Date: {formatDate(selectedOutpost.access_date)}
+                      Access Date: {timezone ? formatInCampaignTimezone(selectedOutpost.access_date, timezone, 'PP') : 'Unknown'}
                     </Typography>
                   </CardContent>
                 </Card>

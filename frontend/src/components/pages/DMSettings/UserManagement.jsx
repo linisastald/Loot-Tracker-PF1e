@@ -34,8 +34,11 @@ import {Visibility, VisibilityOff} from '@mui/icons-material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import FileCopyIcon from '@mui/icons-material/FileCopy';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const UserManagement = () => {
+    const { timezone } = useCampaignTimezone();
     const [users, setUsers] = useState([]);
     const [selectedUsers, setSelectedUsers] = useState([]);
     const [newPassword, setNewPassword] = useState('');
@@ -226,7 +229,7 @@ const UserManagement = () => {
             return 'Never';
         }
 
-        return date.toLocaleString();
+        return timezone ? formatInCampaignTimezone(dateString, timezone, 'PPpp z') : date.toLocaleString();
     };
 
     const handleSnackbarClose = () => {
@@ -390,7 +393,7 @@ const UserManagement = () => {
                                         </Box>
                                     </TableCell>
                                     <TableCell>{invite.created_by_username || 'Unknown'}</TableCell>
-                                    <TableCell>{new Date(invite.created_at).toLocaleString()}</TableCell>
+                                    <TableCell>{timezone ? formatInCampaignTimezone(invite.created_at, timezone, 'PPpp z') : new Date(invite.created_at).toLocaleString()}</TableCell>
                                     <TableCell>{formatExpirationDate(invite.expires_at)}</TableCell>
                                     <TableCell>
                                         <Tooltip title="Deactivate invite">

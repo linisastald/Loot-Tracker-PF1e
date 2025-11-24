@@ -30,10 +30,13 @@ import {
     IconButton
 } from '@mui/material';
 import { format, formatDistance, addMonths } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useSnackbar } from 'notistack';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const SessionsPage = () => {
     const [sessions, setSessions] = useState([]);
@@ -42,6 +45,7 @@ const SessionsPage = () => {
     const [error, setError] = useState(null);
     const [user, setUser] = useState(null);
     const { enqueueSnackbar } = useSnackbar();
+    const { timezone } = useCampaignTimezone();
 
     // Filter state
     const [showFilters, setShowFilters] = useState(false);
@@ -333,8 +337,9 @@ const SessionsPage = () => {
     };
     
     const renderSession = (session) => {
-        const startDate = new Date(session.start_time);
-        const endDate = new Date(session.end_time);
+        // Convert to campaign timezone for display
+        const startDate = timezone ? toZonedTime(new Date(session.start_time), timezone) : new Date(session.start_time);
+        const endDate = timezone ? toZonedTime(new Date(session.end_time), timezone) : new Date(session.end_time);
         const formattedDate = format(startDate, 'EEEE, MMMM d, yyyy');
         const formattedStartTime = format(startDate, 'h:mm a');
         const formattedEndTime = format(endDate, 'h:mm a');

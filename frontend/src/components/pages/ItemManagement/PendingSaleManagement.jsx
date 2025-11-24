@@ -3,7 +3,7 @@ import React, {useEffect, useState, useCallback, useMemo} from 'react';
 import api from '../../../utils/api';
 import lootService from '../../../services/lootService';
 import * as salesService from '../../../services/salesService';
-import {formatDate, formatItemNameWithMods, updateItemAsDM} from '../../../utils/utils';
+import {formatItemNameWithMods, updateItemAsDM} from '../../../utils/utils';
 import {
     Alert,
     Box,
@@ -24,8 +24,11 @@ import {
     Typography,
 } from '@mui/material';
 import ItemManagementDialog from '../../common/dialogs/ItemManagementDialog';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const PendingSaleManagement = () => {
+    const { timezone } = useCampaignTimezone();
     const [pendingItems, setPendingItems] = useState([]);
     const [saleValues, setSaleValues] = useState({}); // Store calculated sale values by item ID
     const [loading, setLoading] = useState(false);
@@ -464,7 +467,7 @@ const PendingSaleManagement = () => {
                                                 onChange={() => handlePendingItemSelect(item.id)}
                                             />
                                         </TableCell>
-                                        <TableCell>{formatDate(item.session_date)}</TableCell>
+                                        <TableCell>{timezone && item.session_date ? formatInCampaignTimezone(item.session_date, timezone, 'PP') : ''}</TableCell>
                                         <TableCell>{item.quantity}</TableCell>
                                         <TableCell>{item.name}</TableCell>
                                         <TableCell>{item.type}</TableCell>

@@ -37,8 +37,9 @@ import {
     Person as PersonIcon,
     Shield as ShieldIcon
 } from '@mui/icons-material';
-import { format } from 'date-fns';
 import { useSnackbar } from 'notistack';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const SessionNotes = ({ sessionId, sessionTitle }) => {
     const [loading, setLoading] = useState(true);
@@ -47,6 +48,7 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
     const [error, setError] = useState('');
     const [user, setUser] = useState(null);
     const { enqueueSnackbar } = useSnackbar();
+    const { timezone } = useCampaignTimezone();
 
     // Get user from localStorage
     useEffect(() => {
@@ -186,7 +188,7 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
                                 {note.note}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                                {format(new Date(note.created_at), 'PPp')}
+                                {timezone ? formatInCampaignTimezone(note.created_at, timezone, 'PPpp z') : ''}
                             </Typography>
                         </Box>
                     }

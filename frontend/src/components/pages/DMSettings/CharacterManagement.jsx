@@ -25,8 +25,11 @@ import {
   TextField,
   Typography
 } from '@mui/material';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const CharacterManagement = () => {
+    const { timezone } = useCampaignTimezone();
     const [characters, setCharacters] = useState([]);
     const [users, setUsers] = useState([]);
     const [error, setError] = useState('');
@@ -121,12 +124,7 @@ const CharacterManagement = () => {
 
     const formatDate = (dateString) => {
         if (!dateString) return '';
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: '2-digit',
-        });
+        return timezone ? formatInCampaignTimezone(dateString, timezone, 'PP') : '';
     };
 
     // Sort characters based on current sort configuration

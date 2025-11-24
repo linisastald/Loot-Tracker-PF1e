@@ -20,13 +20,15 @@ import {
 import ItemManagementDialog from '../../common/dialogs/ItemManagementDialog';
 import {
     calculateSpellcraftDC,
-    formatDate,
     formatItemNameWithMods,
     identifyItem,
     updateItemAsDM
 } from '../../../utils/utils';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const UnidentifiedItemsManagement = () => {
+    const { timezone } = useCampaignTimezone();
     const [unidentifiedItems, setUnidentifiedItems] = useState([]);
     const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
@@ -305,7 +307,7 @@ const UnidentifiedItemsManagement = () => {
                                     }}
                                     sx={{cursor: 'pointer'}}
                                 >
-                                    <TableCell>{formatDate(item.session_date)}</TableCell>
+                                    <TableCell>{timezone && item.session_date ? formatInCampaignTimezone(item.session_date, timezone, 'PP') : ''}</TableCell>
                                     <TableCell>{item.quantity}</TableCell>
                                     <TableCell>{item.name}</TableCell>
                                     <TableCell>{item.type}</TableCell>

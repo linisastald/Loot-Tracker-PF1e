@@ -21,9 +21,10 @@ import {
   Tooltip,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
-import { formatDate } from '../../utils/utils';
 import { styled } from '@mui/system';
 import api from '../../utils/api';
+import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
 
 // Styled components
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
@@ -197,6 +198,9 @@ const CustomLootTable = ({
     whoHas: true,
   },
 }) => {
+  // Campaign timezone
+  const { timezone } = useCampaignTimezone();
+
   // Filter states
   const [showPendingSales, setShowPendingSales] = useState(true);
   const [showOnlyUnidentified, setShowOnlyUnidentified] = useState(false);
@@ -597,13 +601,13 @@ const CustomLootTable = ({
 
                     {showColumns.sessionDate && (
                       <TableCell style={mainCellStyle}>
-                        {summaryItem.session_date ? formatDate(summaryItem.session_date) : ''}
+                        {summaryItem.session_date && timezone ? formatInCampaignTimezone(summaryItem.session_date, timezone, 'PP') : ''}
                       </TableCell>
                     )}
 
                     {showColumns.lastUpdate && (
                       <TableCell style={mainCellStyle}>
-                        {summaryItem.lastupdate ? formatDate(summaryItem.lastupdate) : ''}
+                        {summaryItem.lastupdate && timezone ? formatInCampaignTimezone(summaryItem.lastupdate, timezone, 'PPpp z') : ''}
                       </TableCell>
                     )}
                   </TableRow>
@@ -648,12 +652,12 @@ const CustomLootTable = ({
                                   </TableCell>
                                   {showColumns.sessionDate && (
                                     <TableCell style={subCellStyle}>
-                                      {subItem.session_date ? formatDate(subItem.session_date) : ''}
+                                      {subItem.session_date && timezone ? formatInCampaignTimezone(subItem.session_date, timezone, 'PP') : ''}
                                     </TableCell>
                                   )}
                                   {showColumns.lastUpdate && (
                                     <TableCell style={subCellStyle}>
-                                      {subItem.lastupdate ? formatDate(subItem.lastupdate) : ''}
+                                      {subItem.lastupdate && timezone ? formatInCampaignTimezone(subItem.lastupdate, timezone, 'PPpp z') : ''}
                                     </TableCell>
                                   )}
                                 </SubItemTableRow>

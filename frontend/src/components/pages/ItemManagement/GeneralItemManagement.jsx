@@ -2,7 +2,7 @@
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
 import lootService from '../../../services/lootService';
-import {formatDate, updateItemAsDM,} from '../../../utils/utils';
+import {updateItemAsDM} from '../../../utils/utils';
 import {
   Alert,
   Box,
@@ -24,8 +24,11 @@ import {
   Typography,
 } from '@mui/material';
 import ItemManagementDialog from '../../common/dialogs/ItemManagementDialog';
+import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
+import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
 const GeneralItemManagement = () => {
+    const { timezone } = useCampaignTimezone();
     const [searchTerm, setSearchTerm] = useState('');
     const [filteredItems, setFilteredItems] = useState([]);
     const [items, setItems] = useState([]);
@@ -353,7 +356,7 @@ const GeneralItemManagement = () => {
                                     }}
                                     sx={{cursor: 'pointer'}}
                                 >
-                                    <TableCell>{formatDate(item.session_date)}</TableCell>
+                                    <TableCell>{timezone && item.session_date ? formatInCampaignTimezone(item.session_date, timezone, 'PP') : ''}</TableCell>
                                     <TableCell>{item.quantity}</TableCell>
                                     <TableCell>{item.name}</TableCell>
                                     <TableCell>{item.unidentified ? '✓' : ''}</TableCell>
