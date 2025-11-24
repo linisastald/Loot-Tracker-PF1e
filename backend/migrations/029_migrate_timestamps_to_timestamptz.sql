@@ -18,50 +18,57 @@ DROP VIEW IF EXISTS loot_view;
 -- =============================================================================
 -- LOOT TABLE
 -- =============================================================================
--- Primary timestamp tracking for loot items
+-- Only lastupdate column needs conversion (session_date is DATE type)
 
 ALTER TABLE loot
     ALTER COLUMN lastupdate TYPE TIMESTAMP WITH TIME ZONE
     USING lastupdate AT TIME ZONE 'UTC';
 
-ALTER TABLE loot
-    ALTER COLUMN session_date TYPE TIMESTAMP WITH TIME ZONE
-    USING session_date AT TIME ZONE 'UTC';
+COMMENT ON COLUMN loot.lastupdate IS 'Last update timestamp (UTC, timezone-aware)';
 
-ALTER TABLE loot
+-- =============================================================================
+-- APPRAISAL TABLE
+-- =============================================================================
+-- appraised_on is in this table (not loot)
+
+ALTER TABLE appraisal
     ALTER COLUMN appraised_on TYPE TIMESTAMP WITH TIME ZONE
     USING appraised_on AT TIME ZONE 'UTC';
 
-ALTER TABLE loot
+COMMENT ON COLUMN appraisal.appraised_on IS 'Appraisal timestamp (UTC, timezone-aware)';
+
+-- =============================================================================
+-- CONSUMABLEUSE TABLE
+-- =============================================================================
+-- consumed_on is in this table (not loot)
+
+ALTER TABLE consumableuse
     ALTER COLUMN consumed_on TYPE TIMESTAMP WITH TIME ZONE
     USING consumed_on AT TIME ZONE 'UTC';
 
-ALTER TABLE loot
+COMMENT ON COLUMN consumableuse.consumed_on IS 'Consumption timestamp (UTC, timezone-aware)';
+
+-- =============================================================================
+-- IDENTIFY TABLE
+-- =============================================================================
+-- identified_at is in this table (not loot)
+
+ALTER TABLE identify
     ALTER COLUMN identified_at TYPE TIMESTAMP WITH TIME ZONE
     USING identified_at AT TIME ZONE 'UTC';
 
-COMMENT ON COLUMN loot.lastupdate IS 'Last update timestamp (UTC, timezone-aware)';
-COMMENT ON COLUMN loot.session_date IS 'Session date (UTC, timezone-aware)';
+COMMENT ON COLUMN identify.identified_at IS 'Identification timestamp (UTC, timezone-aware)';
 
 -- =============================================================================
--- GOLD_TRANSACTIONS TABLE
+-- GOLD TABLE
 -- =============================================================================
 -- Gold transaction timestamps
 
-ALTER TABLE gold_transactions
+ALTER TABLE gold
     ALTER COLUMN session_date TYPE TIMESTAMP WITH TIME ZONE
     USING session_date AT TIME ZONE 'UTC';
 
-ALTER TABLE gold_transactions
-    ALTER COLUMN session_time TYPE TIMESTAMP WITH TIME ZONE
-    USING session_time AT TIME ZONE 'UTC';
-
-ALTER TABLE gold_transactions
-    ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
-    USING created_at AT TIME ZONE 'UTC';
-
-COMMENT ON COLUMN gold_transactions.session_date IS 'Session date (UTC, timezone-aware)';
-COMMENT ON COLUMN gold_transactions.session_time IS 'Session time (UTC, timezone-aware)';
+COMMENT ON COLUMN gold.session_date IS 'Session date (UTC, timezone-aware)';
 
 -- =============================================================================
 -- USERS TABLE
@@ -77,79 +84,141 @@ ALTER TABLE users
     USING locked_until AT TIME ZONE 'UTC';
 
 COMMENT ON COLUMN users.joined IS 'User registration timestamp (UTC, timezone-aware)';
+COMMENT ON COLUMN users.locked_until IS 'Account lock expiration (UTC, timezone-aware)';
 
 -- =============================================================================
--- CHARACTERS TABLE
+-- FAME TABLE
 -- =============================================================================
--- Character creation and update timestamps
+-- Fame tracking timestamp
 
-ALTER TABLE characters
-    ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
-    USING created_at AT TIME ZONE 'UTC';
-
-ALTER TABLE characters
+ALTER TABLE fame
     ALTER COLUMN updated_at TYPE TIMESTAMP WITH TIME ZONE
     USING updated_at AT TIME ZONE 'UTC';
 
-COMMENT ON COLUMN characters.created_at IS 'Character creation timestamp (UTC, timezone-aware)';
-COMMENT ON COLUMN characters.updated_at IS 'Character last update timestamp (UTC, timezone-aware)';
+COMMENT ON COLUMN fame.updated_at IS 'Fame last update timestamp (UTC, timezone-aware)';
 
 -- =============================================================================
 -- FAME_HISTORY TABLE
 -- =============================================================================
--- Fame/Infamy tracking timestamps
-
-ALTER TABLE fame_history
-    ALTER COLUMN updated_at TYPE TIMESTAMP WITH TIME ZONE
-    USING updated_at AT TIME ZONE 'UTC';
+-- Fame history tracking
 
 ALTER TABLE fame_history
     ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
     USING created_at AT TIME ZONE 'UTC';
 
+COMMENT ON COLUMN fame_history.created_at IS 'Fame history entry timestamp (UTC, timezone-aware)';
+
 -- =============================================================================
--- INVITE_CODES TABLE
+-- INVITES TABLE
 -- =============================================================================
 -- Invitation code timestamps
 
-ALTER TABLE invite_codes
+ALTER TABLE invites
     ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
     USING created_at AT TIME ZONE 'UTC';
 
-ALTER TABLE invite_codes
+ALTER TABLE invites
     ALTER COLUMN used_at TYPE TIMESTAMP WITH TIME ZONE
     USING used_at AT TIME ZONE 'UTC';
 
-ALTER TABLE invite_codes
+ALTER TABLE invites
     ALTER COLUMN expires_at TYPE TIMESTAMP WITH TIME ZONE
     USING expires_at AT TIME ZONE 'UTC';
 
--- =============================================================================
--- GOLD_HISTORY TABLE
--- =============================================================================
--- Gold history tracking
+COMMENT ON COLUMN invites.created_at IS 'Invite creation timestamp (UTC, timezone-aware)';
+COMMENT ON COLUMN invites.used_at IS 'Invite usage timestamp (UTC, timezone-aware)';
+COMMENT ON COLUMN invites.expires_at IS 'Invite expiration timestamp (UTC, timezone-aware)';
 
-ALTER TABLE gold_history
+-- =============================================================================
+-- SESSION_MESSAGES TABLE
+-- =============================================================================
+-- Discord session message timestamps
+
+ALTER TABLE session_messages
     ALTER COLUMN session_date TYPE TIMESTAMP WITH TIME ZONE
     USING session_date AT TIME ZONE 'UTC';
 
-ALTER TABLE gold_history
+ALTER TABLE session_messages
     ALTER COLUMN session_time TYPE TIMESTAMP WITH TIME ZONE
     USING session_time AT TIME ZONE 'UTC';
 
-ALTER TABLE gold_history
+ALTER TABLE session_messages
     ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
     USING created_at AT TIME ZONE 'UTC';
 
+COMMENT ON COLUMN session_messages.session_date IS 'Session date (UTC, timezone-aware)';
+COMMENT ON COLUMN session_messages.session_time IS 'Session time (UTC, timezone-aware)';
+COMMENT ON COLUMN session_messages.created_at IS 'Message creation timestamp (UTC, timezone-aware)';
+
 -- =============================================================================
--- NOTES: Ships, Crew, Outposts, Weather already use TIMESTAMP WITH TIME ZONE
+-- GOLARION_WEATHER TABLE
 -- =============================================================================
--- These tables were created after the timezone best practices were established:
--- - ships.updated_at
--- - crew.created_at
--- - outposts.created_at
--- - weather.created_at
--- No migration needed for these tables.
+-- Weather tracking timestamp
+
+ALTER TABLE golarion_weather
+    ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
+    USING created_at AT TIME ZONE 'UTC';
+
+COMMENT ON COLUMN golarion_weather.created_at IS 'Weather entry creation timestamp (UTC, timezone-aware)';
+
+-- =============================================================================
+-- SHIPS TABLE
+-- =============================================================================
+-- Ship tracking timestamps
+
+ALTER TABLE ships
+    ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
+    USING created_at AT TIME ZONE 'UTC';
+
+ALTER TABLE ships
+    ALTER COLUMN updated_at TYPE TIMESTAMP WITH TIME ZONE
+    USING updated_at AT TIME ZONE 'UTC';
+
+COMMENT ON COLUMN ships.created_at IS 'Ship creation timestamp (UTC, timezone-aware)';
+COMMENT ON COLUMN ships.updated_at IS 'Ship last update timestamp (UTC, timezone-aware)';
+
+-- =============================================================================
+-- CREW TABLE
+-- =============================================================================
+-- Crew tracking timestamps
+
+ALTER TABLE crew
+    ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
+    USING created_at AT TIME ZONE 'UTC';
+
+ALTER TABLE crew
+    ALTER COLUMN updated_at TYPE TIMESTAMP WITH TIME ZONE
+    USING updated_at AT TIME ZONE 'UTC';
+
+COMMENT ON COLUMN crew.created_at IS 'Crew member creation timestamp (UTC, timezone-aware)';
+COMMENT ON COLUMN crew.updated_at IS 'Crew member last update timestamp (UTC, timezone-aware)';
+
+-- =============================================================================
+-- OUTPOSTS TABLE
+-- =============================================================================
+-- Outpost tracking timestamps
+
+ALTER TABLE outposts
+    ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
+    USING created_at AT TIME ZONE 'UTC';
+
+ALTER TABLE outposts
+    ALTER COLUMN updated_at TYPE TIMESTAMP WITH TIME ZONE
+    USING updated_at AT TIME ZONE 'UTC';
+
+COMMENT ON COLUMN outposts.created_at IS 'Outpost creation timestamp (UTC, timezone-aware)';
+COMMENT ON COLUMN outposts.updated_at IS 'Outpost last update timestamp (UTC, timezone-aware)';
+
+-- =============================================================================
+-- NOTES: Tables already using TIMESTAMP WITH TIME ZONE (no migration needed)
+-- =============================================================================
+-- These tables were created after timezone best practices were established:
+-- - ship_infamy.updated_at
+-- - infamy_history.created_at
+-- - favored_ports.created_at
+-- - port_visits.created_at
+-- - impositions.created_at
+-- - imposition_uses.created_at
 
 -- =============================================================================
 -- VERIFICATION QUERIES
@@ -193,10 +262,14 @@ BEGIN
     ORDER BY lastupdate DESC
     LIMIT 1;
 
-    RAISE NOTICE 'Sample loot timestamp (most recent):';
-    RAISE NOTICE '  UTC: %', sample_time AT TIME ZONE 'UTC';
-    RAISE NOTICE '  Eastern: %', sample_time AT TIME ZONE 'America/New_York';
-    RAISE NOTICE '  Pacific: %', sample_time AT TIME ZONE 'America/Los_Angeles';
+    IF sample_time IS NOT NULL THEN
+        RAISE NOTICE 'Sample loot timestamp (most recent):';
+        RAISE NOTICE '  UTC: %', sample_time AT TIME ZONE 'UTC';
+        RAISE NOTICE '  Eastern: %', sample_time AT TIME ZONE 'America/New_York';
+        RAISE NOTICE '  Pacific: %', sample_time AT TIME ZONE 'America/Los_Angeles';
+    ELSE
+        RAISE NOTICE 'No loot timestamps found for sample verification';
+    END IF;
 END $$;
 
 -- =============================================================================
