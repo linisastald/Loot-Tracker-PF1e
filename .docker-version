@@ -3,10 +3,10 @@
 # Format: MAJOR.MINOR.PATCH
 
 # Current version
-VERSION=0.10.2
+VERSION=0.10.3
 
 # Last build timestamp
-LAST_BUILD=2025-11-24T21:37:46Z
+LAST_BUILD=2025-11-24T21:43:24Z
 
 # Build counter (incremented with each build)
-BUILD_NUMBER=17
+BUILD_NUMBER=0
