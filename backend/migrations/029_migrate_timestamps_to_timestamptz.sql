@@ -12,8 +12,13 @@ BEGIN;
 -- DROP VIEWS THAT DEPEND ON TIMESTAMP COLUMNS
 -- =============================================================================
 -- Views must be dropped before altering column types, then recreated
+--
+-- loot_view - depends on loot.lastupdate (TIMESTAMP → TIMESTAMPTZ)
+-- gold_totals_view - depends on gold.session_date (TIMESTAMP → TIMESTAMPTZ)
+-- index_usage_stats - no dependencies on our timestamp columns (skipped)
 
 DROP VIEW IF EXISTS loot_view;
+DROP VIEW IF EXISTS gold_totals_view;
 
 -- =============================================================================
 -- LOOT TABLE
@@ -392,6 +397,26 @@ UNION ALL
   ORDER BY 1, 5, 2;
 
 COMMENT ON VIEW loot_view IS 'Aggregated loot view with individual and summary rows - updated for TIMESTAMPTZ columns';
+
+-- Recreate gold_totals_view with updated TIMESTAMPTZ column (gold.session_date)
+CREATE VIEW gold_totals_view AS
+SELECT
+    COALESCE(SUM(platinum), 0) as total_platinum,
+    COALESCE(SUM(gold), 0) as total_gold,
+    COALESCE(SUM(silver), 0) as total_silver,
+    COALESCE(SUM(copper), 0) as total_copper,
+    COALESCE(
+        (10 * SUM(platinum)) +
+        SUM(gold) +
+        (SUM(silver) / 10.0) +
+        (SUM(copper) / 100.0),
+        0
+    ) as total_value_in_gold,
+    COUNT(*) as total_transactions,
+    MAX(session_date) as last_transaction_date
+FROM gold;
+
+COMMENT ON VIEW gold_totals_view IS 'Provides current gold totals and overview statistics - updated for TIMESTAMPTZ columns';
 
 -- =============================================================================
 -- SUCCESS!
