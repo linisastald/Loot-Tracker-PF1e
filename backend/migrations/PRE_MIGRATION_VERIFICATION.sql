@@ -30,10 +30,10 @@ SELECT
 FROM loot
 UNION ALL
 SELECT
-    'gold_transactions',
+    'gold',
     COUNT(*),
-    COUNT(created_at)
-FROM gold_transactions
+    COUNT(session_date)
+FROM gold
 UNION ALL
 SELECT
     'users',
@@ -42,10 +42,22 @@ SELECT
 FROM users
 UNION ALL
 SELECT
-    'characters',
+    'appraisal',
     COUNT(*),
-    COUNT(created_at)
-FROM characters;
+    COUNT(appraised_on)
+FROM appraisal
+UNION ALL
+SELECT
+    'consumableuse',
+    COUNT(*),
+    COUNT(consumed_on)
+FROM consumableuse
+UNION ALL
+SELECT
+    'identify',
+    COUNT(*),
+    COUNT(identified_at)
+FROM identify;
 
 -- =============================================================================
 -- 3. Sample Data Verification

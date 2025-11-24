@@ -17,7 +17,7 @@ SELECT
     END as status
 FROM information_schema.columns
 WHERE table_schema = 'public'
-  AND table_name IN ('loot', 'gold_transactions', 'users', 'characters', 'fame_history', 'invite_codes', 'gold_history')
+  AND table_name IN ('loot', 'appraisal', 'consumableuse', 'identify', 'gold', 'users', 'fame', 'fame_history', 'invites', 'session_messages', 'golarion_weather', 'ships', 'crew', 'outposts')
   AND column_name IN ('lastupdate', 'session_date', 'created_at', 'updated_at', 'joined', 'appraised_on', 'consumed_on', 'identified_at', 'session_time', 'locked_until', 'used_at', 'expires_at')
 ORDER BY table_name, column_name;
 
@@ -35,11 +35,11 @@ SELECT
 FROM loot
 UNION ALL
 SELECT
-    'gold_transactions',
+    'gold',
     COUNT(*),
-    COUNT(created_at),
-    COUNT(*) FILTER (WHERE created_at IS NOT NULL AND EXTRACT(timezone FROM created_at) = 0)
-FROM gold_transactions
+    COUNT(session_date),
+    COUNT(*) FILTER (WHERE session_date IS NOT NULL AND EXTRACT(timezone FROM session_date) = 0)
+FROM gold
 UNION ALL
 SELECT
     'users',
@@ -113,10 +113,12 @@ SELECT
     indexdef
 FROM pg_indexes
 WHERE schemaname = 'public'
-  AND tablename IN ('loot', 'gold_transactions', 'users', 'characters', 'fame_history')
-  AND indexdef LIKE '%lastupdate%'
+  AND tablename IN ('loot', 'gold', 'users', 'fame_history', 'consumableuse')
+  AND (indexdef LIKE '%lastupdate%'
      OR indexdef LIKE '%created_at%'
      OR indexdef LIKE '%joined%'
+     OR indexdef LIKE '%consumed_on%'
+     OR indexdef LIKE '%session_date%')
 ORDER BY tablename, indexname;
 
 -- =============================================================================
