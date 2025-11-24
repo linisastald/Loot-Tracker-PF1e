@@ -528,7 +528,7 @@ const SystemSettings = () => {
 
             <Grid container spacing={3}>
                 {/* Registration Settings */}
-                <Grid size={{xs: 12, md: 4}}>
+                <Grid size={{xs: 12, md: 6}}>
                     <Card variant="outlined">
                         <CardHeader title="Registration Settings"/>
                         <CardContent>
@@ -618,7 +618,7 @@ const SystemSettings = () => {
                 </Grid>
 
                 {/* Discord Integration Settings */}
-                <Grid size={{xs: 12, md: 4}}>
+                <Grid size={{xs: 12, md: 6}}>
                     <Card variant="outlined">
                         <CardHeader title="Discord Integration" avatar={<ChatIcon/>}/>
                         <CardContent>
@@ -687,7 +687,7 @@ const SystemSettings = () => {
                 </Grid>
 
                 {/* General Settings */}
-                <Grid size={{xs: 12, md: 4}}>
+                <Grid size={{xs: 12, md: 6}}>
                     <Card variant="outlined">
                         <CardHeader title="General Settings" avatar={<SettingsIcon/>}/>
                         <CardContent>
@@ -781,7 +781,7 @@ const SystemSettings = () => {
                 </Grid>
 
                 {/* Timezone Settings */}
-                <Grid size={{xs: 12, md: 4}}>
+                <Grid size={{xs: 12, md: 6}}>
                     <Card variant="outlined">
                         <CardHeader title="Campaign Timezone" avatar={<ScheduleIcon/>}/>
                         <CardContent>
