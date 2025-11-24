@@ -84,6 +84,24 @@ const useFilterMenu = (initialFilters) => {
   };
 };
 
+/**
+ * Formats an ISO timestamp string to a date-only display format.
+ * Handles UTC timestamps without timezone conversion.
+ * @param {string} dateString - ISO timestamp (e.g., "2025-11-09T00:00:00.000Z")
+ * @returns {string} Formatted date (e.g., "Nov 9, 2025") or empty string if invalid
+ */
+const formatDateOnly = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return ''; // Validate date is valid
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC'
+  });
+};
+
 // Utility function for formatting appraisal details
 const formatAppraisalDetails = (item) => {
   const appraisals = item.appraisals || [];
@@ -598,13 +616,7 @@ const CustomLootTable = ({
 
                     {showColumns.sessionDate && (
                       <TableCell style={mainCellStyle}>
-                        {/* session_date is a DATE type (no time component), format in UTC to prevent timezone shifts */}
-                        {summaryItem.session_date ? new Date(summaryItem.session_date + 'T00:00:00').toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          timeZone: 'UTC'
-                        }) : ''}
+                        {formatDateOnly(summaryItem.session_date)}
                       </TableCell>
                     )}
 
@@ -655,13 +667,7 @@ const CustomLootTable = ({
                                   </TableCell>
                                   {showColumns.sessionDate && (
                                     <TableCell style={subCellStyle}>
-                                      {/* session_date is a DATE type (no time component), format in UTC to prevent timezone shifts */}
-                                      {subItem.session_date ? new Date(subItem.session_date + 'T00:00:00').toLocaleDateString('en-US', {
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric',
-                                        timeZone: 'UTC'
-                                      }) : ''}
+                                      {formatDateOnly(subItem.session_date)}
                                     </TableCell>
                                   )}
                                   {showColumns.lastUpdate && (
