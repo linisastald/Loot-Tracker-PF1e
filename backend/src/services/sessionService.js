@@ -1,6 +1,9 @@
 /**
  * SessionService - Main orchestrator for session management
  * Refactored to delegate to specialized services for better separation of concerns
+ *
+ * Note: The SessionSchedulerService is now initialized directly from index.js
+ * to centralize all cron job management in one place.
  */
 
 const pool = require('../config/db');
@@ -13,44 +16,10 @@ const {
 // Import specialized services
 const attendanceService = require('./attendance/AttendanceService');
 const sessionDiscordService = require('./discord/SessionDiscordService');
-const sessionSchedulerService = require('./scheduler/SessionSchedulerService');
 const recurringSessionService = require('./recurring/RecurringSessionService');
 const sessionTaskService = require('./tasks/SessionTaskService');
 
 class SessionService {
-    constructor() {
-        this.isInitialized = false;
-    }
-
-    /**
-     * Initialize session service and scheduler
-     */
-    async initialize() {
-        if (this.isInitialized) return;
-
-        try {
-            // Delegate to scheduler service
-            await sessionSchedulerService.initialize();
-
-            this.isInitialized = true;
-            logger.info('Session service initialized successfully');
-        } catch (error) {
-            logger.error('Failed to initialize session service:', error);
-        }
-    }
-
-    /**
-     * Stop session service and cleanup
-     */
-    async stop() {
-        logger.info('Stopping session service...');
-
-        // Delegate to scheduler service
-        await sessionSchedulerService.stop();
-
-        this.isInitialized = false;
-        logger.info('Session service stopped successfully');
-    }
 
     // ========================================================================
     // SESSION MANAGEMENT (Core CRUD)

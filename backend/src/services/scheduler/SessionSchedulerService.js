@@ -1,12 +1,17 @@
 /**
- * SessionSchedulerService - Handles session-related cron jobs and automation
- * Extracted from sessionService.js for better separation of concerns
+ * SessionSchedulerService - Centralized scheduler for all cron jobs
+ * Handles session automation, Discord notifications, and system cleanup tasks
+ *
+ * Consolidates functionality previously split between:
+ * - cronJobs.js (removed)
+ * - sessionCleanup.js (cleanup logic moved here)
  */
 
 const pool = require('../../config/db');
 const logger = require('../../utils/logger');
 const cron = require('node-cron');
 const timezoneUtils = require('../../utils/timezoneUtils');
+const dbUtils = require('../../utils/dbUtils');
 
 // Cron schedule constants for self-documenting job timing
 const CRON_SCHEDULES = {
@@ -51,6 +56,9 @@ class SessionSchedulerService {
 
             // Schedule session completion checks
             this.scheduleSessionCompletions();
+
+            // Schedule system cleanup tasks (account locks, expired invites, etc.)
+            this.scheduleSystemCleanup();
 
             this.isInitialized = true;
             logger.info('Session scheduler service initialized successfully');
@@ -104,10 +112,10 @@ class SessionSchedulerService {
     }
 
     /**
-     * Schedule session announcements check (runs every hour)
+     * Schedule session announcements check (runs every 15 minutes)
      */
     scheduleSessionAnnouncements() {
-        const job = cron.schedule(CRON_SCHEDULES.HOURLY, async () => {
+        const job = cron.schedule(CRON_SCHEDULES.EVERY_15_MINUTES, async () => {
             try {
                 await this.checkPendingAnnouncements();
             } catch (error) {
@@ -118,7 +126,7 @@ class SessionSchedulerService {
         });
 
         this.scheduledJobs.set('sessionAnnouncements', job);
-        logger.info(`Scheduled session announcements check job (every hour in ${this.campaignTimezone} timezone)`);
+        logger.info(`Scheduled session announcements check job (every 15 minutes in ${this.campaignTimezone} timezone)`);
     }
 
     /**
@@ -404,6 +412,135 @@ class SessionSchedulerService {
         } catch (error) {
             logger.error('Error checking session completions:', error);
         }
+    }
+
+    // ========================================================================
+    // SYSTEM CLEANUP TASKS
+    // ========================================================================
+
+    /**
+     * Schedule system cleanup tasks (runs every hour)
+     * Handles: expired account locks, expired invites, old data cleanup
+     */
+    scheduleSystemCleanup() {
+        const job = cron.schedule(CRON_SCHEDULES.HOURLY, async () => {
+            try {
+                logger.debug('Running system cleanup job');
+                await this.cleanupExpiredData();
+            } catch (error) {
+                logger.error('Error in scheduled system cleanup:', error);
+            }
+        }, {
+            timezone: this.campaignTimezone
+        });
+
+        this.scheduledJobs.set('systemCleanup', job);
+        logger.info(`Scheduled system cleanup job (every hour in ${this.campaignTimezone} timezone)`);
+
+        // Run cleanup immediately on startup
+        this.cleanupExpiredData().catch(error => {
+            logger.error('Error running initial system cleanup:', error);
+        });
+    }
+
+    /**
+     * Clean up expired sessions, locked accounts, and stale data
+     */
+    async cleanupExpiredData() {
+        try {
+            // Clean up expired locked accounts
+            const unlockedAccounts = await dbUtils.executeQuery(
+                'UPDATE users SET login_attempts = 0, locked_until = NULL WHERE locked_until IS NOT NULL AND locked_until < NOW() RETURNING username'
+            );
+
+            if (unlockedAccounts.rows.length > 0) {
+                logger.info(`Unlocked ${unlockedAccounts.rows.length} expired account locks`, {
+                    accounts: unlockedAccounts.rows.map(row => row.username)
+                });
+            }
+
+            // Clean up expired invite codes
+            const expiredInvites = await dbUtils.executeQuery(
+                'UPDATE invites SET is_used = TRUE WHERE is_used = FALSE AND expires_at IS NOT NULL AND expires_at < NOW() RETURNING code'
+            );
+
+            if (expiredInvites.rows.length > 0) {
+                logger.info(`Marked ${expiredInvites.rows.length} expired invite codes as used`, {
+                    codes: expiredInvites.rows.map(row => row.code)
+                });
+            }
+
+            // Clean up old identification attempts (older than 30 days)
+            const oldIdentifications = await dbUtils.executeQuery(
+                `DELETE FROM identify WHERE identified_at < NOW() - INTERVAL '30 days'`
+            );
+
+            if (oldIdentifications.rowCount > 0) {
+                logger.info(`Cleaned up ${oldIdentifications.rowCount} old identification attempts`);
+            }
+
+            // Clean up orphaned appraisals (appraisals for deleted loot items)
+            const orphanedAppraisals = await dbUtils.executeQuery(
+                'DELETE FROM appraisal WHERE lootid NOT IN (SELECT id FROM loot)'
+            );
+
+            if (orphanedAppraisals.rowCount > 0) {
+                logger.info(`Cleaned up ${orphanedAppraisals.rowCount} orphaned appraisals`);
+            }
+
+            // Reset login attempts for accounts that haven't had activity in 24 hours
+            // Note: This is a simplified check - the original had a complex pg_stat_activity query
+            // that wasn't reliable. This version resets attempts for unlocked accounts after 24h.
+            const resetAttempts = await dbUtils.executeQuery(
+                `UPDATE users
+                 SET login_attempts = 0
+                 WHERE login_attempts > 0
+                   AND locked_until IS NULL
+                   AND updated_at < NOW() - INTERVAL '24 hours'
+                 RETURNING username`
+            );
+
+            if (resetAttempts.rows.length > 0) {
+                logger.info(`Reset login attempts for ${resetAttempts.rows.length} accounts after 24 hours`);
+            }
+
+        } catch (error) {
+            logger.error('Error during system cleanup', {
+                error: error.message,
+                stack: error.stack
+            });
+        }
+    }
+
+    /**
+     * Get system cleanup statistics (for admin dashboard)
+     * @returns {Promise<Object>} - Cleanup statistics
+     */
+    async getCleanupStats() {
+        try {
+            const stats = await dbUtils.executeQuery(`
+                SELECT
+                    (SELECT COUNT(*) FROM users WHERE locked_until IS NOT NULL) as locked_accounts,
+                    (SELECT COUNT(*) FROM users WHERE login_attempts > 0) as accounts_with_failed_attempts,
+                    (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND (expires_at IS NULL OR expires_at > NOW())) as active_invites,
+                    (SELECT COUNT(*) FROM invites WHERE is_used = FALSE AND expires_at IS NOT NULL AND expires_at < NOW()) as expired_invites,
+                    (SELECT COUNT(*) FROM identify WHERE identified_at >= NOW() - INTERVAL '7 days') as recent_identifications
+            `);
+
+            return stats.rows[0];
+        } catch (error) {
+            logger.error('Error getting cleanup stats', error);
+            return null;
+        }
+    }
+
+    /**
+     * Force run cleanup manually (for admin use)
+     */
+    async forceCleanup() {
+        logger.info('Manual system cleanup initiated');
+        await this.cleanupExpiredData();
+        logger.info('Manual system cleanup completed');
     }
 }
 

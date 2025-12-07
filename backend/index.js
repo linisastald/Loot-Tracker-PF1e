@@ -12,9 +12,8 @@ const dotenv = require('dotenv');
 const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
-const { initCronJobs } = require('./src/utils/cronJobs');
+const sessionSchedulerService = require('./src/services/scheduler/SessionSchedulerService');
 const discordBrokerService = require('./src/services/discordBrokerService');
-const sessionService = require('./src/services/sessionService');
 const discordOutboxService = require('./src/services/discordOutboxService');
 // Migration runner for handling database schema updates
 const migrationRunner = require('./src/utils/migrationRunner');
@@ -383,16 +382,16 @@ const startServer = async () => {
     logger.info('Database migrations completed');
 
     // Start the server
-    const server = app.listen(port, () => {
+    const server = app.listen(port, async () => {
       logger.info(`Server running on port ${port}`);
 
-      // Initialize cron jobs
-      initCronJobs();
-      logger.info('Cron jobs initialized');
-
-      // Initialize enhanced session service
-      sessionService.initialize();
-      logger.info('Session service initialized');
+      // Initialize centralized scheduler (handles all cron jobs: session automation, cleanup, etc.)
+      try {
+        await sessionSchedulerService.initialize();
+        logger.info('Session scheduler service initialized');
+      } catch (error) {
+        logger.error('Failed to initialize session scheduler service:', error);
+      }
 
       // Start Discord broker integration
       discordBrokerService.start().catch(error => {
@@ -419,6 +418,14 @@ startServer().then(server => {
 
     server.close(async () => {
       logger.info('HTTP server closed');
+
+      // Stop session scheduler service (stops all cron jobs)
+      try {
+        await sessionSchedulerService.stop();
+        logger.info('Session scheduler service stopped');
+      } catch (error) {
+        logger.error('Error stopping session scheduler service:', error);
+      }
 
       // Stop Discord broker service
       try {

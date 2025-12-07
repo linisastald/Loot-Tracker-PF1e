@@ -136,6 +136,7 @@ const SessionManagement = () => {
     const [announcingSession, setAnnouncingSession] = useState(null);
     const [cancelingSession, setCancelingSession] = useState(null);
     const [confirmingSession, setConfirmingSession] = useState(null);
+    const [checkingNotifications, setCheckingNotifications] = useState(false);
 
     // Filter state
     const [showFilters, setShowFilters] = useState(false);
@@ -305,6 +306,32 @@ const SessionManagement = () => {
             enqueueSnackbar('Failed to post announcement', { variant: 'error' });
         } finally {
             setAnnouncingSession(null);
+        }
+    };
+
+    const handleCheckNotifications = async () => {
+        try {
+            setCheckingNotifications(true);
+            const response = await api.post('/sessions/check-notifications');
+            const result = response.data?.data || response.data || {};
+
+            if (result.count === 0) {
+                enqueueSnackbar('No sessions need notifications at this time', { variant: 'info' });
+            } else {
+                const successCount = result.results?.filter(r => r.status === 'success').length || 0;
+                const errorCount = result.results?.filter(r => r.status === 'error').length || 0;
+
+                if (errorCount === 0) {
+                    enqueueSnackbar(`Posted ${successCount} session announcement(s)`, { variant: 'success' });
+                } else {
+                    enqueueSnackbar(`Posted ${successCount} announcements, ${errorCount} failed`, { variant: 'warning' });
+                }
+                fetchSessions(); // Refresh to get updated data
+            }
+        } catch (err) {
+            enqueueSnackbar('Failed to check notifications', { variant: 'error' });
+        } finally {
+            setCheckingNotifications(false);
         }
     };
 
@@ -606,7 +633,7 @@ const SessionManagement = () => {
         <Box>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                 <Typography variant="h6">Session Management</Typography>
-                <Box display="flex" gap={2}>
+                <Box display="flex" gap={2} flexWrap="wrap">
                     <Button
                         variant="outlined"
                         startIcon={<SettingsIcon />}
@@ -621,6 +648,16 @@ const SessionManagement = () => {
                         onClick={() => setShowFilters(!showFilters)}
                     >
                         Filters
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="secondary"
+                        startIcon={checkingNotifications ? <CircularProgress size={16} /> : <AnnouncementIcon />}
+                        onClick={handleCheckNotifications}
+                        disabled={checkingNotifications}
+                        title="Check for sessions that need Discord announcements and post them"
+                    >
+                        Check Notifications
                     </Button>
                     <Button
                         variant="contained"
