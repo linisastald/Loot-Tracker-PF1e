@@ -151,6 +151,8 @@ class AttendanceService {
 
     /**
      * Get confirmed attendance count
+     * Counts players who are attending: yes, late, early, late_and_early
+     * Does NOT count: no, maybe
      * @param {number} sessionId - Session ID
      * @returns {Promise<number>} - Number of confirmed attendees
      */
@@ -159,7 +161,7 @@ class AttendanceService {
             SELECT COUNT(DISTINCT user_id) as count
             FROM session_attendance
             WHERE session_id = $1
-            AND response_type = 'yes'
+            AND response_type IN ('yes', 'late', 'early', 'late_and_early')
         `, [sessionId]);
 
         return parseInt(result.rows[0].count) || 0;

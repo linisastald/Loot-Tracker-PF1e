@@ -97,6 +97,18 @@ class SessionDiscordService {
             const nonResponders = await attendanceService.getNonResponders(sessionId);
             const maybeResponders = attendanceData.filter(a => a.response_type === 'maybe');
 
+            // Get DM's discord_id to exclude them from reminders
+            let dmDiscordId = null;
+            if (session.created_by) {
+                const dmResult = await pool.query(
+                    'SELECT discord_id FROM users WHERE id = $1',
+                    [session.created_by]
+                );
+                if (dmResult.rows.length > 0) {
+                    dmDiscordId = dmResult.rows[0].discord_id;
+                }
+            }
+
             let targetUsers = [];
             let message = '';
 
@@ -142,13 +154,18 @@ class SessionDiscordService {
                 content = `<@&${settings.campaign_role_id}> ${message}`;
             } else {
                 // Always ping individual users, never the role for auto/targeted reminders
+                // Exclude the DM from reminder pings
                 const mentions = targetUsers
+                    .filter(u => {
+                        const discordId = u.user_discord_id || u.discord_id;
+                        return discordId && discordId !== dmDiscordId;
+                    })
                     .map(u => `<@${u.user_discord_id || u.discord_id}>`)
                     .filter(mention => mention && !mention.includes('null') && !mention.includes('undefined'))
                     .join(' ');
 
                 if (!mentions) {
-                    logger.warn('No valid Discord IDs found for reminder:', { sessionId, reminderType, targetCount: targetUsers.length });
+                    logger.info('No users to remind after excluding DM:', { sessionId, reminderType, targetCount: targetUsers.length });
                     return;
                 }
 
