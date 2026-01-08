@@ -379,6 +379,30 @@ router.post('/:id/remind', verifyToken, checkRole('DM'), [
     }
 });
 
+// Uncancel a session (DM only)
+router.post('/:id/uncancel', verifyToken, checkRole('DM'), [
+    param('id').isInt().withMessage('Session ID must be an integer')
+], async (req, res) => {
+    try {
+        const sessionId = req.params.id;
+        const session = await sessionService.uncancelSession(sessionId);
+
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'Session not found' });
+        }
+
+        res.json({
+            success: true,
+            message: 'Session has been reinstated',
+            data: session
+        });
+
+    } catch (error) {
+        logger.error('Failed to uncancel session:', error);
+        res.status(400).json({ success: false, message: error.message || 'Failed to uncancel session' });
+    }
+});
+
 // ========================================================================
 // ENHANCED ATTENDANCE ROUTES
 // ========================================================================

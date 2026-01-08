@@ -24,6 +24,17 @@ class SessionDiscordService {
                 throw new Error('Session not found');
             }
 
+            // GUARD: Prevent duplicate announcements
+            // If a discord_message_id already exists, update instead of creating new
+            if (session.discord_message_id) {
+                logger.info('Session already has Discord announcement, updating instead of creating new', {
+                    sessionId,
+                    existingMessageId: session.discord_message_id
+                });
+                await this.updateSessionMessage(sessionId);
+                return { id: session.discord_message_id, updated: true };
+            }
+
             const settings = await this.getDiscordSettings();
             if (!settings.discord_channel_id || !settings.discord_bot_token) {
                 logger.warn('Discord not configured for session announcements');

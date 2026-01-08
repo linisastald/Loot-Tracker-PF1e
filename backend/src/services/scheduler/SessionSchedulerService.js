@@ -327,11 +327,15 @@ class SessionSchedulerService {
     /**
      * Check sessions for confirmation/auto-cancel based on attendance
      * This now handles both confirmation AND auto-cancellation in a single check
+     *
+     * IMPORTANT: Will not auto-cancel unless a reminder has been sent first.
+     * This prevents cancellation before players have been notified.
      */
     async checkSessionConfirmations() {
         // Lazy load to avoid circular dependency
         const sessionService = require('../sessionService');
         const attendanceService = require('../attendance/AttendanceService');
+        const sessionDiscordService = require('../discord/SessionDiscordService');
 
         // Get sessions within their confirmation_hours window
         const result = await pool.query(`
@@ -348,7 +352,29 @@ class SessionSchedulerService {
                 if (attendanceCount >= session.minimum_players) {
                     await sessionService.confirmSession(session.id);
                 } else {
-                    await sessionService.cancelSession(session.id, `Insufficient confirmed players: ${attendanceCount} of ${session.minimum_players} minimum required`);
+                    // Before cancelling, check if a reminder has been sent
+                    // This prevents cancellation before players have been notified
+                    const reminderCheck = await pool.query(`
+                        SELECT 1 FROM session_reminders
+                        WHERE session_id = $1 AND sent = TRUE
+                        LIMIT 1
+                    `, [session.id]);
+
+                    if (reminderCheck.rows.length === 0) {
+                        // No reminder sent yet - send one first, don't cancel yet
+                        logger.info(`Session ${session.id} has insufficient players (${attendanceCount}/${session.minimum_players}) but no reminder sent yet. Sending reminder before potential cancellation.`);
+                        try {
+                            await sessionDiscordService.sendSessionReminder(session.id, 'auto', { isManual: false });
+                            logger.info(`Pre-cancellation reminder sent for session ${session.id}. Will check again at next confirmation check.`);
+                        } catch (reminderError) {
+                            logger.error(`Failed to send pre-cancellation reminder for session ${session.id}:`, reminderError);
+                            // Don't cancel if we couldn't send the reminder - try again next check
+                        }
+                    } else {
+                        // Reminder was already sent, now we can proceed with cancellation
+                        logger.info(`Session ${session.id} has insufficient players and reminder already sent. Proceeding with cancellation.`);
+                        await sessionService.cancelSession(session.id, `Insufficient confirmed players: ${attendanceCount} of ${session.minimum_players} minimum required`);
+                    }
                 }
             } catch (error) {
                 logger.error(`Failed to process confirmation for session ${session.id}:`, error);

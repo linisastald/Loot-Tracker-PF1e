@@ -390,6 +390,91 @@ class SessionService {
     }
 
     /**
+     * Uncancel a session (restore from cancelled status)
+     * @param {number} sessionId - Session ID
+     * @returns {Promise<Object>} - Updated session
+     */
+    async uncancelSession(sessionId) {
+        try {
+            // First verify the session exists and is cancelled
+            const checkResult = await pool.query(
+                'SELECT * FROM game_sessions WHERE id = $1',
+                [sessionId]
+            );
+
+            if (checkResult.rows.length === 0) {
+                logger.warn('Attempted to uncancel non-existent session', { sessionId });
+                return null;
+            }
+
+            const existingSession = checkResult.rows[0];
+            if (existingSession.status !== 'cancelled') {
+                logger.warn('Attempted to uncancel session that is not cancelled', {
+                    sessionId,
+                    currentStatus: existingSession.status
+                });
+                throw new Error(`Session is not cancelled (current status: ${existingSession.status})`);
+            }
+
+            // Check if session is in the past
+            if (new Date(existingSession.start_time) < new Date()) {
+                logger.warn('Attempted to uncancel session that has already passed', { sessionId });
+                throw new Error('Cannot uncancel a session that has already passed');
+            }
+
+            // Restore session to scheduled status
+            const result = await pool.query(`
+                UPDATE game_sessions
+                SET status = 'scheduled',
+                    cancelled = FALSE,
+                    cancel_reason = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+                RETURNING *
+            `, [sessionId]);
+
+            if (result.rows.length > 0) {
+                const session = result.rows[0];
+                logger.info('Session uncancelled:', { sessionId, title: session.title });
+
+                // Update Discord embed to show scheduled status
+                await sessionDiscordService.updateSessionMessage(sessionId);
+
+                // Send notification that session has been reinstated
+                try {
+                    const settings = await sessionDiscordService.getDiscordSettings();
+                    if (settings.campaign_role_id && settings.discord_channel_id) {
+                        const discordService = require('./discordBrokerService');
+                        const reinstateMessage = `<@&${settings.campaign_role_id}> 🎉 Session "${session.title}" has been reinstated! Please update your attendance.`;
+
+                        logger.info('Sending Discord reinstatement notification', { sessionId });
+
+                        await discordService.sendMessage({
+                            channelId: settings.discord_channel_id,
+                            content: reinstateMessage
+                        });
+
+                        logger.info('Discord reinstatement notification sent successfully');
+                    }
+                } catch (discordError) {
+                    logger.error('Failed to send Discord reinstatement notification:', {
+                        error: discordError.message,
+                        sessionId
+                    });
+                    // Don't throw - we still want to return the uncancelled session
+                }
+
+                return session;
+            }
+
+            return null;
+        } catch (error) {
+            logger.error('Failed to uncancel session:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Mark session as completed
      * @param {number} sessionId - Session ID
      * @returns {Promise<Object>} - Completed session

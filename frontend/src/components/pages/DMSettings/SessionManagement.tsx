@@ -44,6 +44,7 @@ import {
     Group as GroupIcon,
     NotificationImportant as ReminderIcon,
     Refresh as RefreshIcon,
+    Restore as RestoreIcon,
     Send as SendIcon,
     Settings as SettingsIcon,
     Visibility as ViewIcon
@@ -136,6 +137,7 @@ const SessionManagement = () => {
     const [announcingSession, setAnnouncingSession] = useState(null);
     const [cancelingSession, setCancelingSession] = useState(null);
     const [confirmingSession, setConfirmingSession] = useState(null);
+    const [uncancelingSession, setUncancelingSession] = useState(null);
     const [checkingNotifications, setCheckingNotifications] = useState(false);
 
     // Filter state
@@ -390,6 +392,21 @@ const SessionManagement = () => {
         setCancelDialog(true);
     };
 
+    const handleUncancelSession = async (sessionId) => {
+        try {
+            setUncancelingSession(sessionId);
+            await api.post(`/sessions/${sessionId}/uncancel`);
+            enqueueSnackbar('Session has been reinstated', { variant: 'success' });
+            fetchSessions();
+        } catch (err) {
+            const error = err as { response?: { data?: { message?: string } } };
+            const errorMessage = error.response?.data?.message || 'Failed to uncancel session';
+            enqueueSnackbar(errorMessage, { variant: 'error' });
+        } finally {
+            setUncancelingSession(null);
+        }
+    };
+
     const viewAttendance = async (sessionId) => {
         try {
             const response = await api.get(`/sessions/${sessionId}/attendance/detailed`);
@@ -560,6 +577,20 @@ const SessionManagement = () => {
                                     >
                                         {cancelingSession === session.id ?
                                             <CircularProgress size={20} /> : <CancelIcon />}
+                                    </IconButton>
+                                )}
+
+                                {/* Uncancel Session */}
+                                {isUpcoming && session.status === 'cancelled' && (
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => handleUncancelSession(session.id)}
+                                        disabled={uncancelingSession === session.id}
+                                        title="Reinstate Session"
+                                        color="success"
+                                    >
+                                        {uncancelingSession === session.id ?
+                                            <CircularProgress size={20} /> : <RestoreIcon />}
                                     </IconButton>
                                 )}
                             </Box>
