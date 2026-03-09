@@ -6,10 +6,6 @@ const outpostService = {
     return await api.get('/outposts');
   },
 
-  getOutpostById: async (id) => {
-    return await api.get(`/outposts/${id}`);
-  },
-
   createOutpost: async (outpostData) => {
     return await api.post('/outposts', outpostData);
   },

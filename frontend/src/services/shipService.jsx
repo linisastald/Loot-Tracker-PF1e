@@ -17,11 +17,6 @@ const shipService = {
     return await api.get('/ships');
   },
 
-  // Get ship by ID with crew
-  getShipById: async (id) => {
-    return await api.get(`/ships/${id}`);
-  },
-
   // Create new ship
   createShip: async (shipData) => {
     return await api.post('/ships', shipData);

@@ -1,5 +1,6 @@
 // src/models/Ship.js
 const dbUtils = require('../utils/dbUtils');
+const logger = require('../utils/logger');
 
 /**
  * Parse ship JSON fields and detect weapon formats
@@ -27,7 +28,7 @@ const parseShipData = (ship) => {
         parsedShip.weapon_types = []; // Clear new format
       }
     } catch (e) {
-      console.error('Error parsing weapons data:', e);
+      logger.error('Error parsing weapons data:', e);
       parsedShip.weapons = [];
       parsedShip.weapon_types = [];
     }
