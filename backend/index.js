@@ -245,8 +245,6 @@ const configRoutes = require('./src/api/routes/config');
 const shipRoutes = require('./src/api/routes/ships');
 const outpostRoutes = require('./src/api/routes/outposts');
 const crewRoutes = require('./src/api/routes/crew');
-// Migration routes no longer needed - using consolidated schema
-// const migrationRoutes = require('./src/api/routes/migrations');
 
 // New refactored routes
 const itemRoutes = require('./src/api/routes/items');
@@ -316,8 +314,6 @@ app.use('/api/weather', csrfProtection, weatherRoutes);
 app.use('/api/ships', csrfProtection, shipRoutes);
 app.use('/api/outposts', csrfProtection, outpostRoutes);
 app.use('/api/crew', csrfProtection, crewRoutes);
-// Migration endpoint disabled - using consolidated schema
-// app.use('/api/migrations', migrationRoutes);
 
 // New refactored routes
 app.use('/api/items', csrfProtection, itemRoutes);
