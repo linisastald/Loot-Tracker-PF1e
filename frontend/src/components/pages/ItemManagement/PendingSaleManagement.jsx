@@ -54,9 +54,7 @@ const PendingSaleManagement = () => {
     const fetchPendingItems = useCallback(async () => {
         try {
             setLoading(true);
-            console.log('Fetching pending items...');
             const response = await lootService.getPendingSaleItems();
-            console.log('Response:', response);
 
             // Check for proper data structure
             if (response.data && Array.isArray(response.data.items)) {
@@ -81,7 +79,6 @@ const PendingSaleManagement = () => {
                     await calculatePendingSaleSummary(response.data.items);
                 }
                 
-                console.log('Pending items set:', response.data.items.length);
             } else {
                 console.error('Unexpected data structure:', response.data);
                 setPendingItems([]);
@@ -286,9 +283,7 @@ const PendingSaleManagement = () => {
 
             // Only send valid item IDs to the backend
             const validItemIds = validItems.map(item => item.id);
-            console.log('Sending items to sell:', validItemIds);
             const response = await lootService.sellSelected({itemsToSell: validItemIds});
-            console.log('Sell selected response:', response);
 
             if (response.data && response.data.success) {
                 const soldCount = response.data.sold?.count || 0;

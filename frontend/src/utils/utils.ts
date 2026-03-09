@@ -414,58 +414,39 @@ export const calculateSpellcraftDC = (
   itemsMap: ItemsMap, 
   modsMap: ModsMap = {}
 ): number | null => {
-  console.log('calculateSpellcraftDC called with:', { item, itemsMap, modsMap });
-  
   if (!item.itemid || !itemsMap[item.itemid]) {
-    console.log('No itemid or item not found in itemsMap');
     return null;
   }
-  
+
   const selectedItem = itemsMap[item.itemid];
-  console.log('selectedItem:', selectedItem);
-  
+
   let effectiveCasterLevel: number;
-  
+
   // For weapons and armor with mods, use mod caster levels
-  if ((selectedItem.type === 'weapon' || selectedItem.type === 'armor') && 
+  if ((selectedItem.type === 'weapon' || selectedItem.type === 'armor') &&
       item.mod1 && modsMap) {
-    
-    console.log('Item is weapon/armor with mods, checking mod caster levels');
-    
+
     // Get caster levels from mods (simplified - using mod1, mod2, mod3 instead of modids array)
     const modIds = [item.mod1, item.mod2, item.mod3].filter(Boolean) as number[];
     const modCasterLevels = modIds
-      .map(modId => {
-        const mod = modsMap[modId];
-        console.log(`Mod ${modId}:`, mod);
-        return mod;
-      })
+      .map(modId => modsMap[modId])
       .filter(mod => mod && mod.casterlevel !== null && mod.casterlevel !== undefined)
-      .map(mod => {
-        console.log(`Using caster level ${mod.casterlevel} from mod:`, mod.name);
-        return mod.casterlevel!;
-      });
-    
-    console.log('modCasterLevels:', modCasterLevels);
-    
+      .map(mod => mod.casterlevel!);
+
     if (modCasterLevels.length > 0) {
       // Use the highest caster level from mods
       effectiveCasterLevel = Math.max(...modCasterLevels);
-      console.log('Using highest mod caster level:', effectiveCasterLevel);
     } else {
       // Fallback to base item caster level
       effectiveCasterLevel = selectedItem.caster_level || 1;
-      console.log('No mod caster levels found, using base item caster level:', effectiveCasterLevel);
     }
   } else {
     // For other items or items without mods, use base item caster level
     effectiveCasterLevel = selectedItem.caster_level || 1;
-    console.log('Using base item caster level (not weapon/armor with mods):', effectiveCasterLevel);
   }
-  
+
   const dc = 15 + Math.min(effectiveCasterLevel, 20);
-  console.log('Final DC calculation: 15 +', effectiveCasterLevel, '=', dc);
-  
+
   return dc; // Cap at caster level 20
 };
 

@@ -65,7 +65,6 @@ const SoldLoot = () => {
                     const day = String(dateObj.getDate()).padStart(2, '0');
                     const formattedDate = `${year}-${month}-${day}`;
 
-                    console.log(`Fetching details for date: ${formattedDate}`);
                     const response = await api.get(`/sold/${formattedDate}`);
 
                     // Handle different response formats

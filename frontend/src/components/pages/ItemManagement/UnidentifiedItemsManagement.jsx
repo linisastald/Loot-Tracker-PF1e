@@ -78,7 +78,6 @@ const UnidentifiedItemsManagement = () => {
     const fetchUnidentifiedItems = async () => {
         try {
             const response = await lootService.getUnidentifiedItems();
-            console.log('Unidentified items:', response.data);
             if (response.data && Array.isArray(response.data.items)) {
                 setUnidentifiedItems(response.data.items);
             } else {
@@ -95,33 +94,26 @@ const UnidentifiedItemsManagement = () => {
 
     // New function to fetch items by IDs using the new endpoint
     const fetchItemsByIds = async (itemIds) => {
-        console.log('fetchItemsByIds called with:', itemIds);
         try {
             // Use the new endpoint
             const response = await lootService.getItemsByIds(itemIds);
-            console.log('fetchItemsByIds response:', response);
 
             // Create a map for easier lookups
             const newItemsMap = {};
 
             // Check if the data is in the expected format
             if (response.data && response.data.items && Array.isArray(response.data.items)) {
-                console.log('Using response.data.items format');
                 response.data.items.forEach(item => {
-                    console.log('Adding item to map:', item.id, item);
                     newItemsMap[item.id] = item;
                 });
             } else if (Array.isArray(response.data)) {
-                console.log('Using direct array format');
                 response.data.forEach(item => {
-                    console.log('Adding item to map:', item.id, item);
                     newItemsMap[item.id] = item;
                 });
             } else {
                 console.error('Unexpected response format:', response.data);
             }
 
-            console.log('Final itemsMap:', newItemsMap);
             setItemsMap(newItemsMap);
         } catch (error) {
             console.error('Error fetching items by IDs:', error);

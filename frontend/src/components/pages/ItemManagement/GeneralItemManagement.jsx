@@ -94,8 +94,6 @@ const GeneralItemManagement = () => {
                 )
             };
             const response = await lootService.searchLoot(searchParams);
-            console.log('Search response:', response);
-
             // Check if the response has the expected structure
             if (response.data && response.data.items) {
                 setFilteredItems(response.data.items);

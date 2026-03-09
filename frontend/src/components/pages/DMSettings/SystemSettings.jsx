@@ -122,12 +122,10 @@ const SystemSettings = () => {
 
             // Handle registration setting
             const registrationSetting = settingsResponse.data.find(setting => setting.name === 'registrations_open');
-            console.log('Registration setting:', registrationSetting);
             setRegistrationOpen(registrationSetting?.value === '1' || registrationSetting?.value === 1);
 
             // Handle invite required setting
             const inviteRequiredSetting = settingsResponse.data.find(setting => setting.name === 'invite_required');
-            console.log('Invite required setting:', inviteRequiredSetting);
             setInviteRequired(inviteRequiredSetting?.value === '1' || inviteRequiredSetting?.value === 1);
 
             // Set Discord settings
