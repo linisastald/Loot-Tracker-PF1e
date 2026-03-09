@@ -114,6 +114,12 @@ while [ $# -gt 0 ]; do
             VERBOSE=true
             shift
             ;;
+        --pull-only)
+            echo "🔄 Pulling latest from remote..."
+            git pull origin "${WORKTREE_BRANCH:-master}"
+            echo "✅ Pull complete"
+            exit 0
+            ;;
         --cleanup)
             echo "🧹 Cleaning up dangling images..."
             docker image prune -f
@@ -147,6 +153,7 @@ while [ $# -gt 0 ]; do
             echo "    --discord-broker  Build Discord broker container instead of main app"
             echo "    --discord-tag TAG Override Discord broker tag (default: dev)"
             echo "    --verbose, -v     Show detailed Docker build output"
+            echo "    --pull-only       Pull latest from remote and exit (no build)"
             echo "    --cleanup         Remove all dangling images and exit"
             echo ""
             echo "  WORKTREE SUPPORT:"
