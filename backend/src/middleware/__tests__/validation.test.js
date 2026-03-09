@@ -12,8 +12,8 @@ jest.mock('../../utils/controllerFactory', () => ({
 describe('validation middleware', () => {
   describe('validateValue', () => {
     describe('string validation', () => {
-      it('should pass valid string', () => {
-        expect(validateValue('hello', { type: 'string', required: true }, 'name')).toBeUndefined();
+      it('should not throw for valid string', () => {
+        expect(() => validateValue('hello', { type: 'string', required: true }, 'name')).not.toThrow();
       });
 
       it('should throw for required missing string', () => {
@@ -27,7 +27,7 @@ describe('validation middleware', () => {
       });
 
       it('should skip validation for optional undefined fields', () => {
-        expect(validateValue(undefined, { type: 'string', required: false }, 'name')).toBeUndefined();
+        expect(() => validateValue(undefined, { type: 'string', required: false }, 'name')).not.toThrow();
       });
 
       it('should enforce minLength', () => {
@@ -46,8 +46,8 @@ describe('validation middleware', () => {
       });
 
       it('should accept valid enum value', () => {
-        expect(validateValue('weapon', { type: 'string', required: true, enum: ['weapon', 'armor'] }, 'type'))
-          .toBeUndefined();
+        expect(() => validateValue('weapon', { type: 'string', required: true, enum: ['weapon', 'armor'] }, 'type'))
+          .not.toThrow();
       });
 
       it('should enforce date format (YYYY-MM-DD)', () => {
@@ -56,8 +56,8 @@ describe('validation middleware', () => {
       });
 
       it('should accept valid date format', () => {
-        expect(validateValue('2024-01-15', { type: 'string', required: true, format: 'date' }, 'date'))
-          .toBeUndefined();
+        expect(() => validateValue('2024-01-15', { type: 'string', required: true, format: 'date' }, 'date'))
+          .not.toThrow();
       });
 
       it('should enforce datetime format', () => {
@@ -66,8 +66,8 @@ describe('validation middleware', () => {
       });
 
       it('should accept valid datetime', () => {
-        expect(validateValue('2024-01-15T10:30:00Z', { type: 'string', required: true, format: 'datetime' }, 'dt'))
-          .toBeUndefined();
+        expect(() => validateValue('2024-01-15T10:30:00Z', { type: 'string', required: true, format: 'datetime' }, 'dt'))
+          .not.toThrow();
       });
 
       it('should throw when non-string provided for string type', () => {
@@ -107,8 +107,8 @@ describe('validation middleware', () => {
     });
 
     describe('boolean validation', () => {
-      it('should pass valid boolean', () => {
-        expect(validateValue(true, { type: 'boolean', required: true }, 'flag')).toBeUndefined();
+      it('should not throw for valid boolean', () => {
+        expect(() => validateValue(true, { type: 'boolean', required: true }, 'flag')).not.toThrow();
       });
 
       it('should throw for non-boolean', () => {
@@ -118,8 +118,8 @@ describe('validation middleware', () => {
     });
 
     describe('array validation', () => {
-      it('should pass valid array', () => {
-        expect(validateValue([1, 2, 3], { type: 'array', required: true }, 'ids')).toBeUndefined();
+      it('should not throw for valid array', () => {
+        expect(() => validateValue([1, 2, 3], { type: 'array', required: true }, 'ids')).not.toThrow();
       });
 
       it('should throw for non-array', () => {
@@ -142,8 +142,8 @@ describe('validation middleware', () => {
     });
 
     describe('object validation', () => {
-      it('should pass valid object', () => {
-        expect(validateValue({ a: 1 }, { type: 'object', required: true }, 'data')).toBeUndefined();
+      it('should not throw for valid object', () => {
+        expect(() => validateValue({ a: 1 }, { type: 'object', required: true }, 'data')).not.toThrow();
       });
 
       it('should throw for non-object', () => {
