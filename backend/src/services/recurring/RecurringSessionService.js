@@ -5,6 +5,7 @@
 
 const pool = require('../../config/db');
 const logger = require('../../utils/logger');
+const timezoneUtils = require('../../utils/timezoneUtils');
 const { DEFAULT_VALUES } = require('../../constants/sessionConstants');
 
 class RecurringSessionService {
@@ -106,6 +107,9 @@ class RecurringSessionService {
     async generateRecurringInstances(client, template) {
         // Lazy load to avoid circular dependency
         const sessionService = require('../sessionService');
+
+        // Cache the campaign timezone for DST-aware date calculations
+        this._cachedTimezone = await timezoneUtils.getCampaignTimezone();
 
         const instances = [];
         const startDate = new Date(template.start_time);
@@ -363,6 +367,9 @@ class RecurringSessionService {
             // Lazy load to avoid circular dependency
             const sessionService = require('../sessionService');
 
+            // Cache the campaign timezone for DST-aware date calculations
+            this._cachedTimezone = await timezoneUtils.getCampaignTimezone();
+
             const template = await sessionService.getSession(templateId);
             if (!template || !template.is_recurring) {
                 throw new Error('Recurring session template not found');
@@ -456,52 +463,138 @@ class RecurringSessionService {
     }
 
     /**
-     * Calculate the next occurrence date for a recurring pattern
-     * @param {Date} currentDate - Current date
+     * Calculate the next occurrence date for a recurring pattern.
+     * DST-aware: preserves wall-clock time in the campaign timezone
+     * across daylight saving transitions.
+     * @param {Date} currentDate - Current date (UTC)
      * @param {string} pattern - Recurring pattern
      * @param {number} interval - Interval for custom patterns
      * @param {number} targetDayOfWeek - Target day of week (0-6)
-     * @returns {Date} - Next occurrence date
+     * @param {string} [timezone] - IANA timezone (defaults to campaign timezone cache)
+     * @returns {Date} - Next occurrence date (UTC)
      */
-    calculateNextOccurrence(currentDate, pattern, interval, targetDayOfWeek) {
-        const nextDate = new Date(currentDate);
+    calculateNextOccurrence(currentDate, pattern, interval, targetDayOfWeek, timezone) {
+        const tz = timezone || this._cachedTimezone || 'America/New_York';
+
+        // Get the wall-clock components in the campaign timezone
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        const parts = formatter.formatToParts(currentDate);
+        const getPart = (type) => parseInt(parts.find(p => p.type === type).value);
+
+        let year = getPart('year');
+        let month = getPart('month'); // 1-based
+        let day = getPart('day');
+        const hour = getPart('hour');
+        const minute = getPart('minute');
+        const second = getPart('second');
 
         switch (pattern) {
             case 'weekly':
-                nextDate.setDate(nextDate.getDate() + 7);
+                day += 7;
                 break;
-
             case 'biweekly':
-                nextDate.setDate(nextDate.getDate() + 14);
+                day += 14;
                 break;
-
-            case 'monthly':
-                nextDate.setMonth(nextDate.getMonth() + 1);
-                // If we're in a shorter month, adjust to the last day
-                if (nextDate.getDate() !== currentDate.getDate()) {
-                    nextDate.setDate(0); // Go to last day of previous month
+            case 'monthly': {
+                const origDay = day;
+                month += 1;
+                if (month > 12) {
+                    month = 1;
+                    year += 1;
                 }
+                // Clamp to last day of new month
+                const maxDay = new Date(year, month, 0).getDate();
+                day = Math.min(origDay, maxDay);
                 break;
-
+            }
             case 'custom':
-                // Custom interval in days
-                nextDate.setDate(nextDate.getDate() + (interval * 7)); // Assuming custom is in weeks
+                day += (interval * 7);
                 break;
-
             default:
                 throw new Error(`Unknown recurring pattern: ${pattern}`);
         }
 
+        // Normalize the date (handles day overflow across months)
+        const normalizedLocal = new Date(year, month - 1, day, hour, minute, second);
+        const normYear = normalizedLocal.getFullYear();
+        const normMonth = normalizedLocal.getMonth() + 1;
+        const normDay = normalizedLocal.getDate();
+
         // For weekly patterns, adjust to the correct day of week if needed
-        if ((pattern === 'weekly' || pattern === 'biweekly') && targetDayOfWeek !== null) {
-            const currentDayOfWeek = nextDate.getDay();
+        let finalDay = normDay;
+        if ((pattern === 'weekly' || pattern === 'biweekly') && targetDayOfWeek !== null && targetDayOfWeek !== undefined) {
+            // Use a temp Date to calculate day of week in local calendar
+            const tempDate = new Date(normYear, normMonth - 1, normDay);
+            const currentDayOfWeek = tempDate.getDay();
             const daysUntilTarget = (targetDayOfWeek - currentDayOfWeek + 7) % 7;
             if (daysUntilTarget !== 0) {
-                nextDate.setDate(nextDate.getDate() + daysUntilTarget);
+                finalDay += daysUntilTarget;
             }
         }
 
-        return nextDate;
+        // Convert the wall-clock time back to UTC by finding the UTC offset for this moment
+        // Build an ISO-like string and use the timezone to find the correct UTC instant
+        const targetLocal = new Date(normYear, normMonth - 1, finalDay, hour, minute, second);
+        const finalYear = targetLocal.getFullYear();
+        const finalMonth = targetLocal.getMonth() + 1;
+        const finalDayOfMonth = targetLocal.getDate();
+
+        // Create a UTC date at the same wall-clock time, then adjust for the timezone offset
+        const utcGuess = new Date(Date.UTC(finalYear, finalMonth - 1, finalDayOfMonth, hour, minute, second));
+
+        // Find the actual offset at this time in the target timezone
+        const offsetMs = this._getTimezoneOffsetMs(utcGuess, tz);
+        // The actual UTC time = wall-clock time - offset
+        const result = new Date(utcGuess.getTime() - offsetMs);
+
+        return result;
+    }
+
+    /**
+     * Get timezone offset in milliseconds for a given UTC time.
+     * Positive = ahead of UTC (e.g., UTC+5 = +5h), negative = behind.
+     * @param {Date} utcDate - A UTC date to check offset at
+     * @param {string} tz - IANA timezone
+     * @returns {number} - Offset in milliseconds
+     */
+    _getTimezoneOffsetMs(utcDate, tz) {
+        // Format the UTC date in the target timezone to find what wall-clock time it maps to
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        const parts = formatter.formatToParts(utcDate);
+        const getPart = (type) => parseInt(parts.find(p => p.type === type).value);
+
+        const localYear = getPart('year');
+        const localMonth = getPart('month') - 1;
+        const localDay = getPart('day');
+        const localHour = getPart('hour') === 24 ? 0 : getPart('hour');
+        const localMinute = getPart('minute');
+        const localSecond = getPart('second');
+
+        // Build the local time as if it were UTC
+        const localAsUtc = Date.UTC(localYear, localMonth, localDay, localHour, localMinute, localSecond);
+
+        // offset = local - UTC
+        return localAsUtc - utcDate.getTime();
     }
 
     /**

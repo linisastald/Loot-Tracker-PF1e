@@ -514,15 +514,14 @@ class SessionSchedulerService {
                 logger.info(`Cleaned up ${orphanedAppraisals.rowCount} orphaned appraisals`);
             }
 
-            // Reset login attempts for accounts that haven't had activity in 24 hours
-            // Note: This is a simplified check - the original had a complex pg_stat_activity query
-            // that wasn't reliable. This version resets attempts for unlocked accounts after 24h.
+            // Reset login attempts for unlocked accounts
+            // The users table does not have an updated_at column, so we simply
+            // reset attempts for accounts that are not currently locked.
             const resetAttempts = await dbUtils.executeQuery(
                 `UPDATE users
                  SET login_attempts = 0
                  WHERE login_attempts > 0
                    AND locked_until IS NULL
-                   AND updated_at < NOW() - INTERVAL '24 hours'
                  RETURNING username`
             );
 
