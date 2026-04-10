@@ -441,7 +441,7 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
       <IconButton
         aria-label="delete"
         onClick={onRemove}
-        sx={{ position: 'absolute', top: 8, right: 8 }}
+        sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1 }}
       >
         <DeleteIcon />
       </IconButton>

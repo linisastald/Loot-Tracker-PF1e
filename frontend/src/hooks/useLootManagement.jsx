@@ -78,7 +78,7 @@ const useLootManagement = (statusToFetch) => {
   }, [fetchLoot]);
 
   const handleAction = async (actionFunc) => {
-    await actionFunc(selectedItems, fetchLoot, activeUser);
+    await actionFunc(selectedItems, fetchLoot, authUser);
     setSelectedItems([]);
   };
 

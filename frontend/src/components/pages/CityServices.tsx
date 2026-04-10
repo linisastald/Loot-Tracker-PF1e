@@ -186,8 +186,9 @@ const CityServices: React.FC = () => {
 
   const fetchMods = async () => {
     try {
-      const response: any = await api.get('/items/mods');
-      setMods(response.data || response || []);
+      const response: any = await api.get('/item-creation/mods');
+      const result = response.data || response;
+      setMods(result.mods || result || []);
     } catch (err) {
       console.error('Failed to fetch mods:', err);
     }
@@ -364,14 +365,20 @@ const CityServices: React.FC = () => {
                 typeof option === 'string' ? option : `${option.name} (${option.size})`
               }
               value={selectedCity}
-              onInputChange={(event, newValue) => {
+              onInputChange={(event, newValue, reason) => {
                 setCityName(newValue);
+                // Clear selected city when user types manually (not when selecting from list)
+                if (reason === 'input') {
+                  setSelectedCity(null);
+                }
               }}
               onChange={(event, newValue) => {
                 if (newValue && typeof newValue !== 'string') {
                   setSelectedCity(newValue);
                   setCityName(newValue.name);
                   setCitySize(newValue.size);
+                } else if (!newValue) {
+                  setSelectedCity(null);
                 }
               }}
               renderInput={(params) => (
@@ -390,6 +397,7 @@ const CityServices: React.FC = () => {
               <Select
                 value={citySize}
                 label="Settlement Size"
+                disabled={selectedCity !== null}
                 onChange={(e: SelectChangeEvent) => setCitySize(e.target.value)}
               >
                 {SETTLEMENT_SIZES.map((size) => (
