@@ -6,7 +6,7 @@
 VERSION=0.10.4
 
 # Last build timestamp
-LAST_BUILD=2026-04-10T19:25:15Z
+LAST_BUILD=2026-04-10T22:40:46Z
 
 # Build counter (incremented with each build)
-BUILD_NUMBER=5
+BUILD_NUMBER=6
