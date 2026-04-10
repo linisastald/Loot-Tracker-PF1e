@@ -74,7 +74,7 @@ const checkSpellcastingService = async (req, res) => {
                 `no caster capable of casting it was found (rolled ${availabilityCheck.roll}/100, needed 1 or less).`;
     }
 
-    return res.json({
+    return controllerFactory.sendSuccessResponse(res, {
       available: false,
       city,
       spell_name: spell_name.trim(),
@@ -119,7 +119,7 @@ const checkSpellcastingService = async (req, res) => {
                     `(rolled ${availabilityCheck.roll}/100).`;
   }
 
-  res.json({
+  controllerFactory.sendSuccessResponse(res, {
     available: true,
     city,
     spell_name: spell_name.trim(),
@@ -132,7 +132,7 @@ const checkSpellcastingService = async (req, res) => {
       : `${spell_level} × ${caster_level} × 10 gp`,
     availability_check: availabilityCheck,
     message: successMessage
-  });
+  }, purchase ? 'Spellcasting service purchased' : 'Spellcasting availability checked');
 };
 
 /**
@@ -148,7 +148,7 @@ const getAllServices = async (req, res) => {
   if (date) options.date = date; // YYYY-MM-DD format
 
   const services = await SpellcastingService.getAll(options);
-  res.json(services);
+  controllerFactory.sendSuccessResponse(res, services, 'Services retrieved');
 };
 
 /**
@@ -162,7 +162,7 @@ const getServiceById = async (req, res) => {
     throw controllerFactory.createNotFoundError('Service record not found');
   }
 
-  res.json(service);
+  controllerFactory.sendSuccessResponse(res, service, 'Service retrieved');
 };
 
 /**
@@ -178,7 +178,7 @@ const deleteService = async (req, res) => {
 
   await SpellcastingService.delete(id);
   logger.info(`Spellcasting service deleted: ID ${id}`);
-  res.json({ message: 'Service record deleted successfully' });
+  controllerFactory.sendSuccessResponse(res, null, 'Service record deleted successfully');
 };
 
 /**
@@ -204,7 +204,7 @@ const getAvailableSpells = async (req, res) => {
   query += ' ORDER BY name LIMIT 50';
 
   const result = await dbUtils.executeQuery(query, params);
-  res.json(result.rows);
+  controllerFactory.sendSuccessResponse(res, result.rows, `Found ${result.rows.length} spells`);
 };
 
 // Export wrapped controllers

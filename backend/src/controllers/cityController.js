@@ -8,7 +8,7 @@ const logger = require('../utils/logger');
  */
 const getAllCities = async (req, res) => {
   const cities = await City.getAll();
-  res.json(cities);
+  controllerFactory.sendSuccessResponse(res, cities, 'Cities retrieved successfully');
 };
 
 /**
@@ -22,7 +22,7 @@ const getCityById = async (req, res) => {
     throw controllerFactory.createNotFoundError('City not found');
   }
 
-  res.json(city);
+  controllerFactory.sendSuccessResponse(res, city, 'City retrieved successfully');
 };
 
 /**
@@ -32,11 +32,11 @@ const searchCities = async (req, res) => {
   const { q } = req.query;
 
   if (!q || q.trim().length < 2) {
-    return res.json([]);
+    return controllerFactory.sendSuccessResponse(res, [], 'Search query too short');
   }
 
   const cities = await City.search(q.trim());
-  res.json(cities);
+  controllerFactory.sendSuccessResponse(res, cities, `Found ${cities.length} cities`);
 };
 
 /**
@@ -75,7 +75,7 @@ const createCity = async (req, res) => {
   });
 
   logger.info(`City created: ${city.name} (${city.size})`);
-  res.status(201).json(city);
+  controllerFactory.sendCreatedResponse(res, city, 'City created successfully');
 };
 
 /**
@@ -114,7 +114,7 @@ const updateCity = async (req, res) => {
   });
 
   logger.info(`City updated: ${city.name} (${city.size})`);
-  res.json(city);
+  controllerFactory.sendSuccessResponse(res, city, 'City updated successfully');
 };
 
 /**
@@ -130,7 +130,7 @@ const deleteCity = async (req, res) => {
 
   await City.delete(id);
   logger.info(`City deleted: ${city.name}`);
-  res.json({ message: 'City deleted successfully' });
+  controllerFactory.sendSuccessResponse(res, null, 'City deleted successfully');
 };
 
 /**
@@ -138,7 +138,7 @@ const deleteCity = async (req, res) => {
  */
 const getSettlementSizes = async (req, res) => {
   const sizes = City.getSettlementSizes();
-  res.json(sizes);
+  controllerFactory.sendSuccessResponse(res, sizes, 'Settlement sizes retrieved');
 };
 
 // Export wrapped controllers

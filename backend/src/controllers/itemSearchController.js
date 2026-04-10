@@ -82,7 +82,7 @@ const checkItemAvailability = async (req, res) => {
       `Value: ${itemValue}gp exceeds maximum (${city.base_value * 5}gp) - not available`
     );
 
-    return res.json({
+    return controllerFactory.sendSuccessResponse(res, {
       search: null,
       city,
       item_name: itemName,
@@ -120,7 +120,7 @@ const checkItemAvailability = async (req, res) => {
     `Value: ${itemValue}gp, Roll: ${rollResult}, Threshold: ${availability.threshold}, Found: ${found}`
   );
 
-  res.json({
+  controllerFactory.sendSuccessResponse(res, {
     search: searchRecord,
     city,
     item_name: itemName,
@@ -129,7 +129,7 @@ const checkItemAvailability = async (req, res) => {
     roll_result: rollResult,
     found,
     too_expensive: false
-  });
+  }, found ? 'Item found!' : 'Item not found');
 };
 
 /**
@@ -146,7 +146,7 @@ const getAllSearches = async (req, res) => {
   if (date) options.date = date; // YYYY-MM-DD format
 
   const searches = await ItemSearch.getAll(options);
-  res.json(searches);
+  controllerFactory.sendSuccessResponse(res, searches, 'Searches retrieved');
 };
 
 /**
@@ -160,7 +160,7 @@ const getSearchById = async (req, res) => {
     throw controllerFactory.createNotFoundError('Search record not found');
   }
 
-  res.json(search);
+  controllerFactory.sendSuccessResponse(res, search, 'Search retrieved');
 };
 
 /**
@@ -176,7 +176,7 @@ const deleteSearch = async (req, res) => {
 
   await ItemSearch.delete(id);
   logger.info(`Item search deleted: ID ${id}`);
-  res.json({ message: 'Search record deleted successfully' });
+  controllerFactory.sendSuccessResponse(res, null, 'Search record deleted successfully');
 };
 
 // Export wrapped controllers
