@@ -159,7 +159,7 @@ function App() {
         <ConfigProvider>
           <AuthProvider user={user} isAuthenticated={isAuthenticated} onUserUpdate={handleUserUpdate}>
           <Router>
-          <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress size={40} /></Box>}>
+          <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={isAuthenticated ? <Navigate to="/loot-entry" /> : <Navigate to="/login" />} />
             <Route path="/login" element={

@@ -1,6 +1,6 @@
-import React, {useState, useEffect} from 'react';
+import React, {Suspense, useState, useEffect} from 'react';
 import Sidebar from './Sidebar';
-import {AppBar, Box, IconButton, Toolbar, Typography} from '@mui/material';
+import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography} from '@mui/material';
 import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useConfig } from '../../contexts/ConfigContext';
@@ -112,7 +112,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
             overflow: 'auto',
           }}
         >
-          <Outlet />
+          <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress size={32} /></Box>}>
+            <Outlet />
+          </Suspense>
         </Box>
       </Box>
     </Box>
