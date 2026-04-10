@@ -401,13 +401,15 @@ EOF
     echo "Updated version file: v$new_version (build #$new_build_number)"
 }
 
-# Function to update TrueNAS app metadata with new version
+# Function to update local app metadata reference file with new version
+# Note: This file is a local reference only. TrueNAS reads the version from
+# the Docker image's OCI labels (set via APP_VERSION build arg), not this file.
 update_truenas_metadata() {
     local new_version=$1
     local metadata_file="app-metadata.yaml"
 
     if [ -f "$metadata_file" ]; then
-        echo "📱 Updating TrueNAS app metadata..."
+        echo "📱 Updating local app-metadata.yaml reference..."
         # Update version and app_version in the main metadata
         sed -i.bak "s/version: \"[^\"]*\"/version: \"$new_version\"/g" "$metadata_file"
         sed -i.bak "s/app_version: \"[^\"]*\"/app_version: \"$new_version\"/g" "$metadata_file"
@@ -415,8 +417,6 @@ update_truenas_metadata() {
         # Remove backup file
         rm -f "$metadata_file.bak"
         echo "✅ Updated $metadata_file to v$new_version"
-    else
-        echo "⚠️  Warning: $metadata_file not found"
     fi
 }
 
@@ -568,6 +568,9 @@ BUILD_CMD="$BUILD_CMD --build-arg GIT_COMMIT=$(get_git_commit)"
 BUILD_CMD="$BUILD_CMD --build-arg BUILD_TYPE=$([ "$BUILD_STABLE" = true ] && echo "stable" || echo "dev")"
 BUILD_CMD="$BUILD_CMD --build-arg NODE_ENV=production"
 BUILD_CMD="$BUILD_CMD --build-arg OPTIMIZE_BUILD=$([ "$OPTIMIZE_BUILD" = true ] && echo "true" || echo "false")"
+# Pass version to Docker image OCI labels (read by TrueNAS, Docker Hub, etc.)
+APP_VERSION_ARG="${NEW_VERSION:-$VERSION}"
+BUILD_CMD="$BUILD_CMD --build-arg APP_VERSION=${APP_VERSION_ARG}"
 if [ -n "$VERSION_TAG" ]; then
     BUILD_CMD="$BUILD_CMD --build-arg VERSION=${VERSION_TAG}"
 fi

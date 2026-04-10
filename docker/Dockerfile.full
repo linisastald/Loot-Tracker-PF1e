@@ -66,6 +66,7 @@ FROM nginx:1.27-alpine as production
 ARG BUILD_DATE
 ARG GIT_COMMIT
 ARG BUILD_TYPE=production
+ARG APP_VERSION=0.0.0
 
 # Add comprehensive metadata labels
 LABEL maintainer="Pathfinder Loot Tracker Team" \
@@ -74,7 +75,8 @@ LABEL maintainer="Pathfinder Loot Tracker Team" \
       org.opencontainers.image.title="Pathfinder Loot Tracker" \
       org.opencontainers.image.description="Full-stack Pathfinder 1e loot and campaign management system" \
       org.opencontainers.image.vendor="Pathfinder Loot Tracker Team" \
-      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.source="https://github.com/linisastald/Loot-Tracker-PF1e" \
       build.type=$BUILD_TYPE
 
 # Create non-root users for both services
