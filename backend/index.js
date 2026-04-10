@@ -6,7 +6,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
-const csrf = require('csurf');
+const { doubleCsrf } = require('csrf-csrf');
 const { execSync } = require('child_process');
 const logger = require('./src/utils/logger');
 const dotenv = require('dotenv');
@@ -68,6 +68,15 @@ app.set('trust proxy', 1);
 
 // Middleware for logging unhandled errors in route handlers
 const errorHandler = (err, req, res, next) => {
+  // Handle CSRF token errors (must return 'invalid csrf token' for frontend compatibility)
+  if (err.code === 'EBADCSRFTOKEN' || err.message === 'invalid csrf token') {
+    logger.warn('CSRF token validation failed', { method: req.method, path: req.path });
+    return res.status(403).json({
+      success: false,
+      message: 'invalid csrf token'
+    });
+  }
+
   logger.error('Unhandled Error', {
     message: err.message,
     stack: err.stack,
@@ -177,25 +186,21 @@ app.use(cookieParser());
 // Add API response middleware
 app.use(apiResponseMiddleware);
 
-// CSRF configuration
-const csrfProtection = csrf({
-  cookie: {
+// CSRF configuration using csrf-csrf (double submit cookie pattern)
+const csrfSecret = process.env.CSRF_SECRET || require('crypto').randomBytes(32).toString('hex');
+const { generateToken, doubleCsrfProtection } = doubleCsrf({
+  getSecret: () => csrfSecret,
+  cookieName: '_csrf',
+  cookieOptions: {
     httpOnly: COOKIES.HTTP_ONLY,
     sameSite: COOKIES.SAME_SITE,
-    secure: COOKIES.SECURE
+    secure: COOKIES.SECURE,
+    path: '/',
   },
-  ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
+  getTokenFromRequest: (req) => req.headers['x-csrf-token'],
+  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
 });
-
-// CSRF token generation middleware (without validation)
-const csrfTokenGeneration = csrf({
-  cookie: {
-    httpOnly: COOKIES.HTTP_ONLY,
-    sameSite: COOKIES.SAME_SITE,
-    secure: COOKIES.SECURE
-  },
-  ignoreMethods: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'DELETE'] // Ignore all methods for token generation
-});
+const csrfProtection = doubleCsrfProtection;
 
 // API info route
 app.get('/api', (req, res) => {
@@ -226,9 +231,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Get CSRF token without protection
-app.get('/api/csrf-token', csrfTokenGeneration, (req, res) => {
-  res.success({ csrfToken: req.csrfToken() }, 'CSRF token generated');
+// Get CSRF token (generates token and sets cookie)
+app.get('/api/csrf-token', (req, res) => {
+  const csrfToken = generateToken(req, res);
+  res.success({ csrfToken }, 'CSRF token generated');
 });
 
 // Route imports

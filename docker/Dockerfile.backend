@@ -1,7 +1,7 @@
 # Simple frontend+backend single container (no nginx)
 # Compatible with existing TrueNAS deployment
 
-FROM node:20-alpine
+FROM node:25-alpine
 
 # Set working directory
 WORKDIR /app

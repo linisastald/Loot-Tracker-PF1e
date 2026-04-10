@@ -3,6 +3,9 @@
   "version": "0.10.4",
   "description": "",
   "main": "index.js",
+  "engines": {
+    "node": ">=25.0.0"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "cross-env NODE_ENV=development nodemon index.js",
@@ -30,7 +33,7 @@
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
-    "csurf": "^1.11.0",
+    "csrf-csrf": "^3.1.0",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

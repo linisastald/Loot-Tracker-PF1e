@@ -1,5 +1,5 @@
 # discord-handler/Dockerfile
-FROM node:18-alpine
+FROM node:25-alpine
 
 WORKDIR /app
 
@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .

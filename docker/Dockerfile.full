@@ -1,7 +1,7 @@
 # Multi-stage optimized full-stack build
 
 # Frontend build stage
-FROM node:18-alpine as frontend-build
+FROM node:25-alpine as frontend-build
 WORKDIR /app
 
 # Build arguments
@@ -33,7 +33,7 @@ ENV NODE_ENV=production
 RUN npm run build
 
 # Backend build stage  
-FROM node:18-alpine as backend-build
+FROM node:25-alpine as backend-build
 WORKDIR /app
 
 # Build arguments
@@ -60,7 +60,7 @@ COPY backend/migrations ./migrations
 COPY backend/index.js ./
 
 # Production runtime stage
-FROM nginx:1.25-alpine as production
+FROM nginx:1.27-alpine as production
 
 # Build arguments for metadata
 ARG BUILD_DATE
@@ -83,16 +83,17 @@ RUN addgroup -g 1001 -S nodejs && \
     adduser -S backend -u 1001 -G nodejs && \
     adduser -S frontend -u 1002 -G nginx
 
+# Copy Node.js from build stage (ensures runtime matches build version)
+COPY --from=backend-build /usr/local/bin/node /usr/local/bin/node
+COPY --from=backend-build /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
+
 # Install only essential system dependencies (minimal security footprint)
 RUN apk add --no-cache \
-    nodejs \
-    npm \
     postgresql-client \
     dumb-init \
     supervisor \
     curl \
-    # Remove unnecessary packages after npm is used
-    && npm --version >/dev/null \
     && rm -rf /var/cache/apk/* \
     && rm -rf /tmp/* \
     && rm -rf /var/tmp/*
