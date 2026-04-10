@@ -7,6 +7,7 @@ backend/.env
 /.idea/dataSources.xml
 /.idea/sqldialects.xml
 docker/docker-compose.yml
+docker/truenas-*.yaml
 /.idea/misc.xml
 /.idea/deployment.xml
 /docker/docker-compose-root.yml
