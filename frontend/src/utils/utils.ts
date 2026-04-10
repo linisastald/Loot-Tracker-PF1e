@@ -116,7 +116,7 @@ export const handleTrash = async (
     const user = activeUser || await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
-      status: 'trashed' as LootStatus,
+      status: 'Trashed' as LootStatus,
       characterId: user?.activeCharacterId || user?.id || 0
     });
     fetchLoot();
@@ -136,7 +136,7 @@ export const handleKeepSelf = async (
   try {
     await lootService.updateLootStatus({
       lootIds: selectedItems,
-      status: 'kept-character' as LootStatus,
+      status: 'Kept Character' as LootStatus,
       characterId: activeUser.activeCharacterId || 0,
       saleValue: null
     });
@@ -158,7 +158,7 @@ export const handleKeepParty = async (
     const user = activeUser || await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
-      status: 'kept-party' as LootStatus,
+      status: 'Kept Party' as LootStatus,
       characterId: user?.activeCharacterId || user?.id || 0
     });
     fetchLoot();
