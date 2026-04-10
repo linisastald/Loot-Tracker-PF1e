@@ -67,8 +67,15 @@ class EmailService {
                 .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric characters
                 .substring(0, 64); // Limit length for email standards
             const fromEmail = `${sanitizedCampaignName}@kempsonandko.com`;
-            
-            const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+
+            // Look up frontend_url from settings, falling back to env, then localhost
+            const frontendUrlResult = await dbUtils.executeQuery(
+                "SELECT value FROM settings WHERE name = 'frontend_url'"
+            );
+            const frontendUrl = frontendUrlResult.rows[0]?.value
+                || process.env.FRONTEND_URL
+                || 'http://localhost:3000';
+            const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
             
             const mailOptions = {
                 from: fromEmail,

@@ -8,10 +8,9 @@ const ServiceResult = require('../utils/ServiceResult');
 class DiscordBrokerService {
   constructor() {
     this.brokerUrl = process.env.DISCORD_BROKER_URL;
-    // Use GROUP_NAME to create unique appId per instance
-    const groupName = process.env.GROUP_NAME || 'default';
-    this.appId = `pathfinder-loot-tracker-${groupName.toLowerCase().replace(/\s+/g, '-')}`;
-    this.groupName = groupName;
+    // appId and groupName are resolved from the database at start() time
+    this.appId = null;
+    this.groupName = null;
     this.isRegistered = false;
     this.heartbeatInterval = null;
     this.retryTimeout = null;
@@ -20,13 +19,37 @@ class DiscordBrokerService {
     this.retryDelay = 5000; // 5 seconds
   }
 
+  /**
+   * Resolve the broker app ID from campaign_name in settings.
+   * Falls back to GROUP_NAME env var for backwards compatibility, then 'default'.
+   */
+  async resolveAppIdentity() {
+    try {
+      const result = await pool.query(
+        "SELECT value FROM settings WHERE name = 'campaign_name'"
+      );
+      if (result.rows.length > 0 && result.rows[0].value) {
+        this.groupName = result.rows[0].value;
+      } else {
+        this.groupName = process.env.GROUP_NAME || 'default';
+      }
+    } catch (error) {
+      logger.warn('Could not read campaign_name from settings, falling back to env', {
+        error: error.message,
+      });
+      this.groupName = process.env.GROUP_NAME || 'default';
+    }
+    this.appId = `pathfinder-loot-tracker-${this.groupName.toLowerCase().replace(/\s+/g, '-')}`;
+  }
+
   async start() {
     if (!this.brokerUrl) {
       logger.info('Discord broker URL not configured, skipping Discord integration');
       return;
     }
 
-    logger.info(`Starting Discord broker integration with URL: ${this.brokerUrl}`);
+    await this.resolveAppIdentity();
+    logger.info(`Starting Discord broker integration with URL: ${this.brokerUrl} as ${this.appId}`);
     await this.registerWithBroker();
   }
 

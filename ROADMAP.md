@@ -91,6 +91,14 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 
 ## Technical Improvements
 
+### First-Run Setup Wizard
+*Medium priority - Reduces env var dependency and improves onboarding.*
+- On first run (no users in DB, or flagged unconfigured), redirect admin to `/setup`
+- Setup wizard collects: initial DM account, campaign name, frontend URL, Discord settings
+- Writes values to the `settings` table instead of requiring env vars in docker-compose
+- Allow re-running setup from admin panel to reconfigure
+- Goal: Reduce docker-compose env block to only infrastructure (DB, ports, secrets, CORS)
+
 ### Performance
 - Server-side pagination for all list views
 - Database query caching for reference data (items, mods, spells)

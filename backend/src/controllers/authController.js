@@ -194,7 +194,14 @@ const generateManualResetLink = async (req, res) => {
             [user.id, resetToken, expiresAt]
         );
 
-        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+        // Look up frontend_url from settings, falling back to env, then localhost
+        const frontendUrlResult = await client.query(
+            "SELECT value FROM settings WHERE name = 'frontend_url'"
+        );
+        const frontendUrl = frontendUrlResult.rows[0]?.value
+            || process.env.FRONTEND_URL
+            || 'http://localhost:3000';
+        const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
         logger.info(`Manual password reset link generated for user: ${user.username} by DM: ${req.user.username}`);
         
