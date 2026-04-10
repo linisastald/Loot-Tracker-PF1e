@@ -186,10 +186,29 @@ app.use(cookieParser());
 // Add API response middleware
 app.use(apiResponseMiddleware);
 
+// Ensure every visitor has a stable session identifier cookie for CSRF.
+// This app uses JWT (not sessions), so we create a lightweight client ID cookie.
+app.use((req, res, next) => {
+  if (!req.cookies || !req.cookies._csrf_sid) {
+    const sid = require('crypto').randomBytes(16).toString('hex');
+    res.cookie('_csrf_sid', sid, {
+      httpOnly: true,
+      sameSite: COOKIES.SAME_SITE,
+      secure: COOKIES.SECURE,
+      path: '/',
+    });
+    // Make it available to the current request too
+    if (!req.cookies) req.cookies = {};
+    req.cookies._csrf_sid = sid;
+  }
+  next();
+});
+
 // CSRF configuration using csrf-csrf (double submit cookie pattern)
 const csrfSecret = process.env.CSRF_SECRET || require('crypto').randomBytes(32).toString('hex');
 const { generateToken, doubleCsrfProtection } = doubleCsrf({
   getSecret: () => csrfSecret,
+  getSessionIdentifier: (req) => req.cookies?._csrf_sid || '',
   cookieName: '_csrf',
   cookieOptions: {
     httpOnly: COOKIES.HTTP_ONLY,
