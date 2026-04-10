@@ -226,6 +226,19 @@ app.get('/api', (req, res) => {
   res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
 });
 
+// Debug endpoint to inspect cookies (no auth required)
+app.get('/api/debug/cookies', (req, res) => {
+  res.json({
+    cookieHeader: req.headers.cookie || null,
+    cookieHeaderLength: req.headers.cookie ? req.headers.cookie.length : 0,
+    parsedCookies: req.cookies ? Object.keys(req.cookies) : [],
+    hasAuthToken: !!(req.cookies && req.cookies.authToken),
+    authTokenLength: req.cookies && req.cookies.authToken ? req.cookies.authToken.length : 0,
+    origin: req.headers.origin || null,
+    host: req.headers.host || null,
+  });
+});
+
 // Health check endpoint (no middleware needed)
 app.get('/api/health', (req, res) => {
   // Basic health check - verify database connection

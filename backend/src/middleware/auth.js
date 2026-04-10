@@ -25,7 +25,13 @@ const verifyToken = (req, res, next) => {
     }
 
     if (!token) {
-      logger.warn('Authentication failed: No token provided');
+      logger.warn('Authentication failed: No token provided', {
+        path: req.path,
+        method: req.method,
+        cookieKeys: req.cookies ? Object.keys(req.cookies) : 'no cookies parsed',
+        hasCookieHeader: !!req.headers.cookie,
+        cookieHeaderLength: req.headers.cookie ? req.headers.cookie.length : 0,
+      });
       return res.status(401).json({
         success: false,
         message: 'Authentication required'

@@ -85,7 +85,10 @@ describe('Auth Middleware', () => {
         message: 'Authentication required'
       });
       expect(next).not.toHaveBeenCalled();
-      expect(logger.warn).toHaveBeenCalledWith('Authentication failed: No token provided');
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Authentication failed: No token provided',
+        expect.any(Object)
+      );
     });
 
     it('should reject request with invalid token', () => {
