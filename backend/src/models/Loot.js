@@ -232,7 +232,7 @@ exports.updateEntry = async (id, updatedEntry) => {
  * @return {Promise<Object>} - Item data
  */
 exports.getItems = async () => {
-  const query = `SELECT * from item;`;
+  const query = `SELECT id, name, type, subtype, value, weight FROM item ORDER BY name`;
   const itemsResult = await dbUtils.executeQuery(query, [], 'Error fetching items');
 
   return {

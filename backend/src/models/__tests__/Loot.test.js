@@ -283,7 +283,7 @@ describe('Loot model', () => {
       const result = await Loot.getItems();
 
       expect(result.summary).toEqual(mockItems);
-      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('SELECT * from item');
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('SELECT id, name, type, subtype, value, weight FROM item');
     });
   });
 });

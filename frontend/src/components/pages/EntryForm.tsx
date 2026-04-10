@@ -32,23 +32,26 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
   }, [entry.data]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadItemOptions = async () => {
       const items = await fetchItemNames();
-      setItemSuggestions(items);
+      if (!cancelled) setItemSuggestions(items);
     };
 
     const checkOpenAiKey = async () => {
       try {
         const response = await api.get('/settings/openai-key');
-        setHasOpenAiKey(response.data?.hasKey || false);
+        if (!cancelled) setHasOpenAiKey(response.data?.hasKey || false);
       } catch {
-        // Error checking OpenAI key
-        setHasOpenAiKey(false);
+        if (!cancelled) setHasOpenAiKey(false);
       }
     };
 
     loadItemOptions();
     checkOpenAiKey();
+
+    return () => { cancelled = true; };
   }, []);
 
   const handleChange = (field, value) => {

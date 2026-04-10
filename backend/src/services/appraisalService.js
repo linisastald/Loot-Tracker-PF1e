@@ -93,7 +93,7 @@ class AppraisalService {
 
       // Get all appraisals for the item
       const appraisalsResult = await dbUtils.executeQuery(
-        'SELECT * FROM appraisal WHERE lootid = $1',
+        'SELECT id, appraisalroll FROM appraisal WHERE lootid = $1',
         [lootId]
       );
       const appraisals = appraisalsResult.rows;

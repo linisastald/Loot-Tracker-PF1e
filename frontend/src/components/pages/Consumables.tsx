@@ -65,20 +65,34 @@ const Consumables: React.FC = () => {
   const MAX_WAND_CHARGES = 50;
 
   useEffect(() => {
-    fetchConsumables();
+    let cancelled = false;
+
+    const loadConsumables = async () => {
+      try {
+        const response = await api.get(`/consumables`);
+        if (cancelled) return;
+        setWands(response.data.wands);
+        const potionItems = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('potion of'));
+        const scrollItems = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('scroll of'));
+        setPotions(potionItems);
+        setScrolls(scrollItems);
+      } catch (error) {
+        if (!cancelled) console.error('Error fetching consumables:', error);
+      }
+    };
+
+    loadConsumables();
+    return () => { cancelled = true; };
   }, []);
 
   const fetchConsumables = async () => {
     try {
       const response = await api.get(`/consumables`);
       setWands(response.data.wands);
-
-      // Separate potions and scrolls based on their names
-      const potions = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('potion of'));
-      const scrolls = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('scroll of'));
-
-      setPotions(potions);
-      setScrolls(scrolls);
+      const potionItems = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('potion of'));
+      const scrollItems = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('scroll of'));
+      setPotions(potionItems);
+      setScrolls(scrollItems);
     } catch (error) {
       console.error('Error fetching consumables:', error);
     }
@@ -89,10 +103,8 @@ const Consumables: React.FC = () => {
       const type = name.toLowerCase().includes('potion of') ? 'potion' :
         name.toLowerCase().includes('scroll of') ? 'scroll' : 'wand';
       await api.post(`/consumables/use`, {itemid, type});
-      // Add a small delay to ensure server processes the update before fetching
-      setTimeout(() => {
-        fetchConsumables();
-      }, 300);
+      // Refresh after server processes the update
+      await fetchConsumables();
     } catch (error) {
       console.error('Error using consumable:', error);
     }

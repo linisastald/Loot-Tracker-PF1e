@@ -134,10 +134,11 @@ const FormatBelievedValue = ({ item }) => {
 
   // Get active character ID on component mount
   React.useEffect(() => {
+    let cancelled = false;
     const fetchActiveCharacter = async () => {
       try {
         const response = await api.get('/user/me');
-        if (response.data && response.data.activeCharacterId) {
+        if (!cancelled && response.data && response.data.activeCharacterId) {
           setActiveCharacterId(response.data.activeCharacterId);
         }
       } catch (error) {
@@ -145,6 +146,7 @@ const FormatBelievedValue = ({ item }) => {
       }
     };
     fetchActiveCharacter();
+    return () => { cancelled = true; };
   }, []);
 
   // Try multiple possible locations for the believed value
