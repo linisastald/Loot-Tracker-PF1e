@@ -46,7 +46,7 @@ describe('Register', () => {
     renderComponent();
     expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i, { selector: 'input' })).toBeInTheDocument();
   });
 
   it('renders role selector', async () => {

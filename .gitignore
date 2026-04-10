@@ -61,5 +61,8 @@ private/
 /frontend/coverage/
 *.lcov
 
+# Build output
+/frontend/build/
+
 # Documentation folder
 /docs/

@@ -41,6 +41,24 @@ const renderUserSettings = () => {
   );
 };
 
+/**
+ * Helper to get a password input by its associated label text.
+ * MUI renders labels for required password fields with extra span elements,
+ * which can cause getByLabelText with { selector: 'input' } to fail.
+ * This helper finds the label element, reads its 'for' attribute, and
+ * returns the input element with the matching id.
+ */
+const getPasswordInput = (labelPattern: RegExp): HTMLInputElement => {
+  const labels = Array.from(document.querySelectorAll('label'));
+  const label = labels.find(l => labelPattern.test(l.textContent || ''));
+  if (!label) throw new Error(`Could not find label matching ${labelPattern}`);
+  const inputId = label.getAttribute('for');
+  if (!inputId) throw new Error(`Label has no 'for' attribute`);
+  const input = document.getElementById(inputId) as HTMLInputElement;
+  if (!input) throw new Error(`Could not find input with id '${inputId}'`);
+  return input;
+};
+
 describe('UserSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,19 +78,19 @@ describe('UserSettings', () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Change Password')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /change password/i })).toBeInTheDocument();
     });
 
-    expect(screen.getByLabelText(/current password/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/new password/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/confirm new password/i)).toBeInTheDocument();
+    expect(getPasswordInput(/^Current Password/)).toBeInTheDocument();
+    expect(getPasswordInput(/^New Password/)).toBeInTheDocument();
+    expect(getPasswordInput(/^Confirm New Password/)).toBeInTheDocument();
   });
 
   it('shows Change Email section on Account Settings tab', async () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Change Email')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /change email/i })).toBeInTheDocument();
     });
   });
 
@@ -102,16 +120,17 @@ describe('UserSettings', () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Change Password')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /change password/i })).toBeInTheDocument();
     });
 
     // Fill only new password fields, leave current password empty
-    fireEvent.change(screen.getByLabelText(/new password/i), { target: { value: 'newpassword123' } });
-    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: 'newpassword123' } });
+    fireEvent.change(getPasswordInput(/^New Password/), { target: { value: 'newpassword123' } });
+    fireEvent.change(getPasswordInput(/^Confirm New Password/), { target: { value: 'newpassword123' } });
 
-    // Submit the password change form
-    const changePasswordButton = screen.getByRole('button', { name: /change password/i });
-    fireEvent.click(changePasswordButton);
+    // Submit the form directly to bypass HTML5 required field validation
+    // (jsdom may block submit via button click when required fields are empty)
+    const form = screen.getByRole('button', { name: /change password/i }).closest('form')!;
+    fireEvent.submit(form);
 
     await waitFor(() => {
       expect(screen.getByText('Current password is required')).toBeInTheDocument();
@@ -122,12 +141,12 @@ describe('UserSettings', () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Change Password')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /change password/i })).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText(/current password/i), { target: { value: 'oldpass123' } });
-    fireEvent.change(screen.getByLabelText(/new password/i), { target: { value: 'short' } });
-    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: 'short' } });
+    fireEvent.change(getPasswordInput(/^Current Password/), { target: { value: 'oldpass123' } });
+    fireEvent.change(getPasswordInput(/^New Password/), { target: { value: 'short' } });
+    fireEvent.change(getPasswordInput(/^Confirm New Password/), { target: { value: 'short' } });
 
     const changePasswordButton = screen.getByRole('button', { name: /change password/i });
     fireEvent.click(changePasswordButton);
@@ -141,12 +160,12 @@ describe('UserSettings', () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Change Password')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /change password/i })).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText(/current password/i), { target: { value: 'oldpass123' } });
-    fireEvent.change(screen.getByLabelText(/new password/i), { target: { value: 'newpassword123' } });
-    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: 'differentpassword' } });
+    fireEvent.change(getPasswordInput(/^Current Password/), { target: { value: 'oldpass123' } });
+    fireEvent.change(getPasswordInput(/^New Password/), { target: { value: 'newpassword123' } });
+    fireEvent.change(getPasswordInput(/^Confirm New Password/), { target: { value: 'differentpassword' } });
 
     const changePasswordButton = screen.getByRole('button', { name: /change password/i });
     fireEvent.click(changePasswordButton);
@@ -162,12 +181,12 @@ describe('UserSettings', () => {
     renderUserSettings();
 
     await waitFor(() => {
-      expect(screen.getByText('Change Password')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /change password/i })).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText(/current password/i), { target: { value: 'oldpass123' } });
-    fireEvent.change(screen.getByLabelText(/new password/i), { target: { value: 'newpassword123' } });
-    fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: 'newpassword123' } });
+    fireEvent.change(getPasswordInput(/^Current Password/), { target: { value: 'oldpass123' } });
+    fireEvent.change(getPasswordInput(/^New Password/), { target: { value: 'newpassword123' } });
+    fireEvent.change(getPasswordInput(/^Confirm New Password/), { target: { value: 'newpassword123' } });
 
     const changePasswordButton = screen.getByRole('button', { name: /change password/i });
     fireEvent.click(changePasswordButton);

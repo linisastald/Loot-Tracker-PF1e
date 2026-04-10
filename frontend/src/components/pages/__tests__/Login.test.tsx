@@ -45,8 +45,8 @@ describe('Login', () => {
   it('renders login form with username and password fields', () => {
     renderLogin();
 
-    expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /username/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i, { selector: 'input' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^login$/i })).toBeInTheDocument();
   });
 
@@ -54,7 +54,8 @@ describe('Login', () => {
     renderLogin();
 
     expect(screen.getByText('Pathfinder Loot Tracker')).toBeInTheDocument();
-    expect(screen.getByText('Login')).toBeInTheDocument();
+    // "Login" appears both as a heading and as a button; check the heading
+    expect(screen.getByRole('heading', { name: /login/i })).toBeInTheDocument();
   });
 
   it('renders forgot password and register links', () => {
@@ -77,7 +78,7 @@ describe('Login', () => {
   it('shows error when submitting with only username', async () => {
     renderLogin();
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'testuser' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /username/i }), { target: { value: 'testuser' } });
     fireEvent.click(screen.getByRole('button', { name: /^login$/i }));
 
     await waitFor(() => {
@@ -94,8 +95,8 @@ describe('Login', () => {
 
     renderLogin({ onLogin });
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'testuser' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /username/i }), { target: { value: 'testuser' } });
+    fireEvent.change(screen.getByLabelText(/password/i, { selector: 'input' }), { target: { value: 'password123' } });
     fireEvent.click(screen.getByRole('button', { name: /^login$/i }));
 
     await waitFor(() => {
@@ -117,8 +118,8 @@ describe('Login', () => {
 
     renderLogin();
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'baduser' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'badpass' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /username/i }), { target: { value: 'baduser' } });
+    fireEvent.change(screen.getByLabelText(/password/i, { selector: 'input' }), { target: { value: 'badpass' } });
     fireEvent.click(screen.getByRole('button', { name: /^login$/i }));
 
     await waitFor(() => {
@@ -131,8 +132,8 @@ describe('Login', () => {
 
     renderLogin();
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'user' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'pass' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /username/i }), { target: { value: 'user' } });
+    fireEvent.change(screen.getByLabelText(/password/i, { selector: 'input' }), { target: { value: 'pass' } });
     fireEvent.click(screen.getByRole('button', { name: /^login$/i }));
 
     await waitFor(() => {
@@ -143,7 +144,7 @@ describe('Login', () => {
   it('toggles password visibility', () => {
     renderLogin();
 
-    const passwordInput = screen.getByLabelText(/password/i);
+    const passwordInput = screen.getByLabelText(/password/i, { selector: 'input' });
     expect(passwordInput).toHaveAttribute('type', 'password');
 
     const toggleButton = screen.getByRole('button', { name: /show password/i });
@@ -161,8 +162,8 @@ describe('Login', () => {
 
     renderLogin({ onLogin });
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'testuser' } });
-    const passwordField = screen.getByLabelText(/password/i);
+    fireEvent.change(screen.getByRole('textbox', { name: /username/i }), { target: { value: 'testuser' } });
+    const passwordField = screen.getByLabelText(/password/i, { selector: 'input' });
     fireEvent.change(passwordField, { target: { value: 'password123' } });
     fireEvent.keyDown(passwordField, { key: 'Enter', code: 'Enter' });
 

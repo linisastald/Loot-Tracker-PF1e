@@ -46,16 +46,21 @@ vi.mock('../../../utils/api', () => ({
       if (url === '/infamy/impositions') {
         return Promise.resolve({
           data: {
-            disgraceful: [],
-            despicable: [],
-            notorious: [],
-            loathsome: [],
-            vile: [],
+            impositions: {
+              disgraceful: [],
+              despicable: [],
+              notorious: [],
+              loathsome: [],
+              vile: [],
+            },
           },
         });
       }
       if (url === '/infamy/history') {
-        return Promise.resolve({ data: [] });
+        return Promise.resolve({ data: { history: [] } });
+      }
+      if (url === '/infamy/ports') {
+        return Promise.resolve({ data: { ports: [] } });
       }
       if (url.includes('/gold/plunder')) {
         return Promise.resolve({ data: { plunder: 5 } });
@@ -70,6 +75,7 @@ vi.mock('../../../utils/api', () => ({
 vi.mock('../../../services/lootService', () => ({
   default: {
     suggestItems: vi.fn().mockResolvedValue({ data: { suggestions: [], count: 0 } }),
+    searchLoot: vi.fn().mockResolvedValue({ data: { items: [], pagination: { total: 0 } } }),
   },
 }));
 
@@ -119,7 +125,9 @@ describe('Infamy', () => {
     renderInfamy();
 
     await waitFor(() => {
-      expect(screen.getByText(/Boast at Port/i)).toBeInTheDocument();
+      // "Boast at Port" may appear in multiple locations; verify at least one exists
+      const elements = screen.getAllByText(/Boast at Port/i);
+      expect(elements.length).toBeGreaterThanOrEqual(1);
     });
   });
 });
