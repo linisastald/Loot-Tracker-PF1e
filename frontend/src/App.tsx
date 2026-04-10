@@ -72,17 +72,16 @@ function App() {
           setIsAuthenticated(true);
           setUser(response.data.user);
           localStorage.setItem('user', JSON.stringify(response.data.user));
-        } else {
-          // Only log out if we get an explicit authentication failure and there's no stored user
-          if (!storedUser && isMounted) {
-            handleLogout();
-          }
+        } else if (isMounted) {
+          // Server responded but user is not authenticated - log out
+          handleLogout();
         }
       } catch (error: unknown) {
-        // Only log out on 401 status
+        // Log out on auth failures (401) and CSRF/authorization failures (403)
         if (error && typeof error === 'object' && 'response' in error) {
           const axiosError = error as any;
-          if (axiosError.response && axiosError.response.status === 401 && isMounted) {
+          const status = axiosError.response?.status;
+          if ((status === 401 || status === 403) && isMounted) {
             handleLogout();
           }
         }
