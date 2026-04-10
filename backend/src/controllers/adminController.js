@@ -50,15 +50,7 @@ const updateItem = async (req, res) => {
     throw controllerFactory.createValidationError('Name, type, and value are required fields');
   }
 
-  // Check if the item exists
-  const checkQuery = 'SELECT * FROM item WHERE id = $1';
-  const checkResult = await dbUtils.executeQuery(checkQuery, [id], 'Error checking item existence');
-
-  if (checkResult.rows.length === 0) {
-    throw controllerFactory.createNotFoundError(`Item with ID ${id} not found`);
-  }
-
-  // Prepare query
+  // Update item directly and check if it existed via rowCount
   const query = `
     UPDATE item
     SET name        = $1,
@@ -82,6 +74,10 @@ const updateItem = async (req, res) => {
   ];
 
   const result = await dbUtils.executeQuery(query, values, 'Error updating item');
+
+  if (result.rows.length === 0) {
+    throw controllerFactory.createNotFoundError(`Item with ID ${id} not found`);
+  }
 
   // Log the operation
   logger.info(`Item updated: ${name} (ID: ${id})`, {userId: req.user.id});
@@ -137,15 +133,7 @@ const updateMod = async (req, res) => {
     throw controllerFactory.createValidationError('Name, type, and target are required fields');
   }
 
-  // Check if the mod exists
-  const checkQuery = 'SELECT * FROM mod WHERE id = $1';
-  const checkResult = await dbUtils.executeQuery(checkQuery, [id], 'Error checking mod existence');
-
-  if (checkResult.rows.length === 0) {
-    throw controllerFactory.createNotFoundError(`Mod with ID ${id} not found`);
-  }
-
-  // Prepare query
+  // Update mod directly and check if it existed via rowCount
   const query = `
     UPDATE mod
     SET name        = $1,
@@ -171,6 +159,10 @@ const updateMod = async (req, res) => {
   ];
 
   const result = await dbUtils.executeQuery(query, values, 'Error updating mod');
+
+  if (result.rows.length === 0) {
+    throw controllerFactory.createNotFoundError(`Mod with ID ${id} not found`);
+  }
 
   // Log the operation
   logger.info(`Mod updated: ${name} (ID: ${id})`, {userId: req.user.id});

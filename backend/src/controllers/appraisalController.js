@@ -35,41 +35,40 @@ const appraiseLoot = async (req, res) => {
       const results = [];
       const errors = [];
 
-      // Get character's appraisal bonus
-      const appraisalBonus = await AppraisalService.getCharacterAppraisalBonus(characterId);
+      // Batch-fetch character info and appraisal bonus
+      const characterResult = await client.query('SELECT name, appraisal_bonus FROM characters WHERE id = $1', [characterId]);
+      const characterName = characterResult.rows[0]?.name || 'Unknown Character';
+      const appraisalBonus = characterResult.rows[0]?.appraisal_bonus || 0;
+
+      // Batch-fetch all loot items at once
+      const lootResult = await client.query('SELECT id, name, value FROM loot WHERE id = ANY($1)', [lootIds]);
+      const lootMap = new Map(lootResult.rows.map(row => [row.id, row]));
+
+      // Batch-check which items this character has already appraised
+      const existingResult = await client.query(
+        'SELECT lootid FROM appraisal WHERE lootid = ANY($1) AND characterid = $2',
+        [lootIds, characterId]
+      );
+      const alreadyAppraised = new Set(existingResult.rows.map(row => row.lootid));
 
       for (let i = 0; i < lootIds.length; i++) {
         try {
           const lootId = lootIds[i];
           const diceRoll = appraisalRolls[i];
 
-          // Check if character has already appraised this item
-          const hasAppraised = await AppraisalService.hasCharacterAppraised(lootId, characterId);
-          if (hasAppraised) {
-            errors.push({
-              lootId,
-              error: 'Character has already appraised this item'
-            });
+          if (alreadyAppraised.has(lootId)) {
+            errors.push({ lootId, error: 'Character has already appraised this item' });
             continue;
           }
 
-          // Get loot item details
-          const lootResult = await client.query('SELECT * FROM loot WHERE id = $1', [lootId]);
-          const lootItem = lootResult.rows[0];
-
+          const lootItem = lootMap.get(lootId);
           if (!lootItem) {
-            errors.push({
-              lootId,
-              error: 'Loot item not found'
-            });
+            errors.push({ lootId, error: 'Loot item not found' });
             continue;
           }
 
           if (!lootItem.value) {
-            errors.push({
-              lootId,
-              error: 'Item has no value to appraise'
-            });
+            errors.push({ lootId, error: 'Item has no value to appraise' });
             continue;
           }
 
@@ -107,10 +106,6 @@ const appraiseLoot = async (req, res) => {
           });
         }
       }
-
-      // Get character name for logging
-      const characterResult = await client.query('SELECT name FROM characters WHERE id = $1', [characterId]);
-      const characterName = characterResult.rows[0]?.name || 'Unknown Character';
 
       logger.info(`${results.length} items appraised by ${characterName}`, {
         characterId,

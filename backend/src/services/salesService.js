@@ -58,23 +58,29 @@ class SalesService {
    * @returns {Promise<Object>} - Sale results
    */
   static async processSaleItems(client, validItems, notes) {
-    const soldItems = [];
     const totalSold = calculateTotalSaleValue(validItems);
     const validItemIds = validItems.map(item => item.id);
+    const now = new Date();
 
-    // Record each item as sold
-    for (const item of validItems) {
+    // Compute sale values and build sold items list
+    const soldItems = validItems.map(item => {
       const saleValue = calculateItemSaleValue(item);
-      await client.query('INSERT INTO sold (lootid, soldfor, soldon) VALUES ($1, $2, $3)',
-        [item.id, saleValue, new Date()]);
-
-      soldItems.push({
+      return {
         id: item.id,
         name: item.name,
         value: parseFloat(item.value),
         soldFor: parseFloat(saleValue.toFixed(2))
-      });
-    }
+      };
+    });
+
+    // Batch insert all sold records in a single query
+    const lootIds = soldItems.map(s => s.id);
+    const soldForValues = soldItems.map(s => s.soldFor);
+    await client.query(
+      `INSERT INTO sold (lootid, soldfor, soldon)
+       SELECT unnest($1::int[]), unnest($2::numeric[]), $3`,
+      [lootIds, soldForValues, now]
+    );
 
     // Update status to Sold
     await client.query("UPDATE loot SET status = 'Sold' WHERE id = ANY($1)", [validItemIds]);

@@ -101,10 +101,10 @@ class AppraisalService {
       // No need to update if there are no appraisals
       if (appraisals.length === 0) return;
 
-      // Update each appraisal based on its roll
-      for (const appraisal of appraisals) {
-        let newBelievedValue;
+      // Compute new believed values in JS (uses Math.random per row)
+      const updates = appraisals.map(appraisal => {
         const roll = parseInt(appraisal.appraisalroll);
+        let newBelievedValue;
 
         if (roll >= 20) {
           newBelievedValue = newValue;
@@ -114,14 +114,18 @@ class AppraisalService {
           newBelievedValue = newValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
         }
 
-        newBelievedValue = this.customRounding(newBelievedValue);
+        return { id: appraisal.id, believedValue: this.customRounding(newBelievedValue) };
+      });
 
-        // Update the appraisal
-        await dbUtils.executeQuery(
-          'UPDATE appraisal SET believedvalue = $1 WHERE id = $2',
-          [newBelievedValue, appraisal.id]
-        );
-      }
+      // Batch update all appraisals in a single query
+      const ids = updates.map(u => u.id);
+      const values = updates.map(u => u.believedValue);
+      await dbUtils.executeQuery(
+        `UPDATE appraisal SET believedvalue = v.believedvalue
+         FROM (SELECT unnest($1::int[]) AS id, unnest($2::numeric[]) AS believedvalue) v
+         WHERE appraisal.id = v.id`,
+        [ids, values]
+      );
 
       logger.info(`Updated ${appraisals.length} appraisals for loot item ${lootId}`);
     } catch (error) {
