@@ -1,6 +1,6 @@
 // src/App.js
 import CssBaseline from '@mui/material/CssBaseline';
-import React, {Suspense, useEffect, useState} from 'react';
+import React, {Suspense, useCallback, useEffect, useState} from 'react';
 import {BrowserRouter as Router, Navigate, Route, Routes} from 'react-router-dom';
 import {ThemeProvider} from '@mui/material/styles';
 import {Box, CircularProgress} from '@mui/material';
@@ -37,6 +37,7 @@ const CityServices = React.lazy(() => import('./components/pages/CityServices'))
 import theme from './theme';
 import api from './utils/api';
 import { ConfigProvider } from './contexts/ConfigContext';
+import { AuthProvider } from './contexts/AuthContext';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -124,6 +125,13 @@ function App() {
     setUser(null);
   };
 
+  const handleUserUpdate = useCallback((updatedUser: any) => {
+    setUser(updatedUser);
+    if (updatedUser) {
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    }
+  }, []);
+
   // Show loading spinner while checking authentication
   if (authLoading) {
     return (
@@ -149,6 +157,7 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <ConfigProvider>
+          <AuthProvider user={user} isAuthenticated={isAuthenticated} onUserUpdate={handleUserUpdate}>
           <Router>
           <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress size={40} /></Box>}>
           <Routes>
@@ -192,6 +201,7 @@ function App() {
           </Routes>
           </Suspense>
           </Router>
+          </AuthProvider>
         </ConfigProvider>
       </ThemeProvider>
     </ErrorBoundary>

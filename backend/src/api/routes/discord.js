@@ -28,15 +28,10 @@ router.get('/interactions', (req, res) => {
 });
 
 router.post('/interactions', (req, res, next) => {
-    // Log interactions routed from discord-handler (sanitized for security)
-    logger.info('POST /interactions endpoint hit!');
-    logger.info('Discord interaction routed from handler', {
+    logger.debug('Discord interaction routed from handler', {
         forwardedFrom: req.headers['x-forwarded-from'],
-        userAgent: req.headers['user-agent'],
         contentType: req.headers['content-type'],
-        bodyType: typeof req.body,
-        hasBody: !!req.body,
-        timestamp: new Date().toISOString()
+        hasBody: !!req.body
     });
     
     // Log detailed body only in development mode
@@ -56,10 +51,9 @@ router.get('/interactions/test', (req, res) => {
 router.post('/events', (req, res) => {
     const { type, data } = req.body;
 
-    logger.info('Discord event received from broker', {
+    logger.debug('Discord event received from broker', {
         eventType: type,
-        channelId: data?.channelId,
-        timestamp: new Date().toISOString()
+        channelId: data?.channelId
     });
 
     // Process specific event types

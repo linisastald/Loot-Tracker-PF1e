@@ -1,6 +1,7 @@
 // backend/index.js
 const express = require('express');
 const bodyParser = require('body-parser');
+const compression = require('compression');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -159,8 +160,11 @@ const limiter = rateLimit({
   }
 });
 
+// Compress responses (gzip/deflate)
+app.use(compression());
+
 // Apply middlewares with size limits to prevent DoS attacks
-app.use(bodyParser.json({ 
+app.use(bodyParser.json({
   limit: '10mb',  // Limit JSON body size
   strict: true    // Only accept arrays and objects
 }));
@@ -229,7 +233,6 @@ app.get('/api/csrf-token', csrfTokenGeneration, (req, res) => {
 
 // Route imports
 const authRoutes = require('./src/api/routes/auth');
-const lootRoutes = require('./src/api/routes/loot');
 const userRoutes = require('./src/api/routes/user');
 const goldRoutes = require('./src/api/routes/gold');
 const discordRoutes = require('./src/api/routes/discord');
@@ -272,31 +275,24 @@ app.use('/api', limiter);
 
 // Apply CSRF protection to all API routes except auth and csrf-token
 
-// Legacy routes (will be gradually deprecated)
-app.use('/api/loot', csrfProtection, lootRoutes);
 app.use('/api/user', csrfProtection, userRoutes);
 app.use('/api/gold', csrfProtection, goldRoutes);
 
 // Create selective CSRF middleware that skips Discord service endpoints
 const selectiveCSRFProtection = (req, res, next) => {
-  logger.info(`Discord route middleware check - path: ${req.path}, method: ${req.method}, originalUrl: ${req.originalUrl}`);
-
   // Skip CSRF protection for Discord interactions endpoint
   if (req.path === '/interactions' && (req.method === 'POST' || req.method === 'GET')) {
-    logger.info(`Skipping CSRF protection for Discord interactions ${req.method}`);
+    logger.debug(`Skipping CSRF protection for Discord interactions ${req.method}`);
     return next();
   }
   if (req.path === '/interactions/test' && req.method === 'GET') {
-    logger.info('Skipping CSRF protection for Discord interactions test GET');
     return next();
   }
   // Skip CSRF protection for Discord reaction events endpoint
   if (req.path === '/reactions' && req.method === 'POST') {
-    logger.info('Skipping CSRF protection for Discord reactions POST');
     return next();
   }
   // Apply CSRF protection for all other routes
-  logger.info('Applying CSRF protection for Discord route');
   return csrfProtection(req, res, next);
 };
 

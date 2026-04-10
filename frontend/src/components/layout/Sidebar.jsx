@@ -47,61 +47,44 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
 import versionService from '../../services/versionService';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [openBeta, setOpenBeta] = useState(false);
   const [openSessionTools, setOpenSessionTools] = useState(false);
   const [openDMSettings, setOpenDMSettings] = useState(false);
   const [openFleetManagement, setOpenFleetManagement] = useState(false);
-  const [isDM, setIsDM] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
   const [unidentifiedLootCount, setUnidentifiedLootCount] = useState(0);
   const [groupName, setGroupName] = useState('Loot Tracker');
-  const [username, setUsername] = useState('');
-  const [activeCharacter, setActiveCharacter] = useState(null);
   const [infamyEnabled, setInfamyEnabled] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [versionInfo, setVersionInfo] = useState({ fullVersion: '0.7.1', version: '0.7.1', buildNumber: 0 });
   const location = useLocation();
+  const { user, isDM } = useAuth();
+  const username = user?.username || '';
+  const activeCharacter = user?.activeCharacter || null;
 
   const handleToggle = (setter) => () => setter(prev => !prev);
 
   useEffect(() => {
     let isMounted = true;
-    
-    // Get user role and name from localStorage
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        const userData = JSON.parse(userStr);
-        if (isMounted) {
-          setIsDM(userData.role === 'DM');
-          setUsername(userData.username || '');
-        }
-      } catch (e) {
-        console.error('Error parsing user data:', e);
-      }
-    }
-    
+
     const fetchData = async () => {
       try {
-        const [lootCountRes, unidentifiedCountRes, groupNameRes, activeCharRes, infamyRes, versionRes] = await Promise.all([
+        const [lootCountRes, unidentifiedCountRes, groupNameRes, infamyRes, versionRes] = await Promise.all([
           lootService.getUnprocessedCount(),
           lootService.getUnidentifiedCount(),
           api.get('/settings/campaign-name'),
-          api.get('/auth/status'),
           api.get('/settings/infamy-system'),
           versionService.getVersion()
         ]);
-        
+
         if (isMounted) {
           setUnprocessedLootCount(lootCountRes.data.count);
           setUnidentifiedLootCount(unidentifiedCountRes.data.count);
 
           setGroupName(groupNameRes.data.value);
-          if (activeCharRes.data?.user?.activeCharacter) {
-            setActiveCharacter(activeCharRes.data.user.activeCharacter);
-          }
           if (infamyRes.data?.value) {
             setInfamyEnabled(infamyRes.data.value === '1');
           }
@@ -113,9 +96,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
         console.error('Error fetching sidebar data:', error);
       }
     };
-    
+
     fetchData();
-    
+
     return () => {
       isMounted = false;
     };

@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   Alert,
   Box,
@@ -113,7 +114,8 @@ const GoldTransactions: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [totals, setTotals] = useState<GoldTotals>({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
-    const [userRole, setUserRole] = useState<string>('');
+    const { user: authUser } = useAuth();
+    const userRole = authUser?.role || '';
     const [startDate, setStartDate] = useState<Date>(new Date(new Date().setMonth(new Date().getMonth() - 6)));
     const [endDate, setEndDate] = useState<Date>(new Date());
     const [activeTab, setActiveTab] = useState<number>(0);
@@ -143,7 +145,6 @@ const GoldTransactions: React.FC = () => {
     });
 
     useEffect(() => {
-        fetchUserRole();
         fetchOverviewTotals();
         fetchLedgerData();
     }, []);
@@ -178,16 +179,6 @@ const GoldTransactions: React.FC = () => {
         }
     };
 
-    const fetchUserRole = async (): Promise<void> => {
-        try {
-            const response = await api.get(`/auth/status`);
-            if (response.data && response.data.user) {
-                setUserRole(response.data.user.role);
-            }
-        } catch (error) {
-            console.error('Error fetching user role:', error);
-        }
-    };
 
     const fetchOverviewTotals = async (): Promise<void> => {
         try {
