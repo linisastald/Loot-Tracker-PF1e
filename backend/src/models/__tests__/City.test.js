@@ -19,13 +19,13 @@ describe('City model', () => {
   });
 
   describe('getSettlementSizes (pure)', () => {
-    it('should return all six settlement sizes', () => {
+    it('should return all eight settlement sizes', () => {
       const sizes = City.getSettlementSizes();
       const keys = Object.keys(sizes);
 
-      expect(keys).toHaveLength(6);
+      expect(keys).toHaveLength(8);
       expect(keys).toEqual([
-        'Village', 'Small Town', 'Large Town',
+        'Thorp', 'Hamlet', 'Village', 'Small Town', 'Large Town',
         'Small City', 'Large City', 'Metropolis',
       ]);
     });
@@ -77,10 +77,12 @@ describe('City model', () => {
     it('should return array of valid size names', () => {
       const sizes = City.getValidSizes();
 
+      expect(sizes).toContain('Thorp');
+      expect(sizes).toContain('Hamlet');
       expect(sizes).toContain('Village');
       expect(sizes).toContain('Small Town');
       expect(sizes).toContain('Metropolis');
-      expect(sizes).toHaveLength(6);
+      expect(sizes).toHaveLength(8);
     });
   });
 
@@ -158,8 +160,8 @@ describe('City model', () => {
     });
 
     it('should throw for invalid city size', async () => {
-      await expect(City.create({ name: 'Test', size: 'Hamlet' }))
-        .rejects.toThrow('Invalid city size: Hamlet');
+      await expect(City.create({ name: 'Test', size: 'Castle' }))
+        .rejects.toThrow('Invalid city size: Castle');
     });
 
     it('should handle optional fields as null', async () => {

@@ -13,7 +13,9 @@ const dbUtils = require('../utils/dbUtils');
  * - Metropolis: 7th-8th level guaranteed, 9th-level not guaranteed (1% chance)
  */
 const SETTLEMENT_SIZES = {
-  'Village': { baseValue: 500, purchaseLimit: 2500, maxSpellLevel: 0, population: [20, 200] },
+  'Thorp': { baseValue: 50, purchaseLimit: 500, maxSpellLevel: 0, population: [1, 20] },
+  'Hamlet': { baseValue: 200, purchaseLimit: 1000, maxSpellLevel: 0, population: [21, 60] },
+  'Village': { baseValue: 500, purchaseLimit: 2500, maxSpellLevel: 0, population: [61, 200] },
   'Small Town': { baseValue: 1000, purchaseLimit: 5000, maxSpellLevel: 1, population: [201, 2000] },
   'Large Town': { baseValue: 2000, purchaseLimit: 10000, maxSpellLevel: 2, population: [2001, 5000] },
   'Small City': { baseValue: 4000, purchaseLimit: 25000, maxSpellLevel: 4, population: [5001, 10000] },

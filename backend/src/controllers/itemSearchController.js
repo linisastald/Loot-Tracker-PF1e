@@ -57,14 +57,16 @@ const checkItemAvailability = async (req, res) => {
   // Add mod values if any (batch fetch all mods at once)
   if (mod_ids && Array.isArray(mod_ids) && mod_ids.length > 0) {
     const modResult = await dbUtils.executeQuery(
-      'SELECT name, valuecalc, plus FROM mod WHERE id = ANY($1)',
+      'SELECT name, valuecalc, plus, target FROM mod WHERE id = ANY($1)',
       [mod_ids]
     );
 
     for (const mod of modResult.rows) {
       if (mod.valuecalc && mod.valuecalc.includes('PLUS')) {
         const plus = mod.plus || 0;
-        const enhancementCost = plus * plus * 2000;
+        // Weapon enhancement: bonus² × 2000, Armor enhancement: bonus² × 1000 (CRB)
+        const multiplier = mod.target === 'armor' ? 1000 : 2000;
+        const enhancementCost = plus * plus * multiplier;
         itemValue += enhancementCost;
       } else if (mod.valuecalc && !isNaN(parseFloat(mod.valuecalc))) {
         itemValue += parseFloat(mod.valuecalc);

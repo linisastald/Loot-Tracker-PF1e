@@ -349,13 +349,26 @@ const GolarionCalendar: React.FC = () => {
         return {name: 'Waning Crescent', emoji: '🌘'};
     };
 
+    // Calculate Golarion day-of-week using modular arithmetic
+    // Anchor: 1 Abadius 4710 AR = Moonday (index 0)
+    const getGolarionDayOfWeek = (year: number, monthIdx: number, day: number): number => {
+        const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        // Total days from anchor (1 Abadius 4710)
+        let totalDays = (year - 4710) * 365;
+        for (let i = 0; i < monthIdx - 1; i++) {
+            totalDays += monthDays[i];
+        }
+        totalDays += day - 1;
+        // Modulo 7, handle negative years
+        return ((totalDays % 7) + 7) % 7;
+    };
+
     const renderCalendar = () => {
-        const month = months[displayedDate.month - 1]; // Convert 1-indexed month to 0-indexed for months array
+        const month = months[displayedDate.month - 1];
         if (!month) {
             return <div>Loading calendar...</div>;
         }
-        // Note: Date constructor uses 0-indexed months, so convert from 1-indexed Golarion month
-        const firstDayOfMonth = new Date(displayedDate.year, displayedDate.month - 1, 1).getDay();
+        const firstDayOfMonth = getGolarionDayOfWeek(displayedDate.year, displayedDate.month, 1);
         const weeks = Math.ceil((month.days + firstDayOfMonth) / 7);
 
         return (

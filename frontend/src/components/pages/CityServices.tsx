@@ -110,6 +110,8 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
 };
 
 const SETTLEMENT_SIZES = [
+  'Thorp',
+  'Hamlet',
   'Village',
   'Small Town',
   'Large Town',
@@ -739,6 +741,20 @@ const CityServices: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
+              <TableRow>
+                <TableCell>Thorp</TableCell>
+                <TableCell align="right">50 gp</TableCell>
+                <TableCell align="right">500 gp</TableCell>
+                <TableCell align="center">None</TableCell>
+                <TableCell align="right">1-20</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Hamlet</TableCell>
+                <TableCell align="right">200 gp</TableCell>
+                <TableCell align="right">1,000 gp</TableCell>
+                <TableCell align="center">None</TableCell>
+                <TableCell align="right">21-60</TableCell>
+              </TableRow>
               <TableRow>
                 <TableCell>Village</TableCell>
                 <TableCell align="right">500 gp</TableCell>

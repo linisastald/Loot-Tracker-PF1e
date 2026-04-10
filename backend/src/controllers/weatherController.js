@@ -38,8 +38,8 @@ const generateWeatherForDate = async (date, region, recentWeather = []) => {
         const regionData = regionResult.rows[0];
         const { year, month, day } = date;
         
-        // Calculate seasonal adjustment
-        const seasonalAdjustment = regionData.seasonal_temp_adjustment[month] || 0;
+        // Calculate seasonal adjustment (JSON keys are 0-indexed, calendar months are 1-indexed)
+        const seasonalAdjustment = regionData.seasonal_temp_adjustment[month - 1] || 0;
         
         // Base temperatures with seasonal adjustment
         let baseLow = regionData.base_temp_low + seasonalAdjustment;
@@ -73,8 +73,9 @@ const generateWeatherForDate = async (date, region, recentWeather = []) => {
         let description = '';
         
         // Check for special weather events
-        const isStormSeason = regionData.storm_season_months && regionData.storm_season_months.includes(month);
-        const isHurricaneSeason = regionData.hurricane_season_months && regionData.hurricane_season_months.includes(month);
+        const monthIndex = month - 1; // Convert 1-indexed calendar month to 0-indexed data
+        const isStormSeason = regionData.storm_season_months && regionData.storm_season_months.includes(monthIndex);
+        const isHurricaneSeason = regionData.hurricane_season_months && regionData.hurricane_season_months.includes(monthIndex);
         
         // Hurricane check (only for applicable regions)
         if (isHurricaneSeason && regionData.hurricane_chance && Math.random() < regionData.hurricane_chance) {
