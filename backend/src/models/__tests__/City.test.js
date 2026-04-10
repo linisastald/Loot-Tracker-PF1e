@@ -37,7 +37,7 @@ describe('City model', () => {
       expect(sizes['Small Town'].baseValue).toBe(1000);
       expect(sizes['Large Town'].baseValue).toBe(2000);
       expect(sizes['Small City'].baseValue).toBe(4000);
-      expect(sizes['Large City'].baseValue).toBe(12800);
+      expect(sizes['Large City'].baseValue).toBe(8000);
       expect(sizes['Metropolis'].baseValue).toBe(16000);
     });
 
@@ -48,7 +48,7 @@ describe('City model', () => {
       expect(sizes['Small Town'].purchaseLimit).toBe(5000);
       expect(sizes['Large Town'].purchaseLimit).toBe(10000);
       expect(sizes['Small City'].purchaseLimit).toBe(25000);
-      expect(sizes['Large City'].purchaseLimit).toBe(75000);
+      expect(sizes['Large City'].purchaseLimit).toBe(50000);
       expect(sizes['Metropolis'].purchaseLimit).toBe(100000);
     });
 
@@ -181,8 +181,8 @@ describe('City model', () => {
       await City.update(1, { name: 'Magnimar', size: 'Large City', population: 16428 });
 
       const values = dbUtils.executeQuery.mock.calls[0][1];
-      expect(values[5]).toBe(12800);  // Large City baseValue
-      expect(values[6]).toBe(75000);  // purchaseLimit
+      expect(values[5]).toBe(8000);   // Large City baseValue
+      expect(values[6]).toBe(50000);  // purchaseLimit
       expect(values[7]).toBe(6);      // maxSpellLevel
       expect(values[8]).toBe(1);      // id
     });

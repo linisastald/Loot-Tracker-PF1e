@@ -17,7 +17,7 @@ const SETTLEMENT_SIZES = {
   'Small Town': { baseValue: 1000, purchaseLimit: 5000, maxSpellLevel: 1, population: [201, 2000] },
   'Large Town': { baseValue: 2000, purchaseLimit: 10000, maxSpellLevel: 2, population: [2001, 5000] },
   'Small City': { baseValue: 4000, purchaseLimit: 25000, maxSpellLevel: 4, population: [5001, 10000] },
-  'Large City': { baseValue: 12800, purchaseLimit: 75000, maxSpellLevel: 6, population: [10001, 25000] },
+  'Large City': { baseValue: 8000, purchaseLimit: 50000, maxSpellLevel: 6, population: [10001, 25000] },
   'Metropolis': { baseValue: 16000, purchaseLimit: 100000, maxSpellLevel: 9, population: [25001, 999999] }
 };
 

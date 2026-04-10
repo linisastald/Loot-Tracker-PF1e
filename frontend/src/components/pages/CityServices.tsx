@@ -774,8 +774,8 @@ const CityServices: React.FC = () => {
               </TableRow>
               <TableRow>
                 <TableCell>Large City</TableCell>
-                <TableCell align="right">12,800 gp</TableCell>
-                <TableCell align="right">75,000 gp</TableCell>
+                <TableCell align="right">8,000 gp</TableCell>
+                <TableCell align="right">50,000 gp</TableCell>
                 <TableCell align="center">5th-6th</TableCell>
                 <TableCell align="right">10,001-25,000</TableCell>
               </TableRow>
