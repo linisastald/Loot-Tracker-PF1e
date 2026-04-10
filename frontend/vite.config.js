@@ -27,7 +27,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'build',
-    sourcemap: true,
+    sourcemap: process.env.NODE_ENV !== 'production',
   },
   test: {
     globals: true,

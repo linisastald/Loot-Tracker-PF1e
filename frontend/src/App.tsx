@@ -1,35 +1,37 @@
 // src/App.js
 import CssBaseline from '@mui/material/CssBaseline';
-import React, {useEffect, useState} from 'react';
+import React, {Suspense, useEffect, useState} from 'react';
 import {BrowserRouter as Router, Navigate, Route, Routes} from 'react-router-dom';
 import {ThemeProvider} from '@mui/material/styles';
 import {Box, CircularProgress} from '@mui/material';
 
-
+// Eagerly loaded (needed immediately for auth flow)
 import Login from './components/pages/Login';
-import Register from './components/pages/Register';
-import ForgotPassword from './components/pages/ForgotPassword';
-import ResetPassword from './components/pages/ResetPassword';
-import LootEntry from './components/pages/LootEntry';
-import GoldTransactions from './components/pages/GoldTransactions';
-import UserSettings from './components/pages/UserSettings';
 import MainLayout from './components/layout/MainLayout';
 import ProtectedRoute from './components/hoc/ProtectedRoute';
-import CharacterAndUserManagement from './components/pages/CharacterAndUserManagement';
-import Consumables from "./components/pages/Consumables";
-import ItemManagement from "./components/pages/ItemManagement";
-import GolarionCalendar from "./components/pages/GolarionCalendar";
-import Tasks from "./components/pages/Tasks";
-import Identify from './components/pages/Identify';
-import LootManagement from './components/pages/LootManagement';
-import Infamy from './components/pages/Infamy';
-import ShipManagement from './components/pages/ShipManagement';
-import OutpostManagement from './components/pages/OutpostManagement';
-import CrewManagement from './components/pages/CrewManagement';
-import SessionsPage from './components/pages/Sessions/SessionsPage';
-import SessionManagement from './components/pages/DMSettings/SessionManagement';
-import CityServices from './components/pages/CityServices';
 import ErrorBoundary from './components/ErrorBoundary';
+
+// Lazy loaded page components
+const Register = React.lazy(() => import('./components/pages/Register'));
+const ForgotPassword = React.lazy(() => import('./components/pages/ForgotPassword'));
+const ResetPassword = React.lazy(() => import('./components/pages/ResetPassword'));
+const LootEntry = React.lazy(() => import('./components/pages/LootEntry'));
+const GoldTransactions = React.lazy(() => import('./components/pages/GoldTransactions'));
+const UserSettings = React.lazy(() => import('./components/pages/UserSettings'));
+const CharacterAndUserManagement = React.lazy(() => import('./components/pages/CharacterAndUserManagement'));
+const Consumables = React.lazy(() => import('./components/pages/Consumables'));
+const ItemManagement = React.lazy(() => import('./components/pages/ItemManagement'));
+const GolarionCalendar = React.lazy(() => import('./components/pages/GolarionCalendar'));
+const Tasks = React.lazy(() => import('./components/pages/Tasks'));
+const Identify = React.lazy(() => import('./components/pages/Identify'));
+const LootManagement = React.lazy(() => import('./components/pages/LootManagement'));
+const Infamy = React.lazy(() => import('./components/pages/Infamy'));
+const ShipManagement = React.lazy(() => import('./components/pages/ShipManagement'));
+const OutpostManagement = React.lazy(() => import('./components/pages/OutpostManagement'));
+const CrewManagement = React.lazy(() => import('./components/pages/CrewManagement'));
+const SessionsPage = React.lazy(() => import('./components/pages/Sessions/SessionsPage'));
+const SessionManagement = React.lazy(() => import('./components/pages/DMSettings/SessionManagement'));
+const CityServices = React.lazy(() => import('./components/pages/CityServices'));
 
 
 import theme from './theme';
@@ -148,6 +150,7 @@ function App() {
         <CssBaseline />
         <ConfigProvider>
           <Router>
+          <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><CircularProgress size={40} /></Box>}>
           <Routes>
             <Route path="/" element={isAuthenticated ? <Navigate to="/loot-entry" /> : <Navigate to="/login" />} />
             <Route path="/login" element={
@@ -187,6 +190,7 @@ function App() {
               <Route path="city-services" element={<ErrorBoundary><CityServices /></ErrorBoundary>} />
             </Route>
           </Routes>
+          </Suspense>
           </Router>
         </ConfigProvider>
       </ThemeProvider>

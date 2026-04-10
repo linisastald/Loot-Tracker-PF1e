@@ -338,8 +338,18 @@ if (process.env.NODE_ENV === 'production') {
   logger.info(`Frontend build path: ${frontendBuildPath}`);
   logger.info(`Frontend build exists: ${require('fs').existsSync(frontendBuildPath)}`);
   
-  // Serve static files from React build
-  app.use(express.static(frontendBuildPath));
+  // Serve static files from React build with caching
+  app.use(express.static(frontendBuildPath, {
+    maxAge: '1d',
+    etag: true,
+    immutable: false,
+  }));
+
+  // Vite-hashed assets can be cached aggressively
+  app.use('/assets', express.static(path.join(frontendBuildPath, 'assets'), {
+    maxAge: '1y',
+    immutable: true,
+  }));
   
   // Handle React routing - serve index.html for non-API routes
   app.get('*', (req, res) => {

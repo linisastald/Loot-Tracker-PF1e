@@ -37,7 +37,8 @@ ENV NODE_ENV=production
 RUN cd frontend && npm run build
 
 # Clean up dev dependencies to reduce image size
-RUN cd frontend && npm prune --production
+RUN cd frontend && npm prune --production && \
+    cd ../backend && npm prune --production
 
 # Copy frontend build to backend location
 RUN mkdir -p backend/frontend && cp -r frontend/build backend/frontend/
