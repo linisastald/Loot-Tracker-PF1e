@@ -251,9 +251,15 @@ app.get('/api/health', (req, res) => {
 });
 
 // Get CSRF token (generates token and sets cookie)
+// overwrite=true forces a new token, skipping validation of any existing token
 app.get('/api/csrf-token', (req, res) => {
-  const csrfToken = generateToken(req, res);
-  res.success({ csrfToken }, 'CSRF token generated');
+  try {
+    const csrfToken = generateToken(req, res, true, false);
+    res.success({ csrfToken }, 'CSRF token generated');
+  } catch (err) {
+    logger.error('Failed to generate CSRF token', { error: err.message });
+    res.status(500).json({ success: false, message: 'Failed to generate CSRF token' });
+  }
 });
 
 // Route imports
