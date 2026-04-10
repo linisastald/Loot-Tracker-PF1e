@@ -17,6 +17,7 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Support for spontaneous casters (spells known vs spells per day)
 
 ### Character Sheet Integration
+*Low priority - Complex, significant effort, and better dedicated tools exist (Hero Lab, Pathbuilder).*
 - Track key character stats (level, HP, saves, key ability scores)
 - Wealth by Level comparison (flag when characters are over/under WBL)
 - Automatic APL calculation for infamy checks and encounter scaling
@@ -35,12 +36,14 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Visual charts for gold flow over time
 
 ### Party Inventory
+*Partially implemented - The app already tracks party loot and consumables. Items below are the missing pieces.*
 - Shared party inventory separate from individual character loot
 - Track consumables used from party stock vs personal stock
 - Bag of Holding / Handy Haversack weight tracking
 - Encumbrance warnings per character
 
 ### NPC & Merchant Tracking
+*Low priority.*
 - Save frequently visited merchants with their settlement stats
 - Track custom shop inventories that persist between sessions
 - NPC contact list with notes and locations
@@ -61,22 +64,26 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 ## Quality of Life Improvements
 
 ### Bulk Operations
+*Mostly implemented - Multi-select, bulk appraisal, and bulk identification already exist. Remaining items below.*
 - Multi-select items across pages for bulk status changes
 - Bulk appraisal (roll once, apply to all selected)
 - Bulk identification with automatic DC calculation
 - Copy items between campaigns
 
 ### Notifications
+*Low priority - Discord session reminders already exist. Additional notification channels likely not worth the effort.*
 - In-app notifications for session reminders
 - Email notifications for upcoming sessions
 - Discord DM notifications for player actions (item claimed, gold withdrawn)
 
 ### Undo/History
+*Medium priority - DM-only feature. Would prevent data loss from misclicks.*
 - Undo recent actions (status changes, gold transactions)
 - Full audit log of who changed what and when
 - Restore deleted/trashed items
 
 ### Import/Export
+*Low priority - Nice to have for backups but not a pressing need.*
 - Import items from CSV or JSON
 - Export campaign data for backup
 - Import from other VTT tools (Foundry, Roll20)
