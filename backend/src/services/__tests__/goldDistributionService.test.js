@@ -166,25 +166,25 @@ describe('GoldDistributionService', () => {
       ];
       const distribution = { platinum: 2, gold: 25, silver: 5, copper: 10 };
 
+      // Batch INSERT returns all rows at once
       mockClient.query
-        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
-        .mockResolvedValueOnce({ rows: [{ id: 2 }] });
+        .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] });
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       const result = await GoldDistributionService.createDistributionEntries(characters, distribution, 42);
 
-      expect(mockClient.query).toHaveBeenCalledTimes(2);
+      expect(mockClient.query).toHaveBeenCalledTimes(1);
       expect(result).toHaveLength(2);
 
-      // Verify negative amounts
+      // Verify negative amounts in batch query
       const values = mockClient.query.mock.calls[0][1];
       expect(values[1]).toBe('Withdrawal');
       expect(values[2]).toBe(-2);   // platinum
       expect(values[3]).toBe(-25);  // gold
       expect(values[4]).toBe(-5);   // silver
       expect(values[5]).toBe(-10);  // copper
-      expect(values[6]).toContain('Valeros');
+      expect(values[6]).toEqual(['Distributed to Valeros', 'Distributed to Merisiel']);
     });
   });
 
@@ -200,10 +200,9 @@ describe('GoldDistributionService', () => {
           rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }],
         });
 
-      // createDistributionEntries transaction
+      // createDistributionEntries transaction (batch INSERT returns all rows)
       mockClient.query
-        .mockResolvedValueOnce({ rows: [{ id: 10 }] })
-        .mockResolvedValueOnce({ rows: [{ id: 11 }] });
+        .mockResolvedValueOnce({ rows: [{ id: 10 }, { id: 11 }] });
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 

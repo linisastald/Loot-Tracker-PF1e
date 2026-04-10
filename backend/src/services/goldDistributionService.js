@@ -100,36 +100,28 @@ class GoldDistributionService {
     const createdEntries = [];
 
     await dbUtils.executeTransaction(async (client) => {
-      for (const character of characters) {
-        const entry = {
-          sessionDate: new Date(),
-          transactionType: 'Withdrawal',
-          platinum: -distribution.platinum,
-          gold: -distribution.gold,
-          silver: -distribution.silver,
-          copper: -distribution.copper,
-          notes: `Distributed to ${character.name}`,
-          userId,
-        };
+      const now = new Date();
+      const names = characters.map(c => c.name);
+      const notesList = names.map(n => `Distributed to ${n}`);
 
-        const insertQuery = `
-          INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-          RETURNING *
-        `;
+      // Batch insert all distribution entries in a single query
+      const insertQuery = `
+        INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
+        SELECT $1, $2, $3, $4, $5, $6, unnest($7::text[])
+        RETURNING *
+      `;
 
-        const insertResult = await client.query(insertQuery, [
-          entry.sessionDate,
-          entry.transactionType,
-          entry.platinum,
-          entry.gold,
-          entry.silver,
-          entry.copper,
-          entry.notes
-        ]);
+      const insertResult = await client.query(insertQuery, [
+        now,
+        'Withdrawal',
+        -distribution.platinum,
+        -distribution.gold,
+        -distribution.silver,
+        -distribution.copper,
+        notesList
+      ]);
 
-        createdEntries.push(insertResult.rows[0]);
-      }
+      createdEntries.push(...insertResult.rows);
     });
 
     return createdEntries;

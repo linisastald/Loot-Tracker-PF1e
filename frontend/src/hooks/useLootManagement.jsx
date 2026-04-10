@@ -2,7 +2,6 @@ import {useEffect, useState, useCallback} from 'react';
 import lootService from '../services/lootService';
 import {
   applyFilters,
-  fetchActiveUser,
   handleKeepParty,
   handleKeepSelf,
   handleOpenSplitDialog,
@@ -16,9 +15,11 @@ import {
   handleUpdateDialogClose,
   handleUpdateSubmit,
 } from '../utils/utils';
-import {isDM} from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 
 const useLootManagement = (statusToFetch) => {
+  const { user: authUser, isDM: isDMUser } = useAuth();
+
   // Common state
   const [loot, setLoot] = useState({ summary: [], individual: [] });
   const [selectedItems, setSelectedItems] = useState([]);
@@ -27,7 +28,6 @@ const useLootManagement = (statusToFetch) => {
   const [splitItem, setSplitItem] = useState(null);
   const [splitQuantities, setSplitQuantities] = useState([]);
   const [updatedEntry, setUpdatedEntry] = useState({});
-  const [activeUser, setActiveUser] = useState(null);
   const [filters, setFilters] = useState({ unidentified: '', type: '', size: '', pendingSale: '', whoHas: [] });
   const [openItems, setOpenItems] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
@@ -36,20 +36,15 @@ const useLootManagement = (statusToFetch) => {
   const fetchLoot = useCallback(async () => {
     try {
       if (!statusToFetch) {
-        // For unprocessed loot - use the default getAllLoot which now defaults to Unprocessed
-        const isDMUser = isDM();
         let params = {
           isDM: isDMUser,
-          // Request all fields needed for filtering (excluding character_names due to view structure)
           fields: 'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
         };
 
         if (!isDMUser) {
-          const currentActiveUser = await fetchActiveUser();
-          if (currentActiveUser && currentActiveUser.activeCharacterId) {
-            params.activeCharacterId = currentActiveUser.activeCharacterId;
+          if (authUser && authUser.activeCharacterId) {
+            params.activeCharacterId = authUser.activeCharacterId;
           } else {
-            // No active character ID available
             return;
           }
         }
@@ -76,31 +71,10 @@ const useLootManagement = (statusToFetch) => {
       // Error fetching loot
       setLoot({ summary: [], individual: [] });
     }
-  }, [statusToFetch]);
-
-  const fetchActiveUserDetails = async () => {
-    const user = await fetchActiveUser();
-    if (user && user.activeCharacterId) {
-      setActiveUser(user);
-    } else if (!isDM()) {
-      // Only log error for non-DM users who should have an active character
-      // Active character ID is not available or user could not be fetched
-    }
-    // DM users don't need an active character ID, so no error for them
-  };
+  }, [statusToFetch, isDMUser, authUser]);
 
   useEffect(() => {
-    const initializeComponent = async () => {
-      if (!isDM()) {
-        await fetchActiveUserDetails();
-        fetchLoot();
-      } else {
-        fetchLoot();
-        await fetchActiveUserDetails();
-      }
-    };
-
-    initializeComponent();
+    fetchLoot();
   }, [fetchLoot]);
 
   const handleAction = async (actionFunc) => {
@@ -147,19 +121,14 @@ const useLootManagement = (statusToFetch) => {
   // Special function for handling appraise in UnprocessedLoot
   const handleAppraise = async () => {
     try {
-      // Fetch the current user's info
-      const user = await fetchActiveUser();
-
-      if (!user || !user.id) {
-        // Unable to fetch user ID for appraisal
+      if (!authUser || !authUser.id) {
         return;
       }
 
-      // The backend expects characterId - it will automatically use the active character
       await lootService.appraiseLoot({
         lootIds: selectedItems,
-        characterId: user.activeCharacterId || user.id,
-        appraisalRolls: selectedItems.map(() => Math.floor(Math.random() * 20) + 1) // Generate d20 rolls
+        characterId: authUser.activeCharacterId || authUser.id,
+        appraisalRolls: selectedItems.map(() => Math.floor(Math.random() * 20) + 1)
       });
 
       fetchLoot();
@@ -179,7 +148,7 @@ const useLootManagement = (statusToFetch) => {
     splitItem,
     splitQuantities,
     updatedEntry,
-    activeUser,
+    activeUser: authUser,
     filters,
     setFilters,
     openItems,
@@ -199,10 +168,10 @@ const useLootManagement = (statusToFetch) => {
     handleUpdateSubmitWrapper,
     handleAppraise,
     // Expose common action handlers
-    handleSell: (ids) => handleSell(ids, fetchLoot),
-    handleTrash: (ids) => handleTrash(ids, fetchLoot),
-    handleKeepSelf: (ids) => handleKeepSelf(ids, fetchLoot, activeUser),
-    handleKeepParty: (ids) => handleKeepParty(ids, fetchLoot),
+    handleSell: (ids) => handleSell(ids, fetchLoot, authUser),
+    handleTrash: (ids) => handleTrash(ids, fetchLoot, authUser),
+    handleKeepSelf: (ids) => handleKeepSelf(ids, fetchLoot, authUser),
+    handleKeepParty: (ids) => handleKeepParty(ids, fetchLoot, authUser),
   };
 };
 

@@ -31,7 +31,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
-import { fetchActiveUser } from '../../utils/utils';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface City {
   id: number;
@@ -120,7 +120,7 @@ const SETTLEMENT_SIZES = [
 
 const CityServices: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
-  const [activeUser, setActiveUser] = useState<User | null>(null);
+  const { user: activeUser } = useAuth();
 
   // Item Availability States
   const [cities, setCities] = useState<City[]>([]);
@@ -149,19 +149,9 @@ const CityServices: React.FC = () => {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    fetchActiveUserDetails();
     fetchCities();
     fetchMods();
   }, []);
-
-  const fetchActiveUserDetails = async () => {
-    try {
-      const user = await fetchActiveUser();
-      setActiveUser(user);
-    } catch (err) {
-      console.error('Failed to fetch active user:', err);
-    }
-  };
 
   const fetchCities = async () => {
     try {

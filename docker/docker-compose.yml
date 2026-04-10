@@ -109,8 +109,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '1.0'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U loot_user -d loot_tracking"]
       interval: 10s
@@ -186,8 +186,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '1.0'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U loot_user -d loot_tracking"]
       interval: 10s
@@ -263,8 +263,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '1.0'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U loot_user -d loot_tracking"]
       interval: 10s

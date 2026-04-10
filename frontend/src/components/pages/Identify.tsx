@@ -17,9 +17,8 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { fetchActiveUser } from '../../utils/utils';
 import CustomLootTable from '../common/CustomLootTable';
-import { isDM } from '../../utils/auth';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface LootItem {
   id: number;
@@ -66,7 +65,6 @@ const Identify: React.FC = () => {
     key: '',
     direction: 'asc',
   });
-  const [isDMUser, setIsDMUser] = useState<boolean>(false);
   const [identifiedItems, setIdentifiedItems] = useState<
     Array<{
       itemId: number;
@@ -88,27 +86,19 @@ const Identify: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
 
-  useEffect(() => {
-    fetchActiveUserDetails();
-    fetchLoot();
-    setIsDMUser(isDM());
+  const { user: authUser, isDM: isDMUser } = useAuth();
 
-    // Load saved spellcraft bonus from localStorage
-    // eslint-disable-next-line no-undef
+  useEffect(() => {
+    if (authUser) {
+      setActiveUser(authUser as User);
+    }
+    fetchLoot();
+
     const savedSpellcraft = localStorage.getItem('spellcraftBonus');
     if (savedSpellcraft) {
       setSpellcraftValue(savedSpellcraft);
     }
   }, []);
-
-  const fetchActiveUserDetails = async (): Promise<void> => {
-    const user = await fetchActiveUser();
-    if (user && (user as User).activeCharacterId) {
-      setActiveUser(user as User);
-    } else if (!isDM()) {
-      // Only log error for non-DM users who need an active character
-    }
-  };
 
   const fetchLoot = async (): Promise<void> => {
     try {

@@ -58,16 +58,9 @@ WORKDIR /app/backend
 # Expose backend port
 EXPOSE 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "const http = require('http'); \
-    const options = { hostname: 'localhost', port: 5000, path: '/api/health', timeout: 2000 }; \
-    const req = http.request(options, (res) => { \
-      if (res.statusCode === 200) process.exit(0); else process.exit(1); \
-    }); \
-    req.on('error', () => process.exit(1)); \
-    req.on('timeout', () => process.exit(1)); \
-    req.end();"
+# Health check (wget is built into alpine, avoids spawning a Node.js process)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD wget -qO /dev/null http://localhost:5000/api/health || exit 1
 
 # Start backend server (which serves frontend too)
 CMD ["node", "index.js"]

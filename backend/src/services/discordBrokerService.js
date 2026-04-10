@@ -14,6 +14,7 @@ class DiscordBrokerService {
     this.groupName = groupName;
     this.isRegistered = false;
     this.heartbeatInterval = null;
+    this.retryTimeout = null;
     this.retryAttempts = 0;
     this.maxRetries = 5;
     this.retryDelay = 5000; // 5 seconds
@@ -72,7 +73,7 @@ class DiscordBrokerService {
       this.retryAttempts++;
       if (this.retryAttempts < this.maxRetries) {
         logger.info(`Retrying registration in ${this.retryDelay}ms (attempt ${this.retryAttempts}/${this.maxRetries})`);
-        setTimeout(() => this.registerWithBroker(), this.retryDelay);
+        this.retryTimeout = setTimeout(() => this.registerWithBroker(), this.retryDelay);
       } else {
         logger.error('Max registration retries reached, giving up on Discord integration');
       }
@@ -201,6 +202,10 @@ class DiscordBrokerService {
   }
 
   async stop() {
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
+    }
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;

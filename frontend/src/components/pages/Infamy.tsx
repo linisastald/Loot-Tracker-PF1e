@@ -14,7 +14,7 @@ import {
 } from '@mui/icons-material';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
-import {fetchActiveUser} from '../../utils/utils';
+import { useAuth } from '../../contexts/AuthContext';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
 
@@ -222,7 +222,7 @@ const Infamy: React.FC = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [tabValue, setTabValue] = useState(0);
-    const [isDM, setIsDM] = useState(false);
+    const { isDM } = useAuth();
 
     // Campaign timezone hook
     const { timezone, loading: timezoneLoading } = useCampaignTimezone();
@@ -283,19 +283,9 @@ const Infamy: React.FC = () => {
 
     // Load data on component mount
     useEffect(() => {
-        fetchUserRole();
         fetchData();
         fetchAvailablePlunder();
     }, []);
-
-    const fetchUserRole = async () => {
-        try {
-            const user = await fetchActiveUser();
-            setIsDM(user?.role === 'DM');
-        } catch (error) {
-            console.error('Error fetching user role:', error);
-        }
-    };
 
     // Consolidated fetch function
     const fetchData = async () => {

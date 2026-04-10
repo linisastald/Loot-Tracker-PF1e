@@ -267,31 +267,22 @@ const updateCharacter = async (req, res) => {
 const getCurrentUser = async (req, res) => {
     const userId = req.user.id; // From JWT token
 
-    // Get the user (excluding password)
-    const userResult = await dbUtils.executeQuery(
-        'SELECT id, username, role, joined, email FROM users WHERE id = $1',
+    // Get user with active character in a single query
+    const result = await dbUtils.executeQuery(
+        `SELECT u.id, u.username, u.role, u.joined, u.email, c.id as "activeCharacterId"
+         FROM users u
+         LEFT JOIN characters c ON c.user_id = u.id AND c.active IS true
+         WHERE u.id = $1`,
         [userId]
     );
 
-    if (userResult.rows.length === 0) {
+    if (result.rows.length === 0) {
         throw controllerFactory.createNotFoundError('User not found');
     }
 
-    const user = userResult.rows[0];
-
-    // Get active character
-    const activeCharacterResult = await dbUtils.executeQuery(
-        'SELECT id as character_id FROM characters WHERE user_id = $1 AND active IS true',
-        [userId]
-    );
-
-    const activeCharacterId = activeCharacterResult.rows.length > 0
-        ? activeCharacterResult.rows[0].character_id
-        : null;
-
     controllerFactory.sendSuccessResponse(
         res,
-        {...user, activeCharacterId},
+        result.rows[0],
         'Current user retrieved successfully'
     );
 };

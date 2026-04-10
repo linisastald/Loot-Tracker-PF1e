@@ -45,21 +45,19 @@ const setCurrentDate = async (req, res) => {
   }
 
   return await dbUtils.executeTransaction(async (client) => {
-    // Check if current date record exists
-    const checkResult = await client.query('SELECT COUNT(*) FROM golarion_current_date');
-    const exists = parseInt(checkResult.rows[0].count) > 0;
+    // Get the old date before updating (for weather generation)
+    const oldDateResult = await client.query('SELECT year, month, day FROM golarion_current_date LIMIT 1');
 
-    if (exists) {
-      // Update existing record
+    // Update or insert current date
+    if (oldDateResult.rows.length > 0) {
       await client.query(
-          'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
-          [year, month, day]
+        'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
+        [year, month, day]
       );
     } else {
-      // Create new record
       await client.query(
-          'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
-          [year, month, day]
+        'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
+        [year, month, day]
       );
     }
 
@@ -68,10 +66,8 @@ const setCurrentDate = async (req, res) => {
     const region = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
 
     // Generate weather for any missing dates between old and new date
-    const oldDateResult = await client.query('SELECT * FROM golarion_current_date');
     if (oldDateResult.rows.length > 0) {
-      const oldDate = oldDateResult.rows[0];
-      await generateMissingWeather(oldDate, {year, month, day}, region);
+      await generateMissingWeather(oldDateResult.rows[0], {year, month, day}, region);
     }
 
     controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Current date set successfully');

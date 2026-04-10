@@ -3,12 +3,13 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../../controllers/userController');
 const verifyToken = require('../../middleware/auth');
+const checkRole = require('../../middleware/checkRole');
 
 // General user routes - require authentication
 router.get('/me', verifyToken, userController.getCurrentUser);
 router.put('/change-password', verifyToken, userController.changePassword);
-router.put('/change-email', verifyToken, userController.changeEmail); // New route for changing email
-router.put('/update-discord-id', verifyToken, userController.updateDiscordId); // Update Discord ID
+router.put('/change-email', verifyToken, userController.changeEmail);
+router.put('/update-discord-id', verifyToken, userController.updateDiscordId);
 router.get('/characters', verifyToken, userController.getCharacters);
 router.post('/characters', verifyToken, userController.addCharacter);
 router.put('/characters', verifyToken, userController.updateCharacter);
@@ -16,27 +17,6 @@ router.put('/deactivate-all-characters', verifyToken, userController.deactivateA
 router.get('/active-characters', verifyToken, userController.getActiveCharacters);
 
 // DM-only routes - require DM role
-const checkRole = (roles) => (req, res, next) => {
-  try {
-    // Ensure roles is always an array
-    const allowedRoles = Array.isArray(roles) ? roles : [roles];
-
-    // Get user role from the token data (added by verifyToken middleware)
-    const userRole = req.user?.role;
-
-    if (!userRole) {
-      return res.status(403).json({message: 'Access denied: User role not found'});
-    }
-
-    if (allowedRoles.includes(userRole)) {
-      next();
-    } else {
-      res.status(403).json({message: 'Access denied: Insufficient permissions'});
-    }
-  } catch (error) {
-    res.status(500).json({message: 'Internal server error during authorization'});
-  }
-};
 
 router.get('/all', verifyToken, checkRole(['DM']), userController.getAllUsers);
 router.put('/reset-password', verifyToken, checkRole(['DM']), userController.resetPassword);

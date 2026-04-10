@@ -87,11 +87,12 @@ export const handleSelectItem = (
  * Handle selling selected items
  */
 export const handleSell = async (
-  selectedItems: number[], 
-  fetchLoot: CallbackFunction
+  selectedItems: number[],
+  fetchLoot: CallbackFunction,
+  activeUser?: User | null
 ): Promise<void> => {
   try {
-    const user = await fetchActiveUser();
+    const user = activeUser || await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
       status: 'Pending Sale' as LootStatus,
@@ -107,11 +108,12 @@ export const handleSell = async (
  * Handle trashing selected items
  */
 export const handleTrash = async (
-  selectedItems: number[], 
-  fetchLoot: CallbackFunction
+  selectedItems: number[],
+  fetchLoot: CallbackFunction,
+  activeUser?: User | null
 ): Promise<void> => {
   try {
-    const user = await fetchActiveUser();
+    const user = activeUser || await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
       status: 'trashed' as LootStatus,
@@ -127,12 +129,11 @@ export const handleTrash = async (
  * Handle keeping items for self
  */
 export const handleKeepSelf = async (
-  selectedItems: number[], 
-  fetchLoot: CallbackFunction, 
+  selectedItems: number[],
+  fetchLoot: CallbackFunction,
   activeUser: User
 ): Promise<void> => {
   try {
-    const user = await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
       status: 'kept-character' as LootStatus,
@@ -149,11 +150,12 @@ export const handleKeepSelf = async (
  * Handle keeping items for party
  */
 export const handleKeepParty = async (
-  selectedItems: number[], 
-  fetchLoot: CallbackFunction
+  selectedItems: number[],
+  fetchLoot: CallbackFunction,
+  activeUser?: User | null
 ): Promise<void> => {
   try {
-    const user = await fetchActiveUser();
+    const user = activeUser || await fetchActiveUser();
     await lootService.updateLootStatus({
       lootIds: selectedItems,
       status: 'kept-party' as LootStatus,

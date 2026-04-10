@@ -54,23 +54,20 @@ const checkItemAvailability = async (req, res) => {
     itemValue = parseFloat(item.value) || 0;
   }
 
-  // Add mod values if any
+  // Add mod values if any (batch fetch all mods at once)
   if (mod_ids && Array.isArray(mod_ids) && mod_ids.length > 0) {
-    for (const modId of mod_ids) {
-      const modQuery = 'SELECT name, valuecalc, plus FROM mod WHERE id = $1';
-      const modResult = await dbUtils.executeQuery(modQuery, [modId]);
+    const modResult = await dbUtils.executeQuery(
+      'SELECT name, valuecalc, plus FROM mod WHERE id = ANY($1)',
+      [mod_ids]
+    );
 
-      if (modResult.rows.length > 0) {
-        const mod = modResult.rows[0];
-        // Simple value calculation - this can be enhanced based on mod.valuecalc logic
-        if (mod.valuecalc && mod.valuecalc.includes('PLUS')) {
-          // For enhancement bonuses: bonus^2 * base_cost (e.g., +1 weapon)
-          const plus = mod.plus || 0;
-          const enhancementCost = plus * plus * 2000; // Simplified calculation
-          itemValue += enhancementCost;
-        } else if (mod.valuecalc && !isNaN(parseFloat(mod.valuecalc))) {
-          itemValue += parseFloat(mod.valuecalc);
-        }
+    for (const mod of modResult.rows) {
+      if (mod.valuecalc && mod.valuecalc.includes('PLUS')) {
+        const plus = mod.plus || 0;
+        const enhancementCost = plus * plus * 2000;
+        itemValue += enhancementCost;
+      } else if (mod.valuecalc && !isNaN(parseFloat(mod.valuecalc))) {
+        itemValue += parseFloat(mod.valuecalc);
       }
     }
   }
