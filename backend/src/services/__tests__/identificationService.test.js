@@ -15,9 +15,21 @@ const dbUtils = require('../../utils/dbUtils');
 describe('IdentificationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Spy on ValidationService to allow rolls > 20 (DM identification uses 99)
     jest.spyOn(ValidationService, 'validateItemId').mockImplementation((id) => id);
-    jest.spyOn(ValidationService, 'validateAppraisalRoll').mockImplementation((roll) => roll);
+    jest.spyOn(ValidationService, 'validateRequiredNumber').mockImplementation((val, name, opts) => {
+      if (val === null || val === undefined || isNaN(val)) {
+        const err = new Error(`${name} is required and must be a valid number`);
+        err.statusCode = 400;
+        throw err;
+      }
+      const numVal = parseFloat(val);
+      if (opts && opts.min !== undefined && numVal < opts.min) {
+        const err = new Error(`${name} must be at least ${opts.min}`);
+        err.statusCode = 400;
+        throw err;
+      }
+      return numVal;
+    });
     jest.spyOn(ValidationService, 'validateItems').mockImplementation((items) => {
       if (!items || !Array.isArray(items) || items.length === 0) {
         const err = new Error('items array is required');
@@ -508,6 +520,38 @@ describe('IdentificationService', () => {
       expect(insertCall).toBeDefined();
       // characterId should be null for DM identification
       expect(insertCall[1][1]).toBeNull();
+    });
+
+    it('should NOT call roll validation for DM identification (roll 99)', async () => {
+      const mockClient = buildMockClient();
+
+      await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10,
+        characterId: 2,
+        spellcraftRoll: 99,
+        golarionDate: '4718-3-14',
+      });
+
+      // validateRequiredNumber should NOT have been called for the spellcraft roll
+      // (it may be called for other validations, but not with 'spellcraft roll' field name)
+      const spellcraftValidationCalls = ValidationService.validateRequiredNumber.mock.calls.filter(
+        (call) => call[1] === 'spellcraft roll'
+      );
+      expect(spellcraftValidationCalls).toHaveLength(0);
+    });
+
+    it('should accept player spellcraft rolls above 20 (total includes bonus)', async () => {
+      const mockClient = buildMockClient();
+
+      // A player with high spellcraft bonus can have total rolls well above 20
+      const result = await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10,
+        characterId: 2,
+        spellcraftRoll: 30, // d20 roll of 15 + spellcraft bonus of 15
+        golarionDate: '4718-3-14',
+      });
+
+      expect(result.success).toBe(true);
     });
 
     it('should throw when loot item is not found', async () => {

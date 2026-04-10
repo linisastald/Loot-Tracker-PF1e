@@ -4,6 +4,11 @@ const logger = require('../utils/logger');
 const ValidationService = require('./validationService');
 
 /**
+ * Sentinel roll value used for DM identification (auto-success, bypasses validation)
+ */
+const DM_IDENTIFICATION_ROLL = 99;
+
+/**
  * Service for handling item identification logic
  */
 class IdentificationService {
@@ -160,10 +165,15 @@ class IdentificationService {
 
     // Validate inputs
     ValidationService.validateItemId(itemId);
-    ValidationService.validateAppraisalRoll(spellcraftRoll);
 
-    // Check if this is a DM identification (roll 99)
-    const isDMIdentification = spellcraftRoll === 99;
+    // Check if this is a DM identification (sentinel roll value, auto-success)
+    const isDMIdentification = spellcraftRoll === DM_IDENTIFICATION_ROLL;
+
+    // Only validate roll for player identifications; DM uses sentinel value
+    // Note: spellcraftRoll is the total (d20 + bonus), so it can exceed 20
+    if (!isDMIdentification) {
+      ValidationService.validateRequiredNumber(spellcraftRoll, 'spellcraft roll', { min: 1 });
+    }
 
     // Fetch the loot item details
     const lootResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);

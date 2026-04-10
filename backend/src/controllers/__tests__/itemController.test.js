@@ -650,17 +650,15 @@ describe('itemController', () => {
       expect(responseData.totalPieces).toBe(2);
     });
 
-    it('should reject legacy splitQuantity when it does not equal original quantity', async () => {
-      // NOTE: The controller validates that total split quantities must equal
-      // the original item quantity. For legacy splitQuantity with a single value,
-      // this means splitQuantity must equal the original quantity exactly,
-      // which then fails the "must be less than" check in the else branch.
-      // This effectively makes legacy splitQuantity unusable for partial splits.
+    it('should split item using legacy splitQuantity (partial split off)', async () => {
       const originalItem = { id: 1, name: 'Potion', quantity: 5 };
+      const newItem = { id: 2, name: 'Potion', quantity: 2 };
 
       const mockClient = {
         query: jest.fn()
-          .mockResolvedValueOnce({ rows: [originalItem] }),
+          .mockResolvedValueOnce({ rows: [originalItem] })  // SELECT original
+          .mockResolvedValueOnce({ rows: [] })               // UPDATE original (remaining = 3)
+          .mockResolvedValueOnce({ rows: [newItem] }),        // INSERT new item (split = 2)
         release: jest.fn(),
       };
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
@@ -673,9 +671,15 @@ describe('itemController', () => {
 
       await itemController.splitItemStack(req, res);
 
-      // Total split quantities (2) != original quantity (5) -> validation error
-      expect(res.validationError).toHaveBeenCalledTimes(1);
-      expect(res.validationError.mock.calls[0][0]).toContain('Total split quantities');
+      expect(mockClient.query).toHaveBeenCalledTimes(3);
+      // Original item updated with remaining quantity (5 - 2 = 3)
+      expect(mockClient.query.mock.calls[1][1]).toEqual([3, 1]);
+      expect(res.success).toHaveBeenCalledTimes(1);
+      const responseData = res.success.mock.calls[0][0];
+      expect(responseData.originalItem.quantity).toBe(3);
+      expect(responseData.newItems).toHaveLength(1);
+      expect(responseData.newItems[0].quantity).toBe(2);
+      expect(responseData.totalPieces).toBe(2);
     });
 
     it('should reject when total split quantities do not match original (multi-split)', async () => {
@@ -741,9 +745,9 @@ describe('itemController', () => {
 
       await itemController.splitItemStack(req, res);
 
-      // Total split quantities (5) != original (3) -> validation error
+      // splitQuantity (5) >= original (3) -> "must be less than" validation error
       expect(res.validationError).toHaveBeenCalledTimes(1);
-      expect(res.validationError.mock.calls[0][0]).toContain('Total split quantities');
+      expect(res.validationError.mock.calls[0][0]).toContain('Split quantity must be less than');
     });
 
     it('should reject when neither newQuantities nor splitQuantity is provided', async () => {

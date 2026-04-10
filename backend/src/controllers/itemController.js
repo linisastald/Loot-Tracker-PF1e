@@ -421,18 +421,19 @@ const splitItemStack = async (req, res) => {
         throw controllerFactory.createNotFoundError('Loot item not found');
       }
 
-      // Calculate total quantities being split
-      const totalSplitQuantity = quantities.reduce((sum, qty) => sum + qty, 0);
-      
-      // Validate that total split quantities match original quantity
-      if (totalSplitQuantity !== originalItem.quantity) {
-        throw controllerFactory.createValidationError(
-          `Total split quantities (${totalSplitQuantity}) must equal original quantity (${originalItem.quantity})`
-        );
+      const newItems = [];
+      const isLegacySplit = !newQuantities || !Array.isArray(newQuantities);
+
+      // For newQuantities path, validate that total split quantities match original quantity
+      if (!isLegacySplit) {
+        const totalSplitQuantity = quantities.reduce((sum, qty) => sum + qty, 0);
+        if (totalSplitQuantity !== originalItem.quantity) {
+          throw controllerFactory.createValidationError(
+            `Total split quantities (${totalSplitQuantity}) must equal original quantity (${originalItem.quantity})`
+          );
+        }
       }
 
-      const newItems = [];
-      
       // For multiple splits, update the original item with the first quantity and create new items for the rest
       if (quantities.length > 1) {
         // Update original item with first quantity
@@ -506,11 +507,16 @@ const splitItemStack = async (req, res) => {
         totalPieces: quantities.length
       });
 
+      const originalNewQuantity = isLegacySplit
+        ? originalItem.quantity - quantities[0]
+        : quantities[0];
+      const totalPieces = isLegacySplit ? 2 : quantities.length;
+
       return controllerFactory.sendSuccessResponse(res, {
-        originalItem: { ...originalItem, quantity: quantities[0] },
+        originalItem: { ...originalItem, quantity: originalNewQuantity },
         newItems: newItems,
-        totalPieces: quantities.length
-      }, `Item split successfully into ${quantities.length} pieces`);
+        totalPieces: totalPieces
+      }, `Item split successfully into ${totalPieces} pieces`);
     });
   } catch (error) {
     logger.error(`Error splitting item ${itemId}:`, error);
