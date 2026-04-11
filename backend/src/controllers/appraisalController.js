@@ -31,7 +31,10 @@ const appraiseLoot = async (req, res) => {
   });
 
   try {
-    return await dbUtils.executeTransaction(async (client) => {
+    // Send the HTTP response AFTER the transaction COMMITs, not from
+    // inside the callback. Otherwise the frontend can refetch before the
+    // commit is visible to other pool clients (MVCC) and see stale data.
+    const txResult = await dbUtils.executeTransaction(async (client) => {
       const results = [];
       const errors = [];
 
@@ -107,23 +110,25 @@ const appraiseLoot = async (req, res) => {
         }
       }
 
-      logger.info(`${results.length} items appraised by ${characterName}`, {
-        characterId,
-        characterName,
-        appraisedCount: results.length,
-        errorCount: errors.length
-      });
-
-      return controllerFactory.sendSuccessResponse(res, {
-        appraisals: results,
-        errors: errors.length > 0 ? errors : undefined,
-        summary: {
-          successful: results.length,
-          failed: errors.length,
-          total: lootIds.length
-        }
-      }, `${results.length} items appraised successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`);
+      return { results, errors, characterName };
     });
+
+    logger.info(`${txResult.results.length} items appraised by ${txResult.characterName}`, {
+      characterId,
+      characterName: txResult.characterName,
+      appraisedCount: txResult.results.length,
+      errorCount: txResult.errors.length
+    });
+
+    return controllerFactory.sendSuccessResponse(res, {
+      appraisals: txResult.results,
+      errors: txResult.errors.length > 0 ? txResult.errors : undefined,
+      summary: {
+        successful: txResult.results.length,
+        failed: txResult.errors.length,
+        total: lootIds.length
+      }
+    }, `${txResult.results.length} items appraised successfully${txResult.errors.length > 0 ? `, ${txResult.errors.length} failed` : ''}`);
   } catch (error) {
     logger.error('Error in appraiseLoot:', error);
     throw error;
@@ -333,7 +338,8 @@ const bulkUpdateItemValues = async (req, res) => {
   ValidationService.validateItems(updates, 'updates');
 
   try {
-    return await dbUtils.executeTransaction(async (client) => {
+    // Send the response after COMMIT, not inside the transaction callback.
+    const { results, errors } = await dbUtils.executeTransaction(async (client) => {
       const results = [];
       const errors = [];
 
@@ -364,22 +370,24 @@ const bulkUpdateItemValues = async (req, res) => {
         }
       }
 
-      logger.info(`DM ${req.user.id} bulk updated ${results.length} item values`, {
-        userId: req.user.id,
-        updatedCount: results.length,
-        errorCount: errors.length
-      });
-
-      return controllerFactory.sendSuccessResponse(res, {
-        updates: results,
-        errors: errors.length > 0 ? errors : undefined,
-        summary: {
-          successful: results.length,
-          failed: errors.length,
-          total: updates.length
-        }
-      }, `${results.length} item values updated successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`);
+      return { results, errors };
     });
+
+    logger.info(`DM ${req.user.id} bulk updated ${results.length} item values`, {
+      userId: req.user.id,
+      updatedCount: results.length,
+      errorCount: errors.length
+    });
+
+    return controllerFactory.sendSuccessResponse(res, {
+      updates: results,
+      errors: errors.length > 0 ? errors : undefined,
+      summary: {
+        successful: results.length,
+        failed: errors.length,
+        total: updates.length
+      }
+    }, `${results.length} item values updated successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`);
   } catch (error) {
     logger.error('Error in bulk update item values:', error);
     throw error;

@@ -18,6 +18,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     loot,
     selectedItems,
     setSelectedItems,
+    setOpenUpdateDialog,
     openUpdateDialog,
     openSplitDialog,
     splitQuantities,
@@ -37,7 +38,6 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     handleSplitDialogClose,
     handleUpdateChange,
     handleSplitSubmitWrapper,
-    handleUpdateSubmitWrapper,
   } = useLootManagement(config.status);
 
   // Perform a status update and then EXPLICITLY await a refetch of the
@@ -71,6 +71,32 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     trash: () => performStatusChange('Trashed' as LootStatus),
     keepSelf: () => performStatusChange('Kept Character' as LootStatus),
     keepParty: () => performStatusChange('Kept Party' as LootStatus),
+  };
+
+  // Dedicated update-dialog submit that mirrors the action button flow:
+  // API call → await refetch → close dialog → clear selection. The hook's
+  // handleUpdateSubmitWrapper had a missing-arg bug AND did not await
+  // fetchLoot, leaving the table to display stale data.
+  const handleUpdateSubmit = async () => {
+    if (!updatedEntry || !updatedEntry.id) return;
+    try {
+      await lootService.updateLootItem(updatedEntry.id, {
+        session_date: updatedEntry.session_date,
+        quantity: updatedEntry.quantity,
+        name: updatedEntry.name,
+        unidentified: updatedEntry.unidentified,
+        masterwork: updatedEntry.masterwork,
+        type: updatedEntry.type,
+        size: updatedEntry.size,
+        notes: updatedEntry.notes,
+      });
+      await fetchLoot();
+      setOpenUpdateDialog(false);
+      setSelectedItems([]);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Error updating item:', error);
+    }
   };
 
   // Determine if Split Stack button should be shown
@@ -174,7 +200,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
         onClose={handleUpdateDialogClose}
         updatedEntry={updatedEntry}
         onUpdateChange={handleUpdateChange}
-        onUpdateSubmit={handleUpdateSubmitWrapper}
+        onUpdateSubmit={handleUpdateSubmit}
       />
     </Container>
   );

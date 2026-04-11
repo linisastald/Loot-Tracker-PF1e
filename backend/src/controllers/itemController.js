@@ -319,7 +319,13 @@ const updateLootStatus = async (req, res) => {
   }
 
   try {
-    await dbUtils.executeTransaction(async (client) => {
+    // Run the UPDATE inside a transaction, but do NOT send the HTTP response
+    // from inside the callback — executeTransaction only COMMITs after the
+    // callback returns, so sending the response inside would release the
+    // client to refetch before the commit is visible to other pool clients
+    // (MVCC). That causes the frontend to see stale data and the table to
+    // appear "one update behind".
+    const updatedRows = await dbUtils.executeTransaction(async (client) => {
       let updateQuery = 'UPDATE loot SET status = $1';
       const params = [status];
       let paramIndex = 2;
@@ -339,18 +345,20 @@ const updateLootStatus = async (req, res) => {
         throw controllerFactory.createNotFoundError('No loot items found with the provided IDs');
       }
 
-      logger.info(`${result.rows.length} loot items status updated to ${status}`, {
-        userId: req.user.id,
-        status,
-        characterId,
-        updatedCount: result.rows.length
-      });
-
-      return controllerFactory.sendSuccessResponse(res, {
-        updatedItems: result.rows,
-        count: result.rows.length
-      }, `${result.rows.length} items status updated to ${status}`);
+      return result.rows;
     });
+
+    logger.info(`${updatedRows.length} loot items status updated to ${status}`, {
+      userId: req.user.id,
+      status,
+      characterId,
+      updatedCount: updatedRows.length
+    });
+
+    return controllerFactory.sendSuccessResponse(res, {
+      updatedItems: updatedRows,
+      count: updatedRows.length
+    }, `${updatedRows.length} items status updated to ${status}`);
   } catch (error) {
     logger.error('Error updating loot status:', error);
     throw error;
@@ -412,7 +420,12 @@ const splitItemStack = async (req, res) => {
   }
 
   try {
-    return await dbUtils.executeTransaction(async (client) => {
+    // Do the whole split inside the transaction, but hold onto the result
+    // and only send the HTTP response after executeTransaction returns
+    // (which is when COMMIT has actually run). Otherwise the frontend can
+    // refetch before the commit is visible to other pool clients and see
+    // stale data.
+    const txResult = await dbUtils.executeTransaction(async (client) => {
       // Get the original item
       const originalResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
       const originalItem = originalResult.rows[0];
@@ -499,25 +512,32 @@ const splitItemStack = async (req, res) => {
         newItems.push(newItemResult.rows[0]);
       }
 
-      logger.info(`Item ${itemId} split by user ${req.user.id}`, {
-        userId: req.user.id,
-        originalItemId: itemId,
-        newItemIds: newItems.map(item => item.id),
-        quantities: quantities,
-        totalPieces: quantities.length
-      });
-
       const originalNewQuantity = isLegacySplit
         ? originalItem.quantity - quantities[0]
         : quantities[0];
       const totalPieces = isLegacySplit ? 2 : quantities.length;
 
-      return controllerFactory.sendSuccessResponse(res, {
+      return {
         originalItem: { ...originalItem, quantity: originalNewQuantity },
-        newItems: newItems,
-        totalPieces: totalPieces
-      }, `Item split successfully into ${totalPieces} pieces`);
+        newItems,
+        totalPieces,
+        loggingQuantities: quantities,
+      };
     });
+
+    logger.info(`Item ${itemId} split by user ${req.user.id}`, {
+      userId: req.user.id,
+      originalItemId: itemId,
+      newItemIds: txResult.newItems.map(item => item.id),
+      quantities: txResult.loggingQuantities,
+      totalPieces: txResult.loggingQuantities.length
+    });
+
+    return controllerFactory.sendSuccessResponse(res, {
+      originalItem: txResult.originalItem,
+      newItems: txResult.newItems,
+      totalPieces: txResult.totalPieces
+    }, `Item split successfully into ${txResult.totalPieces} pieces`);
   } catch (error) {
     logger.error(`Error splitting item ${itemId}:`, error);
     throw error;
