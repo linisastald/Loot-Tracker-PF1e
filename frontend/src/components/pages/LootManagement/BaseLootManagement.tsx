@@ -4,19 +4,16 @@ import CustomLootTable from '../../common/CustomLootTable';
 import CustomSplitStackDialog from '../../common/dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from '../../common/dialogs/CustomUpdateDialog';
 import useLootManagement from '../../../hooks/useLootManagement';
-import {
-  handleSell as handleSellUtil,
-  handleTrash as handleTrashUtil,
-  handleKeepSelf as handleKeepSelfUtil,
-  handleKeepParty as handleKeepPartyUtil,
-} from '../../../utils/utils';
-import { LootActionKey, LootManagementConfig } from '../../../types/game';
+import lootService from '../../../services/lootService';
+import { useAuth } from '../../../contexts/AuthContext';
+import { LootActionKey, LootManagementConfig, LootStatus } from '../../../types/game';
 
 interface BaseLootManagementProps {
   config: LootManagementConfig;
 }
 
 const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
+  const { user: authUser } = useAuth();
   const {
     loot,
     selectedItems,
@@ -25,13 +22,11 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     openSplitDialog,
     splitQuantities,
     updatedEntry,
-    filters,
-    setFilters,
     openItems,
     setOpenItems,
     sortConfig,
     setSortConfig,
-    handleAction,
+    fetchLoot,
     handleAppraise,
     handleSelectItem,
     handleOpenSplitDialogWrapper,
@@ -45,32 +40,53 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     handleUpdateSubmitWrapper,
   } = useLootManagement(config.status);
 
-  // Map action keys to handlers bound to THIS hook instance's state.
-  // (Previously, pages called useLootManagement() separately to grab closures,
-  // creating two independent hook instances — fetchLoot fired on the wrong one
-  // and the visible table never refreshed.)
+  // Perform a status update and then EXPLICITLY await a refetch of the
+  // loot state owned by this component. Previously, actions went through
+  // utility closures that called fetchLoot() without awaiting, leaving
+  // the timing of the refresh ambiguous (and in one earlier incarnation,
+  // refreshing the wrong hook instance's state entirely).
+  const performStatusChange = async (status: LootStatus) => {
+    if (selectedItems.length === 0) return;
+    try {
+      await lootService.updateLootStatus({
+        lootIds: selectedItems,
+        status,
+        characterId:
+          (authUser as any)?.activeCharacterId || (authUser as any)?.id || 0,
+      });
+      await fetchLoot();
+      setSelectedItems([]);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(`Error updating loot status to ${status}:`, error);
+    }
+  };
+
   const actionHandlers: Record<LootActionKey, () => void | Promise<void>> = {
-    appraise: handleAppraise,
-    sell: () => handleAction(handleSellUtil),
-    trash: () => handleAction(handleTrashUtil),
-    keepSelf: () => handleAction(handleKeepSelfUtil),
-    keepParty: () => handleAction(handleKeepPartyUtil),
+    appraise: async () => {
+      await handleAppraise();
+      setSelectedItems([]);
+    },
+    sell: () => performStatusChange('Pending Sale' as LootStatus),
+    trash: () => performStatusChange('Trashed' as LootStatus),
+    keepSelf: () => performStatusChange('Kept Character' as LootStatus),
+    keepParty: () => performStatusChange('Kept Party' as LootStatus),
   };
 
   // Determine if Split Stack button should be shown
-  const showSplitStack = selectedItems.length === 1 && 
+  const showSplitStack = selectedItems.length === 1 &&
     loot.individual.find(item => item.id === selectedItems[0] && item.quantity > 1);
 
   // Determine if Update button should be shown
   const showUpdate = selectedItems.length === 1;
 
   return (
-    <Container 
-      maxWidth={false} 
-      component="main" 
-      sx={{ 
+    <Container
+      maxWidth={false}
+      component="main"
+      sx={{
         pb: selectedItems.length > 0 ? '80px' : 0,
-        ...config.containerProps?.sx 
+        ...config.containerProps?.sx
       }}
     >
       <CustomLootTable
@@ -117,11 +133,11 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
               </Button>
             )
           ))}
-          
+
           {/* Conditional system buttons */}
           {showSplitStack && (
-            <Button 
-              variant="outlined" 
+            <Button
+              variant="outlined"
               color="primary"
               onClick={() => handleOpenSplitDialogWrapper(
                 loot.individual.find(item => item.id === selectedItems[0])!
@@ -130,11 +146,11 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
               Split Stack
             </Button>
           )}
-          
+
           {showUpdate && (
-            <Button 
-              variant="outlined" 
-              color="primary" 
+            <Button
+              variant="outlined"
+              color="primary"
               onClick={handleUpdateDialogWrapper}
             >
               Update

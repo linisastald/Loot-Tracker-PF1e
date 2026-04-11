@@ -155,6 +155,7 @@ const useLootManagement = (statusToFetch) => {
     setOpenItems,
     sortConfig,
     setSortConfig,
+    fetchLoot,
     handleAction,
     handleSelectItem: (id) => handleSelectItem(id, setSelectedItems),
     handleOpenSplitDialogWrapper,
