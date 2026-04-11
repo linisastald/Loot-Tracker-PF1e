@@ -28,7 +28,7 @@ describe('Tasks', () => {
   it('renders the character selection instructions', async () => {
     renderComponent();
     expect(
-      await screen.findByText(/select which characters will be present/i)
+      await screen.findByText(/characters who have rsvp'd/i)
     ).toBeInTheDocument();
   });
 

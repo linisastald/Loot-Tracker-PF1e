@@ -96,6 +96,54 @@ router.get('/enhanced', verifyToken, async (req, res) => {
     }
 });
 
+// Get the next upcoming session with its attendance - used by the Tasks page
+// to pre-populate character checkboxes based on who has RSVP'd
+router.get('/next-with-attendance', verifyToken, async (req, res) => {
+    try {
+        // Find the next upcoming non-cancelled session
+        const sessionResult = await dbUtils.executeQuery(`
+            SELECT id, title, start_time, status
+            FROM game_sessions
+            WHERE start_time > NOW()
+              AND (status IS NULL OR status != 'cancelled')
+            ORDER BY start_time ASC
+            LIMIT 1
+        `);
+
+        if (sessionResult.rows.length === 0) {
+            return res.json({ success: true, data: null });
+        }
+
+        const session = sessionResult.rows[0];
+
+        // Fetch attendance records joined with character info
+        const attendanceResult = await dbUtils.executeQuery(`
+            SELECT
+                sa.user_id,
+                sa.character_id,
+                sa.status,
+                sa.response_type,
+                u.username,
+                c.name AS character_name
+            FROM session_attendance sa
+            JOIN users u ON sa.user_id = u.id
+            LEFT JOIN characters c ON sa.character_id = c.id
+            WHERE sa.session_id = $1
+        `, [session.id]);
+
+        res.json({
+            success: true,
+            data: {
+                session,
+                attendance: attendanceResult.rows
+            }
+        });
+    } catch (error) {
+        logger.error('Failed to fetch next session with attendance:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch next session' });
+    }
+});
+
 // Get upcoming sessions view with attendance summary
 router.get('/upcoming-detailed', verifyToken, async (req, res) => {
     try {

@@ -131,25 +131,65 @@ const Tasks: React.FC = () => {
     const [lastTaskAssignment, setLastTaskAssignment] = useState<TaskAssignment | null>(null);
 
     useEffect(() => {
-        fetchActiveCharacters();
+        loadInitialState();
     }, []);
 
-    const fetchActiveCharacters = async () => {
+    const loadInitialState = async () => {
         try {
-            const response = await api.get('/user/active-characters');
-            setActiveCharacters(response.data);
-            const initialSelectedState = response.data.reduce((acc, char) => {
+            // Fetch all active characters
+            const charResponse = await api.get('/user/active-characters');
+            const characters = charResponse.data;
+            setActiveCharacters(characters);
+
+            // Initialize everyone as unchecked
+            const initialSelectedState = characters.reduce((acc, char) => {
                 acc[char.id] = false;
                 return acc;
             }, {});
+            const initialLateState = characters.reduce((acc, char) => {
+                acc[char.id] = false;
+                return acc;
+            }, {});
+
+            // Try to pre-populate from the next upcoming session's attendance
+            try {
+                const sessionResponse = await api.get('/sessions/next-with-attendance');
+                const sessionData = sessionResponse.data;
+
+                if (sessionData && sessionData.attendance) {
+                    const attendance = sessionData.attendance;
+                    // Build a map: character_id -> response_type
+                    const responseByCharacter: Record<number, string> = {};
+                    attendance.forEach((record: any) => {
+                        if (record.character_id && ['yes', 'late', 'early', 'late_and_early'].includes(record.response_type)) {
+                            responseByCharacter[record.character_id] = record.response_type;
+                        }
+                    });
+
+                    // Pre-check characters that have an attending response
+                    characters.forEach(char => {
+                        const response = responseByCharacter[char.id];
+                        if (response) {
+                            initialSelectedState[char.id] = true;
+                            if (response === 'late' || response === 'late_and_early') {
+                                initialLateState[char.id] = true;
+                            }
+                        }
+                    });
+
+                    if (Object.keys(responseByCharacter).length > 0) {
+                        showSnackbar(`Pre-selected ${Object.keys(responseByCharacter).length} characters from next session's RSVPs`);
+                    }
+                }
+            } catch (sessionErr) {
+                // Non-fatal - just means no session data to pre-populate from
+                console.warn('Could not pre-populate from session attendance:', sessionErr);
+            }
+
             setSelectedCharacters(initialSelectedState);
-            const initialLateState = response.data.reduce((acc, char) => {
-                acc[char.id] = false;
-                return acc;
-            }, {});
             setLateArrivals(initialLateState);
         } catch (error) {
-            console.error('Error fetching active characters:', error);
+            console.error('Error loading initial task state:', error);
             showSnackbar('Error fetching active characters');
         }
     };
@@ -426,8 +466,9 @@ const Tasks: React.FC = () => {
                 )}
 
                 <Typography variant="body1" paragraph>
-                    Select which characters will be present for the session. You can mark players who will arrive late
-                    to exclude them from pre-session tasks.
+                    Characters who have RSVP'd "yes" to the next session are pre-selected automatically, and those who
+                    responded "late" are pre-marked as arriving late. Adjust selections as needed, then click Assign
+                    Tasks. Late arrivals will be excluded from pre-session tasks.
                 </Typography>
 
                 <Grid container spacing={3} size={12}>

@@ -41,6 +41,14 @@ class SessionDiscordService {
                 return null;
             }
 
+            // Auto-assign snack master if not yet set
+            if (!session.snack_master_id) {
+                const assignedId = await this.assignNextSnackMaster(sessionId);
+                if (assignedId) {
+                    session.snack_master_id = assignedId;
+                }
+            }
+
             const embed = await this.createSessionEmbed(session);
             const components = this.createAttendanceButtons();
 
@@ -408,11 +416,100 @@ class SessionDiscordService {
      * @param {Array} attendance - Attendance records (optional)
      * @returns {Promise<Object>} - Discord embed
      */
+    /**
+     * Assign the next snack master for a session using a simple rotation.
+     * Picks a Player user who hasn't been snack master recently, preferring
+     * users who have RSVP'd "yes" to this session if any have responded.
+     * @param {number} sessionId - Session ID
+     * @returns {Promise<number|null>} - The assigned user ID or null
+     */
+    async assignNextSnackMaster(sessionId) {
+        try {
+            // Get the most recent snack master from completed sessions
+            const lastResult = await pool.query(`
+                SELECT snack_master_id
+                FROM game_sessions
+                WHERE snack_master_id IS NOT NULL
+                  AND id != $1
+                ORDER BY start_time DESC
+                LIMIT 1
+            `, [sessionId]);
+            const lastSnackMasterId = lastResult.rows[0]?.snack_master_id || null;
+
+            // Try to pick from users who RSVP'd yes/late/early first
+            let candidateResult = await pool.query(`
+                SELECT DISTINCT u.id
+                FROM users u
+                JOIN session_attendance sa ON sa.user_id = u.id
+                WHERE sa.session_id = $1
+                  AND sa.response_type IN ('yes', 'late', 'early', 'late_and_early')
+                  AND u.role = 'Player'
+                  AND ($2::int IS NULL OR u.id != $2)
+                ORDER BY u.id
+                LIMIT 1
+            `, [sessionId, lastSnackMasterId]);
+
+            // Fall back to any active Player user
+            if (candidateResult.rows.length === 0) {
+                candidateResult = await pool.query(`
+                    SELECT id FROM users
+                    WHERE role = 'Player'
+                      AND ($1::int IS NULL OR id != $1)
+                    ORDER BY id
+                    LIMIT 1
+                `, [lastSnackMasterId]);
+            }
+
+            // Final fallback: any Player (even if they were the last snack master)
+            if (candidateResult.rows.length === 0) {
+                candidateResult = await pool.query(`
+                    SELECT id FROM users
+                    WHERE role = 'Player'
+                    ORDER BY id
+                    LIMIT 1
+                `);
+            }
+
+            if (candidateResult.rows.length === 0) {
+                logger.warn('No eligible users for snack master assignment', { sessionId });
+                return null;
+            }
+
+            const nextId = candidateResult.rows[0].id;
+            await pool.query(
+                'UPDATE game_sessions SET snack_master_id = $1, last_snack_master_id = $2 WHERE id = $3',
+                [nextId, lastSnackMasterId, sessionId]
+            );
+
+            logger.info('Snack master assigned', { sessionId, userId: nextId });
+            return nextId;
+        } catch (error) {
+            logger.error('Failed to assign snack master', { error: error.message, sessionId });
+            return null;
+        }
+    }
+
     async createSessionEmbed(session, attendance = null) {
         if (!attendance) {
             // Lazy load to avoid circular dependency
             const attendanceService = require('../attendance/AttendanceService');
             attendance = await attendanceService.getSessionAttendance(session.id);
+        }
+
+        // Look up snack master name if assigned
+        let snackMasterName = null;
+        if (session.snack_master_id) {
+            try {
+                const snackResult = await pool.query(
+                    'SELECT username FROM users WHERE id = $1',
+                    [session.snack_master_id]
+                );
+                if (snackResult.rows.length > 0) {
+                    snackMasterName = snackResult.rows[0].username;
+                }
+            } catch (err) {
+                logger.warn('Failed to look up snack master name', { error: err.message });
+            }
         }
 
         // Group attendance by response type
@@ -477,6 +574,15 @@ class SessionDiscordService {
                 inline: false
             }
         ];
+
+        // Add snack master field if assigned
+        if (snackMasterName) {
+            fields.push({
+                name: '🍿 Snack Master',
+                value: snackMasterName,
+                inline: false
+            });
+        }
 
         return {
             title: `${titleEmoji} ${session.title}`,
