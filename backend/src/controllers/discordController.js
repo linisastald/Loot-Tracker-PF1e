@@ -363,7 +363,11 @@ const updateSettings = async (req, res) => {
         throw controllerFactory.createAuthorizationError('Only DMs can update Discord settings');
     }
 
-    return await dbUtils.executeTransaction(async (client) => {
+    // Run the setting upserts inside a transaction, but send the HTTP
+    // response only after executeTransaction resolves (i.e. after COMMIT).
+    // Otherwise the client can refetch before the commit is visible to
+    // other pool clients (MVCC) and see stale data.
+    const updatedSettings = await dbUtils.executeTransaction(async (client) => {
         // Update bot token if provided
         if (bot_token !== undefined) {
             await client.query(
@@ -418,15 +422,15 @@ const updateSettings = async (req, res) => {
             }
         }
 
-        const updatedSettings = {
+        return {
             bot_token: bot_token !== undefined,
             channel_id: channel_id !== undefined,
             enabled: enabled,
             connection_test: connectionTestResult
         };
-
-        controllerFactory.sendSuccessResponse(res, updatedSettings, 'Discord settings updated successfully');
     });
+
+    return controllerFactory.sendSuccessResponse(res, updatedSettings, 'Discord settings updated successfully');
 };
 
 // Define validation rules

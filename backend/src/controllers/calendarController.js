@@ -44,7 +44,11 @@ const setCurrentDate = async (req, res) => {
     throw controllerFactory.createValidationError(`Day must be between 1 and ${daysInMonth} for this month`);
   }
 
-  return await dbUtils.executeTransaction(async (client) => {
+  // Run the UPDATE inside a transaction, but send the HTTP response only
+  // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+  // client can refetch before the commit is visible to other pool clients
+  // (MVCC) and see stale data.
+  await dbUtils.executeTransaction(async (client) => {
     // Get the old date before updating (for weather generation)
     const oldDateResult = await client.query('SELECT year, month, day FROM golarion_current_date LIMIT 1');
 
@@ -69,16 +73,20 @@ const setCurrentDate = async (req, res) => {
     if (oldDateResult.rows.length > 0) {
       await generateMissingWeather(oldDateResult.rows[0], {year, month, day}, region);
     }
-
-    controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Current date set successfully');
   });
+
+  return controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Current date set successfully');
 };
 
 /**
  * Advance the current date by one day
  */
 const advanceDay = async (req, res) => {
-  return await dbUtils.executeTransaction(async (client) => {
+  // Run the UPDATE inside a transaction, but send the HTTP response only
+  // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+  // client can refetch before the commit is visible to other pool clients
+  // (MVCC) and see stale data.
+  const txResult = await dbUtils.executeTransaction(async (client) => {
     // Get current date
     const result = await client.query('SELECT * FROM golarion_current_date');
 
@@ -89,8 +97,7 @@ const advanceDay = async (req, res) => {
           [4722, 1, 1]
       );
 
-      controllerFactory.sendSuccessResponse(res, {year: 4722, month: 1, day: 1}, 'Initial date set');
-      return;
+      return { initialized: true, year: 4722, month: 1, day: 1 };
     }
 
     let {year, month, day} = result.rows[0];
@@ -129,8 +136,22 @@ const advanceDay = async (req, res) => {
       // Continue with the calendar advancement even if weather generation fails
     }
 
-    controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Date advanced successfully');
+    return { initialized: false, year, month, day };
   });
+
+  if (txResult.initialized) {
+    return controllerFactory.sendSuccessResponse(
+      res,
+      { year: txResult.year, month: txResult.month, day: txResult.day },
+      'Initial date set'
+    );
+  }
+
+  return controllerFactory.sendSuccessResponse(
+    res,
+    { year: txResult.year, month: txResult.month, day: txResult.day },
+    'Date advanced successfully'
+  );
 };
 
 /**

@@ -180,7 +180,11 @@ const addCharacter = async (req, res) => {
     const processedBirthday = birthday === '' ? null : birthday;
     const processedDeathday = deathday === '' ? null : deathday;
 
-    return await dbUtils.executeTransaction(async (client) => {
+    // Run the INSERT inside a transaction, but send the HTTP response only
+    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+    // frontend can refetch before the commit is visible to other pool
+    // clients (MVCC) and see stale data.
+    const newCharacter = await dbUtils.executeTransaction(async (client) => {
         // If this character is being set as active, deactivate other characters
         if (active) {
             await client.query(
@@ -195,9 +199,11 @@ const addCharacter = async (req, res) => {
             [userId, name, appraisal_bonus || 0, processedBirthday || null, processedDeathday || null, active]
         );
 
-        logger.info(`New character "${name}" created for user ID ${userId}`);
-        controllerFactory.sendCreatedResponse(res, result.rows[0], 'Character created successfully');
+        return result.rows[0];
     });
+
+    logger.info(`New character "${name}" created for user ID ${userId}`);
+    return controllerFactory.sendCreatedResponse(res, newCharacter, 'Character created successfully');
 };
 
 /**
@@ -233,7 +239,11 @@ const updateCharacter = async (req, res) => {
     const processedBirthday = birthday === '' ? null : birthday;
     const processedDeathday = deathday === '' ? null : deathday;
 
-    return await dbUtils.executeTransaction(async (client) => {
+    // Run the UPDATE inside a transaction, but send the HTTP response only
+    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+    // frontend can refetch before the commit is visible to other pool
+    // clients (MVCC) and see stale data.
+    const updatedCharacter = await dbUtils.executeTransaction(async (client) => {
         // If this character is being set as active, deactivate other characters
         if (active) {
             await client.query(
@@ -256,9 +266,11 @@ const updateCharacter = async (req, res) => {
             ]
         );
 
-        logger.info(`Character ID ${id} updated for user ID ${userId}`);
-        controllerFactory.sendSuccessResponse(res, result.rows[0], 'Character updated successfully');
+        return result.rows[0];
     });
+
+    logger.info(`Character ID ${id} updated for user ID ${userId}`);
+    return controllerFactory.sendSuccessResponse(res, updatedCharacter, 'Character updated successfully');
 };
 
 /**
@@ -538,7 +550,11 @@ const updateAnyCharacter = async (req, res) => {
     const processedBirthday = birthday === '' ? null : birthday;
     const processedDeathday = deathday === '' ? null : deathday;
 
-    return await dbUtils.executeTransaction(async (client) => {
+    // Run the UPDATE inside a transaction, but send the HTTP response only
+    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+    // frontend can refetch before the commit is visible to other pool
+    // clients (MVCC) and see stale data.
+    const updatedCharacter = await dbUtils.executeTransaction(async (client) => {
         // If this character is being set as active, deactivate other characters for the same user
         if (active && (user_id || currentCharacter.user_id)) {
             const targetUserId = user_id || currentCharacter.user_id;
@@ -562,9 +578,11 @@ const updateAnyCharacter = async (req, res) => {
             ]
         );
 
-        logger.info(`Character ID ${id} updated by DM ${req.user.id}`);
-        controllerFactory.sendSuccessResponse(res, result.rows[0], 'Character updated successfully');
+        return result.rows[0];
     });
+
+    logger.info(`Character ID ${id} updated by DM ${req.user.id}`);
+    return controllerFactory.sendSuccessResponse(res, updatedCharacter, 'Character updated successfully');
 };
 
 // Define validation rules

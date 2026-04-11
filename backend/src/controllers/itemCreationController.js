@@ -30,7 +30,11 @@ const createLoot = async (req, res) => {
       ValidationService.validateOptionalNumber(customValue, 'customValue', { min: 0 });
     }
 
-    return await dbUtils.executeTransaction(async (client) => {
+    // Run the INSERT inside a transaction, but send the HTTP response only
+    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+    // frontend can refetch before the commit is visible to other pool
+    // clients (MVCC) and see stale data.
+    const txResult = await dbUtils.executeTransaction(async (client) => {
       let finalItemId = itemId;
       let finalModIds = modIds || [];
       let calculatedValue = customValue;
@@ -60,7 +64,7 @@ const createLoot = async (req, res) => {
         if (finalModIds.length > 0) {
           const modsResult = await client.query('SELECT * FROM mod WHERE id = ANY($1)', [finalModIds]);
           const modDetails = modsResult.rows;
-          
+
           calculatedValue = calculateFinalValue(
             baseItem.value,
             baseItem.type,
@@ -97,16 +101,18 @@ const createLoot = async (req, res) => {
 
       const createdLoot = await dbUtils.insert('loot', lootData);
 
-      logger.info(`New loot item created by user ${req.user.id}`, {
-        userId: req.user.id,
-        lootId: createdLoot.id,
-        itemName: validatedName,
-        quantity: validatedQuantity,
-        value: calculatedValue
-      });
-
-      return controllerFactory.sendSuccessResponse(res, createdLoot, 'Loot item created successfully');
+      return { createdLoot, calculatedValue };
     });
+
+    logger.info(`New loot item created by user ${req.user.id}`, {
+      userId: req.user.id,
+      lootId: txResult.createdLoot.id,
+      itemName: validatedName,
+      quantity: validatedQuantity,
+      value: txResult.calculatedValue
+    });
+
+    return controllerFactory.sendSuccessResponse(res, txResult.createdLoot, 'Loot item created successfully');
   } catch (error) {
     logger.error('Error creating loot item:', error);
     throw error;
@@ -290,14 +296,18 @@ const bulkCreateLoot = async (req, res) => {
   ValidationService.validateItems(items, 'items');
 
   try {
-    return await dbUtils.executeTransaction(async (client) => {
+    // Run the INSERTs inside a transaction, but send the HTTP response only
+    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+    // frontend can refetch before the commit is visible to other pool
+    // clients (MVCC) and see stale data.
+    const { createdItems, errors } = await dbUtils.executeTransaction(async (client) => {
       const createdItems = [];
       const errors = [];
 
       for (let i = 0; i < items.length; i++) {
         try {
           const itemData = items[i];
-          
+
           // Validate each item
           const validatedName = ValidationService.validateRequiredString(itemData.name, `items[${i}].name`);
           const validatedQuantity = ValidationService.validateQuantity(itemData.quantity);
@@ -312,7 +322,7 @@ const bulkCreateLoot = async (req, res) => {
             if (baseItem && itemData.modIds && itemData.modIds.length > 0) {
               const modsResult = await client.query('SELECT * FROM mod WHERE id = ANY($1)', [itemData.modIds]);
               const modDetails = modsResult.rows;
-              
+
               calculatedValue = calculateFinalValue(
                 baseItem.value,
                 baseItem.type,
@@ -355,23 +365,25 @@ const bulkCreateLoot = async (req, res) => {
         }
       }
 
-      logger.info(`Bulk created ${createdItems.length} loot items by user ${req.user.id}`, {
-        userId: req.user.id,
-        createdCount: createdItems.length,
-        errorCount: errors.length,
-        totalRequested: items.length
-      });
-
-      return controllerFactory.sendSuccessResponse(res, {
-        created: createdItems,
-        errors: errors.length > 0 ? errors : undefined,
-        summary: {
-          successful: createdItems.length,
-          failed: errors.length,
-          total: items.length
-        }
-      }, `${createdItems.length} loot items created successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`);
+      return { createdItems, errors };
     });
+
+    logger.info(`Bulk created ${createdItems.length} loot items by user ${req.user.id}`, {
+      userId: req.user.id,
+      createdCount: createdItems.length,
+      errorCount: errors.length,
+      totalRequested: items.length
+    });
+
+    return controllerFactory.sendSuccessResponse(res, {
+      created: createdItems,
+      errors: errors.length > 0 ? errors : undefined,
+      summary: {
+        successful: createdItems.length,
+        failed: errors.length,
+        total: items.length
+      }
+    }, `${createdItems.length} loot items created successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`);
   } catch (error) {
     logger.error('Error in bulk create loot:', error);
     throw error;
@@ -388,7 +400,11 @@ const createFromTemplate = async (req, res) => {
   ValidationService.validateQuantity(quantity);
 
   try {
-    return await dbUtils.executeTransaction(async (client) => {
+    // Run the INSERT inside a transaction, but send the HTTP response only
+    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+    // frontend can refetch before the commit is visible to other pool
+    // clients (MVCC) and see stale data.
+    const createdLoot = await dbUtils.executeTransaction(async (client) => {
       // Get template item
       const templateResult = await client.query(
         'SELECT * FROM item WHERE id = $1',
@@ -419,17 +435,17 @@ const createFromTemplate = async (req, res) => {
         session_date: new Date()
       };
 
-      const createdLoot = await dbUtils.insert('loot', lootData);
-
-      logger.info(`Loot created from template ${templateId} by user ${req.user.id}`, {
-        userId: req.user.id,
-        templateId,
-        lootId: createdLoot.id,
-        quantity
-      });
-
-      return controllerFactory.sendSuccessResponse(res, createdLoot, 'Loot item created from template');
+      return await dbUtils.insert('loot', lootData);
     });
+
+    logger.info(`Loot created from template ${templateId} by user ${req.user.id}`, {
+      userId: req.user.id,
+      templateId,
+      lootId: createdLoot.id,
+      quantity
+    });
+
+    return controllerFactory.sendSuccessResponse(res, createdLoot, 'Loot item created from template');
   } catch (error) {
     logger.error('Error creating loot from template:', error);
     throw error;

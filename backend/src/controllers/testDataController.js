@@ -26,7 +26,11 @@ const generateTestData = async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
-    await dbUtils.executeTransaction(async (client) => {
+    // Run the inserts inside a transaction, but send the HTTP response only
+    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+    // frontend can refetch before the commit is visible to other pool
+    // clients (MVCC) and see stale data.
+    const summary = await dbUtils.executeTransaction(async (client) => {
       // Generate password hash for test users
       const testPassword = await bcrypt.hash('testpass123', 10);
 
@@ -223,7 +227,7 @@ const generateTestData = async (req, res) => {
         client.query('SELECT COUNT(*) FROM gold')
       ]);
 
-      const summary = {
+      return {
         users: parseInt(counts[0].rows[0].count),
         characters: parseInt(counts[1].rows[0].count),
         ships: parseInt(counts[2].rows[0].count),
@@ -232,22 +236,22 @@ const generateTestData = async (req, res) => {
         loot: parseInt(counts[5].rows[0].count),
         gold: parseInt(counts[6].rows[0].count)
       };
-
-      logger.info('Test data generation completed successfully', {
-        userId: req.user.id,
-        summary
-      });
-
-      return controllerFactory.sendSuccessResponse(res, {
-        message: 'Test data generated successfully',
-        summary,
-        testCredentials: {
-          username: 'testplayer1-4',
-          password: 'testpass123',
-          note: 'Four test users created: testplayer1, testplayer2, testplayer3, testplayer4'
-        }
-      }, 'Test data generation completed');
     });
+
+    logger.info('Test data generation completed successfully', {
+      userId: req.user.id,
+      summary
+    });
+
+    return controllerFactory.sendSuccessResponse(res, {
+      message: 'Test data generated successfully',
+      summary,
+      testCredentials: {
+        username: 'testplayer1-4',
+        password: 'testpass123',
+        note: 'Four test users created: testplayer1, testplayer2, testplayer3, testplayer4'
+      }
+    }, 'Test data generation completed');
 
   } catch (error) {
     logger.error('Error generating test data:', error);

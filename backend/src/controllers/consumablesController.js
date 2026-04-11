@@ -53,7 +53,11 @@ const getConsumables = async (req, res) => {
 const useConsumable = async (req, res) => {
   const {itemid, type} = req.body;
 
-  return await dbUtils.executeTransaction(async (client) => {
+  // Run the UPDATE inside a transaction, but send the HTTP response only
+  // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+  // frontend can refetch before the commit is visible to other pool clients
+  // (MVCC) and see stale data.
+  const updatedRow = await dbUtils.executeTransaction(async (client) => {
     let updateQuery;
 
     if (type === 'wand') {
@@ -94,11 +98,14 @@ const useConsumable = async (req, res) => {
 
     await client.query(insertUseQuery, [result.rows[0].id, req.user.id]);
 
-    controllerFactory.sendSuccessResponse(res,
-        result.rows[0],
-        `${type === 'wand' ? 'Wand charge used' : type + ' consumed'} successfully`
-    );
+    return result.rows[0];
   });
+
+  return controllerFactory.sendSuccessResponse(
+    res,
+    updatedRow,
+    `${type === 'wand' ? 'Wand charge used' : type + ' consumed'} successfully`
+  );
 };
 
 /**

@@ -108,46 +108,52 @@ const registerUser = async (req, res) => {
     const { role } = req.body;
     const userRole = role || 'Player';
 
-    return await dbUtils.executeTransaction(async (client) => {
+    // Run the INSERT inside a transaction, but do NOT send the HTTP response
+    // from inside the callback — executeTransaction only COMMITs after the
+    // callback returns, so sending the response inside would release the
+    // client to refetch before the commit is visible to other pool clients.
+    const user = await dbUtils.executeTransaction(async (client) => {
         // Insert the user
         const result = await client.query(
             'INSERT INTO users (username, password, role, email) VALUES ($1, $2, $3, $4) RETURNING id, username, role, joined, email',
             [username, hashedPassword, userRole, email]
         );
-        const user = result.rows[0];
+        const createdUser = result.rows[0];
 
         // Mark invite as used if provided
         if (inviteCode) {
             await client.query(
                 'UPDATE invites SET is_used = TRUE, used_by = $1, used_at = NOW() WHERE code = $2',
-                [user.id, inviteCode]
+                [createdUser.id, inviteCode]
             );
         }
 
-        // Generate JWT token
-        const token = jwt.sign(
-            {id: user.id, username: user.username, role: user.role},
-            process.env.JWT_SECRET,
-            {expiresIn: AUTH.JWT_EXPIRES_IN}
-        );
-
-        // Set token in HTTP-only cookie
-        res.cookie('authToken', token, {
-            httpOnly: COOKIES.HTTP_ONLY,
-            secure: COOKIES.SECURE,
-            sameSite: COOKIES.SAME_SITE,
-            maxAge: COOKIES.MAX_AGE
-        });
-
-        controllerFactory.sendCreatedResponse(res, {
-            user: {
-                id: user.id,
-                username: user.username,
-                role: user.role,
-                email: user.email
-            }
-        }, 'User registered successfully');
+        return createdUser;
     });
+
+    // Generate JWT token
+    const token = jwt.sign(
+        {id: user.id, username: user.username, role: user.role},
+        process.env.JWT_SECRET,
+        {expiresIn: AUTH.JWT_EXPIRES_IN}
+    );
+
+    // Set token in HTTP-only cookie
+    res.cookie('authToken', token, {
+        httpOnly: COOKIES.HTTP_ONLY,
+        secure: COOKIES.SECURE,
+        sameSite: COOKIES.SAME_SITE,
+        maxAge: COOKIES.MAX_AGE
+    });
+
+    return controllerFactory.sendCreatedResponse(res, {
+        user: {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            email: user.email
+        }
+    }, 'User registered successfully');
 };
 
 /**
@@ -181,7 +187,11 @@ const generateManualResetLink = async (req, res) => {
     const resetToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
 
-    return await dbUtils.executeTransaction(async (client) => {
+    // Insert the reset token inside a transaction, but send the HTTP response
+    // only after executeTransaction resolves (i.e. after COMMIT). Otherwise a
+    // follow-up request from the client could run before commit and see stale
+    // data via MVCC on another pool client.
+    const resetUrl = await dbUtils.executeTransaction(async (client) => {
         // Clean up any existing tokens for this user
         await client.query(
             'DELETE FROM password_reset_tokens WHERE user_id = $1',
@@ -201,17 +211,17 @@ const generateManualResetLink = async (req, res) => {
         const frontendUrl = frontendUrlResult.rows[0]?.value
             || process.env.FRONTEND_URL
             || 'http://localhost:3000';
-        const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
-
-        logger.info(`Manual password reset link generated for user: ${user.username} by DM: ${req.user.username}`);
-        
-        controllerFactory.sendSuccessResponse(res, {
-            resetUrl,
-            username: user.username,
-            email: user.email,
-            expiresAt
-        }, 'Password reset link generated successfully');
+        return `${frontendUrl}/reset-password?token=${resetToken}`;
     });
+
+    logger.info(`Manual password reset link generated for user: ${user.username} by DM: ${req.user.username}`);
+
+    return controllerFactory.sendSuccessResponse(res, {
+        resetUrl,
+        username: user.username,
+        email: user.email,
+        expiresAt
+    }, 'Password reset link generated successfully');
 };
 
 /**
@@ -631,7 +641,9 @@ const forgotPassword = async (req, res) => {
     const resetToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
 
-    return await dbUtils.executeTransaction(async (client) => {
+    // Insert the reset token inside a transaction, then send the response
+    // after COMMIT so any subsequent client request sees the new row.
+    await dbUtils.executeTransaction(async (client) => {
         // Clean up any existing tokens for this user
         await client.query(
             'DELETE FROM password_reset_tokens WHERE user_id = $1',
@@ -646,13 +658,13 @@ const forgotPassword = async (req, res) => {
 
         // Send email
         const emailSent = await emailService.sendPasswordResetEmail(user.email, user.username, resetToken);
-        
+
         if (!emailSent) {
             logger.warn(`Failed to send password reset email to ${user.email}`);
         }
-
-        controllerFactory.sendSuccessMessage(res, 'If a user with those credentials exists, a password reset email has been sent.');
     });
+
+    return controllerFactory.sendSuccessMessage(res, 'If a user with those credentials exists, a password reset email has been sent.');
 };
 
 /**
@@ -685,7 +697,9 @@ const resetPassword = async (req, res) => {
 
     const resetData = tokenResult.rows[0];
 
-    return await dbUtils.executeTransaction(async (client) => {
+    // Update the password inside a transaction, then send the HTTP response
+    // only after executeTransaction resolves (i.e. after COMMIT).
+    await dbUtils.executeTransaction(async (client) => {
         // Hash new password
         const normalizedPassword = newPassword.normalize('NFC');
         const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
@@ -701,12 +715,12 @@ const resetPassword = async (req, res) => {
             'UPDATE password_reset_tokens SET used = TRUE WHERE token = $1',
             [token]
         );
-
-        logger.info(`Password reset successful for user: ${resetData.username}`);
-        controllerFactory.sendSuccessResponse(res, {
-            message: 'Password has been reset successfully'
-        }, 'Password has been reset successfully');
     });
+
+    logger.info(`Password reset successful for user: ${resetData.username}`);
+    return controllerFactory.sendSuccessResponse(res, {
+        message: 'Password has been reset successfully'
+    }, 'Password has been reset successfully');
 };
 
 // Define validation rules for each endpoint
