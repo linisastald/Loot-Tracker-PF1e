@@ -78,17 +78,18 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
   // handleUpdateSubmitWrapper had a missing-arg bug AND did not await
   // fetchLoot, leaving the table to display stale data.
   const handleUpdateSubmit = async () => {
-    if (!updatedEntry || !updatedEntry.id) return;
+    const entry = updatedEntry as any;
+    if (!entry || !entry.id) return;
     try {
-      await lootService.updateLootItem(updatedEntry.id, {
-        session_date: updatedEntry.session_date,
-        quantity: updatedEntry.quantity,
-        name: updatedEntry.name,
-        unidentified: updatedEntry.unidentified,
-        masterwork: updatedEntry.masterwork,
-        type: updatedEntry.type,
-        size: updatedEntry.size,
-        notes: updatedEntry.notes,
+      await lootService.updateLootItem(entry.id, {
+        session_date: entry.session_date,
+        quantity: entry.quantity,
+        name: entry.name,
+        unidentified: entry.unidentified,
+        masterwork: entry.masterwork,
+        type: entry.type,
+        size: entry.size,
+        notes: entry.notes,
       });
       await fetchLoot();
       setOpenUpdateDialog(false);
