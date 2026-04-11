@@ -186,11 +186,13 @@ export interface LootTableFilterConfig {
   whoHas: boolean;
 }
 
+export type LootActionKey = 'appraise' | 'sell' | 'trash' | 'keepSelf' | 'keepParty';
+
 export interface LootManagementAction {
   label: string;
   color: 'primary' | 'secondary' | 'error' | 'warning' | 'info' | 'success';
   variant: 'contained' | 'outlined' | 'text';
-  handler: () => void;
+  actionKey: LootActionKey;
   showCondition?: boolean;
 }
 

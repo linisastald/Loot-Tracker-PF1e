@@ -1,18 +1,8 @@
 import React from 'react';
 import BaseLootManagement from './BaseLootManagement';
 import { unprocessedLootConfig } from './configs';
-import useLootManagement from '../../../hooks/useLootManagement';
 
 const UnprocessedLoot = () => {
-    const {
-        handleAppraise,
-        handleSell,
-        handleTrash,
-        handleKeepSelf,
-        handleKeepParty,
-    } = useLootManagement(); // Get action handlers
-
-    // Configure actions specific to unprocessed loot
     const config = {
         ...unprocessedLootConfig,
         actions: [
@@ -20,31 +10,31 @@ const UnprocessedLoot = () => {
                 label: 'Appraise',
                 color: 'info' as const,
                 variant: 'outlined' as const,
-                handler: handleAppraise,
+                actionKey: 'appraise' as const,
             },
             {
                 label: 'Sell',
                 color: 'primary' as const,
                 variant: 'outlined' as const,
-                handler: handleSell,
+                actionKey: 'sell' as const,
             },
             {
                 label: 'Trash',
                 color: 'secondary' as const,
                 variant: 'outlined' as const,
-                handler: handleTrash,
+                actionKey: 'trash' as const,
             },
             {
                 label: 'Keep Self',
                 color: 'primary' as const,
                 variant: 'outlined' as const,
-                handler: handleKeepSelf,
+                actionKey: 'keepSelf' as const,
             },
             {
                 label: 'Keep Party',
                 color: 'primary' as const,
                 variant: 'outlined' as const,
-                handler: handleKeepParty,
+                actionKey: 'keepParty' as const,
             },
         ],
     };

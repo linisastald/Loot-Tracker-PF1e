@@ -44,8 +44,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 }) => {
   const refreshUser = useCallback(async () => {
     try {
-      const response = await api.get('/auth/status');
-      if (response?.data?.success && response.data.user) {
+      const response: any = await api.get('/auth/status');
+      // api interceptor unwraps response.data, so `response` is { success, data: { user } }
+      if (response?.success && response?.data?.user) {
         onUserUpdate(response.data.user);
       }
     } catch (error) {

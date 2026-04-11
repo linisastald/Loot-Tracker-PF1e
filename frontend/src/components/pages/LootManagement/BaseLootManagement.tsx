@@ -4,7 +4,13 @@ import CustomLootTable from '../../common/CustomLootTable';
 import CustomSplitStackDialog from '../../common/dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from '../../common/dialogs/CustomUpdateDialog';
 import useLootManagement from '../../../hooks/useLootManagement';
-import { LootManagementConfig } from '../../../types/game';
+import {
+  handleSell as handleSellUtil,
+  handleTrash as handleTrashUtil,
+  handleKeepSelf as handleKeepSelfUtil,
+  handleKeepParty as handleKeepPartyUtil,
+} from '../../../utils/utils';
+import { LootActionKey, LootManagementConfig } from '../../../types/game';
 
 interface BaseLootManagementProps {
   config: LootManagementConfig;
@@ -26,6 +32,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     sortConfig,
     setSortConfig,
     handleAction,
+    handleAppraise,
     handleSelectItem,
     handleOpenSplitDialogWrapper,
     handleSplitChange,
@@ -37,6 +44,18 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     handleSplitSubmitWrapper,
     handleUpdateSubmitWrapper,
   } = useLootManagement(config.status);
+
+  // Map action keys to handlers bound to THIS hook instance's state.
+  // (Previously, pages called useLootManagement() separately to grab closures,
+  // creating two independent hook instances — fetchLoot fired on the wrong one
+  // and the visible table never refreshed.)
+  const actionHandlers: Record<LootActionKey, () => void | Promise<void>> = {
+    appraise: handleAppraise,
+    sell: () => handleAction(handleSellUtil),
+    trash: () => handleAction(handleTrashUtil),
+    keepSelf: () => handleAction(handleKeepSelfUtil),
+    keepParty: () => handleAction(handleKeepPartyUtil),
+  };
 
   // Determine if Split Stack button should be shown
   const showSplitStack = selectedItems.length === 1 && 
@@ -92,7 +111,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
                 key={index}
                 variant={action.variant}
                 color={action.color}
-                onClick={() => handleAction(action.handler)}
+                onClick={() => actionHandlers[action.actionKey]()}
               >
                 {action.label}
               </Button>

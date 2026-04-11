@@ -65,10 +65,11 @@ function App() {
     // Then verify with server that the token is still valid
     const checkAuthStatus = async () => {
       try {
-        const response = await api.get('/auth/status');
+        const response: any = await api.get('/auth/status');
 
-        // Check if the response contains success flag
-        if (response && response.data && response.data.success && isMounted) {
+        // The api utility's response interceptor returns response.data directly,
+        // so `response` here is the unwrapped body: { success, message, data: { user } }
+        if (response?.success && response?.data?.user && isMounted) {
           setIsAuthenticated(true);
           setUser(response.data.user);
           localStorage.setItem('user', JSON.stringify(response.data.user));

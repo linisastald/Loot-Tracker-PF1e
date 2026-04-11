@@ -1,16 +1,8 @@
 import React from 'react';
 import BaseLootManagement from './BaseLootManagement';
 import { keptPartyLootConfig } from './configs';
-import useLootManagement from '../../../hooks/useLootManagement';
 
 const KeptParty = () => {
-    const {
-        handleSell,
-        handleTrash,
-        handleKeepSelf,
-    } = useLootManagement('Kept Party');
-
-    // Configure actions specific to kept party loot
     const config = {
         ...keptPartyLootConfig,
         actions: [
@@ -18,19 +10,19 @@ const KeptParty = () => {
                 label: 'Sell',
                 color: 'primary' as const,
                 variant: 'outlined' as const,
-                handler: handleSell,
+                actionKey: 'sell' as const,
             },
             {
                 label: 'Trash',
                 color: 'secondary' as const,
                 variant: 'outlined' as const,
-                handler: handleTrash,
+                actionKey: 'trash' as const,
             },
             {
                 label: 'Keep Self',
                 color: 'primary' as const,
                 variant: 'outlined' as const,
-                handler: handleKeepSelf,
+                actionKey: 'keepSelf' as const,
             },
         ],
     };
