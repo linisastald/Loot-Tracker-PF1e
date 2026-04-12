@@ -6,38 +6,27 @@ FROM node:25-alpine
 # Set working directory
 WORKDIR /app
 
+# Build arguments needed early (for npm ci caching)
+ARG NODE_ENV=production
+ARG REACT_APP_API_URL=/api
+
 # Copy version files for version endpoint
 COPY .docker-version ./
 COPY package.json ./
 
-# Build arguments
-ARG NODE_ENV=production
-ARG REACT_APP_API_URL=/api
-ARG APP_VERSION=0.0.0
-ARG BUILD_DATE=unknown
-ARG GIT_COMMIT=unknown
-
-# OCI metadata labels (used by TrueNAS, Docker Hub, etc.)
-LABEL maintainer="Pathfinder Loot Tracker Team" \
-      org.opencontainers.image.created=$BUILD_DATE \
-      org.opencontainers.image.revision=$GIT_COMMIT \
-      org.opencontainers.image.title="Pathfinder Loot Tracker" \
-      org.opencontainers.image.description="Full-stack Pathfinder 1e loot and campaign management system" \
-      org.opencontainers.image.vendor="Pathfinder Loot Tracker Team" \
-      org.opencontainers.image.version=$APP_VERSION \
-      org.opencontainers.image.source="https://github.com/linisastald/Loot-Tracker-PF1e"
-
 # Copy package files and config files for both frontend and backend
+# (These layers are cached until package files change)
 COPY frontend/package*.json ./frontend/
 COPY frontend/tsconfig.json ./frontend/
 COPY frontend/vite.config.js ./frontend/
 COPY backend/package*.json ./backend/
 
 # Install dependencies for both (including dev deps for build)
+# This expensive layer is cached as long as package files don't change
 RUN cd frontend && npm ci --include=dev --ignore-scripts && \
     cd ../backend && npm ci --ignore-scripts
 
-# Copy source code
+# Copy source code (cache busted when source files change)
 COPY frontend/src ./frontend/src
 COPY frontend/index.html ./frontend/
 COPY backend/src ./backend/src
@@ -74,6 +63,20 @@ EXPOSE 5000
 # Health check (wget is built into alpine, avoids spawning a Node.js process)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD wget -qO /dev/null http://localhost:5000/api/health || exit 1
+
+# OCI metadata labels placed last so they don't bust the cache
+# (BUILD_DATE changes every build; putting it here keeps npm ci cached)
+ARG APP_VERSION=0.0.0
+ARG BUILD_DATE=unknown
+ARG GIT_COMMIT=unknown
+LABEL maintainer="Pathfinder Loot Tracker Team" \
+      org.opencontainers.image.created=$BUILD_DATE \
+      org.opencontainers.image.revision=$GIT_COMMIT \
+      org.opencontainers.image.title="Pathfinder Loot Tracker" \
+      org.opencontainers.image.description="Full-stack Pathfinder 1e loot and campaign management system" \
+      org.opencontainers.image.vendor="Pathfinder Loot Tracker Team" \
+      org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.source="https://github.com/linisastald/Loot-Tracker-PF1e"
 
 # Start backend server (which serves frontend too)
 CMD ["node", "index.js"]
