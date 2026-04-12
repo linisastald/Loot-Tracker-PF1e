@@ -446,6 +446,7 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
         <DeleteIcon />
       </IconButton>
 
+      <Box sx={{ pr: 5 }}>
       {entry.type === 'item' ? renderItemForm() : renderGoldForm()}
 
       {entry.error && (
@@ -494,6 +495,7 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           </Box>
         </Box>
       )}
+      </Box>
     </Paper>
   );
 };
