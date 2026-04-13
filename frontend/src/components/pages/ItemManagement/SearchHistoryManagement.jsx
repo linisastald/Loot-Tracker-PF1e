@@ -78,7 +78,7 @@ const SearchHistoryManagement = () => {
 
       <Box sx={{ mb: 3 }}>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
+          <Grid size={{xs: 12, md: 4}}>
             <TextField
               label="Filter by Date"
               type="date"

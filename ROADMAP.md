@@ -61,6 +61,12 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Swipe gestures for loot status changes
 - Offline support for basic viewing
 
+### User Preferences System
+- Create `user_preferences` table (key-value per user, like global `settings` table)
+- Backend API for get/set preferences per authenticated user
+- First preference: **Loot entry bar position** — move Add Item/Add Gold/Submit bar to bottom of page (requested by player, current top-sticky requires scrolling back up when adding many items)
+- Future preferences: light/dark mode toggle, theme selection, UI density
+
 ## Quality of Life Improvements
 
 ### Bulk Operations

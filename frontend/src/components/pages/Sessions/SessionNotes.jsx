@@ -252,7 +252,7 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
                 <Grid container spacing={2}>
                     {/* Prep Requests */}
                     {groupedNotes.prep_request.length > 0 && (
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                             <Card variant="outlined">
                                 <CardHeader
                                     title="Prep Requests"
@@ -270,7 +270,7 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
 
                     {/* General Notes */}
                     {groupedNotes.general.length > 0 && (
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                             <Card variant="outlined">
                                 <CardHeader
                                     title="General Notes"
@@ -288,7 +288,7 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
 
                     {/* DM Notes */}
                     {user?.role === 'DM' && groupedNotes.dm_note.length > 0 && (
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                             <Card variant="outlined">
                                 <CardHeader
                                     title="DM Notes"

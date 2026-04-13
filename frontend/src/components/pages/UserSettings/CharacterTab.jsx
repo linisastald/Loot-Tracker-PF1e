@@ -311,7 +311,7 @@ const CharacterTab = () => {
                 </DialogTitle>
                 <DialogContent>
                     <Grid container spacing={2} sx={{mt: 1}}>
-                        <Grid item xs={12}>
+                        <Grid size={12}>
                             <TextField
                                 label="Character Name"
                                 name="name"
@@ -321,7 +321,7 @@ const CharacterTab = () => {
                                 required
                             />
                         </Grid>
-                        <Grid item xs={12} md={6}>
+                        <Grid size={{xs: 12, md: 6}}>
                             <TextField
                                 label="Appraisal Bonus"
                                 name="appraisal_bonus"
@@ -332,7 +332,7 @@ const CharacterTab = () => {
                                 inputProps={{min: 0}}
                             />
                         </Grid>
-                        <Grid item xs={12} md={6}>
+                        <Grid size={{xs: 12, md: 6}}>
                             <FormControlLabel
                                 control={
                                     <Switch
@@ -345,7 +345,7 @@ const CharacterTab = () => {
                                 label="Set as Active Character"
                             />
                         </Grid>
-                        <Grid item xs={12} md={6}>
+                        <Grid size={{xs: 12, md: 6}}>
                             <TextField
                                 label="Birthday"
                                 name="birthday"
@@ -356,7 +356,7 @@ const CharacterTab = () => {
                                 InputLabelProps={{shrink: true}}
                             />
                         </Grid>
-                        <Grid item xs={12} md={6}>
+                        <Grid size={{xs: 12, md: 6}}>
                             <TextField
                                 label="Deathday (if applicable)"
                                 name="deathday"

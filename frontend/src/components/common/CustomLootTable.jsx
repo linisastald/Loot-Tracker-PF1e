@@ -4,12 +4,15 @@ import {
   Button,
   Checkbox,
   Collapse,
+  FormControl,
   FormControlLabel,
   Grid,
   IconButton,
+  InputLabel,
   Menu,
   MenuItem,
   Paper,
+  Select,
   Switch,
   Table,
   TableBody,
@@ -25,6 +28,8 @@ import { styled } from '@mui/system';
 import api from '../../utils/api';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import LootItemCard from './LootItemCard';
 
 // Styled components
 const SubItemTableRow = styled(TableRow)(({ theme }) => ({
@@ -473,32 +478,235 @@ const CustomLootTable = ({
       );
   }, [columnConfig, sortConfig, handleSort]);
 
+  const isMobile = useIsMobile();
+
+  // Sort options for mobile dropdown
+  const sortOptions = useMemo(() =>
+    columnConfig.filter(col => col.show && col.field).map(col => ({
+      label: col.label,
+      field: col.field,
+    })),
+  [columnConfig]);
+
+  // Render mobile card list
+  const renderMobileView = () => (
+    <Box>
+      {/* Mobile sort dropdown */}
+      <FormControl size="small" sx={{ minWidth: 150, mb: 1 }}>
+        <InputLabel>Sort by</InputLabel>
+        <Select
+          value={sortConfig.key || ''}
+          label="Sort by"
+          onChange={(e) => handleSort(e.target.value)}
+        >
+          {sortOptions.map(opt => (
+            <MenuItem key={opt.field} value={opt.field}>
+              {opt.label} {sortConfig.key === opt.field ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      {sortedLoot.map(summaryItem => {
+        const itemKey = getItemKey(summaryItem);
+        const items = getIndividualItems(summaryItem);
+        const isOpen = openItems[itemKey];
+
+        return (
+          <LootItemCard
+            key={itemKey}
+            item={summaryItem}
+            individualItems={items}
+            isOpen={isOpen}
+            onToggleOpen={() => handleToggleOpen(itemKey)}
+            onSelectAll={() => items.forEach(item => handleSelectItem(item.id))}
+            onSelectItem={handleSelectItem}
+            selectedItems={selectedItems}
+            showColumns={showColumns}
+            formatDateOnly={formatDateOnly}
+            formatAppraisalDetails={formatAppraisalDetails}
+            FormatBelievedValue={FormatBelievedValue}
+            FormatAverageAppraisal={FormatAverageAppraisal}
+          />
+        );
+      })}
+    </Box>
+  );
+
+  // Render desktop table
+  const renderDesktopView = () => (
+    <TableContainer sx={{ maxHeight: 'calc(100vh - 300px)', overflow: 'auto' }}>
+      <Table stickyHeader>
+        <TableHead>
+          <TableRow>
+            {renderHeaderCells()}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {sortedLoot.map(summaryItem => {
+            const itemKey = getItemKey(summaryItem);
+            const individualItems = getIndividualItems(summaryItem);
+            const isOpen = openItems[itemKey];
+
+            return (
+              <React.Fragment key={itemKey}>
+                <TableRow>
+                  {showColumns.select && (
+                    <TableCell style={mainCellStyle}>
+                      <Checkbox
+                        checked={individualItems.length > 0 && individualItems.every(item => selectedItems.includes(item.id))}
+                        indeterminate={
+                          individualItems.some(item => selectedItems.includes(item.id)) &&
+                          !individualItems.every(item => selectedItems.includes(item.id))
+                        }
+                        onChange={() => individualItems.forEach(item => handleSelectItem(item.id))}
+                      />
+                    </TableCell>
+                  )}
+
+                  {showColumns.quantity && <TableCell style={mainCellStyle}>{summaryItem.quantity}</TableCell>}
+
+                  {showColumns.name && (
+                    <TableCell style={mainCellStyle}>
+                      {individualItems.length > 1 && (
+                        <IconButton size="small" onClick={() => handleToggleOpen(itemKey)}>
+                          {isOpen ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                        </IconButton>
+                      )}
+                      <Tooltip title={summaryItem.notes || 'No notes'} arrow>
+                        <span>{summaryItem.masterwork ? 'Well Made ' : ''}{summaryItem.name}</span>
+                      </Tooltip>
+                    </TableCell>
+                  )}
+
+                  {showColumns.unidentified && (
+                    <TableCell style={mainCellStyle}>
+                      {summaryItem.unidentified === true ? <strong>Unidentified</strong> : ''}
+                    </TableCell>
+                  )}
+
+                  {showColumns.type && <TableCell style={mainCellStyle}>{summaryItem.type}</TableCell>}
+                  {showColumns.size && <TableCell style={mainCellStyle}>{summaryItem.size}</TableCell>}
+                  {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{summaryItem.character_name}</TableCell>}
+
+                  {showColumns.believedValue && (
+                    <TableCell style={mainCellStyle}>
+                      <FormatBelievedValue item={summaryItem} />
+                    </TableCell>
+                  )}
+
+                  {showColumns.averageAppraisal && (
+                    <TableCell style={mainCellStyle}>
+                      <FormatAverageAppraisal item={summaryItem} />
+                    </TableCell>
+                  )}
+
+                  {showColumns.pendingSale && (
+                    <TableCell style={mainCellStyle}>{summaryItem.statuspage === 'Pending Sale' ? '✔' : ''}</TableCell>
+                  )}
+
+                  {showColumns.sessionDate && (
+                    <TableCell style={mainCellStyle}>
+                      {formatDateOnly(summaryItem.session_date)}
+                    </TableCell>
+                  )}
+
+                  {showColumns.lastUpdate && (
+                    <TableCell style={mainCellStyle}>
+                      {summaryItem.lastupdate && timezone ? formatInCampaignTimezone(summaryItem.lastupdate, timezone, 'PPpp z') : ''}
+                    </TableCell>
+                  )}
+                </TableRow>
+
+                {individualItems.length > 1 && (
+                  <TableRow>
+                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={visibleColumnsCount}>
+                      <Collapse in={isOpen} timeout="auto" unmountOnExit>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              {showColumns.select && <TableCell style={subCellStyle}>Select</TableCell>}
+                              <TableCell style={subCellStyle}>Quantity</TableCell>
+                              {showColumns.size && <TableCell style={subCellStyle}>Size</TableCell>}
+                              {showColumns.whoHasIt && <TableCell style={subCellStyle}>Who Has It?</TableCell>}
+                              <TableCell style={subCellStyle}>Notes</TableCell>
+                              {showColumns.sessionDate && <TableCell style={subCellStyle}>Session Date</TableCell>}
+                              {showColumns.lastUpdate && <TableCell style={subCellStyle}>Last Update</TableCell>}
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {individualItems.map(subItem => (
+                              <SubItemTableRow key={subItem.id}>
+                                {showColumns.select && (
+                                  <TableCell style={subCellStyle}>
+                                    <Checkbox
+                                      checked={selectedItems.includes(subItem.id)}
+                                      onChange={() => handleSelectItem(subItem.id)}
+                                    />
+                                  </TableCell>
+                                )}
+                                <TableCell style={subCellStyle}>{subItem.quantity}</TableCell>
+                                {showColumns.size && <TableCell style={subCellStyle}>{subItem.size}</TableCell>}
+                                {showColumns.whoHasIt && <TableCell style={subCellStyle}>{subItem.character_name}</TableCell>}
+                                <TableCell style={subCellStyle}>
+                                  {subItem.notes ? (
+                                    <Tooltip title={subItem.notes} arrow>
+                                      <span>Hover for Notes</span>
+                                    </Tooltip>
+                                  ) : ''}
+                                </TableCell>
+                                {showColumns.sessionDate && (
+                                  <TableCell style={subCellStyle}>
+                                    {formatDateOnly(subItem.session_date)}
+                                  </TableCell>
+                                )}
+                                {showColumns.lastUpdate && (
+                                  <TableCell style={subCellStyle}>
+                                    {subItem.lastupdate && timezone ? formatInCampaignTimezone(subItem.lastupdate, timezone, 'PPpp z') : ''}
+                                  </TableCell>
+                                )}
+                              </SubItemTableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+
   return (
-    <Paper sx={{ p: 2 }}>
+    <Paper sx={{ p: { xs: 1, md: 2 } }}>
       {/* Filters section */}
       <Box sx={{ position: 'sticky', top: 0, backgroundColor: 'background.paper', zIndex: 1 }}>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid container spacing={1} sx={{ mb: 2 }}>
           {showFilters.pendingSale && (
-            <Grid item>
+            <Grid size={{ xs: 12, sm: 'auto' }}>
               <FormControlLabel
-                control={<Switch checked={showPendingSales} onChange={() => setShowPendingSales(!showPendingSales)} />}
+                control={<Switch size={isMobile ? 'small' : 'medium'} checked={showPendingSales} onChange={() => setShowPendingSales(!showPendingSales)} />}
                 label="Show Pending Sales"
               />
             </Grid>
           )}
 
           {showFilters.unidentified && (
-            <Grid item>
+            <Grid size={{ xs: 12, sm: 'auto' }}>
               <FormControlLabel
-                control={<Switch checked={showOnlyUnidentified} onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)} />}
+                control={<Switch size={isMobile ? 'small' : 'medium'} checked={showOnlyUnidentified} onChange={() => setShowOnlyUnidentified(!showOnlyUnidentified)} />}
                 label="Show Only Unidentified"
               />
             </Grid>
           )}
 
           {showFilters.type && (
-            <Grid item>
-              <Button onClick={handleTypeMenuOpen}>Type Filters</Button>
+            <Grid size="auto">
+              <Button size={isMobile ? 'small' : 'medium'} onClick={handleTypeMenuOpen}>Type Filters</Button>
               <FilterMenu
                 anchorEl={anchorElType}
                 open={Boolean(anchorElType)}
@@ -510,8 +718,8 @@ const CustomLootTable = ({
           )}
 
           {showFilters.size && (
-            <Grid item>
-              <Button onClick={handleSizeMenuOpen}>Size Filters</Button>
+            <Grid size="auto">
+              <Button size={isMobile ? 'small' : 'medium'} onClick={handleSizeMenuOpen}>Size Filters</Button>
               <FilterMenu
                 anchorEl={anchorElSize}
                 open={Boolean(anchorElSize)}
@@ -523,8 +731,8 @@ const CustomLootTable = ({
           )}
 
           {showFilters.whoHas && (
-            <Grid item>
-              <Button onClick={(e) => setAnchorElWhoHas(e.currentTarget)}>Who Has Filters</Button>
+            <Grid size="auto">
+              <Button size={isMobile ? 'small' : 'medium'} onClick={(e) => setAnchorElWhoHas(e.currentTarget)}>Who Has Filters</Button>
               <Menu
                 anchorEl={anchorElWhoHas}
                 open={Boolean(anchorElWhoHas)}
@@ -544,153 +752,7 @@ const CustomLootTable = ({
         </Grid>
       </Box>
 
-      {/* Table section */}
-      <TableContainer sx={{ maxHeight: 'calc(100vh - 300px)', overflow: 'auto' }}>
-        <Table stickyHeader>
-          <TableHead>
-            <TableRow>
-              {renderHeaderCells()}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {sortedLoot.map(summaryItem => {
-              const itemKey = getItemKey(summaryItem);
-              const individualItems = getIndividualItems(summaryItem);
-              const isOpen = openItems[itemKey];
-
-              return (
-                <React.Fragment key={itemKey}>
-                  {/* Main row */}
-                  <TableRow>
-                    {showColumns.select && (
-                      <TableCell style={mainCellStyle}>
-                        <Checkbox
-                          checked={individualItems.length > 0 && individualItems.every(item => selectedItems.includes(item.id))}
-                          indeterminate={
-                            individualItems.some(item => selectedItems.includes(item.id)) &&
-                            !individualItems.every(item => selectedItems.includes(item.id))
-                          }
-                          onChange={() => individualItems.forEach(item => handleSelectItem(item.id))}
-                        />
-                      </TableCell>
-                    )}
-
-                    {showColumns.quantity && <TableCell style={mainCellStyle}>{summaryItem.quantity}</TableCell>}
-
-                    {showColumns.name && (
-                      <TableCell style={mainCellStyle}>
-                        {individualItems.length > 1 && (
-                          <IconButton size="small" onClick={() => handleToggleOpen(itemKey)}>
-                            {isOpen ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
-                          </IconButton>
-                        )}
-                        <Tooltip title={summaryItem.notes || 'No notes'} arrow>
-                          <span>{summaryItem.masterwork ? 'Well Made ' : ''}{summaryItem.name}</span>
-                        </Tooltip>
-                      </TableCell>
-                    )}
-
-                    {showColumns.unidentified && (
-                      <TableCell style={mainCellStyle}>
-                        {summaryItem.unidentified === true ? <strong>Unidentified</strong> : ''}
-                      </TableCell>
-                    )}
-
-                    {showColumns.type && <TableCell style={mainCellStyle}>{summaryItem.type}</TableCell>}
-                    {showColumns.size && <TableCell style={mainCellStyle}>{summaryItem.size}</TableCell>}
-                    {showColumns.whoHasIt && <TableCell style={mainCellStyle}>{summaryItem.character_name}</TableCell>}
-
-                    {showColumns.believedValue && (
-                      <TableCell style={mainCellStyle}>
-                        <FormatBelievedValue item={summaryItem} />
-                      </TableCell>
-                    )}
-
-                    {showColumns.averageAppraisal && (
-                      <TableCell style={mainCellStyle}>
-                        <FormatAverageAppraisal item={summaryItem} />
-                      </TableCell>
-                    )}
-
-                    {showColumns.pendingSale && (
-                      <TableCell style={mainCellStyle}>{summaryItem.statuspage === 'Pending Sale' ? '✔' : ''}</TableCell>
-                    )}
-
-                    {showColumns.sessionDate && (
-                      <TableCell style={mainCellStyle}>
-                        {formatDateOnly(summaryItem.session_date)}
-                      </TableCell>
-                    )}
-
-                    {showColumns.lastUpdate && (
-                      <TableCell style={mainCellStyle}>
-                        {summaryItem.lastupdate && timezone ? formatInCampaignTimezone(summaryItem.lastupdate, timezone, 'PPpp z') : ''}
-                      </TableCell>
-                    )}
-                  </TableRow>
-
-                  {/* Sub-items row for expanded items */}
-                  {individualItems.length > 1 && (
-                    <TableRow>
-                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={visibleColumnsCount}>
-                        <Collapse in={isOpen} timeout="auto" unmountOnExit>
-                          <Table size="small">
-                            <TableHead>
-                              <TableRow>
-                                {showColumns.select && <TableCell style={subCellStyle}>Select</TableCell>}
-                                <TableCell style={subCellStyle}>Quantity</TableCell>
-                                {showColumns.size && <TableCell style={subCellStyle}>Size</TableCell>}
-                                {showColumns.whoHasIt && <TableCell style={subCellStyle}>Who Has It?</TableCell>}
-                                <TableCell style={subCellStyle}>Notes</TableCell>
-                                {showColumns.sessionDate && <TableCell style={subCellStyle}>Session Date</TableCell>}
-                                {showColumns.lastUpdate && <TableCell style={subCellStyle}>Last Update</TableCell>}
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              {individualItems.map(subItem => (
-                                <SubItemTableRow key={subItem.id}>
-                                  {showColumns.select && (
-                                    <TableCell style={subCellStyle}>
-                                      <Checkbox
-                                        checked={selectedItems.includes(subItem.id)}
-                                        onChange={() => handleSelectItem(subItem.id)}
-                                      />
-                                    </TableCell>
-                                  )}
-                                  <TableCell style={subCellStyle}>{subItem.quantity}</TableCell>
-                                  {showColumns.size && <TableCell style={subCellStyle}>{subItem.size}</TableCell>}
-                                  {showColumns.whoHasIt && <TableCell style={subCellStyle}>{subItem.character_name}</TableCell>}
-                                  <TableCell style={subCellStyle}>
-                                    {subItem.notes ? (
-                                      <Tooltip title={subItem.notes} arrow>
-                                        <span>Hover for Notes</span>
-                                      </Tooltip>
-                                    ) : ''}
-                                  </TableCell>
-                                  {showColumns.sessionDate && (
-                                    <TableCell style={subCellStyle}>
-                                      {formatDateOnly(subItem.session_date)}
-                                    </TableCell>
-                                  )}
-                                  {showColumns.lastUpdate && (
-                                    <TableCell style={subCellStyle}>
-                                      {subItem.lastupdate && timezone ? formatInCampaignTimezone(subItem.lastupdate, timezone, 'PPpp z') : ''}
-                                    </TableCell>
-                                  )}
-                                </SubItemTableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </Collapse>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      {isMobile ? renderMobileView() : renderDesktopView()}
     </Paper>
   );
 };

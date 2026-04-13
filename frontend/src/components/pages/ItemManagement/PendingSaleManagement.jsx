@@ -371,11 +371,11 @@ const PendingSaleManagement = () => {
                 <CardContent>
                     <Typography variant="h6" gutterBottom>Pending Sale Summary</Typography>
                     <Grid container spacing={2} alignItems="center">
-                        <Grid item xs={12} md={4}>
+                        <Grid size={{xs: 12, md: 4}}>
                             <Typography>Number of Items: {pendingSaleCount}</Typography>
                             <Typography>Total Value: {pendingSaleTotal.toFixed(2)} gold</Typography>
                         </Grid>
-                        <Grid item xs={12} md={8}>
+                        <Grid size={{xs: 12, md: 8}}>
                             <Box display="flex" alignItems="center" flexWrap="wrap" gap={2}>
                                 <TextField
                                     label="Sell up to amount"

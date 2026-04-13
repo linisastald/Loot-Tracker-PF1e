@@ -20,6 +20,8 @@ import {
   Tooltip,
   Typography,
   Button,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   AddBox,
@@ -49,7 +51,7 @@ import lootService from '../../services/lootService';
 import versionService from '../../services/versionService';
 import { useAuth } from '../../contexts/AuthContext';
 
-const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
+const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLogout }) => {
   const [openBeta, setOpenBeta] = useState(false);
   const [openSessionTools, setOpenSessionTools] = useState(false);
   const [openDMSettings, setOpenDMSettings] = useState(false);
@@ -61,6 +63,8 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [versionInfo, setVersionInfo] = useState({ fullVersion: '0.7.1', version: '0.7.1', buildNumber: 0 });
   const location = useLocation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user, isDM } = useAuth();
   const username = user?.username || '';
   const activeCharacter = user?.activeCharacter || null;
@@ -106,6 +110,12 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
 
 
 
+
+  useEffect(() => {
+    if (isMobile && mobileOpen) {
+      onMobileClose();
+    }
+  }, [location.pathname]);
 
   const isActiveRoute = (route) => {
     return location.pathname === route;
@@ -213,25 +223,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
     );
   };
 
-  return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width: isCollapsed ? 64 : 240,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: isCollapsed ? 64 : 240,
-          boxSizing: 'border-box',
-          transition: 'width 0.2s',
-          display: 'flex',
-          flexDirection: 'column',
-          borderRight: '1px solid',
-          borderColor: 'divider',
-          backgroundColor: 'background.paper',
-          overflow: 'hidden',
-        },
-      }}
-    >
+  const drawerWidth = isCollapsed ? 64 : 240;
+
+  const drawerContent = (
       <Box
         sx={{
           p: 2,
@@ -458,6 +452,51 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, onLogout }) => {
           </Button>
         </DialogActions>
       </Dialog>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={onMobileClose}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          '& .MuiDrawer-paper': {
+            width: 240,
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: 'background.paper',
+          },
+        }}
+      >
+        {drawerContent}
+      </Drawer>
+    );
+  }
+
+  return (
+    <Drawer
+      variant="permanent"
+      sx={{
+        width: drawerWidth,
+        flexShrink: 0,
+        '& .MuiDrawer-paper': {
+          width: drawerWidth,
+          boxSizing: 'border-box',
+          transition: 'width 0.2s',
+          display: 'flex',
+          flexDirection: 'column',
+          borderRight: '1px solid',
+          borderColor: 'divider',
+          backgroundColor: 'background.paper',
+          overflow: 'hidden',
+        },
+      }}
+    >
+      {drawerContent}
     </Drawer>
   );
 };

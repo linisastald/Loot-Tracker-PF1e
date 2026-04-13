@@ -32,12 +32,12 @@ const ShipDialog = ({
         <Grid container spacing={3} sx={{ mt: 1 }}>
           
           {/* Basic Information */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Typography variant="h6" color="primary">Basic Information</Typography>
             <Divider sx={{ mb: 2 }} />
           </Grid>
-          
-          <Grid item xs={12} md={6}>
+
+          <Grid size={{xs: 12, md: 6}}>
             <TextField
               fullWidth
               label="Ship Name"
@@ -47,7 +47,7 @@ const ShipDialog = ({
             />
           </Grid>
           {/* Ship Type and Location */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Autocomplete
               options={shipTypes}
               value={shipTypes.find(type => type.key === editingShip.ship_type) || null}
@@ -74,7 +74,7 @@ const ShipDialog = ({
             />
           </Grid>
           
-          <Grid item xs={12} md={6}>
+          <Grid size={{xs: 12, md: 6}}>
             <TextField
               fullWidth
               label="Location"
@@ -83,7 +83,7 @@ const ShipDialog = ({
             />
           </Grid>
           
-          <Grid item xs={12} md={6}>
+          <Grid size={{xs: 12, md: 6}}>
             <FormControl fullWidth>
               <InputLabel>Ship Status</InputLabel>
               <Select
@@ -100,7 +100,7 @@ const ShipDialog = ({
             </FormControl>
           </Grid>
           
-          <Grid item xs={12} md={6}>
+          <Grid size={{xs: 12, md: 6}}>
             <FormControlLabel
               control={
                 <Switch
@@ -113,12 +113,12 @@ const ShipDialog = ({
           </Grid>
 
           {/* Combat Statistics */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Typography variant="h6" color="primary">Combat Statistics</Typography>
             <Divider sx={{ mb: 2 }} />
           </Grid>
           
-          <Grid item xs={6} md={3}>
+          <Grid size={{xs: 6, md: 3}}>
             <TextField
               fullWidth
               label="Max HP"
@@ -136,7 +136,7 @@ const ShipDialog = ({
             />
           </Grid>
           
-          <Grid item xs={6} md={3}>
+          <Grid size={{xs: 6, md: 3}}>
             <TextField
               fullWidth
               label="Current HP"
@@ -147,7 +147,7 @@ const ShipDialog = ({
             />
           </Grid>
           
-          <Grid item xs={6} md={3}>
+          <Grid size={{xs: 6, md: 3}}>
             <TextField
               fullWidth
               label="Base AC"
@@ -158,7 +158,7 @@ const ShipDialog = ({
             />
           </Grid>
           
-          <Grid item xs={6} md={3}>
+          <Grid size={{xs: 6, md: 3}}>
             <TextField
               fullWidth
               label="Touch AC"
@@ -170,12 +170,12 @@ const ShipDialog = ({
           </Grid>
 
           {/* Weapon Types */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Typography variant="h6" color="primary">Weapon Types</Typography>
             <Divider sx={{ mb: 2 }} />
           </Grid>
           
-          <Grid item xs={12} md={6}>
+          <Grid size={{xs: 12, md: 6}}>
             <Autocomplete
               multiple
               options={SHIP_WEAPON_TYPES}
@@ -217,11 +217,11 @@ const ShipDialog = ({
           
           {/* Weapon Quantities */}
           {editingShip.weapon_types && editingShip.weapon_types.length > 0 && (
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Typography variant="subtitle1" sx={{ mb: 2 }}>Weapon Quantities</Typography>
               <Grid container spacing={2}>
                 {editingShip.weapon_types.map((weaponType, index) => (
-                  <Grid item xs={12} sm={6} md={4} key={weaponType.type}>
+                  <Grid size={{xs: 12, sm: 6, md: 4}} key={weaponType.type}>
                     <Card variant="outlined" sx={{ p: 2 }}>
                       <Typography variant="subtitle2" sx={{ mb: 1 }}>
                         {weaponType.type}
@@ -249,12 +249,12 @@ const ShipDialog = ({
 
 
           {/* Ship Improvements */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <Typography variant="h6" color="primary">Ship Improvements</Typography>
             <Divider sx={{ mb: 2 }} />
           </Grid>
           
-          <Grid item xs={12} md={6}>
+          <Grid size={{xs: 12, md: 6}}>
             <Autocomplete
               multiple
               options={Object.keys(SHIP_IMPROVEMENTS)}
@@ -285,7 +285,7 @@ const ShipDialog = ({
           
           {/* Improvement Details */}
           {editingShip.improvements && editingShip.improvements.length > 0 && (
-            <Grid item xs={12}>
+            <Grid size={12}>
               <Typography variant="subtitle1" sx={{ mb: 2 }}>Improvement Details</Typography>
               {editingShip.improvements.map((improvementName, index) => {
                 const improvement = SHIP_IMPROVEMENTS[improvementName];

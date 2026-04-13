@@ -31,6 +31,7 @@ import {DatePicker, LocalizationProvider} from '@mui/x-date-pickers';
 import {AdapterDateFns} from '@mui/x-date-pickers/AdapterDateFns';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
+import TableSkeleton from '../common/TableSkeleton';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -93,7 +94,7 @@ function TabPanel(props: TabPanelProps) {
             {...other}
         >
             {value === index && (
-                <Box sx={{p: 3}}>
+                <Box sx={{p: { xs: 1, md: 3 }}}>
                     {children}
                 </Box>
             )}
@@ -446,7 +447,7 @@ const GoldTransactions: React.FC = () => {
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}
 
-            <Paper sx={{p: 2, mb: 2}}>
+            <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
                 <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
                     <Tabs value={activeTab} onChange={handleTabChange} aria-label="gold management tabs">
                         <Tab label="Overview" {...a11yProps(0)} />
@@ -843,16 +844,16 @@ const GoldTransactions: React.FC = () => {
                     <Card>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Transaction History</Typography>
-                            <TableContainer>
-                                <Table>
+                            <TableContainer sx={{ WebkitOverflowScrolling: 'touch' }}>
+                                <Table size="small">
                                     <TableHead>
                                         <TableRow>
-                                            <TableCell>Session Date</TableCell>
-                                            <TableCell>Transaction Type</TableCell>
-                                            <TableCell align="right">Platinum</TableCell>
-                                            <TableCell align="right">Gold</TableCell>
-                                            <TableCell align="right">Silver</TableCell>
-                                            <TableCell align="right">Copper</TableCell>
+                                            <TableCell>Date</TableCell>
+                                            <TableCell>Type</TableCell>
+                                            <TableCell align="right">PP</TableCell>
+                                            <TableCell align="right">GP</TableCell>
+                                            <TableCell align="right">SP</TableCell>
+                                            <TableCell align="right">CP</TableCell>
                                             <TableCell>Notes</TableCell>
                                         </TableRow>
                                     </TableHead>
@@ -979,9 +980,7 @@ const GoldTransactions: React.FC = () => {
                             </Typography>
 
                             {ledgerLoading ? (
-                                <Box display="flex" justifyContent="center" p={3}>
-                                    <CircularProgress/>
-                                </Box>
+                                <TableSkeleton rows={5} columns={5} />
                             ) : (
                                 <TableContainer component={Paper}>
                                     <Table>

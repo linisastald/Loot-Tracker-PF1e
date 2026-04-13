@@ -189,7 +189,7 @@ const Consumables: React.FC = () => {
 
   return (
     <Container maxWidth={false} component="main">
-      <Paper sx={{p: 2, mb: 2}}>
+      <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
         {/* Search Bar */}
         <TextField
           fullWidth
@@ -210,7 +210,7 @@ const Consumables: React.FC = () => {
       </Paper>
 
       {/* Wands Section */}
-      <Paper sx={{p: 2, mb: 2}}>
+      <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
         <Typography variant="h6" onClick={() => toggleSection('wands')} style={{cursor: 'pointer'}}>
           Wands
           <IconButton>
@@ -240,7 +240,7 @@ const Consumables: React.FC = () => {
                     <TableRow key={wand.id}>
                       <TableCell>{wand.quantity}</TableCell>
                       <TableCell>{wand.name}</TableCell>
-                      <TableCell sx={{ width: '30%' }}>
+                      <TableCell sx={{ width: { xs: '35%', md: '30%' } }}>
                         {wand.charges !== null ? (
                           <Tooltip title={`${wand.charges} out of ${MAX_WAND_CHARGES} charges remaining`}>
                             <Box>
@@ -273,7 +273,7 @@ const Consumables: React.FC = () => {
       </Paper>
 
       {/* Potions Section */}
-      <Paper sx={{p: 2, mb: 2}}>
+      <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
         <Typography variant="h6" onClick={() => toggleSection('potions')} style={{cursor: 'pointer'}}>
           Potions
           <IconButton>
@@ -322,7 +322,7 @@ const Consumables: React.FC = () => {
       </Paper>
 
       {/* Scrolls Section */}
-      <Paper sx={{p: 2, mb: 2}}>
+      <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
         <Typography variant="h6" onClick={() => toggleSection('scrolls')} style={{cursor: 'pointer'}}>
           Scrolls
           <IconButton>

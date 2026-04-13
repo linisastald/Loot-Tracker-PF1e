@@ -1,6 +1,6 @@
 import React, {Suspense, useState, useEffect} from 'react';
 import Sidebar from './Sidebar';
-import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography} from '@mui/material';
+import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography, useMediaQuery, useTheme} from '@mui/material';
 import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useConfig } from '../../contexts/ConfigContext';
@@ -11,6 +11,9 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
   const location = useLocation();
   const { config } = useConfig();
@@ -57,7 +60,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
-      <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} onLogout={onLogout} />
+      <Sidebar
+        isCollapsed={isCollapsed}
+        setIsCollapsed={setIsCollapsed}
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+        onLogout={onLogout}
+      />
 
       <Box
         component="main"
@@ -79,7 +88,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
           color="default"
           elevation={0}
           sx={{
-            width: { md: `calc(100% - ${isCollapsed ? 64 : 240}px)` },
+            width: { xs: '100%', md: `calc(100% - ${isCollapsed ? 64 : 240}px)` },
             ml: { md: isCollapsed ? '64px' : '240px' },
             backgroundColor: 'background.paper',
             borderBottom: '1px solid',
@@ -87,12 +96,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
             zIndex: (theme) => theme.zIndex.drawer - 1,
           }}
         >
-          <Toolbar sx={{ minHeight: { xs: 64 } }}>
+          <Toolbar sx={{ minHeight: { xs: 56, md: 64 } }}>
             <IconButton
               color="inherit"
-              aria-label={isCollapsed ? "Open navigation menu" : "Close navigation menu"}
+              aria-label="Open navigation menu"
               edge="start"
-              onClick={() => setIsCollapsed(!isCollapsed)}
+              onClick={() => setMobileOpen(true)}
               sx={{ mr: 2, display: { md: 'none' } }}
             >
               <MenuIcon />
@@ -107,8 +116,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
           component="div"
           sx={{
             flexGrow: 1,
-            p: 3,
-            mt: '64px',
+            p: { xs: 1, md: 3 },
+            mt: { xs: '56px', md: '64px' },
             overflow: 'auto',
           }}
         >

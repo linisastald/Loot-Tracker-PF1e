@@ -72,17 +72,32 @@ const theme = createTheme({
       'Arial',
       'sans-serif',
     ].join(','),
+    h3: {
+      fontWeight: 600,
+      '@media (max-width:900px)': {
+        fontSize: '1.75rem',
+      },
+    },
     h4: {
       fontWeight: 600,
       letterSpacing: '0.0075em',
+      '@media (max-width:900px)': {
+        fontSize: '1.5rem',
+      },
     },
     h5: {
       fontWeight: 600,
       letterSpacing: '0.0075em',
+      '@media (max-width:900px)': {
+        fontSize: '1.25rem',
+      },
     },
     h6: {
       fontWeight: 500,
       letterSpacing: '0.0075em',
+      '@media (max-width:900px)': {
+        fontSize: '1rem',
+      },
     },
     subtitle1: {
       fontWeight: 500,
@@ -158,6 +173,9 @@ const theme = createTheme({
           maxWidth: 'none !important',
           padding: '20px',
           boxSizing: 'border-box',
+          '@media (max-width:900px)': {
+            padding: '8px',
+          },
         },
       },
     },
@@ -347,6 +365,12 @@ const theme = createTheme({
           '&:last-child': {
             paddingBottom: 16,
           },
+          '@media (max-width:900px)': {
+            padding: 12,
+            '&:last-child': {
+              paddingBottom: 12,
+            },
+          },
         },
       },
     },
@@ -362,6 +386,10 @@ const theme = createTheme({
         root: {
           borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
           padding: '12px 16px',
+          '@media (max-width:900px)': {
+            padding: '8px',
+            fontSize: '0.8rem',
+          },
         },
         head: {
           fontWeight: 600,
@@ -417,6 +445,11 @@ const theme = createTheme({
       },
     },
     MuiTabs: {
+      defaultProps: {
+        variant: 'scrollable',
+        scrollButtons: 'auto',
+        allowScrollButtonsMobile: true,
+      },
       styleOverrides: {
         root: {
           minHeight: 48,
@@ -527,6 +560,9 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           padding: '16px 24px',
+          '@media (max-width:900px)': {
+            padding: '12px 16px',
+          },
         },
       },
     },

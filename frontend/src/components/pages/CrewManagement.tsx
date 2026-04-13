@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, 
+  Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Box, Alert, CircularProgress,
   Tabs, Tab, TablePagination, FormControl, InputLabel, Select, MenuItem, Chip,
-  Autocomplete
+  Autocomplete, useMediaQuery, useTheme
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
+import TableSkeleton from '../common/TableSkeleton';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, 
   Person as PersonIcon, DirectionsBoat as ShipIcon, Home as OutpostIcon,
@@ -93,6 +94,8 @@ const TabPanel = React.memo(({ children, value, index, ...other }: TabPanelProps
 });
 
 const CrewManagement: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [crew, setCrew] = useState<CrewMember[]>([]);
   const [deceasedCrew, setDeceasedCrew] = useState<CrewMember[]>([]);
   const [ships, setShips] = useState<Ship[]>([]);
@@ -441,32 +444,32 @@ const CrewManagement: React.FC = () => {
 
   if (loading) {
     return (
-      <Container maxWidth="lg" sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
-        <CircularProgress />
-        <Typography variant="body1" sx={{ ml: 2 }}>Loading crew...</Typography>
+      <Container maxWidth="lg">
+        <Paper sx={{ p: { xs: 1.5, md: 3 }, mb: 3 }}>
+          <TableSkeleton rows={6} columns={5} />
+        </Paper>
       </Container>
     );
   }
 
   return (
     <Container maxWidth="lg">
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+      <Paper sx={{ p: { xs: 1.5, md: 3 }, mb: 3 }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, gap: 1, mb: 2 }}>
           <Typography variant="h4" component="h1">
             <PersonIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
             Crew Management
           </Typography>
-          <Box display="flex" gap={1}>
+          <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
             <Button
               variant="outlined"
               startIcon={<RecruitIcon />}
               onClick={() => {
-                // Find PC Active ship for default
                 const pcActiveShip = ships.find(ship => ship.status === 'PC Active');
-                setRecruitmentData({ 
-                  skillType: 'diplomacy', 
-                  rollResult: '', 
-                  location_id: pcActiveShip ? pcActiveShip.id.toString() : '' 
+                setRecruitmentData({
+                  skillType: 'diplomacy',
+                  rollResult: '',
+                  location_id: pcActiveShip ? pcActiveShip.id.toString() : ''
                 });
                 setRecruitmentDialogOpen(true);
               }}
@@ -492,8 +495,8 @@ const CrewManagement: React.FC = () => {
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
-          <TableContainer>
-            <Table>
+          <TableContainer sx={{ WebkitOverflowScrolling: 'touch' }}>
+            <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>Name</TableCell>
@@ -586,8 +589,8 @@ const CrewManagement: React.FC = () => {
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
-          <TableContainer>
-            <Table>
+          <TableContainer sx={{ WebkitOverflowScrolling: 'touch' }}>
+            <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>Name</TableCell>
@@ -625,7 +628,7 @@ const CrewManagement: React.FC = () => {
       </Paper>
 
       {/* Crew Dialog */}
-      <Dialog open={crewDialogOpen} onClose={() => setCrewDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={crewDialogOpen} onClose={() => setCrewDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {selectedCrew ? 'Edit Crew Member' : 'Add New Crew Member'}
         </DialogTitle>
@@ -745,7 +748,7 @@ const CrewManagement: React.FC = () => {
       </Dialog>
 
       {/* Move Dialog */}
-      <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Move Crew Member</DialogTitle>
         <DialogContent>
           {selectedCrew && (
@@ -873,7 +876,7 @@ const CrewManagement: React.FC = () => {
       </Dialog>
 
       {/* Recruitment Dialog */}
-      <Dialog open={recruitmentDialogOpen} onClose={() => setRecruitmentDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={recruitmentDialogOpen} onClose={() => setRecruitmentDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Recruit Crew Members - Skull & Shackles Rules</DialogTitle>
         <DialogContent>
           <Box sx={{ mb: 3 }}>

@@ -6,9 +6,11 @@ import {
   Button,
   Card,
   CardContent,
+  Collapse,
   Container,
   FormControl,
   Grid,
+  IconButton,
   InputLabel,
   MenuItem,
   Paper,
@@ -28,6 +30,7 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
@@ -122,6 +125,7 @@ const SETTLEMENT_SIZES = [
 
 const CityServices: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
+  const [referenceOpen, setReferenceOpen] = useState(false);
   const { user: activeUser } = useAuth();
 
   // Item Availability States
@@ -720,14 +724,27 @@ const CityServices: React.FC = () => {
       </TabPanel>
 
       {/* Settlement Availability Reference Table */}
-      <Paper sx={{ p: 3, mt: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          Settlement Quick Reference
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Based on Pathfinder 1st Edition settlement rules
-        </Typography>
-        <TableContainer>
+      <Paper sx={{ p: { xs: 1.5, md: 3 }, mt: 4 }}>
+        <Box
+          sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+          onClick={() => setReferenceOpen(!referenceOpen)}
+        >
+          <Box>
+            <Typography variant="h6" gutterBottom={referenceOpen}>
+              Settlement Quick Reference
+            </Typography>
+            {referenceOpen && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Based on Pathfinder 1st Edition settlement rules
+              </Typography>
+            )}
+          </Box>
+          <IconButton size="small">
+            {referenceOpen ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+          </IconButton>
+        </Box>
+        <Collapse in={referenceOpen}>
+        <TableContainer sx={{ WebkitOverflowScrolling: 'touch' }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -818,6 +835,7 @@ const CityServices: React.FC = () => {
             </TableBody>
           </Table>
         </TableContainer>
+        </Collapse>
       </Paper>
     </Container>
   );

@@ -69,19 +69,20 @@ const LootEntry = () => {
                 pt: 2
             }}>
                 <Paper sx={{
-                    p: 2,
+                    p: { xs: 1.5, md: 2 },
                     mb: 2,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
                 }}>
-
-                    <Box>
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        gap: 1,
+                    }}>
                         <Button
                             variant="outlined"
                             color="primary"
                             onClick={() => handleAddEntry('item')}
-                            sx={{mr: 2}}
+                            fullWidth
+                            sx={{ flex: { sm: 1 } }}
                         >
                             Add Item Entry
                         </Button>
@@ -89,7 +90,8 @@ const LootEntry = () => {
                             variant="outlined"
                             color="secondary"
                             onClick={() => handleAddEntry('gold')}
-                            sx={{mr: 2}}
+                            fullWidth
+                            sx={{ flex: { sm: 1 } }}
                         >
                             Add Gold Entry
                         </Button>
@@ -98,6 +100,8 @@ const LootEntry = () => {
                             variant="outlined"
                             color="primary"
                             onClick={handleSubmit}
+                            fullWidth
+                            sx={{ flex: { sm: 1 } }}
                         >
                             Submit
                         </Button>
