@@ -20,15 +20,16 @@ const ShipDialog = ({
   shipTypes,
   loadingShipTypes,
   onShipTypeChange,
-  onSave
+  onSave,
+  fullScreen = false
 }) => {
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth fullScreen={fullScreen}>
       <DialogTitle>
         {selectedShip ? 'Edit Ship' : 'Create New Ship'}
       </DialogTitle>
-      <DialogContent sx={{ maxHeight: '80vh', overflow: 'auto' }}>
+      <DialogContent sx={{ maxHeight: fullScreen ? 'none' : '80vh', overflow: 'auto' }}>
         <Grid container spacing={3} sx={{ mt: 1 }}>
           
           {/* Basic Information */}

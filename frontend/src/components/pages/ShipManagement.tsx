@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, 
+  Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Grid, Card, CardContent, CardHeader, Chip, Box, Alert, CircularProgress,
   Switch, FormControlLabel, Tabs, Tab, TablePagination, Autocomplete, Divider,
-  Accordion, AccordionSummary, AccordionDetails
+  Accordion, AccordionSummary, AccordionDetails, useMediaQuery, useTheme
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, 
@@ -44,12 +44,14 @@ interface Ship {
 function TabPanel({ children, value, index, ...other }: TabPanelProps) {
   return (
     <div role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ p: { xs: 1, md: 3 } }}>{children}</Box>}
     </div>
   );
 }
 
 const ShipManagement: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [ships, setShips] = useState<Ship[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState('');
@@ -490,8 +492,8 @@ const ShipManagement: React.FC = () => {
 
   return (
     <Container maxWidth="lg">
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+      <Paper sx={{ p: { xs: 1.5, md: 3 }, mb: 3 }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, gap: 1, mb: 2 }}>
           <Typography variant="h4" component="h1">
             <ShipIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
             Ship Management
@@ -514,7 +516,7 @@ const ShipManagement: React.FC = () => {
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
-          <TableContainer>
+          <TableContainer sx={{ WebkitOverflowScrolling: 'touch' }}>
             <Table>
               <TableHead>
                 <TableRow>
@@ -1098,6 +1100,7 @@ const ShipManagement: React.FC = () => {
         loadingShipTypes={loadingShipTypes}
         onShipTypeChange={handleShipTypeChange}
         onSave={handleSaveShip}
+        fullScreen={isMobile}
       />
 
       {/* Delete Confirmation Dialog */}
@@ -1117,7 +1120,7 @@ const ShipManagement: React.FC = () => {
       </Dialog>
 
       {/* Damage/Repair Dialog */}
-      <Dialog open={damageRepairDialogOpen} onClose={() => setDamageRepairDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={damageRepairDialogOpen} onClose={() => setDamageRepairDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {damageRepairData.type === 'damage' ? 'Apply Damage' : 'Repair Ship'} - {selectedShip?.name}
         </DialogTitle>

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer, 
+  Container, Paper, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Grid, Card, CardContent, CardHeader, Box, Alert, CircularProgress,
-  Tabs, Tab, TablePagination
+  Tabs, Tab, TablePagination, useMediaQuery, useTheme
 } from '@mui/material';
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
@@ -35,12 +35,14 @@ interface Outpost {
 function TabPanel({ children, value, index, ...other }: TabPanelProps) {
   return (
     <div role="tabpanel" hidden={value !== index} {...other}>
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ p: { xs: 1, md: 3 } }}>{children}</Box>}
     </div>
   );
 }
 
 const OutpostManagement: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [outposts, setOutposts] = useState<Outpost[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
@@ -174,8 +176,8 @@ const OutpostManagement: React.FC = () => {
 
   return (
     <Container maxWidth="lg">
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+      <Paper sx={{ p: { xs: 1.5, md: 3 }, mb: 3 }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, gap: 1, mb: 2 }}>
           <Typography variant="h4" component="h1">
             <OutpostIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
             Outpost Management
@@ -198,8 +200,8 @@ const OutpostManagement: React.FC = () => {
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
-          <TableContainer>
-            <Table>
+          <TableContainer sx={{ WebkitOverflowScrolling: 'touch' }}>
+            <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>Name</TableCell>
@@ -328,7 +330,7 @@ const OutpostManagement: React.FC = () => {
       </Paper>
 
       {/* Outpost Dialog */}
-      <Dialog open={outpostDialogOpen} onClose={() => setOutpostDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={outpostDialogOpen} onClose={() => setOutpostDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {selectedOutpost ? 'Edit Outpost' : 'Create New Outpost'}
         </DialogTitle>
