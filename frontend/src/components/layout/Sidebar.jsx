@@ -226,6 +226,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
   const drawerWidth = isCollapsed ? 64 : 240;
 
   const drawerContent = (
+    <>
       <Box
         sx={{
           p: 2,
