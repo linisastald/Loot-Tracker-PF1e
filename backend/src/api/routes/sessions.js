@@ -116,18 +116,27 @@ router.get('/next-with-attendance', verifyToken, async (req, res) => {
 
         const session = sessionResult.rows[0];
 
-        // Fetch attendance records joined with character info
+        // Fetch attendance records, falling back to the user's currently
+        // active character when the attendance row's character_id is NULL.
+        // Some RSVP paths (legacy Discord reaction handler, users without an
+        // active character at RSVP time) leave character_id NULL; without
+        // this fallback the Tasks page can't pre-check the checkbox.
         const attendanceResult = await dbUtils.executeQuery(`
             SELECT
                 sa.user_id,
-                sa.character_id,
+                COALESCE(sa.character_id, ac.id) AS character_id,
                 sa.status,
                 sa.response_type,
                 u.username,
-                c.name AS character_name
+                COALESCE(c.name, ac.name) AS character_name
             FROM session_attendance sa
             JOIN users u ON sa.user_id = u.id
             LEFT JOIN characters c ON sa.character_id = c.id
+            LEFT JOIN LATERAL (
+                SELECT id, name FROM characters
+                WHERE user_id = sa.user_id AND active = true
+                ORDER BY id LIMIT 1
+            ) ac ON true
             WHERE sa.session_id = $1
         `, [session.id]);
 
@@ -458,11 +467,16 @@ router.post('/:id/uncancel', verifyToken, checkRole('DM'), [
 // Record detailed attendance with timing and notes
 router.post('/:id/attendance/detailed', verifyToken, [
     param('id').isInt().withMessage('Session ID must be an integer'),
-    body('response_type').isIn(['accepted', 'declined', 'tentative']).withMessage('Invalid response type'),
-    body('late_arrival_time').optional().matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid time format'),
-    body('early_departure_time').optional().matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid time format'),
-    body('notes').optional().isLength({ max: 500 }).withMessage('Notes must be under 500 characters')
-], async (req, res) => {
+    body('response_type').isIn([
+        // Canonical response types
+        'yes', 'no', 'maybe', 'late', 'early', 'late_and_early',
+        // Legacy status aliases (normalized server-side)
+        'accepted', 'declined', 'tentative'
+    ]).withMessage('Invalid response type'),
+    body('late_arrival_time').optional({ nullable: true, checkFalsy: true }).matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid time format'),
+    body('early_departure_time').optional({ nullable: true, checkFalsy: true }).matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid time format'),
+    body('notes').optional({ nullable: true }).isLength({ max: 500 }).withMessage('Notes must be under 500 characters')
+], validateRequest, async (req, res) => {
     try {
         const sessionId = req.params.id;
         const userId = req.user.id;

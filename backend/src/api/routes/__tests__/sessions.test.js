@@ -851,13 +851,13 @@ describe('POST /sessions/:id/remind', () => {
 // POST /sessions/:id/attendance/detailed
 // ===========================================================================
 describe('POST /sessions/:id/attendance/detailed', () => {
-  it('should record detailed attendance', async () => {
+  it('should record detailed attendance with canonical response_type', async () => {
     const mockAttendance = { id: 1, session_id: 10, user_id: 1, status: 'accepted' };
     sessionService.recordAttendance.mockResolvedValue(mockAttendance);
 
     const res = await request(app)
       .post('/sessions/10/attendance/detailed')
-      .send({ response_type: 'accepted', notes: 'Looking forward to it' });
+      .send({ response_type: 'yes', notes: 'Looking forward to it' });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -865,9 +865,25 @@ describe('POST /sessions/:id/attendance/detailed', () => {
     expect(sessionService.recordAttendance).toHaveBeenCalledWith(
       '10',
       1,
-      'accepted',
-      expect.objectContaining({ response_type: 'accepted', notes: 'Looking forward to it' })
+      'yes',
+      expect.objectContaining({ response_type: 'yes', notes: 'Looking forward to it' })
     );
+  });
+
+  it('should accept legacy status aliases for response_type', async () => {
+    sessionService.recordAttendance.mockResolvedValue({ id: 1 });
+    const res = await request(app)
+      .post('/sessions/10/attendance/detailed')
+      .send({ response_type: 'accepted' });
+    expect(res.status).toBe(200);
+  });
+
+  it('should reject unknown response_type values', async () => {
+    const res = await request(app)
+      .post('/sessions/10/attendance/detailed')
+      .send({ response_type: 'banana' });
+    expect(res.status).toBe(400);
+    expect(sessionService.recordAttendance).not.toHaveBeenCalled();
   });
 
   it('should return 500 when service throws', async () => {
@@ -875,7 +891,7 @@ describe('POST /sessions/:id/attendance/detailed', () => {
 
     const res = await request(app)
       .post('/sessions/10/attendance/detailed')
-      .send({ response_type: 'declined' });
+      .send({ response_type: 'no' });
 
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);

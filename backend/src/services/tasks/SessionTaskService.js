@@ -14,18 +14,26 @@ class SessionTaskService {
      */
     async generateSessionTasks(session) {
         try {
-            // Get confirmed attendees for task assignment
+            // Get confirmed attendees for task assignment.
+            // Prefer the character recorded on the attendance row; fall back
+            // to the user's currently-active character. (users.active_character
+            // does not exist as a column — pre-fix this join silently failed.)
             const attendanceResult = await pool.query(`
                 SELECT
                     u.id as user_id,
                     u.username,
-                    c.name as character_name,
+                    COALESCE(c.name, ac.name) as character_name,
                     sa.response_type,
                     sa.late_arrival_time
                 FROM session_attendance sa
                 JOIN users u ON u.id = sa.user_id
-                LEFT JOIN characters c ON c.id = u.active_character
-                WHERE sa.session_id = $1 AND sa.response_type = 'yes'
+                LEFT JOIN characters c ON c.id = sa.character_id
+                LEFT JOIN LATERAL (
+                    SELECT id, name FROM characters
+                    WHERE user_id = sa.user_id AND active = true
+                    ORDER BY id LIMIT 1
+                ) ac ON true
+                WHERE sa.session_id = $1 AND sa.response_type IN ('yes', 'late', 'early', 'late_and_early')
                 ORDER BY sa.response_timestamp
             `, [session.id]);
 

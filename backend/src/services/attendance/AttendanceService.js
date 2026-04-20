@@ -7,7 +7,8 @@ const pool = require('../../config/db');
 const logger = require('../../utils/logger');
 const {
     ATTENDANCE_STATUS,
-    RESPONSE_TYPE_MAP
+    RESPONSE_TYPE_MAP,
+    STATUS_TO_RESPONSE_MAP
 } = require('../../constants/sessionConstants');
 
 class AttendanceService {
@@ -33,10 +34,17 @@ class AttendanceService {
                 character_id
             } = additionalData;
 
+            // Normalize legacy status values (accepted/declined/tentative)
+            // back to canonical response types (yes/no/maybe). Without this,
+            // older callers store response_type='accepted' which the Tasks
+            // page filter (which keys off yes/late/early/late_and_early) does
+            // not recognize.
+            const normalizedResponseType = STATUS_TO_RESPONSE_MAP[responseType?.toLowerCase()] || responseType;
+
             // Map response type to status for database constraint
-            const status = RESPONSE_TYPE_MAP[responseType] ||
-                          RESPONSE_TYPE_MAP[responseType?.toLowerCase()] ||
-                          (Object.values(ATTENDANCE_STATUS).includes(responseType) ? responseType : ATTENDANCE_STATUS.TENTATIVE);
+            const status = RESPONSE_TYPE_MAP[normalizedResponseType] ||
+                          RESPONSE_TYPE_MAP[normalizedResponseType?.toLowerCase()] ||
+                          (Object.values(ATTENDANCE_STATUS).includes(normalizedResponseType) ? normalizedResponseType : ATTENDANCE_STATUS.TENTATIVE);
 
             // Upsert attendance record
             const attendanceResult = await client.query(`
@@ -56,7 +64,7 @@ class AttendanceService {
                     response_timestamp = NOW(),
                     updated_at = NOW()
                 RETURNING *
-            `, [sessionId, userId, character_id, status, responseType, late_arrival_time, early_departure_time, notes]);
+            `, [sessionId, userId, character_id, status, normalizedResponseType, late_arrival_time, early_departure_time, notes]);
 
             const attendance = attendanceResult.rows[0];
 
