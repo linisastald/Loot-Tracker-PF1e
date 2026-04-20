@@ -185,10 +185,10 @@ describe('lootService', () => {
   });
 
   describe('updateLootItemAsDM', () => {
-    it('should PUT /loot/dm-update/:id with DM update data', async () => {
+    it('should PUT /items/dm-update/:id with DM update data', async () => {
       const data = { name: 'Corrected Name', value: 999 };
       await lootService.updateLootItemAsDM(7, data as any);
-      expect(api.put).toHaveBeenCalledWith('/loot/dm-update/7', data);
+      expect(api.put).toHaveBeenCalledWith('/items/dm-update/7', data);
     });
   });
 

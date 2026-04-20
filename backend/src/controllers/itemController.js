@@ -145,135 +145,137 @@ const getLootById = async (req, res) => {
   }
 };
 
+// Fields a player may update on any loot item.
+const PLAYER_ALLOWED_FIELDS = ['name', 'quantity', 'notes', 'unidentified', 'status'];
+
+// Additional fields only a DM may update (via the dm-update endpoint).
+const DM_ONLY_FIELDS = [
+  'value', 'cursed', 'description',
+  'session_date', 'masterwork', 'type', 'size', 'itemid',
+  'modids', 'charges', 'spellcraft_dc', 'dm_notes'
+];
+
 /**
- * Update loot item
+ * Filter update payload to allowed fields and validate each present field.
+ * Mutates and returns a new object with validated values.
+ */
+const buildValidatedUpdateData = (updateData, allowedFields) => {
+  const filteredData = {};
+  for (const [key, value] of Object.entries(updateData)) {
+    if (allowedFields.includes(key) && value !== undefined) {
+      filteredData[key] = value;
+    }
+  }
+
+  if (Object.keys(filteredData).length === 0) {
+    throw controllerFactory.createValidationError('No valid fields provided for update');
+  }
+
+  if (filteredData.name) {
+    filteredData.name = ValidationService.validateRequiredString(filteredData.name, 'name');
+  }
+  if (filteredData.quantity) {
+    filteredData.quantity = ValidationService.validateQuantity(filteredData.quantity);
+  }
+  if (filteredData.value !== undefined) {
+    filteredData.value = ValidationService.validateOptionalNumber(filteredData.value, 'value', { min: 0 });
+  }
+  if (filteredData.status !== undefined) {
+    filteredData.status = filteredData.status ? ValidationService.validateLootStatus(filteredData.status) : null;
+  }
+  if (filteredData.cursed !== undefined) {
+    filteredData.cursed = ValidationService.validateBoolean(filteredData.cursed, 'cursed');
+  }
+  if (filteredData.unidentified !== undefined) {
+    filteredData.unidentified = ValidationService.validateBoolean(filteredData.unidentified, 'unidentified');
+  }
+  if (filteredData.description) {
+    filteredData.description = ValidationService.validateDescription(filteredData.description, 'description');
+  }
+  if (filteredData.notes) {
+    filteredData.notes = ValidationService.validateDescription(filteredData.notes, 'notes');
+  }
+  if (filteredData.session_date) {
+    filteredData.session_date = ValidationService.validateDate(filteredData.session_date, 'session_date');
+  }
+  if (filteredData.masterwork !== undefined) {
+    filteredData.masterwork = ValidationService.validateBoolean(filteredData.masterwork, 'masterwork');
+  }
+  if (filteredData.type !== undefined) {
+    filteredData.type = filteredData.type ? ValidationService.validateRequiredString(filteredData.type, 'type') : null;
+  }
+  if (filteredData.size !== undefined) {
+    filteredData.size = filteredData.size ? ValidationService.validateRequiredString(filteredData.size, 'size') : null;
+  }
+  if (filteredData.itemid !== undefined) {
+    filteredData.itemid = filteredData.itemid ? ValidationService.validateItemId(parseInt(filteredData.itemid)) : null;
+  }
+  if (filteredData.modids !== undefined) {
+    if (filteredData.modids === null || filteredData.modids === '') {
+      filteredData.modids = null;
+    } else if (Array.isArray(filteredData.modids)) {
+      filteredData.modids = filteredData.modids.map(id => ValidationService.validateItemId(parseInt(id)));
+    } else {
+      throw controllerFactory.createValidationError('modids must be an array of integers or null');
+    }
+  }
+  if (filteredData.charges !== undefined) {
+    filteredData.charges = filteredData.charges ? ValidationService.validateOptionalNumber(filteredData.charges, 'charges', { min: 0 }) : null;
+  }
+  if (filteredData.spellcraft_dc !== undefined) {
+    filteredData.spellcraft_dc = filteredData.spellcraft_dc ? ValidationService.validateOptionalNumber(filteredData.spellcraft_dc, 'spellcraft_dc', { min: 1 }) : null;
+  }
+  if (filteredData.dm_notes !== undefined) {
+    filteredData.dm_notes = filteredData.dm_notes ? ValidationService.validateDescription(filteredData.dm_notes, 'dm_notes') : null;
+  }
+
+  return filteredData;
+};
+
+const persistLootUpdate = async (req, res, itemId, filteredData) => {
+  const updatedItem = await dbUtils.updateById('loot', itemId, filteredData);
+
+  if (!updatedItem) {
+    throw controllerFactory.createNotFoundError('Loot item not found');
+  }
+
+  logger.info(`Loot item ${itemId} updated by user ${req.user.id}`, {
+    userId: req.user.id,
+    itemId,
+    updatedFields: Object.keys(filteredData)
+  });
+
+  return controllerFactory.sendSuccessResponse(res, updatedItem, 'Loot item updated successfully');
+};
+
+/**
+ * Update loot item — player-safe fields only.
  */
 const updateLootItem = async (req, res) => {
   const itemId = ValidationService.validateItemId(parseInt(req.params.id));
-  const updateData = req.body;
-
   try {
-    // Validate update fields - DMs can update additional fields
-    const isDM = req.user && req.user.role === 'DM';
-    const allowedFields = [
-      'name', 'quantity', 'value', 'description', 'notes', 
-      'cursed', 'unidentified', 'status'
-    ];
-    
-    // Additional fields that only DMs can update
-    const dmOnlyFields = [
-      'session_date', 'masterwork', 'type', 'size', 'itemid', 
-      'modids', 'charges', 'spellcraft_dc', 'dm_notes'
-    ];
-    
-    const finalAllowedFields = isDM ? [...allowedFields, ...dmOnlyFields] : allowedFields;
-
-    const filteredData = {};
-    for (const [key, value] of Object.entries(updateData)) {
-      if (finalAllowedFields.includes(key) && value !== undefined) {
-        filteredData[key] = value;
-      }
-    }
-
-    if (Object.keys(filteredData).length === 0) {
-      throw controllerFactory.createValidationError('No valid fields provided for update');
-    }
-
-    // Validate specific fields
-    if (filteredData.name) {
-      filteredData.name = ValidationService.validateRequiredString(filteredData.name, 'name');
-    }
-
-    if (filteredData.quantity) {
-      filteredData.quantity = ValidationService.validateQuantity(filteredData.quantity);
-    }
-
-    if (filteredData.value !== undefined) {
-      filteredData.value = ValidationService.validateOptionalNumber(filteredData.value, 'value', { min: 0 });
-    }
-
-    if (filteredData.status !== undefined) {
-      filteredData.status = filteredData.status ? ValidationService.validateLootStatus(filteredData.status) : null;
-    }
-
-    if (filteredData.cursed !== undefined) {
-      filteredData.cursed = ValidationService.validateBoolean(filteredData.cursed, 'cursed');
-    }
-
-    if (filteredData.unidentified !== undefined) {
-      filteredData.unidentified = ValidationService.validateBoolean(filteredData.unidentified, 'unidentified');
-    }
-
-    if (filteredData.description) {
-      filteredData.description = ValidationService.validateDescription(filteredData.description, 'description');
-    }
-
-    if (filteredData.notes) {
-      filteredData.notes = ValidationService.validateDescription(filteredData.notes, 'notes');
-    }
-
-    // Additional validations for DM-only fields
-    if (isDM) {
-      if (filteredData.session_date) {
-        filteredData.session_date = ValidationService.validateDate(filteredData.session_date, 'session_date');
-      }
-
-      if (filteredData.masterwork !== undefined) {
-        filteredData.masterwork = ValidationService.validateBoolean(filteredData.masterwork, 'masterwork');
-      }
-
-      if (filteredData.type !== undefined) {
-        filteredData.type = filteredData.type ? ValidationService.validateRequiredString(filteredData.type, 'type') : null;
-      }
-
-      if (filteredData.size !== undefined) {
-        filteredData.size = filteredData.size ? ValidationService.validateRequiredString(filteredData.size, 'size') : null;
-      }
-
-      if (filteredData.itemid !== undefined) {
-        filteredData.itemid = filteredData.itemid ? ValidationService.validateItemId(parseInt(filteredData.itemid)) : null;
-      }
-
-      if (filteredData.modids !== undefined) {
-        // Handle modids array - expect array of integers or null
-        if (filteredData.modids === null || filteredData.modids === '') {
-          filteredData.modids = null;
-        } else if (Array.isArray(filteredData.modids)) {
-          filteredData.modids = filteredData.modids.map(id => ValidationService.validateItemId(parseInt(id)));
-        } else {
-          throw controllerFactory.createValidationError('modids must be an array of integers or null');
-        }
-      }
-
-      if (filteredData.charges !== undefined) {
-        filteredData.charges = filteredData.charges ? ValidationService.validateOptionalNumber(filteredData.charges, 'charges', { min: 0 }) : null;
-      }
-
-      if (filteredData.spellcraft_dc !== undefined) {
-        filteredData.spellcraft_dc = filteredData.spellcraft_dc ? ValidationService.validateOptionalNumber(filteredData.spellcraft_dc, 'spellcraft_dc', { min: 1 }) : null;
-      }
-
-      if (filteredData.dm_notes !== undefined) {
-        filteredData.dm_notes = filteredData.dm_notes ? ValidationService.validateDescription(filteredData.dm_notes, 'dm_notes') : null;
-      }
-    }
-
-    // Update the item
-    const updatedItem = await dbUtils.updateById('loot', itemId, filteredData);
-
-    if (!updatedItem) {
-      throw controllerFactory.createNotFoundError('Loot item not found');
-    }
-
-    logger.info(`Loot item ${itemId} updated by user ${req.user.id}`, {
-      userId: req.user.id,
-      itemId,
-      updatedFields: Object.keys(filteredData)
-    });
-
-    return controllerFactory.sendSuccessResponse(res, updatedItem, 'Loot item updated successfully');
+    const filteredData = buildValidatedUpdateData(req.body, PLAYER_ALLOWED_FIELDS);
+    return await persistLootUpdate(req, res, itemId, filteredData);
   } catch (error) {
     logger.error(`Error updating loot item ${itemId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Update loot item as DM — allows player fields plus DM-only fields.
+ */
+const updateLootItemAsDM = async (req, res) => {
+  ValidationService.requireDM(req);
+  const itemId = ValidationService.validateItemId(parseInt(req.params.id));
+  try {
+    const filteredData = buildValidatedUpdateData(
+      req.body,
+      [...PLAYER_ALLOWED_FIELDS, ...DM_ONLY_FIELDS]
+    );
+    return await persistLootUpdate(req, res, itemId, filteredData);
+  } catch (error) {
+    logger.error(`Error updating loot item ${itemId} as DM:`, error);
     throw error;
   }
 };
@@ -557,7 +559,11 @@ module.exports = {
   updateLootItem: controllerFactory.createHandler(updateLootItem, {
     errorMessage: 'Error updating loot item'
   }),
-  
+
+  updateLootItemAsDM: controllerFactory.createHandler(updateLootItemAsDM, {
+    errorMessage: 'Error updating loot item as DM'
+  }),
+
   deleteLootItem: controllerFactory.createHandler(deleteLootItem, {
     errorMessage: 'Error deleting loot item'
   }),

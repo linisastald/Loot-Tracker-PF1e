@@ -445,13 +445,13 @@ describe('itemController', () => {
   // updateLootItem
   // ──────────────────────────────────────────────────────────
   describe('updateLootItem', () => {
-    it('should update a loot item with valid fields', async () => {
-      const updatedItem = { id: 1, name: 'Longsword +1', value: 2315 };
+    it('should update a loot item with valid player fields', async () => {
+      const updatedItem = { id: 1, name: 'Longsword +1', notes: 'cool sword' };
       dbUtils.updateById.mockResolvedValue(updatedItem);
 
       const req = mockReq({
         params: { id: '1' },
-        body: { name: 'Longsword +1', value: 2315 },
+        body: { name: 'Longsword +1', notes: 'cool sword' },
       });
       const res = mockRes();
 
@@ -460,34 +460,45 @@ describe('itemController', () => {
       expect(dbUtils.updateById).toHaveBeenCalledTimes(1);
       expect(dbUtils.updateById).toHaveBeenCalledWith('loot', 1, expect.objectContaining({
         name: 'Longsword +1',
-        value: 2315,
+        notes: 'cool sword',
       }));
       expect(res.success).toHaveBeenCalledTimes(1);
       expect(res.success.mock.calls[0][0]).toEqual(updatedItem);
     });
 
-    it('should filter out non-allowed fields for regular players', async () => {
+    it('should filter out DM-only fields for player updates', async () => {
       const updatedItem = { id: 1, name: 'Sword' };
       dbUtils.updateById.mockResolvedValue(updatedItem);
 
       const req = mockReq({
         params: { id: '1' },
-        body: { name: 'Sword', session_date: '2024-01-15', masterwork: true },
+        body: {
+          name: 'Sword',
+          session_date: '2024-01-15',
+          masterwork: true,
+          value: 999,
+          cursed: true,
+          description: 'lore',
+        },
         user: { id: 1, role: 'player' },
       });
       const res = mockRes();
 
       await itemController.updateLootItem(req, res);
 
-      // session_date and masterwork are DM-only fields
       const filteredData = dbUtils.updateById.mock.calls[0][2];
       expect(filteredData.name).toBe('Sword');
       expect(filteredData.session_date).toBeUndefined();
       expect(filteredData.masterwork).toBeUndefined();
+      expect(filteredData.value).toBeUndefined();
+      expect(filteredData.cursed).toBeUndefined();
+      expect(filteredData.description).toBeUndefined();
     });
 
-    it('should allow DM-only fields for DM users', async () => {
-      const updatedItem = { id: 1, name: 'Sword', masterwork: true };
+    it('should also filter DM-only fields for DM users on player endpoint', async () => {
+      // Player endpoint applies the player allowlist regardless of role.
+      // DMs must use updateLootItemAsDM to change DM-only fields.
+      const updatedItem = { id: 1, name: 'Sword' };
       dbUtils.updateById.mockResolvedValue(updatedItem);
 
       const req = mockReq({
@@ -501,8 +512,8 @@ describe('itemController', () => {
 
       const filteredData = dbUtils.updateById.mock.calls[0][2];
       expect(filteredData.name).toBe('Sword');
-      expect(filteredData.masterwork).toBe(true);
-      expect(filteredData.session_date).toBeDefined();
+      expect(filteredData.masterwork).toBeUndefined();
+      expect(filteredData.session_date).toBeUndefined();
     });
 
     it('should return not found when item does not exist', async () => {
@@ -560,6 +571,71 @@ describe('itemController', () => {
       expect(res.success).toHaveBeenCalledTimes(1);
       const filteredData = dbUtils.updateById.mock.calls[0][2];
       expect(filteredData.status).toBe('Kept Party');
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────
+  // updateLootItemAsDM
+  // ──────────────────────────────────────────────────────────
+  describe('updateLootItemAsDM', () => {
+    it('should allow DM-only fields when caller is DM', async () => {
+      const updatedItem = { id: 1, name: 'Sword', value: 999, cursed: true, masterwork: true };
+      dbUtils.updateById.mockResolvedValue(updatedItem);
+
+      const req = mockReq({
+        params: { id: '1' },
+        body: {
+          name: 'Sword',
+          value: 999,
+          cursed: true,
+          masterwork: true,
+          session_date: '2024-06-15',
+          description: 'lore',
+        },
+        user: { id: 1, role: 'DM' },
+      });
+      const res = mockRes();
+
+      await itemController.updateLootItemAsDM(req, res);
+
+      const filteredData = dbUtils.updateById.mock.calls[0][2];
+      expect(filteredData.name).toBe('Sword');
+      expect(filteredData.value).toBe(999);
+      expect(filteredData.cursed).toBe(true);
+      expect(filteredData.masterwork).toBe(true);
+      expect(filteredData.session_date).toBeDefined();
+      expect(filteredData.description).toBe('lore');
+    });
+
+    it('should reject non-DM callers', async () => {
+      const req = mockReq({
+        params: { id: '1' },
+        body: { value: 999 },
+        user: { id: 1, role: 'player' },
+      });
+      const res = mockRes();
+
+      await itemController.updateLootItemAsDM(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledTimes(1);
+      expect(res.forbidden.mock.calls[0][0]).toContain('Only DMs');
+      expect(dbUtils.updateById).not.toHaveBeenCalled();
+    });
+
+    it('should return not found when item does not exist', async () => {
+      dbUtils.updateById.mockResolvedValue(null);
+
+      const req = mockReq({
+        params: { id: '999' },
+        body: { value: 50 },
+        user: { id: 1, role: 'DM' },
+      });
+      const res = mockRes();
+
+      await itemController.updateLootItemAsDM(req, res);
+
+      expect(res.notFound).toHaveBeenCalledTimes(1);
+      expect(res.notFound.mock.calls[0][0]).toContain('Loot item not found');
     });
   });
 

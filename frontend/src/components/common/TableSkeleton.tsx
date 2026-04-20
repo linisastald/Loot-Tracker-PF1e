@@ -25,11 +25,9 @@ const CardSkeleton: React.FC<{ count: number }> = ({ count }) => (
 const TableSkeleton: React.FC<TableSkeletonProps> = ({ rows = 5, columns = 4 }) => {
   const isMobile = useIsMobile();
 
-  if (isMobile) {
-    return <CardSkeleton count={rows} />;
-  }
-
-  return (
+  const content = isMobile ? (
+    <CardSkeleton count={rows} />
+  ) : (
     <Table>
       <TableBody>
         {Array.from({ length: rows }).map((_, rowIndex) => (
@@ -43,6 +41,12 @@ const TableSkeleton: React.FC<TableSkeletonProps> = ({ rows = 5, columns = 4 }) 
         ))}
       </TableBody>
     </Table>
+  );
+
+  return (
+    <Box role="status" aria-busy="true" aria-label="Loading" data-testid="loading-skeleton">
+      {content}
+    </Box>
   );
 };
 

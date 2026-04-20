@@ -80,17 +80,23 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
   const handleUpdateSubmit = async () => {
     const entry = updatedEntry as any;
     if (!entry || !entry.id) return;
+    const payload = {
+      session_date: entry.session_date,
+      quantity: entry.quantity,
+      name: entry.name,
+      unidentified: entry.unidentified,
+      masterwork: entry.masterwork,
+      type: entry.type,
+      size: entry.size,
+      notes: entry.notes,
+    };
+    const isDM = (authUser as any)?.role === 'DM';
     try {
-      await lootService.updateLootItem(entry.id, {
-        session_date: entry.session_date,
-        quantity: entry.quantity,
-        name: entry.name,
-        unidentified: entry.unidentified,
-        masterwork: entry.masterwork,
-        type: entry.type,
-        size: entry.size,
-        notes: entry.notes,
-      });
+      if (isDM) {
+        await lootService.updateLootItemAsDM(entry.id, payload);
+      } else {
+        await lootService.updateLootItem(entry.id, payload);
+      }
       await fetchLoot();
       setOpenUpdateDialog(false);
       setSelectedItems([]);

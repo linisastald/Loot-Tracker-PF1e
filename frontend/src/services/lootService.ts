@@ -160,7 +160,7 @@ const lootService = {
   updateLootItemAsDM: (
     id: number,
     data: Partial<LootItem>
-  ): Promise<ApiResponse> => api.put(`/loot/dm-update/${id}`, data),
+  ): Promise<ApiResponse> => api.put(`/items/dm-update/${id}`, data),
 
   /**
    * Split item stack

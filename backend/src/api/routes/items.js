@@ -12,6 +12,7 @@ router.use(verifyToken);
 router.get('/', itemController.getAllLoot);
 router.get('/search', itemController.searchLoot);
 router.get('/:id', itemController.getLootById);
+router.put('/dm-update/:id', itemController.updateLootItemAsDM);
 router.put('/:id', itemController.updateLootItem);
 router.delete('/:id', itemController.deleteLootItem);
 

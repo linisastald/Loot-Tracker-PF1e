@@ -86,11 +86,11 @@ describe('CrewManagement', () => {
     vi.clearAllMocks();
   });
 
-  it('shows loading spinner initially', () => {
+  it('shows loading skeleton initially', () => {
     renderCrewManagement();
 
-    expect(screen.getByRole('progressbar')).toBeInTheDocument();
-    expect(screen.getByText(/Loading crew/i)).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
+    expect(screen.getByTestId('loading-skeleton')).toBeInTheDocument();
   });
 
   it('renders the Crew Management heading after loading', async () => {

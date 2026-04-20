@@ -14,25 +14,31 @@ jest.mock('../../utils/logger', () => ({
 }));
 
 jest.mock('../../utils/saleValueCalculator', () => ({
-  calculateItemSaleValue: jest.fn((item) => {
-    const value = parseFloat(item.value) || 0;
-    return item.type === 'trade good' ? value : value * 0.5;
-  }),
-  calculateTotalSaleValue: jest.fn((items) => {
-    return items.reduce((sum, item) => {
-      const value = parseFloat(item.value) || 0;
-      const saleValue = item.type === 'trade good' ? value : value * 0.5;
-      const qty = parseInt(item.quantity) || 1;
-      return sum + saleValue * qty;
-    }, 0);
-  }),
+  calculateItemSaleValue: jest.fn(),
+  calculateTotalSaleValue: jest.fn(),
 }));
 
 const dbUtils = require('../../utils/dbUtils');
+const saleValueCalculator = require('../../utils/saleValueCalculator');
+
+// Default sale-value behavior. Re-applied in beforeEach because the unit
+// jest config sets resetMocks: true, which wipes implementations between tests.
+const defaultItemSaleValue = (item) => {
+  const value = parseFloat(item.value) || 0;
+  return item.type === 'trade good' ? value : value * 0.5;
+};
+const defaultTotalSaleValue = (items) => items.reduce((sum, item) => {
+  const value = parseFloat(item.value) || 0;
+  const saleValue = item.type === 'trade good' ? value : value * 0.5;
+  const qty = parseInt(item.quantity) || 1;
+  return sum + saleValue * qty;
+}, 0);
 
 describe('SalesService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    saleValueCalculator.calculateItemSaleValue.mockImplementation(defaultItemSaleValue);
+    saleValueCalculator.calculateTotalSaleValue.mockImplementation(defaultTotalSaleValue);
   });
 
   describe('filterValidSaleItems (pure)', () => {
