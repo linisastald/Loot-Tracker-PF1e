@@ -15,7 +15,7 @@ const generateTestData = async (req, res) => {
     const isTestEnvironment = allowedOrigins.includes('test.kempsonandko.com');
     
     if (!isTestEnvironment) {
-      throw controllerFactory.createForbiddenError('Test data generation is only available on test instances');
+      throw controllerFactory.createAuthorizationError('Test data generation is only available on test instances');
     }
 
     // Only DMs can generate test data
