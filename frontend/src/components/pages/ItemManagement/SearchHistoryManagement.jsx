@@ -40,17 +40,19 @@ const SearchHistoryManagement = () => {
       setError('');
       setLoading(true);
 
-      // Fetch item searches - api interceptor already unwraps response.data
+      // Fetch item searches - response body is { success, message, data }
       const itemSearchResponse = await api.get('/item-search', {
         params: { date: selectedDate }
       });
-      setItemSearches(itemSearchResponse || []);
+      const itemSearchData = itemSearchResponse?.data ?? itemSearchResponse;
+      setItemSearches(Array.isArray(itemSearchData) ? itemSearchData : []);
 
-      // Fetch spellcasting services - api interceptor already unwraps response.data
+      // Fetch spellcasting services - response body is { success, message, data }
       const spellcastingResponse = await api.get('/spellcasting', {
         params: { date: selectedDate }
       });
-      setSpellcastingServices(spellcastingResponse || []);
+      const spellcastingData = spellcastingResponse?.data ?? spellcastingResponse;
+      setSpellcastingServices(Array.isArray(spellcastingData) ? spellcastingData : []);
     } catch (err) {
       console.error('Error fetching search history:', err);
       setError('Error fetching search history');
