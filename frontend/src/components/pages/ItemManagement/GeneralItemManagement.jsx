@@ -50,28 +50,47 @@ const GeneralItemManagement = () => {
         value: '',
     });
 
+    // Resolve catalog items for the rows currently shown so the "Real Item"
+    // column can render names. `loot.itemid` references the catalog `item`
+    // table — looking the id up in the loot list (the previous behaviour)
+    // never matches and falsely renders "Not linked (ID: …)".
     useEffect(() => {
-        fetchItems();
-    }, []);
-
-    const fetchItems = async () => {
-        try {
-            const response = await lootService.getAllLoot();
-            // API returns { summary: [], individual: [], count: number }
-            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
-            setItems(allItems);
-
-            // Create a map for easier lookups
-            const newItemsMap = {};
-            allItems.forEach(item => {
-                newItemsMap[item.id] = item;
-            });
-            setItemsMap(newItemsMap);
-        } catch (error) {
-            console.error('Error fetching all items:', error);
-            setError('Error fetching items');
+        if (!Array.isArray(filteredItems) || filteredItems.length === 0) {
+            setItems([]);
+            setItemsMap({});
+            return;
         }
-    };
+        const itemIds = filteredItems
+            .map(it => it.itemid)
+            .filter(id => id != null)
+            .filter((id, idx, arr) => arr.indexOf(id) === idx);
+        if (itemIds.length === 0) {
+            setItems([]);
+            setItemsMap({});
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const response = await lootService.getItemsByIds(itemIds);
+                if (cancelled) return;
+                const catalogItems = response?.data?.items || [];
+                setItems(catalogItems);
+                const map = {};
+                catalogItems.forEach(ci => {
+                    if (ci && ci.id != null) map[ci.id] = ci;
+                });
+                setItemsMap(map);
+            } catch (err) {
+                if (!cancelled) {
+                    console.error('Error fetching catalog items for general item search:', err);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [filteredItems]);
 
     const handleSearch = async () => {
         try {

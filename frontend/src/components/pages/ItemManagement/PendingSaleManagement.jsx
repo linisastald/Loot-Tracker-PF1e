@@ -47,9 +47,51 @@ const PendingSaleManagement = () => {
 
     useEffect(() => {
         fetchPendingItems();
-        fetchItems();
         fetchMods();
     }, []);
+
+    // Once the pending list arrives, resolve the catalog items for each
+    // distinct `itemid` referenced by those rows. This is what backs the
+    // "Real Item" column — looking up loot rows in `items` (as the previous
+    // implementation did) cannot work because `loot.itemid` references the
+    // catalog `item` table, not the loot table itself.
+    useEffect(() => {
+        if (!Array.isArray(pendingItems) || pendingItems.length === 0) {
+            setItems([]);
+            setItemsMap({});
+            return;
+        }
+        const itemIds = pendingItems
+            .map(it => it.itemid)
+            .filter(id => id != null)
+            .filter((id, idx, arr) => arr.indexOf(id) === idx);
+        if (itemIds.length === 0) {
+            setItems([]);
+            setItemsMap({});
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            try {
+                const response = await lootService.getItemsByIds(itemIds);
+                if (cancelled) return;
+                const catalogItems = response?.data?.items || [];
+                setItems(catalogItems);
+                const map = {};
+                catalogItems.forEach(ci => {
+                    if (ci && ci.id != null) map[ci.id] = ci;
+                });
+                setItemsMap(map);
+            } catch (err) {
+                if (!cancelled) {
+                    console.error('Error fetching catalog items for pending sale list:', err);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [pendingItems]);
 
     const fetchPendingItems = useCallback(async () => {
         try {
@@ -90,24 +132,6 @@ const PendingSaleManagement = () => {
             setError('Failed to fetch pending items.');
             setPendingItems([]);
             setLoading(false);
-        }
-    }, []);
-
-    const fetchItems = useCallback(async () => {
-        try {
-            const response = await lootService.getAllLoot();
-            // API returns { summary: [], individual: [], count: number }
-            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
-            setItems(allItems);
-
-            // Create a map for easier lookups
-            const newItemsMap = {};
-            allItems.forEach(item => {
-                newItemsMap[item.id] = item;
-            });
-            setItemsMap(newItemsMap);
-        } catch (error) {
-            console.error('Error fetching all items:', error);
         }
     }, []);
 

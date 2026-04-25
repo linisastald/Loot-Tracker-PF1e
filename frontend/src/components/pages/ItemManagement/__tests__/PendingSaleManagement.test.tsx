@@ -119,13 +119,16 @@ const mockSaleCalculation = {
   invalidCount: 1,
 };
 
-const mockAllLoot = {
-  summary: [],
-  individual: [
-    { id: 1, itemid: 101, name: 'Longsword' },
-    { id: 2, itemid: 102, name: 'Mystery Wand' },
-    { id: 3, itemid: 103, name: 'Worthless Trinket' },
+// Catalog items keyed by `id` (matches `loot.itemid` references).
+// These come back from POST /item-creation/items/by-ids and feed the
+// "Real Item" column lookup.
+const mockCatalogItems = {
+  items: [
+    { id: 101, name: 'Longsword (catalog)', type: 'weapon', value: 100 },
+    { id: 102, name: 'Wand of Magic Missile', type: 'magic', value: 200 },
+    { id: 103, name: 'Old Bottle', type: 'gear', value: null },
   ],
+  count: 3,
 };
 
 const mockMods = { mods: [] };
@@ -137,7 +140,6 @@ const mockMods = { mods: [] };
 interface GetMockOptions {
   pendingItems?: any[];
   pendingItemsRejects?: boolean;
-  allLoot?: any;
   mods?: any;
 }
 
@@ -145,7 +147,6 @@ const setupGetMock = (opts: GetMockOptions = {}) => {
   const {
     pendingItems = mockPendingItems,
     pendingItemsRejects = false,
-    allLoot = mockAllLoot,
     mods = mockMods,
   } = opts;
 
@@ -156,9 +157,6 @@ const setupGetMock = (opts: GetMockOptions = {}) => {
       }
       return Promise.resolve({ data: { items: pendingItems } });
     }
-    if (url === '/items') {
-      return Promise.resolve({ data: allLoot });
-    }
     if (url === '/item-creation/mods') {
       return Promise.resolve({ data: mods });
     }
@@ -166,10 +164,16 @@ const setupGetMock = (opts: GetMockOptions = {}) => {
   });
 };
 
-const setupPostMock = (saleCalc: any = mockSaleCalculation) => {
+const setupPostMock = (
+  saleCalc: any = mockSaleCalculation,
+  catalogItems: any = mockCatalogItems
+) => {
   (api.post as any).mockImplementation((url: string) => {
     if (url === '/sales/calculate') {
       return Promise.resolve({ data: saleCalc });
+    }
+    if (url === '/item-creation/items/by-ids') {
+      return Promise.resolve({ data: catalogItems });
     }
     return Promise.resolve({ data: { success: true } });
   });
@@ -215,14 +219,21 @@ describe('PendingSaleManagement', () => {
       expect(screen.getByText('Worthless Trinket')).toBeInTheDocument();
     });
 
-    it('also fetches all loot and mods for reference data', async () => {
+    it('fetches catalog items by id and the mods reference list', async () => {
       renderPendingSale();
 
+      // Mods come from a flat GET, catalog items come from a POST keyed
+      // off the unique itemids referenced by the pending rows.
       await waitFor(() => {
-        expect(api.get).toHaveBeenCalledWith('/items', { params: {} });
         expect(api.get).toHaveBeenCalledWith('/item-creation/mods', {
           params: {},
         });
+      });
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith(
+          '/item-creation/items/by-ids',
+          { itemIds: [101, 102, 103] }
+        );
       });
     });
 

@@ -23,10 +23,12 @@ vi.mock('../../../../utils/api', () => ({
 // Mock lootService (this is what the component actually calls for fetch/search)
 vi.mock('../../../../services/lootService', () => ({
   default: {
-    getAllLoot: vi.fn(),
     searchLoot: vi.fn(),
     getMods: vi.fn(),
     updateLootItemAsDM: vi.fn(),
+    // After a search returns items, the component fetches the catalog rows
+    // for each unique itemid so the "Real Item" column can render names.
+    getItemsByIds: vi.fn(),
   },
 }));
 
@@ -159,20 +161,14 @@ const mockSearchResults = [
 ];
 
 const setupDefaultMocks = () => {
-  // lootService.getAllLoot resolves with the response body envelope
-  // (the api response interceptor strips the axios envelope, so consumer code
-  // sees `response.data.summary` etc.).
-  (lootService.getAllLoot as any).mockResolvedValue({
-    data: {
-      summary: mockSummaryItems,
-      individual: mockIndividualItems,
-      count: mockSummaryItems.length + mockIndividualItems.length,
-    },
-  });
-
   // Default search returns empty unless overridden
   (lootService.searchLoot as any).mockResolvedValue({
     data: { items: [] },
+  });
+
+  // Catalog item lookups default to "no items found"; specific tests override.
+  (lootService.getItemsByIds as any).mockResolvedValue({
+    data: { items: [], count: 0 },
   });
 };
 
@@ -260,14 +256,6 @@ describe('GeneralItemManagement', () => {
   // 1. Initial mount
   // -------------------------------------------------------------------------
   describe('Initial mount', () => {
-    it('calls lootService.getAllLoot on mount', async () => {
-      renderComponent();
-
-      await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalledTimes(1);
-      });
-    });
-
     it('renders the search header and search controls after mounting', async () => {
       renderComponent();
 
@@ -284,7 +272,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       // Table only renders when filteredItems.length > 0
@@ -292,6 +280,48 @@ describe('GeneralItemManagement', () => {
       expect(
         screen.queryByText('Cloak of Resistance +1')
       ).not.toBeInTheDocument();
+    });
+
+    it('does NOT call getAllLoot on mount (catalog items are fetched lazily after a search)', async () => {
+      renderComponent();
+      await waitFor(() => {
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
+      });
+      // Component now resolves catalog item names via getItemsByIds keyed off
+      // the itemids in the search results, not via a blanket getAllLoot.
+      expect((lootService as any).getAllLoot).toBeUndefined();
+    });
+
+    it('fetches catalog items via getItemsByIds when a search returns rows with itemids', async () => {
+      (lootService.searchLoot as any).mockResolvedValueOnce({
+        data: {
+          items: [
+            { id: 50, name: 'Wand', itemid: 5364, value: 0 },
+            { id: 51, name: 'Boots', itemid: 2839, value: 0 },
+          ],
+        },
+      });
+      (lootService.getItemsByIds as any).mockResolvedValueOnce({
+        data: {
+          items: [
+            { id: 5364, name: 'Wand of Magic Missile', value: 750 },
+            { id: 2839, name: 'Sandals of the Lightest Step', value: 4500 },
+          ],
+          count: 2,
+        },
+      });
+
+      renderComponent();
+      await waitFor(() => {
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
+      });
+
+      fireEvent.change(getSearchInput(), { target: { value: 'sandals' } });
+      clickSearchButton();
+
+      await waitFor(() => {
+        expect(lootService.getItemsByIds).toHaveBeenCalledWith([5364, 2839]);
+      });
     });
   });
 
@@ -307,7 +337,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'nothing' } });
@@ -334,7 +364,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'cloak' } });
@@ -361,7 +391,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'cloak' } });
@@ -388,7 +418,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       await selectOption(labelPattern, optionText);
@@ -461,7 +491,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'sword' } });
@@ -496,7 +526,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       // Set a search term and a filter, then run a search
@@ -536,7 +566,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'cloak' } });
@@ -569,7 +599,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'a' } });
@@ -611,7 +641,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'cloak' } });
@@ -677,7 +707,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'cloak' } });
@@ -745,7 +775,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'cloak' } });
@@ -774,15 +804,30 @@ describe('GeneralItemManagement', () => {
   // 10. Error case: failing initial fetch shows error UI
   // -------------------------------------------------------------------------
   describe('Error states', () => {
-    it('shows an error alert when the initial fetch fails', async () => {
-      (lootService.getAllLoot as any).mockRejectedValueOnce(
-        new Error('boom')
+    it('survives a failing catalog lookup after a successful search', async () => {
+      // The search itself succeeds but the catalog enrichment errors. The
+      // component should still render the rows from the search; the "Real
+      // Item" column will fall back to its "Not linked" state for those rows.
+      (lootService.searchLoot as any).mockResolvedValueOnce({
+        data: {
+          items: [{ id: 1, name: 'Found Row', itemid: 999, value: 100 }],
+        },
+      });
+      (lootService.getItemsByIds as any).mockRejectedValueOnce(
+        new Error('catalog boom')
       );
 
       renderComponent();
-
       await waitFor(() => {
-        expect(screen.getByText('Error fetching items')).toBeInTheDocument();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
+      });
+
+      fireEvent.change(getSearchInput(), { target: { value: 'found' } });
+      clickSearchButton();
+
+      // Search results render even though catalog lookup failed.
+      await waitFor(() => {
+        expect(screen.getByText('Found Row')).toBeInTheDocument();
       });
     });
 
@@ -794,7 +839,7 @@ describe('GeneralItemManagement', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
+        expect(screen.getByText(/general item search/i)).toBeInTheDocument();
       });
 
       fireEvent.change(getSearchInput(), { target: { value: 'cloak' } });
