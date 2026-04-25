@@ -16,13 +16,6 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Mark spells as prepared/used per day
 - Support for spontaneous casters (spells known vs spells per day)
 
-### Character Sheet Integration
-*Low priority - Complex, significant effort, and better dedicated tools exist (Hero Lab, Pathbuilder).*
-- Track key character stats (level, HP, saves, key ability scores)
-- Wealth by Level comparison (flag when characters are over/under WBL)
-- Automatic APL calculation for infamy checks and encounter scaling
-- Track character feats relevant to loot (Appraise bonuses, crafting feats)
-
 ### Encounter Loot Generator
 - Generate random treasure by CR using PF1e treasure tables (CRB Chapter 12)
 - Support for individual monster loot, hoard treasure, and NPC gear
@@ -37,10 +30,8 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 
 ### Party Inventory
 *Partially implemented - The app already tracks party loot and consumables. Items below are the missing pieces.*
-- Shared party inventory separate from individual character loot
-- Track consumables used from party stock vs personal stock
 - Bag of Holding / Handy Haversack weight tracking
-- Encumbrance warnings per character
+
 
 ### NPC & Merchant Tracking
 *Low priority.*
@@ -56,10 +47,7 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Timeline view across the Golarion calendar
 
 ### Mobile Improvements
-- Responsive layout optimizations for phone-sized screens
-- Quick-action buttons for common operations (use consumable, mark item)
 - Swipe gestures for loot status changes
-- Offline support for basic viewing
 
 ### User Preferences System
 - Create `user_preferences` table (key-value per user, like global `settings` table)
@@ -69,18 +57,10 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 
 ## Quality of Life Improvements
 
-### Bulk Operations
-*Mostly implemented - Multi-select, bulk appraisal, and bulk identification already exist. Remaining items below.*
-- Multi-select items across pages for bulk status changes
-- Bulk appraisal (roll once, apply to all selected)
-- Bulk identification with automatic DC calculation
-- Copy items between campaigns
-
 ### Notifications
 *Low priority - Discord session reminders already exist. Additional notification channels likely not worth the effort.*
 - In-app notifications for session reminders
 - Email notifications for upcoming sessions
-- Discord DM notifications for player actions (item claimed, gold withdrawn)
 
 ### Undo/History
 *Medium priority - DM-only feature. Would prevent data loss from misclicks.*
@@ -105,6 +85,7 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Allow re-running setup from admin panel to reconfigure
 - Goal: Reduce docker-compose env block to only infrastructure (DB, ports, secrets, CORS)
 
+
 ### Performance
 - Server-side pagination for all list views
 - Database query caching for reference data (items, mods, spells)
@@ -120,3 +101,16 @@ Future features and improvements for the Pathfinder 1e Loot Tracker.
 - Automated database backups
 - Staging environment for testing before production
 - Health monitoring and alerting
+
+### Database Backup & Restore (DM Settings)
+*Low priority — frontend buttons exist in System Settings but the backend `/admin/backup-database` and `/admin/restore-database` routes are not implemented. Buttons currently 404; rarely used so leaving for later.*
+- Implement `POST /api/admin/backup-database` (pg_dump with table excludes)
+- Implement `POST /api/admin/restore-database` (multipart upload + pg_restore, with safety checks)
+- Backend tests for both endpoints
+- Re-enable / verify the existing SystemSettings UI once endpoints land
+
+### Mod Subtarget Selector (DM Item Management → Add Item/Mod)
+*Low priority UX bug — the Mods tab Subtarget dropdown lists every option regardless of selected target. "Light Weapon" and "Light Armor" both share `value="light"`, so MUI Select displays whichever is rendered last when "light" is selected, regardless of which one the DM actually picked.*
+- Filter Subtarget options based on the selected Target (weapon shows one-handed/two-handed/light/ammunition; armor shows light/medium/heavy/shield)
+- Keep storing `value="light"` so existing mod rows in the database stay valid
+- Add a frontend test covering Subtarget filtering once implemented
