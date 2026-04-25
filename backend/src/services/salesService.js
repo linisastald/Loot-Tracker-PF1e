@@ -127,8 +127,15 @@ class SalesService {
    */
   static async sellAllPendingItems() {
     return await dbUtils.executeTransaction(async (client) => {
-      // Get all items with status 'Pending Sale'
-      const itemsResult = await client.query("SELECT * FROM loot WHERE status = 'Pending Sale'");
+      // Get all items with status 'Pending Sale'.
+      // COALESCE so DM-linked items inherit the catalog value when the row's
+      // own value is null (otherwise we'd sell them for 0 gold).
+      const itemsResult = await client.query(`
+        SELECT l.*, COALESCE(l.value, i.value) AS value
+        FROM loot l
+        LEFT JOIN item i ON i.id = l.itemid
+        WHERE l.status = 'Pending Sale'
+      `);
       const items = itemsResult.rows;
 
       if (items.length === 0) {
@@ -157,8 +164,14 @@ class SalesService {
     }
 
     return await dbUtils.executeTransaction(async (client) => {
-      // Get the specified items
-      const itemsResult = await client.query('SELECT * FROM loot WHERE id = ANY($1)', [itemIds]);
+      // Get the specified items, falling back to catalog value when the row's
+      // own value is null so DM-linked items still sell for the right price.
+      const itemsResult = await client.query(`
+        SELECT l.*, COALESCE(l.value, i.value) AS value
+        FROM loot l
+        LEFT JOIN item i ON i.id = l.itemid
+        WHERE l.id = ANY($1)
+      `, [itemIds]);
       const items = itemsResult.rows;
 
       if (items.length === 0) {
@@ -187,13 +200,24 @@ class SalesService {
     }
 
     return await dbUtils.executeTransaction(async (client) => {
+      // Same COALESCE so DM-linked items inherit catalog value when needed.
       let query, params;
-      
+
       if (keepIds.length > 0) {
-        query = "SELECT * FROM loot WHERE status = 'Pending Sale' AND id != ALL($1)";
+        query = `
+          SELECT l.*, COALESCE(l.value, i.value) AS value
+          FROM loot l
+          LEFT JOIN item i ON i.id = l.itemid
+          WHERE l.status = 'Pending Sale' AND l.id != ALL($1)
+        `;
         params = [keepIds];
       } else {
-        query = "SELECT * FROM loot WHERE status = 'Pending Sale'";
+        query = `
+          SELECT l.*, COALESCE(l.value, i.value) AS value
+          FROM loot l
+          LEFT JOIN item i ON i.id = l.itemid
+          WHERE l.status = 'Pending Sale'
+        `;
         params = [];
       }
 
@@ -226,10 +250,18 @@ class SalesService {
     }
 
     return await dbUtils.executeTransaction(async (client) => {
-      // Get all pending sale items ordered by value (lowest first for better selection)
-      const itemsResult = await client.query(
-        "SELECT * FROM loot WHERE status = 'Pending Sale' AND unidentified != true AND value IS NOT NULL ORDER BY value ASC"
-      );
+      // Get all pending sale items ordered by value (lowest first for better selection).
+      // COALESCE so DM-linked items with a null loot.value but a populated
+      // catalog item.value still qualify and sort correctly.
+      const itemsResult = await client.query(`
+        SELECT l.*, COALESCE(l.value, i.value) AS value
+        FROM loot l
+        LEFT JOIN item i ON i.id = l.itemid
+        WHERE l.status = 'Pending Sale'
+          AND l.unidentified != true
+          AND COALESCE(l.value, i.value) IS NOT NULL
+        ORDER BY COALESCE(l.value, i.value) ASC
+      `);
       const items = itemsResult.rows;
 
       if (items.length === 0) {
@@ -258,13 +290,28 @@ class SalesService {
   }
 
   /**
-   * Get all items pending sale
-   * @returns {Promise<Array>} - Items pending sale
+   * Get all items pending sale.
+   * LEFT JOINs the catalog `item` table so rows that have an `itemid` set
+   * but no custom `loot.value` fall back to the catalog item's value for
+   * sale-value calculation. Without this, DM-linked unidentified items
+   * showed a sale value of 0 even though the linked catalog row had a
+   * proper price.
+   * @returns {Promise<Array>} - Items pending sale (each row has its raw
+   *   `value` plus a coalesced `value` so downstream calculators see the
+   *   right number).
    */
   static async getPendingSaleItems() {
-    const result = await dbUtils.executeQuery(
-      "SELECT * FROM loot WHERE status = 'Pending Sale' ORDER BY name"
-    );
+    const result = await dbUtils.executeQuery(`
+      SELECT
+        l.*,
+        COALESCE(l.value, i.value) AS value,
+        i.name AS catalog_name,
+        i.type AS catalog_type
+      FROM loot l
+      LEFT JOIN item i ON i.id = l.itemid
+      WHERE l.status = 'Pending Sale'
+      ORDER BY l.name
+    `);
     return result.rows;
   }
 
