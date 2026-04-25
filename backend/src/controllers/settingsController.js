@@ -247,6 +247,21 @@ const getAveragePartyLevel = async (req, res) => {
 };
 
 /**
+ * Get auto task generation setting
+ */
+const getAutoTaskGeneration = async (req, res) => {
+    try {
+        const settings = await fetchSettingsByNames(['auto_task_generation_enabled']);
+        const enabled = settings.auto_task_generation_enabled || '0';
+
+        controllerFactory.sendSuccessResponse(res, {value: enabled}, 'Auto task generation setting retrieved');
+    } catch (error) {
+        logger.error('Error fetching auto task generation setting:', error);
+        throw error;
+    }
+};
+
+/**
  * Get current region setting
  */
 const getRegion = async (req, res) => {
@@ -381,6 +396,10 @@ module.exports = {
 
     getRegion: controllerFactory.createHandler(getRegion, {
         errorMessage: 'Error fetching region setting'
+    }),
+
+    getAutoTaskGeneration: controllerFactory.createHandler(getAutoTaskGeneration, {
+        errorMessage: 'Error fetching auto task generation setting'
     }),
 
     getOpenAiKey: controllerFactory.createHandler(getOpenAiKey, {

@@ -387,17 +387,33 @@ class SessionSchedulerService {
      * Check for sessions that need task generation
      */
     async checkTaskGeneration() {
+        // Honor the DM-controlled feature flag. Default off — DMs opt in via
+        // Campaign Settings.
+        const settingResult = await pool.query(
+            "SELECT value FROM settings WHERE name = 'auto_task_generation_enabled'"
+        );
+        const enabled = settingResult.rows[0]?.value === '1';
+        if (!enabled) {
+            logger.debug('Auto task generation disabled; skipping scheduled run');
+            return;
+        }
+
         // Lazy load to avoid circular dependency
         const sessionTaskService = require('../tasks/SessionTaskService');
 
-        // Get sessions that need task generation
+        // Get sessions that need task generation. Filters out sessions that
+        // already have a task assignment row to prevent the hourly cron from
+        // re-firing the Discord embed every hour. (The previous query joined
+        // session_tasks — a different, unused table — and never excluded
+        // anything, so any confirmed session in the next 4 hours triggered
+        // a fresh Discord post every hour.)
         const result = await pool.query(`
             SELECT gs.* FROM game_sessions gs
-            LEFT JOIN session_tasks st ON gs.id = st.session_id
+            LEFT JOIN session_task_assignments sta ON gs.id = sta.session_id
             WHERE gs.status = 'confirmed'
             AND gs.start_time > NOW()
             AND gs.start_time <= NOW() + INTERVAL '4 hours'
-            AND st.id IS NULL
+            AND sta.id IS NULL
         `);
 
         for (const session of result.rows) {

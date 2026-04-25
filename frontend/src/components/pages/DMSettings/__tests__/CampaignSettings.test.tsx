@@ -33,6 +33,7 @@ const buildGetMock = (overrides: Record<string, any> = {}) => {
     '/settings/region': { data: { value: 'Varisia' } },
     '/settings/infamy-system': { data: { value: '0' } },
     '/settings/average-party-level': { data: { value: '5' } },
+    '/settings/auto-task-generation': { data: { value: '0' } },
     '/weather/regions': { data: defaultRegions },
     ...overrides,
   };
@@ -86,15 +87,17 @@ describe('CampaignSettings', () => {
       expect(api.get).toHaveBeenCalledWith('/settings/region');
       expect(api.get).toHaveBeenCalledWith('/settings/infamy-system');
       expect(api.get).toHaveBeenCalledWith('/settings/average-party-level');
+      expect(api.get).toHaveBeenCalledWith('/settings/auto-task-generation');
       expect(api.get).toHaveBeenCalledWith('/weather/regions');
 
-      // Each of the five endpoints called exactly once
+      // Each of the six endpoints called exactly once
       const calls = (api.get as any).mock.calls.map((c: any[]) => c[0]);
       const expectedEndpoints = [
         '/settings/campaign-name',
         '/settings/region',
         '/settings/infamy-system',
         '/settings/average-party-level',
+        '/settings/auto-task-generation',
         '/weather/regions',
       ];
       for (const ep of expectedEndpoints) {
@@ -188,6 +191,60 @@ describe('CampaignSettings', () => {
         expect(
           screen.getByText(/region updated successfully and weather initialized/i)
         ).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Auto task generation toggle', () => {
+    it('starts off when the setting is "0" and turning it on PUTs value "1"', async () => {
+      renderCampaignSettings();
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith('/settings/auto-task-generation');
+      });
+
+      const toggle = screen.getByRole('switch', { name: /enable auto task generation/i });
+      expect(toggle).not.toBeChecked();
+
+      fireEvent.click(toggle);
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
+          name: 'auto_task_generation_enabled',
+          value: '1',
+        });
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/auto task generation enabled successfully/i)
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('starts on when the setting is "1" and turning it off PUTs value "0"', async () => {
+      (api.get as any).mockImplementation(
+        buildGetMock({
+          '/settings/auto-task-generation': { data: { value: '1' } },
+        })
+      );
+
+      renderCampaignSettings();
+
+      const toggle = await screen.findByRole('switch', {
+        name: /enable auto task generation/i,
+      });
+      await waitFor(() => {
+        expect(toggle).toBeChecked();
+      });
+
+      fireEvent.click(toggle);
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
+          name: 'auto_task_generation_enabled',
+          value: '0',
+        });
       });
     });
   });

@@ -10,6 +10,7 @@ router.get('/infamy-system', verifyToken, settingsController.getInfamySystem);
 router.get('/average-party-level', verifyToken, settingsController.getAveragePartyLevel);
 router.get('/region', verifyToken, settingsController.getRegion);
 router.get('/openai-key', verifyToken, settingsController.getOpenAiKey);
+router.get('/auto-task-generation', verifyToken, settingsController.getAutoTaskGeneration);
 
 // Timezone routes
 router.get('/campaign-timezone', verifyToken, settingsController.getCampaignTimezone);
