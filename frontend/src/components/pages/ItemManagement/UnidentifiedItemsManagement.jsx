@@ -26,6 +26,7 @@ import {
 } from '../../../utils/utils';
 import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
+import { notifyLootCountsChanged } from '../../../utils/events';
 
 const UnidentifiedItemsManagement = () => {
     const { timezone } = useCampaignTimezone();
@@ -235,6 +236,7 @@ const UnidentifiedItemsManagement = () => {
             (successMessage) => {
                 setSuccess(successMessage);
                 fetchUnidentifiedItems(); // Refresh the list
+                notifyLootCountsChanged(); // Update the sidebar badge.
             },
             (errorMessage) => {
                 setError(errorMessage);

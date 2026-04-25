@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {fetchInitialData, prepareEntryForSubmission, validateLootEntries} from '../../utils/lootEntryUtils';
 import useLootEntryForm from '../../hooks/useLootEntryForm';
+import {notifyLootCountsChanged} from '../../utils/events';
 import {Alert, Box, Button, Container, Paper, Typography} from '@mui/material';
 import EntryForm from './EntryForm';
 
@@ -43,6 +44,11 @@ const LootEntry = () => {
             const processedCount = processedEntries.filter(entry => entry).length;
 
             setSuccess(`Successfully processed ${processedCount} entries.`);
+
+            // New unprocessed loot rows just got created — refresh sidebar badges.
+            if (processedCount > 0) {
+                notifyLootCountsChanged();
+            }
 
             // Keep only invalid entries in the form
             setEntries(invalidEntries);

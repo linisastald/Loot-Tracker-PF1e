@@ -6,6 +6,7 @@ import CustomUpdateDialog from '../../common/dialogs/CustomUpdateDialog';
 import useLootManagement from '../../../hooks/useLootManagement';
 import lootService from '../../../services/lootService';
 import { useAuth } from '../../../contexts/AuthContext';
+import { notifyLootCountsChanged } from '../../../utils/events';
 import { LootActionKey, LootManagementConfig, LootStatus } from '../../../types/game';
 
 interface BaseLootManagementProps {
@@ -56,6 +57,10 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
       });
       await fetchLoot();
       setSelectedItems([]);
+      // Status changes can move items in or out of the unprocessed bucket,
+      // so signal the sidebar to refresh its badge counts without waiting
+      // for the next route change.
+      notifyLootCountsChanged();
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(`Error updating loot status to ${status}:`, error);

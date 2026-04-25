@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {Link, useLocation} from 'react-router-dom';
 import {
   Avatar,
@@ -50,6 +50,7 @@ import api from '../../utils/api';
 import lootService from '../../services/lootService';
 import versionService from '../../services/versionService';
 import { useAuth } from '../../contexts/AuthContext';
+import { APP_EVENTS } from '../../utils/events';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLogout }) => {
   const [openBeta, setOpenBeta] = useState(false);
@@ -71,10 +72,28 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
 
   const handleToggle = (setter) => () => setter(prev => !prev);
 
+  // Refetch only the badge counts. Used when the user navigates, comes back
+  // to the tab, or a page tells us via the LOOT_COUNTS_CHANGED event that
+  // an action (status change, identification, etc.) might have moved the
+  // numbers. The other settings (campaign name, infamy, version) only fetch
+  // on mount because they rarely change inside a session.
+  const refreshCounts = useCallback(async () => {
+    try {
+      const [lootCountRes, unidentifiedCountRes] = await Promise.all([
+        lootService.getUnprocessedCount(),
+        lootService.getUnidentifiedCount(),
+      ]);
+      setUnprocessedLootCount(lootCountRes.data.count);
+      setUnidentifiedLootCount(unidentifiedCountRes.data.count);
+    } catch (error) {
+      console.error('Error refreshing sidebar counts:', error);
+    }
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
-    const fetchData = async () => {
+    const fetchInitial = async () => {
       try {
         const [lootCountRes, unidentifiedCountRes, groupNameRes, infamyRes, versionRes] = await Promise.all([
           lootService.getUnprocessedCount(),
@@ -101,12 +120,47 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
       }
     };
 
-    fetchData();
+    fetchInitial();
 
     return () => {
       isMounted = false;
     };
   }, []);
+
+  // Refresh counts on route change. Covers the common case where the user
+  // takes an action on one page (sells, identifies, marks status) and then
+  // navigates somewhere — by the time the next page renders, the badges
+  // reflect reality.
+  useEffect(() => {
+    refreshCounts();
+  }, [location.pathname, refreshCounts]);
+
+  // Refresh counts when the tab regains focus, so users coming back from
+  // another window see fresh numbers without a hard reload.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshCounts();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshCounts]);
+
+  // Refresh counts when a page explicitly signals that loot state changed.
+  // Pages that mutate loot (BaseLootManagement, Identify, etc.) call
+  // notifyLootCountsChanged() from utils/events to dispatch this.
+  useEffect(() => {
+    const onCountsChanged = () => {
+      refreshCounts();
+    };
+    window.addEventListener(APP_EVENTS.LOOT_COUNTS_CHANGED, onCountsChanged);
+    return () => {
+      window.removeEventListener(APP_EVENTS.LOOT_COUNTS_CHANGED, onCountsChanged);
+    };
+  }, [refreshCounts]);
 
 
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import lootService from '../../services/lootService';
+import { notifyLootCountsChanged } from '../../utils/events';
 import {
   Alert,
   Box,
@@ -261,6 +262,8 @@ const Identify: React.FC = () => {
 
         // Refresh loot data after identification attempts
         await fetchLoot();
+        // Notify the sidebar so the unidentified-items badge drops in real time.
+        notifyLootCountsChanged();
 
         // Set success message
         const successCount = response.data?.identified?.length || 0;
