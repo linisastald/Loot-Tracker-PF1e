@@ -306,10 +306,10 @@ describe('lootService', () => {
   });
 
   describe('confirmSale', () => {
-    it('should PUT /sales/confirm with sale data', async () => {
+    it('should POST /sales/confirm with sale data', async () => {
       const data = { saleId: 1, confirmed: true };
       await lootService.confirmSale(data);
-      expect(api.put).toHaveBeenCalledWith('/sales/confirm', data);
+      expect(api.post).toHaveBeenCalledWith('/sales/confirm', data);
     });
   });
 

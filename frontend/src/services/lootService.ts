@@ -253,7 +253,7 @@ const lootService = {
    * Confirm sale
    */
   confirmSale: (data: Record<string, any>): Promise<ApiResponse> =>
-    api.put('/sales/confirm', data),
+    api.post('/sales/confirm', data),
 
   // ===== Appraisal & Identification =====
 
