@@ -326,9 +326,12 @@ describe('PendingSaleManagement', () => {
           return Promise.resolve({ data: mockSaleCalculation });
         }
         if (url === '/sales/confirm') {
+          // Match the real api response interceptor shape:
+          //   { success, message, data } where `data` is the controller payload.
           return Promise.resolve({
+            success: true,
+            message: 'Sale confirmed',
             data: {
-              success: true,
               sold: { count: 2, total: 150.5 },
             },
           });
@@ -393,8 +396,9 @@ describe('PendingSaleManagement', () => {
         }
         if (url === '/sales/selected') {
           return Promise.resolve({
+            success: true,
+            message: 'Sold selected',
             data: {
-              success: true,
               sold: { count: 1, total: 50 },
               skipped: { count: 0 },
             },
@@ -439,8 +443,9 @@ describe('PendingSaleManagement', () => {
         }
         if (url === '/sales/selected') {
           return Promise.resolve({
+            success: true,
+            message: 'Sold selected with skips',
             data: {
-              success: true,
               sold: { count: 1, total: 50 },
               skipped: { count: 2 },
             },
@@ -508,8 +513,9 @@ describe('PendingSaleManagement', () => {
         }
         if (url === '/sales/selected') {
           return Promise.resolve({
+            success: true,
+            message: 'Sold selected (mixed)',
             data: {
-              success: true,
               sold: { count: 1, total: 50 },
               skipped: { count: 0 },
             },
@@ -547,8 +553,9 @@ describe('PendingSaleManagement', () => {
         }
         if (url === '/sales/all-except') {
           return Promise.resolve({
+            success: true,
+            message: 'Sold all except',
             data: {
-              success: true,
               sold: { count: 2, total: 75.25 },
               kept: { count: 1 },
             },
@@ -604,8 +611,9 @@ describe('PendingSaleManagement', () => {
         }
         if (url === '/sales/up-to') {
           return Promise.resolve({
+            success: true,
+            message: 'Sold up to amount',
             data: {
-              success: true,
               sold: { count: 2, total: 99.99 },
             },
           });
