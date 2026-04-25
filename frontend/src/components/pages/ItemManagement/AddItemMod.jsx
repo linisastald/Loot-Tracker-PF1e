@@ -493,18 +493,6 @@ const AddItemMod = () => {
                                         margin="normal"
                                     />
                                 </Grid>
-                                <Grid size={{xs: 12, md: 4}}>
-                                    <TextField
-                                        label="Caster Level"
-                                        name="casterlevel"
-                                        type="number"
-                                        value={modForm.casterlevel}
-                                        onChange={handleModFormChange}
-                                        fullWidth
-                                        margin="normal"
-                                        helperText="Required for spellcraft DC calculation"
-                                    />
-                                </Grid>
                                 <Grid size={12}>
                                     <Box display="flex" justifyContent="space-between" mt={2}>
                                         <Button
