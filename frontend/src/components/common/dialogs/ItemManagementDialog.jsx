@@ -29,6 +29,10 @@ const ItemManagementDialog = ({
     const [itemInputValue, setItemInputValue] = useState('');
     const [items, setItems] = useState([]);
     const [mods, setMods] = useState([]);
+    // The catalog row for the currently linked itemid (separate from the
+    // user's loot list). Used to drive the Autocomplete `value` prop and to
+    // recompute the spellcraft DC when itemid or modids change.
+    const [linkedCatalogItem, setLinkedCatalogItem] = useState(null);
     const [error, setError] = useState(null);
 
     // Initialize the form when the dialog opens or item changes
@@ -40,40 +44,74 @@ const ItemManagementDialog = ({
         }
     }, [open, item]);
 
-    // Load current item data when dialog opens
+    // Load the linked catalog item when the dialog opens or the itemid changes.
+    // Drives both the Autocomplete display (`value` + `inputValue`) AND the
+    // spellcraft DC recomputation effect below.
     useEffect(() => {
-        if (open && updatedItem && updatedItem.itemid) {
-            const loadItemDetails = async () => {
-                try {
-                    // Try to find the item in the already loaded items
-                    const existingItem = items.find(i => i.id === updatedItem.itemid);
-
-                    if (existingItem) {
-                        // If we already have it, update the input value
-                        setItemInputValue(existingItem.name);
-                        setItemOptions([existingItem]);
-                    } else {
-                        // Otherwise fetch it by ID from base items
-                        const response = await lootService.getItemsByIds([updatedItem.itemid]);
-                        // API returns { items: [...], count: number }
-                        const allItems = response.data.items || [];
-                        if (allItems && allItems.length > 0) {
-                            const matchingItem = allItems[0]; // Should be the exact item
-                            setItemInputValue(matchingItem.name);
-                            setItemOptions([matchingItem]);
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error loading item details:', error);
-                }
-            };
-
-            loadItemDetails();
-        } else if (!open) {
+        if (!open) {
             setItemInputValue('');
             setItemOptions([]);
+            setLinkedCatalogItem(null);
+            return;
         }
-    }, [open, updatedItem, items]);
+        if (!updatedItem?.itemid) {
+            // No item linked — clear display state but keep options for searching.
+            setItemInputValue('');
+            setLinkedCatalogItem(null);
+            return;
+        }
+        let cancelled = false;
+        const loadLinked = async () => {
+            try {
+                const response = await lootService.getItemsByIds([updatedItem.itemid]);
+                const fetched = response?.data?.items?.[0] || null;
+                if (cancelled) return;
+                if (fetched) {
+                    setLinkedCatalogItem(fetched);
+                    setItemInputValue(fetched.name);
+                    // Make sure the linked item is in the Autocomplete options so
+                    // the controlled `value` prop can find it.
+                    setItemOptions(prev => {
+                        if (prev.some(o => o.id === fetched.id)) return prev;
+                        return [fetched, ...prev];
+                    });
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    console.error('Error loading linked item details:', err);
+                }
+            }
+        };
+        loadLinked();
+        return () => {
+            cancelled = true;
+        };
+    }, [open, updatedItem?.itemid]);
+
+    // Recompute the spellcraft DC whenever the linked catalog item or the
+    // selected mods change. Mirrors `calculateSpellcraftDC` in utils/utils.ts:
+    // weapons/armor with mods use the highest mod caster level; everything
+    // else uses the base item's caster level. DC = 15 + min(CL, 20).
+    useEffect(() => {
+        if (!open || !linkedCatalogItem) return;
+        const isWeaponOrArmor =
+            linkedCatalogItem.type === 'weapon' || linkedCatalogItem.type === 'armor';
+        const selectedModIds = Array.isArray(updatedItem?.modids) ? updatedItem.modids : [];
+        let effectiveCasterLevel = linkedCatalogItem.casterlevel || 1;
+        if (isWeaponOrArmor && selectedModIds.length > 0 && mods.length > 0) {
+            const modCasterLevels = selectedModIds
+                .map(id => mods.find(m => m.id === id))
+                .filter(m => m && m.casterlevel != null)
+                .map(m => m.casterlevel);
+            if (modCasterLevels.length > 0) {
+                effectiveCasterLevel = Math.max(...modCasterLevels);
+            }
+        }
+        const newDC = 15 + Math.min(effectiveCasterLevel, 20);
+        setUpdatedItem(prev =>
+            prev?.spellcraft_dc === newDC ? prev : { ...prev, spellcraft_dc: newDC }
+        );
+    }, [open, linkedCatalogItem, updatedItem?.modids, mods]);
 
     const fetchItems = async () => {
         try {
@@ -284,6 +322,17 @@ const ItemManagementDialog = ({
                 <Autocomplete
                     disablePortal
                     options={itemOptions}
+                    // Controlled selection: pull the option matching the linked
+                    // itemid from the options list. Without this, MUI keeps the
+                    // input visually empty even though `inputValue` is set.
+                    value={
+                        itemOptions.find(o => o?.id === updatedItem.itemid) ||
+                        linkedCatalogItem ||
+                        null
+                    }
+                    isOptionEqualToValue={(option, value) =>
+                        option?.id === value?.id
+                    }
                     getOptionLabel={(option) => {
                         // Handle various possible option formats
                         if (typeof option === 'string') return option;
@@ -297,8 +346,14 @@ const ItemManagementDialog = ({
                     onChange={(_, newValue) => {
                         if (newValue && typeof newValue === 'object') {
                             handleItemUpdateChange('itemid', newValue.id);
+                            setItemInputValue(newValue.name || '');
+                            // Cache the catalog item for the DC recompute effect
+                            // so it doesn't have to wait for a round-trip.
+                            setLinkedCatalogItem(newValue);
                         } else {
                             handleItemUpdateChange('itemid', null);
+                            setItemInputValue('');
+                            setLinkedCatalogItem(null);
                         }
                     }}
                     loading={itemsLoading}

@@ -2,6 +2,28 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
+// Re-install ResizeObserver / IntersectionObserver shims after vi.resetAllMocks
+// in beforeEach. setupTests.ts installs them once via vi.fn(), but
+// resetAllMocks wipes that mock implementation; MUI's TextareaAutosize then
+// crashes with "resizeObserver.observe is not a function".
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+class MockIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
+(globalThis as any).ResizeObserver = MockResizeObserver;
+(globalThis as any).IntersectionObserver = MockIntersectionObserver;
+(window as any).ResizeObserver = MockResizeObserver;
+(window as any).IntersectionObserver = MockIntersectionObserver;
+
 // Mock the api utility (4 levels up from this __tests__ folder).
 vi.mock('../../../../utils/api', () => ({
   default: {
@@ -74,6 +96,11 @@ const setupDefaultMocks = () => {
 describe('ItemManagementDialog', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // Reinstall observer shims after resetAllMocks wipes the setupTests stubs.
+    (globalThis as any).ResizeObserver = MockResizeObserver;
+    (globalThis as any).IntersectionObserver = MockIntersectionObserver;
+    (window as any).ResizeObserver = MockResizeObserver;
+    (window as any).IntersectionObserver = MockIntersectionObserver;
     setupDefaultMocks();
   });
 

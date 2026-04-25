@@ -58,12 +58,14 @@ const SoldLoot = () => {
         if (!soldDetails[date]) {
             const fetchSoldDetails = async () => {
                 try {
-                    // Convert the date string to a Date object and format it as YYYY-MM-DD
-                    const dateObj = new Date(date);
-                    const year = dateObj.getFullYear();
-                    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-                    const day = String(dateObj.getDate()).padStart(2, '0');
-                    const formattedDate = `${year}-${month}-${day}`;
+                    // The summary endpoint returns `soldon` as an ISO string at UTC
+                    // midnight (e.g. "2026-04-25T00:00:00.000Z"). The detail endpoint
+                    // expects YYYY-MM-DD matching the date the row was stored under,
+                    // not the viewer's local date. Slicing the ISO string keeps us
+                    // on the stored UTC date regardless of timezone.
+                    const formattedDate = typeof date === 'string' && date.length >= 10
+                        ? date.slice(0, 10)
+                        : new Date(date).toISOString().slice(0, 10);
 
                     const response = await api.get(`/sold/${formattedDate}`);
 
