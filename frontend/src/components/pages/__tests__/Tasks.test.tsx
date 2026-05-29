@@ -151,4 +151,57 @@ describe('Tasks', () => {
       );
     });
   });
+
+  it('assigns two Loot Masters but never both to the same person', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: [
+        { id: 1, name: 'Fighter Bob', player_name: 'Bob' },
+        { id: 2, name: 'Wizard Alice', player_name: 'Alice' },
+        { id: 3, name: 'Rogue Cat', player_name: 'Cat' },
+        { id: 4, name: 'Cleric Dan', player_name: 'Dan' },
+      ],
+    });
+    renderComponent();
+
+    // Select all four characters.
+    fireEvent.click(await screen.findByText('Fighter Bob'));
+    fireEvent.click(screen.getByText('Wizard Alice'));
+    fireEvent.click(screen.getByText('Rogue Cat'));
+    fireEvent.click(screen.getByText('Cleric Dan'));
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /assign tasks and send to discord/i })
+    );
+
+    let assignments: { pre: Record<string, string[]>; during: Record<string, string[]>; post: Record<string, string[]> } =
+      { pre: {}, during: {}, post: {} };
+    await waitFor(() => {
+      const call = (api.post as any).mock.calls.find(
+        (c: any[]) => c[0] === '/sessions/task-history'
+      );
+      expect(call).toBeTruthy();
+      assignments = call[1].assignments;
+    });
+
+    const during = assignments.during;
+
+    // Exactly two Loot Masters total, and no single person holds both.
+    const allDuring = Object.values(during).flat();
+    expect(allDuring.filter(t => t === 'Loot Master')).toHaveLength(2);
+    for (const tasks of Object.values(during)) {
+      expect(tasks.filter(t => t === 'Loot Master').length).toBeLessThanOrEqual(1);
+    }
+
+    // No one should ever receive the same task twice - including Free Space -
+    // across any of the three task groups (4 characters is plenty of room).
+    for (const group of [assignments.pre, assignments.during, assignments.post]) {
+      for (const tasks of Object.values(group)) {
+        const counts: Record<string, number> = {};
+        for (const t of tasks) counts[t] = (counts[t] || 0) + 1;
+        for (const t of Object.keys(counts)) {
+          expect(counts[t]).toBe(1);
+        }
+      }
+    }
+  });
 });

@@ -334,9 +334,9 @@ const Tasks: React.FC = () => {
             const duringTasks = [
                 'Calendar Master',
                 'Loot Master',
+                'Loot Master',
                 'Lore Master',
                 'Rule & Battle Master',
-                'Loot Master',
                 'Inspiration Master'
             ];
 
@@ -354,30 +354,39 @@ const Tasks: React.FC = () => {
                 if (chars.length === 0) return {};
 
                 const charCount = chars.length;
-                let adjustedTasks = [...tasks];
 
-                if (tasks.length === charCount) {
-                    adjustedTasks = shuffleArray(adjustedTasks);
-                } else if (tasks.length > charCount) {
-                    while (adjustedTasks.length < charCount * 2) {
-                        adjustedTasks.push('Free Space');
-                    }
-                    adjustedTasks = shuffleArray(adjustedTasks);
-                } else {
-                    while (adjustedTasks.length < charCount) {
-                        adjustedTasks.push('Free Space');
-                    }
-                    adjustedTasks = shuffleArray(adjustedTasks);
+                // Build the task pool with the same Free Space padding as before
+                // so each character ends up with the usual number of slots.
+                const pool = [...tasks];
+                if (tasks.length > charCount) {
+                    while (pool.length < charCount * 2) pool.push('Free Space');
+                } else if (tasks.length < charCount) {
+                    while (pool.length < charCount) pool.push('Free Space');
                 }
 
+                // Group identical tasks together, then deal with a single
+                // continuously-advancing pointer. Because copies of the same
+                // task are consecutive, they always land on adjacent (different)
+                // people - so the two Loot Masters can never go to one person,
+                // and the Free Space padding spreads out too. (Holds as long as
+                // no single task has more copies than there are characters.)
+                const groups = {};
+                pool.forEach(task => {
+                    (groups[task] = groups[task] || []).push(task);
+                });
+                // Shuffle the group order so it isn't always alphabetical, while
+                // keeping each group's copies contiguous.
+                const grouped = shuffleArray(Object.keys(groups)).flatMap(key => groups[key]);
+
+                const order = shuffleArray(chars.map(char => char.name));
+
                 const assigned = {};
-                chars.forEach(char => {
-                    assigned[char.name] = [];
+                order.forEach(name => {
+                    assigned[name] = [];
                 });
 
-                adjustedTasks.forEach((task, index) => {
-                    const charName = chars[index % charCount].name;
-                    assigned[charName].push(task);
+                grouped.forEach((task, index) => {
+                    assigned[order[index % charCount]].push(task);
                 });
 
                 return assigned;
