@@ -3,6 +3,12 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const { generateWeatherForNextDay } = require('./weatherController');
+const { getMonthDays, addDays, calculateDaysBetween } = require('../utils/golarionCalendar');
+
+// Maximum number of days a single advance request may jump, to avoid a
+// runaway weather-generation loop. The DM can issue another request to go
+// further.
+const MAX_ADVANCE_DAYS = 366;
 
 /**
  * Get the current date in the Golarion calendar
@@ -39,16 +45,16 @@ const setCurrentDate = async (req, res) => {
     throw controllerFactory.createValidationError('Month must be between 1 and 12');
   }
 
-  const daysInMonth = getMonthDays(month);
+  const daysInMonth = getMonthDays(year, month);
   if (day < 1 || day > daysInMonth) {
     throw controllerFactory.createValidationError(`Day must be between 1 and ${daysInMonth} for this month`);
   }
 
-  // Run the UPDATE inside a transaction, but send the HTTP response only
+  // Update the date inside a transaction, but send the HTTP response only
   // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
   // client can refetch before the commit is visible to other pool clients
   // (MVCC) and see stale data.
-  await dbUtils.executeTransaction(async (client) => {
+  const { oldDate, region } = await dbUtils.executeTransaction(async (client) => {
     // Get the old date before updating (for weather generation)
     const oldDateResult = await client.query('SELECT year, month, day FROM golarion_current_date LIMIT 1');
 
@@ -67,13 +73,24 @@ const setCurrentDate = async (req, res) => {
 
     // Get global region setting
     const regionResult = await client.query('SELECT value FROM settings WHERE name = $1', ['region']);
-    const region = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
 
-    // Generate weather for any missing dates between old and new date
-    if (oldDateResult.rows.length > 0) {
-      await generateMissingWeather(oldDateResult.rows[0], {year, month, day}, region);
-    }
+    return {
+      oldDate: oldDateResult.rows[0] || null,
+      region: regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia',
+    };
   });
+
+  // Generate weather for any skipped dates AFTER the transaction commits, so
+  // the per-day weather queries don't hold the transaction's connection open
+  // (each acquires its own pooled connection). Best-effort: the date change
+  // stands even if weather generation fails.
+  if (oldDate) {
+    try {
+      await generateMissingWeather(oldDate, {year, month, day}, region);
+    } catch (weatherError) {
+      logger.error('Error generating missing weather while setting date:', weatherError);
+    }
+  }
 
   return controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Current date set successfully');
 };
@@ -100,23 +117,8 @@ const advanceDay = async (req, res) => {
       return { initialized: true, year: 4722, month: 1, day: 1 };
     }
 
-    let {year, month, day} = result.rows[0];
-
-    // Advance by one day
-    day++;
-
-    // Handle month overflow based on days in month
-    const daysInMonth = getMonthDays(month);
-    if (day > daysInMonth) {
-      day = 1;
-      month++;
-
-      // Handle year overflow
-      if (month > 12) {
-        month = 1;
-        year++;
-      }
-    }
+    // Advance by one day (leap-aware month/year rollover)
+    const {year, month, day} = addDays(result.rows[0], 1);
 
     // Update the date
     await client.query(
@@ -155,6 +157,69 @@ const advanceDay = async (req, res) => {
 };
 
 /**
+ * Advance the current date by a given number of days in a single request.
+ * Generates weather for every day jumped over, in one transaction, instead
+ * of the client issuing one request per day.
+ */
+const advanceDays = async (req, res) => {
+  const { days } = req.body;
+
+  if (!Number.isInteger(days) || days < 1) {
+    throw controllerFactory.createValidationError('days must be a positive integer');
+  }
+
+  if (days > MAX_ADVANCE_DAYS) {
+    throw controllerFactory.createValidationError(
+      `Cannot advance more than ${MAX_ADVANCE_DAYS} days at once`
+    );
+  }
+
+  const { oldDate, target, region } = await dbUtils.executeTransaction(async (client) => {
+    // Get current date, initializing if it doesn't exist
+    const result = await client.query('SELECT year, month, day FROM golarion_current_date LIMIT 1');
+
+    let current;
+    if (result.rows.length === 0) {
+      current = { year: 4722, month: 1, day: 1 };
+      await client.query(
+        'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
+        [current.year, current.month, current.day]
+      );
+    } else {
+      current = result.rows[0];
+    }
+
+    const newDate = addDays(current, days);
+
+    await client.query(
+      'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
+      [newDate.year, newDate.month, newDate.day]
+    );
+
+    // Get global region setting
+    const regionResult = await client.query('SELECT value FROM settings WHERE name = $1', ['region']);
+
+    return {
+      oldDate: current,
+      target: newDate,
+      region: regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia',
+    };
+  });
+
+  // Generate weather for each day jumped over AFTER the transaction commits,
+  // so the (up to MAX_ADVANCE_DAYS) per-day weather queries don't hold the
+  // transaction's connection open. Best-effort: the date change stands even
+  // if weather generation fails.
+  try {
+    await generateMissingWeather(oldDate, target, region);
+  } catch (weatherError) {
+    logger.error('Error generating weather while advancing days:', weatherError);
+  }
+
+  return controllerFactory.sendSuccessResponse(res, target, 'Date advanced successfully');
+};
+
+/**
  * Get all calendar notes
  */
 const getNotes = async (req, res) => {
@@ -188,7 +253,7 @@ const saveNote = async (req, res) => {
     throw controllerFactory.createValidationError('Month must be between 1 and 12');
   }
 
-  const daysInMonth = getMonthDays(date.month);
+  const daysInMonth = getMonthDays(date.year, date.month);
   if (date.day < 1 || date.day > daysInMonth) {
     throw controllerFactory.createValidationError(`Day must be between 1 and ${daysInMonth} for this month`);
   }
@@ -202,48 +267,6 @@ const saveNote = async (req, res) => {
   );
 
   controllerFactory.sendSuccessResponse(res, {date, note}, 'Note saved successfully');
-};
-
-/**
- * Helper function to get the number of days in a month
- * @param {number} month - The month (1-12)
- * @returns {number} - The number of days in the month
- */
-const getMonthDays = (month) => {
-  const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return monthDays[month - 1]; // Convert 1-12 to 0-11 for array access
-};
-
-/**
- * Helper function to calculate days between two dates
- */
-const calculateDaysBetween = (startDate, endDate) => {
-  let days = [];
-  let current = {...startDate};
-
-  while (current.year < endDate.year || 
-         (current.year === endDate.year && current.month < endDate.month) ||
-         (current.year === endDate.year && current.month === endDate.month && current.day < endDate.day)) {
-    
-    current.day++;
-    
-    // Handle month overflow
-    const daysInMonth = getMonthDays(current.month);
-    if (current.day > daysInMonth) {
-      current.day = 1;
-      current.month++;
-      
-      // Handle year overflow
-      if (current.month > 12) {
-        current.month = 1;
-        current.year++;
-      }
-    }
-    
-    days.push({...current});
-  }
-  
-  return days;
 };
 
 /**
@@ -292,6 +315,11 @@ module.exports = {
 
   advanceDay: controllerFactory.createHandler(advanceDay, {
     errorMessage: 'Error advancing day'
+  }),
+
+  advanceDays: controllerFactory.createHandler(advanceDays, {
+    errorMessage: 'Error advancing days',
+    validation: { requiredFields: ['days'] }
   }),
 
   getNotes: controllerFactory.createHandler(getNotes, {

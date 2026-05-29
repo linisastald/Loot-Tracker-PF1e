@@ -371,6 +371,120 @@ describe('calendarController', () => {
   });
 
   // ---------------------------------------------------------------
+  // advanceDays
+  // ---------------------------------------------------------------
+  describe('advanceDays', () => {
+    // Builds a transaction client mock for the date SELECT/UPDATE/region trio.
+    function mockAdvanceClient(currentDate) {
+      return {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [currentDate] }) // SELECT current date
+          .mockResolvedValueOnce({ rows: [] })            // UPDATE
+          .mockResolvedValueOnce({ rows: [{ value: 'Varisia' }] }), // region setting
+        release: jest.fn(),
+      };
+    }
+
+    it('advances multiple days within a month in one request', async () => {
+      const req = createMockReq({ body: { days: 5 } });
+      const res = createMockRes();
+
+      const mockClient = mockAdvanceClient({ year: 4723, month: 3, day: 10 });
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      // generateMissingWeather existence checks (runs after commit)
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '0' }] });
+
+      await calendarController.advanceDays(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        { year: 4723, month: 3, day: 15 },
+        'Date advanced successfully'
+      );
+    });
+
+    it('advances across month and year boundaries', async () => {
+      const req = createMockReq({ body: { days: 2 } });
+      const res = createMockRes();
+
+      const mockClient = mockAdvanceClient({ year: 4723, month: 12, day: 31 });
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '0' }] });
+
+      await calendarController.advanceDays(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        { year: 4724, month: 1, day: 2 },
+        'Date advanced successfully'
+      );
+    });
+
+    it('includes the leap day when advancing across Calistril in a leap year', async () => {
+      const req = createMockReq({ body: { days: 1 } });
+      const res = createMockRes();
+
+      // 4720 is a leap year; 28 Calistril -> 29 Calistril (not 1 Pharast).
+      const mockClient = mockAdvanceClient({ year: 4720, month: 2, day: 28 });
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '0' }] });
+
+      await calendarController.advanceDays(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        { year: 4720, month: 2, day: 29 },
+        'Date advanced successfully'
+      );
+    });
+
+    it('rejects a non-integer days value', async () => {
+      const req = createMockReq({ body: { days: 1.5 } });
+      const res = createMockRes();
+
+      await calendarController.advanceDays(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('days must be a positive integer');
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects days less than 1', async () => {
+      const req = createMockReq({ body: { days: 0 } });
+      const res = createMockRes();
+
+      await calendarController.advanceDays(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('days must be a positive integer');
+    });
+
+    it('rejects advancing more than the maximum allowed days', async () => {
+      const req = createMockReq({ body: { days: 367 } });
+      const res = createMockRes();
+
+      await calendarController.advanceDays(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot advance more than')
+      );
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('still advances the date when weather generation fails (best-effort)', async () => {
+      const req = createMockReq({ body: { days: 3 } });
+      const res = createMockRes();
+
+      const mockClient = mockAdvanceClient({ year: 4723, month: 6, day: 10 });
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      // Existence check rejects -> generateMissingWeather throws -> swallowed
+      dbUtils.executeQuery.mockRejectedValue(new Error('Weather DB down'));
+
+      await calendarController.advanceDays(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        { year: 4723, month: 6, day: 13 },
+        'Date advanced successfully'
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------
   // getNotes
   // ---------------------------------------------------------------
   describe('getNotes', () => {

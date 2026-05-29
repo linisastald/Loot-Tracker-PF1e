@@ -1,6 +1,7 @@
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const { getMonthDays } = require('../utils/golarionCalendar');
 
 // Weather condition types and their emojis
 const WEATHER_CONDITIONS = {
@@ -278,8 +279,7 @@ const initializeWeatherHistory = async (req, res) => {
                     targetDate.month = 12;
                     targetDate.year--;
                 }
-                const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-                targetDate.day += monthDays[targetDate.month - 1]; // Convert 1-12 to 0-11 for array access
+                targetDate.day += getMonthDays(targetDate.year, targetDate.month);
             }
             
             // Get recent weather for weather generation context

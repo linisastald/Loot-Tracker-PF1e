@@ -10,6 +10,12 @@ vi.mock('../api', () => ({
 import api from '../api';
 import {
   GOLARION_MONTHS,
+  GOLARION_DAYS_OF_WEEK,
+  LUNAR_CYCLE_DAYS,
+  isGolarionLeapYear,
+  getGolarionMonthDays,
+  getGolarionDayOfWeek,
+  getGolarionMoonPhase,
   formatGolarionDate,
   parseGolarionDate,
   getCurrentGolarionDate,
@@ -194,6 +200,109 @@ describe('golarionDate utilities', () => {
 
       const result = await getTodayInInputFormat();
       expect(result).toBe('4722-01-01');
+    });
+  });
+
+  // --------------- isGolarionLeapYear ---------------
+  describe('isGolarionLeapYear', () => {
+    it('treats years divisible by 8 as leap years (4712, 4720)', () => {
+      expect(isGolarionLeapYear(4712)).toBe(true);
+      expect(isGolarionLeapYear(4720)).toBe(true);
+    });
+
+    it('treats non-divisible years as common years', () => {
+      expect(isGolarionLeapYear(4722)).toBe(false);
+      expect(isGolarionLeapYear(4710)).toBe(false);
+    });
+  });
+
+  // --------------- getGolarionMonthDays ---------------
+  describe('getGolarionMonthDays', () => {
+    it('returns 28 for Calistril in a common year and 29 in a leap year', () => {
+      expect(getGolarionMonthDays(4722, 2)).toBe(28);
+      expect(getGolarionMonthDays(4720, 2)).toBe(29);
+    });
+
+    it('returns standard lengths for other months', () => {
+      expect(getGolarionMonthDays(4722, 1)).toBe(31); // Abadius
+      expect(getGolarionMonthDays(4720, 1)).toBe(31);
+      expect(getGolarionMonthDays(4722, 4)).toBe(30); // Gozran
+    });
+  });
+
+  // --------------- getGolarionDayOfWeek ---------------
+  describe('getGolarionDayOfWeek', () => {
+    it('treats 1 Abadius 1 AR as Moonday (index 0)', () => {
+      expect(getGolarionDayOfWeek(1, 1, 1)).toBe(0);
+    });
+
+    it('maps the first week of 1 AR onto the canonical day order', () => {
+      for (let day = 1; day <= 7; day++) {
+        expect(GOLARION_DAYS_OF_WEEK[getGolarionDayOfWeek(1, 1, day)]).toBe(
+          GOLARION_DAYS_OF_WEEK[day - 1]
+        );
+      }
+      // The week wraps: 8 Abadius is Moonday again.
+      expect(getGolarionDayOfWeek(1, 1, 8)).toBe(0);
+    });
+
+    it('advances by exactly one weekday across a month boundary', () => {
+      // 31 Abadius -> 1 Calistril must be consecutive weekdays (regression:
+      // the old month*30 math broke continuity at month boundaries).
+      const last = getGolarionDayOfWeek(4722, 1, 31);
+      const next = getGolarionDayOfWeek(4722, 2, 1);
+      expect(next).toBe((last + 1) % 7);
+    });
+
+    it('advances by exactly one weekday across a year boundary', () => {
+      const last = getGolarionDayOfWeek(4722, 12, 31);
+      const next = getGolarionDayOfWeek(4723, 1, 1);
+      expect(next).toBe((last + 1) % 7);
+    });
+
+    it('accounts for the leap day across Calistril in a leap year', () => {
+      // 4720 is leap: 29 Calistril exists, then 1 Pharast.
+      const leapDay = getGolarionDayOfWeek(4720, 2, 29);
+      const nextMonth = getGolarionDayOfWeek(4720, 3, 1);
+      expect(nextMonth).toBe((leapDay + 1) % 7);
+    });
+  });
+
+  // --------------- getGolarionMoonPhase ---------------
+  describe('getGolarionMoonPhase', () => {
+    it('defines the epoch (1 Abadius 1 AR) as a New Moon', () => {
+      expect(getGolarionMoonPhase(1, 1, 1).name).toBe('New Moon');
+    });
+
+    it('returns a phase with a name and emoji', () => {
+      const phase = getGolarionMoonPhase(4722, 6, 15);
+      expect(phase).toHaveProperty('name');
+      expect(phase).toHaveProperty('emoji');
+      expect(typeof phase.emoji).toBe('string');
+    });
+
+    it('returns to the same phase after one full lunar cycle', () => {
+      // LUNAR_CYCLE_DAYS after the epoch lands on 29 Abadius (31-day month).
+      const start = getGolarionMoonPhase(1, 1, 1);
+      const oneCycleLater = getGolarionMoonPhase(1, 1, 1 + LUNAR_CYCLE_DAYS);
+      expect(oneCycleLater.name).toBe(start.name);
+    });
+
+    it('does not freeze or jump the phase across a month boundary', () => {
+      // Regression: the old math made 31 Abadius and 1 Calistril identical.
+      // With a continuous day counter they should be adjacent days, so the
+      // phase index difference is at most one step.
+      const a = getGolarionMoonPhase(4722, 1, 31);
+      const b = getGolarionMoonPhase(4722, 2, 1);
+      // Either same bucket or the next one — never a multi-day jump.
+      const names = [
+        'New Moon', 'Waxing Crescent', 'First Quarter', 'Waxing Gibbous',
+        'Full Moon', 'Waning Gibbous', 'Last Quarter', 'Waning Crescent',
+      ];
+      const ia = names.indexOf(a.name);
+      const ib = names.indexOf(b.name);
+      const forwardDistance = ((ib - ia) + names.length) % names.length;
+      expect(forwardDistance).toBeLessThanOrEqual(1);
     });
   });
 });

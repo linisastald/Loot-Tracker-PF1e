@@ -16,6 +16,67 @@ export const GOLARION_MONTHS = [
   { name: 'Kuthona', days: 31 }
 ];
 
+// Days of the Golarion week, in order. 1 Abadius 1 AR is treated as Moonday
+// (index 0) — the de facto community convention; canon names the days and
+// their order but does not print a date->weekday anchor.
+export const GOLARION_DAYS_OF_WEEK = [
+  'Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'
+];
+
+// Length of the lunar (synodic) cycle in days. Golarion's moon timing is NOT
+// fixed in official canon; 28 is an app convention chosen to echo the
+// Blood of the Moon lunar calendar. Change here to retune moon phases.
+export const LUNAR_CYCLE_DAYS = 28;
+
+// Whether an Absalom Reckoning year is a leap year. Canon: every year
+// divisible by 8 gains a day at the end of Calistril (4712 & 4720 confirmed).
+export const isGolarionLeapYear = (year) =>
+  Number.isInteger(year) && year % 8 === 0;
+
+// Number of days in a Golarion month, accounting for leap years (Calistril
+// gains a 29th day in leap years).
+export const getGolarionMonthDays = (year, month) => {
+  if (month === 2 && isGolarionLeapYear(year)) {
+    return 29;
+  }
+  return GOLARION_MONTHS[month - 1]?.days ?? 30;
+};
+
+// Number of whole days from the calendar epoch (1 Abadius 1 AR = 0),
+// leap-aware. Used as a single continuous day counter so day-of-week and
+// moon phase advance by exactly one unit per day with no boundary glitches.
+const daysSinceEpoch = (year, month, day) => {
+  // Whole years before this one, plus one leap day per year divisible by 8.
+  let total = (year - 1) * 365 + Math.floor((year - 1) / 8);
+  for (let m = 1; m < month; m++) {
+    total += getGolarionMonthDays(year, m);
+  }
+  total += day - 1;
+  return total;
+};
+
+// Day-of-week index (0 = Moonday ... 6 = Sunday) for a Golarion date.
+export const getGolarionDayOfWeek = (year, month, day) => {
+  const total = daysSinceEpoch(year, month, day);
+  return ((total % 7) + 7) % 7;
+};
+
+// Moon phase for a Golarion date, derived from a continuous day count so the
+// phase moves smoothly across month and year boundaries (including leap days).
+// The epoch (1 Abadius 1 AR) is defined as a New Moon — an app convention.
+export const getGolarionMoonPhase = (year, month, day) => {
+  const total = daysSinceEpoch(year, month, day);
+  const phase = ((total % LUNAR_CYCLE_DAYS) + LUNAR_CYCLE_DAYS) % LUNAR_CYCLE_DAYS;
+  if (phase < 3) return { name: 'New Moon', emoji: '🌑' };
+  if (phase < 7) return { name: 'Waxing Crescent', emoji: '🌒' };
+  if (phase < 10) return { name: 'First Quarter', emoji: '🌓' };
+  if (phase < 14) return { name: 'Waxing Gibbous', emoji: '🌔' };
+  if (phase < 17) return { name: 'Full Moon', emoji: '🌕' };
+  if (phase < 21) return { name: 'Waning Gibbous', emoji: '🌖' };
+  if (phase < 24) return { name: 'Last Quarter', emoji: '🌗' };
+  return { name: 'Waning Crescent', emoji: '🌘' };
+};
+
 // Convert Golarion date to display format
 export const formatGolarionDate = (year, month, day) => {
   const monthName = GOLARION_MONTHS[month - 1]?.name || 'Unknown';

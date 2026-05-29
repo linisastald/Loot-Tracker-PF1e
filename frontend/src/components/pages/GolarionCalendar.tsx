@@ -35,6 +35,16 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import EventIcon from '@mui/icons-material/Event';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import api from '../../utils/api';
+import {
+    getGolarionDayOfWeek,
+    getGolarionMonthDays,
+    getGolarionMoonPhase,
+} from '../../utils/golarionDate';
+
+interface MoonPhase {
+    name: string;
+    emoji: string;
+}
 
 interface Month {
   name: string;
@@ -214,9 +224,9 @@ const GolarionCalendar: React.FC = () => {
 
     const fetchWeatherForMonth = useCallback(async (year: number, month: number): Promise<void> => {
         try {
-            // Calculate start and end dates for the month
+            // Calculate start and end dates for the month (leap-aware)
             const startDay = 1;
-            const endDay = months[month - 1].days; // Convert 1-indexed month to 0-indexed for months array
+            const endDay = getGolarionMonthDays(year, month);
             
             // Both frontend and backend now use 1-indexed months
             const response = await api.get(
@@ -278,9 +288,13 @@ const GolarionCalendar: React.FC = () => {
         }
 
         try {
-            for (let i = 0; i < days; i++) {
-                await handleNextDay();
-            }
+            // Single request: the backend advances the date and generates
+            // weather for every day jumped over in one transaction.
+            const response = await api.post('/calendar/advance', {days});
+            const {year, month, day} = response.data;
+            setCurrentDate({year, month, day});
+            setDisplayedDate({year, month});
+            setSelectedDate({year, month, day});
             setDaysToAdd('');
             setError(null);
         } catch (error) {
@@ -336,40 +350,18 @@ const GolarionCalendar: React.FC = () => {
         }
     };
 
-    const getMoonPhase = (date: DateObject & {day: number}): {name: string; emoji: string} => {
-        const totalDays = date.year * 365 + date.month * 30 + date.day;
-        const phase = totalDays % 28;
-        if (phase < 3) return {name: 'New Moon', emoji: '🌑'};
-        if (phase < 7) return {name: 'Waxing Crescent', emoji: '🌒'};
-        if (phase < 10) return {name: 'First Quarter', emoji: '🌓'};
-        if (phase < 14) return {name: 'Waxing Gibbous', emoji: '🌔'};
-        if (phase < 17) return {name: 'Full Moon', emoji: '🌕'};
-        if (phase < 21) return {name: 'Waning Gibbous', emoji: '🌖'};
-        if (phase < 24) return {name: 'Last Quarter', emoji: '🌗'};
-        return {name: 'Waning Crescent', emoji: '🌘'};
-    };
-
-    // Calculate Golarion day-of-week using modular arithmetic
-    // Anchor: 1 Abadius 4710 AR = Moonday (index 0)
-    const getGolarionDayOfWeek = (year: number, monthIdx: number, day: number): number => {
-        const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        // Total days from anchor (1 Abadius 4710)
-        let totalDays = (year - 4710) * 365;
-        for (let i = 0; i < monthIdx - 1; i++) {
-            totalDays += monthDays[i];
-        }
-        totalDays += day - 1;
-        // Modulo 7, handle negative years
-        return ((totalDays % 7) + 7) % 7;
-    };
+    const getMoonPhase = (date: DateObject & {day: number}): MoonPhase =>
+        getGolarionMoonPhase(date.year, date.month, date.day);
 
     const renderCalendar = () => {
         const month = months[displayedDate.month - 1];
         if (!month) {
             return <div>Loading calendar...</div>;
         }
+        // Leap-aware: Calistril has 29 days in leap years.
+        const daysInMonth = getGolarionMonthDays(displayedDate.year, displayedDate.month);
         const firstDayOfMonth = getGolarionDayOfWeek(displayedDate.year, displayedDate.month, 1);
-        const weeks = Math.ceil((month.days + firstDayOfMonth) / 7);
+        const weeks = Math.ceil((daysInMonth + firstDayOfMonth) / 7);
 
         return (
             <TableContainer component={Paper} elevation={3}>
@@ -386,7 +378,7 @@ const GolarionCalendar: React.FC = () => {
                             <TableRow key={weekIndex}>
                                 {[...Array(7)].map((_, dayIndex) => {
                                     const day = weekIndex * 7 + dayIndex - firstDayOfMonth + 1;
-                                    const isValidDay = day > 0 && day <= month.days;
+                                    const isValidDay = day > 0 && day <= daysInMonth;
                                     const dateKey = `${displayedDate.year}-${displayedDate.month}-${day}`;
                                     const isCurrentDay = currentDate.year === displayedDate.year &&
                                         currentDate.month === displayedDate.month &&
@@ -424,7 +416,7 @@ const GolarionCalendar: React.FC = () => {
                                         // First day of month - check against last day of previous month
                                         const prevMonth = displayedDate.month > 1 ? displayedDate.month - 1 : 12;
                                         const prevYear = prevMonth === 12 ? displayedDate.year - 1 : displayedDate.year;
-                                        const lastDayOfPrevMonth = months[prevMonth - 1].days; // Convert to 0-indexed for months array
+                                        const lastDayOfPrevMonth = getGolarionMonthDays(prevYear, prevMonth);
                                         const prevPhase = getMoonPhase({
                                         year: prevYear,
                                         month: prevMonth,
