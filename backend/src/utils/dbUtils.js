@@ -14,7 +14,7 @@ const ALLOWED_TABLES = new Set([
   'infamy', 'weather_events', 'weather_regions', 'impositions', 'spells',
   'min_caster_levels', 'min_costs', 'password_reset_tokens',
   'game_sessions', 'session_attendance', 'session_messages', 'session_notes',
-  'session_tasks', 'session_task_assignments', 'session_completions', 'session_automations'
+  'session_task_assignments', 'session_task_history', 'session_completions', 'session_automations'
 ]);
 
 /**

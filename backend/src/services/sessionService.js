@@ -17,7 +17,6 @@ const {
 const attendanceService = require('./attendance/AttendanceService');
 const sessionDiscordService = require('./discord/SessionDiscordService');
 const recurringSessionService = require('./recurring/RecurringSessionService');
-const sessionTaskService = require('./tasks/SessionTaskService');
 
 class SessionService {
 
@@ -699,11 +698,6 @@ class SessionService {
 
     async generateAdditionalInstances(templateId, count = 12) {
         return recurringSessionService.generateAdditionalInstances(templateId, count);
-    }
-
-    // Task methods - delegate to SessionTaskService
-    async generateSessionTasks(session) {
-        return sessionTaskService.generateSessionTasks(session);
     }
 
     // Utility methods

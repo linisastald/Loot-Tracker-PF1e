@@ -1,5 +1,8 @@
 import React, {useEffect, useState} from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -7,6 +10,7 @@ import {
   CardContent,
   Checkbox,
   Chip,
+  CircularProgress,
   Container,
   FormControlLabel,
   Grid,
@@ -15,6 +19,8 @@ import {
   ListItemText,
   Paper,
   Snackbar,
+  Tab,
+  Tabs,
   Tooltip,
   Typography
 } from '@mui/material';
@@ -24,7 +30,10 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {grey} from '@mui/material/colors';
+import {formatInCampaignTimezone} from '../../utils/timezoneUtils';
+import {useCampaignTimezone} from '../../hooks/useCampaignTimezone';
 
 interface Character {
     id: number;
@@ -32,10 +41,23 @@ interface Character {
     player_name: string;
 }
 
+type TaskMap = Record<string, string[]>;
+
 interface TaskAssignment {
-    pre: any;
-    during: any;
-    post: any;
+    pre: TaskMap;
+    during: TaskMap;
+    post: TaskMap;
+}
+
+interface TaskHistoryRecord {
+    id: number;
+    session_id: number | null;
+    session_title: string | null;
+    assignments: TaskAssignment;
+    character_count: number;
+    late_count: number;
+    created_by_name: string | null;
+    created_at: string;
 }
 
 interface Alert {
@@ -129,10 +151,21 @@ const Tasks: React.FC = () => {
     const [alert, setAlert] = useState<Alert>({show: false, severity: 'info', message: ''});
     const [discordSendFailed, setDiscordSendFailed] = useState<boolean>(false);
     const [lastTaskAssignment, setLastTaskAssignment] = useState<TaskAssignment | null>(null);
+    const [activeTab, setActiveTab] = useState<number>(0);
+    const [upcomingSession, setUpcomingSession] = useState<{id: number; title: string} | null>(null);
+    const [history, setHistory] = useState<TaskHistoryRecord[]>([]);
+    const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+    const {timezone} = useCampaignTimezone();
 
     useEffect(() => {
         loadInitialState();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 1) {
+            fetchHistory();
+        }
+    }, [activeTab]);
 
     const loadInitialState = async () => {
         try {
@@ -155,6 +188,13 @@ const Tasks: React.FC = () => {
             try {
                 const sessionResponse = await api.get('/sessions/next-with-attendance');
                 const sessionData = sessionResponse.data;
+
+                if (sessionData && sessionData.session) {
+                    setUpcomingSession({
+                        id: sessionData.session.id,
+                        title: sessionData.session.title
+                    });
+                }
 
                 if (sessionData && sessionData.attendance) {
                     const attendance = sessionData.attendance;
@@ -228,6 +268,39 @@ const Tasks: React.FC = () => {
             [array[i], array[j]] = [array[j], array[i]];
         }
         return array;
+    };
+
+    const saveAssignmentToHistory = async (
+        assignments: TaskAssignment,
+        characterCount: number,
+        lateCount: number
+    ) => {
+        try {
+            await api.post('/sessions/task-history', {
+                session_id: upcomingSession?.id ?? null,
+                session_title: upcomingSession?.title ?? null,
+                assignments,
+                character_count: characterCount,
+                late_count: lateCount
+            });
+        } catch (error) {
+            console.error('Error saving task assignment to history:', error);
+            showSnackbar('Tasks assigned, but failed to save to history.');
+        }
+    };
+
+    const fetchHistory = async () => {
+        try {
+            setHistoryLoading(true);
+            const response: any = await api.get('/sessions/task-history');
+            const records = response.data?.data || response.data || [];
+            setHistory(records);
+        } catch (error) {
+            console.error('Error fetching task assignment history:', error);
+            showSnackbar('Failed to load assignment history.');
+        } finally {
+            setHistoryLoading(false);
+        }
     };
 
     const assignTasks = async () => {
@@ -320,6 +393,11 @@ const Tasks: React.FC = () => {
 
             setAssignedTasks(newAssignedTasks);
             setLastTaskAssignment(newAssignedTasks);
+
+            // Persist the assignment to history (independent of the Discord send,
+            // so a Discord failure doesn't lose the record).
+            const lateCount = selectedChars.length - onTimeChars.length;
+            await saveAssignmentToHistory(newAssignedTasks, selectedChars.length, lateCount);
 
             // Send tasks to Discord
             try {
@@ -453,6 +531,15 @@ const Tasks: React.FC = () => {
 
     return (
         <Container maxWidth="lg" component="main">
+            <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 3}}>
+                <Tabs value={activeTab} onChange={(_e, value) => setActiveTab(value)}>
+                    <Tab label="Assign" />
+                    <Tab label="History" />
+                </Tabs>
+            </Box>
+
+            {activeTab === 0 && (
+              <>
             <Paper sx={{p: 3, mb: 3, borderRadius: 2}} elevation={3}>
 
                 {alert.show && (
@@ -625,6 +712,61 @@ const Tasks: React.FC = () => {
                         </StyledCard>
                     </Grid>
                 </Grid>
+            )}
+              </>
+            )}
+
+            {activeTab === 1 && (
+              <Paper sx={{p: 3, mb: 3, borderRadius: 2}} elevation={3}>
+                <Typography variant="h6" gutterBottom sx={{display: 'flex', alignItems: 'center'}}>
+                    <FormatListBulletedIcon sx={{mr: 1}} color="primary"/>
+                    Past Assignments
+                </Typography>
+
+                {historyLoading ? (
+                    <Box sx={{display: 'flex', justifyContent: 'center', py: 4}}>
+                        <CircularProgress/>
+                    </Box>
+                ) : history.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary" sx={{py: 2}}>
+                        No task assignments have been saved yet. Assign tasks on the Assign tab to start tracking history.
+                    </Typography>
+                ) : (
+                    history.map((record) => (
+                        <Accordion key={record.id}>
+                            <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
+                                <Box sx={{display: 'flex', flexDirection: 'column'}}>
+                                    <Typography variant="subtitle1">
+                                        {record.session_title || 'No linked session'}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {formatInCampaignTimezone(record.created_at, timezone, 'PPpp')}
+                                        {` • ${record.character_count} characters`}
+                                        {record.late_count > 0 ? `, ${record.late_count} late` : ''}
+                                        {record.created_by_name ? ` • by ${record.created_by_name}` : ''}
+                                    </Typography>
+                                </Box>
+                            </AccordionSummary>
+                            <AccordionDetails>
+                                <Grid container spacing={2}>
+                                    <Grid size={{xs: 12, md: 4}}>
+                                        <Typography variant="subtitle2" gutterBottom>Pre-Session</Typography>
+                                        {renderTaskList(record.assignments?.pre || {})}
+                                    </Grid>
+                                    <Grid size={{xs: 12, md: 4}}>
+                                        <Typography variant="subtitle2" gutterBottom>During Session</Typography>
+                                        {renderTaskList(record.assignments?.during || {})}
+                                    </Grid>
+                                    <Grid size={{xs: 12, md: 4}}>
+                                        <Typography variant="subtitle2" gutterBottom>Post-Session</Typography>
+                                        {renderTaskList(record.assignments?.post || {})}
+                                    </Grid>
+                                </Grid>
+                            </AccordionDetails>
+                        </Accordion>
+                    ))
+                )}
+              </Paper>
             )}
 
             <Snackbar

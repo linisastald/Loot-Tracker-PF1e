@@ -522,30 +522,110 @@ describe('GET /sessions/:id/notes', () => {
 });
 
 // ===========================================================================
-// GET /sessions/:id/tasks
+// POST /sessions/task-history
 // ===========================================================================
-describe('GET /sessions/:id/tasks', () => {
-  it('should return tasks for a session', async () => {
-    const mockTasks = [
-      { id: 1, session_id: 5, task: 'Prep maps', assigned_to_name: 'dm1' },
-    ];
-    dbUtils.executeQuery.mockResolvedValue({ rows: mockTasks });
+describe('POST /sessions/task-history', () => {
+  it('should save a task assignment and return the created row', async () => {
+    const savedRow = {
+      id: 1,
+      session_id: 5,
+      session_title: 'Session 12',
+      assignments: { pre: {}, during: {}, post: {} },
+      character_count: 4,
+      late_count: 1,
+      created_by: 1,
+    };
+    dbUtils.executeQuery.mockResolvedValue({ rows: [savedRow] });
 
-    const res = await request(app).get('/sessions/5/tasks');
+    const res = await request(app)
+      .post('/sessions/task-history')
+      .send({
+        session_id: 5,
+        session_title: 'Session 12',
+        assignments: { pre: {}, during: {}, post: {} },
+        character_count: 4,
+        late_count: 1,
+      });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.data).toEqual(mockTasks);
+    expect(res.body.data).toEqual(savedRow);
     expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-      expect.stringContaining('FROM session_tasks'),
-      ['5']
+      expect.stringContaining('INSERT INTO session_task_history'),
+      expect.arrayContaining([5, 'Session 12'])
     );
+    // created_by comes from the authenticated user (id 1 from the auth mock)
+    const callArgs = dbUtils.executeQuery.mock.calls[0][1];
+    expect(callArgs[callArgs.length - 1]).toBe(1);
+  });
+
+  it('should default session_id/title to null when not provided', async () => {
+    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 2 }] });
+
+    const res = await request(app)
+      .post('/sessions/task-history')
+      .send({ assignments: { pre: {}, during: {}, post: {} } });
+
+    expect(res.status).toBe(201);
+    const callArgs = dbUtils.executeQuery.mock.calls[0][1];
+    expect(callArgs[0]).toBeNull(); // session_id
+    expect(callArgs[1]).toBeNull(); // session_title
+  });
+
+  it('derives snack_master_name from whoever got the snacks post-task', async () => {
+    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 3 }] });
+
+    await request(app)
+      .post('/sessions/task-history')
+      .send({
+        assignments: {
+          pre: {},
+          during: {},
+          post: {
+            Imogen: ['Ensure no duplicate snacks for next session', 'Free Space'],
+            Wokwok: ['Food, Drink, and Trash Clear Check'],
+          },
+        },
+      });
+
+    // snack_master_name is the 6th positional arg (index 5)
+    const callArgs = dbUtils.executeQuery.mock.calls[0][1];
+    expect(callArgs[5]).toBe('Imogen');
+  });
+
+  it('stores null snack_master_name when no one got the snacks task', async () => {
+    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 4 }] });
+
+    await request(app)
+      .post('/sessions/task-history')
+      .send({
+        assignments: {
+          pre: {},
+          during: {},
+          post: { Wokwok: ['Food, Drink, and Trash Clear Check'] },
+        },
+      });
+
+    const callArgs = dbUtils.executeQuery.mock.calls[0][1];
+    expect(callArgs[5]).toBeNull();
+  });
+
+  it('should return 400 when assignments are missing', async () => {
+    const res = await request(app)
+      .post('/sessions/task-history')
+      .send({ session_id: 5 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(dbUtils.executeQuery).not.toHaveBeenCalled();
   });
 
   it('should return 500 on database error', async () => {
     dbUtils.executeQuery.mockRejectedValue(new Error('fail'));
 
-    const res = await request(app).get('/sessions/5/tasks');
+    const res = await request(app)
+      .post('/sessions/task-history')
+      .send({ assignments: { pre: {}, during: {}, post: {} } });
 
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
@@ -553,38 +633,43 @@ describe('GET /sessions/:id/tasks', () => {
 });
 
 // ===========================================================================
-// PATCH /sessions/:id/tasks/:taskId/complete
+// GET /sessions/task-history
 // ===========================================================================
-describe('PATCH /sessions/:id/tasks/:taskId/complete', () => {
-  it('should mark a task as completed', async () => {
-    const mockTask = { id: 3, session_id: 5, status: 'completed', completed_at: '2026-04-10T12:00:00Z' };
-    dbUtils.executeQuery.mockResolvedValue({ rows: [mockTask] });
+describe('GET /sessions/task-history', () => {
+  it('should return history rows (most recent first)', async () => {
+    const rows = [
+      { id: 2, session_title: 'Session 13', created_by_name: 'testdm' },
+      { id: 1, session_title: 'Session 12', created_by_name: 'testdm' },
+    ];
+    dbUtils.executeQuery.mockResolvedValue({ rows });
 
-    const res = await request(app).patch('/sessions/5/tasks/3/complete');
+    const res = await request(app).get('/sessions/task-history');
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data).toEqual(mockTask);
+    expect(res.body.data).toEqual(rows);
     expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE session_tasks'),
-      ['3', '5']
+      expect.stringContaining('FROM session_task_history'),
+      [50] // default limit
     );
   });
 
-  it('should return 404 when task is not found', async () => {
+  it('should honor a custom limit', async () => {
     dbUtils.executeQuery.mockResolvedValue({ rows: [] });
 
-    const res = await request(app).patch('/sessions/5/tasks/999/complete');
+    const res = await request(app).get('/sessions/task-history?limit=10');
 
-    expect(res.status).toBe(404);
-    expect(res.body.success).toBe(false);
-    expect(res.body.message).toBe('Task not found');
+    expect(res.status).toBe(200);
+    expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+      expect.any(String),
+      [10]
+    );
   });
 
   it('should return 500 on database error', async () => {
     dbUtils.executeQuery.mockRejectedValue(new Error('fail'));
 
-    const res = await request(app).patch('/sessions/5/tasks/3/complete');
+    const res = await request(app).get('/sessions/task-history');
 
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);

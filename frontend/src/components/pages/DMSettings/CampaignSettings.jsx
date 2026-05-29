@@ -29,9 +29,6 @@ const CampaignSettings = () => {
     const [region, setRegion] = useState('Varisia');
     const [availableRegions, setAvailableRegions] = useState([]);
 
-    // Auto task generation toggle
-    const [autoTasksEnabled, setAutoTasksEnabled] = useState(false);
-
     useEffect(() => {
         const fetchSettings = async () => {
             try {
@@ -64,12 +61,6 @@ const CampaignSettings = () => {
                 const regionsResponse = await api.get('/weather/regions');
                 if (regionsResponse.data) {
                     setAvailableRegions(regionsResponse.data);
-                }
-
-                // Fetch auto task generation toggle
-                const autoTasksResponse = await api.get('/settings/auto-task-generation');
-                if (autoTasksResponse.data && autoTasksResponse.data.value) {
-                    setAutoTasksEnabled(autoTasksResponse.data.value === '1');
                 }
             } catch (error) {
                 console.error('Error fetching settings', error);
@@ -144,24 +135,6 @@ const CampaignSettings = () => {
         }
     };
 
-    const handleAutoTasksChange = async (event) => {
-        try {
-            const isEnabled = event.target.checked;
-            setAutoTasksEnabled(isEnabled);
-
-            await api.put('/user/update-setting', {
-                name: 'auto_task_generation_enabled',
-                value: isEnabled ? '1' : '0'
-            });
-
-            setSuccess(`Auto task generation ${isEnabled ? 'enabled' : 'disabled'} successfully`);
-            setError('');
-        } catch (err) {
-            console.error('Error updating auto task generation setting', err);
-            setError('Error updating auto task generation setting');
-            setSuccess('');
-        }
-    };
 
     const handleRegionChange = async () => {
         try {
@@ -236,27 +209,6 @@ const CampaignSettings = () => {
                 >
                     Update Region
                 </Button>
-            </Paper>
-
-            <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
-                <Typography variant="h6" gutterBottom>Auto Task Generation</Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                    When enabled, the scheduler auto-assigns pre / during / post-session
-                    chores (dice trays, snack master, cleanup, etc.) for confirmed sessions
-                    starting within the next 4 hours and posts them to the configured
-                    Discord channel.
-                </Typography>
-
-                <FormControlLabel
-                    control={
-                        <Switch
-                            checked={autoTasksEnabled}
-                            onChange={handleAutoTasksChange}
-                            color="primary"
-                        />
-                    }
-                    label="Enable Auto Task Generation"
-                />
             </Paper>
 
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>

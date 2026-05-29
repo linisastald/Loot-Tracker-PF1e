@@ -51,9 +51,6 @@ class SessionSchedulerService {
             // Schedule confirmation checks
             this.scheduleConfirmationChecks();
 
-            // Schedule task generation
-            this.scheduleTaskGeneration();
-
             // Schedule session completion checks
             this.scheduleSessionCompletions();
 
@@ -188,24 +185,6 @@ class SessionSchedulerService {
         this.scheduledJobs.set('confirmationChecks5PM', job5PM);
         this.scheduledJobs.set('confirmationChecks10PM', job10PM);
         logger.info(`Scheduled confirmation check jobs (daily at noon, 5pm, and 10pm in ${this.campaignTimezone} timezone)`);
-    }
-
-    /**
-     * Schedule task generation (runs every hour)
-     */
-    scheduleTaskGeneration() {
-        const job = cron.schedule(CRON_SCHEDULES.HOURLY, async () => {
-            try {
-                await this.checkTaskGeneration();
-            } catch (error) {
-                logger.error('Error in scheduled task generation:', error);
-            }
-        }, {
-            timezone: this.campaignTimezone
-        });
-
-        this.scheduledJobs.set('taskGeneration', job);
-        logger.info(`Scheduled task generation check job (every hour in ${this.campaignTimezone} timezone)`);
     }
 
     /**
@@ -378,49 +357,6 @@ class SessionSchedulerService {
                 }
             } catch (error) {
                 logger.error(`Failed to process confirmation for session ${session.id}:`, error);
-            }
-        }
-    }
-
-
-    /**
-     * Check for sessions that need task generation
-     */
-    async checkTaskGeneration() {
-        // Honor the DM-controlled feature flag. Default off — DMs opt in via
-        // Campaign Settings.
-        const settingResult = await pool.query(
-            "SELECT value FROM settings WHERE name = 'auto_task_generation_enabled'"
-        );
-        const enabled = settingResult.rows[0]?.value === '1';
-        if (!enabled) {
-            logger.debug('Auto task generation disabled; skipping scheduled run');
-            return;
-        }
-
-        // Lazy load to avoid circular dependency
-        const sessionTaskService = require('../tasks/SessionTaskService');
-
-        // Get sessions that need task generation. Filters out sessions that
-        // already have a task assignment row to prevent the hourly cron from
-        // re-firing the Discord embed every hour. (The previous query joined
-        // session_tasks — a different, unused table — and never excluded
-        // anything, so any confirmed session in the next 4 hours triggered
-        // a fresh Discord post every hour.)
-        const result = await pool.query(`
-            SELECT gs.* FROM game_sessions gs
-            LEFT JOIN session_task_assignments sta ON gs.id = sta.session_id
-            WHERE gs.status = 'confirmed'
-            AND gs.start_time > NOW()
-            AND gs.start_time <= NOW() + INTERVAL '4 hours'
-            AND sta.id IS NULL
-        `);
-
-        for (const session of result.rows) {
-            try {
-                await sessionTaskService.generateSessionTasks(session);
-            } catch (error) {
-                logger.error(`Failed to generate tasks for session ${session.id}:`, error);
             }
         }
     }

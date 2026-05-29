@@ -189,6 +189,101 @@ router.get('/discord-mapping', verifyToken, async (req, res) => {
     }
 });
 
+// ========================================================================
+// TASK ASSIGNMENT HISTORY ROUTES
+// Records manual pre/during/post task assignments made from the Tasks page.
+// Registered before '/:id' so the literal path is not captured as a session id.
+// ========================================================================
+
+// Save a task assignment to history
+router.post('/task-history', verifyToken, [
+    body('assignments').exists().withMessage('assignments are required')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ success: false, message: errors.array()[0].msg });
+        }
+
+        const {
+            session_id = null,
+            session_title = null,
+            assignments,
+            character_count = 0,
+            late_count = 0
+        } = req.body;
+
+        // The post-session "snacks for next session" task designates who is
+        // snack master for the FOLLOWING session. Derive it server-side from
+        // the saved assignments so the next session's announcement can show it.
+        // (Must match the task label used on the Tasks page.)
+        const SNACK_MASTER_TASK = 'Ensure no duplicate snacks for next session';
+        let snack_master_name = null;
+        const postAssignments = (assignments && assignments.post) || {};
+        for (const [name, tasks] of Object.entries(postAssignments)) {
+            if (Array.isArray(tasks) && tasks.includes(SNACK_MASTER_TASK)) {
+                snack_master_name = name;
+                break;
+            }
+        }
+
+        const result = await dbUtils.executeQuery(`
+            INSERT INTO session_task_history
+                (session_id, session_title, assignments, character_count, late_count, snack_master_name, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *
+        `, [
+            session_id,
+            session_title,
+            JSON.stringify(assignments),
+            character_count,
+            late_count,
+            snack_master_name,
+            req.user.id
+        ]);
+
+        res.status(201).json({
+            success: true,
+            message: 'Task assignment saved',
+            data: result.rows[0]
+        });
+
+    } catch (error) {
+        logger.error('Failed to save task assignment history:', error);
+        res.status(500).json({ success: false, message: 'Failed to save task assignment' });
+    }
+});
+
+// Get task assignment history (most recent first)
+router.get('/task-history', verifyToken, [
+    query('limit').optional().isInt({ min: 1, max: 200 }).withMessage('limit must be 1-200')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ success: false, message: errors.array()[0].msg });
+        }
+
+        const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
+
+        const result = await dbUtils.executeQuery(`
+            SELECT
+                sth.*,
+                u.username as created_by_name
+            FROM session_task_history sth
+            LEFT JOIN users u ON sth.created_by = u.id
+            ORDER BY sth.created_at DESC
+            LIMIT $1
+        `, [limit]);
+
+        res.json({ success: true, data: result.rows });
+
+    } catch (error) {
+        logger.error('Failed to fetch task assignment history:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch task assignment history' });
+    }
+});
+
 // Get a specific session with validation
 router.get('/:id', validate({
   params: {
@@ -568,66 +663,6 @@ router.get('/:id/notes', verifyToken, [
     } catch (error) {
         logger.error('Failed to fetch session notes:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch notes' });
-    }
-});
-
-// ========================================================================
-// SESSION TASKS ROUTES
-// ========================================================================
-
-// Get session tasks
-router.get('/:id/tasks', verifyToken, [
-    param('id').isInt().withMessage('Session ID must be an integer')
-], async (req, res) => {
-    try {
-        const sessionId = req.params.id;
-
-        const result = await dbUtils.executeQuery(`
-            SELECT
-                st.*,
-                u.username as assigned_to_name
-            FROM session_tasks st
-            LEFT JOIN users u ON st.assigned_to = u.id
-            WHERE st.session_id = $1
-            ORDER BY st.due_time, st.created_at
-        `, [sessionId]);
-
-        res.json({ success: true, data: result.rows });
-
-    } catch (error) {
-        logger.error('Failed to fetch session tasks:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch tasks' });
-    }
-});
-
-// Complete session task
-router.patch('/:id/tasks/:taskId/complete', verifyToken, [
-    param('id').isInt().withMessage('Session ID must be an integer'),
-    param('taskId').isInt().withMessage('Task ID must be an integer')
-], async (req, res) => {
-    try {
-        const { id: sessionId, taskId } = req.params;
-
-        const result = await dbUtils.executeQuery(`
-            UPDATE session_tasks
-            SET status = 'completed', completed_at = CURRENT_TIMESTAMP
-            WHERE id = $1 AND session_id = $2
-            RETURNING *
-        `, [taskId, sessionId]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Task not found' });
-        }
-
-        res.json({
-            success: true,
-            message: 'Task completed successfully',
-            data: result.rows[0]
-        });
-
-    } catch (error) {
-        logger.error('Failed to complete task:', error);
-        res.status(500).json({ success: false, message: 'Failed to complete task' });
     }
 });
 

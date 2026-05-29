@@ -50,10 +50,6 @@ jest.mock('../recurring/RecurringSessionService', () => ({
   generateAdditionalInstances: jest.fn(),
 }));
 
-jest.mock('../tasks/SessionTaskService', () => ({
-  generateSessionTasks: jest.fn(),
-}));
-
 jest.mock('../discordBrokerService', () => ({
   sendMessage: jest.fn(),
 }));
@@ -67,7 +63,6 @@ const sessionService = require('../sessionService');
 const attendanceService = require('../attendance/AttendanceService');
 const sessionDiscordService = require('../discord/SessionDiscordService');
 const recurringSessionService = require('../recurring/RecurringSessionService');
-const sessionTaskService = require('../tasks/SessionTaskService');
 
 // ---- Helpers ----
 
@@ -566,13 +561,6 @@ describe('SessionService', () => {
       recurringSessionService.createRecurringSession.mockResolvedValueOnce({});
       await sessionService.createRecurringSession({ pattern: 'weekly' });
       expect(recurringSessionService.createRecurringSession).toHaveBeenCalledWith({ pattern: 'weekly' });
-    });
-
-    it('generateSessionTasks delegates to SessionTaskService', async () => {
-      const session = buildSession();
-      sessionTaskService.generateSessionTasks.mockResolvedValueOnce([]);
-      await sessionService.generateSessionTasks(session);
-      expect(sessionTaskService.generateSessionTasks).toHaveBeenCalledWith(session);
     });
   });
 
