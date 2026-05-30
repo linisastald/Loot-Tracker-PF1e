@@ -176,11 +176,15 @@ describe('GolarionCalendar', () => {
       renderCalendar();
 
       await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Notes' })).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+
+      await waitFor(() => {
         expect(screen.getByText('All Notes')).toBeInTheDocument();
       });
-      // Note text appears in the agenda (and in the spanned grid cells)
       expect(screen.getAllByText('Party traveled to Sandpoint').length).toBeGreaterThan(0);
-      // The multi-day note shows its date range (unique to the agenda chip here)
+      // The multi-day note shows its date range (unique to the agenda chip)
       expect(screen.getByText(/10 Abadius 4722 .* 12 Abadius 4722/)).toBeInTheDocument();
     });
   });
@@ -214,6 +218,11 @@ describe('GolarionCalendar', () => {
       });
 
       renderCalendar();
+
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Holidays' })).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('tab', { name: 'Holidays' }));
 
       await waitFor(() => {
         expect(screen.getByText('Show on calendar:')).toBeInTheDocument();

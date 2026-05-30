@@ -25,12 +25,14 @@ import {
   MenuItem,
   Paper,
   Select,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -328,6 +330,7 @@ const GolarionCalendar: React.FC = () => {
     const [noteSeparate, setNoteSeparate] = useState<boolean>(false);
     const [noteDmOnly, setNoteDmOnly] = useState<boolean>(false);
     const [editingNote, setEditingNote] = useState<GolarionNoteData | null>(null);
+    const [activeTab, setActiveTab] = useState<number>(0);
     const [error, setError] = useState<string | null>(null);
     const [confirmDialogOpen, setConfirmDialogOpen] = useState<boolean>(false);
     const [daysToAdd, setDaysToAdd] = useState<string>('');
@@ -691,6 +694,8 @@ const GolarionCalendar: React.FC = () => {
         setNoteSeparate(false);
         setNoteDmOnly(note.dmOnly);
         setSelectedDate({year: note.startDate.year, month: note.startDate.month, day: note.startDate.day});
+        // The per-day edit form lives on the Calendar tab; jump there.
+        setActiveTab(0);
     };
 
     const handleDeleteNote = async (id: number): Promise<void> => {
@@ -1048,6 +1053,14 @@ const GolarionCalendar: React.FC = () => {
                 </Alert>
             )}
 
+            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{mb: 2}}>
+                <Tab label="Calendar"/>
+                <Tab label="Notes"/>
+                <Tab label="Holidays"/>
+            </Tabs>
+
+            {activeTab === 0 && (
+            <>
             <Paper sx={{p: 3, mb: 3, borderRadius: 2}} elevation={3}>
                 <CalendarHeader>
                     <Button
@@ -1411,9 +1424,11 @@ const GolarionCalendar: React.FC = () => {
                     </Grid>
                 </Paper>
             )}
+            </>
+            )}
 
-            {/* Agenda: every dated note, chronological */}
-            {notes.length > 0 && (
+            {/* Notes tab: agenda of every dated note */}
+            {activeTab === 1 && (notes.length > 0 ? (
                 <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
                     <Typography variant="h5" gutterBottom color="primary"
                                 sx={{display: 'flex', alignItems: 'center', mb: 2}}>
@@ -1462,10 +1477,16 @@ const GolarionCalendar: React.FC = () => {
                         ))}
                     </List>
                 </Paper>
-            )}
+            ) : (
+                <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
+                    <Typography variant="body2" color="text.secondary">
+                        No notes yet. Add notes from a day on the Calendar tab.
+                    </Typography>
+                </Paper>
+            ))}
 
-            {/* Holidays: reference list + per-category grid visibility + DM management */}
-            {holidays.length > 0 && (
+            {/* Holidays tab: per-category visibility + reference list + DM management */}
+            {activeTab === 2 && (holidays.length > 0 ? (
                 <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
                     <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1}}>
                         <Typography variant="h5" color="primary" sx={{display: 'flex', alignItems: 'center'}}>
@@ -1547,7 +1568,11 @@ const GolarionCalendar: React.FC = () => {
                         </Typography>
                     )}
                 </Paper>
-            )}
+            ) : (
+                <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
+                    <Typography variant="body2" color="text.secondary">No holidays defined.</Typography>
+                </Paper>
+            ))}
 
             <Dialog
                 open={confirmDialogOpen}
