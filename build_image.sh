@@ -212,12 +212,16 @@ while [ $# -gt 0 ]; do
             echo "    - Can be combined with --branch for feature branch builds"
             echo ""
             echo "  AUTO-VERSIONING:"
-            echo "    - Dev builds: Creates v0.7.1-dev.N tags (increments build number)"
-            echo "    - Stable builds: Creates v0.X.Y tags (increments version)"
-            echo "    - Version file: .docker-version tracks current version"
+            echo "    - Dev builds: build number N comes from existing git tags; the"
+            echo "      built commit is annotate-tagged vX.Y.Z-dev.N and pushed."
+            echo "      No commit is made - version files are bumped for the image,"
+            echo "      then restored, so the working tree and history stay clean."
+            echo "    - Stable builds: commit the version bump, tag vX.Y.Z, and push"
+            echo "      the branch (rebase-and-retry if origin advanced mid-build)."
+            echo "    - The image always carries its version (baked into .docker-version"
+            echo "      before the build); git tags map a version back to its exact code."
             echo "    - Use --version-type to control increment (major/minor/patch)"
             echo "    - Use --sync-version to reset to package.json version"
-            echo "    - Automatically updates package.json files to keep versions synced"
             echo ""
             echo "  EXAMPLES:"
             echo "    bash $0                        # Build dev image with cache and auto-versioning"
@@ -334,7 +338,8 @@ stop_spinner() {
 
 if [ "$PULL_ONLY" = true ]; then
     echo "Pulling latest from remote ($GIT_BRANCH)..."
-    git pull origin "$GIT_BRANCH"
+    # --ff-only so the pull can never open an interactive merge-commit editor.
+    git pull --ff-only origin "$GIT_BRANCH"
     echo "Pull complete"
     exit 0
 fi
@@ -603,6 +608,17 @@ if [ -n "$WORKTREE_BRANCH" ]; then
 else
     BUILD_PATH="$SCRIPT_DIR"
     cd "$BUILD_PATH"
+
+    # Non-worktree builds pull/commit/tag on GIT_BRANCH (master). Make sure that
+    # is actually the checked-out branch, so we never pull master into a feature
+    # branch or push the wrong ref. (Empty result = detached HEAD; skip.)
+    current_branch=$(git branch --show-current 2>/dev/null || echo "")
+    if [ -n "$current_branch" ] && [ "$current_branch" != "$GIT_BRANCH" ]; then
+        echo "ERROR: On branch '$current_branch' but this build targets '$GIT_BRANCH'."
+        echo "   Either checkout $GIT_BRANCH, or build the current branch in a worktree:"
+        echo "     bash $0 --branch $current_branch"
+        exit 1
+    fi
 fi
 
 # --- Version functions ---
@@ -727,6 +743,63 @@ archive_latest_image() {
         fi
     else
         echo "No existing ${IMAGE_NAME}:latest image found to archive"
+    fi
+}
+
+# --- Git version-record helpers ---
+
+# Next dev build number for the given version, derived from existing git tags
+# (vVERSION-dev.N). Tags are the source of truth, so no committed counter is
+# needed and concurrent machines can't fight over a file. Best-effort fetch of
+# tags first; falls back to whatever is local if offline.
+compute_dev_build_number() {
+    local version="$1"
+    git fetch --tags origin >/dev/null 2>&1 || true
+    local max=0 n tag
+    while IFS= read -r tag; do
+        [ -z "$tag" ] && continue
+        n="${tag##*-dev.}"
+        if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -gt "$max" ]; then
+            max="$n"
+        fi
+    done < <(git tag -l "v${version}-dev.*")
+    echo $((max + 1))
+}
+
+# Push the current branch. On a non-fast-forward rejection (origin moved during
+# the build), rebase onto origin and retry once so we never leave the branch
+# diverged. All git output is shown (no suppression) so failures are visible.
+robust_push_branch() {
+    if git push origin "$GIT_BRANCH"; then
+        return 0
+    fi
+    echo "Push was rejected (origin likely advanced). Rebasing onto origin/$GIT_BRANCH and retrying..."
+    if git pull --rebase origin "$GIT_BRANCH" && git push origin "$GIT_BRANCH"; then
+        return 0
+    fi
+    echo "ERROR: could not push to origin/$GIT_BRANCH. Resolve manually:"
+    echo "   git pull --rebase origin $GIT_BRANCH && git push origin $GIT_BRANCH"
+    return 1
+}
+
+# Create an annotated tag on the current HEAD and push it. A failed tag push is
+# only a warning: tags never move the branch tip, so they cannot cause the
+# divergence / merge-prompt problem that commits can.
+create_and_push_tag() {
+    local tag="$1" message="$2"
+    if git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1; then
+        echo "Tag $tag already exists locally; leaving it as-is"
+    elif ! git tag -a "$tag" -m "$message"; then
+        echo "Warning: failed to create tag $tag"
+        return 0
+    else
+        echo "Created tag $tag"
+    fi
+
+    if git push origin "$tag"; then
+        echo "Pushed tag $tag"
+    else
+        echo "Warning: could not push tag $tag. Push it later with: git push origin $tag"
     fi
 }
 
@@ -945,7 +1018,9 @@ if [ "$AUTO_VERSION" = true ]; then
         fi
     else
         NEW_VERSION="$VERSION"
-        NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+        # Build number comes from git tags, not the committed counter, so dev
+        # builds don't need to commit anything to advance it.
+        NEW_BUILD_NUMBER=$(compute_dev_build_number "$VERSION")
         VERSION_TAG="v${VERSION}-dev.${NEW_BUILD_NUMBER}"
         TAG="dev"
         ADDITIONAL_TAG="${IMAGE_NAME}:${VERSION_TAG}"
@@ -1045,25 +1120,47 @@ if [ "$BUILD_FAILED" = true ]; then
     exit 1
 fi
 
-# Build succeeded - clean up backups and commit version changes
-if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_PATH" = "$ORIGINAL_DIR" ] && [ "$DRY_RUN" = false ]; then
-    remove_version_backups
-
-    echo ""
-    echo "Committing version updates to repository..."
-    git add .docker-version package.json frontend/package.json backend/package.json app-metadata.yaml 2>/dev/null || true
-    if git commit -m "build: Auto-increment version to v$NEW_VERSION
-
-Generated by build_image.sh auto-versioning"; then
-        echo "Version changes committed locally"
-        if git push origin "$GIT_BRANCH" 2>/dev/null; then
-            echo "Version changes pushed to remote repository"
+# Build succeeded - record the version in git.
+#
+# The image already carries its version (baked into .docker-version before the
+# build), so git is only a lookup table mapping a version to its code. We record
+# it with a TAG, which (unlike a commit) never moves the branch tip and so can
+# never cause the divergence / merge-prompt problem.
+#
+#  - Dev builds:    restore the bumped files (keep the tree clean, NO commit),
+#                   then annotate-tag the built commit as vX.Y.Z-dev.N.
+#  - Stable builds: commit the real version bump, tag it vX.Y.Z, and push the
+#                   branch robustly (rebase-and-retry on a racing push).
+if [ "$AUTO_VERSION" = true ] && [ -n "$NEW_VERSION" ] && [ "$BUILD_PATH" = "$ORIGINAL_DIR" ]; then
+    if [ "$DRY_RUN" = true ]; then
+        echo ""
+        if [ "$BUILD_STABLE" = true ]; then
+            echo "[DRY RUN] Would commit release v$NEW_VERSION and tag ${VERSION_TAG} (pushing branch + tag)"
         else
-            echo "Warning: Could not push changes (likely no credentials configured)"
-            echo "   Run 'git push origin $GIT_BRANCH' manually or configure git credentials"
+            echo "[DRY RUN] Would tag ${VERSION_TAG} on $(get_git_commit) (tag only, no commit)"
         fi
+    elif [ "$BUILD_STABLE" = true ]; then
+        # Release: a real, infrequent version bump worth a commit.
+        remove_version_backups
+        echo ""
+        echo "Recording release v$NEW_VERSION in git..."
+        git add .docker-version package.json frontend/package.json backend/package.json app-metadata.yaml 2>/dev/null || true
+        if git commit -m "build: release v$NEW_VERSION
+
+Generated by build_image.sh"; then
+            echo "Release commit created"
+            robust_push_branch || true
+        else
+            echo "No version file changes to commit (tagging current HEAD)"
+        fi
+        create_and_push_tag "$VERSION_TAG" "Release $VERSION_TAG (built $(date -u +'%Y-%m-%dT%H:%M:%SZ'))"
     else
-        echo "No version changes to commit"
+        # Dev build: no commit. Restore the bumped files so the tree stays
+        # clean, then tag the exact commit the image was built from.
+        restore_version_backups
+        echo ""
+        echo "Recording dev build in git (tag only, no commit)..."
+        create_and_push_tag "$VERSION_TAG" "Dev build $VERSION_TAG (built $(date -u +'%Y-%m-%dT%H:%M:%SZ'), commit $(get_git_commit))"
     fi
 fi
 
