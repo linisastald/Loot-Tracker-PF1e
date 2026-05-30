@@ -55,6 +55,43 @@ const daysSinceEpoch = (year, month, day) => {
   return total;
 };
 
+// Advance a Golarion date by n whole days (leap-aware month/year rollover).
+export const addGolarionDays = (date, n) => {
+  let { year, month, day } = date;
+  for (let i = 0; i < n; i++) {
+    day++;
+    if (day > getGolarionMonthDays(year, month)) {
+      day = 1;
+      month++;
+      if (month > 12) {
+        month = 1;
+        year++;
+      }
+    }
+  }
+  return { year, month, day };
+};
+
+// Compare two Golarion dates: <0 if a before b, 0 if equal, >0 if a after b.
+export const compareGolarionDates = (a, b) => {
+  if (a.year !== b.year) return a.year - b.year;
+  if (a.month !== b.month) return a.month - b.month;
+  return a.day - b.day;
+};
+
+// Inclusive number of days a note spans from start to end.
+export const golarionSpanDays = (start, end) => {
+  let count = 1;
+  let d = start;
+  let guard = 0;
+  while (compareGolarionDates(d, end) < 0 && guard < 1000) {
+    d = addGolarionDays(d, 1);
+    count++;
+    guard++;
+  }
+  return count;
+};
+
 // Day-of-week index (0 = Moonday ... 6 = Sunday) for a Golarion date.
 export const getGolarionDayOfWeek = (year, month, day) => {
   const total = daysSinceEpoch(year, month, day);

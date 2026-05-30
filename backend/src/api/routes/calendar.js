@@ -8,6 +8,8 @@ router.post('/next-day', verifyToken, calendarController.advanceDay);
 router.post('/advance', verifyToken, calendarController.advanceDays);
 router.post('/set-current-date', verifyToken, calendarController.setCurrentDate);
 router.get('/notes', verifyToken, calendarController.getNotes);
-router.post('/notes', verifyToken, calendarController.saveNote);
+router.post('/notes', verifyToken, calendarController.createNote);
+router.put('/notes/:id', verifyToken, calendarController.updateNote);
+router.delete('/notes/:id', verifyToken, calendarController.deleteNote);
 
 module.exports = router;

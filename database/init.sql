@@ -270,6 +270,27 @@ CREATE TABLE golarion_calendar_notes (
     UNIQUE (year, month, day)
 );
 
+-- Rich calendar notes: multi-day (spanning) notes, multiple notes per day,
+-- DM-only visibility, and authorship. A note spans start..end inclusive;
+-- single-day notes have end = start.
+CREATE TABLE golarion_notes (
+    id SERIAL PRIMARY KEY,
+    start_year INTEGER NOT NULL,
+    start_month INTEGER NOT NULL,
+    start_day INTEGER NOT NULL,
+    end_year INTEGER NOT NULL,
+    end_month INTEGER NOT NULL,
+    end_day INTEGER NOT NULL,
+    note TEXT NOT NULL,
+    dm_only BOOLEAN NOT NULL DEFAULT false,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_golarion_notes_start ON golarion_notes (start_year, start_month, start_day);
+CREATE INDEX idx_golarion_notes_created_by ON golarion_notes (created_by);
+
 CREATE TABLE weather_regions (
     region_name VARCHAR(100) PRIMARY KEY,
     base_temp_low INTEGER NOT NULL,

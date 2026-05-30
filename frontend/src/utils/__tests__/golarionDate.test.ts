@@ -16,6 +16,9 @@ import {
   getGolarionMonthDays,
   getGolarionDayOfWeek,
   getGolarionMoonPhase,
+  addGolarionDays,
+  compareGolarionDates,
+  golarionSpanDays,
   formatGolarionDate,
   parseGolarionDate,
   getCurrentGolarionDate,
@@ -265,6 +268,66 @@ describe('golarionDate utilities', () => {
       const leapDay = getGolarionDayOfWeek(4720, 2, 29);
       const nextMonth = getGolarionDayOfWeek(4720, 3, 1);
       expect(nextMonth).toBe((leapDay + 1) % 7);
+    });
+  });
+
+  // --------------- addGolarionDays ---------------
+  describe('addGolarionDays', () => {
+    it('returns the same date when adding zero days', () => {
+      expect(addGolarionDays({ year: 4722, month: 1, day: 1 }, 0)).toEqual({ year: 4722, month: 1, day: 1 });
+    });
+
+    it('rolls over a month boundary', () => {
+      expect(addGolarionDays({ year: 4722, month: 1, day: 31 }, 1)).toEqual({ year: 4722, month: 2, day: 1 });
+    });
+
+    it('rolls over a year boundary', () => {
+      expect(addGolarionDays({ year: 4722, month: 12, day: 31 }, 1)).toEqual({ year: 4723, month: 1, day: 1 });
+    });
+
+    it('includes the leap day crossing Calistril in a leap year', () => {
+      // 4720 is a leap year (Calistril has 29 days)
+      expect(addGolarionDays({ year: 4720, month: 2, day: 28 }, 1)).toEqual({ year: 4720, month: 2, day: 29 });
+      expect(addGolarionDays({ year: 4720, month: 2, day: 28 }, 2)).toEqual({ year: 4720, month: 3, day: 1 });
+    });
+
+    it('skips the leap day in a common year', () => {
+      expect(addGolarionDays({ year: 4722, month: 2, day: 28 }, 1)).toEqual({ year: 4722, month: 3, day: 1 });
+    });
+  });
+
+  // --------------- compareGolarionDates ---------------
+  describe('compareGolarionDates', () => {
+    it('returns 0 for equal dates', () => {
+      expect(compareGolarionDates({ year: 4722, month: 6, day: 15 }, { year: 4722, month: 6, day: 15 })).toBe(0);
+    });
+
+    it('orders by year, then month, then day', () => {
+      expect(compareGolarionDates({ year: 4721, month: 12, day: 31 }, { year: 4722, month: 1, day: 1 })).toBeLessThan(0);
+      expect(compareGolarionDates({ year: 4722, month: 7, day: 1 }, { year: 4722, month: 6, day: 28 })).toBeGreaterThan(0);
+      expect(compareGolarionDates({ year: 4722, month: 6, day: 16 }, { year: 4722, month: 6, day: 15 })).toBeGreaterThan(0);
+    });
+  });
+
+  // --------------- golarionSpanDays ---------------
+  describe('golarionSpanDays', () => {
+    it('counts a single-day span as 1', () => {
+      expect(golarionSpanDays({ year: 4722, month: 3, day: 5 }, { year: 4722, month: 3, day: 5 })).toBe(1);
+    });
+
+    it('counts an inclusive multi-day span', () => {
+      expect(golarionSpanDays({ year: 4722, month: 1, day: 10 }, { year: 4722, month: 1, day: 12 })).toBe(3);
+    });
+
+    it('counts a span across a month boundary', () => {
+      // 30 Abadius .. 1 Calistril = 3 days (30, 31 Abadius, 1 Calistril)
+      expect(golarionSpanDays({ year: 4722, month: 1, day: 30 }, { year: 4722, month: 2, day: 1 })).toBe(3);
+    });
+
+    it('is the inverse of addGolarionDays (span of N lands N-1 days out)', () => {
+      const start = { year: 4722, month: 5, day: 20 };
+      const end = addGolarionDays(start, 6); // 7-day span
+      expect(golarionSpanDays(start, end)).toBe(7);
     });
   });
 

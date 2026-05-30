@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   Container,
   Dialog,
@@ -14,7 +15,9 @@ import {
   DialogTitle,
   Divider,
   FormControl,
+  FormControlLabel,
   Grid,
+  IconButton,
   InputLabel,
   List,
   ListItem,
@@ -40,6 +43,7 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import EventIcon from '@mui/icons-material/Event';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import api from '../../utils/api';
 import {isDM} from '../../utils/auth';
@@ -47,6 +51,9 @@ import {
     getGolarionDayOfWeek,
     getGolarionMonthDays,
     getGolarionMoonPhase,
+    addGolarionDays,
+    compareGolarionDates,
+    golarionSpanDays,
 } from '../../utils/golarionDate';
 
 interface MoonPhase {
@@ -149,14 +156,26 @@ interface DateObject {
   day?: number;
 }
 
-interface Note {
-  [key: string]: string;
+interface GolarionDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+interface GolarionNoteData {
+  id: number;
+  startDate: GolarionDate;
+  endDate: GolarionDate;
+  note: string;
+  dmOnly: boolean;
+  createdBy: number | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface StyledDayProps {
   isCurrentDay?: boolean;
   isSelected?: boolean;
-  theme?: any;
 }
 
 const months: Month[] = [
@@ -218,8 +237,8 @@ const NotePreview = styled(Typography)<{isCurrentDay?: boolean}>(({theme, isCurr
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     display: '-webkit-box',
-    '-webkit-line-clamp': 3,
-    '-webkit-box-orient': 'vertical',
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: 'vertical',
     width: '100%',
     color: isCurrentDay ? theme.palette.primary.contrastText : theme.palette.text.secondary,
 }));
@@ -258,8 +277,12 @@ const GolarionCalendar: React.FC = () => {
     const [currentDate, setCurrentDate] = useState<DateObject & {day: number}>({year: 4722, month: 1, day: 1});
     const [displayedDate, setDisplayedDate] = useState<DateObject>({year: 4722, month: 1});
     const [selectedDate, setSelectedDate] = useState<DateObject & {day: number} | null>(null);
-    const [notes, setNotes] = useState<Note>({});
+    const [notes, setNotes] = useState<GolarionNoteData[]>([]);
     const [noteText, setNoteText] = useState<string>('');
+    const [noteDays, setNoteDays] = useState<string>('1');
+    const [noteSeparate, setNoteSeparate] = useState<boolean>(false);
+    const [noteDmOnly, setNoteDmOnly] = useState<boolean>(false);
+    const [editingNote, setEditingNote] = useState<GolarionNoteData | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [confirmDialogOpen, setConfirmDialogOpen] = useState<boolean>(false);
     const [daysToAdd, setDaysToAdd] = useState<string>('');
@@ -307,7 +330,7 @@ const GolarionCalendar: React.FC = () => {
     const fetchNotes = async (): Promise<void> => {
         try {
             const response = await api.get('/calendar/notes');
-            setNotes(response.data);
+            setNotes(Array.isArray(response.data) ? response.data : []);
             setError(null);
         } catch (error) {
             setError('Failed to fetch notes. Please try again later.');
@@ -524,33 +547,111 @@ const GolarionCalendar: React.FC = () => {
         setSelectedDate(currentDate);
     };
 
+    // Reset the note editor to a blank "new note" state.
+    const resetNoteForm = (): void => {
+        setEditingNote(null);
+        setNoteText('');
+        setNoteDays('1');
+        setNoteSeparate(false);
+        setNoteDmOnly(false);
+    };
+
     const handleDayClick = (day: number): void => {
         const clickedDate = {...displayedDate, day};
         setSelectedDate(clickedDate);
-        setNoteText(notes[`${clickedDate.year}-${clickedDate.month}-${clickedDate.day}`] || '');
+        resetNoteForm();
     };
+
+    // Notes expanded into a per-day map so the grid and the selected-day panel
+    // can quickly find which notes touch a given date.
+    const notesByDay: Record<string, GolarionNoteData[]> = React.useMemo(() => {
+        const map: Record<string, GolarionNoteData[]> = {};
+        for (const n of notes) {
+            let d: GolarionDate = n.startDate;
+            let guard = 0;
+            // Guard well above the backend's MAX_NOTE_SPAN_DAYS (366); a note can
+            // never legitimately exceed it, so this only bounds malformed data.
+            while (compareGolarionDates(d, n.endDate) <= 0 && guard < 1000) {
+                const key = `${d.year}-${d.month}-${d.day}`;
+                (map[key] = map[key] || []).push(n);
+                d = addGolarionDays(d, 1);
+                guard++;
+            }
+        }
+        return map;
+    }, [notes]);
 
     const handleSaveNote = async (): Promise<void> => {
         if (!selectedDate) return;
+        if (noteText.trim() === '') {
+            setError('Note text is required.');
+            return;
+        }
+
+        const days = parseInt(noteDays, 10);
+        if (isNaN(days) || days < 1) {
+            setError('A note must span at least 1 day.');
+            return;
+        }
 
         try {
-            // Both frontend and backend now use 1-indexed months
-            await api.post('/calendar/notes', {
-                date: {
-                    year: selectedDate.year,
-                    month: selectedDate.month,
-                    day: selectedDate.day
-                },
-                note: noteText
-            });
-            setNotes(prevNotes => ({
-                ...prevNotes,
-                [`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`]: noteText
-            }));
+            if (editingNote) {
+                await api.put(`/calendar/notes/${editingNote.id}`, {
+                    note: noteText,
+                    days,
+                    dmOnly: noteDmOnly,
+                });
+            } else {
+                await api.post('/calendar/notes', {
+                    startDate: {
+                        year: selectedDate.year,
+                        month: selectedDate.month,
+                        day: selectedDate.day,
+                    },
+                    days,
+                    note: noteText,
+                    dmOnly: noteDmOnly,
+                    asSeparateNotes: noteSeparate,
+                });
+            }
+            resetNoteForm();
             setError(null);
+            await fetchNotes();
         } catch (error) {
             setError('Failed to save note. Please try again later.');
         }
+    };
+
+    const handleEditNote = (note: GolarionNoteData): void => {
+        setEditingNote(note);
+        setNoteText(note.note);
+        setNoteDays(String(golarionSpanDays(note.startDate, note.endDate)));
+        setNoteSeparate(false);
+        setNoteDmOnly(note.dmOnly);
+        setSelectedDate({year: note.startDate.year, month: note.startDate.month, day: note.startDate.day});
+    };
+
+    const handleDeleteNote = async (id: number): Promise<void> => {
+        try {
+            await api.delete(`/calendar/notes/${id}`);
+            if (editingNote?.id === id) {
+                resetNoteForm();
+            }
+            setError(null);
+            await fetchNotes();
+        } catch (error) {
+            setError('Failed to delete note. Please try again later.');
+        }
+    };
+
+    // Format a note's date or date range for display.
+    const formatNoteRange = (note: GolarionNoteData): string => {
+        const start = `${note.startDate.day} ${months[note.startDate.month - 1]?.name || ''} ${note.startDate.year}`;
+        if (compareGolarionDates(note.startDate, note.endDate) === 0) {
+            return start;
+        }
+        const end = `${note.endDate.day} ${months[note.endDate.month - 1]?.name || ''} ${note.endDate.year}`;
+        return `${start} – ${end}`;
     };
 
     const getMoonPhase = (date: DateObject & {day: number}): MoonPhase =>
@@ -590,11 +691,15 @@ const GolarionCalendar: React.FC = () => {
                                         selectedDate.year === displayedDate.year &&
                                         selectedDate.month === displayedDate.month &&
                                         selectedDate.day === day;
-                                    const note = notes[dateKey];
+                                    const dayNotes = notesByDay[dateKey] || [];
+                                    const note = dayNotes.length > 0
+                                        ? (dayNotes.length > 1
+                                            ? `${dayNotes[0].note} (+${dayNotes.length - 1} more)`
+                                            : dayNotes[0].note)
+                                        : '';
 
                                     if (isValidDay) {
                                         // For valid days, get weather and moon phase
-                                        const dateKey = `${displayedDate.year}-${displayedDate.month}-${day}`;
                                         const weatherData = weather[dateKey];
 
                                         // DM-only: a day past the current date is a forecast (shown
@@ -733,6 +838,10 @@ const GolarionCalendar: React.FC = () => {
     const selectedWeather = selectedDate
         ? weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`]
         : undefined;
+
+    const selectedDayNotes = selectedDate
+        ? (notesByDay[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`] || [])
+        : [];
 
     return (
         <Container maxWidth="lg">
@@ -975,19 +1084,103 @@ const GolarionCalendar: React.FC = () => {
                                     Notes for this Date
                                 </Typography>
 
+                                {selectedDayNotes.length > 0 ? (
+                                    <List dense sx={{mb: 1}}>
+                                        {selectedDayNotes.map(n => (
+                                            <ListItem
+                                                key={n.id}
+                                                alignItems="flex-start"
+                                                disableGutters
+                                                secondaryAction={
+                                                    <Box>
+                                                        <IconButton size="small" aria-label="edit note"
+                                                                    onClick={() => handleEditNote(n)}>
+                                                            <EditIcon fontSize="small"/>
+                                                        </IconButton>
+                                                        <IconButton size="small" aria-label="delete note"
+                                                                    onClick={() => handleDeleteNote(n.id)}>
+                                                            <DeleteIcon fontSize="small"/>
+                                                        </IconButton>
+                                                    </Box>
+                                                }
+                                            >
+                                                <ListItemText
+                                                    primary={
+                                                        <Box component="span" sx={{display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.5}}>
+                                                            {n.dmOnly && (
+                                                                <Chip label="DM only" size="small" color="warning" variant="outlined"/>
+                                                            )}
+                                                            {compareGolarionDates(n.startDate, n.endDate) !== 0 && (
+                                                                <Chip label={formatNoteRange(n)} size="small" variant="outlined"/>
+                                                            )}
+                                                        </Box>
+                                                    }
+                                                    secondary={
+                                                        <Typography variant="body2" component="span"
+                                                                    sx={{whiteSpace: 'pre-wrap', display: 'block', pr: 6}}>
+                                                            {n.note}
+                                                        </Typography>
+                                                    }
+                                                />
+                                            </ListItem>
+                                        ))}
+                                    </List>
+                                ) : (
+                                    <Typography variant="body2" color="text.secondary" sx={{mb: 1}}>
+                                        No notes on this day yet.
+                                    </Typography>
+                                )}
+
+                                <Divider sx={{my: 1.5}}/>
+
+                                <Typography variant="subtitle2" sx={{mb: 1}}>
+                                    {editingNote ? 'Edit note' : 'Add a note'}
+                                </Typography>
+
                                 <TextField
-                                    label="Notes"
+                                    label="Note"
                                     multiline
-                                    rows={6}
+                                    rows={4}
                                     fullWidth
                                     value={noteText}
                                     onChange={(e) => setNoteText(e.target.value)}
-                                    sx={{mb: 2}}
+                                    sx={{mb: 1}}
                                     placeholder="Add your notes for this date..."
                                     variant="outlined"
                                 />
 
-                                <Box display="flex" justifyContent="flex-end">
+                                <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mb: 1}}>
+                                    <TextField
+                                        label="Spans (days)"
+                                        type="number"
+                                        size="small"
+                                        value={noteDays}
+                                        onChange={(e) => setNoteDays(e.target.value)}
+                                        sx={{width: '120px'}}
+                                        InputProps={{inputProps: {min: 1}}}
+                                    />
+                                    {!editingNote && parseInt(noteDays, 10) > 1 && (
+                                        <FormControlLabel
+                                            control={<Checkbox size="small" checked={noteSeparate}
+                                                               onChange={(e) => setNoteSeparate(e.target.checked)}/>}
+                                            label="Separate note per day"
+                                        />
+                                    )}
+                                    {dmMode && (
+                                        <FormControlLabel
+                                            control={<Checkbox size="small" checked={noteDmOnly}
+                                                               onChange={(e) => setNoteDmOnly(e.target.checked)}/>}
+                                            label="DM only"
+                                        />
+                                    )}
+                                </Box>
+
+                                <Box display="flex" justifyContent="flex-end" gap={1}>
+                                    {editingNote && (
+                                        <Button onClick={resetNoteForm} sx={{fontWeight: 500, textTransform: 'none'}}>
+                                            Cancel
+                                        </Button>
+                                    )}
                                     <Button
                                         variant="outlined"
                                         onClick={handleSaveNote}
@@ -995,12 +1188,63 @@ const GolarionCalendar: React.FC = () => {
                                         startIcon={<NoteAltIcon/>}
                                         sx={{fontWeight: 500, textTransform: 'none', boxShadow: 1}}
                                     >
-                                        Save Note
+                                        {editingNote ? 'Update Note' : 'Add Note'}
                                     </Button>
                                 </Box>
                             </Paper>
                         </Grid>
                     </Grid>
+                </Paper>
+            )}
+
+            {/* Agenda: every dated note, chronological */}
+            {notes.length > 0 && (
+                <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
+                    <Typography variant="h5" gutterBottom color="primary"
+                                sx={{display: 'flex', alignItems: 'center', mb: 2}}>
+                        <EventIcon sx={{mr: 1}}/>
+                        All Notes
+                    </Typography>
+                    <List dense>
+                        {notes.map(n => (
+                            <ListItem
+                                key={n.id}
+                                alignItems="flex-start"
+                                divider
+                                secondaryAction={
+                                    <Box>
+                                        <IconButton size="small" aria-label="edit note"
+                                                    onClick={() => handleEditNote(n)}>
+                                            <EditIcon fontSize="small"/>
+                                        </IconButton>
+                                        <IconButton size="small" aria-label="delete note"
+                                                    onClick={() => handleDeleteNote(n.id)}>
+                                            <DeleteIcon fontSize="small"/>
+                                        </IconButton>
+                                    </Box>
+                                }
+                            >
+                                <ListItemText
+                                    primary={
+                                        <Box component="span" sx={{display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap'}}>
+                                            <Typography variant="subtitle2" component="span">
+                                                {formatNoteRange(n)}
+                                            </Typography>
+                                            {n.dmOnly && (
+                                                <Chip label="DM only" size="small" color="warning" variant="outlined"/>
+                                            )}
+                                        </Box>
+                                    }
+                                    secondary={
+                                        <Typography variant="body2" component="span"
+                                                    sx={{whiteSpace: 'pre-wrap', display: 'block', pr: 6}}>
+                                            {n.note}
+                                        </Typography>
+                                    }
+                                />
+                            </ListItem>
+                        ))}
+                    </List>
                 </Paper>
             )}
 

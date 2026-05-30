@@ -13,7 +13,7 @@ vi.mock('../../../utils/api', () => ({
         });
       }
       if (url === '/calendar/notes') {
-        return Promise.resolve({ data: {} });
+        return Promise.resolve({ data: [] });
       }
       if (url === '/settings/region') {
         return Promise.resolve({ data: { value: 'Varisia' } });
@@ -29,6 +29,7 @@ vi.mock('../../../utils/api', () => ({
   },
 }));
 
+import api from '../../../utils/api';
 import GolarionCalendar from '../GolarionCalendar';
 
 const renderCalendar = () => {
@@ -137,11 +138,50 @@ describe('GolarionCalendar', () => {
     });
   });
 
-  it('renders save note button in the date details panel', async () => {
+  it('renders the add-note button in the date details panel', async () => {
     renderCalendar();
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Save Note/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Add Note/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('notes', () => {
+    it('renders existing notes (with range) in the All Notes agenda', async () => {
+      (api.get as any).mockImplementation((url: string) => {
+        if (url === '/calendar/current-date') {
+          return Promise.resolve({ data: { year: 4722, month: 1, day: 15 } });
+        }
+        if (url === '/calendar/notes') {
+          return Promise.resolve({ data: [
+            {
+              id: 1,
+              startDate: { year: 4722, month: 1, day: 10 },
+              endDate: { year: 4722, month: 1, day: 12 },
+              note: 'Party traveled to Sandpoint',
+              dmOnly: false,
+              createdBy: 1,
+            },
+          ]});
+        }
+        if (url === '/settings/region') {
+          return Promise.resolve({ data: { value: 'Varisia' } });
+        }
+        if (url.startsWith('/weather/range')) {
+          return Promise.resolve({ data: [] });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      renderCalendar();
+
+      await waitFor(() => {
+        expect(screen.getByText('All Notes')).toBeInTheDocument();
+      });
+      // Note text appears in the agenda (and in the spanned grid cells)
+      expect(screen.getAllByText('Party traveled to Sandpoint').length).toBeGreaterThan(0);
+      // The multi-day note shows its date range (unique to the agenda chip here)
+      expect(screen.getByText(/10 Abadius 4722 .* 12 Abadius 4722/)).toBeInTheDocument();
     });
   });
 

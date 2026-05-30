@@ -5,11 +5,44 @@ const logger = require('../utils/logger');
 const { generateWeatherForNextDay } = require('./weatherController');
 const { getMonthDays, addDays, calculateDaysBetween } = require('../utils/golarionCalendar');
 const { getForecastDays } = require('../utils/weatherForecast');
+const GolarionNote = require('../models/GolarionNote');
 
 // Maximum number of days a single advance request may jump, to avoid a
 // runaway weather-generation loop. The DM can issue another request to go
 // further.
 const MAX_ADVANCE_DAYS = 366;
+
+// Maximum span (in days) of a single note or copy-to-days action.
+const MAX_NOTE_SPAN_DAYS = 366;
+
+/**
+ * Validate a {year, month, day} date object, throwing a validation error if
+ * invalid. Returns the validated date.
+ */
+const validateDate = (date, label = 'date') => {
+  if (!date || !Number.isInteger(date.year) || !Number.isInteger(date.month) || !Number.isInteger(date.day)) {
+    throw controllerFactory.createValidationError(`A valid ${label} (year, month, day integers) is required`);
+  }
+  if (date.month < 1 || date.month > 12) {
+    throw controllerFactory.createValidationError(`${label} month must be between 1 and 12`);
+  }
+  const daysInMonth = getMonthDays(date.year, date.month);
+  if (date.day < 1 || date.day > daysInMonth) {
+    throw controllerFactory.createValidationError(`${label} day must be between 1 and ${daysInMonth} for this month`);
+  }
+  return { year: date.year, month: date.month, day: date.day };
+};
+
+/**
+ * Strictly parse a note id from a route param (digits only), throwing a
+ * validation error otherwise. Avoids silently coercing "5abc" -> 5.
+ */
+const parseNoteId = (raw) => {
+  if (!/^\d+$/.test(String(raw))) {
+    throw controllerFactory.createValidationError('A valid note id is required');
+  }
+  return parseInt(raw, 10);
+};
 
 /**
  * Get the current date in the Golarion calendar
@@ -210,53 +243,118 @@ const advanceDays = async (req, res) => {
 };
 
 /**
- * Get all calendar notes
+ * Get all calendar notes. DM-only notes are hidden from non-DM users.
  */
 const getNotes = async (req, res) => {
-  const result = await dbUtils.executeQuery('SELECT * FROM golarion_calendar_notes');
-
-  // Format notes into a lookup object by date
-  const notes = {};
-  result.rows.forEach(row => {
-    notes[`${row.year}-${row.month}-${row.day}`] = row.note;
-  });
-
+  const isDm = req.user?.role === 'DM';
+  const notes = await GolarionNote.getAll({ includeDmOnly: isDm });
   controllerFactory.sendSuccessResponse(res, notes, 'Calendar notes retrieved');
 };
 
 /**
- * Save a note for a specific date
+ * Create a calendar note. Supports:
+ *  - a single-day note (days = 1, default),
+ *  - a multi-day spanning note (days > 1),
+ *  - "copy to days": days > 1 with asSeparateNotes = true creates one
+ *    independent single-day note per day in the span.
+ * dm_only can only be set by DMs; for other users it is forced to false.
  */
-const saveNote = async (req, res) => {
-  const {date, note} = req.body;
+const createNote = async (req, res) => {
+  const { startDate, days, note, dmOnly, asSeparateNotes } = req.body;
 
-  if (!date || !date.year || date.month === undefined || !date.day) {
-    throw controllerFactory.createValidationError('Valid date object with year, month, and day is required');
+  const start = validateDate(startDate, 'start date');
+
+  if (typeof note !== 'string' || note.trim() === '') {
+    throw controllerFactory.createValidationError('Note text is required');
   }
 
-  // Validate the date values
-  if (!Number.isInteger(date.year) || !Number.isInteger(date.month) || !Number.isInteger(date.day)) {
-    throw controllerFactory.createValidationError('Year, month, and day must be integers');
+  const span = days === undefined ? 1 : parseInt(days, 10);
+  if (!Number.isInteger(span) || span < 1 || span > MAX_NOTE_SPAN_DAYS) {
+    throw controllerFactory.createValidationError(`days must be an integer between 1 and ${MAX_NOTE_SPAN_DAYS}`);
   }
 
-  if (date.month < 1 || date.month > 12) {
-    throw controllerFactory.createValidationError('Month must be between 1 and 12');
+  const isDm = req.user?.role === 'DM';
+  const effectiveDmOnly = isDm ? Boolean(dmOnly) : false;
+  const createdBy = req.user?.id ?? null;
+
+  let created;
+  if (asSeparateNotes && span > 1) {
+    // Independent single-day copies, one per day in the span.
+    let day = start;
+    const toCreate = [];
+    for (let i = 0; i < span; i++) {
+      toCreate.push({ start: day, end: day, note, dmOnly: effectiveDmOnly, createdBy });
+      day = addDays(day, 1);
+    }
+    created = await GolarionNote.createMany(toCreate);
+  } else {
+    // One note spanning start..end (end = start for a single-day note).
+    const end = addDays(start, span - 1);
+    created = [await GolarionNote.create({ start, end, note, dmOnly: effectiveDmOnly, createdBy })];
   }
 
-  const daysInMonth = getMonthDays(date.year, date.month);
-  if (date.day < 1 || date.day > daysInMonth) {
-    throw controllerFactory.createValidationError(`Day must be between 1 and ${daysInMonth} for this month`);
+  controllerFactory.sendCreatedResponse(res, created, 'Note(s) created successfully');
+};
+
+/**
+ * Update a note's text, span, and DM-only flag. Players cannot modify DM-only
+ * notes (and cannot set dm_only).
+ */
+const updateNote = async (req, res) => {
+  const id = parseNoteId(req.params.id);
+
+  const existing = await GolarionNote.getById(id);
+  if (!existing) {
+    throw controllerFactory.createNotFoundError('Note not found');
   }
 
-  // Use upsert to save or update the note
-  await dbUtils.executeQuery(
-      `INSERT INTO golarion_calendar_notes (year, month, day, note)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (year, month, day) DO UPDATE SET note = EXCLUDED.note`,
-      [date.year, date.month, date.day, note]
-  );
+  const isDm = req.user?.role === 'DM';
+  if (existing.dmOnly && !isDm) {
+    throw controllerFactory.createNotFoundError('Note not found');
+  }
 
-  controllerFactory.sendSuccessResponse(res, {date, note}, 'Note saved successfully');
+  const { startDate, days, note, dmOnly } = req.body;
+
+  const noteText = note === undefined ? existing.note : note;
+  if (typeof noteText !== 'string' || noteText.trim() === '') {
+    throw controllerFactory.createValidationError('Note text is required');
+  }
+
+  // Default to the existing span; recompute if a new start or length is given.
+  // Validate in both branches (defense-in-depth against a malformed stored row).
+  const start = validateDate(startDate === undefined ? existing.startDate : startDate, 'start date');
+  const existingSpan = calculateDaysBetween(existing.startDate, existing.endDate).length + 1;
+  const span = days === undefined ? existingSpan : parseInt(days, 10);
+  if (!Number.isInteger(span) || span < 1 || span > MAX_NOTE_SPAN_DAYS) {
+    throw controllerFactory.createValidationError(`days must be an integer between 1 and ${MAX_NOTE_SPAN_DAYS}`);
+  }
+  const end = addDays(start, span - 1);
+
+  // Only DMs may change the dm_only flag; others keep the existing value.
+  const effectiveDmOnly = isDm ? (dmOnly === undefined ? existing.dmOnly : Boolean(dmOnly)) : existing.dmOnly;
+
+  const updated = await GolarionNote.update(id, { start, end, note: noteText, dmOnly: effectiveDmOnly });
+  controllerFactory.sendSuccessResponse(res, updated, 'Note updated successfully');
+};
+
+/**
+ * Delete a note. Players cannot delete DM-only notes.
+ */
+const deleteNote = async (req, res) => {
+  const id = parseNoteId(req.params.id);
+
+  const existing = await GolarionNote.getById(id);
+  if (!existing) {
+    throw controllerFactory.createNotFoundError('Note not found');
+  }
+
+  const isDm = req.user?.role === 'DM';
+  if (existing.dmOnly && !isDm) {
+    throw controllerFactory.createNotFoundError('Note not found');
+  }
+
+  await GolarionNote.remove(id);
+  controllerFactory.sendSuccessResponse(res, { id }, 'Note deleted successfully');
 };
 
 /**
@@ -313,12 +411,12 @@ const extendWeatherForecast = async (oldDate, currentDate, region) => {
 };
 
 // Define validation rules
-const saveNoteValidation = {
-  requiredFields: ['date', 'note']
-};
-
 const setCurrentDateValidation = {
   requiredFields: ['year', 'month', 'day']
+};
+
+const createNoteValidation = {
+  requiredFields: ['startDate', 'note']
 };
 
 // Create handlers with validation and error handling
@@ -345,8 +443,16 @@ module.exports = {
     errorMessage: 'Error getting calendar notes'
   }),
 
-  saveNote: controllerFactory.createHandler(saveNote, {
-    errorMessage: 'Error saving calendar note',
-    validation: saveNoteValidation
+  createNote: controllerFactory.createHandler(createNote, {
+    errorMessage: 'Error creating calendar note',
+    validation: createNoteValidation
+  }),
+
+  updateNote: controllerFactory.createHandler(updateNote, {
+    errorMessage: 'Error updating calendar note'
+  }),
+
+  deleteNote: controllerFactory.createHandler(deleteNote, {
+    errorMessage: 'Error deleting calendar note'
   })
 };

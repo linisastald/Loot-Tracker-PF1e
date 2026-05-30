@@ -20,9 +20,20 @@ jest.mock('../weatherController', () => ({
   generateWeatherForNextDay: jest.fn().mockResolvedValue({}),
 }));
 
+// Mock the GolarionNote model (note SQL is covered in its own model test)
+jest.mock('../../models/GolarionNote', () => ({
+  getAll: jest.fn(),
+  getById: jest.fn(),
+  create: jest.fn(),
+  createMany: jest.fn(),
+  update: jest.fn(),
+  remove: jest.fn(),
+}));
+
 const dbUtils = require('../../utils/dbUtils');
 const calendarController = require('../calendarController');
 const { generateWeatherForNextDay } = require('../weatherController');
+const GolarionNote = require('../../models/GolarionNote');
 
 // Helper to create a mock response object
 function createMockRes() {
@@ -488,137 +499,229 @@ describe('calendarController', () => {
   // getNotes
   // ---------------------------------------------------------------
   describe('getNotes', () => {
-    it('should return notes formatted as a lookup object', async () => {
-      const req = createMockReq();
+    it('returns all notes (including dm_only) for a DM', async () => {
+      const req = createMockReq({ user: { role: 'DM', id: 1 } });
       const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [
-          { year: 4723, month: 3, day: 15, note: 'Party fought goblins' },
-          { year: 4723, month: 3, day: 20, note: 'Arrived in Sandpoint' },
-        ],
-      });
+      const notes = [{ id: 1, note: 'secret', dmOnly: true }];
+      GolarionNote.getAll.mockResolvedValueOnce(notes);
 
       await calendarController.getNotes(req, res);
 
-      expect(res.success).toHaveBeenCalledWith(
-        {
-          '4723-3-15': 'Party fought goblins',
-          '4723-3-20': 'Arrived in Sandpoint',
-        },
-        'Calendar notes retrieved'
-      );
+      expect(GolarionNote.getAll).toHaveBeenCalledWith({ includeDmOnly: true });
+      expect(res.success).toHaveBeenCalledWith(notes, 'Calendar notes retrieved');
     });
 
-    it('should return empty object when no notes exist', async () => {
-      const req = createMockReq();
+    it('excludes dm_only notes for a player', async () => {
+      const req = createMockReq({ user: { role: 'Player', id: 2 } });
       const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      GolarionNote.getAll.mockResolvedValueOnce([]);
 
       await calendarController.getNotes(req, res);
 
-      expect(res.success).toHaveBeenCalledWith({}, 'Calendar notes retrieved');
+      expect(GolarionNote.getAll).toHaveBeenCalledWith({ includeDmOnly: false });
+      expect(res.success).toHaveBeenCalledWith([], 'Calendar notes retrieved');
     });
   });
 
   // ---------------------------------------------------------------
-  // saveNote
+  // createNote
   // ---------------------------------------------------------------
-  describe('saveNote', () => {
-    it('should save a note for a valid date', async () => {
+  describe('createNote', () => {
+    it('creates a single-day note (end = start) and records the author', async () => {
       const req = createMockReq({
-        body: {
-          date: { year: 4723, month: 3, day: 15 },
-          note: 'Defeated Nualia',
-        },
+        user: { role: 'Player', id: 2 },
+        body: { startDate: { year: 4723, month: 3, day: 15 }, note: 'Defeated Nualia' },
       });
       const res = createMockRes();
+      GolarionNote.create.mockResolvedValueOnce({ id: 1 });
 
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      await calendarController.createNote(req, res);
 
-      await calendarController.saveNote(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO golarion_calendar_notes'),
-        [4723, 3, 15, 'Defeated Nualia']
-      );
-      expect(res.success).toHaveBeenCalledWith(
-        { date: { year: 4723, month: 3, day: 15 }, note: 'Defeated Nualia' },
-        'Note saved successfully'
-      );
+      expect(GolarionNote.create).toHaveBeenCalledWith(expect.objectContaining({
+        start: { year: 4723, month: 3, day: 15 },
+        end: { year: 4723, month: 3, day: 15 },
+        note: 'Defeated Nualia',
+        dmOnly: false,
+        createdBy: 2,
+      }));
+      expect(res.created).toHaveBeenCalled();
     });
 
-    it('should reject missing date object', async () => {
+    it('creates a spanning note across a month boundary', async () => {
       const req = createMockReq({
-        body: { date: null, note: 'Some note' },
+        user: { role: 'DM', id: 1 },
+        body: { startDate: { year: 4723, month: 1, day: 30 }, days: 3, note: 'Festival' },
       });
       const res = createMockRes();
+      GolarionNote.create.mockResolvedValueOnce({ id: 2 });
 
-      await calendarController.saveNote(req, res);
+      await calendarController.createNote(req, res);
 
-      // The createHandler validation catches missing 'date' field
-      expect(res.validationError).toHaveBeenCalled();
+      // 30 Abadius + 2 days = 1 Calistril (Abadius has 31 days)
+      expect(GolarionNote.create).toHaveBeenCalledWith(expect.objectContaining({
+        start: { year: 4723, month: 1, day: 30 },
+        end: { year: 4723, month: 2, day: 1 },
+      }));
     });
 
-    it('should reject non-integer date values', async () => {
+    it('creates independent copies when asSeparateNotes is set', async () => {
       const req = createMockReq({
-        body: {
-          date: { year: 'abc', month: 3, day: 15 },
-          note: 'A note',
-        },
+        user: { role: 'DM', id: 1 },
+        body: { startDate: { year: 4723, month: 3, day: 1 }, days: 3, asSeparateNotes: true, note: 'Travel' },
       });
       const res = createMockRes();
+      GolarionNote.createMany.mockResolvedValueOnce([{}, {}, {}]);
 
-      await calendarController.saveNote(req, res);
+      await calendarController.createNote(req, res);
 
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Year, month, and day must be integers'
-      );
+      const arg = GolarionNote.createMany.mock.calls[0][0];
+      expect(arg).toHaveLength(3);
+      expect(arg[0].start).toEqual({ year: 4723, month: 3, day: 1 });
+      expect(arg[2].start).toEqual({ year: 4723, month: 3, day: 3 });
+      // every copy is single-day
+      expect(arg.every(n => JSON.stringify(n.start) === JSON.stringify(n.end))).toBe(true);
     });
 
-    it('should reject invalid month in date', async () => {
+    it('forces dmOnly false for a non-DM', async () => {
       const req = createMockReq({
-        body: {
-          date: { year: 4723, month: 13, day: 1 },
-          note: 'A note',
-        },
+        user: { role: 'Player', id: 2 },
+        body: { startDate: { year: 4723, month: 3, day: 1 }, note: 'x', dmOnly: true },
       });
       const res = createMockRes();
+      GolarionNote.create.mockResolvedValueOnce({});
 
-      await calendarController.saveNote(req, res);
+      await calendarController.createNote(req, res);
 
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Month must be between 1 and 12'
-      );
+      expect(GolarionNote.create).toHaveBeenCalledWith(expect.objectContaining({ dmOnly: false }));
     });
 
-    it('should reject invalid day for the month', async () => {
+    it('keeps dmOnly true for a DM', async () => {
       const req = createMockReq({
-        body: {
-          date: { year: 4723, month: 2, day: 30 },
-          note: 'A note',
-        },
+        user: { role: 'DM', id: 1 },
+        body: { startDate: { year: 4723, month: 3, day: 1 }, note: 'x', dmOnly: true },
       });
       const res = createMockRes();
+      GolarionNote.create.mockResolvedValueOnce({});
 
-      await calendarController.saveNote(req, res);
+      await calendarController.createNote(req, res);
 
-      expect(res.validationError).toHaveBeenCalledWith(
-        expect.stringContaining('Day must be between 1 and 28')
-      );
+      expect(GolarionNote.create).toHaveBeenCalledWith(expect.objectContaining({ dmOnly: true }));
     });
 
-    it('should reject when required fields are missing (no note)', async () => {
+    it('rejects an empty note', async () => {
       const req = createMockReq({
-        body: { date: { year: 4723, month: 3, day: 15 } },
+        user: { role: 'DM', id: 1 },
+        body: { startDate: { year: 4723, month: 3, day: 1 }, note: '   ' },
       });
       const res = createMockRes();
 
-      await calendarController.saveNote(req, res);
+      await calendarController.createNote(req, res);
 
-      // createHandler validation catches missing 'note' field
-      expect(res.validationError).toHaveBeenCalled();
+      expect(res.validationError).toHaveBeenCalledWith('Note text is required');
+      expect(GolarionNote.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid start date', async () => {
+      const req = createMockReq({
+        user: { role: 'DM', id: 1 },
+        body: { startDate: { year: 4723, month: 2, day: 30 }, note: 'x' },
+      });
+      const res = createMockRes();
+
+      await calendarController.createNote(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('day must be between 1 and 28'));
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // updateNote
+  // ---------------------------------------------------------------
+  describe('updateNote', () => {
+    it('updates note text while preserving the existing span', async () => {
+      const existing = {
+        id: 5,
+        startDate: { year: 4723, month: 3, day: 1 },
+        endDate: { year: 4723, month: 3, day: 3 },
+        note: 'old',
+        dmOnly: false,
+      };
+      GolarionNote.getById.mockResolvedValueOnce(existing);
+      GolarionNote.update.mockResolvedValueOnce({ ...existing, note: 'new' });
+      const req = createMockReq({ user: { role: 'DM', id: 1 }, params: { id: '5' }, body: { note: 'new' } });
+      const res = createMockRes();
+
+      await calendarController.updateNote(req, res);
+
+      expect(GolarionNote.update).toHaveBeenCalledWith(5, expect.objectContaining({
+        start: { year: 4723, month: 3, day: 1 },
+        end: { year: 4723, month: 3, day: 3 },
+        note: 'new',
+      }));
+      expect(res.success).toHaveBeenCalled();
+    });
+
+    it('returns not found for a missing note', async () => {
+      GolarionNote.getById.mockResolvedValueOnce(null);
+      const req = createMockReq({ user: { role: 'DM', id: 1 }, params: { id: '99' }, body: { note: 'x' } });
+      const res = createMockRes();
+
+      await calendarController.updateNote(req, res);
+
+      expect(res.notFound).toHaveBeenCalled();
+      expect(GolarionNote.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-numeric id (no trailing-garbage coercion)', async () => {
+      const req = createMockReq({ user: { role: 'DM', id: 1 }, params: { id: '5abc' }, body: { note: 'x' } });
+      const res = createMockRes();
+
+      await calendarController.updateNote(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('A valid note id is required');
+      expect(GolarionNote.getById).not.toHaveBeenCalled();
+    });
+
+    it('hides a dm_only note from a player (treated as not found)', async () => {
+      GolarionNote.getById.mockResolvedValueOnce({
+        id: 7, dmOnly: true,
+        startDate: { year: 4723, month: 1, day: 1 }, endDate: { year: 4723, month: 1, day: 1 }, note: 'secret',
+      });
+      const req = createMockReq({ user: { role: 'Player', id: 2 }, params: { id: '7' }, body: { note: 'x' } });
+      const res = createMockRes();
+
+      await calendarController.updateNote(req, res);
+
+      expect(res.notFound).toHaveBeenCalled();
+      expect(GolarionNote.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // deleteNote
+  // ---------------------------------------------------------------
+  describe('deleteNote', () => {
+    it('deletes an existing note', async () => {
+      GolarionNote.getById.mockResolvedValueOnce({ id: 5, dmOnly: false });
+      GolarionNote.remove.mockResolvedValueOnce({ id: 5 });
+      const req = createMockReq({ user: { role: 'DM', id: 1 }, params: { id: '5' } });
+      const res = createMockRes();
+
+      await calendarController.deleteNote(req, res);
+
+      expect(GolarionNote.remove).toHaveBeenCalledWith(5);
+      expect(res.success).toHaveBeenCalledWith({ id: 5 }, 'Note deleted successfully');
+    });
+
+    it('prevents a player from deleting a dm_only note', async () => {
+      GolarionNote.getById.mockResolvedValueOnce({ id: 7, dmOnly: true });
+      const req = createMockReq({ user: { role: 'Player', id: 2 }, params: { id: '7' } });
+      const res = createMockRes();
+
+      await calendarController.deleteNote(req, res);
+
+      expect(res.notFound).toHaveBeenCalled();
+      expect(GolarionNote.remove).not.toHaveBeenCalled();
     });
   });
 });
