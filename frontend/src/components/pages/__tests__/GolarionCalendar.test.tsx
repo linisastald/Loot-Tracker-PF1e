@@ -185,6 +185,45 @@ describe('GolarionCalendar', () => {
     });
   });
 
+  describe('holidays', () => {
+    it('renders the holidays section, list entry, and category filter', async () => {
+      (api.get as any).mockImplementation((url: string) => {
+        if (url === '/calendar/current-date') {
+          return Promise.resolve({ data: { year: 4722, month: 1, day: 15 } });
+        }
+        if (url === '/calendar/notes') {
+          return Promise.resolve({ data: [] });
+        }
+        if (url === '/calendar/holidays') {
+          return Promise.resolve({ data: [
+            {
+              id: 1, name: 'Crystalhue', month: 12, day: 21,
+              category: 'Religious', deity: 'Shelyn', region: null,
+              description: 'Winter solstice festival of art.', movableRule: 'Winter solstice',
+              isCustom: false, createdBy: null,
+            },
+          ]});
+        }
+        if (url === '/settings/region') {
+          return Promise.resolve({ data: { value: 'Varisia' } });
+        }
+        if (url.startsWith('/weather/range')) {
+          return Promise.resolve({ data: [] });
+        }
+        return Promise.resolve({ data: {} });
+      });
+
+      renderCalendar();
+
+      await waitFor(() => {
+        expect(screen.getByText('Show on calendar:')).toBeInTheDocument();
+      });
+      expect(screen.getAllByText(/Crystalhue/).length).toBeGreaterThan(0);
+      // The category appears as a filter chip and a list chip
+      expect(screen.getAllByText('Religious').length).toBeGreaterThan(0);
+    });
+  });
+
   describe('DM weather controls', () => {
     afterEach(() => {
       localStorage.clear();

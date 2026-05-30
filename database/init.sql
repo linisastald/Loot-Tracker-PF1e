@@ -291,6 +291,29 @@ CREATE TABLE golarion_notes (
 CREATE INDEX idx_golarion_notes_start ON golarion_notes (start_year, start_month, start_day);
 CREATE INDEX idx_golarion_notes_created_by ON golarion_notes (created_by);
 
+-- In-game Golarion holidays/festivals. Dated holidays have month+day; movable
+-- ones (solstices, weekday-anchored, etc.) use movable_rule with null month/day.
+-- The official holiday rows are seeded by migration 041 (which also runs on
+-- fresh installs), so no seed data lives here.
+CREATE TABLE golarion_holidays (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    month INTEGER,
+    day INTEGER,
+    category VARCHAR(50) NOT NULL DEFAULT 'Cultural',
+    deity VARCHAR(100),
+    region VARCHAR(100),
+    description TEXT,
+    movable_rule VARCHAR(255),
+    is_custom BOOLEAN NOT NULL DEFAULT false,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_golarion_holidays_month_day ON golarion_holidays (month, day);
+CREATE INDEX idx_golarion_holidays_created_by ON golarion_holidays (created_by);
+
 CREATE TABLE weather_regions (
     region_name VARCHAR(100) PRIMARY KEY,
     base_temp_low INTEGER NOT NULL,

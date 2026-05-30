@@ -173,6 +173,51 @@ interface GolarionNoteData {
   updatedAt?: string;
 }
 
+interface HolidayData {
+  id: number;
+  name: string;
+  month: number | null;
+  day: number | null;
+  category: string;
+  deity: string | null;
+  region: string | null;
+  description: string | null;
+  movableRule: string | null;
+  isCustom: boolean;
+  createdBy: number | null;
+}
+
+interface HolidayForm {
+  name: string;
+  month: string;
+  day: string;
+  category: string;
+  deity: string;
+  region: string;
+  description: string;
+  movableRule: string;
+}
+
+const EMPTY_HOLIDAY_FORM: HolidayForm = {
+  name: '', month: '', day: '', category: 'Cultural',
+  deity: '', region: '', description: '', movableRule: '',
+};
+
+const HOLIDAY_CATEGORIES = ['Religious', 'Civic', 'Cultural', 'Seasonal', 'Astronomical', 'Regional'];
+
+// localStorage key for the per-user (per-browser) category visibility filter.
+const HIDDEN_HOLIDAY_CATEGORIES_KEY = 'golarion_hidden_holiday_categories';
+
+const loadHiddenHolidayCategories = (): string[] => {
+  try {
+    const raw = localStorage.getItem(HIDDEN_HOLIDAY_CATEGORIES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 interface StyledDayProps {
   isCurrentDay?: boolean;
   isSelected?: boolean;
@@ -297,10 +342,18 @@ const GolarionCalendar: React.FC = () => {
     const [weatherEditDate, setWeatherEditDate] = useState<(DateObject & {day: number}) | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+    // Holidays
+    const [holidays, setHolidays] = useState<HolidayData[]>([]);
+    const [hiddenCategories, setHiddenCategories] = useState<string[]>(loadHiddenHolidayCategories);
+    const [holidayDialogOpen, setHolidayDialogOpen] = useState<boolean>(false);
+    const [holidayForm, setHolidayForm] = useState<HolidayForm>(EMPTY_HOLIDAY_FORM);
+    const [editingHoliday, setEditingHoliday] = useState<HolidayData | null>(null);
+
     useEffect(() => {
         fetchCurrentDate();
         fetchNotes();
         fetchCurrentRegion();
+        fetchHolidays();
         if (dmMode) {
             fetchForecastDays();
         }
@@ -334,6 +387,15 @@ const GolarionCalendar: React.FC = () => {
             setError(null);
         } catch (error) {
             setError('Failed to fetch notes. Please try again later.');
+        }
+    };
+
+    const fetchHolidays = async (): Promise<void> => {
+        try {
+            const response = await api.get('/calendar/holidays');
+            setHolidays(Array.isArray(response.data) ? response.data : []);
+        } catch (error) {
+            // Non-fatal; holidays just won't show
         }
     };
 
@@ -654,6 +716,116 @@ const GolarionCalendar: React.FC = () => {
         return `${start} – ${end}`;
     };
 
+    // --- Holidays ---
+
+    const isCategoryVisible = (category: string): boolean => !hiddenCategories.includes(category);
+
+    const toggleCategory = (category: string): void => {
+        setHiddenCategories(prev => {
+            const next = prev.includes(category)
+                ? prev.filter(c => c !== category)
+                : [...prev, category];
+            try {
+                localStorage.setItem(HIDDEN_HOLIDAY_CATEGORIES_KEY, JSON.stringify(next));
+            } catch {
+                // ignore storage failures
+            }
+            return next;
+        });
+    };
+
+    // Categories actually present in the data (for the toggle row).
+    const presentCategories = Array.from(new Set(holidays.map(h => h.category)))
+        .sort((a, b) => a.localeCompare(b));
+
+    // Dated holidays grouped by month-day (recurring annually), filtered by the
+    // visible-category preference.
+    const holidaysByMonthDay: Record<string, HolidayData[]> = React.useMemo(() => {
+        const map: Record<string, HolidayData[]> = {};
+        for (const h of holidays) {
+            if (h.month == null || h.day == null) continue;
+            if (!isCategoryVisible(h.category)) continue;
+            const key = `${h.month}-${h.day}`;
+            (map[key] = map[key] || []).push(h);
+        }
+        return map;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [holidays, hiddenCategories]);
+
+    // Movable / undated holidays (no fixed month-day) for the reference list.
+    const movableHolidays = holidays.filter(h => h.month == null || h.day == null);
+
+    const resetHolidayForm = (): void => {
+        setEditingHoliday(null);
+        setHolidayForm(EMPTY_HOLIDAY_FORM);
+    };
+
+    const handleOpenHolidayDialog = (holiday?: HolidayData): void => {
+        if (holiday) {
+            setEditingHoliday(holiday);
+            setHolidayForm({
+                name: holiday.name,
+                month: holiday.month != null ? String(holiday.month) : '',
+                day: holiday.day != null ? String(holiday.day) : '',
+                category: holiday.category,
+                deity: holiday.deity ?? '',
+                region: holiday.region ?? '',
+                description: holiday.description ?? '',
+                movableRule: holiday.movableRule ?? '',
+            });
+        } else {
+            resetHolidayForm();
+        }
+        setHolidayDialogOpen(true);
+    };
+
+    const handleSaveHoliday = async (): Promise<void> => {
+        if (holidayForm.name.trim() === '') {
+            setError('Holiday name is required.');
+            return;
+        }
+        // A holiday is either dated (both month and day) or movable (neither).
+        if ((holidayForm.month !== '') !== (holidayForm.day !== '')) {
+            setError('Enter both a month and a day, or leave both empty for a movable holiday.');
+            return;
+        }
+        const payload = {
+            name: holidayForm.name.trim(),
+            month: holidayForm.month === '' ? null : parseInt(holidayForm.month, 10),
+            day: holidayForm.day === '' ? null : parseInt(holidayForm.day, 10),
+            category: holidayForm.category,
+            deity: holidayForm.deity || null,
+            region: holidayForm.region || null,
+            description: holidayForm.description || null,
+            movableRule: holidayForm.movableRule || null,
+        };
+        try {
+            if (editingHoliday) {
+                await api.put(`/calendar/holidays/${editingHoliday.id}`, payload);
+            } else {
+                await api.post('/calendar/holidays', payload);
+            }
+            setHolidayDialogOpen(false);
+            resetHolidayForm();
+            setError(null);
+            setStatusMessage('Holiday saved.');
+            await fetchHolidays();
+        } catch (err: any) {
+            setError(err.response?.data?.message || 'Failed to save holiday. Please try again later.');
+        }
+    };
+
+    const handleDeleteHoliday = async (id: number): Promise<void> => {
+        try {
+            await api.delete(`/calendar/holidays/${id}`);
+            setError(null);
+            setStatusMessage('Holiday deleted.');
+            await fetchHolidays();
+        } catch (err: any) {
+            setError(err.response?.data?.message || 'Failed to delete holiday. Please try again later.');
+        }
+    };
+
     const getMoonPhase = (date: DateObject & {day: number}): MoonPhase =>
         getGolarionMoonPhase(date.year, date.month, date.day);
 
@@ -697,6 +869,7 @@ const GolarionCalendar: React.FC = () => {
                                             ? `${dayNotes[0].note} (+${dayNotes.length - 1} more)`
                                             : dayNotes[0].note)
                                         : '';
+                                    const dayHolidays = holidaysByMonthDay[`${displayedDate.month}-${day}`] || [];
 
                                     if (isValidDay) {
                                         // For valid days, get weather and moon phase
@@ -766,11 +939,20 @@ const GolarionCalendar: React.FC = () => {
                                                                     )}
                                                                 </Box>
                                                             )}
+                                                            {dayHolidays.length > 0 && (
+                                                                <Box mb={0.5}>
+                                                                    {dayHolidays.map(h => (
+                                                                        <Typography key={h.id} variant="caption" sx={{display: 'block'}}>
+                                                                            🎉 {h.name}
+                                                                        </Typography>
+                                                                    ))}
+                                                                </Box>
+                                                            )}
                                                             <Typography variant="caption">
                                                                 {note || 'Click to add a note'}
                                                             </Typography>
                                                         </Box>
-                                                    } 
+                                                    }
                                                     arrow
                                                 >
                                                     <StyledDay
@@ -807,6 +989,11 @@ const GolarionCalendar: React.FC = () => {
                                                                         {moonEmoji}
                                                                     </Typography>
                                                                 )}
+                                                                {dayHolidays.length > 0 && (
+                                                                    <Typography variant="caption" sx={{fontSize: '0.7rem'}}>
+                                                                        🎉
+                                                                    </Typography>
+                                                                )}
                                                             </Box>
                                                         </Box>
                                                         {note && (
@@ -841,6 +1028,10 @@ const GolarionCalendar: React.FC = () => {
 
     const selectedDayNotes = selectedDate
         ? (notesByDay[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`] || [])
+        : [];
+
+    const selectedDayHolidays = selectedDate
+        ? (holidaysByMonthDay[`${selectedDate.month}-${selectedDate.day}`] || [])
         : [];
 
     return (
@@ -1069,7 +1260,30 @@ const GolarionCalendar: React.FC = () => {
                                         <ListItem>
                                             <ListItemText
                                                 primary={<Typography variant="subtitle1">Holidays</Typography>}
-                                                secondary="Holiday information not available yet"
+                                                secondary={
+                                                    selectedDayHolidays.length > 0 ? (
+                                                        <Box component="span" sx={{display: 'block'}}>
+                                                            {selectedDayHolidays.map(h => (
+                                                                <Box component="span" key={h.id} sx={{display: 'block', mb: 0.5}}>
+                                                                    <Typography variant="body2" component="span" sx={{display: 'block'}}>
+                                                                        🎉 {h.name}
+                                                                        {h.deity ? ` — ${h.deity}` : ''}
+                                                                    </Typography>
+                                                                    {h.description && (
+                                                                        <Typography variant="caption" component="span"
+                                                                                    color="text.secondary" sx={{display: 'block'}}>
+                                                                            {h.description}
+                                                                        </Typography>
+                                                                    )}
+                                                                </Box>
+                                                            ))}
+                                                        </Box>
+                                                    ) : (
+                                                        <Typography variant="body2" component="span" color="text.secondary">
+                                                            No holidays on this day
+                                                        </Typography>
+                                                    )
+                                                }
                                             />
                                         </ListItem>
                                     </List>
@@ -1105,6 +1319,7 @@ const GolarionCalendar: React.FC = () => {
                                                 }
                                             >
                                                 <ListItemText
+                                                    primaryTypographyProps={{component: 'span'}}
                                                     primary={
                                                         <Box component="span" sx={{display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.5}}>
                                                             {n.dmOnly && (
@@ -1225,6 +1440,7 @@ const GolarionCalendar: React.FC = () => {
                                 }
                             >
                                 <ListItemText
+                                    primaryTypographyProps={{component: 'span'}}
                                     primary={
                                         <Box component="span" sx={{display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap'}}>
                                             <Typography variant="subtitle2" component="span">
@@ -1245,6 +1461,91 @@ const GolarionCalendar: React.FC = () => {
                             </ListItem>
                         ))}
                     </List>
+                </Paper>
+            )}
+
+            {/* Holidays: reference list + per-category grid visibility + DM management */}
+            {holidays.length > 0 && (
+                <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
+                    <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1}}>
+                        <Typography variant="h5" color="primary" sx={{display: 'flex', alignItems: 'center'}}>
+                            <EventIcon sx={{mr: 1}}/>
+                            Holidays
+                        </Typography>
+                        {dmMode && (
+                            <Button variant="outlined" size="small" startIcon={<EventIcon/>}
+                                    onClick={() => handleOpenHolidayDialog()}
+                                    sx={{textTransform: 'none'}}>
+                                Add Holiday
+                            </Button>
+                        )}
+                    </Box>
+
+                    <Box sx={{display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 1}}>
+                        <Typography variant="caption" color="text.secondary" sx={{mr: 1}}>
+                            Show on calendar:
+                        </Typography>
+                        {presentCategories.map(cat => (
+                            <Chip
+                                key={cat}
+                                label={cat}
+                                size="small"
+                                color={isCategoryVisible(cat) ? 'primary' : 'default'}
+                                variant={isCategoryVisible(cat) ? 'filled' : 'outlined'}
+                                onClick={() => toggleCategory(cat)}
+                            />
+                        ))}
+                    </Box>
+
+                    <List dense>
+                        {holidays.map(h => (
+                            <ListItem
+                                key={h.id}
+                                alignItems="flex-start"
+                                divider
+                                secondaryAction={dmMode && h.isCustom ? (
+                                    <Box>
+                                        <IconButton size="small" aria-label="edit holiday"
+                                                    onClick={() => handleOpenHolidayDialog(h)}>
+                                            <EditIcon fontSize="small"/>
+                                        </IconButton>
+                                        <IconButton size="small" aria-label="delete holiday"
+                                                    onClick={() => handleDeleteHoliday(h.id)}>
+                                            <DeleteIcon fontSize="small"/>
+                                        </IconButton>
+                                    </Box>
+                                ) : undefined}
+                            >
+                                <ListItemText
+                                    primaryTypographyProps={{component: 'span'}}
+                                    primary={
+                                        <Box component="span" sx={{display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap'}}>
+                                            <Typography variant="subtitle2" component="span">
+                                                {h.month != null && h.day != null
+                                                    ? `${h.day} ${months[h.month - 1]?.name || ''}`
+                                                    : (h.movableRule || 'Movable')}
+                                            </Typography>
+                                            <Typography variant="body2" component="span">— {h.name}</Typography>
+                                            <Chip label={h.category} size="small" variant="outlined"/>
+                                            {h.isCustom && <Chip label="Custom" size="small" color="secondary" variant="outlined"/>}
+                                        </Box>
+                                    }
+                                    secondary={
+                                        <Typography variant="caption" component="span" color="text.secondary" sx={{display: 'block', pr: 6}}>
+                                            {[h.deity, h.region].filter(Boolean).join(' · ')}
+                                            {(h.deity || h.region) && h.description ? ' — ' : ''}
+                                            {h.description}
+                                        </Typography>
+                                    }
+                                />
+                            </ListItem>
+                        ))}
+                    </List>
+                    {movableHolidays.length > 0 && (
+                        <Typography variant="caption" color="text.secondary" sx={{display: 'block', mt: 1}}>
+                            Movable holidays (solstices, weekday-based, etc.) have no fixed day and aren't shown on the grid.
+                        </Typography>
+                    )}
                 </Paper>
             )}
 
@@ -1370,6 +1671,98 @@ const GolarionCalendar: React.FC = () => {
                     <Button onClick={handleSaveWeather} variant="outlined" color="primary"
                             sx={{textTransform: 'none', boxShadow: 1}}>
                         Save Weather
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* DM-only: add / edit a custom holiday */}
+            <Dialog
+                open={holidayDialogOpen}
+                onClose={() => setHolidayDialogOpen(false)}
+                fullWidth
+                maxWidth="sm"
+                PaperProps={{elevation: 3, sx: {borderRadius: 2}}}
+            >
+                <DialogTitle>{editingHoliday ? 'Edit Holiday' : 'Add Custom Holiday'}</DialogTitle>
+                <DialogContent>
+                    <DialogContentText sx={{mb: 2}}>
+                        Leave month and day empty for a movable holiday (e.g. a solstice) and
+                        describe how its date is determined in "Movable rule".
+                    </DialogContentText>
+                    <Grid container spacing={2}>
+                        <Grid size={12}>
+                            <TextField label="Name" size="small" fullWidth required
+                                       value={holidayForm.name}
+                                       onChange={(e) => setHolidayForm({...holidayForm, name: e.target.value})}/>
+                        </Grid>
+                        <Grid size={{xs: 6, sm: 3}}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel id="holiday-month-label">Month</InputLabel>
+                                <Select
+                                    labelId="holiday-month-label"
+                                    label="Month"
+                                    value={holidayForm.month}
+                                    onChange={(e: SelectChangeEvent) =>
+                                        setHolidayForm({...holidayForm, month: e.target.value})}
+                                >
+                                    <MenuItem value=""><em>None</em></MenuItem>
+                                    {months.map((m, i) => (
+                                        <MenuItem key={m.name} value={String(i + 1)}>{m.name}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                        <Grid size={{xs: 6, sm: 3}}>
+                            <TextField label="Day" type="number" size="small" fullWidth
+                                       value={holidayForm.day}
+                                       InputProps={{inputProps: {min: 1, max: 31}}}
+                                       onChange={(e) => setHolidayForm({...holidayForm, day: e.target.value})}/>
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 6}}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel id="holiday-category-label">Category</InputLabel>
+                                <Select
+                                    labelId="holiday-category-label"
+                                    label="Category"
+                                    value={holidayForm.category}
+                                    onChange={(e: SelectChangeEvent) =>
+                                        setHolidayForm({...holidayForm, category: e.target.value})}
+                                >
+                                    {HOLIDAY_CATEGORIES.map(c => (
+                                        <MenuItem key={c} value={c}>{c}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 6}}>
+                            <TextField label="Deity (if religious)" size="small" fullWidth
+                                       value={holidayForm.deity}
+                                       onChange={(e) => setHolidayForm({...holidayForm, deity: e.target.value})}/>
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 6}}>
+                            <TextField label="Region (if regional)" size="small" fullWidth
+                                       value={holidayForm.region}
+                                       onChange={(e) => setHolidayForm({...holidayForm, region: e.target.value})}/>
+                        </Grid>
+                        <Grid size={12}>
+                            <TextField label="Movable rule (if no fixed date)" size="small" fullWidth
+                                       value={holidayForm.movableRule}
+                                       onChange={(e) => setHolidayForm({...holidayForm, movableRule: e.target.value})}/>
+                        </Grid>
+                        <Grid size={12}>
+                            <TextField label="Description" size="small" fullWidth multiline rows={2}
+                                       value={holidayForm.description}
+                                       onChange={(e) => setHolidayForm({...holidayForm, description: e.target.value})}/>
+                        </Grid>
+                    </Grid>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setHolidayDialogOpen(false)} sx={{textTransform: 'none'}}>
+                        Cancel
+                    </Button>
+                    <Button onClick={handleSaveHoliday} variant="outlined" color="primary"
+                            sx={{textTransform: 'none', boxShadow: 1}}>
+                        {editingHoliday ? 'Update Holiday' : 'Add Holiday'}
                     </Button>
                 </DialogActions>
             </Dialog>
