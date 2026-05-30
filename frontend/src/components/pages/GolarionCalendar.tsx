@@ -85,22 +85,57 @@ interface WeatherForm {
     condition: string;
     tempLow: string;
     tempHigh: string;
-    precipitationType: string;
     windSpeed: string;
     humidity: string;
     visibility: string;
-    description: string;
 }
 
 const EMPTY_WEATHER_FORM: WeatherForm = {
     condition: 'Clear',
     tempLow: '',
     tempHigh: '',
-    precipitationType: '',
     windSpeed: '',
     humidity: '',
     visibility: 'Clear',
-    description: '',
+};
+
+// Precipitation type is implied by the condition, so it is derived rather than
+// entered separately. Conditions not listed here have no precipitation.
+const PRECIP_BY_CONDITION: Record<string, string> = {
+    'Light Rain': 'Light Rain',
+    'Rain': 'Rain',
+    'Heavy Rain': 'Heavy Rain',
+    'Thunderstorm': 'Heavy Rain',
+    'Light Snow': 'Light Snow',
+    'Snow': 'Snow',
+    'Heavy Snow': 'Heavy Snow',
+    'Blizzard': 'Heavy Snow',
+    'Sleet': 'Sleet',
+    'Hurricane': 'Heavy Rain',
+    'Tropical Storm': 'Heavy Rain',
+};
+
+const precipForCondition = (condition: string): string | null =>
+    PRECIP_BY_CONDITION[condition] ?? null;
+
+// Build a human-readable description from the structured weather inputs.
+const buildWeatherDescription = (form: WeatherForm): string => {
+    const parts: string[] = [form.condition || 'Clear'];
+    if (form.tempLow !== '' && form.tempHigh !== '') {
+        parts.push(`${form.tempLow}°–${form.tempHigh}°F`);
+    }
+    const wind = parseInt(form.windSpeed, 10);
+    if (!isNaN(wind) && wind > 0) {
+        parts.push(`winds ${wind} mph`);
+    }
+    if (form.visibility && form.visibility !== 'Clear') {
+        parts.push(`${form.visibility.toLowerCase()} visibility`);
+    }
+    const humidity = parseInt(form.humidity, 10);
+    if (!isNaN(humidity)) {
+        parts.push(`${humidity}% humidity`);
+    }
+    return parts.join(', ') + '.';
 };
 
 interface Month {
@@ -340,11 +375,9 @@ const GolarionCalendar: React.FC = () => {
             condition: existing.condition || 'Clear',
             tempLow: existing.temp_low?.toString() ?? '',
             tempHigh: existing.temp_high?.toString() ?? '',
-            precipitationType: existing.precipitation_type ?? '',
             windSpeed: existing.wind_speed?.toString() ?? '',
             humidity: existing.humidity?.toString() ?? '',
             visibility: existing.visibility || 'Clear',
-            description: existing.description ?? '',
         } : EMPTY_WEATHER_FORM);
         setWeatherEditDate(date);
         setWeatherDialogOpen(true);
@@ -360,6 +393,12 @@ const GolarionCalendar: React.FC = () => {
             return;
         }
 
+        // Wind and humidity can't be negative; humidity caps at 100.
+        const windSpeed = Math.max(0, parseInt(weatherForm.windSpeed, 10) || 0);
+        const humidity = weatherForm.humidity === ''
+            ? 50
+            : Math.min(100, Math.max(0, parseInt(weatherForm.humidity, 10) || 0));
+
         try {
             await api.put('/weather/set', {
                 year: weatherEditDate.year,
@@ -369,11 +408,12 @@ const GolarionCalendar: React.FC = () => {
                 condition: weatherForm.condition,
                 tempLow,
                 tempHigh,
-                precipitationType: weatherForm.precipitationType || null,
-                windSpeed: weatherForm.windSpeed ? parseInt(weatherForm.windSpeed, 10) : 0,
-                humidity: weatherForm.humidity ? parseInt(weatherForm.humidity, 10) : 50,
+                // Derived from the structured inputs rather than entered by hand.
+                precipitationType: precipForCondition(weatherForm.condition),
+                windSpeed,
+                humidity,
                 visibility: weatherForm.visibility || 'Clear',
-                description: weatherForm.description || '',
+                description: buildWeatherDescription(weatherForm),
             });
             setWeatherDialogOpen(false);
             setError(null);
@@ -1063,22 +1103,19 @@ const GolarionCalendar: React.FC = () => {
                         <Grid size={{xs: 6, sm: 3}}>
                             <TextField label="Wind mph" type="number" size="small" fullWidth
                                        value={weatherForm.windSpeed}
+                                       InputProps={{inputProps: {min: 0}}}
                                        onChange={(e) => setWeatherForm({...weatherForm, windSpeed: e.target.value})}/>
                         </Grid>
                         <Grid size={{xs: 6, sm: 3}}>
                             <TextField label="Humidity %" type="number" size="small" fullWidth
                                        value={weatherForm.humidity}
+                                       InputProps={{inputProps: {min: 0, max: 100}}}
                                        onChange={(e) => setWeatherForm({...weatherForm, humidity: e.target.value})}/>
                         </Grid>
-                        <Grid size={{xs: 12, sm: 6}}>
-                            <TextField label="Precipitation type" size="small" fullWidth
-                                       value={weatherForm.precipitationType}
-                                       onChange={(e) => setWeatherForm({...weatherForm, precipitationType: e.target.value})}/>
-                        </Grid>
                         <Grid size={12}>
-                            <TextField label="Description" size="small" fullWidth multiline rows={2}
-                                       value={weatherForm.description}
-                                       onChange={(e) => setWeatherForm({...weatherForm, description: e.target.value})}/>
+                            <Typography variant="caption" color="text.secondary">
+                                Description (auto-generated): {buildWeatherDescription(weatherForm)}
+                            </Typography>
                         </Grid>
                     </Grid>
                 </DialogContent>
