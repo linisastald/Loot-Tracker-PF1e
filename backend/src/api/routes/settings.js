@@ -10,6 +10,7 @@ router.get('/infamy-system', verifyToken, settingsController.getInfamySystem);
 router.get('/average-party-level', verifyToken, settingsController.getAveragePartyLevel);
 router.get('/region', verifyToken, settingsController.getRegion);
 router.get('/openai-key', verifyToken, settingsController.getOpenAiKey);
+router.get('/weather-forecast-days', verifyToken, settingsController.getWeatherForecastDays);
 
 // Timezone routes
 router.get('/campaign-timezone', verifyToken, settingsController.getCampaignTimezone);
@@ -18,5 +19,6 @@ router.get('/timezone-options', verifyToken, settingsController.getTimezoneOptio
 // POST/PUT routes - require authentication (CSRF applied globally in index.js)
 // DM role check is handled inside the controller
 router.post('/campaign-timezone', verifyToken, settingsController.updateCampaignTimezone);
+router.post('/weather-forecast-days', verifyToken, settingsController.updateWeatherForecastDays);
 
 module.exports = router;

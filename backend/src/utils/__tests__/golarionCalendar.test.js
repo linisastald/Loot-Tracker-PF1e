@@ -7,6 +7,7 @@ const {
   getMonthDays,
   getYearDays,
   addDays,
+  compareDates,
   calculateDaysBetween,
 } = require('../golarionCalendar');
 
@@ -88,6 +89,18 @@ describe('golarionCalendar', () => {
 
     it('advances a full common year (365 days) back to the same date', () => {
       expect(addDays({ year: 4722, month: 1, day: 1 }, 365)).toEqual({ year: 4723, month: 1, day: 1 });
+    });
+  });
+
+  describe('compareDates', () => {
+    it('returns 0 for equal dates', () => {
+      expect(compareDates({ year: 4722, month: 6, day: 15 }, { year: 4722, month: 6, day: 15 })).toBe(0);
+    });
+
+    it('orders by year, then month, then day', () => {
+      expect(compareDates({ year: 4721, month: 12, day: 31 }, { year: 4722, month: 1, day: 1 })).toBeLessThan(0);
+      expect(compareDates({ year: 4722, month: 7, day: 1 }, { year: 4722, month: 6, day: 28 })).toBeGreaterThan(0);
+      expect(compareDates({ year: 4722, month: 6, day: 16 }, { year: 4722, month: 6, day: 15 })).toBeGreaterThan(0);
     });
   });
 

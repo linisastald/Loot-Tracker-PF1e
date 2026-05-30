@@ -1,7 +1,23 @@
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
-const { getMonthDays } = require('../utils/golarionCalendar');
+const { getMonthDays, addDays, calculateDaysBetween, compareDates } = require('../utils/golarionCalendar');
+const { getForecastDays } = require('../utils/weatherForecast');
+
+/**
+ * Read the current Golarion date from the database, defaulting to 4722-1-1.
+ */
+const getCurrentGolarionDate = async () => {
+    const result = await dbUtils.executeQuery(
+        'SELECT year, month, day FROM golarion_current_date LIMIT 1'
+    );
+    return result.rows.length > 0 ? result.rows[0] : { year: 4722, month: 1, day: 1 };
+};
+
+/**
+ * Whether the request is from a DM (forecast weather is DM-only).
+ */
+const isDmRequest = (req) => req.user?.role === 'DM';
 
 // Weather condition types and their emojis
 const WEATHER_CONDITIONS = {
@@ -204,13 +220,23 @@ const generateWeatherForDate = async (date, region, recentWeather = []) => {
  */
 const getWeatherForDate = async (req, res) => {
     const { year, month, day, region } = req.params;
-    
+    const requestedDate = { year: parseInt(year), month: parseInt(month), day: parseInt(day) };
+
     try {
+        // Players may only see weather up to the current date; forecast days
+        // (ahead of the current date) are visible to DMs only.
+        if (!isDmRequest(req)) {
+            const currentDate = await getCurrentGolarionDate();
+            if (compareDates(requestedDate, currentDate) > 0) {
+                return controllerFactory.sendSuccessResponse(res, null, 'Weather not found for this date and region');
+            }
+        }
+
         const result = await dbUtils.executeQuery(
             'SELECT * FROM golarion_weather WHERE year = $1 AND month = $2 AND day = $3 AND region = $4',
-            [parseInt(year), parseInt(month), parseInt(day), region]
+            [requestedDate.year, requestedDate.month, requestedDate.day, region]
         );
-        
+
         if (result.rows.length === 0) {
             controllerFactory.sendSuccessResponse(res, null, 'Weather not found for this date and region');
         } else {
@@ -240,11 +266,20 @@ const getWeatherForRange = async (req, res) => {
              parseInt(endYear), parseInt(endMonth), parseInt(endDay)]
         );
         
-        const weatherData = result.rows.map(weather => ({
+        let rows = result.rows;
+
+        // Players may only see weather up to the current date; forecast days
+        // (ahead of the current date) are visible to DMs only.
+        if (!isDmRequest(req)) {
+            const currentDate = await getCurrentGolarionDate();
+            rows = rows.filter(w => compareDates(w, currentDate) <= 0);
+        }
+
+        const weatherData = rows.map(weather => ({
             ...weather,
             emoji: WEATHER_CONDITIONS[weather.condition] || '🌤️'
         }));
-        
+
         controllerFactory.sendSuccessResponse(res, weatherData, 'Weather range retrieved successfully');
     } catch (error) {
         throw error;
@@ -313,20 +348,21 @@ const initializeWeatherHistory = async (req, res) => {
 };
 
 /**
- * Set weather for a specific date (manual override)
+ * Set weather for a specific date (manual DM override). Marks the day as
+ * locked so automatic generation and forecast regeneration never overwrite it.
  */
 const setWeatherForDate = async (req, res) => {
-    const { year, month, day, region, condition, tempLow, tempHigh, precipitationType, 
+    const { year, month, day, region, condition, tempLow, tempHigh, precipitationType,
             windSpeed, humidity, visibility, description } = req.body;
-    
+
     try {
         await dbUtils.executeQuery(
-            `INSERT INTO golarion_weather 
-             (year, month, day, region, condition, temp_low, temp_high, precipitation_type, 
-              wind_speed, humidity, visibility, description)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-             ON CONFLICT ON CONSTRAINT golarion_weather_pkey 
-             DO UPDATE SET 
+            `INSERT INTO golarion_weather
+             (year, month, day, region, condition, temp_low, temp_high, precipitation_type,
+              wind_speed, humidity, visibility, description, is_locked)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, true)
+             ON CONFLICT ON CONSTRAINT golarion_weather_pkey
+             DO UPDATE SET
                 condition = EXCLUDED.condition,
                 temp_low = EXCLUDED.temp_low,
                 temp_high = EXCLUDED.temp_high,
@@ -334,16 +370,54 @@ const setWeatherForDate = async (req, res) => {
                 wind_speed = EXCLUDED.wind_speed,
                 humidity = EXCLUDED.humidity,
                 visibility = EXCLUDED.visibility,
-                description = EXCLUDED.description`,
+                description = EXCLUDED.description,
+                is_locked = true`,
             [year, month, day, region, condition, tempLow, tempHigh, precipitationType,
              windSpeed, humidity, visibility, description]
         );
-        
-        controllerFactory.sendSuccessResponse(res, { year, month, day, region }, 
+
+        controllerFactory.sendSuccessResponse(res, { year, month, day, region },
             'Weather set successfully');
     } catch (error) {
         throw error;
     }
+};
+
+/**
+ * Regenerate the forecast: discard all non-locked weather from just after the
+ * current date through the forecast horizon, then generate fresh weather for
+ * those days. DM-locked (story) weather is preserved. DM-only (route-gated).
+ */
+const regenerateForecast = async (req, res) => {
+    const currentDate = await getCurrentGolarionDate();
+
+    const regionResult = await dbUtils.executeQuery('SELECT value FROM settings WHERE name = $1', ['region']);
+    const region = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
+
+    const forecastDays = await getForecastDays();
+    const horizonEnd = addDays(currentDate, forecastDays);
+    const forecastDates = calculateDaysBetween(currentDate, horizonEnd); // (current, horizon]
+
+    let regenerated = 0;
+    for (const date of forecastDates) {
+        // Drop the existing auto-generated row (locked story weather is kept).
+        await dbUtils.executeQuery(
+            'DELETE FROM golarion_weather WHERE year = $1 AND month = $2 AND day = $3 AND region = $4 AND is_locked = false',
+            [date.year, date.month, date.day, region]
+        );
+
+        // Regenerate only where no row remains (i.e. it was not locked).
+        const existing = await dbUtils.executeQuery(
+            'SELECT COUNT(*) FROM golarion_weather WHERE year = $1 AND month = $2 AND day = $3 AND region = $4',
+            [date.year, date.month, date.day, region]
+        );
+        if (parseInt(existing.rows[0].count) === 0) {
+            await generateWeatherForNextDay(date, region);
+            regenerated++;
+        }
+    }
+
+    controllerFactory.sendSuccessResponse(res, { regenerated, forecastDays, region }, 'Forecast regenerated successfully');
 };
 
 /**
@@ -419,11 +493,15 @@ module.exports = {
         errorMessage: 'Error setting weather for date',
         validation: setWeatherValidation
     }),
-    
+
+    regenerateForecast: controllerFactory.createHandler(regenerateForecast, {
+        errorMessage: 'Error regenerating forecast'
+    }),
+
     getAvailableRegions: controllerFactory.createHandler(getAvailableRegions, {
         errorMessage: 'Error getting available regions'
     }),
-    
+
     // Export for use in other controllers
     generateWeatherForNextDay
 };

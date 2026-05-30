@@ -3,6 +3,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const timezoneUtils = require('../utils/timezoneUtils');
+const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
 
 /**
  * Get Discord settings
@@ -262,6 +263,44 @@ const getRegion = async (req, res) => {
 };
 
 /**
+ * Get the weather forecast horizon (days ahead of the current date that
+ * weather is pre-generated and visible to DMs).
+ */
+const getWeatherForecastDays = async (req, res) => {
+    const settings = await fetchSettingsByNames(['weather_forecast_days']);
+    const value = settings.weather_forecast_days || '7';
+
+    controllerFactory.sendSuccessResponse(res, { value }, 'Weather forecast days retrieved');
+};
+
+/**
+ * Update the weather forecast horizon. Requires DM role.
+ */
+const updateWeatherForecastDays = async (req, res) => {
+    const { days } = req.body;
+
+    if (req.user.role !== 'DM') {
+        throw controllerFactory.createAuthorizationError('Only DMs can update the weather forecast');
+    }
+
+    const parsed = parseInt(days, 10);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_FORECAST_DAYS) {
+        throw controllerFactory.createValidationError(`Forecast days must be an integer between 0 and ${MAX_FORECAST_DAYS}`);
+    }
+
+    await dbUtils.executeQuery(
+        `INSERT INTO settings (name, value, value_type, description)
+         VALUES ('weather_forecast_days', $1, 'integer', 'Number of days ahead of the current Golarion date to pre-generate weather')
+         ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
+        [String(parsed)]
+    );
+
+    logger.info(`Weather forecast days updated to ${parsed}`, { userId: req.user.id });
+
+    controllerFactory.sendSuccessResponse(res, { value: String(parsed) }, 'Weather forecast days updated successfully');
+};
+
+/**
  * Get OpenAI key setting (masked for security)
  */
 const getOpenAiKey = async (req, res) => {
@@ -386,6 +425,14 @@ module.exports = {
 
     getOpenAiKey: controllerFactory.createHandler(getOpenAiKey, {
         errorMessage: 'Error fetching OpenAI key setting'
+    }),
+
+    getWeatherForecastDays: controllerFactory.createHandler(getWeatherForecastDays, {
+        errorMessage: 'Error fetching weather forecast days'
+    }),
+
+    updateWeatherForecastDays: controllerFactory.createHandler(updateWeatherForecastDays, {
+        errorMessage: 'Error updating weather forecast days'
     }),
 
     getCampaignTimezone: controllerFactory.createHandler(getCampaignTimezone, {

@@ -144,4 +144,32 @@ describe('GolarionCalendar', () => {
       expect(screen.getByRole('button', { name: /Save Note/i })).toBeInTheDocument();
     });
   });
+
+  describe('DM weather controls', () => {
+    afterEach(() => {
+      localStorage.clear();
+    });
+
+    it('hides forecast controls from players', async () => {
+      // No user in localStorage -> isDM() is false
+      renderCalendar();
+
+      await waitFor(() => {
+        expect(screen.getByText(/Calendar Information/i)).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('button', { name: /Regenerate Forecast/i })).not.toBeInTheDocument();
+    });
+
+    it('shows forecast controls to a DM', async () => {
+      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+
+      renderCalendar();
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Regenerate Forecast/i })).toBeInTheDocument();
+      });
+      expect(screen.getByLabelText(/Days ahead/i)).toBeInTheDocument();
+    });
+  });
 });

@@ -4,6 +4,7 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const { generateWeatherForNextDay } = require('./weatherController');
 const { getMonthDays, addDays, calculateDaysBetween } = require('../utils/golarionCalendar');
+const { getForecastDays } = require('../utils/weatherForecast');
 
 // Maximum number of days a single advance request may jump, to avoid a
 // runaway weather-generation loop. The DM can issue another request to go
@@ -80,16 +81,14 @@ const setCurrentDate = async (req, res) => {
     };
   });
 
-  // Generate weather for any skipped dates AFTER the transaction commits, so
-  // the per-day weather queries don't hold the transaction's connection open
-  // (each acquires its own pooled connection). Best-effort: the date change
-  // stands even if weather generation fails.
-  if (oldDate) {
-    try {
-      await generateMissingWeather(oldDate, {year, month, day}, region);
-    } catch (weatherError) {
-      logger.error('Error generating missing weather while setting date:', weatherError);
-    }
+  // Generate weather for any skipped dates plus the forecast horizon AFTER the
+  // transaction commits, so the per-day weather queries don't hold the
+  // transaction's connection open (each acquires its own pooled connection).
+  // Best-effort: the date change stands even if weather generation fails.
+  try {
+    await extendWeatherForecast(oldDate, {year, month, day}, region);
+  } catch (weatherError) {
+    logger.error('Error generating weather while setting date:', weatherError);
   }
 
   return controllerFactory.sendSuccessResponse(res, {year, month, day}, 'Current date set successfully');
@@ -103,56 +102,47 @@ const advanceDay = async (req, res) => {
   // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
   // client can refetch before the commit is visible to other pool clients
   // (MVCC) and see stale data.
-  const txResult = await dbUtils.executeTransaction(async (client) => {
+  const { oldDate, target, region, initialized } = await dbUtils.executeTransaction(async (client) => {
     // Get current date
-    const result = await client.query('SELECT * FROM golarion_current_date');
+    const result = await client.query('SELECT year, month, day FROM golarion_current_date LIMIT 1');
+
+    const regionResult = await client.query('SELECT value FROM settings WHERE name = $1', ['region']);
+    const regionValue = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
 
     if (result.rows.length === 0) {
       // Initialize if not exists
+      const initDate = { year: 4722, month: 1, day: 1 };
       await client.query(
           'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
-          [4722, 1, 1]
+          [initDate.year, initDate.month, initDate.day]
       );
 
-      return { initialized: true, year: 4722, month: 1, day: 1 };
+      return { oldDate: null, target: initDate, region: regionValue, initialized: true };
     }
 
     // Advance by one day (leap-aware month/year rollover)
-    const {year, month, day} = addDays(result.rows[0], 1);
+    const newDate = addDays(result.rows[0], 1);
 
-    // Update the date
     await client.query(
         'UPDATE golarion_current_date SET year = $1, month = $2, day = $3',
-        [year, month, day]
+        [newDate.year, newDate.month, newDate.day]
     );
 
-    // Get global region setting
-    const regionResult = await client.query('SELECT value FROM settings WHERE name = $1', ['region']);
-    const region = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
-
-    // Generate weather for the new day
-    try {
-      await generateWeatherForNextDay({year, month, day}, region);
-    } catch (weatherError) {
-      logger.error('Error generating weather for next day:', weatherError);
-      // Continue with the calendar advancement even if weather generation fails
-    }
-
-    return { initialized: false, year, month, day };
+    return { oldDate: result.rows[0], target: newDate, region: regionValue, initialized: false };
   });
 
-  if (txResult.initialized) {
-    return controllerFactory.sendSuccessResponse(
-      res,
-      { year: txResult.year, month: txResult.month, day: txResult.day },
-      'Initial date set'
-    );
+  // Generate weather (current day + forecast horizon) AFTER commit so the
+  // per-day queries don't hold the transaction's connection open. Best-effort.
+  try {
+    await extendWeatherForecast(oldDate, target, region);
+  } catch (weatherError) {
+    logger.error('Error generating weather while advancing day:', weatherError);
   }
 
   return controllerFactory.sendSuccessResponse(
     res,
-    { year: txResult.year, month: txResult.month, day: txResult.day },
-    'Date advanced successfully'
+    { year: target.year, month: target.month, day: target.day },
+    initialized ? 'Initial date set' : 'Date advanced successfully'
   );
 };
 
@@ -206,12 +196,12 @@ const advanceDays = async (req, res) => {
     };
   });
 
-  // Generate weather for each day jumped over AFTER the transaction commits,
-  // so the (up to MAX_ADVANCE_DAYS) per-day weather queries don't hold the
+  // Generate weather for each day jumped over plus the forecast horizon AFTER
+  // the transaction commits, so the per-day weather queries don't hold the
   // transaction's connection open. Best-effort: the date change stands even
   // if weather generation fails.
   try {
-    await generateMissingWeather(oldDate, target, region);
+    await extendWeatherForecast(oldDate, target, region);
   } catch (weatherError) {
     logger.error('Error generating weather while advancing days:', weatherError);
   }
@@ -270,27 +260,56 @@ const saveNote = async (req, res) => {
 };
 
 /**
- * Generate weather for missing dates between two dates
+ * Generate weather for a list of dates, skipping any that already have a
+ * weather row (which includes DM-locked days, so manual story weather is
+ * never overwritten).
  */
-const generateMissingWeather = async (oldDate, newDate, region) => {
+const generateWeatherForDates = async (dates, region) => {
   try {
-    const missingDates = calculateDaysBetween(oldDate, newDate);
-    
-    for (const date of missingDates) {
-      // Check if weather already exists for this date
+    for (const date of dates) {
       const existingWeather = await dbUtils.executeQuery(
         'SELECT COUNT(*) FROM golarion_weather WHERE year = $1 AND month = $2 AND day = $3 AND region = $4',
         [date.year, date.month, date.day, region]
       );
-      
+
       if (parseInt(existingWeather.rows[0].count) === 0) {
         await generateWeatherForNextDay(date, region);
       }
     }
   } catch (error) {
-    logger.error('Error generating missing weather:', error);
+    logger.error('Error generating weather for dates:', error);
     throw error;
   }
+};
+
+/**
+ * Generate weather for missing dates strictly after oldDate up to and
+ * including newDate.
+ */
+const generateMissingWeather = async (oldDate, newDate, region) => {
+  await generateWeatherForDates(calculateDaysBetween(oldDate, newDate), region);
+};
+
+/**
+ * Ensure weather exists for every day the party has lived through (just after
+ * the previous current date) plus the configured forecast horizon ahead of the
+ * new current date. Existing/locked days are left untouched. Best-effort.
+ *
+ * @param {object|null} oldDate - previous current date, or null on first init
+ * @param {object} currentDate - the new current date
+ * @param {string} region
+ */
+const extendWeatherForecast = async (oldDate, currentDate, region) => {
+  const forecastDays = await getForecastDays();
+  const horizonEnd = addDays(currentDate, forecastDays);
+
+  // When there was no previous date (first initialization), the current day
+  // itself needs weather; calculateDaysBetween is exclusive of its start.
+  const dates = oldDate
+    ? calculateDaysBetween(oldDate, horizonEnd)
+    : [currentDate, ...calculateDaysBetween(currentDate, horizonEnd)];
+
+  await generateWeatherForDates(dates, region);
 };
 
 // Define validation rules

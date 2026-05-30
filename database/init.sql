@@ -296,6 +296,7 @@ CREATE TABLE golarion_weather (
     humidity INTEGER DEFAULT 50,
     visibility VARCHAR(20) DEFAULT 'Clear',
     description TEXT,
+    is_locked BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (year, month, day, region)
 );
@@ -365,3 +366,4 @@ INSERT INTO settings (name, value, value_type, description) VALUES ('discord_int
 INSERT INTO settings (name, value, value_type, description) VALUES ('infamy_system_enabled', '0', 'boolean', 'Whether infamy system is enabled (1=enabled, 0=disabled)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('auto_appraisal_enabled', '0', 'boolean', 'Whether automatic appraisal is enabled (1=enabled, 0=disabled)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('theme', 'dark', 'string', 'Default UI theme (dark/light)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('weather_forecast_days', '7', 'integer', 'Number of days ahead of the current Golarion date to pre-generate weather (DM-visible forecast; players see only up to the current date)');

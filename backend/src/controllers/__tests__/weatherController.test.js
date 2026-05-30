@@ -32,14 +32,16 @@ function createMockRes() {
   };
 }
 
-// Helper to create a mock request object
+// Helper to create a mock request object. Defaults to a DM so read-endpoint
+// tests exercise the unclamped path; player-visibility clamping is covered by
+// dedicated tests that pass a non-DM user.
 function createMockReq(overrides = {}) {
   return {
     body: {},
     params: {},
     query: {},
     cookies: {},
-    user: null,
+    user: { role: 'DM' },
     ...overrides,
   };
 }
@@ -202,6 +204,103 @@ describe('weatherController', () => {
       expect(dbUtils.executeQuery).toHaveBeenCalledWith(
         expect.any(String),
         ['The Shackles', 4723, 3, 10, 4723, 4, 20]
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // Player visibility clamp (forecast days are DM-only)
+  // ---------------------------------------------------------------
+  describe('forecast visibility (non-DM)', () => {
+    it('hides a future date from a player (returns null, no weather query)', async () => {
+      const req = createMockReq({
+        user: { role: 'Player' },
+        params: { year: '4723', month: '6', day: '20', region: 'Varisia' },
+      });
+      const res = createMockRes();
+
+      // Only the current-date lookup runs; the requested date is in the future.
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ year: 4723, month: 6, day: 15 }] });
+
+      await weatherController.getWeatherForDate(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1); // no weather SELECT
+      expect(res.success).toHaveBeenCalledWith(null, 'Weather not found for this date and region');
+    });
+
+    it('returns weather for a past/current date to a player', async () => {
+      const req = createMockReq({
+        user: { role: 'Player' },
+        params: { year: '4723', month: '6', day: '10', region: 'Varisia' },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4723, month: 6, day: 15 }] }) // current date
+        .mockResolvedValueOnce({ rows: [{ condition: 'Clear', year: 4723, month: 6, day: 10 }] }); // weather
+
+      await weatherController.getWeatherForDate(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ condition: 'Clear', emoji: expect.any(String) }),
+        'Weather retrieved successfully'
+      );
+    });
+
+    it('filters a range down to days up to the current date for a player', async () => {
+      const req = createMockReq({
+        user: { role: 'Player' },
+        params: {
+          startYear: '4723', startMonth: '6', startDay: '1',
+          endYear: '4723', endMonth: '6', endDay: '20',
+          region: 'Varisia',
+        },
+      });
+      const res = createMockRes();
+
+      const rows = [
+        { condition: 'Clear', year: 4723, month: 6, day: 14 },
+        { condition: 'Rain', year: 4723, month: 6, day: 15 },   // current day - visible
+        { condition: 'Fog', year: 4723, month: 6, day: 16 },    // future - hidden
+      ];
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows }) // weather range
+        .mockResolvedValueOnce({ rows: [{ year: 4723, month: 6, day: 15 }] }); // current date
+
+      await weatherController.getWeatherForRange(req, res);
+
+      const returned = res.success.mock.calls[0][0];
+      expect(returned).toHaveLength(2);
+      expect(returned.every(w => w.day <= 15)).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // setWeatherForDate (manual DM override locks the day)
+  // ---------------------------------------------------------------
+  describe('setWeatherForDate', () => {
+    it('writes weather with is_locked = true', async () => {
+      const req = createMockReq({
+        body: {
+          year: 4723, month: 6, day: 15, region: 'Varisia',
+          condition: 'Thunderstorm', tempLow: 50, tempHigh: 65,
+          precipitationType: 'Heavy Rain', windSpeed: 20, humidity: 80,
+          visibility: 'Poor', description: 'Story storm',
+        },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await weatherController.setWeatherForDate(req, res);
+
+      const sql = dbUtils.executeQuery.mock.calls[0][0];
+      expect(sql).toContain('is_locked');
+      expect(sql).toContain('is_locked = true');
+      expect(res.success).toHaveBeenCalledWith(
+        { year: 4723, month: 6, day: 15, region: 'Varisia' },
+        'Weather set successfully'
       );
     });
   });

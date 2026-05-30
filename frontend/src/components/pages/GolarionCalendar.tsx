@@ -13,11 +13,15 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
+  FormControl,
   Grid,
+  InputLabel,
   List,
   ListItem,
   ListItemText,
+  MenuItem,
   Paper,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -28,13 +32,17 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import type {SelectChangeEvent} from '@mui/material';
 import {styled} from '@mui/material/styles';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import EventIcon from '@mui/icons-material/Event';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
+import EditIcon from '@mui/icons-material/Edit';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
 import api from '../../utils/api';
+import {isDM} from '../../utils/auth';
 import {
     getGolarionDayOfWeek,
     getGolarionMonthDays,
@@ -45,6 +53,55 @@ interface MoonPhase {
     name: string;
     emoji: string;
 }
+
+// Weather conditions the DM can choose from (mirrors the backend's set).
+const WEATHER_CONDITION_OPTIONS = [
+    'Clear', 'Partly Cloudy', 'Cloudy', 'Overcast',
+    'Light Rain', 'Rain', 'Heavy Rain', 'Thunderstorm',
+    'Light Snow', 'Snow', 'Heavy Snow', 'Blizzard', 'Sleet',
+    'Fog', 'Hurricane', 'Tropical Storm',
+];
+
+const VISIBILITY_OPTIONS = ['Clear', 'Good', 'Fair', 'Poor'];
+
+interface WeatherData {
+    year: number;
+    month: number;
+    day: number;
+    region: string;
+    condition: string;
+    temp_low: number;
+    temp_high: number;
+    precipitation_type?: string | null;
+    wind_speed?: number;
+    humidity?: number;
+    visibility?: string;
+    description?: string;
+    emoji?: string;
+    is_locked?: boolean;
+}
+
+interface WeatherForm {
+    condition: string;
+    tempLow: string;
+    tempHigh: string;
+    precipitationType: string;
+    windSpeed: string;
+    humidity: string;
+    visibility: string;
+    description: string;
+}
+
+const EMPTY_WEATHER_FORM: WeatherForm = {
+    condition: 'Clear',
+    tempLow: '',
+    tempHigh: '',
+    precipitationType: '',
+    windSpeed: '',
+    humidity: '',
+    visibility: 'Clear',
+    description: '',
+};
 
 interface Month {
   name: string;
@@ -171,14 +228,25 @@ const GolarionCalendar: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [confirmDialogOpen, setConfirmDialogOpen] = useState<boolean>(false);
     const [daysToAdd, setDaysToAdd] = useState<string>('');
-    const [weather, setWeather] = useState({});
+    const [weather, setWeather] = useState<Record<string, WeatherData>>({});
     const [currentRegion, setCurrentRegion] = useState('Varisia');
+
+    // DM-only weather forecast controls
+    const dmMode = isDM();
+    const [forecastDays, setForecastDays] = useState<string>('7');
+    const [weatherDialogOpen, setWeatherDialogOpen] = useState<boolean>(false);
+    const [weatherForm, setWeatherForm] = useState<WeatherForm>(EMPTY_WEATHER_FORM);
+    const [weatherEditDate, setWeatherEditDate] = useState<(DateObject & {day: number}) | null>(null);
+    const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
     useEffect(() => {
         fetchCurrentDate();
         fetchNotes();
         fetchCurrentRegion();
-    }, []);
+        if (dmMode) {
+            fetchForecastDays();
+        }
+    }, [dmMode]);
 
     // Fetch weather data when displayed month changes
     useEffect(() => {
@@ -234,8 +302,8 @@ const GolarionCalendar: React.FC = () => {
             );
             
             if (response.data) {
-                const weatherData = {};
-                response.data.forEach(w => {
+                const weatherData: Record<string, WeatherData> = {};
+                (response.data as WeatherData[]).forEach(w => {
                     // Both frontend and backend use 1-indexed months
                     const key = `${w.year}-${w.month}-${w.day}`;
                     weatherData[key] = w;
@@ -246,6 +314,101 @@ const GolarionCalendar: React.FC = () => {
             // Don't show error for weather fetch
         }
     }, [currentRegion]);
+
+    const fetchForecastDays = async (): Promise<void> => {
+        try {
+            const response = await api.get('/settings/weather-forecast-days');
+            if (response.data && response.data.value !== undefined) {
+                setForecastDays(String(response.data.value));
+            }
+        } catch (error) {
+            // Non-fatal; keep default
+        }
+    };
+
+    // Whether a date falls after the current (in-game) date — i.e. it is a
+    // DM-only forecast day rather than a day the party has reached.
+    const isForecastDate = (date: DateObject & {day: number}): boolean => {
+        if (date.year !== currentDate.year) return date.year > currentDate.year;
+        if (date.month !== currentDate.month) return date.month > currentDate.month;
+        return date.day > currentDate.day;
+    };
+
+    const handleOpenWeatherDialog = (date: DateObject & {day: number}): void => {
+        const existing = weather[`${date.year}-${date.month}-${date.day}`];
+        setWeatherForm(existing ? {
+            condition: existing.condition || 'Clear',
+            tempLow: existing.temp_low?.toString() ?? '',
+            tempHigh: existing.temp_high?.toString() ?? '',
+            precipitationType: existing.precipitation_type ?? '',
+            windSpeed: existing.wind_speed?.toString() ?? '',
+            humidity: existing.humidity?.toString() ?? '',
+            visibility: existing.visibility || 'Clear',
+            description: existing.description ?? '',
+        } : EMPTY_WEATHER_FORM);
+        setWeatherEditDate(date);
+        setWeatherDialogOpen(true);
+    };
+
+    const handleSaveWeather = async (): Promise<void> => {
+        if (!weatherEditDate) return;
+
+        const tempLow = parseInt(weatherForm.tempLow, 10);
+        const tempHigh = parseInt(weatherForm.tempHigh, 10);
+        if (!weatherForm.condition || isNaN(tempLow) || isNaN(tempHigh)) {
+            setError('Condition, low temp, and high temp are required to set weather.');
+            return;
+        }
+
+        try {
+            await api.put('/weather/set', {
+                year: weatherEditDate.year,
+                month: weatherEditDate.month,
+                day: weatherEditDate.day,
+                region: currentRegion,
+                condition: weatherForm.condition,
+                tempLow,
+                tempHigh,
+                precipitationType: weatherForm.precipitationType || null,
+                windSpeed: weatherForm.windSpeed ? parseInt(weatherForm.windSpeed, 10) : 0,
+                humidity: weatherForm.humidity ? parseInt(weatherForm.humidity, 10) : 50,
+                visibility: weatherForm.visibility || 'Clear',
+                description: weatherForm.description || '',
+            });
+            setWeatherDialogOpen(false);
+            setError(null);
+            setStatusMessage('Weather updated for this date.');
+            await fetchWeatherForMonth(displayedDate.year, displayedDate.month);
+        } catch (error) {
+            setError('Failed to save weather. Please try again later.');
+        }
+    };
+
+    const handleSaveForecastDays = async (): Promise<void> => {
+        const days = parseInt(forecastDays, 10);
+        if (isNaN(days) || days < 0 || days > 60) {
+            setError('Forecast days must be between 0 and 60.');
+            return;
+        }
+        try {
+            await api.post('/settings/weather-forecast-days', {days});
+            setError(null);
+            setStatusMessage(`Forecast length set to ${days} day(s).`);
+        } catch (error) {
+            setError('Failed to update forecast length. Please try again later.');
+        }
+    };
+
+    const handleRegenerateForecast = async (): Promise<void> => {
+        try {
+            await api.post('/weather/regenerate-forecast');
+            setError(null);
+            setStatusMessage('Forecast regenerated (DM-locked days were preserved).');
+            await fetchWeatherForMonth(displayedDate.year, displayedDate.month);
+        } catch (error) {
+            setError('Failed to regenerate forecast. Please try again later.');
+        }
+    };
 
     const handleNextDay = async (): Promise<void> => {
         try {
@@ -393,7 +556,13 @@ const GolarionCalendar: React.FC = () => {
                                         // For valid days, get weather and moon phase
                                         const dateKey = `${displayedDate.year}-${displayedDate.month}-${day}`;
                                         const weatherData = weather[dateKey];
-                                        
+
+                                        // DM-only: a day past the current date is a forecast (shown
+                                        // distinctly); a manually set day is locked (story weather).
+                                        const isForecast = dmMode && weatherData &&
+                                            isForecastDate({year: displayedDate.year, month: displayedDate.month, day});
+                                        const isLocked = Boolean(weatherData?.is_locked);
+
                                         const moonPhaseData = getMoonPhase({
                                         year: displayedDate.year,
                                         month: displayedDate.month,
@@ -472,12 +641,17 @@ const GolarionCalendar: React.FC = () => {
                                                                     {day}
                                                                 </DayNumber>
                                                                 {weatherData && (
-                                                                    <Typography variant="caption" sx={{fontSize: '0.6rem', lineHeight: 1}}>
-                                                                        {weatherData.emoji} {weatherData.condition}
+                                                                    <Typography variant="caption"
+                                                                                sx={{fontSize: '0.6rem', lineHeight: 1,
+                                                                                     fontStyle: isForecast ? 'italic' : 'normal',
+                                                                                     opacity: isForecast ? 0.75 : 1}}>
+                                                                        {isLocked && '🔒'}{weatherData.emoji} {weatherData.condition}
                                                                     </Typography>
                                                                 )}
                                                                 {weatherData && (
-                                                                    <Typography variant="caption" sx={{fontSize: '0.55rem', lineHeight: 1}}>
+                                                                    <Typography variant="caption"
+                                                                                sx={{fontSize: '0.55rem', lineHeight: 1,
+                                                                                     opacity: isForecast ? 0.75 : 1}}>
                                                                         {weatherData.temp_low}°-{weatherData.temp_high}°F
                                                                     </Typography>
                                                                 )}
@@ -516,11 +690,21 @@ const GolarionCalendar: React.FC = () => {
         );
     };
 
+    const selectedWeather = selectedDate
+        ? weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`]
+        : undefined;
+
     return (
         <Container maxWidth="lg">
             {error && (
-                <Alert severity="error" sx={{mb: 2}}>
+                <Alert severity="error" sx={{mb: 2}} onClose={() => setError(null)}>
                     {error}
+                </Alert>
+            )}
+
+            {statusMessage && (
+                <Alert severity="success" sx={{mb: 2}} onClose={() => setStatusMessage(null)}>
+                    {statusMessage}
                 </Alert>
             )}
 
@@ -605,6 +789,47 @@ const GolarionCalendar: React.FC = () => {
                         </Button>
                     </Box>
                 </Box>
+
+                {dmMode && (
+                    <>
+                        <Divider sx={{my: 2}}/>
+                        <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 1}}>
+                            <Typography variant="body2" color="text.secondary" sx={{mr: 1}}>
+                                DM weather forecast:
+                            </Typography>
+                            <TextField
+                                label="Days ahead"
+                                type="number"
+                                value={forecastDays}
+                                onChange={(e) => setForecastDays(e.target.value)}
+                                size="small"
+                                sx={{width: '110px'}}
+                                InputProps={{inputProps: {min: 0, max: 60}}}
+                            />
+                            <Button
+                                variant="outlined"
+                                color="primary"
+                                onClick={handleSaveForecastDays}
+                                sx={{fontWeight: 500, textTransform: 'none'}}
+                            >
+                                Save
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                color="secondary"
+                                onClick={handleRegenerateForecast}
+                                startIcon={<AutorenewIcon/>}
+                                sx={{fontWeight: 500, textTransform: 'none'}}
+                            >
+                                Regenerate Forecast
+                            </Button>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary"
+                                    sx={{display: 'block', textAlign: 'center', mt: 1}}>
+                            Forecast days are visible only to DMs. 🔒 marks manually set (locked) weather.
+                        </Typography>
+                    </>
+                )}
             </Paper>
 
             {selectedDate && (
@@ -643,36 +868,47 @@ const GolarionCalendar: React.FC = () => {
                                         </ListItem>
                                         <Divider component="li"/>
 
-                                        <ListItem>
+                                        <ListItem
+                                            secondaryAction={dmMode && selectedDate ? (
+                                                <Button
+                                                    size="small"
+                                                    startIcon={<EditIcon/>}
+                                                    onClick={() => handleOpenWeatherDialog(selectedDate)}
+                                                    sx={{textTransform: 'none'}}
+                                                >
+                                                    Edit
+                                                </Button>
+                                            ) : undefined}
+                                        >
                                             <ListItemText
                                                 primary={<Typography variant="subtitle1">Weather</Typography>}
                                                 secondary={
-                                                    selectedDate && weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`] ? (
-                                                        <Box>
-                                                            <Typography variant="body2">
-                                                                {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].emoji} {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].condition}
+                                                    selectedWeather ? (
+                                                        <Box component="span" sx={{display: 'block'}}>
+                                                            <Typography variant="body2" component="span" sx={{display: 'block'}}>
+                                                                {selectedWeather.is_locked && '🔒 '}{selectedWeather.emoji} {selectedWeather.condition}
                                                             </Typography>
-                                                            <Typography variant="body2">
-                                                                Low: {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].temp_low}°F, High: {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].temp_high}°F
+                                                            <Typography variant="body2" component="span" sx={{display: 'block'}}>
+                                                                Low: {selectedWeather.temp_low}°F, High: {selectedWeather.temp_high}°F
                                                             </Typography>
-                                                            {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].precipitation_type && (
-                                                                <Typography variant="body2">
-                                                                    {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].precipitation_type}
+                                                            {selectedWeather.precipitation_type && (
+                                                                <Typography variant="body2" component="span" sx={{display: 'block'}}>
+                                                                    {selectedWeather.precipitation_type}
                                                                 </Typography>
                                                             )}
-                                                            {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].wind_speed > 0 && (
-                                                                <Typography variant="body2">
-                                                                    Wind: {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].wind_speed} mph
+                                                            {Number(selectedWeather.wind_speed) > 0 && (
+                                                                <Typography variant="body2" component="span" sx={{display: 'block'}}>
+                                                                    Wind: {selectedWeather.wind_speed} mph
                                                                 </Typography>
                                                             )}
-                                                            {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].description && (
-                                                                <Typography variant="caption" color="text.secondary">
-                                                                    {weather[`${selectedDate.year}-${selectedDate.month}-${selectedDate.day}`].description}
+                                                            {selectedWeather.description && (
+                                                                <Typography variant="caption" component="span" color="text.secondary" sx={{display: 'block'}}>
+                                                                    {selectedWeather.description}
                                                                 </Typography>
                                                             )}
                                                         </Box>
                                                     ) : (
-                                                        <Typography variant="body2" color="text.secondary">
+                                                        <Typography variant="body2" component="span" color="text.secondary">
                                                             Weather information not available
                                                         </Typography>
                                                     )
@@ -759,6 +995,100 @@ const GolarionCalendar: React.FC = () => {
                         sx={{fontWeight: 500, textTransform: 'none', boxShadow: 1}}
                     >
                         Confirm
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* DM-only: manually set (story) weather for a date */}
+            <Dialog
+                open={weatherDialogOpen}
+                onClose={() => setWeatherDialogOpen(false)}
+                fullWidth
+                maxWidth="sm"
+                PaperProps={{elevation: 3, sx: {borderRadius: 2}}}
+            >
+                <DialogTitle>
+                    {weatherEditDate
+                        ? `Set Weather — ${weatherEditDate.day} ${months[weatherEditDate.month - 1]?.name || ''} ${weatherEditDate.year}`
+                        : 'Set Weather'}
+                </DialogTitle>
+                <DialogContent>
+                    <DialogContentText sx={{mb: 2}}>
+                        Manually setting weather locks this day so automatic generation and
+                        forecast regeneration will not overwrite it.
+                    </DialogContentText>
+                    <Grid container spacing={2}>
+                        <Grid size={{xs: 12, sm: 6}}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel id="weather-condition-label">Condition</InputLabel>
+                                <Select
+                                    labelId="weather-condition-label"
+                                    label="Condition"
+                                    value={weatherForm.condition}
+                                    onChange={(e: SelectChangeEvent) =>
+                                        setWeatherForm({...weatherForm, condition: e.target.value})}
+                                >
+                                    {WEATHER_CONDITION_OPTIONS.map(opt => (
+                                        <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 6}}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel id="weather-visibility-label">Visibility</InputLabel>
+                                <Select
+                                    labelId="weather-visibility-label"
+                                    label="Visibility"
+                                    value={weatherForm.visibility}
+                                    onChange={(e: SelectChangeEvent) =>
+                                        setWeatherForm({...weatherForm, visibility: e.target.value})}
+                                >
+                                    {VISIBILITY_OPTIONS.map(opt => (
+                                        <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                        <Grid size={{xs: 6, sm: 3}}>
+                            <TextField label="Low °F" type="number" size="small" fullWidth
+                                       value={weatherForm.tempLow}
+                                       onChange={(e) => setWeatherForm({...weatherForm, tempLow: e.target.value})}/>
+                        </Grid>
+                        <Grid size={{xs: 6, sm: 3}}>
+                            <TextField label="High °F" type="number" size="small" fullWidth
+                                       value={weatherForm.tempHigh}
+                                       onChange={(e) => setWeatherForm({...weatherForm, tempHigh: e.target.value})}/>
+                        </Grid>
+                        <Grid size={{xs: 6, sm: 3}}>
+                            <TextField label="Wind mph" type="number" size="small" fullWidth
+                                       value={weatherForm.windSpeed}
+                                       onChange={(e) => setWeatherForm({...weatherForm, windSpeed: e.target.value})}/>
+                        </Grid>
+                        <Grid size={{xs: 6, sm: 3}}>
+                            <TextField label="Humidity %" type="number" size="small" fullWidth
+                                       value={weatherForm.humidity}
+                                       onChange={(e) => setWeatherForm({...weatherForm, humidity: e.target.value})}/>
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 6}}>
+                            <TextField label="Precipitation type" size="small" fullWidth
+                                       value={weatherForm.precipitationType}
+                                       onChange={(e) => setWeatherForm({...weatherForm, precipitationType: e.target.value})}/>
+                        </Grid>
+                        <Grid size={12}>
+                            <TextField label="Description" size="small" fullWidth multiline rows={2}
+                                       value={weatherForm.description}
+                                       onChange={(e) => setWeatherForm({...weatherForm, description: e.target.value})}/>
+                        </Grid>
+                    </Grid>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setWeatherDialogOpen(false)} sx={{textTransform: 'none'}}>
+                        Cancel
+                    </Button>
+                    <Button onClick={handleSaveWeather} variant="outlined" color="primary"
+                            sx={{textTransform: 'none', boxShadow: 1}}>
+                        Save Weather
                     </Button>
                 </DialogActions>
             </Dialog>

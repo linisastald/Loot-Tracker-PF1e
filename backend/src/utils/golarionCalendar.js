@@ -66,6 +66,18 @@ const addDays = (date, n) => {
 };
 
 /**
+ * Compare two Golarion dates chronologically.
+ * @param {{year:number, month:number, day:number}} a
+ * @param {{year:number, month:number, day:number}} b
+ * @returns {number} negative if a < b, 0 if equal, positive if a > b
+ */
+const compareDates = (a, b) => {
+  if (a.year !== b.year) return a.year - b.year;
+  if (a.month !== b.month) return a.month - b.month;
+  return a.day - b.day;
+};
+
+/**
  * Generate the list of dates strictly after startDate up to and including
  * endDate. Returns an empty array if endDate is not after startDate.
  * @param {{year:number, month:number, day:number}} startDate
@@ -94,5 +106,6 @@ module.exports = {
   getMonthDays,
   getYearDays,
   addDays,
+  compareDates,
   calculateDaysBetween,
 };

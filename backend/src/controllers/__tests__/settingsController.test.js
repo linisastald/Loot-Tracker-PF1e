@@ -630,4 +630,78 @@ describe('settingsController', () => {
       expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
   });
+
+  // ─── weather forecast days ──────────────────────────────────────
+
+  describe('getWeatherForecastDays', () => {
+    it('returns the configured value', async () => {
+      const req = createMockReq();
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ name: 'weather_forecast_days', value: '10', value_type: 'integer' }],
+      });
+
+      await settingsController.getWeatherForecastDays(req, res);
+
+      expect(res.success).toHaveBeenCalledWith({ value: '10' }, 'Weather forecast days retrieved');
+    });
+
+    it('defaults to 7 when unset', async () => {
+      const req = createMockReq();
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await settingsController.getWeatherForecastDays(req, res);
+
+      expect(res.success).toHaveBeenCalledWith({ value: '7' }, 'Weather forecast days retrieved');
+    });
+  });
+
+  describe('updateWeatherForecastDays', () => {
+    it('updates the setting for a DM', async () => {
+      const req = createMockReq({ body: { days: 14 } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await settingsController.updateWeatherForecastDays(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO settings'),
+        ['14']
+      );
+      expect(res.success).toHaveBeenCalledWith({ value: '14' }, 'Weather forecast days updated successfully');
+    });
+
+    it('rejects a non-DM user', async () => {
+      const req = createMockReq({ user: { role: 'Player', id: 2 }, body: { days: 14 } });
+      const res = createMockRes();
+
+      await settingsController.updateWeatherForecastDays(req, res);
+
+      expect(res.forbidden).toHaveBeenCalled();
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('rejects an out-of-range value', async () => {
+      const req = createMockReq({ body: { days: 999 } });
+      const res = createMockRes();
+
+      await settingsController.updateWeatherForecastDays(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        'Forecast days must be an integer between 0 and 60'
+      );
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-integer value', async () => {
+      const req = createMockReq({ body: { days: 'soon' } });
+      const res = createMockRes();
+
+      await settingsController.updateWeatherForecastDays(req, res);
+
+      expect(res.validationError).toHaveBeenCalled();
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+  });
 });
