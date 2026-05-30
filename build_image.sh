@@ -964,9 +964,21 @@ if [ "$BUILD_STABLE" = true ]; then
     fi
 elif [ -z "$WORKTREE_BRANCH" ]; then
     echo "Pulling latest from $GIT_BRANCH..."
-    if ! git pull origin "$GIT_BRANCH" 2>&1; then
-        echo "ERROR: git pull failed. Check your network connection and branch status."
-        echo "You can skip the pull with --branch $(git branch --show-current)"
+    # Use --ff-only so the pull can never drop into an interactive merge-commit
+    # editor. The ONLY commits this script should ever create are the version
+    # bumps below. If local and remote have diverged (commonly because a
+    # previous auto-version commit could not be pushed), fail loudly with
+    # guidance instead of silently starting a merge.
+    if ! git pull --ff-only origin "$GIT_BRANCH" 2>&1; then
+        echo "ERROR: git pull (fast-forward only) failed."
+        echo "   Either the network is unavailable, or local '$GIT_BRANCH' has"
+        echo "   diverged from origin -- often an unpushed auto-version commit"
+        echo "   from a previous build (the push step warns but does not fail)."
+        echo ""
+        echo "   Resolve with one of:"
+        echo "     git push origin $GIT_BRANCH              # if local is simply ahead"
+        echo "     git pull --rebase origin $GIT_BRANCH     # replay local commits on top"
+        echo "   Or skip the pull entirely: --branch $(git branch --show-current)"
         exit 1
     fi
 fi
