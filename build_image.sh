@@ -803,6 +803,24 @@ create_and_push_tag() {
     fi
 }
 
+# Warn if local has commits origin doesn't (e.g. a stable build whose push
+# failed left an unpushed release commit). Such a commit makes this build tag a
+# commit origin can't see, and will diverge the branch once origin advances.
+# Non-blocking: it only prints guidance.
+warn_if_ahead_of_origin() {
+    git fetch origin "$GIT_BRANCH" >/dev/null 2>&1 || return 0
+    local ahead
+    ahead=$(git rev-list --count "origin/$GIT_BRANCH..HEAD" 2>/dev/null || echo 0)
+    if [ "${ahead:-0}" -gt 0 ] 2>/dev/null; then
+        echo ""
+        echo "WARNING: local '$GIT_BRANCH' is ${ahead} commit(s) ahead of origin/$GIT_BRANCH."
+        echo "   This build will tag a commit origin does not have, and the branch will"
+        echo "   diverge once origin advances. If that is not intended, push first:"
+        echo "     git push origin $GIT_BRANCH"
+        echo ""
+    fi
+}
+
 # --- Core build function ---
 # Returns 0 on success, 1 on failure. Does NOT use set -e internally
 # so that the caller's || pattern works correctly.
@@ -1056,6 +1074,13 @@ elif [ -z "$WORKTREE_BRANCH" ]; then
         echo "   Or skip the pull entirely: --branch $(git branch --show-current)"
         exit 1
     fi
+fi
+
+# For non-worktree builds, warn if local is ahead of origin (an unpushed commit
+# would be tagged and would later diverge the branch). Skipped for worktree
+# builds, which don't record version state on the host branch.
+if [ -z "$WORKTREE_BRANCH" ] && [ "$DRY_RUN" = false ]; then
+    warn_if_ahead_of_origin
 fi
 
 # Enable Docker BuildKit
