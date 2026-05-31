@@ -11,7 +11,10 @@
 // type; magic weapons/armor are synthesized from a base item + a "+N" mod).
 const dbUtils = require('../../utils/dbUtils');
 const { calculateFinalValue } = require('../calculateFinalValue');
-const { getTreasureGp, getNpcGearGp, GEM_TIERS, ART_TIERS } = require('./treasureTables');
+const {
+  getTreasureGp, getNpcGearGp, GEM_TIERS, ART_TIERS,
+  TREASURE_MULTIPLIERS, XP_BY_CR, crKey, crToNum, xpToCr,
+} = require('./treasureTables');
 const catalog = require('./lootCatalog');
 
 const MIN_ITEM_VALUE = 2;
@@ -280,36 +283,70 @@ const generate = async (enemies, options = {}) => {
   const modifier = options.modifier > 0 ? options.modifier : settings.modifier;
   const unidentified = options.unidentified !== false;
 
+  // --- Encounter-budget model ---
+  // The enemy list is treated as ONE encounter: treasure-weighted XP is summed
+  // into an effective CR and a single budget is looked up (so a group of weak
+  // creatures isn't rewarded as the sum of full per-creature values). NPC-gear
+  // enemies add their carried wealth (wealth-by-level) on top, since that gear
+  // is concrete loot.
+  let treasureXp = 0;
+  let npcGearGp = 0;
+  const groups = []; // { profile, cats, isNpc, gp?, xp? }
+
+  for (const enemy of (enemies || [])) {
+    const treasure = enemy.treasure || 'standard';
+    if (treasure === 'none') continue;
+    const key = crKey(enemy.cr);
+    if (!key) continue;
+    const count = Math.max(1, Math.min(1000, parseInt(enemy.count, 10) || 1));
+    const profile = treasure === 'npc_gear'
+      ? NPC_GEAR_PROFILE
+      : (TYPE_PROFILES[enemy.creatureType] || DEFAULT_PROFILE);
+    const cats = enemy.spellcaster ? boostCaster(profile.cats) : profile.cats;
+
+    if (treasure === 'npc_gear') {
+      const gp = getNpcGearGp(enemy.cr) * count * modifier;
+      npcGearGp += gp;
+      groups.push({ profile, cats, isNpc: true, gp });
+    } else {
+      const factor = TREASURE_MULTIPLIERS[treasure] ?? 1;
+      const xp = (XP_BY_CR[key] || 0) * count * factor;
+      treasureXp += xp;
+      groups.push({ profile, cats, isNpc: false, xp });
+    }
+  }
+
+  // Effective encounter CR (from treasure-weighted XP) and its single budget.
+  const effKey = xpToCr(treasureXp);
+  const crBudget = effKey ? getTreasureGp(effKey, track, 'standard') * modifier : 0;
+  const totalBudget = crBudget + npcGearGp;
+
+  // A representative CR for the coins/goods/items split ratios.
+  let splitCr = effKey ? crToNum(effKey) : 1;
+  if (!effKey && npcGearGp > 0) splitCr = 8; // gear-heavy: bias toward items
+  const split = splitForCr(splitCr);
+
   let coinsGp = 0;
   let goodsBudget = 0;
   let itemsBudget = 0;
   const catWeights = {};
 
-  for (const enemy of (enemies || [])) {
-    const treasure = enemy.treasure || 'standard';
-    if (treasure === 'none') continue;
-    const count = Math.max(1, Math.min(1000, parseInt(enemy.count, 10) || 1));
-    const profile = treasure === 'npc_gear'
-      ? NPC_GEAR_PROFILE
-      : (TYPE_PROFILES[enemy.creatureType] || DEFAULT_PROFILE);
-    const split = splitForCr(enemy.cr);
-    const cats = enemy.spellcaster ? boostCaster(profile.cats) : profile.cats;
-    const catSum = Object.values(cats).reduce((a, b) => a + b, 0) || 1;
+  // Distribute the total budget across the groups (by their share) and split
+  // each group's gp into coins/goods/items using its creature-type profile.
+  for (const g of groups) {
+    const gp = g.isNpc
+      ? g.gp
+      : (treasureXp > 0 ? crBudget * (g.xp / treasureXp) : 0);
+    if (gp <= 0) continue;
 
-    for (let i = 0; i < count; i++) {
-      const gp = treasure === 'npc_gear'
-        ? getNpcGearGp(enemy.cr) * modifier
-        : getTreasureGp(enemy.cr, track, treasure) * modifier;
-      if (gp <= 0) continue;
+    const catSum = Object.values(g.cats).reduce((a, b) => a + b, 0) || 1;
+    const itemsPortion = gp * split.items * g.profile.itemFactor;
+    coinsGp += gp * split.coins + gp * split.items * (1 - g.profile.itemFactor);
+    goodsBudget += gp * split.goods;
+    itemsBudget += itemsPortion;
 
-      const itemsPortion = gp * split.items * profile.itemFactor;
-      coinsGp += gp * split.coins + gp * split.items * (1 - profile.itemFactor);
-      goodsBudget += gp * split.goods;
-      itemsBudget += itemsPortion;
-
-      for (const [c, w] of Object.entries(cats)) {
-        catWeights[c] = (catWeights[c] || 0) + (w / catSum) * itemsPortion;
-      }
+    for (const [c, w] of Object.entries(g.cats)) {
+      catWeights[c] = (catWeights[c] || 0) + (w / catSum) * itemsPortion;
     }
   }
 
@@ -347,6 +384,7 @@ const generate = async (enemies, options = {}) => {
     coinsGp: Math.round(coinsGp),
     items,
     totalGp: Math.round(coinsGp + itemsGp),
+    effectiveCr: effKey,
     track,
     modifier,
   };

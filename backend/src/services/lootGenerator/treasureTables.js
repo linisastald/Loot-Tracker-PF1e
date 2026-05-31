@@ -85,6 +85,43 @@ const ART_TIERS = [
   { weight: 5, min: 2000, max: 12000, avg: 7500 }, // 2d6 x 1000 gp
 ];
 
+// Standard XP by CR (used to combine an enemy list into one effective encounter
+// CR, so a group's treasure is budgeted from the encounter, not summed per
+// creature). These are the standard Pathfinder XP-by-CR values.
+const XP_BY_CR = {
+  '1/8': 50, '1/6': 65, '1/4': 100, '1/3': 135, '1/2': 200,
+  '1': 400, '2': 600, '3': 800, '4': 1200, '5': 1600, '6': 2400, '7': 3200,
+  '8': 4800, '9': 6400, '10': 9600, '11': 12800, '12': 19200, '13': 25600,
+  '14': 38400, '15': 51200, '16': 76800, '17': 102400, '18': 153600,
+  '19': 204800, '20': 307200,
+};
+const CR_ORDER = Object.keys(XP_BY_CR);
+
+// Numeric value of a CR key ('1/2' -> 0.5, '8' -> 8).
+const crToNum = (key) => {
+  if (typeof key === 'string' && key.includes('/')) {
+    const [a, b] = key.split('/');
+    return Number(a) / Number(b);
+  }
+  return Number(key);
+};
+
+// Map a total XP value to the nearest CR key (the effective encounter CR).
+const xpToCr = (totalXp) => {
+  if (!(totalXp > 0)) return null;
+  if (totalXp >= XP_BY_CR['20']) return '20';
+  let best = CR_ORDER[0];
+  let bestDiff = Infinity;
+  for (const key of CR_ORDER) {
+    const diff = Math.abs(XP_BY_CR[key] - totalXp);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = key;
+    }
+  }
+  return best;
+};
+
 // Normalize a CR input (number, integer string, or fraction string) to the
 // string key used in the tables. Returns null if unknown.
 const crKey = (cr) => {
@@ -123,7 +160,10 @@ module.exports = {
   TREASURE_MULTIPLIERS,
   GEM_TIERS,
   ART_TIERS,
+  XP_BY_CR,
   crKey,
+  crToNum,
+  xpToCr,
   getTreasureGp,
   getNpcGearGp,
 };

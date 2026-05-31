@@ -97,6 +97,7 @@ interface Preview {
     coinsGp: number;
     items: PreviewItem[];
     totalGp: number;
+    effectiveCr?: string | null;
     track: string;
     modifier: number;
 }
@@ -347,6 +348,9 @@ const LootGenerator: React.FC = () => {
                     <Box sx={{display: 'flex', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1}}>
                         <Typography variant="h6">Preview</Typography>
                         <Chip label={`Total ≈ ${preview.totalGp.toLocaleString()} gp`} color="primary" variant="outlined"/>
+                        {preview.effectiveCr && (
+                            <Chip label={`Encounter CR ${preview.effectiveCr}`} size="small" variant="outlined"/>
+                        )}
                         <Chip label={`${preview.track}, ×${preview.modifier}`} size="small" variant="outlined"/>
                         <Box sx={{flexGrow: 1}}/>
                         <Button startIcon={<AutorenewIcon/>} onClick={handleGenerate} disabled={generating}

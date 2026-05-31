@@ -92,6 +92,21 @@ describe('generate', () => {
     expect(result.coins.platinum * 10 + result.coins.gold).toBeGreaterThanOrEqual(0);
   });
 
+  it('aggregates a group into one encounter CR rather than summing per creature', async () => {
+    // 4 CR 1/3 creatures = 540 XP ~ CR 2 encounter (budget 550 medium),
+    // not 4x the lone CR 1/3 value
+    const result = await service.generate([{ creatureType: 'humanoid', cr: '1/3', count: 4, treasure: 'standard' }]);
+    expect(result.effectiveCr).toBe('2');
+    expect(result.totalGp).toBeLessThanOrEqual(550 + 1);
+    expect(result.totalGp).toBeGreaterThan(550 * 0.8);
+  });
+
+  it('a single creature still yields its own CR encounter value', async () => {
+    const result = await service.generate([{ creatureType: 'humanoid', cr: 1, count: 1, treasure: 'standard' }]);
+    expect(result.effectiveCr).toBe('1');
+    expect(result.totalGp).toBeLessThanOrEqual(260 + 1); // CR 1 medium
+  });
+
   it('generates nothing for the "none" treasure type', async () => {
     const result = await service.generate([
       { creatureType: 'humanoid', cr: 10, count: 3, treasure: 'none' },
@@ -100,9 +115,11 @@ describe('generate', () => {
     expect(result.items).toHaveLength(0);
   });
 
-  it('scales with count (8 goblins yield ~8x one goblin)', async () => {
+  it('scales with count via encounter CR (more creatures = a higher-CR encounter)', async () => {
+    // 8 CR-1 creatures = 3200 XP = a CR 7 encounter, far more than one CR 1
     const one = await service.generate([{ creatureType: 'humanoid', cr: 1, count: 1, treasure: 'standard' }]);
     const eight = await service.generate([{ creatureType: 'humanoid', cr: 1, count: 8, treasure: 'standard' }]);
+    expect(eight.effectiveCr).toBe('7');
     expect(eight.totalGp).toBeGreaterThan(one.totalGp * 5);
   });
 
