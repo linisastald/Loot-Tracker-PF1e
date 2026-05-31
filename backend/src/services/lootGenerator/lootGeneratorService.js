@@ -12,8 +12,8 @@
 const dbUtils = require('../../utils/dbUtils');
 const { calculateFinalValue } = require('../calculateFinalValue');
 const {
-  getNpcGearGp, GEM_TIERS, ART_TIERS, TREASURE_MULTIPLIERS,
-  XP_BY_CR, crKey, crToNum, xpToCr, rollTreasureTable,
+  getTreasureGp, getNpcGearGp, GEM_TIERS, ART_TIERS, TREASURE_MULTIPLIERS,
+  XP_BY_CR, crKey, crToNum, xpToCr,
 } = require('./treasureTables');
 const catalog = require('./lootCatalog');
 const { describeGem, describeArt, ENVIRONMENTS } = require('./treasureFlavor');
@@ -43,25 +43,34 @@ const weightedPickKey = (weights) => {
   return entries[entries.length - 1][0];
 };
 
-// Progression-track scalar applied to rolled coin/goods values and magic-item
-// value bands. Medium is the raw SRD table (donjon's "medium advancement"); slow
-// and fast scale the whole haul down/up to match the WBL tracks.
-const TRACK_MULT = { slow: 0.75, medium: 1.0, fast: 1.5 };
+// The SRD "Treasure Values per Encounter" budget (per effective CR + track) is
+// the anchor. DONJON_FACTOR pulls the center to the lower, donjon-like level the
+// DM preferred (book CR 1 medium 260 → ~180); each generation multiplies by a
+// moderate random SWING so totals vary without the all-or-nothing spread of
+// rolling the raw per-CR d% table (which left high-CR fights coin-only ~half the
+// time). Net: totals track CR with a controlled ±~40% swing.
+const DONJON_FACTOR = 0.7;
+const SWING_MIN = 0.6;
+const SWING_MAX = 1.4;
 
-// gp value bands for each magic-item tier rolled off the treasure table. These
-// drive which catalog item (or synthesized +N weapon/armor) fills a rolled slot.
-// The pick within a band is skewed toward the floor (see fillItemSlots), because
-// the real 3.5 item tables — and donjon — produce mostly cheap items with a rare
-// expensive tail, rather than a flat spread up to the cap.
-const TIER_BANDS = {
-  mundane: [15, 500],
-  minor: [150, 4000],
-  medium: [4000, 25000],
-  major: [25000, 120000],
+// Triangular roll in [min, max] peaking at mode (mode 1.0 ⇒ symmetric ±swing).
+const randTriangular = (min, mode, max) => {
+  const u = Math.random();
+  const c = (mode - min) / (max - min);
+  if (u < c) return min + Math.sqrt(u * (max - min) * (mode - min));
+  return max - Math.sqrt((1 - u) * (max - min) * (max - mode));
 };
-// Exponent for the low-end skew of the in-band value pick (higher = cheaper on
-// average; 2 ≈ squared, so ~half of rolls land in the bottom ~30% of the band).
-const BAND_SKEW = 2;
+
+// Coins / goods / items split of the total budget, shifting from coins toward
+// items as CR rises (low-CR hauls are mostly coin; high-CR are mostly gear).
+const splitForCr = (cr) => {
+  const n = Number(cr) || 1;
+  if (n <= 2) return { coins: 0.55, goods: 0.15, items: 0.30 };
+  if (n <= 5) return { coins: 0.45, goods: 0.20, items: 0.35 };
+  if (n <= 9) return { coins: 0.35, goods: 0.22, items: 0.43 };
+  if (n <= 13) return { coins: 0.28, goods: 0.24, items: 0.48 };
+  return { coins: 0.22, goods: 0.25, items: 0.53 };
+};
 
 // Creature-type profiles: itemFactor = fraction of the items budget that stays
 // as items (the rest reverts to coins, for mostly-mindless creatures); cats =
@@ -117,13 +126,14 @@ const getTreasureSettings = async () => {
   return { track, modifier };
 };
 
-// Multiply each coin denomination by the track/modifier scalar.
-const scaleCoins = (coins, scale) => ({
-  platinum: Math.round((coins.platinum || 0) * scale),
-  gold: Math.round((coins.gold || 0) * scale),
-  silver: Math.round((coins.silver || 0) * scale),
-  copper: Math.round((coins.copper || 0) * scale),
-});
+// Convert a gp amount into a coin object: a slice of platinum for larger hoards,
+// the remainder as gold (value-exact, so coinsToGp returns the input back).
+const coinsFromGp = (gp) => {
+  let v = Math.max(0, Math.round(gp));
+  const platinum = v >= 200 ? Math.floor((v * 0.2) / 10) : 0;
+  v -= platinum * 10;
+  return { platinum, gold: v, silver: 0, copper: 0 };
+};
 
 // Total gp value of a coin object.
 const coinsToGp = (coins) =>
@@ -243,33 +253,43 @@ const synthesizeMagicGear = async (bandMin, bandMax, unidentified) => {
   };
 };
 
-// Value a rolled count of gems and art objects into loot rows. Each rolls its
-// own value on the gem/art tier table (donjon's jackpots come from these) and
-// gets a flavorful, environment-appropriate name (e.g. "Ruby (gem)",
-// "Tapestry (art object)" — but never a grand piano in a volcano).
-const valueGoods = (gemCount, artCount, scale, environment) => {
-  const mkGood = (name, tier) => ({
-    name,
-    type: 'trade good',
-    size: null,
-    value: Math.max(1, Math.round(randInt(tier.min, tier.max) * scale)),
-    itemId: null,
-    modIds: null,
-    unidentified: false,
-    spellcraftDc: null,
-    masterwork: false,
-    category: 'goods',
-  });
+// Fill a goods budget with gems and art objects (value-only loot rows). Each
+// item rolls a tier whose value fits the remaining budget, then gets a flavorful,
+// environment-appropriate name (e.g. "Ruby (gem)", "Tapestry (art object)" — but
+// never a grand piano in a volcano). Any unspent remainder reverts to coins.
+const fillGoodsBudget = (budget, environment) => {
   const goods = [];
-  for (let i = 0; i < gemCount; i++) {
-    const tier = rollTier(GEM_TIERS);
-    goods.push(mkGood(`${describeGem(GEM_TIERS.indexOf(tier))} (gem)`, tier));
+  let remaining = budget;
+  let guard = 0;
+  while (remaining >= 5 && guard < 200) {
+    guard++;
+    const isGem = Math.random() < 0.6;
+    const tiers = isGem ? GEM_TIERS : ART_TIERS;
+    if (tiers[0].min > remaining) break;
+    let tier = rollTier(tiers);
+    if (tier.min > remaining) tier = tiers[0];
+    const cap = Math.min(tier.max, Math.floor(remaining));
+    const value = randInt(tier.min, Math.max(tier.min, cap));
+    if (value <= 0 || value > remaining) break;
+    remaining -= value;
+    const idx = tiers.indexOf(tier);
+    const name = isGem
+      ? `${describeGem(idx)} (gem)`
+      : `${describeArt(idx, environment)} (art object)`;
+    goods.push({
+      name,
+      type: 'trade good',
+      size: null,
+      value,
+      itemId: null,
+      modIds: null,
+      unidentified: false,
+      spellcraftDc: null,
+      masterwork: false,
+      category: 'goods',
+    });
   }
-  for (let i = 0; i < artCount; i++) {
-    const tier = rollTier(ART_TIERS);
-    goods.push(mkGood(`${describeArt(ART_TIERS.indexOf(tier), environment)} (art object)`, tier));
-  }
-  return goods;
+  return { goods, leftover: Math.max(0, remaining) };
 };
 
 // Accumulate a creature's category weights into a running total, weighted by its
@@ -281,59 +301,12 @@ const accumCats = (acc, cats, weight) => {
   }
 };
 
-// Choose a fill category for a rolled item slot, respecting its tier: mundane
-// slots become non-magic gear/weapon/armor; magic slots become a synthesized
-// +N weapon/armor (magicGear) or a catalog magic item (magic).
-const pickSlotCategory = (cats, tier) => {
-  if (tier === 'mundane') {
-    return weightedPickKey({
-      weapon: cats.weapon || 0,
-      armor: cats.armor || 0,
-      gear: (cats.gear || 0) + 0.5,
-    }) || 'gear';
-  }
-  const gearW = (cats.weapon || 0) + (cats.armor || 0) + (cats.magicGear || 0);
-  const magicW = (cats.magic || 0) + 0.5;
-  return weightedPickKey({ magicGear: gearW, magic: magicW }) || 'magic';
-};
-
-// Fill each rolled item slot from the catalog within its tier's value band.
-const fillItemSlots = async (slots, cats, scale, unidentified) => {
-  const rows = [];
-  for (const slot of slots) {
-    const band = TIER_BANDS[slot.tier] || TIER_BANDS.minor;
-    const bandMin = Math.max(MIN_ITEM_VALUE, Math.round(band[0] * scale));
-    const bandCap = Math.max(bandMin + 1, Math.round(band[1] * scale));
-    // Skew the usable ceiling toward the floor: most items are cheap, the rare
-    // high roll is the jackpot. (At CR 1 this keeps the occasional item to a
-    // potion/masterwork item rather than a 500 gp piece every time.)
-    const skewed = bandMin + (bandCap - bandMin) * Math.pow(Math.random(), BAND_SKEW);
-    const bandMax = Math.max(bandMin + 1, Math.round(skewed));
-    const category = pickSlotCategory(cats, slot.tier);
-
-    let item = null;
-    if (slot.tier === 'mundane') {
-      item = await sampleCatalogItem(category, bandMin, bandMax, false)
-        || await sampleCatalogItem('gear', MIN_ITEM_VALUE, bandMax, false);
-    } else if (category === 'magicGear') {
-      item = await synthesizeMagicGear(bandMin, bandMax, unidentified)
-        || await sampleCatalogItem('magic', bandMin, bandMax, unidentified);
-    } else {
-      item = await sampleCatalogItem('magic', bandMin, bandMax, unidentified)
-        || await synthesizeMagicGear(bandMin, bandMax, unidentified);
-    }
-    if (!item) {
-      item = await sampleCatalogItem('magic', MIN_ITEM_VALUE, bandMax, unidentified)
-        || await sampleCatalogItem('gear', MIN_ITEM_VALUE, bandMax, false);
-    }
-    if (item) rows.push(item);
-  }
-  return rows;
-};
-
-// Turn an NPC's wealth-by-level budget into concrete carried gear (weapons,
-// armor, the odd magic item), reverting any unspent remainder to coins.
-const fillNpcGear = async (budget, cats, unidentified) => {
+// Fill an items budget with concrete catalog gear / magic items, weighted by the
+// creature mix (cats). Item value scales naturally with the budget: a big budget
+// (high CR) lets the first pick be an expensive magic item, a small one (low CR)
+// stays cheap. Magic items are unidentified per the flag; any remainder reverts
+// to coins. Used for both the encounter's item share and NPC carried gear.
+const fillItemsBudget = async (budget, cats, unidentified) => {
   const rows = [];
   let remaining = budget;
   let guard = 0;
@@ -354,7 +327,7 @@ const fillNpcGear = async (budget, cats, unidentified) => {
     remaining -= item.value;
     rows.push(item);
   }
-  return { rows, leftover: Math.max(0, remaining) };
+  return { items: rows, leftover: Math.max(0, remaining) };
 };
 
 // Pool identical generated rows into quantities.
@@ -380,7 +353,6 @@ const generate = async (enemies, options = {}) => {
   const modifier = options.modifier > 0 ? options.modifier : settings.modifier;
   const unidentified = options.unidentified !== false;
   const environment = ENVIRONMENTS[options.environment] ? options.environment : 'dungeon';
-  const scale = (TRACK_MULT[track] ?? 1) * modifier;
 
   // --- Encounter aggregation ---
   // The enemy list is ONE encounter: treasure-weighted XP sums into an effective
@@ -415,37 +387,42 @@ const generate = async (enemies, options = {}) => {
     }
   }
 
-  // Effective encounter CR, clamped to the table's 1-20 range for the roll.
+  // --- Budget-anchored amount ---
+  // Effective encounter CR → per-encounter wealth budget (track-adjusted),
+  // pulled toward the donjon-like level and given a moderate random swing. NPC
+  // gear (wealth-by-level) is concrete carried equipment, added to the items
+  // budget rather than swung.
   const effKey = xpToCr(treasureXp);
-  const tableCr = effKey ? Math.max(1, Math.min(20, Math.round(crToNum(effKey)))) : null;
+  const swing = randTriangular(SWING_MIN, 1.0, SWING_MAX);
+  const baseTotal = effKey
+    ? getTreasureGp(effKey, track, 'standard') * modifier * DONJON_FACTOR * swing
+    : 0;
 
-  // --- Roll the per-CR random treasure table for the encounter ---
-  let coins = { platinum: 0, gold: 0, silver: 0, copper: 0 };
-  let goodsRows = [];
-  let itemRows = [];
-  if (tableCr) {
-    const rolled = rollTreasureTable(tableCr);
-    coins = scaleCoins(rolled.coins, scale);
-    goodsRows = valueGoods(rolled.gems, rolled.art, scale, environment);
-    itemRows = await fillItemSlots(rolled.items, cats, scale, unidentified);
+  let coinsGp = 0;
+  let goodsBudget = 0;
+  let itemsBudget = npcGearGp;
+  if (baseTotal > 0) {
+    const split = splitForCr(crToNum(effKey));
+    coinsGp = baseTotal * split.coins;
+    goodsBudget = baseTotal * split.goods;
+    itemsBudget += baseTotal * split.items;
   }
 
-  // NPC gear adds concrete carried equipment on top of the rolled treasure.
-  if (npcGearGp > 0) {
-    const npc = await fillNpcGear(npcGearGp, cats, unidentified);
-    itemRows = itemRows.concat(npc.rows);
-    coins.gold += Math.round(npc.leftover);
-  }
+  const goodsResult = fillGoodsBudget(goodsBudget, environment);
+  coinsGp += goodsResult.leftover;
+  const itemsResult = await fillItemsBudget(itemsBudget, cats, unidentified);
+  coinsGp += itemsResult.leftover;
 
-  const items = poolItems([...goodsRows, ...itemRows]);
-  const coinsGp = coinsToGp(coins);
+  const items = poolItems([...goodsResult.goods, ...itemsResult.items]);
+  const coins = coinsFromGp(coinsGp);
+  const coinsGpExact = coinsToGp(coins);
   const itemsGp = items.reduce((s, it) => s + it.value * it.quantity, 0);
 
   return {
     coins,
-    coinsGp: Math.round(coinsGp),
+    coinsGp: Math.round(coinsGpExact),
     items,
-    totalGp: Math.round(coinsGp + itemsGp),
+    totalGp: Math.round(coinsGpExact + itemsGp),
     effectiveCr: effKey,
     track,
     modifier,
@@ -457,10 +434,11 @@ module.exports = {
   generate,
   getTreasureSettings,
   // exported for tests
-  scaleCoins,
+  coinsFromGp,
   coinsToGp,
-  valueGoods,
-  fillItemSlots,
+  splitForCr,
+  fillGoodsBudget,
+  fillItemsBudget,
   poolItems,
   TYPE_PROFILES,
 };

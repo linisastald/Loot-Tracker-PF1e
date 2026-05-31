@@ -67,10 +67,11 @@ describe('LootGenerator', () => {
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/loot-generator/generate', expect.any(Object));
-      // unidentified item shows its generic name, not the real one
-      expect(screen.getByText('Masterwork Longsword')).toBeInTheDocument();
+      // the DM sees the item's REAL identity in the preview...
+      expect(screen.getByText('+1 Longsword')).toBeInTheDocument();
     });
-    expect(screen.queryByText('+1 Longsword')).not.toBeInTheDocument();
+    // ...with the generic name it will be STORED under shown as a hint
+    expect(screen.getByText(/unident\. → Masterwork Longsword/)).toBeInTheDocument();
     expect(screen.getByText('Trinket')).toBeInTheDocument();
     expect(screen.getByText(/Total ≈ 2,765 gp/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Send to Pending Loot/i })).toBeInTheDocument();
@@ -80,7 +81,7 @@ describe('LootGenerator', () => {
     renderPage();
 
     fireEvent.click(screen.getByRole('button', { name: /Generate Treasure/i }));
-    await waitFor(() => expect(screen.getByText('Masterwork Longsword')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('+1 Longsword')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: /Send to Pending Loot/i }));
 

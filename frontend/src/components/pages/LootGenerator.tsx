@@ -432,9 +432,14 @@ const LootGenerator: React.FC = () => {
                                 <TableBody>
                                     {preview.items.map((it, i) => (
                                         <TableRow key={it._localId ?? `${it.name}-${i}`}>
-                                            <TableCell title={it.unidentified ? `Actually: ${it.name}` : undefined}>
-                                                {it.unidentified ? (it.unidentifiedName || 'Unidentified item') : it.name}
+                                            <TableCell title={it.unidentified ? `Stored in loot as: ${it.unidentifiedName || 'Unidentified item'}` : undefined}>
+                                                {it.name}
                                                 {it.charges ? ` (${it.charges} charges)` : ''}
+                                                {it.unidentified && (
+                                                    <Typography component="span" variant="caption" color="text.secondary" sx={{ml: 0.5}}>
+                                                        (unident. → {it.unidentifiedName || 'Unidentified item'})
+                                                    </Typography>
+                                                )}
                                             </TableCell>
                                             <TableCell>{it.type}</TableCell>
                                             <TableCell>
