@@ -411,3 +411,5 @@ INSERT INTO settings (name, value, value_type, description) VALUES ('infamy_syst
 INSERT INTO settings (name, value, value_type, description) VALUES ('auto_appraisal_enabled', '0', 'boolean', 'Whether automatic appraisal is enabled (1=enabled, 0=disabled)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('theme', 'dark', 'string', 'Default UI theme (dark/light)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('weather_forecast_days', '7', 'integer', 'Number of days ahead of the current Golarion date to pre-generate weather (DM-visible forecast; players see only up to the current date)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('treasure_track', 'medium', 'string', 'Treasure progression track used by the loot generator (slow, medium, or fast)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('treasure_modifier', '1', 'string', 'Overall multiplier applied to generated treasure amounts (0.5 low fantasy, 1 standard, 2 high fantasy)');

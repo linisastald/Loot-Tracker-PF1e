@@ -288,6 +288,7 @@ const adminRoutes = require('./src/api/routes/admin');
 const infamyRoutes = require('./src/api/routes/infamy');
 const sessionsRoutes = require('./src/api/routes/sessions');
 const weatherRoutes = require('./src/api/routes/weather');
+const lootGeneratorRoutes = require('./src/api/routes/lootGenerator');
 const configRoutes = require('./src/api/routes/config');
 const shipRoutes = require('./src/api/routes/ships');
 const outpostRoutes = require('./src/api/routes/outposts');
@@ -358,6 +359,7 @@ app.use('/api/crew', csrfProtection, crewRoutes);
 // New refactored routes
 app.use('/api/items', csrfProtection, itemRoutes);
 app.use('/api/item-creation', csrfProtection, itemCreationRoutes);
+app.use('/api/loot-generator', csrfProtection, lootGeneratorRoutes);
 app.use('/api/sales', csrfProtection, salesRoutes);
 app.use('/api/appraisal', csrfProtection, appraisalRoutes);
 app.use('/api/reports', csrfProtection, reportsRoutes);
