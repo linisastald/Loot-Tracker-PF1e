@@ -85,6 +85,168 @@ const ART_TIERS = [
   { weight: 5, min: 2000, max: 12000, avg: 7500 }, // 2d6 x 1000 gp
 ];
 
+// Per-CR random "Treasure" table (the d20 SRD table that donjon's PF treasure
+// generator rolls on). For each CR 1-20, three independent d% columns —
+// Coins, Goods, Items — each with a chance to produce *nothing*, which is what
+// gives treasure its low median and wide swing (most low-CR creatures roll
+// mostly coins; the occasional gem or magic item is the jackpot). This matches
+// observed donjon output (e.g. CR 1 standard ~ 80-350 gp, averaging ~170),
+// unlike the per-encounter *budget* table (Table 12-5) which is a flat target.
+//
+// Column entry = [cumulativePercent, spec]:
+//   coins spec = [numDice, dieSize, multiplier, denomination]  (null = no coins)
+//   goods spec = ['gem'|'art', numDice, dieSize]               (null = no goods)
+//   items spec = [tier, numDice, dieSize]                      (null = no items)
+//                tier ∈ 'mundane' | 'minor' | 'medium' | 'major'
+const TREASURE_TABLE = {
+  1: {
+    coins: [[14, null], [29, [1, 6, 1000, 'cp']], [52, [1, 8, 100, 'sp']], [95, [2, 8, 10, 'gp']], [100, [1, 4, 10, 'pp']]],
+    goods: [[90, null], [95, ['gem', 1, 1]], [100, ['art', 1, 1]]],
+    items: [[71, null], [95, ['mundane', 1, 1]], [100, ['minor', 1, 1]]],
+  },
+  2: {
+    coins: [[13, null], [23, [1, 10, 1000, 'cp']], [43, [2, 10, 100, 'sp']], [95, [4, 10, 10, 'gp']], [100, [2, 8, 10, 'pp']]],
+    goods: [[81, null], [95, ['gem', 1, 3]], [100, ['art', 1, 3]]],
+    items: [[49, null], [85, ['mundane', 1, 1]], [100, ['minor', 1, 1]]],
+  },
+  3: {
+    coins: [[11, null], [21, [2, 10, 1000, 'cp']], [41, [4, 8, 100, 'sp']], [95, [1, 4, 100, 'gp']], [100, [1, 10, 10, 'pp']]],
+    goods: [[77, null], [95, ['gem', 1, 3]], [100, ['art', 1, 3]]],
+    items: [[49, null], [79, ['mundane', 1, 3]], [100, ['minor', 1, 1]]],
+  },
+  4: {
+    coins: [[11, null], [21, [3, 10, 1000, 'cp']], [41, [4, 12, 1000, 'sp']], [95, [1, 6, 100, 'gp']], [100, [1, 8, 10, 'pp']]],
+    goods: [[70, null], [95, ['gem', 1, 4]], [100, ['art', 1, 3]]],
+    items: [[42, null], [62, ['mundane', 1, 4]], [100, ['minor', 1, 1]]],
+  },
+  5: {
+    coins: [[10, null], [19, [1, 4, 10000, 'cp']], [38, [1, 6, 1000, 'sp']], [95, [1, 8, 100, 'gp']], [100, [1, 10, 10, 'pp']]],
+    goods: [[60, null], [95, ['gem', 1, 4]], [100, ['art', 1, 4]]],
+    items: [[57, null], [67, ['mundane', 1, 4]], [100, ['minor', 1, 3]]],
+  },
+  6: {
+    coins: [[10, null], [18, [1, 6, 10000, 'cp']], [37, [1, 8, 1000, 'sp']], [95, [1, 10, 100, 'gp']], [100, [1, 12, 10, 'pp']]],
+    goods: [[56, null], [92, ['gem', 1, 4]], [100, ['art', 1, 4]]],
+    items: [[54, null], [59, ['mundane', 1, 4]], [99, ['minor', 1, 3]], [100, ['medium', 1, 1]]],
+  },
+  7: {
+    coins: [[11, null], [18, [1, 10, 10000, 'cp']], [35, [1, 12, 1000, 'sp']], [93, [2, 6, 100, 'gp']], [100, [3, 4, 10, 'pp']]],
+    goods: [[48, null], [88, ['gem', 1, 4]], [100, ['art', 1, 4]]],
+    items: [[51, null], [97, ['minor', 1, 3]], [100, ['medium', 1, 1]]],
+  },
+  8: {
+    coins: [[10, null], [15, [1, 12, 10000, 'cp']], [29, [2, 6, 1000, 'sp']], [87, [2, 8, 100, 'gp']], [100, [3, 6, 10, 'pp']]],
+    goods: [[45, null], [85, ['gem', 1, 6]], [100, ['art', 1, 4]]],
+    items: [[48, null], [96, ['minor', 1, 4]], [100, ['medium', 1, 1]]],
+  },
+  9: {
+    coins: [[10, null], [15, [2, 6, 10000, 'cp']], [29, [2, 8, 1000, 'sp']], [85, [5, 4, 100, 'gp']], [100, [2, 12, 10, 'pp']]],
+    goods: [[40, null], [80, ['gem', 1, 8]], [100, ['art', 1, 4]]],
+    items: [[43, null], [91, ['minor', 1, 4]], [100, ['medium', 1, 1]]],
+  },
+  10: {
+    coins: [[10, null], [24, [2, 10, 1000, 'sp']], [79, [6, 4, 100, 'gp']], [100, [5, 6, 10, 'pp']]],
+    goods: [[35, null], [79, ['gem', 1, 8]], [100, ['art', 1, 6]]],
+    items: [[40, null], [88, ['minor', 1, 4]], [99, ['medium', 1, 1]], [100, ['major', 1, 1]]],
+  },
+  11: {
+    coins: [[8, null], [14, [3, 10, 1000, 'sp']], [75, [4, 8, 100, 'gp']], [100, [4, 10, 10, 'pp']]],
+    goods: [[24, null], [74, ['gem', 1, 10]], [100, ['art', 1, 6]]],
+    items: [[31, null], [84, ['minor', 1, 4]], [98, ['medium', 1, 1]], [100, ['major', 1, 1]]],
+  },
+  12: {
+    coins: [[8, null], [14, [3, 12, 1000, 'sp']], [75, [1, 4, 1000, 'gp']], [100, [1, 4, 100, 'pp']]],
+    goods: [[17, null], [70, ['gem', 1, 10]], [100, ['art', 1, 8]]],
+    items: [[27, null], [82, ['minor', 1, 6]], [97, ['medium', 1, 1]], [100, ['major', 1, 1]]],
+  },
+  13: {
+    coins: [[8, null], [75, [1, 4, 1000, 'gp']], [100, [1, 10, 100, 'pp']]],
+    goods: [[11, null], [66, ['gem', 1, 12]], [100, ['art', 1, 10]]],
+    items: [[19, null], [73, ['minor', 1, 6]], [95, ['medium', 1, 1]], [100, ['major', 1, 1]]],
+  },
+  14: {
+    coins: [[8, null], [75, [1, 6, 1000, 'gp']], [100, [1, 12, 100, 'pp']]],
+    goods: [[11, null], [66, ['gem', 2, 8]], [100, ['art', 2, 6]]],
+    items: [[19, null], [58, ['minor', 1, 6]], [92, ['medium', 1, 1]], [100, ['major', 1, 1]]],
+  },
+  15: {
+    coins: [[3, null], [74, [1, 8, 1000, 'gp']], [100, [3, 4, 100, 'pp']]],
+    goods: [[9, null], [65, ['gem', 2, 10]], [100, ['art', 2, 8]]],
+    items: [[11, null], [46, ['minor', 1, 10]], [90, ['medium', 1, 1]], [100, ['major', 1, 1]]],
+  },
+  16: {
+    coins: [[3, null], [74, [1, 12, 1000, 'gp']], [100, [3, 4, 100, 'pp']]],
+    goods: [[7, null], [64, ['gem', 4, 6]], [100, ['art', 2, 10]]],
+    items: [[40, null], [46, ['minor', 1, 10]], [90, ['medium', 1, 3]], [100, ['major', 1, 1]]],
+  },
+  17: {
+    coins: [[3, null], [68, [3, 4, 1000, 'gp']], [100, [2, 10, 100, 'pp']]],
+    goods: [[4, null], [63, ['gem', 4, 8]], [100, ['art', 3, 8]]],
+    items: [[33, null], [83, ['medium', 1, 3]], [100, ['major', 1, 1]]],
+  },
+  18: {
+    coins: [[2, null], [65, [3, 6, 1000, 'gp']], [100, [5, 4, 100, 'pp']]],
+    goods: [[4, null], [54, ['gem', 3, 12]], [100, ['art', 3, 10]]],
+    items: [[24, null], [80, ['medium', 1, 4]], [100, ['major', 1, 1]]],
+  },
+  19: {
+    coins: [[2, null], [65, [3, 8, 1000, 'gp']], [100, [3, 10, 100, 'pp']]],
+    goods: [[3, null], [50, ['gem', 6, 6]], [100, ['art', 6, 6]]],
+    items: [[4, null], [70, ['medium', 1, 4]], [100, ['major', 1, 1]]],
+  },
+  20: {
+    coins: [[2, null], [65, [4, 8, 1000, 'gp']], [100, [4, 10, 100, 'pp']]],
+    goods: [[2, null], [38, ['gem', 4, 10]], [100, ['art', 7, 6]]],
+    items: [[25, null], [65, ['medium', 1, 4]], [100, ['major', 1, 3]]],
+  },
+};
+
+const DENOM_COLUMN = { cp: 'copper', sp: 'silver', gp: 'gold', pp: 'platinum' };
+
+const rollDie = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const rollDice = (n, d) => {
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += rollDie(1, d);
+  return sum;
+};
+const rollColumn = (entries) => {
+  const r = rollDie(1, 100);
+  for (const [cumPct, spec] of entries) {
+    if (r <= cumPct) return spec;
+  }
+  return null;
+};
+
+// Roll the per-CR random treasure table for a single encounter at the given CR.
+// Returns concrete coin amounts plus *counts* of gems / art / magic-item slots
+// (the caller values the gems/art and fills the item slots from the catalog).
+const rollTreasureTable = (cr) => {
+  const key = String(Math.max(1, Math.min(20, Math.round(Number(cr) || 1))));
+  const row = TREASURE_TABLE[key];
+  const coins = { platinum: 0, gold: 0, silver: 0, copper: 0 };
+  const coinSpec = rollColumn(row.coins);
+  if (coinSpec) {
+    const [n, d, mult, denom] = coinSpec;
+    coins[DENOM_COLUMN[denom]] += rollDice(n, d) * mult;
+  }
+  let gems = 0;
+  let art = 0;
+  const goodsSpec = rollColumn(row.goods);
+  if (goodsSpec) {
+    const [kind, n, d] = goodsSpec;
+    const c = rollDice(n, d);
+    if (kind === 'gem') gems += c; else art += c;
+  }
+  const items = [];
+  const itemSpec = rollColumn(row.items);
+  if (itemSpec) {
+    const [tier, n, d] = itemSpec;
+    const c = rollDice(n, d);
+    for (let i = 0; i < c; i++) items.push({ tier });
+  }
+  return { coins, gems, art, items };
+};
+
 // Standard XP by CR (used to combine an enemy list into one effective encounter
 // CR, so a group's treasure is budgeted from the encounter, not summed per
 // creature). These are the standard Pathfinder XP-by-CR values.
@@ -160,10 +322,12 @@ module.exports = {
   TREASURE_MULTIPLIERS,
   GEM_TIERS,
   ART_TIERS,
+  TREASURE_TABLE,
   XP_BY_CR,
   crKey,
   crToNum,
   xpToCr,
+  rollTreasureTable,
   getTreasureGp,
   getNpcGearGp,
 };

@@ -58,6 +58,26 @@ const MODIFIER_OPTIONS = [
     {value: '2', label: 'High fantasy (×2)'},
 ];
 
+interface EnvOption {
+    value: string;
+    label: string;
+}
+
+// Fallback list if the settings fetch fails; the server is the source of truth.
+const DEFAULT_ENVIRONMENTS: EnvOption[] = [
+    {value: 'dungeon', label: 'Dungeon / Built Structure'},
+    {value: 'urban', label: 'Town / Manor / Castle'},
+    {value: 'ruins', label: 'Ancient Ruins / Temple'},
+    {value: 'cave', label: 'Cave / Cavern'},
+    {value: 'forest', label: 'Forest'},
+    {value: 'plains', label: 'Plains / Open Field'},
+    {value: 'desert', label: 'Desert'},
+    {value: 'arctic', label: 'Arctic / Tundra'},
+    {value: 'swamp', label: 'Swamp / Marsh'},
+    {value: 'volcano', label: 'Volcano / Lava'},
+    {value: 'underwater', label: 'Underwater / Aquatic'},
+];
+
 interface EnemyRow {
     localId: number;
     name: string;
@@ -100,6 +120,7 @@ interface Preview {
     effectiveCr?: string | null;
     track: string;
     modifier: number;
+    environment?: string;
 }
 
 let nextEnemyId = 1;
@@ -118,6 +139,8 @@ const LootGenerator: React.FC = () => {
     const [enemies, setEnemies] = useState<EnemyRow[]>([makeEnemy()]);
     const [track, setTrack] = useState<string>('medium');
     const [modifier, setModifier] = useState<string>('1');
+    const [environment, setEnvironment] = useState<string>('dungeon');
+    const [environments, setEnvironments] = useState<EnvOption[]>(DEFAULT_ENVIRONMENTS);
     const [unidentified, setUnidentified] = useState<boolean>(true);
     const [preview, setPreview] = useState<Preview | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -133,6 +156,7 @@ const LootGenerator: React.FC = () => {
                 const data = response.data || response;
                 if (data?.track) setTrack(data.track);
                 if (data?.modifier !== undefined) setModifier(String(data.modifier));
+                if (Array.isArray(data?.environments) && data.environments.length > 0) setEnvironments(data.environments);
             } catch {
                 // keep defaults
             }
@@ -176,6 +200,7 @@ const LootGenerator: React.FC = () => {
             track,
             modifier: parseFloat(modifier),
             unidentified,
+            environment,
         };
         setGenerating(true);
         try {
@@ -332,9 +357,16 @@ const LootGenerator: React.FC = () => {
                         </TableBody>
                     </Table>
                 </TableContainer>
-                <Box sx={{mt: 1, display: 'flex', gap: 1}}>
+                <Box sx={{mt: 1, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap'}}>
                     <Button startIcon={<AddIcon/>} onClick={addEnemy} sx={{textTransform: 'none'}}>Add enemy</Button>
                     <Box sx={{flexGrow: 1}}/>
+                    <FormControl size="small" sx={{minWidth: 200}}>
+                        <InputLabel id="environment-label">Location</InputLabel>
+                        <Select labelId="environment-label" label="Location" value={environment}
+                                onChange={(e: SelectChangeEvent) => setEnvironment(e.target.value)}>
+                            {environments.map(en => <MenuItem key={en.value} value={en.value}>{en.label}</MenuItem>)}
+                        </Select>
+                    </FormControl>
                     <Button variant="contained" startIcon={<CasinoIcon/>} onClick={handleGenerate}
                             disabled={generating} sx={{textTransform: 'none'}}>
                         {generating ? 'Generating…' : 'Generate Treasure'}
@@ -352,6 +384,11 @@ const LootGenerator: React.FC = () => {
                             <Chip label={`Encounter CR ${preview.effectiveCr}`} size="small" variant="outlined"/>
                         )}
                         <Chip label={`${preview.track}, ×${preview.modifier}`} size="small" variant="outlined"/>
+                        {preview.environment && (
+                            <Chip
+                                label={environments.find(en => en.value === preview.environment)?.label || preview.environment}
+                                size="small" variant="outlined"/>
+                        )}
                         <Box sx={{flexGrow: 1}}/>
                         <Button startIcon={<AutorenewIcon/>} onClick={handleGenerate} disabled={generating}
                                 sx={{textTransform: 'none'}}>Regenerate</Button>

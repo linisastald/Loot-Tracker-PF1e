@@ -168,7 +168,16 @@ describe('lootGeneratorController', () => {
 
       await controller.getTreasureSettings(req, res);
 
-      expect(res.success).toHaveBeenCalledWith({ track: 'medium', modifier: 1 }, expect.any(String));
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({
+          track: 'medium',
+          modifier: 1,
+          environments: expect.arrayContaining([
+            expect.objectContaining({ value: expect.any(String), label: expect.any(String) }),
+          ]),
+        }),
+        expect.any(String),
+      );
     });
 
     it('rejects an invalid track', async () => {

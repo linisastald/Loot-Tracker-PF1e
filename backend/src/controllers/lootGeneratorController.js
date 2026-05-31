@@ -4,6 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 const lootGeneratorService = require('../services/lootGenerator/lootGeneratorService');
 const { crKey } = require('../services/lootGenerator/treasureTables');
+const { ENVIRONMENTS, listEnvironments } = require('../services/lootGenerator/treasureFlavor');
 
 const ALLOWED_TRACKS = ['slow', 'medium', 'fast'];
 const VALID_TREASURE = ['none', 'incidental', 'standard', 'double', 'triple', 'npc_gear'];
@@ -37,7 +38,7 @@ const toIntOrNull = (v) => {
  * Generate a treasure preview from a list of enemies (no DB writes). DM only.
  */
 const generate = async (req, res) => {
-  const { enemies, track, modifier, unidentified } = req.body;
+  const { enemies, track, modifier, unidentified, environment } = req.body;
 
   if (!Array.isArray(enemies) || enemies.length === 0) {
     throw controllerFactory.createValidationError('At least one enemy is required');
@@ -66,6 +67,7 @@ const generate = async (req, res) => {
   const mod = parseFloat(modifier);
   if (mod > 0) options.modifier = Math.min(mod, 100);
   if (unidentified === false) options.unidentified = false;
+  if (typeof environment === 'string' && ENVIRONMENTS[environment]) options.environment = environment;
 
   const preview = await lootGeneratorService.generate(cleaned, options);
   controllerFactory.sendSuccessResponse(res, preview, 'Treasure generated');
@@ -150,7 +152,10 @@ const commit = async (req, res) => {
  */
 const getTreasureSettings = async (req, res) => {
   const settings = await lootGeneratorService.getTreasureSettings();
-  controllerFactory.sendSuccessResponse(res, settings, 'Treasure settings retrieved');
+  controllerFactory.sendSuccessResponse(res, {
+    ...settings,
+    environments: listEnvironments(),
+  }, 'Treasure settings retrieved');
 };
 
 /**
