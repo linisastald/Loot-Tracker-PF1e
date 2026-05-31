@@ -111,20 +111,65 @@ const splitCoins = (gp) => {
   return { platinum, gold: g, silver: 0, copper: 0 };
 };
 
+// Generic descriptor for an unidentified magic item, so the stored loot name
+// doesn't reveal what it is. The real name is recoverable on identification via
+// the item's itemId/modIds.
+const genericMagicName = (name, baseType) => {
+  const n = (name || '').toLowerCase();
+  if (n.startsWith('scroll')) return 'Scroll';
+  if (n.startsWith('potion')) return 'Potion';
+  if (n.startsWith('oil of')) return 'Oil';
+  if (n.startsWith('wand')) return 'Wand';
+  if (n.startsWith('ring')) return 'Ring';
+  if (n.startsWith('rod')) return 'Rod';
+  if (n.startsWith('staff')) return 'Staff';
+  if (n.startsWith('amulet') || n.startsWith('necklace') || n.startsWith('periapt')) return 'Amulet';
+  if (n.startsWith('cloak') || n.startsWith('cape')) return 'Cloak';
+  if (n.startsWith('boots')) return 'Boots';
+  if (n.startsWith('gloves') || n.startsWith('gauntlets')) return 'Gloves';
+  if (n.startsWith('belt')) return 'Belt';
+  if (n.startsWith('headband') || n.startsWith('circlet') || n.startsWith('helm') || n.startsWith('hat')) return 'Headgear';
+  if (n.startsWith('bracers') || n.startsWith('bracelet')) return 'Bracers';
+  if (baseType === 'weapon') return 'Weapon';
+  if (baseType === 'armor') return 'Armor';
+  return 'Wondrous item';
+};
+
 const sampleCatalogItem = async (category, bandMin, bandMax, unidentified) => {
   const types = CATEGORY_TYPES[category] || ['gear'];
   const row = await catalog.sampleItem(types, bandMin, bandMax);
   if (!row) return null;
-  const isMagic = category === 'magic' || row.casterlevel != null;
+
+  let value = Number(row.value);
+
+  // Wands: the catalog stores their PER-CHARGE value, so a found wand needs a
+  // charge count and its value scaled accordingly. Reject if the full value
+  // overshoots the band (the band was matched on the per-charge value).
+  let charges = null;
+  if (typeof row.name === 'string' && row.name.toLowerCase().startsWith('wand of')) {
+    charges = 50; // a found wand defaults to full charges; DM can edit in the preview
+    value *= charges;
+    if (value > bandMax) return null;
+  }
+
+  // Only genuine magic items are unidentified: the 'magic' type, or anything
+  // with a caster level. The 'other' type mixes magic items (e.g. a specific
+  // magic shield) with non-magic ones (e.g. a masterwork instrument), so the
+  // type alone is not sufficient.
+  const isMagic = row.type === 'magic' || row.casterlevel != null;
+  const isUnidentified = isMagic && !!unidentified;
+
   return {
     name: row.name,
+    unidentifiedName: isUnidentified ? genericMagicName(row.name, row.type) : row.name,
     type: row.type,
     size: 'Medium',
-    value: Math.round(Number(row.value)),
+    value: Math.round(value),
     itemId: row.id,
     modIds: null,
-    unidentified: isMagic && !!unidentified,
-    spellcraftDc: (isMagic && unidentified && row.casterlevel != null) ? 15 + Number(row.casterlevel) : null,
+    charges,
+    unidentified: isUnidentified,
+    spellcraftDc: (isUnidentified && row.casterlevel != null) ? 15 + Number(row.casterlevel) : null,
     masterwork: false,
     category,
   };
@@ -164,11 +209,14 @@ const synthesizeMagicGear = async (bandMin, bandMax, unidentified) => {
   const cl = 3 * chosenN; // minimum caster level to craft +N arms/armor
   return {
     name: `+${chosenN} ${base.name}`,
+    // Unidentified, it just looks like a (masterwork) base weapon/armor.
+    unidentifiedName: unidentified ? `Masterwork ${base.name}` : `+${chosenN} ${base.name}`,
     type: target,
     size: 'Medium',
     value: Math.round(value),
     itemId: base.id,
     modIds: [mod.id],
+    charges: null,
     unidentified: !!unidentified,
     spellcraftDc: unidentified ? 15 + cl : null,
     masterwork: false,

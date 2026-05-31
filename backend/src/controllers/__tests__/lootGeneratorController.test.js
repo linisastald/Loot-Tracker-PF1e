@@ -107,7 +107,7 @@ describe('lootGeneratorController', () => {
         body: {
           items: [
             { name: 'Trinket', quantity: 1, value: 100, type: 'gear' },
-            { name: '+1 Longsword', quantity: 1, value: 2315, type: 'weapon', itemId: 2, modIds: [417], unidentified: true, spellcraftDc: 18 },
+            { name: '+1 Longsword', unidentifiedName: 'Masterwork Longsword', quantity: 1, value: 2315, type: 'weapon', itemId: 2, modIds: [417], unidentified: true, spellcraftDc: 18 },
           ],
           coins: { platinum: 5, gold: 200, silver: 0, copper: 0 },
         },
@@ -123,6 +123,10 @@ describe('lootGeneratorController', () => {
       expect(goldInserts).toHaveLength(1);
       // loot rows are written with status NULL (pending)
       expect(lootInserts[0][0]).toContain('NULL');
+      // the unidentified item is stored under its generic name (params[2] = name)
+      const names = lootInserts.map(c => c[1][2]);
+      expect(names).toContain('Masterwork Longsword');
+      expect(names).not.toContain('+1 Longsword');
       expect(res.created).toHaveBeenCalledWith(
         expect.objectContaining({ itemsCreated: 2, coinsPosted: true }),
         expect.any(String)

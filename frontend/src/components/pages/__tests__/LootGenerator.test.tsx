@@ -24,7 +24,7 @@ const PREVIEW = {
   coins: { platinum: 5, gold: 200, silver: 0, copper: 0 },
   coinsGp: 250,
   items: [
-    { name: '+1 Longsword', type: 'weapon', size: 'Medium', value: 2315, quantity: 1, itemId: 2, modIds: [417], unidentified: true, spellcraftDc: 18, masterwork: false },
+    { name: '+1 Longsword', unidentifiedName: 'Masterwork Longsword', type: 'weapon', size: 'Medium', value: 2315, quantity: 1, itemId: 2, modIds: [417], unidentified: true, spellcraftDc: 18, masterwork: false },
     { name: 'Trinket', type: 'gear', size: 'Medium', value: 100, quantity: 2, itemId: 1, modIds: null, unidentified: false, spellcraftDc: null, masterwork: false },
   ],
   totalGp: 2765,
@@ -67,8 +67,10 @@ describe('LootGenerator', () => {
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/loot-generator/generate', expect.any(Object));
-      expect(screen.getByText('+1 Longsword')).toBeInTheDocument();
+      // unidentified item shows its generic name, not the real one
+      expect(screen.getByText('Masterwork Longsword')).toBeInTheDocument();
     });
+    expect(screen.queryByText('+1 Longsword')).not.toBeInTheDocument();
     expect(screen.getByText('Trinket')).toBeInTheDocument();
     expect(screen.getByText(/Total ≈ 2,765 gp/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Send to Pending Loot/i })).toBeInTheDocument();
@@ -78,7 +80,7 @@ describe('LootGenerator', () => {
     renderPage();
 
     fireEvent.click(screen.getByRole('button', { name: /Generate Treasure/i }));
-    await waitFor(() => expect(screen.getByText('+1 Longsword')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Masterwork Longsword')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: /Send to Pending Loot/i }));
 

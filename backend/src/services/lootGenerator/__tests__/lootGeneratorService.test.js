@@ -126,8 +126,35 @@ describe('generate', () => {
     const anyUnident = result.items.find(it => it.unidentified);
     expect(anyUnident).toBeDefined();
     expect(anyUnident.spellcraftDc).toBeGreaterThanOrEqual(16); // 15 + caster level (>= 1)
-    // the standalone potion (caster level 1) carries DC 15 + 1 = 16
+    // the standalone potion (caster level 1) carries DC 15 + 1 = 16 and a
+    // generic "Potion" name so the loot list doesn't reveal it
     const potion = result.items.find(it => it.name === 'Potion of Cure Light Wounds');
-    if (potion) expect(potion.spellcraftDc).toBe(16);
+    if (potion) {
+      expect(potion.spellcraftDc).toBe(16);
+      expect(potion.unidentifiedName).toBe('Potion');
+    }
+  });
+
+  it('does not mark a non-magic "other" item (e.g. a masterwork instrument) as unidentified', async () => {
+    catalog.sampleItem.mockResolvedValue({
+      id: 80, name: 'Masterwork Piano', type: 'other', subtype: null, value: 100, casterlevel: null, weight: 200,
+    });
+    // animal profile only draws from "gear"/"other" categories — no magic synthesis
+    const result = await service.generate([{ creatureType: 'animal', cr: 8, count: 1, treasure: 'standard' }]);
+    const piano = result.items.find(it => it.name === 'Masterwork Piano');
+    if (piano) expect(piano.unidentified).toBe(false);
+    expect(result.items.every(it => !it.unidentified)).toBe(true);
+  });
+
+  it('gives wands a charge count and scales their per-charge value', async () => {
+    catalog.sampleItem.mockResolvedValue({
+      id: 90, name: 'Wand of Magic Missile', type: 'magic', subtype: null, value: 15, casterlevel: 1, weight: 0,
+    });
+    // construct has no magicGear category, so every item is a catalog draw (wand)
+    const result = await service.generate([{ creatureType: 'construct', cr: 12, count: 1, treasure: 'standard' }]);
+    const wand = result.items.find(it => it.charges === 50);
+    expect(wand).toBeDefined();
+    expect(wand.value).toBe(750); // 15 per charge * 50
+    expect(wand.unidentifiedName).toBe('Wand');
   });
 });

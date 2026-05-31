@@ -102,10 +102,16 @@ const commit = async (req, res) => {
       const quantity = Math.max(1, parseInt(it.quantity, 10) || 1);
       const value = it.value === null || it.value === undefined ? null : Number(it.value);
       const modids = Array.isArray(it.modIds) && it.modIds.length > 0 ? it.modIds : null;
+      // Unidentified items are stored under a generic name so the loot list
+      // doesn't reveal what they are; the real identity is recoverable on
+      // identification via itemid/modids.
+      const storedName = (it.unidentified && typeof it.unidentifiedName === 'string' && it.unidentifiedName.trim() !== '')
+        ? it.unidentifiedName
+        : it.name;
       const inserted = await client.query(INSERT_LOOT, [
         date,
         quantity,
-        clampStr(it.name, 255),
+        clampStr(storedName, 255),
         Boolean(it.unidentified),
         Boolean(it.masterwork),
         clampStr(it.type, 15),

@@ -77,12 +77,14 @@ interface Coins {
 
 interface PreviewItem {
     name: string;
+    unidentifiedName?: string;
     type: string | null;
     size: string | null;
     value: number;
     quantity: number;
     itemId: number | null;
     modIds: number[] | null;
+    charges?: number | null;
     unidentified: boolean;
     spellcraftDc: number | null;
     masterwork: boolean;
@@ -389,7 +391,10 @@ const LootGenerator: React.FC = () => {
                                 <TableBody>
                                     {preview.items.map((it, i) => (
                                         <TableRow key={it._localId ?? `${it.name}-${i}`}>
-                                            <TableCell>{it.name}</TableCell>
+                                            <TableCell title={it.unidentified ? `Actually: ${it.name}` : undefined}>
+                                                {it.unidentified ? (it.unidentifiedName || 'Unidentified item') : it.name}
+                                                {it.charges ? ` (${it.charges} charges)` : ''}
+                                            </TableCell>
                                             <TableCell>{it.type}</TableCell>
                                             <TableCell>
                                                 <TextField size="small" type="number" value={it.value}
