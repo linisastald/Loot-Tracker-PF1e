@@ -152,9 +152,11 @@ describe('generate', () => {
     });
     // construct has no magicGear category, so every item is a catalog draw (wand)
     const result = await service.generate([{ creatureType: 'construct', cr: 12, count: 1, treasure: 'standard' }]);
-    const wand = result.items.find(it => it.charges === 50);
+    const wand = result.items.find(it => it.charges != null);
     expect(wand).toBeDefined();
-    expect(wand.value).toBe(750); // 15 per charge * 50
+    expect(wand.charges).toBeGreaterThanOrEqual(1);
+    expect(wand.charges).toBeLessThanOrEqual(50);
+    expect(wand.value).toBe(15 * wand.charges); // per-charge value (15) scaled by charges
     expect(wand.unidentifiedName).toBe('Wand');
   });
 });

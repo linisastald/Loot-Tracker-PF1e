@@ -143,11 +143,12 @@ const sampleCatalogItem = async (category, bandMin, bandMax, unidentified) => {
   let value = Number(row.value);
 
   // Wands: the catalog stores their PER-CHARGE value, so a found wand needs a
-  // charge count and its value scaled accordingly. Reject if the full value
-  // overshoots the band (the band was matched on the per-charge value).
+  // charge count and its value scaled accordingly. Found wands are rarely full
+  // (50), so the count is random; value scales with the actual charges. Reject
+  // if the resulting value overshoots the band.
   let charges = null;
   if (typeof row.name === 'string' && row.name.toLowerCase().startsWith('wand of')) {
-    charges = 50; // a found wand defaults to full charges; DM can edit in the preview
+    charges = randInt(1, 50);
     value *= charges;
     if (value > bandMax) return null;
   }
