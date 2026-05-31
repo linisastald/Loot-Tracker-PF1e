@@ -50,12 +50,18 @@ const TRACK_MULT = { slow: 0.75, medium: 1.0, fast: 1.5 };
 
 // gp value bands for each magic-item tier rolled off the treasure table. These
 // drive which catalog item (or synthesized +N weapon/armor) fills a rolled slot.
+// The pick within a band is skewed toward the floor (see fillItemSlots), because
+// the real 3.5 item tables — and donjon — produce mostly cheap items with a rare
+// expensive tail, rather than a flat spread up to the cap.
 const TIER_BANDS = {
-  mundane: [50, 900],
-  minor: [400, 6000],
-  medium: [6000, 30000],
-  major: [30000, 150000],
+  mundane: [15, 500],
+  minor: [150, 4000],
+  medium: [4000, 25000],
+  major: [25000, 120000],
 };
+// Exponent for the low-end skew of the in-band value pick (higher = cheaper on
+// average; 2 ≈ squared, so ~half of rolls land in the bottom ~30% of the band).
+const BAND_SKEW = 2;
 
 // Creature-type profiles: itemFactor = fraction of the items budget that stays
 // as items (the rest reverts to coins, for mostly-mindless creatures); cats =
@@ -297,7 +303,12 @@ const fillItemSlots = async (slots, cats, scale, unidentified) => {
   for (const slot of slots) {
     const band = TIER_BANDS[slot.tier] || TIER_BANDS.minor;
     const bandMin = Math.max(MIN_ITEM_VALUE, Math.round(band[0] * scale));
-    const bandMax = Math.max(bandMin + 1, Math.round(band[1] * scale));
+    const bandCap = Math.max(bandMin + 1, Math.round(band[1] * scale));
+    // Skew the usable ceiling toward the floor: most items are cheap, the rare
+    // high roll is the jackpot. (At CR 1 this keeps the occasional item to a
+    // potion/masterwork item rather than a 500 gp piece every time.)
+    const skewed = bandMin + (bandCap - bandMin) * Math.pow(Math.random(), BAND_SKEW);
+    const bandMax = Math.max(bandMin + 1, Math.round(skewed));
     const category = pickSlotCategory(cats, slot.tier);
 
     let item = null;
