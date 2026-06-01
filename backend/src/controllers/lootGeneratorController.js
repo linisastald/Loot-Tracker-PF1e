@@ -5,6 +5,28 @@ const logger = require('../utils/logger');
 const lootGeneratorService = require('../services/lootGenerator/lootGeneratorService');
 const { crKey } = require('../services/lootGenerator/treasureTables');
 const { ENVIRONMENTS, listEnvironments } = require('../services/lootGenerator/treasureFlavor');
+const spellbookService = require('../services/lootGenerator/spellbookService');
+const Spellbook = require('../models/Spellbook');
+
+const SPELLBOOK_CLASSES = Object.keys(spellbookService.CLASS_CONFIG);
+
+// Sanitize an edited spellbook payload before persisting (clamp class/level and
+// cap/clean the spell list so malformed client input can't reach the DB).
+const sanitizeBook = (sb) => {
+  const casterClass = SPELLBOOK_CLASSES.includes(sb.casterClass) ? sb.casterClass : 'wizard';
+  const casterLevel = Math.max(1, Math.min(20, parseInt(sb.casterLevel, 10) || 1));
+  const school = typeof sb.school === 'string' ? sb.school.slice(0, 20) : null;
+  const spells = (Array.isArray(sb.spells) ? sb.spells : [])
+    .slice(0, 300)
+    .filter(s => s && typeof s.name === 'string' && s.name.trim() !== '')
+    .map(s => ({
+      id: Number.isInteger(s.id) ? s.id : null,
+      name: s.name.trim().slice(0, 255),
+      level: Math.max(0, Math.min(9, parseInt(s.level, 10) || 0)),
+      school: typeof s.school === 'string' ? s.school.slice(0, 50) : null,
+    }));
+  return { casterClass, casterLevel, school, spells };
+};
 
 const ALLOWED_TRACKS = ['slow', 'medium', 'fast'];
 const VALID_TREASURE = ['none', 'incidental', 'standard', 'double', 'triple', 'npc_gear'];
@@ -127,6 +149,11 @@ const commit = async (req, res) => {
         toIntOrNull(it.spellcraftDc),
       ]);
       createdItems.push(inserted.rows[0]);
+
+      // A spellbook item also persists its spell list, linked to this loot row.
+      if (it.type === 'spellbook' && it.spellbook && Array.isArray(it.spellbook.spells)) {
+        await Spellbook.insertWithClient(client, inserted.rows[0].id, sanitizeBook(it.spellbook));
+      }
     }
 
     let goldEntry = null;

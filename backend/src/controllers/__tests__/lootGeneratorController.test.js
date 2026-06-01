@@ -133,6 +133,35 @@ describe('lootGeneratorController', () => {
       );
     });
 
+    it('persists a spellbook item with its spells in the same transaction', async () => {
+      const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 5, name: 'Spellbook', quantity: 1 }] }) };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+      const req = createMockReq({
+        body: {
+          items: [{
+            name: 'Spellbook (Wizard, CL 9)', type: 'spellbook', quantity: 1, value: 1200,
+            spellbook: {
+              casterClass: 'wizard', casterLevel: 9, school: 'Evocation',
+              spells: [
+                { id: 1, name: 'Fireball', level: 3, school: 'Evocation' },
+                { id: 2, name: 'Magic Missile', level: 1, school: 'Evocation' },
+              ],
+            },
+          }],
+          coins: {},
+        },
+      });
+      const res = createMockRes();
+
+      await controller.commit(req, res);
+
+      const bookInserts = client.query.mock.calls.filter(c => c[0].includes('INTO spellbook ('));
+      const spellInserts = client.query.mock.calls.filter(c => c[0].includes('INTO spellbook_spell'));
+      expect(bookInserts).toHaveLength(1);
+      expect(spellInserts).toHaveLength(2);
+      expect(res.created).toHaveBeenCalled();
+    });
+
     it('rejects a commit with no items and no coins', async () => {
       const req = createMockReq({ body: { items: [], coins: {} } });
       const res = createMockRes();
