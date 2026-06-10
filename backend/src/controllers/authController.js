@@ -104,9 +104,29 @@ const registerUser = async (req, res) => {
     // Add salt and hash the password with bcrypt (cost factor 10)
     const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
 
-    // Get role from request, default to 'Player' if not provided
-    const { role } = req.body;
-    const userRole = role || 'Player';
+    // Role clamp (security): the stored users.role and the user_campaign
+    // membership role may only ever be 'DM' or 'Player'. 'DM' is honored
+    // exclusively via the legitimate first-user bootstrap path — when no DM
+    // account exists yet (the same condition the frontend's /auth/check-dm
+    // gate uses to enable the role selector). Once a DM exists, or for any
+    // other requested value, the role falls back to 'Player'. A future
+    // legitimate path (Phase 3 of the multi-campaign refactor) is
+    // invite-scoped roles; it does not exist yet — today's invites carry no
+    // role and therefore never grant DM.
+    const { role: requestedRole } = req.body;
+    let userRole = 'Player';
+    if (requestedRole === 'DM') {
+        const dmCheck = await dbUtils.executeQuery(
+            "SELECT 1 FROM users WHERE role = 'DM' LIMIT 1"
+        );
+        if (dmCheck.rows.length === 0) {
+            userRole = 'DM';
+        } else {
+            logger.warn(`Registration for '${username}' requested DM role but a DM already exists; clamping to Player`);
+        }
+    } else if (requestedRole && requestedRole !== 'Player') {
+        logger.warn(`Registration for '${username}' requested invalid role '${requestedRole}'; clamping to Player`);
+    }
 
     // Run the INSERT inside a transaction, but do NOT send the HTTP response
     // from inside the callback — executeTransaction only COMMITs after the

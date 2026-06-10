@@ -56,4 +56,43 @@ describe('campaignContext', () => {
       expect(campaignContext.getCampaignId()).toBe('1');
     });
   });
+
+  describe('runWithCampaign validation', () => {
+    it.each([
+      'abc',
+      '1; DROP TABLE loot',
+      '-1',
+      '1.5',
+      '1 ',
+      '',
+      'ALL',
+      'all2',
+    ])('throws on invalid campaign id %j', (badId) => {
+      const fn = jest.fn();
+      expect(() => campaignContext.runWithCampaign(badId, fn)).toThrow(
+        `Invalid campaign id: ${String(badId)}`
+      );
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it('throws on null and undefined campaign ids', () => {
+      expect(() => campaignContext.runWithCampaign(null, () => {})).toThrow('Invalid campaign id: null');
+      expect(() => campaignContext.runWithCampaign(undefined, () => {})).toThrow('Invalid campaign id: undefined');
+    });
+
+    it('does not establish a context when validation fails', () => {
+      try {
+        campaignContext.runWithCampaign('garbage', () => {});
+      } catch (e) {
+        // expected
+      }
+      expect(campaignContext.getCampaignId()).toBe('1');
+    });
+
+    it('accepts digit strings, numbers, and "all"', () => {
+      expect(() => campaignContext.runWithCampaign('12', () => {})).not.toThrow();
+      expect(() => campaignContext.runWithCampaign(7, () => {})).not.toThrow();
+      expect(() => campaignContext.runWithCampaign('all', () => {})).not.toThrow();
+    });
+  });
 });

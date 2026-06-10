@@ -324,8 +324,28 @@ Phase 0 (chokepoint refactor — all services through dbUtils) is DONE (90c3cc2)
      (pre-existing — self-registrants can claim DM; mitigated by the
      invite/registrations-closed gate; whitelist to 'Player' in Phase 3);
      optionally `adminDb.end()` after startup migrations.
-3. **Auth/campaign-context** — membership middleware, per-campaign role checks,
-   campaign picker API.
+3. **Auth/campaign-context** — split into:
+   - **3a (DONE)**: verifyToken resolves campaign per request (validated
+     `X-Campaign-Id` header → membership check → 403 non-members, superadmin
+     override; no header → lowest-id membership; zero memberships → campaign 1
+     + JWT role transition fallback), wraps handlers in the RLS tenant context;
+     checkRole = superadmin bypass + campaignRole-over-JWT precedence (27 call
+     sites unchanged); campaigns API (GET /, GET /current, POST / superadmin-
+     only); registerUser role clamp (DM only via first-user bootstrap).
+   - **3b (invite overhaul — design DECIDED 2026-06-10)**: single
+     `registration_mode` setting (open / invite-only / closed) replaces
+     registrations_open + the never-read invite_required; invites are
+     single-use, grant **Player** membership in the issuing DM's current
+     campaign; crypto-random codes with collision retry; generation endpoints
+     move off the CSRF-exempt /api/auth mount to /api/invites.
+   - **3c**: background-job 'all' mode + per-row campaign scoping; swap column
+     defaults to the GUC form.
+   - **Follow-ups from 3a review** (tracked, not blocking): ~24 controller
+     sites still check `req.user.role` directly instead of
+     `req.campaignRole`/`req.isSuperadmin` (auth/settings/user/discord/infamy
+     controllers + validationService) — sweep in Phase 5; deleted user with a
+     valid JWT should 401 once memberships are authoritative; first-DM
+     bootstrap race could take `pg_advisory_xact_lock` if ever needed.
 4. **Frontend** — campaign selector + context, `X-Campaign-Id` on requests,
    per-campaign role in `AuthContext`.
 5. **Per-feature audit** — mostly automatic via RLS; explicitly handle admin /

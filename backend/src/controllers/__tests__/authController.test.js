@@ -373,14 +373,15 @@ describe('authController', () => {
       );
     });
 
-    it('should grant DM campaign membership when registering a DM user', async () => {
+    it('should grant DM role + membership via the first-user bootstrap path (no DM exists yet)', async () => {
       const req = createMockReq({ body: { ...validBody, role: 'DM' } });
       const res = createMockRes();
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ value: '1' }] })  // registrations open
         .mockResolvedValueOnce({ rows: [] })                  // username ok
-        .mockResolvedValueOnce({ rows: [] });                 // email ok
+        .mockResolvedValueOnce({ rows: [] })                  // email ok
+        .mockResolvedValueOnce({ rows: [] });                 // role clamp: no DM exists yet
 
       let txClient;
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
@@ -397,6 +398,11 @@ describe('authController', () => {
 
       await authController.registerUser(req, res);
 
+      // The bootstrap path stores 'DM' in users.role
+      const userInsertCall = txClient.query.mock.calls[0];
+      expect(userInsertCall[0]).toContain('INSERT INTO users');
+      expect(userInsertCall[1][2]).toBe('DM');
+
       const membershipCall = txClient.query.mock.calls[1];
       expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
       expect(membershipCall[1]).toEqual([7, 'DM']);
@@ -407,6 +413,83 @@ describe('authController', () => {
         }),
         'User registered successfully'
       );
+    });
+
+    it('should clamp a requested DM role to Player when a DM already exists', async () => {
+      const req = createMockReq({ body: { ...validBody, role: 'DM' } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ value: '1' }] })  // registrations open
+        .mockResolvedValueOnce({ rows: [] })                  // username ok
+        .mockResolvedValueOnce({ rows: [] })                  // email ok
+        .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] }); // role clamp: a DM exists
+
+      let txClient;
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        txClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({
+              rows: [{ id: 8, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
+            })
+            .mockResolvedValueOnce({ rows: [] }), // user_campaign membership insert
+          release: jest.fn(),
+        };
+        return await callback(txClient);
+      });
+
+      await authController.registerUser(req, res);
+
+      // The stored users.role must be clamped to Player
+      const userInsertCall = txClient.query.mock.calls[0];
+      expect(userInsertCall[0]).toContain('INSERT INTO users');
+      expect(userInsertCall[1][2]).toBe('Player');
+
+      // The campaign membership must be Player too
+      const membershipCall = txClient.query.mock.calls[1];
+      expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
+      expect(membershipCall[1]).toEqual([8, 'Player']);
+
+      expect(res.created).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: expect.objectContaining({ role: 'Player' }),
+        }),
+        'User registered successfully'
+      );
+    });
+
+    it('should clamp an arbitrary body role to Player without checking for a DM', async () => {
+      const req = createMockReq({ body: { ...validBody, role: 'Superadmin' } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ value: '1' }] })  // registrations open
+        .mockResolvedValueOnce({ rows: [] })                  // username ok
+        .mockResolvedValueOnce({ rows: [] });                 // email ok
+
+      let txClient;
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        txClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({
+              rows: [{ id: 9, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
+            })
+            .mockResolvedValueOnce({ rows: [] }), // user_campaign membership insert
+          release: jest.fn(),
+        };
+        return await callback(txClient);
+      });
+
+      await authController.registerUser(req, res);
+
+      // Non-'DM' values never trigger the DM-exists lookup
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
+
+      const userInsertCall = txClient.query.mock.calls[0];
+      expect(userInsertCall[1][2]).toBe('Player');
+
+      const membershipCall = txClient.query.mock.calls[1];
+      expect(membershipCall[1]).toEqual([9, 'Player']);
     });
 
     it('should reject registration with duplicate username', async () => {
