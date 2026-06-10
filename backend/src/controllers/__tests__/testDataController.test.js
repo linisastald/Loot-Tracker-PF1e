@@ -307,6 +307,34 @@ describe('testDataController.generateTestData', () => {
       expect(typeof payload.testCredentials.note).toBe('string');
     });
 
+    it('grants campaign 1 membership for each test user', async () => {
+      const client = makeTransactionClient();
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+
+      const req = createMockReq({ user: { id: 42, role: 'DM' } });
+      const res = createMockRes();
+
+      await testDataController.generateTestData(req, res);
+
+      const membershipCalls = client.query.mock.calls.filter((c) =>
+        String(c[0]).includes('INSERT INTO user_campaign')
+      );
+
+      // One membership insert per test user, all in campaign 1 as Player
+      expect(membershipCalls).toHaveLength(4);
+      expect(membershipCalls.map((c) => c[1])).toEqual([
+        [101, 'Player'],
+        [102, 'Player'],
+        [103, 'Player'],
+        [104, 'Player'],
+      ]);
+      membershipCalls.forEach((c) => {
+        expect(String(c[0])).toMatch(/ON CONFLICT DO NOTHING/i);
+      });
+
+      expect(res.success).toHaveBeenCalledTimes(1);
+    });
+
     it('issues guarded INSERTs (NOT EXISTS) so re-runs do not throw on duplicates', async () => {
       // Re-run scenario: users already exist. The controller's INSERT uses
       // `WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = v.username)`,

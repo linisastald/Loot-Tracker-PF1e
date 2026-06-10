@@ -2,7 +2,10 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const pool = require('../config/db');
+// Migrations must run as the database owner (DDL + RLS management), so the
+// migration runner uses the dedicated admin pool, never the tenant-scoped
+// app pool/dbUtils. The admin pool is created lazily on first use.
+const pool = require('../config/adminDb');
 const logger = require('./logger');
 
 /**

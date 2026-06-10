@@ -337,20 +337,29 @@ describe('authController', () => {
         .mockResolvedValueOnce({ rows: [] });                 // email check (no dup)
 
       // executeTransaction for user insert
+      let txClient;
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
-        const mockClient = {
+        txClient = {
           query: jest.fn()
             .mockResolvedValueOnce({
               rows: [{ id: 1, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
-            }),
+            })
+            .mockResolvedValueOnce({ rows: [] }), // user_campaign membership insert
           release: jest.fn(),
         };
-        return await callback(mockClient);
+        return await callback(txClient);
       });
 
       await authController.registerUser(req, res);
 
       expect(bcrypt.hash).toHaveBeenCalled();
+
+      // The new user must be granted membership in campaign 1, mirroring role
+      const membershipCall = txClient.query.mock.calls[1];
+      expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
+      expect(membershipCall[0]).toContain('ON CONFLICT DO NOTHING');
+      expect(membershipCall[1]).toEqual([1, 'Player']);
+
       expect(res.cookie).toHaveBeenCalledWith(
         'authToken',
         'new-user-token',
@@ -359,6 +368,42 @@ describe('authController', () => {
       expect(res.created).toHaveBeenCalledWith(
         expect.objectContaining({
           user: expect.objectContaining({ username: 'newplayer' }),
+        }),
+        'User registered successfully'
+      );
+    });
+
+    it('should grant DM campaign membership when registering a DM user', async () => {
+      const req = createMockReq({ body: { ...validBody, role: 'DM' } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ value: '1' }] })  // registrations open
+        .mockResolvedValueOnce({ rows: [] })                  // username ok
+        .mockResolvedValueOnce({ rows: [] });                 // email ok
+
+      let txClient;
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        txClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({
+              rows: [{ id: 7, username: 'newplayer', role: 'DM', email: 'new@example.com' }],
+            })
+            .mockResolvedValueOnce({ rows: [] }), // user_campaign membership insert
+          release: jest.fn(),
+        };
+        return await callback(txClient);
+      });
+
+      await authController.registerUser(req, res);
+
+      const membershipCall = txClient.query.mock.calls[1];
+      expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
+      expect(membershipCall[1]).toEqual([7, 'DM']);
+
+      expect(res.created).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: expect.objectContaining({ role: 'DM' }),
         }),
         'User registered successfully'
       );
@@ -497,19 +542,31 @@ describe('authController', () => {
         .mockResolvedValueOnce({ rows: [] })                                    // email ok
         .mockResolvedValueOnce({ rows: [] });                                   // email check
 
+      let txClient;
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
-        const mockClient = {
+        txClient = {
           query: jest.fn()
             .mockResolvedValueOnce({
               rows: [{ id: 5, username: 'newuser', role: 'Player', email: 'new@test.com' }],
             })
+            .mockResolvedValueOnce({ rows: [] })  // user_campaign membership insert
             .mockResolvedValueOnce({ rows: [] }), // invite update
           release: jest.fn(),
         };
-        return await callback(mockClient);
+        return await callback(txClient);
       });
 
       await authController.registerUser(req, res);
+
+      // Membership insert runs after the user insert, before the invite update
+      const membershipCall = txClient.query.mock.calls[1];
+      expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
+      expect(membershipCall[1]).toEqual([5, 'Player']);
+
+      // Invite is still marked as used
+      const inviteCall = txClient.query.mock.calls[2];
+      expect(inviteCall[0]).toContain('UPDATE invites SET is_used = TRUE');
+      expect(inviteCall[1]).toEqual([5, 'VALID1']);
 
       expect(res.created).toHaveBeenCalledWith(
         expect.objectContaining({

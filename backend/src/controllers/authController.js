@@ -120,6 +120,18 @@ const registerUser = async (req, res) => {
         );
         const createdUser = result.rows[0];
 
+        // Grant campaign membership for the new user. Campaign 1 is correct
+        // for current single-campaign deployments; Phase 3 of the
+        // multi-campaign refactor replaces this with invite-scoped campaign
+        // membership.
+        const membershipRole = createdUser.role === 'DM' ? 'DM' : 'Player';
+        await client.query(
+            `INSERT INTO user_campaign (user_id, campaign_id, role)
+             VALUES ($1, 1, $2)
+             ON CONFLICT DO NOTHING`,
+            [createdUser.id, membershipRole]
+        );
+
         // Mark invite as used if provided
         if (inviteCode) {
             await client.query(

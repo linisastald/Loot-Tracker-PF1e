@@ -3,7 +3,16 @@
  */
 const pool = require('../config/db');
 const logger = require('./logger');
+const campaignContext = require('./campaignContext');
 const { DATABASE } = require('../config/constants');
+
+/**
+ * SQL to set the tenant GUC for the current transaction.
+ * `set_config(..., true)` is transaction-local, so COMMIT/ROLLBACK clears it —
+ * a pooled connection can never leak one request's campaign to the next.
+ * (`SET LOCAL` cannot take bind parameters, hence set_config.)
+ */
+const SET_CAMPAIGN_SQL = "SELECT set_config('app.current_campaign', $1, true)";
 
 /**
  * Whitelist of allowed table names to prevent SQL injection
@@ -99,6 +108,12 @@ const validateColumnNames = (columns, strict = false) => {
 
 /**
  * Execute a database query with error handling
+ *
+ * Every query runs inside a short transaction that first sets the tenant GUC
+ * (`app.current_campaign`) from the active campaign context, so row-level
+ * security policies see the right campaign. The GUC is transaction-local and
+ * cleared on COMMIT/ROLLBACK.
+ *
  * @param {string} queryText - SQL query text
  * @param {Array} params - Query parameters
  * @param {string} errorMessage - Custom error message for logging
@@ -107,9 +122,16 @@ const validateColumnNames = (columns, strict = false) => {
 const executeQuery = async (queryText, params = [], errorMessage = 'Database query error') => {
   const startTime = Date.now();
   const client = await pool.connect();
+  // If a rollback fails the connection may be stuck mid-transaction; returning
+  // it to the pool would leak state to the next checkout, so destroy it instead.
+  let destroyClient = false;
 
   try {
+    await client.query('BEGIN');
+    await client.query(SET_CAMPAIGN_SQL, [campaignContext.getCampaignId()]);
     const result = await client.query(queryText, params);
+    await client.query('COMMIT');
+
     const duration = Date.now() - startTime;
 
     // Log slow queries for performance monitoring
@@ -119,6 +141,14 @@ const executeQuery = async (queryText, params = [], errorMessage = 'Database que
 
     return result;
   } catch (error) {
+    // Best-effort rollback; preserve and rethrow the original error
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      destroyClient = true;
+      logger.error(`Failed to rollback query transaction: ${rollbackError.message}`);
+    }
+
     // Get line numbers and prepare user-friendly error message
     const stack = error.stack || '';
     const position = error.position || '';
@@ -129,7 +159,7 @@ const executeQuery = async (queryText, params = [], errorMessage = 'Database que
   } finally {
     // Ensure client is always released even if there was an error
     try {
-      client.release();
+      client.release(destroyClient);
     } catch (releaseError) {
       logger.error(`Failed to release database client: ${releaseError.message}`);
     }
@@ -138,6 +168,11 @@ const executeQuery = async (queryText, params = [], errorMessage = 'Database que
 
 /**
  * Execute a transaction with multiple queries
+ *
+ * The tenant GUC (`app.current_campaign`) is set immediately after BEGIN from
+ * the active campaign context; being transaction-local, it is cleared on
+ * COMMIT/ROLLBACK.
+ *
  * @param {Function} callback - Function that receives client and executes queries
  * @param {string} errorMessage - Custom error message for logging
  * @returns {Promise<any>} - Result from the callback
@@ -147,6 +182,7 @@ const executeTransaction = async (callback, errorMessage = 'Transaction error') 
 
   try {
     await client.query('BEGIN');
+    await client.query(SET_CAMPAIGN_SQL, [campaignContext.getCampaignId()]);
 
     const result = await callback(client);
 

@@ -203,14 +203,15 @@ to settle in Phase 2/3:
   with its owner's privileges and bypasses RLS).
 
 ### 3.4a Migration runner needs its own privileged connection
-Today `migrationRunner` shares the app's pool (`config/db.js`, one set of
-`DB_*` env vars) and migrations run automatically at server startup. RLS
-requires the app to connect as a **non-owner** role while migrations run as
-owner — so Phase 2 must introduce a second credential set (e.g.
-`DB_ADMIN_USER`/`DB_ADMIN_PASSWORD`) and a separate admin pool used only by the
-migration runner at startup. This is a deployment-config change (compose env +
-role creation in the database). `migrationRunner` deliberately stays on a raw
-pool (never tenant-scoped).
+IMPLEMENTED (Phase 2a): the migration runner uses a dedicated owner pool
+(`config/adminDb.js`, always `DB_USER`/`DB_PASSWORD`), while the app pool
+(`config/db.js`) switches to **`DB_APP_USER`/`DB_APP_PASSWORD`** when both are
+set, falling back to the owner credentials otherwise (logged at startup as
+"RLS not enforced"). Enforcement flip = run `database/setup_app_role.sql`
+(creates the non-owner role + grants + default privileges; must be run AS the
+owner role so future-migration objects inherit grants), set the two env vars,
+restart, then run `node scripts/rls-leak-test.js` from backend/ to verify
+isolation. `migrationRunner` deliberately never goes through dbUtils.
 
 ### 3.5 Auth & campaign selection
 - JWT stays **identity-only** (`id, username`) — do **not** bake campaign/role in,
@@ -302,11 +303,27 @@ Phase 0 (chokepoint refactor — all services through dbUtils) is DONE (90c3cc2)
    `users.is_superadmin`, nullable override columns on item/mod/holidays.
    Ships to existing single-campaign deployments harmlessly (everything is
    campaign_id = 1).
-2. **dbUtils GUC + RLS** — non-owner app role, admin pool for the migration
-   runner (§3.4a), policies, `security_invoker` views, swap column defaults to
-   the GUC form, background-job cross-campaign mode (§3.3a), leak test. Also:
-   registration must insert a `user_campaign` row (the 044 backfill only covers
-   users existing at migration time).
+2. **dbUtils GUC + RLS** — split into:
+   - **2a (DONE, ships inert)**: migration 045 (RLS policies on all 39 tables,
+     GUC semantics: unset/'' = fail closed, int = that campaign, 'all' =
+     cross-campaign; `security_invoker` on the 4 views), dbUtils wraps every
+     query in BEGIN/`set_config('app.current_campaign')`/query/COMMIT with
+     AsyncLocalStorage context (`utils/campaignContext.js`, defaults to
+     campaign '1'), app/admin pool split (§3.4a), registration +
+     test-data user creation now insert `user_campaign` rows,
+     `scripts/rls-leak-test.js`.
+   - **2b (enforcement flip, needs operator)**: run
+     `database/setup_app_role.sql`, set `DB_APP_USER`/`DB_APP_PASSWORD`,
+     restart, run the leak test. Zero code changes.
+   - Deferred to Phase 3: swap column defaults from `1` to the GUC form;
+     wrap background jobs in explicit campaign context ('all' + per-row
+     scoping, §3.3a); validate the GUC value (`^\d+$|^all$`) in middleware.
+   - Follow-ups noted by review (non-blocking): wrap the up-to-366-day weather
+     generation loop in one transaction (now ~3 single-query transactions per
+     day advanced); `registerUser` takes `role` from req.body unvalidated
+     (pre-existing — self-registrants can claim DM; mitigated by the
+     invite/registrations-closed gate; whitelist to 'Player' in Phase 3);
+     optionally `adminDb.end()` after startup migrations.
 3. **Auth/campaign-context** — membership middleware, per-campaign role checks,
    campaign picker API.
 4. **Frontend** — campaign selector + context, `X-Campaign-Id` on requests,

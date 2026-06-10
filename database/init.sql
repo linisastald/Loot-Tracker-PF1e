@@ -569,3 +569,292 @@ INSERT INTO settings (name, value, value_type, description) VALUES ('theme', 'da
 INSERT INTO settings (name, value, value_type, description) VALUES ('weather_forecast_days', '7', 'integer', 'Number of days ahead of the current Golarion date to pre-generate weather (DM-visible forecast; players see only up to the current date)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('treasure_track', 'medium', 'string', 'Treasure progression track used by the loot generator (slow, medium, or fast)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('treasure_modifier', '1', 'string', 'Overall multiplier applied to generated treasure amounts (0.5 low fantasy, 1 standard, 2 high fantasy)');
+
+-- ============================================================================
+-- Row-Level Security (multi-campaign refactor Phase 2a, mirrors migration
+-- 045_enable_rls.sql for the tables created in this file; tables created by
+-- migrations and the security_invoker view changes are covered by migration
+-- 045's guarded statements, which also run on fresh installs).
+--
+-- NOT ENFORCED until the app connects as a non-owner role (table owners
+-- bypass non-FORCE RLS; see database/setup_app_role.sql). Policy semantics
+-- for the GUC app.current_campaign: unset/'' -> no rows (fail closed);
+-- an integer -> that campaign only; 'all' -> cross-campaign mode for
+-- background jobs/superadmin (the double NULLIF avoids an int-cast error
+-- on 'all'). Default policy type FOR ALL covers all DML.
+-- ============================================================================
+
+ALTER TABLE characters ENABLE ROW LEVEL SECURITY;
+CREATE POLICY characters_tenant ON characters
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE ships ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ships_tenant ON ships
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE outposts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY outposts_tenant ON outposts
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE crew ENABLE ROW LEVEL SECURITY;
+CREATE POLICY crew_tenant ON crew
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE loot ENABLE ROW LEVEL SECURITY;
+CREATE POLICY loot_tenant ON loot
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE appraisal ENABLE ROW LEVEL SECURITY;
+CREATE POLICY appraisal_tenant ON appraisal
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE gold ENABLE ROW LEVEL SECURITY;
+CREATE POLICY gold_tenant ON gold
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE sold ENABLE ROW LEVEL SECURITY;
+CREATE POLICY sold_tenant ON sold
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE consumableuse ENABLE ROW LEVEL SECURITY;
+CREATE POLICY consumableuse_tenant ON consumableuse
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE identify ENABLE ROW LEVEL SECURITY;
+CREATE POLICY identify_tenant ON identify
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE spellbook ENABLE ROW LEVEL SECURITY;
+CREATE POLICY spellbook_tenant ON spellbook
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE spellbook_spell ENABLE ROW LEVEL SECURITY;
+CREATE POLICY spellbook_spell_tenant ON spellbook_spell
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE fame ENABLE ROW LEVEL SECURITY;
+CREATE POLICY fame_tenant ON fame
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE fame_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY fame_history_tenant ON fame_history
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE invites ENABLE ROW LEVEL SECURITY;
+CREATE POLICY invites_tenant ON invites
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE session_messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY session_messages_tenant ON session_messages
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE golarion_current_date ENABLE ROW LEVEL SECURITY;
+CREATE POLICY golarion_current_date_tenant ON golarion_current_date
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE golarion_calendar_notes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY golarion_calendar_notes_tenant ON golarion_calendar_notes
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE golarion_notes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY golarion_notes_tenant ON golarion_notes
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE golarion_weather ENABLE ROW LEVEL SECURITY;
+CREATE POLICY golarion_weather_tenant ON golarion_weather
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE ship_infamy ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ship_infamy_tenant ON ship_infamy
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE infamy_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY infamy_history_tenant ON infamy_history
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE favored_ports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY favored_ports_tenant ON favored_ports
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE port_visits ENABLE ROW LEVEL SECURITY;
+CREATE POLICY port_visits_tenant ON port_visits
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );
+
+ALTER TABLE imposition_uses ENABLE ROW LEVEL SECURITY;
+CREATE POLICY imposition_uses_tenant ON imposition_uses
+    USING (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    )
+    WITH CHECK (
+        campaign_id = NULLIF(NULLIF(current_setting('app.current_campaign', true), ''), 'all')::int
+        OR current_setting('app.current_campaign', true) = 'all'
+    );

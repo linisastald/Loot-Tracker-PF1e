@@ -57,6 +57,19 @@ const generateTestData = async (req, res) => {
       
       const userIds = existingUsers.rows.map(row => row.id);
 
+      // Grant campaign membership for the test users. Campaign 1 is correct
+      // for current single-campaign deployments; Phase 3 of the
+      // multi-campaign refactor replaces this with invite-scoped campaign
+      // membership.
+      for (const userId of userIds) {
+        await client.query(
+          `INSERT INTO user_campaign (user_id, campaign_id, role)
+           VALUES ($1, 1, $2)
+           ON CONFLICT DO NOTHING`,
+          [userId, 'Player']
+        );
+      }
+
       // Create characters for test users
       if (userIds.length >= 4) {
         await client.query(`
