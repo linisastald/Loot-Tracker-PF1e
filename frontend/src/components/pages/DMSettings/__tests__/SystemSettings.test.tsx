@@ -28,6 +28,11 @@ vi.mock('../../../../utils/timezoneUtils', () => ({
   fetchCampaignTimezone: vi.fn().mockResolvedValue('America/New_York'),
 }));
 
+// CampaignThemeSettings needs CampaignContext (tested on its own); stub it out
+vi.mock('../CampaignThemeSettings', () => ({
+  default: () => <div data-testid="campaign-theme-settings" />,
+}));
+
 import api from '../../../../utils/api';
 import SystemSettings from '../SystemSettings';
 

@@ -564,6 +564,11 @@ const GolarionCalendar: React.FC = () => {
             });
 
             setCurrentDate(selectedDate);
+            // Jump the view to the new current month: the displayedDate effect
+            // refetches that month's weather, so the weather the backend just
+            // generated shows without a reload (same mechanism as the
+            // next-day/advance handlers — no explicit fetch needed here).
+            setDisplayedDate({year: selectedDate.year, month: selectedDate.month});
             setConfirmDialogOpen(false);
             setError(null);
         } catch (error) {

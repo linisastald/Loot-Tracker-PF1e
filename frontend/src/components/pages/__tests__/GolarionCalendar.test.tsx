@@ -146,6 +146,42 @@ describe('GolarionCalendar', () => {
     });
   });
 
+  describe('set current day', () => {
+    const weatherCallCount = () =>
+      (api.get as any).mock.calls.filter((call: unknown[]) =>
+        String(call[0]).startsWith('/weather/range')
+      ).length;
+
+    it('refetches weather for the month after confirming Set Current Day', async () => {
+      renderCalendar();
+
+      // Initial load: current date selected + first weather fetch done
+      await waitFor(() => {
+        expect(screen.getByText(/Calendar Information/i)).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(weatherCallCount()).toBeGreaterThan(0);
+      });
+      const callsBefore = weatherCallCount();
+
+      fireEvent.click(screen.getByRole('button', { name: /Set Current Day/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /Confirm/i }));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith('/calendar/set-current-date', {
+          year: 4722,
+          month: 1,
+          day: 15,
+        });
+      });
+      // The fix: weather is refetched so newly generated weather appears
+      // without a page reload
+      await waitFor(() => {
+        expect(weatherCallCount()).toBeGreaterThan(callsBefore);
+      });
+    });
+  });
+
   describe('notes', () => {
     it('renders existing notes (with range) in the All Notes agenda', async () => {
       (api.get as any).mockImplementation((url: string) => {

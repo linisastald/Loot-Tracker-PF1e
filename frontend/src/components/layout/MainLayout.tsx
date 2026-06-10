@@ -1,6 +1,7 @@
 import React, {Suspense, useState, useEffect} from 'react';
 import Sidebar from './Sidebar';
 import CampaignSelector from './CampaignSelector';
+import NoSessionTodayBanner from './NoSessionTodayBanner';
 import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography, useMediaQuery, useTheme} from '@mui/material';
 import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -128,6 +129,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
             overflow: 'auto',
           }}
         >
+          {/* Multi-campaign: gentle "wrong campaign?" hint, above page content */}
+          <NoSessionTodayBanner />
           <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress size={32} /></Box>}>
             <Outlet />
           </Suspense>

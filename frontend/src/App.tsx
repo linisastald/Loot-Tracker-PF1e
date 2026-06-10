@@ -10,6 +10,7 @@ import Login from './components/pages/Login';
 import MainLayout from './components/layout/MainLayout';
 import ProtectedRoute from './components/hoc/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
+import CampaignThemeProvider from './components/CampaignThemeProvider';
 
 // Lazy loaded page components
 const Register = React.lazy(() => import('./components/pages/Register'));
@@ -178,6 +179,12 @@ function App() {
           {/* CampaignProvider reads auth state from AuthContext and only fetches
               campaign info once authenticated (it is a no-op on the login page) */}
           <CampaignProvider>
+          {/* Per-campaign theme override (Phase 4b). Wraps the Router so the
+              app bar / campaign selector get the campaign theme too; renders
+              children unchanged when no valid override exists (login page
+              keeps the default theme since settings are only fetched once
+              authenticated). */}
+          <CampaignThemeProvider>
           <Router>
           <Suspense fallback={null}>
           <Routes>
@@ -223,6 +230,7 @@ function App() {
           </Routes>
           </Suspense>
           </Router>
+          </CampaignThemeProvider>
           </CampaignProvider>
           </AuthProvider>
         </ConfigProvider>

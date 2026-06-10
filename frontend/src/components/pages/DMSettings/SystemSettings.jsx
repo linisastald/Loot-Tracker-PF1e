@@ -29,6 +29,7 @@ import {
   DataObject as TestDataIcon,
   Schedule as ScheduleIcon
 } from '@mui/icons-material';
+import CampaignThemeSettings from './CampaignThemeSettings';
 
 const REGISTRATION_MODES = [
     {value: 'open', label: 'Open', description: 'Anyone may register'},
@@ -724,6 +725,11 @@ const SystemSettings = () => {
                             )}
                         </CardContent>
                     </Card>
+                </Grid>
+
+                {/* Campaign Theme (per-campaign override, Phase 4b) */}
+                <Grid size={{xs: 12, md: 6}}>
+                    <CampaignThemeSettings/>
                 </Grid>
 
                 {/* Database Backup & Restore */}
