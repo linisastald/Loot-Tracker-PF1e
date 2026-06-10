@@ -51,6 +51,7 @@ api.interceptors.request.use(
             config.url.includes('/auth/register') ||
             config.url.includes('/auth/check-dm') ||
             config.url.includes('/auth/check-registration-status') ||
+            config.url.includes('/auth/refresh') ||
             config.url.includes('/auth/status'))) {
             return config;
         }
@@ -91,6 +92,9 @@ api.interceptors.response.use(
 
             if (!isAuthEndpoint) {
                 console.warn('Authentication expired or invalid. Redirecting to login...');
+                // Let the login page explain the redirect and return the user here after
+                sessionStorage.setItem('loginRedirectReason', 'expired');
+                sessionStorage.setItem('loginReturnTo', window.location.pathname + window.location.search);
                 // Clear tokens
                 localStorage.removeItem('csrfToken');
                 // Redirect to login page

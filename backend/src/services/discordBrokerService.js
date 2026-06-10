@@ -1,7 +1,7 @@
 // Discord Broker Registration Service
 const axios = require('axios');
 const logger = require('../utils/logger');
-const pool = require('../config/db');
+const dbUtils = require('../utils/dbUtils');
 const { discordRateLimiter } = require('../utils/rateLimiter');
 const ServiceResult = require('../utils/ServiceResult');
 
@@ -25,7 +25,7 @@ class DiscordBrokerService {
    */
   async resolveAppIdentity() {
     try {
-      const result = await pool.query(
+      const result = await dbUtils.executeQuery(
         "SELECT value FROM settings WHERE name = 'campaign_name'"
       );
       if (result.rows.length > 0 && result.rows[0].value) {
@@ -111,7 +111,7 @@ class DiscordBrokerService {
         WHERE name IN ('discord_channel_id', 'campaign_role_id', 'discord_bot_token')
       `;
 
-      const result = await pool.query(query);
+      const result = await dbUtils.executeQuery(query);
       const settings = {};
 
       result.rows.forEach(row => {
@@ -260,7 +260,7 @@ class DiscordBrokerService {
   async sendMessage({ channelId, content = null, embed = null, components = null }) {
     try {
       // Get bot token from settings
-      const settingsQuery = await pool.query(
+      const settingsQuery = await dbUtils.executeQuery(
         'SELECT value FROM settings WHERE name = $1',
         ['discord_bot_token']
       );
@@ -327,7 +327,7 @@ class DiscordBrokerService {
   async updateMessage({ channelId, messageId, content = null, embed = null, components = null }) {
     try {
       // Get bot token from settings
-      const settingsQuery = await pool.query(
+      const settingsQuery = await dbUtils.executeQuery(
         'SELECT value FROM settings WHERE name = $1',
         ['discord_bot_token']
       );
@@ -393,7 +393,7 @@ class DiscordBrokerService {
   async addReaction({ channelId, messageId, emoji }) {
     try {
       // Get bot token from settings
-      const settingsQuery = await pool.query(
+      const settingsQuery = await dbUtils.executeQuery(
         'SELECT value FROM settings WHERE name = $1',
         ['discord_bot_token']
       );

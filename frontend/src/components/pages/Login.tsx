@@ -3,7 +3,7 @@
 import React, {useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import api from '../../utils/api';
-import {Box, Button, Container, IconButton, InputAdornment, Link, Paper, TextField, Typography} from '@mui/material';
+import {Alert, Box, Button, Container, IconButton, InputAdornment, Link, Paper, TextField, Typography} from '@mui/material';
 import {Visibility, VisibilityOff} from '@mui/icons-material';
 
 interface LoginProps {
@@ -15,6 +15,8 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
+    // Set by the api utility when a 401 forced a redirect here
+    const [sessionExpired] = useState(() => sessionStorage.getItem('loginRedirectReason') === 'expired');
     const navigate = useNavigate();
 
     const handleLogin = async () => {
@@ -35,8 +37,17 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
                 onLogin(userData);
             }
 
-            // Navigate to the main page
-            navigate('/loot-entry');
+            // Return to the page the user was on before the session expired
+            const returnTo = sessionStorage.getItem('loginReturnTo');
+            sessionStorage.removeItem('loginReturnTo');
+            sessionStorage.removeItem('loginRedirectReason');
+
+            // Only allow same-origin paths to avoid open redirects
+            if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') && returnTo !== '/login') {
+                navigate(returnTo);
+            } else {
+                navigate('/loot-entry');
+            }
         } catch (err: unknown) {
             // Display error message from API if available
             if (err && typeof err === 'object' && 'response' in err) {
@@ -76,6 +87,12 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
                 <Typography component="h2" variant="h6" gutterBottom>
                     Login
                 </Typography>
+
+                {sessionExpired && !error && (
+                    <Alert severity="info" sx={{mt: 1}}>
+                        Your session expired. Please log in again to continue where you left off.
+                    </Alert>
+                )}
 
                 <TextField
                     variant="outlined"

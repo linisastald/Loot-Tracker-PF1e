@@ -6,7 +6,7 @@
  * to centralize all cron job management in one place.
  */
 
-const pool = require('../config/db');
+const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 const {
     SESSION_STATUS,
@@ -30,92 +30,85 @@ class SessionService {
      * @returns {Promise<Object>} - Created session
      */
     async createSession(sessionData) {
-        const client = await pool.connect();
-
         try {
-            await client.query('BEGIN');
+            return await dbUtils.executeTransaction(async (client) => {
+                const {
+                    title,
+                    start_time,
+                    end_time,
+                    description,
+                    minimum_players = DEFAULT_VALUES.MINIMUM_PLAYERS,
+                    maximum_players = DEFAULT_VALUES.MAXIMUM_PLAYERS,
+                    auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
+                    reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
+                    confirmation_hours = 48, // Default: 2 days before
+                    created_by
+                } = sessionData;
 
-            const {
-                title,
-                start_time,
-                end_time,
-                description,
-                minimum_players = DEFAULT_VALUES.MINIMUM_PLAYERS,
-                maximum_players = DEFAULT_VALUES.MAXIMUM_PLAYERS,
-                auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
-                reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
-                confirmation_hours = 48, // Default: 2 days before
-                created_by
-            } = sessionData;
-
-            // Create the session with enhanced fields
-            const sessionResult = await client.query(`
-                INSERT INTO game_sessions (
+                // Create the session with enhanced fields
+                const sessionResult = await client.query(`
+                    INSERT INTO game_sessions (
+                        title, start_time, end_time, description, minimum_players, maximum_players,
+                        auto_announce_hours, reminder_hours, confirmation_hours, created_by,
+                        status, created_at, updated_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', NOW(), NOW())
+                    RETURNING *
+                `, [
                     title, start_time, end_time, description, minimum_players, maximum_players,
-                    auto_announce_hours, reminder_hours, confirmation_hours, created_by,
-                    status, created_at, updated_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'scheduled', NOW(), NOW())
-                RETURNING *
-            `, [
-                title, start_time, end_time, description, minimum_players, maximum_players,
-                auto_announce_hours, reminder_hours, confirmation_hours, created_by
-            ]);
+                    auto_announce_hours, reminder_hours, confirmation_hours, created_by
+                ]);
 
-            const session = sessionResult.rows[0];
+                const session = sessionResult.rows[0];
 
-            // Schedule automatic announcement if configured
-            if (auto_announce_hours > 0) {
-                const announceTime = new Date(start_time);
-                announceTime.setHours(announceTime.getHours() - auto_announce_hours);
+                // Schedule automatic announcement if configured
+                if (auto_announce_hours > 0) {
+                    const announceTime = new Date(start_time);
+                    announceTime.setHours(announceTime.getHours() - auto_announce_hours);
 
-                if (announceTime > new Date()) {
-                    await client.query(`
-                        INSERT INTO session_automations (
-                            session_id, automation_type, scheduled_time, status, created_at
-                        ) VALUES ($1, 'announcement', $2, 'scheduled', NOW())
-                    `, [session.id, announceTime]);
+                    if (announceTime > new Date()) {
+                        await client.query(`
+                            INSERT INTO session_automations (
+                                session_id, automation_type, scheduled_time, status, created_at
+                            ) VALUES ($1, 'announcement', $2, 'scheduled', NOW())
+                        `, [session.id, announceTime]);
+                    }
                 }
-            }
 
-            // Schedule reminder if configured
-            if (reminder_hours > 0) {
-                const reminderTime = new Date(start_time);
-                reminderTime.setHours(reminderTime.getHours() - reminder_hours);
+                // Schedule reminder if configured
+                if (reminder_hours > 0) {
+                    const reminderTime = new Date(start_time);
+                    reminderTime.setHours(reminderTime.getHours() - reminder_hours);
 
-                if (reminderTime > new Date()) {
-                    await client.query(`
-                        INSERT INTO session_automations (
-                            session_id, automation_type, scheduled_time, status, created_at
-                        ) VALUES ($1, 'reminder', $2, 'scheduled', NOW())
-                    `, [session.id, reminderTime]);
+                    if (reminderTime > new Date()) {
+                        await client.query(`
+                            INSERT INTO session_automations (
+                                session_id, automation_type, scheduled_time, status, created_at
+                            ) VALUES ($1, 'reminder', $2, 'scheduled', NOW())
+                        `, [session.id, reminderTime]);
+                    }
                 }
-            }
 
-            // Schedule confirmation request if configured
-            if (confirmation_hours > 0) {
-                const confirmationTime = new Date(start_time);
-                confirmationTime.setHours(confirmationTime.getHours() - confirmation_hours);
+                // Schedule confirmation request if configured
+                if (confirmation_hours > 0) {
+                    const confirmationTime = new Date(start_time);
+                    confirmationTime.setHours(confirmationTime.getHours() - confirmation_hours);
 
-                if (confirmationTime > new Date()) {
-                    await client.query(`
-                        INSERT INTO session_automations (
-                            session_id, automation_type, scheduled_time, status, created_at
-                        ) VALUES ($1, 'confirmation', $2, 'scheduled', NOW())
-                    `, [session.id, confirmationTime]);
+                    if (confirmationTime > new Date()) {
+                        await client.query(`
+                            INSERT INTO session_automations (
+                                session_id, automation_type, scheduled_time, status, created_at
+                            ) VALUES ($1, 'confirmation', $2, 'scheduled', NOW())
+                        `, [session.id, confirmationTime]);
+                    }
                 }
-            }
 
-            await client.query('COMMIT');
-            logger.info(`Created enhanced session: ${session.id} - ${title}`);
-            return session;
-
+                logger.info(`Created enhanced session: ${session.id} - ${title}`);
+                return session;
+            }, 'Failed to create session');
         } catch (error) {
-            await client.query('ROLLBACK');
             logger.error('Failed to create session:', error);
             throw error;
-        } finally {
-            client.release();
         }
     }
 
@@ -141,12 +134,12 @@ class SessionService {
         const values = [sessionId, ...fields.map(field => updateData[field])];
 
         try {
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 UPDATE game_sessions
                 SET ${setClause}, updated_at = CURRENT_TIMESTAMP
                 WHERE id = $1
                 RETURNING *
-            `, values);
+            `, values, 'Error updating session');
 
             if (result.rows.length === 0) {
                 throw new Error('Session not found');
@@ -177,9 +170,9 @@ class SessionService {
             // Cancel any scheduled events
             await this.cancelSessionEvents(sessionId);
 
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 DELETE FROM game_sessions WHERE id = $1 RETURNING *
-            `, [sessionId]);
+            `, [sessionId], 'Error deleting session');
 
             if (result.rows.length === 0) {
                 throw new Error('Session not found');
@@ -199,9 +192,10 @@ class SessionService {
      * @returns {Promise<Object>} - Session data
      */
     async getSession(sessionId) {
-        const result = await pool.query(
+        const result = await dbUtils.executeQuery(
             'SELECT * FROM game_sessions WHERE id = $1',
-            [sessionId]
+            [sessionId],
+            'Error fetching session'
         );
         return result.rows[0] || null;
     }
@@ -277,7 +271,7 @@ class SessionService {
 
             queryParams.push(limit, offset);
 
-            const result = await pool.query(query, queryParams);
+            const result = await dbUtils.executeQuery(query, queryParams, 'Error fetching enhanced sessions');
             return result.rows;
 
         } catch (error) {
@@ -297,12 +291,12 @@ class SessionService {
      */
     async confirmSession(sessionId) {
         try {
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 UPDATE game_sessions
                 SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
                 WHERE id = $1
                 RETURNING *
-            `, [sessionId]);
+            `, [sessionId], 'Error confirming session');
 
             if (result.rows.length > 0) {
                 logger.info('Session confirmed:', { sessionId });
@@ -325,12 +319,12 @@ class SessionService {
      */
     async cancelSession(sessionId, reason) {
         try {
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 UPDATE game_sessions
                 SET status = 'cancelled', cancelled = TRUE, cancel_reason = $2, updated_at = CURRENT_TIMESTAMP
                 WHERE id = $1
                 RETURNING *
-            `, [sessionId, reason]);
+            `, [sessionId, reason], 'Error cancelling session');
 
             if (result.rows.length > 0) {
                 const session = result.rows[0];
@@ -396,9 +390,10 @@ class SessionService {
     async uncancelSession(sessionId) {
         try {
             // First verify the session exists and is cancelled
-            const checkResult = await pool.query(
+            const checkResult = await dbUtils.executeQuery(
                 'SELECT * FROM game_sessions WHERE id = $1',
-                [sessionId]
+                [sessionId],
+                'Error checking session for uncancel'
             );
 
             if (checkResult.rows.length === 0) {
@@ -422,7 +417,7 @@ class SessionService {
             }
 
             // Restore session to scheduled status
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 UPDATE game_sessions
                 SET status = 'scheduled',
                     cancelled = FALSE,
@@ -430,7 +425,7 @@ class SessionService {
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = $1
                 RETURNING *
-            `, [sessionId]);
+            `, [sessionId], 'Error uncancelling session');
 
             if (result.rows.length > 0) {
                 const session = result.rows[0];
@@ -479,71 +474,63 @@ class SessionService {
      * @returns {Promise<Object>} - Completed session
      */
     async completeSession(sessionId) {
-        const client = await pool.connect();
-
         try {
-            await client.query('BEGIN');
+            return await dbUtils.executeTransaction(async (client) => {
+                // Mark session as completed
+                const sessionResult = await client.query(`
+                    UPDATE game_sessions
+                    SET
+                        status = 'completed',
+                        completed_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = $1 AND status IN ('scheduled', 'confirmed')
+                    RETURNING *
+                `, [sessionId]);
 
-            // Mark session as completed
-            const sessionResult = await client.query(`
-                UPDATE game_sessions
-                SET
-                    status = 'completed',
-                    completed_at = NOW(),
-                    updated_at = NOW()
-                WHERE id = $1 AND status IN ('scheduled', 'confirmed')
-                RETURNING *
-            `, [sessionId]);
+                if (sessionResult.rows.length === 0) {
+                    throw new Error('Session not found or already completed');
+                }
 
-            if (sessionResult.rows.length === 0) {
-                throw new Error('Session not found or already completed');
-            }
+                const session = sessionResult.rows[0];
 
-            const session = sessionResult.rows[0];
+                // Generate post-session summary
+                const attendanceResult = await client.query(`
+                    SELECT
+                        COUNT(*) FILTER (WHERE response_type = 'yes') as confirmed_count,
+                        COUNT(*) FILTER (WHERE response_type = 'no') as declined_count,
+                        COUNT(*) FILTER (WHERE response_type = 'maybe') as maybe_count,
+                        array_agg(u.username) FILTER (WHERE sa.response_type = 'yes') as attendee_names
+                    FROM session_attendance sa
+                    JOIN users u ON u.id = sa.user_id
+                    WHERE sa.session_id = $1
+                `, [sessionId]);
 
-            // Generate post-session summary
-            const attendanceResult = await client.query(`
-                SELECT
-                    COUNT(*) FILTER (WHERE response_type = 'yes') as confirmed_count,
-                    COUNT(*) FILTER (WHERE response_type = 'no') as declined_count,
-                    COUNT(*) FILTER (WHERE response_type = 'maybe') as maybe_count,
-                    array_agg(u.username) FILTER (WHERE sa.response_type = 'yes') as attendee_names
-                FROM session_attendance sa
-                JOIN users u ON u.id = sa.user_id
-                WHERE sa.session_id = $1
-            `, [sessionId]);
+                const attendance = attendanceResult.rows[0];
 
-            const attendance = attendanceResult.rows[0];
+                // Create completion record
+                await client.query(`
+                    INSERT INTO session_completions (
+                        session_id, completed_at, final_attendance_count,
+                        completion_summary
+                    ) VALUES ($1, NOW(), $2, $3)
+                    ON CONFLICT (session_id) DO NOTHING
+                `, [
+                    sessionId,
+                    attendance.confirmed_count,
+                    JSON.stringify({
+                        confirmed: attendance.confirmed_count,
+                        declined: attendance.declined_count,
+                        maybe: attendance.maybe_count,
+                        attendees: attendance.attendee_names || []
+                    })
+                ]);
 
-            // Create completion record
-            await client.query(`
-                INSERT INTO session_completions (
-                    session_id, completed_at, final_attendance_count,
-                    completion_summary
-                ) VALUES ($1, NOW(), $2, $3)
-                ON CONFLICT (session_id) DO NOTHING
-            `, [
-                sessionId,
-                attendance.confirmed_count,
-                JSON.stringify({
-                    confirmed: attendance.confirmed_count,
-                    declined: attendance.declined_count,
-                    maybe: attendance.maybe_count,
-                    attendees: attendance.attendee_names || []
-                })
-            ]);
-
-            await client.query('COMMIT');
-
-            logger.info(`Session completed successfully: ${sessionId}`);
-            return session;
-
+                logger.info(`Session completed successfully: ${sessionId}`);
+                return session;
+            }, 'Error completing session');
         } catch (error) {
-            await client.query('ROLLBACK');
             logger.error('Error completing session:', error);
             throw error;
-        } finally {
-            client.release();
         }
     }
 
@@ -565,10 +552,10 @@ class SessionService {
             ];
 
             for (const reminder of reminders) {
-                await pool.query(`
+                await dbUtils.executeQuery(`
                     INSERT INTO session_reminders (session_id, days_before, reminder_type, target_audience)
                     VALUES ($1, $2, $3, $4)
-                `, [session.id, reminder.days_before, reminder.reminder_type, reminder.target_audience]);
+                `, [session.id, reminder.days_before, reminder.reminder_type, reminder.target_audience], 'Error scheduling session reminder');
             }
 
             logger.info('Session events scheduled:', { sessionId: session.id });
@@ -602,11 +589,12 @@ class SessionService {
     cancelSessionEvents(sessionId) {
         try {
             // Mark pending reminders as cancelled
-            pool.query(`
+            // Note: intentionally not awaited (method is synchronous), matching previous fire-and-forget behavior
+            dbUtils.executeQuery(`
                 UPDATE session_reminders
                 SET sent = TRUE, sent_at = CURRENT_TIMESTAMP
                 WHERE session_id = $1 AND sent = FALSE
-            `, [sessionId]);
+            `, [sessionId], 'Error cancelling session reminders');
 
             logger.info('Session events cancelled:', { sessionId });
         } catch (error) {
@@ -619,9 +607,10 @@ class SessionService {
      * @param {number} sessionId - Session ID
      */
     async checkAutoCancel(sessionId) {
-        const result = await pool.query(
+        const result = await dbUtils.executeQuery(
             'SELECT check_session_auto_cancel($1) as should_cancel',
-            [sessionId]
+            [sessionId],
+            'Error checking session auto-cancel'
         );
 
         if (result.rows[0].should_cancel) {

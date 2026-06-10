@@ -3,7 +3,7 @@
  * Extracted from sessionService.js for better separation of concerns
  */
 
-const pool = require('../../config/db');
+const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
 const {
     ATTENDANCE_STATUS,
@@ -21,11 +21,7 @@ class AttendanceService {
      * @returns {Promise<Object>} - Attendance record and counts
      */
     async recordAttendance(sessionId, userId, responseType, additionalData = {}) {
-        const client = await pool.connect();
-
         try {
-            await client.query('BEGIN');
-
             const {
                 late_arrival_time,
                 early_departure_time,
@@ -46,47 +42,49 @@ class AttendanceService {
                           RESPONSE_TYPE_MAP[normalizedResponseType?.toLowerCase()] ||
                           (Object.values(ATTENDANCE_STATUS).includes(normalizedResponseType) ? normalizedResponseType : ATTENDANCE_STATUS.TENTATIVE);
 
-            // Upsert attendance record
-            const attendanceResult = await client.query(`
-                INSERT INTO session_attendance (
-                    session_id, user_id, character_id, status, response_type, late_arrival_time,
-                    early_departure_time, notes, response_timestamp
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-                ON CONFLICT (session_id, user_id)
-                DO UPDATE SET
-                    character_id = EXCLUDED.character_id,
-                    status = EXCLUDED.status,
-                    response_type = EXCLUDED.response_type,
-                    late_arrival_time = EXCLUDED.late_arrival_time,
-                    early_departure_time = EXCLUDED.early_departure_time,
-                    notes = EXCLUDED.notes,
-                    response_timestamp = NOW(),
-                    updated_at = NOW()
-                RETURNING *
-            `, [sessionId, userId, character_id, status, normalizedResponseType, late_arrival_time, early_departure_time, notes]);
+            const { attendance, counts } = await dbUtils.executeTransaction(async (client) => {
+                // Upsert attendance record
+                const attendanceResult = await client.query(`
+                    INSERT INTO session_attendance (
+                        session_id, user_id, character_id, status, response_type, late_arrival_time,
+                        early_departure_time, notes, response_timestamp
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                    ON CONFLICT (session_id, user_id)
+                    DO UPDATE SET
+                        character_id = EXCLUDED.character_id,
+                        status = EXCLUDED.status,
+                        response_type = EXCLUDED.response_type,
+                        late_arrival_time = EXCLUDED.late_arrival_time,
+                        early_departure_time = EXCLUDED.early_departure_time,
+                        notes = EXCLUDED.notes,
+                        response_timestamp = NOW(),
+                        updated_at = NOW()
+                    RETURNING *
+                `, [sessionId, userId, character_id, status, normalizedResponseType, late_arrival_time, early_departure_time, notes]);
 
-            const attendance = attendanceResult.rows[0];
+                const attendanceRecord = attendanceResult.rows[0];
 
-            // Get updated attendance counts
-            const counts = await this.getAttendanceCounts(client, sessionId);
+                // Get updated attendance counts
+                const attendanceCounts = await this.getAttendanceCounts(client, sessionId);
 
-            // Update session with new counts
-            await client.query(`
-                UPDATE game_sessions
-                SET
-                    confirmed_count = $2,
-                    declined_count = $3,
-                    maybe_count = $4,
-                    updated_at = NOW()
-                WHERE id = $1
-            `, [sessionId, counts.confirmed_count, counts.declined_count, counts.maybe_count]);
+                // Update session with new counts
+                await client.query(`
+                    UPDATE game_sessions
+                    SET
+                        confirmed_count = $2,
+                        declined_count = $3,
+                        maybe_count = $4,
+                        updated_at = NOW()
+                    WHERE id = $1
+                `, [sessionId, attendanceCounts.confirmed_count, attendanceCounts.declined_count, attendanceCounts.maybe_count]);
 
-            // Enqueue Discord message update in outbox (within transaction)
-            const discordOutboxService = require('../discordOutboxService');
-            await discordOutboxService.enqueue(client, 'session_update', { sessionId }, sessionId);
+                // Enqueue Discord message update in outbox (within transaction)
+                const discordOutboxService = require('../discordOutboxService');
+                await discordOutboxService.enqueue(client, 'session_update', { sessionId }, sessionId);
 
-            await client.query('COMMIT');
+                return { attendance: attendanceRecord, counts: attendanceCounts };
+            });
 
             logger.info('Attendance recorded and Discord update enqueued:', {
                 sessionId,
@@ -98,11 +96,8 @@ class AttendanceService {
 
             return { attendance, counts };
         } catch (error) {
-            await client.query('ROLLBACK');
             logger.error('Failed to record attendance:', error);
             throw error;
-        } finally {
-            client.release();
         }
     }
 
@@ -113,9 +108,7 @@ class AttendanceService {
      * @returns {Promise<Object>} - Attendance counts
      */
     async getAttendanceCounts(client, sessionId) {
-        const dbClient = client || pool;
-
-        const result = await dbClient.query(`
+        const query = `
             SELECT
                 COUNT(*) FILTER (WHERE response_type = 'yes') as confirmed_count,
                 COUNT(*) FILTER (WHERE response_type = 'no') as declined_count,
@@ -125,7 +118,11 @@ class AttendanceService {
                 COUNT(*) FILTER (WHERE response_type = 'late_and_early') as late_and_early_count
             FROM session_attendance
             WHERE session_id = $1
-        `, [sessionId]);
+        `;
+
+        const result = client
+            ? await client.query(query, [sessionId])
+            : await dbUtils.executeQuery(query, [sessionId]);
 
         return result.rows[0];
     }
@@ -137,7 +134,7 @@ class AttendanceService {
      */
     async getSessionAttendance(sessionId) {
         try {
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 SELECT
                     sa.*,
                     u.username,
@@ -165,7 +162,7 @@ class AttendanceService {
      * @returns {Promise<number>} - Number of confirmed attendees
      */
     async getConfirmedAttendanceCount(sessionId) {
-        const result = await pool.query(`
+        const result = await dbUtils.executeQuery(`
             SELECT COUNT(DISTINCT user_id) as count
             FROM session_attendance
             WHERE session_id = $1
@@ -181,7 +178,7 @@ class AttendanceService {
      * @returns {Promise<Array>} - Non-responder user records
      */
     async getNonResponders(sessionId) {
-        const result = await pool.query(`
+        const result = await dbUtils.executeQuery(`
             SELECT u.id, u.username, u.discord_id
             FROM users u
             WHERE u.discord_id IS NOT NULL
@@ -201,7 +198,7 @@ class AttendanceService {
      * @returns {Promise<Object>} - Detailed attendance breakdown
      */
     async getSessionAttendanceDetails(sessionId) {
-        const result = await pool.query(`
+        const result = await dbUtils.executeQuery(`
             SELECT
                 sa.response_type,
                 sa.status,
