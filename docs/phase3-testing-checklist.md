@@ -7,23 +7,42 @@ Reminder: one final **hard refresh (Ctrl+Shift+R)** after deploying this build
 
 ## 0. Carry-over retests (fixed earlier, first build containing them)
 
-- [ ] Migrations 046 applies cleanly at startup (`registration_mode` seeded)
-- [ ] Weather: SET the Golarion date BACK a few days → current day + forecast get weather
-- [ ] Session remind → success snackbar (not "failed"), and:
+- [x] Migrations 046 applies cleanly at startup (`registration_mode` seeded)
+- [x] Weather: SET the Golarion date BACK a few days → current day + forecast get weather - works, but requires refresh of page to see 
+- [x] Session remind → success snackbar (not "failed"), and:
   ```sql
   SELECT reminder_type, is_manual, target_audience FROM session_reminders ORDER BY id DESC LIMIT 1;
   ```
   → 'manual', true, your chosen audience
-- [ ] Infamy page loads (no dynamic-import error after the hard refresh)
-- [ ] Gold withdrawal works from BOTH pages: Gold Transactions form AND Loot Entry gold tab
-- [ ] Leak test now baked into the image: `docker exec -w /app/backend pathfinder-test node scripts/rls-leak-test.js` → 15/15 PASS
+- [x] Infamy page loads (no dynamic-import error after the hard refresh)
+- [x] Gold withdrawal works from BOTH pages: Gold Transactions form AND Loot Entry gold tab
+- [ ] Leak test now baked into the image: `docker exec -w /app/backend pathfinder-test node scripts/rls-leak-test.js` → 15/15 PASS root@DrMoon[...cscrewdriver/config/pathfinder/source]# docker exec -w /app/backend pathfinder-test node scripts/rls-leak-test.js
+node:internal/modules/cjs/loader:1478
+  throw err;
+  ^
+
+Error: Cannot find module '/app/backend/scripts/rls-leak-test.js'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1475:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1048:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1072:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1093:12)
+    at Module._load (node:internal/modules/cjs/loader:1261:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v25.9.0
+
 
 ## 1. Phase 3a — campaign middleware (should be invisible)
 
 Everything behaves exactly as before — the middleware resolves campaign 1 for everyone:
-- [ ] Login, pages load, loot/gold/sessions all normal (no header sent by the frontend yet)
-- [ ] DM-only actions still work for the DM account (per-campaign role comes from user_campaign now)
-- [ ] Player account still blocked from DM pages/actions
+- [x] Login, pages load, loot/gold/sessions all normal (no header sent by the frontend yet)
+- [x] DM-only actions still work for the DM account (per-campaign role comes from user_campaign now)
+- [x] Player account still blocked from DM pages/actions
 - [ ] Campaigns API works (browser devtools or curl with your cookie):
   - `GET /api/campaigns` → your one campaign with your role
   - `GET /api/campaigns/current` → campaignId 1, your role, isSuperadmin false

@@ -31,6 +31,7 @@ COPY frontend/src ./frontend/src
 COPY frontend/index.html ./frontend/
 COPY backend/src ./backend/src
 COPY backend/migrations ./backend/migrations
+COPY backend/scripts ./backend/scripts
 COPY backend/index.js ./backend/
 
 # Build frontend
