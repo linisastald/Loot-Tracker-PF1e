@@ -14,7 +14,8 @@ const ALLOWED_TABLES = new Set([
   'infamy', 'weather_events', 'weather_regions', 'impositions', 'spells',
   'min_caster_levels', 'min_costs', 'password_reset_tokens',
   'game_sessions', 'session_attendance', 'session_messages', 'session_notes',
-  'session_task_assignments', 'session_task_history', 'session_completions', 'session_automations'
+  'session_task_assignments', 'session_task_history', 'session_completions', 'session_automations',
+  'campaigns', 'user_campaign', 'campaign_settings'
 ]);
 
 /**
@@ -23,7 +24,8 @@ const ALLOWED_TABLES = new Set([
 const ALLOWED_COLUMNS = new Set([
   'id', 'user_id', 'character_id', 'ship_id', 'outpost_id', 'location_id',
   'name', 'username', 'email', 'role', 'active', 'is_alive', 'is_used',
-  'created_at', 'updated_at', 'session_date', 'location_type', 'status'
+  'created_at', 'updated_at', 'session_date', 'location_type', 'status',
+  'campaign_id', 'is_superadmin', 'slug'
 ]);
 
 /**

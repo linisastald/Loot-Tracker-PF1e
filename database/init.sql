@@ -10,7 +10,8 @@ CREATE TABLE users (
     locked_until TIMESTAMP,
     email VARCHAR(255) NOT NULL,
     google_id VARCHAR(255),
-    discord_id VARCHAR(20)
+    discord_id VARCHAR(20),
+    is_superadmin BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- Create unique constraints for users
@@ -19,6 +20,50 @@ CREATE UNIQUE INDEX users_google_id_key ON users(google_id);
 CREATE UNIQUE INDEX users_discord_id_key ON users(discord_id);
 CREATE INDEX idx_users_google_id ON users(google_id);
 
+-- Multi-campaign support: campaigns, memberships, and per-campaign settings.
+-- Campaign-specific tables below carry campaign_id (DEFAULT 1 = the default
+-- campaign seeded here; Phase 2 of the multi-campaign refactor replaces the
+-- hard default with a session-GUC default).
+CREATE TABLE campaigns (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(100) NOT NULL UNIQUE,
+    world VARCHAR(100) NOT NULL DEFAULT 'Golarion',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Seed the default campaign (id 1) before any campaign_id DEFAULT 1 columns
+-- reference it, then keep the sequence ahead of the explicit id.
+INSERT INTO campaigns (id, name, slug) VALUES (1, 'PF1e Campaign', 'default');
+SELECT setval(pg_get_serial_sequence('campaigns', 'id'), GREATEST((SELECT MAX(id) FROM campaigns), 1));
+
+CREATE TABLE user_campaign (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('DM', 'Player')),
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, campaign_id)
+);
+
+CREATE INDEX idx_user_campaign_campaign_id ON user_campaign(campaign_id);
+
+-- Per-campaign settings. Intentionally empty for now: rows migrate from the
+-- global settings table in a later phase of the multi-campaign refactor.
+CREATE TABLE campaign_settings (
+    id SERIAL PRIMARY KEY,
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    value TEXT,
+    value_type VARCHAR(50) NOT NULL DEFAULT 'string',
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (campaign_id, name)
+);
+
 CREATE TABLE characters (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -26,8 +71,11 @@ CREATE TABLE characters (
     birthday DATE,
     deathday DATE,
     active BOOLEAN DEFAULT true,
-    user_id INTEGER REFERENCES users(id)
+    user_id INTEGER REFERENCES users(id),
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_characters_campaign_id ON characters(campaign_id);
 
 -- Ships, Crew, and Outposts (Base structure)
 CREATE TABLE ships (
@@ -37,8 +85,11 @@ CREATE TABLE ships (
     is_squibbing BOOLEAN DEFAULT false,
     damage INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_ships_campaign_id ON ships(campaign_id);
 
 CREATE TABLE outposts (
     id SERIAL PRIMARY KEY,
@@ -46,8 +97,11 @@ CREATE TABLE outposts (
     location VARCHAR(255),
     access_date DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_outposts_campaign_id ON outposts(campaign_id);
 
 CREATE TABLE crew (
     id SERIAL PRIMARY KEY,
@@ -63,10 +117,12 @@ CREATE TABLE crew (
     departure_date DATE,
     departure_reason TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
 
 -- Indexes for crew performance
+CREATE INDEX idx_crew_campaign_id ON crew(campaign_id);
 CREATE INDEX idx_crew_location ON crew(location_type, location_id);
 CREATE INDEX idx_crew_is_alive ON crew(is_alive);
 CREATE INDEX idx_crew_ship_position ON crew(ship_position);
@@ -75,6 +131,8 @@ CREATE INDEX idx_crew_ship_position ON crew(ship_position);
 ALTER TABLE crew ADD CONSTRAINT crew_location_type_check 
     CHECK (location_type IN ('ship', 'outpost'));
 
+-- item/mod are shared reference data: campaign_id NULL = global row visible to
+-- all campaigns; non-NULL = campaign-specific custom item/mod.
 CREATE TABLE item (
     id SERIAL PRIMARY KEY,
     name VARCHAR(127) NOT NULL,
@@ -82,8 +140,11 @@ CREATE TABLE item (
     value NUMERIC,
     subtype VARCHAR(31),
     weight DOUBLE PRECISION,
-    casterlevel INTEGER
+    casterlevel INTEGER,
+    campaign_id INTEGER REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_item_campaign_id ON item(campaign_id) WHERE campaign_id IS NOT NULL;
 
 CREATE TABLE mod (
     id SERIAL PRIMARY KEY,
@@ -92,8 +153,11 @@ CREATE TABLE mod (
     type VARCHAR(31),
     valuecalc VARCHAR(255),
     target VARCHAR(31),
-    subtarget VARCHAR(31)
+    subtarget VARCHAR(31),
+    campaign_id INTEGER REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_mod_campaign_id ON mod(campaign_id) WHERE campaign_id IS NOT NULL;
 
 CREATE TABLE loot (
     id SERIAL PRIMARY KEY,
@@ -114,8 +178,11 @@ CREATE TABLE loot (
     lastupdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     notes VARCHAR(511),
     spellcraft_dc INTEGER,
-    dm_notes TEXT
+    dm_notes TEXT,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_loot_campaign_id ON loot(campaign_id);
 
 CREATE TABLE appraisal (
     id SERIAL PRIMARY KEY,
@@ -124,8 +191,11 @@ CREATE TABLE appraisal (
     lootid INTEGER REFERENCES loot(id),
     appraisalroll INTEGER,
     believedvalue NUMERIC,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
     UNIQUE (characterid, lootid)
 );
+
+CREATE INDEX idx_appraisal_campaign_id ON appraisal(campaign_id);
 
 CREATE TABLE gold (
     id SERIAL PRIMARY KEY,
@@ -137,27 +207,34 @@ CREATE TABLE gold (
     silver INTEGER,
     gold INTEGER,
     platinum INTEGER,
-    character_id INTEGER REFERENCES characters(id)
+    character_id INTEGER REFERENCES characters(id),
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
 
--- Create gold index
+-- Create gold indexes
 CREATE INDEX idx_gold_character_id ON gold(character_id);
+CREATE INDEX idx_gold_campaign_id ON gold(campaign_id);
 
 CREATE TABLE sold (
     id SERIAL PRIMARY KEY,
     lootid INTEGER REFERENCES loot(id),
     soldfor NUMERIC,
-    soldon DATE
+    soldon DATE,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_sold_campaign_id ON sold(campaign_id);
 
 CREATE TABLE consumableuse (
     id SERIAL PRIMARY KEY,
     lootid INTEGER REFERENCES loot(id),
     who INTEGER REFERENCES characters(id),
-    consumed_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    consumed_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
 
 -- Create indexes for consumableuse
+CREATE INDEX idx_consumableuse_campaign_id ON consumableuse(campaign_id);
 CREATE INDEX idx_consumableuse_lootid ON consumableuse(lootid);
 CREATE INDEX idx_consumableuse_who ON consumableuse(who);
 CREATE INDEX idx_consumableuse_consumed_on ON consumableuse(consumed_on);
@@ -169,8 +246,11 @@ CREATE TABLE identify (
     spellcraft_roll INTEGER NOT NULL,
     identified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     golarion_date TEXT,
-    success BOOLEAN DEFAULT true
+    success BOOLEAN DEFAULT true,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_identify_campaign_id ON identify(campaign_id);
 
 CREATE TABLE settings (
     id SERIAL PRIMARY KEY,
@@ -201,7 +281,8 @@ CREATE TABLE spellbook (
     caster_class VARCHAR(20) NOT NULL,
     caster_level INTEGER NOT NULL,
     school VARCHAR(20),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
 
 CREATE TABLE spellbook_spell (
@@ -210,21 +291,26 @@ CREATE TABLE spellbook_spell (
     spell_id INTEGER REFERENCES spells(id),
     spell_name VARCHAR(255) NOT NULL,
     spell_level INTEGER NOT NULL,
-    school VARCHAR(50)
+    school VARCHAR(50),
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_spellbook_loot ON spellbook(loot_id);
 CREATE INDEX IF NOT EXISTS idx_spellbook_spell_book ON spellbook_spell(spellbook_id);
+CREATE INDEX idx_spellbook_campaign_id ON spellbook(campaign_id);
+CREATE INDEX idx_spellbook_spell_campaign_id ON spellbook_spell(campaign_id);
 
 CREATE TABLE fame (
     id SERIAL PRIMARY KEY,
     character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
     points INTEGER NOT NULL DEFAULT 0,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
     UNIQUE (character_id)
 );
 
 -- Create fame indexes
+CREATE INDEX idx_fame_campaign_id ON fame(campaign_id);
 CREATE INDEX fame_character_id_idx ON fame(character_id);
 CREATE INDEX idx_fame_character_id ON fame(character_id);
 
@@ -235,10 +321,12 @@ CREATE TABLE fame_history (
     reason TEXT,
     added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    event VARCHAR(255)
+    event VARCHAR(255),
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
 
 -- Create fame_history indexes
+CREATE INDEX idx_fame_history_campaign_id ON fame_history(campaign_id);
 CREATE INDEX fame_history_character_id_idx ON fame_history(character_id);
 CREATE INDEX idx_fame_history_character_id ON fame_history(character_id);
 CREATE INDEX idx_fame_history_created_at ON fame_history(created_at);
@@ -251,11 +339,13 @@ CREATE TABLE invites (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     used_at TIMESTAMP,
     expires_at TIMESTAMP,
-    is_used BOOLEAN DEFAULT false
+    is_used BOOLEAN DEFAULT false,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
 
--- Create invites index
+-- Create invites indexes
 CREATE INDEX idx_invites_code ON invites(code);
+CREATE INDEX idx_invites_campaign_id ON invites(campaign_id);
 
 CREATE TABLE min_caster_levels (
     spell_level INTEGER PRIMARY KEY,
@@ -275,14 +365,22 @@ CREATE TABLE session_messages (
     session_date TIMESTAMP NOT NULL,
     session_time TIMESTAMP NOT NULL,
     responses JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
 
+CREATE INDEX idx_session_messages_campaign_id ON session_messages(campaign_id);
+
+-- One current-date row per campaign (PK on campaign_id).
 CREATE TABLE golarion_current_date (
     year INTEGER NOT NULL,
     month INTEGER NOT NULL,
-    day INTEGER NOT NULL
+    day INTEGER NOT NULL,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    CONSTRAINT golarion_current_date_pkey PRIMARY KEY (campaign_id)
 );
+
+CREATE INDEX idx_golarion_current_date_campaign_id ON golarion_current_date(campaign_id);
 
 CREATE TABLE golarion_calendar_notes (
     id SERIAL PRIMARY KEY,
@@ -290,8 +388,11 @@ CREATE TABLE golarion_calendar_notes (
     month INTEGER NOT NULL,
     day INTEGER NOT NULL,
     note TEXT NOT NULL,
-    UNIQUE (year, month, day)
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    CONSTRAINT golarion_calendar_notes_campaign_year_month_day_key UNIQUE (campaign_id, year, month, day)
 );
+
+CREATE INDEX idx_golarion_calendar_notes_campaign_id ON golarion_calendar_notes(campaign_id);
 
 -- Rich calendar notes: multi-day (spanning) notes, multiple notes per day,
 -- DM-only visibility, and authorship. A note spans start..end inclusive;
@@ -308,9 +409,11 @@ CREATE TABLE golarion_notes (
     dm_only BOOLEAN NOT NULL DEFAULT false,
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
 
+CREATE INDEX idx_golarion_notes_campaign_id ON golarion_notes (campaign_id);
 CREATE INDEX idx_golarion_notes_start ON golarion_notes (start_year, start_month, start_day);
 CREATE INDEX idx_golarion_notes_created_by ON golarion_notes (created_by);
 
@@ -318,6 +421,10 @@ CREATE INDEX idx_golarion_notes_created_by ON golarion_notes (created_by);
 -- ones (solstices, weekday-anchored, etc.) use movable_rule with null month/day.
 -- The official holiday rows are seeded by migration 041 (which also runs on
 -- fresh installs), so no seed data lives here.
+-- campaign_id NULL = official/global holiday; non-NULL = campaign custom holiday.
+-- NOTE: the plain UNIQUE on name is required by migration 041's
+-- ON CONFLICT (name) seed; migration 044 drops it after 041 has run, leaving
+-- the two partial unique indexes below as the final uniqueness shape.
 CREATE TABLE golarion_holidays (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
@@ -331,9 +438,13 @@ CREATE TABLE golarion_holidays (
     is_custom BOOLEAN NOT NULL DEFAULT false,
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    campaign_id INTEGER REFERENCES campaigns(id)
 );
 
+CREATE UNIQUE INDEX golarion_holidays_global_name_key ON golarion_holidays(name) WHERE campaign_id IS NULL;
+CREATE UNIQUE INDEX golarion_holidays_campaign_name_key ON golarion_holidays(campaign_id, name) WHERE campaign_id IS NOT NULL;
+CREATE INDEX idx_golarion_holidays_campaign_id ON golarion_holidays (campaign_id) WHERE campaign_id IS NOT NULL;
 CREATE INDEX idx_golarion_holidays_month_day ON golarion_holidays (month, day);
 CREATE INDEX idx_golarion_holidays_created_by ON golarion_holidays (created_by);
 
@@ -365,18 +476,27 @@ CREATE TABLE golarion_weather (
     description TEXT,
     is_locked BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (year, month, day, region)
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    -- Name must stay golarion_weather_pkey: weatherController.js uses
+    -- ON CONFLICT ON CONSTRAINT golarion_weather_pkey.
+    CONSTRAINT golarion_weather_pkey PRIMARY KEY (campaign_id, year, month, day, region)
 );
 
--- Create weather index
+-- Create weather indexes
 CREATE INDEX idx_weather_date_region ON golarion_weather(year, month, day, region);
+CREATE INDEX idx_golarion_weather_campaign_id ON golarion_weather(campaign_id);
 
+-- One infamy row per campaign (UNIQUE on campaign_id); legacy id PK retained.
 CREATE TABLE ship_infamy (
     id INTEGER PRIMARY KEY,
     infamy INTEGER NOT NULL DEFAULT 0,
     disrepute INTEGER NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    CONSTRAINT ship_infamy_campaign_id_key UNIQUE (campaign_id)
 );
+
+CREATE INDEX idx_ship_infamy_campaign_id ON ship_infamy(campaign_id);
 
 CREATE TABLE infamy_history (
     id SERIAL PRIMARY KEY,
@@ -386,16 +506,23 @@ CREATE TABLE infamy_history (
     port VARCHAR(255),
     user_id INTEGER REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    golarion_date VARCHAR(20)
+    golarion_date VARCHAR(20),
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_infamy_history_campaign_id ON infamy_history(campaign_id);
 
 CREATE TABLE favored_ports (
     id SERIAL PRIMARY KEY,
-    port_name VARCHAR(255) NOT NULL UNIQUE,
+    port_name VARCHAR(255) NOT NULL,
     bonus INTEGER NOT NULL DEFAULT 2,
     user_id INTEGER REFERENCES users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    CONSTRAINT favored_ports_campaign_port_name_key UNIQUE (campaign_id, port_name)
 );
+
+CREATE INDEX idx_favored_ports_campaign_id ON favored_ports(campaign_id);
 
 CREATE TABLE port_visits (
     id SERIAL PRIMARY KEY,
@@ -405,8 +532,11 @@ CREATE TABLE port_visits (
     skill_used VARCHAR(50),
     plunder_spent INTEGER DEFAULT 0,
     user_id INTEGER REFERENCES users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_port_visits_campaign_id ON port_visits(campaign_id);
 
 CREATE TABLE impositions (
     id SERIAL PRIMARY KEY,
@@ -423,8 +553,11 @@ CREATE TABLE imposition_uses (
     imposition_id INTEGER REFERENCES impositions(id),
     cost_paid INTEGER NOT NULL,
     user_id INTEGER REFERENCES users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
 );
+
+CREATE INDEX idx_imposition_uses_campaign_id ON imposition_uses(campaign_id);
 
 -- Insert initial data for settings
 INSERT INTO settings (name, value, value_type, description) VALUES ('registrations_open', '1', 'boolean', 'Whether new user registrations are allowed (1=open, 0=closed)');
