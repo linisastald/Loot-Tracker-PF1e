@@ -72,7 +72,10 @@ docker exec -w /app/backend pathfinder-test node rls-leak-test.js
 docker exec pathfinder-test rm /app/backend/rls-leak-test.js
 ```
 (From dev.6+ images it's baked in: `docker exec -w /app/backend pathfinder-test node scripts/rls-leak-test.js`)
-- [ ] All checks PASS (it aborts with a warning if accidentally run as owner)
+- [x] All checks PASS — 15/15 (verified 2026-06-10 ~14:30 UTC): bogus campaign
+  sees 0 rows on all 6 tables, unset GUC fails closed, loot_view respects RLS
+  via security_invoker, cross-campaign INSERT rejected by WITH CHECK.
+  (Cleanup note: `docker cp` writes as root — remove with `docker exec -u root`.)
 
 Full app regression under enforcement — same list as section 1, plus:
 - [ ] Loot pages (loot_view — security_invoker view through RLS)
