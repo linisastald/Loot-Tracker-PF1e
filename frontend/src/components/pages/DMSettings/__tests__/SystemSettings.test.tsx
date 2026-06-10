@@ -34,8 +34,7 @@ import SystemSettings from '../SystemSettings';
 // ----- Default fixture data ---------------------------------------------------
 const buildSettingsList = (overrides: Partial<Record<string, string>> = {}) => {
   const base: Record<string, string> = {
-    registrations_open: '0',
-    invite_required: '0',
+    registration_mode: 'closed',
     theme: 'dark',
     default_browser_quantity: '1',
     default_quantity_enabled: '0',
@@ -141,130 +140,94 @@ describe('SystemSettings', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 2. Registration toggle
+  // 2. Registration mode dropdown
   // -----------------------------------------------------------------------
-  it('toggles registration open and PUTs the correct setting', async () => {
-    renderSystemSettings();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Registration Status: Closed/i)).toBeInTheDocument();
-    });
-
-    const button = screen.getByRole('button', { name: /Open Registration/i });
-    fireEvent.click(button);
-
-    await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
-        name: 'registrations_open',
-        value: 1,
-      });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Registration opened successfully/i)).toBeInTheDocument();
-      expect(screen.getByText(/Registration Status: Open/i)).toBeInTheDocument();
-    });
-  });
-
-  it('toggles registration closed when currently open', async () => {
+  it('shows the current registration mode from the registration_mode setting', async () => {
     (api.get as any).mockImplementation(
-      makeGetMock({ settings: buildSettingsList({ registrations_open: '1' }) }),
+      makeGetMock({ settings: buildSettingsList({ registration_mode: 'invite-only' }) }),
     );
 
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByText(/Registration Status: Open/i)).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: /Registration/i })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Close Registration/i }));
-
-    await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
-        name: 'registrations_open',
-        value: 0,
-      });
-    });
+    expect(
+      screen.getByRole('combobox', { name: /Registration/i })
+    ).toHaveTextContent(/Invite only/i);
   });
 
-  // -----------------------------------------------------------------------
-  // 3. Invite-required toggle
-  // -----------------------------------------------------------------------
-  it('toggles invite required and PUTs the correct setting', async () => {
+  it('PUTs registration_mode when a new mode is selected and shows success', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByText(/Invite Required: No/i)).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: /Registration/i })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Require Invitation Code/i }));
+    // Default fixture mode is 'closed'; switch to 'invite-only'
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Registration/i }));
+    const listbox = await screen.findByRole('listbox');
+    fireEvent.click(within(listbox).getByText(/Invite only/i));
 
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
-        name: 'invite_required',
-        value: 1,
+        name: 'registration_mode',
+        value: 'invite-only',
       });
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Invite requirement enabled successfully/i)).toBeInTheDocument();
-      expect(screen.getByText(/Invite Required: Yes/i)).toBeInTheDocument();
+      expect(screen.getByText(/Registration mode set to Invite only/i)).toBeInTheDocument();
     });
   });
 
-  // -----------------------------------------------------------------------
-  // 4. Quick Invite generation (only visible when invite_required is on)
-  // -----------------------------------------------------------------------
-  it('does not show the Quick Invite generator when invites are not required', async () => {
-    renderSystemSettings();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Invite Required: No/i)).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole('button', { name: /Generate Quick Invite/i })).not.toBeInTheDocument();
-  });
-
-  it('generates a quick invite code and exposes a working copy button', async () => {
-    (api.get as any).mockImplementation(
-      makeGetMock({ settings: buildSettingsList({ invite_required: '1' }) }),
-    );
-
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
-
-    (api.post as any).mockImplementation((url: string) => {
-      if (url === '/auth/generate-quick-invite') {
-        return Promise.resolve({
-          data: { code: 'ABC123', expires_at: '2026-04-25T00:00:00Z' },
-        });
-      }
-      return Promise.resolve({ data: {} });
-    });
+  it('derives the mode from legacy settings when registration_mode is missing', async () => {
+    // Legacy: registrations open + invite required -> invite-only
+    const legacySettings = [
+      { name: 'registrations_open', value: '1' },
+      { name: 'invite_required', value: '1' },
+      { name: 'theme', value: 'dark' },
+    ];
+    (api.get as any).mockImplementation(makeGetMock({ settings: legacySettings }));
 
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByText(/Invite Required: Yes/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole('combobox', { name: /Registration/i })
+      ).toHaveTextContent(/Invite only/i);
+    });
+  });
+
+  it('reverts the mode and shows the backend message when the update fails', async () => {
+    (api.put as any).mockRejectedValueOnce({
+      response: { data: { message: 'Not allowed' } },
     });
 
-    const generateBtn = screen.getByRole('button', { name: /Generate Quick Invite/i });
-    fireEvent.click(generateBtn);
+    // Silence the expected console.error from the component
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderSystemSettings();
 
     await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith('/auth/generate-quick-invite');
-      expect(screen.getByText('ABC123')).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: /Registration/i })).toBeInTheDocument();
     });
 
-    const copyBtn = screen.getByRole('button', { name: /Copy code/i });
-    fireEvent.click(copyBtn);
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Registration/i }));
+    const listbox = await screen.findByRole('listbox');
+    fireEvent.click(within(listbox).getByText(/^Open/i));
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('ABC123');
+      expect(screen.getByText('Not allowed')).toBeInTheDocument();
     });
+
+    // Mode reverted to the previous value ('closed' from the default fixture)
+    expect(
+      screen.getByRole('combobox', { name: /Registration/i })
+    ).toHaveTextContent(/Closed/i);
+
+    errSpy.mockRestore();
   });
 
   // -----------------------------------------------------------------------

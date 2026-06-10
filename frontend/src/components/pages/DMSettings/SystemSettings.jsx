@@ -13,32 +13,32 @@ import {
   FormControl,
   FormControlLabel,
   Grid,
-  IconButton,
   InputLabel,
   MenuItem,
   Select,
   Snackbar,
   Switch,
   TextField,
-  Tooltip,
   Typography
 } from '@mui/material';
 import {
   CloudDownload,
   CloudUpload,
-  FileCopy as FileCopyIcon,
   Message as ChatIcon,
   Settings as SettingsIcon,
   DataObject as TestDataIcon,
   Schedule as ScheduleIcon
 } from '@mui/icons-material';
-import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
-import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
+
+const REGISTRATION_MODES = [
+    {value: 'open', label: 'Open', description: 'Anyone may register'},
+    {value: 'invite-only', label: 'Invite only', description: 'Registration requires an invite code'},
+    {value: 'closed', label: 'Closed', description: 'No new registrations'}
+];
 
 const SystemSettings = () => {
-    const { timezone: campaignTimezone } = useCampaignTimezone();
-    const [registrationOpen, setRegistrationOpen] = useState(false);
-    const [inviteRequired, setInviteRequired] = useState(false);
+    const [registrationMode, setRegistrationMode] = useState('closed');
+    const [savingRegistrationMode, setSavingRegistrationMode] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [theme, setTheme] = useState('dark');
@@ -49,8 +49,6 @@ const SystemSettings = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
-    const [quickInviteData, setQuickInviteData] = useState(null);
-    const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
     const [isGeneratingTestData, setIsGeneratingTestData] = useState(false);
 
     // Timezone settings
@@ -120,13 +118,20 @@ const SystemSettings = () => {
                 api.get('/settings/timezone-options')
             ]);
 
-            // Handle registration setting
-            const registrationSetting = settingsResponse.data.find(setting => setting.name === 'registrations_open');
-            setRegistrationOpen(registrationSetting?.value === '1' || registrationSetting?.value === 1);
-
-            // Handle invite required setting
-            const inviteRequiredSetting = settingsResponse.data.find(setting => setting.name === 'invite_required');
-            setInviteRequired(inviteRequiredSetting?.value === '1' || inviteRequiredSetting?.value === 1);
+            // Handle registration mode (single setting replacing the old
+            // registrations_open + invite_required toggles)
+            const registrationModeSetting = settingsResponse.data.find(setting => setting.name === 'registration_mode');
+            if (registrationModeSetting && REGISTRATION_MODES.some(m => m.value === registrationModeSetting.value)) {
+                setRegistrationMode(registrationModeSetting.value);
+            } else {
+                // Fall back to deriving the mode from the legacy settings if the
+                // new setting has not been written yet
+                const legacyOpen = settingsResponse.data.find(setting => setting.name === 'registrations_open');
+                const legacyInvite = settingsResponse.data.find(setting => setting.name === 'invite_required');
+                const isOpen = legacyOpen?.value === '1' || legacyOpen?.value === 1;
+                const isInvite = legacyInvite?.value === '1' || legacyInvite?.value === 1;
+                setRegistrationMode(!isOpen ? 'closed' : (isInvite ? 'invite-only' : 'open'));
+            }
 
             // Set Discord settings
             if (discordResponse.data) {
@@ -190,37 +195,27 @@ const SystemSettings = () => {
         }
     };
 
-    const handleRegistrationToggle = async () => {
-        try {
-            const newValue = registrationOpen ? 0 : 1;
-            await api.put(
-                `/user/update-setting`,
-                {name: 'registrations_open', value: newValue}
-            );
-            setRegistrationOpen(!registrationOpen);
-            setSuccess(`Registration ${!registrationOpen ? 'opened' : 'closed'} successfully`);
-            setError('');
-        } catch (error) {
-            console.error('Error updating registration setting', error);
-            setError('Error updating registration setting');
-            setSuccess('');
-        }
-    };
+    const handleRegistrationModeChange = async (event) => {
+        const newMode = event.target.value;
+        const previousMode = registrationMode;
 
-    const handleInviteRequiredToggle = async () => {
         try {
-            const newValue = inviteRequired ? 0 : 1;
+            setSavingRegistrationMode(true);
+            setRegistrationMode(newMode);
             await api.put(
                 `/user/update-setting`,
-                {name: 'invite_required', value: newValue}
+                {name: 'registration_mode', value: newMode}
             );
-            setInviteRequired(!inviteRequired);
-            setSuccess(`Invite requirement ${!inviteRequired ? 'enabled' : 'disabled'} successfully`);
+            const modeLabel = REGISTRATION_MODES.find(m => m.value === newMode)?.label || newMode;
+            setSuccess(`Registration mode set to ${modeLabel}`);
             setError('');
         } catch (error) {
-            console.error('Error updating invite required setting', error);
-            setError('Error updating invite required setting');
+            console.error('Error updating registration mode', error);
+            setRegistrationMode(previousMode);
+            setError(error.response?.data?.message || 'Error updating registration mode');
             setSuccess('');
+        } finally {
+            setSavingRegistrationMode(false);
         }
     };
 
@@ -428,60 +423,6 @@ const SystemSettings = () => {
         }
     };
 
-    const handleGenerateQuickInvite = async () => {
-        try {
-            setIsGeneratingInvite(true);
-            setQuickInviteData(null);
-
-            const response = await api.post('/auth/generate-quick-invite');
-            if (response && response.data) {
-                setQuickInviteData(response.data);
-                setSuccess('Quick invite code generated successfully');
-                setError('');
-            }
-        } catch (err) {
-            setError('Error generating quick invite code');
-            setSuccess('');
-        } finally {
-            setIsGeneratingInvite(false);
-        }
-    };
-
-    const handleCopyInviteCode = () => {
-        if (!quickInviteData || !quickInviteData.code) return;
-
-        // Check if navigator.clipboard is available
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(quickInviteData.code)
-                .then(() => {
-                    setSnackbarMessage('Invite code copied to clipboard');
-                    setSnackbarOpen(true);
-                })
-                .catch(() => {
-                    setSnackbarMessage('Failed to copy invite code');
-                    setSnackbarOpen(true);
-                });
-        } else {
-            // Fallback method for browsers that don't support clipboard API
-            const textArea = document.createElement('textarea');
-            textArea.value = quickInviteData.code;
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-
-            try {
-                const successful = document.execCommand('copy');
-                setSnackbarMessage(successful ? 'Invite code copied to clipboard' : 'Failed to copy invite code');
-                setSnackbarOpen(true);
-            } catch (err) {
-                setSnackbarMessage('Failed to copy invite code');
-                setSnackbarOpen(true);
-            }
-
-            document.body.removeChild(textArea);
-        }
-    };
-
     const handleGenerateTestData = async () => {
         setIsGeneratingTestData(true);
         try {
@@ -502,11 +443,6 @@ const SystemSettings = () => {
 
     const handleSnackbarClose = () => {
         setSnackbarOpen(false);
-    };
-
-    const formatExpirationDate = (dateString) => {
-        if (!dateString) return '';
-        return campaignTimezone ? formatInCampaignTimezone(dateString, campaignTimezone, 'PPpp z') : new Date(dateString).toLocaleString();
     };
 
     if (isLoading) {
@@ -531,85 +467,29 @@ const SystemSettings = () => {
                     <Card variant="outlined">
                         <CardHeader title="Registration Settings"/>
                         <CardContent>
-                            <Typography variant="body1" gutterBottom>Registration
-                                Status: {registrationOpen ? 'Open' : 'Closed'}</Typography>
-                            <Button
-                                variant="outlined"
-                                color={registrationOpen ? "secondary" : "primary"}
-                                onClick={handleRegistrationToggle}
-                                fullWidth
-                            >
-                                {registrationOpen ? 'Close Registration' : 'Open Registration'}
-                            </Button>
-
-                            <Divider sx={{my: 2}}/>
-
-                            <Typography variant="body1" gutterBottom>Invite
-                                Required: {inviteRequired ? 'Yes' : 'No'}</Typography>
-                            <Button
-                                variant="outlined"
-                                color={inviteRequired ? "secondary" : "primary"}
-                                onClick={handleInviteRequiredToggle}
-                                fullWidth
-                            >
-                                {inviteRequired ? 'Make Registration Public' : 'Require Invitation Code'}
-                            </Button>
-
-                            {inviteRequired && (
-                                <>
-                                    <Divider sx={{my: 2}}/>
-
-                                    <Typography variant="body1" gutterBottom>Generate Quick Invite (expires in 4
-                                        hours)</Typography>
-                                    <Button
-                                        variant="outlined"
-                                        color="primary"
-                                        onClick={handleGenerateQuickInvite}
-                                        disabled={isGeneratingInvite}
-                                        fullWidth
-                                        sx={{mb: 2}}
-                                    >
-                                        {isGeneratingInvite ? <CircularProgress size={24}/> : 'Generate Quick Invite'}
-                                    </Button>
-
-                                    {quickInviteData && (
-                                        <Box sx={{
-                                            mt: 2,
-                                            p: 2,
-                                            backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                                            borderRadius: 1,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between'
-                                        }}>
-                                            <Box>
-                                                <Typography variant="subtitle2">Code:</Typography>
-                                                <Typography
-                                                    variant="body1"
-                                                    fontWeight="bold"
-                                                    fontFamily="monospace"
-                                                    fontSize="1.1rem"
-                                                >
-                                                    {quickInviteData.code}
-                                                </Typography>
-                                                <Typography variant="caption" display="block" sx={{mt: 1}}>
-                                                    Expires: {formatExpirationDate(quickInviteData.expires_at)}
-                                                </Typography>
-                                            </Box>
-                                            <Tooltip title="Copy code">
-                                                <IconButton onClick={handleCopyInviteCode} size="small">
-                                                    <FileCopyIcon/>
-                                                </IconButton>
-                                            </Tooltip>
-                                        </Box>
-                                    )}
-                                </>
-                            )}
+                            <FormControl fullWidth>
+                                <InputLabel id="registration-mode-label">Registration</InputLabel>
+                                <Select
+                                    labelId="registration-mode-label"
+                                    id="registration-mode-select"
+                                    value={registrationMode}
+                                    label="Registration"
+                                    onChange={handleRegistrationModeChange}
+                                    disabled={savingRegistrationMode}
+                                >
+                                    {REGISTRATION_MODES.map((mode) => (
+                                        <MenuItem key={mode.value} value={mode.value}>
+                                            {mode.label} ({mode.description.toLowerCase()})
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
 
                             <Box mt={2}>
                                 <Typography variant="body2" color="textSecondary">
-                                    Current settings: Registration is {registrationOpen ? 'open' : 'closed'} and invites
-                                    are {inviteRequired ? 'required' : 'not required'}
+                                    {REGISTRATION_MODES.find(m => m.value === registrationMode)?.description}.
+                                    Invite codes can be created in the User Management tab and are
+                                    single-use, granting Player membership in this campaign.
                                 </Typography>
                             </Box>
                         </CardContent>

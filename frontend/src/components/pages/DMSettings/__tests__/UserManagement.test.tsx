@@ -13,20 +13,10 @@ vi.mock('../../../../utils/api', () => ({
   },
 }));
 
-// Mock the timezone hook so it does not perform any side-effect API calls
-vi.mock('../../../../hooks/useCampaignTimezone', () => ({
-  useCampaignTimezone: () => ({
-    timezone: 'America/New_York',
-    loading: false,
-    error: null,
-  }),
-}));
-
-// Mock timezone utility (component imports formatInCampaignTimezone directly)
-vi.mock('../../../../utils/timezoneUtils', () => ({
-  formatInCampaignTimezone: (date: string) => `formatted:${date}`,
-  fetchCampaignTimezone: vi.fn().mockResolvedValue('America/New_York'),
-  clearTimezoneCache: vi.fn(),
+// Invite management has moved to its own component with its own tests —
+// stub it out so UserManagement tests stay focused on user administration.
+vi.mock('../InviteManagement', () => ({
+  default: () => <div data-testid="invite-management-stub" />,
 }));
 
 import api from '../../../../utils/api';
@@ -42,31 +32,10 @@ const mockUsers = [
   { id: 3, username: 'gandalf', role: 'dm',     email: 'g@example.com'     },
 ];
 
-const mockInvites = [
-  {
-    id: 10,
-    code: 'ABCD-1234',
-    created_by_username: 'gandalf',
-    created_at: '2026-04-01T12:00:00Z',
-    expires_at: '2026-04-30T12:00:00Z',
-  },
-  {
-    id: 11,
-    code: 'NEVER-9999',
-    created_by_username: 'gandalf',
-    created_at: '2026-04-02T12:00:00Z',
-    expires_at: '9999-12-31T00:00:00Z',
-  },
-];
-
 // Default mock for api.get based on URL
-const setupDefaultGetMock = (
-  users: any[] = mockUsers,
-  invites: any[] = mockInvites,
-) => {
+const setupDefaultGetMock = (users: any[] = mockUsers) => {
   (api.get as any).mockImplementation((url: string) => {
     if (url === '/user/all') return Promise.resolve({ data: users });
-    if (url === '/auth/active-invites') return Promise.resolve({ data: invites });
     return Promise.resolve({ data: [] });
   });
 };
@@ -107,12 +76,11 @@ describe('UserManagement', () => {
   // 1. Lists all users on mount
   // -------------------------------------------------------------------------
   describe('Initial load', () => {
-    it('fetches users and active invites on mount', async () => {
+    it('fetches users on mount', async () => {
       renderUserManagement();
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith('/user/all');
-        expect(api.get).toHaveBeenCalledWith('/auth/active-invites');
       });
     });
 
@@ -124,9 +92,7 @@ describe('UserManagement', () => {
       });
 
       expect(screen.getByText('bob')).toBeInTheDocument();
-      // 'gandalf' appears in both the user table and the invite "Created By"
-      // column. Use getAllByText since duplication is expected.
-      expect(screen.getAllByText('gandalf').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('gandalf')).toBeInTheDocument();
 
       // Ensure email + role columns are populated
       expect(screen.getByText('alice@example.com')).toBeInTheDocument();
@@ -134,23 +100,12 @@ describe('UserManagement', () => {
       expect(screen.getByText('dm')).toBeInTheDocument();
     });
 
-    it('renders the active invites with their codes', async () => {
+    it('renders the InviteManagement section', async () => {
       renderUserManagement();
 
       await waitFor(() => {
-        expect(screen.getByText('ABCD-1234')).toBeInTheDocument();
-        expect(screen.getByText('NEVER-9999')).toBeInTheDocument();
+        expect(screen.getByTestId('invite-management-stub')).toBeInTheDocument();
       });
-    });
-
-    it('shows "Never" for invites that effectively never expire (year >= 9000)', async () => {
-      renderUserManagement();
-
-      await waitFor(() => {
-        expect(screen.getByText('NEVER-9999')).toBeInTheDocument();
-      });
-
-      expect(screen.getByText('Never')).toBeInTheDocument();
     });
   });
 
@@ -340,10 +295,7 @@ describe('UserManagement', () => {
       });
 
       // After clicking delete, mock should refresh users; remove alice from refetch
-      setupDefaultGetMock(
-        mockUsers.filter(u => u.id !== 1),
-        mockInvites,
-      );
+      setupDefaultGetMock(mockUsers.filter(u => u.id !== 1));
 
       // Click the confirm Delete button inside the dialog
       const dialog = screen.getByRole('dialog');
@@ -387,176 +339,7 @@ describe('UserManagement', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 5. Custom invite generation
-  // -------------------------------------------------------------------------
-  describe('Custom invite generation', () => {
-    it('opens dialog, generates invite with selected expiration, and refreshes invites list', async () => {
-      (api.post as any).mockResolvedValueOnce({
-        data: { code: 'NEW-INVITE-1', id: 99 },
-      });
-
-      renderUserManagement();
-
-      await waitFor(() => {
-        expect(screen.getByText('alice')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByRole('button', { name: /create new invite/i }));
-
-      // Dialog appears with default '1 Day' option already selected
-      await waitFor(() => {
-        expect(screen.getByRole('dialog')).toBeInTheDocument();
-      });
-
-      // After generating, the active invites list should be refetched - prepare a new one
-      const newInvites = [
-        ...mockInvites,
-        {
-          id: 99,
-          code: 'NEW-INVITE-1',
-          created_by_username: 'gandalf',
-          created_at: '2026-04-24T12:00:00Z',
-          expires_at: '2026-04-25T12:00:00Z',
-        },
-      ];
-      setupDefaultGetMock(mockUsers, newInvites);
-
-      // Click Generate Invite button (inside the open dialog)
-      const dialog = screen.getByRole('dialog');
-      const generateBtn = within(dialog).getByRole('button', { name: /generate invite/i });
-      fireEvent.click(generateBtn);
-
-      await waitFor(() => {
-        expect(api.post).toHaveBeenCalledWith('/auth/generate-custom-invite', {
-          expirationPeriod: '1d',
-        });
-      });
-
-      // Active-invites list refreshed
-      await waitFor(() => {
-        expect(api.get).toHaveBeenCalledWith('/auth/active-invites');
-        expect(screen.getByText('NEW-INVITE-1')).toBeInTheDocument();
-      });
-
-      expect(
-        screen.getByText('Custom invite code generated successfully')
-      ).toBeInTheDocument();
-    });
-
-    it('shows error when invite generation fails', async () => {
-      (api.post as any).mockRejectedValueOnce(new Error('fail'));
-
-      renderUserManagement();
-
-      await waitFor(() => {
-        expect(screen.getByText('alice')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByRole('button', { name: /create new invite/i }));
-
-      const dialog = await screen.findByRole('dialog');
-      const generateBtn = within(dialog).getByRole('button', { name: /generate invite/i });
-      fireEvent.click(generateBtn);
-
-      await waitFor(() => {
-        expect(screen.getByText('Error generating custom invite code')).toBeInTheDocument();
-      });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // 6. Active invites list - deactivate
-  // -------------------------------------------------------------------------
-  describe('Deactivate invite flow', () => {
-    it('opens deactivate confirmation and on confirm calls POST /auth/deactivate-invite', async () => {
-      (api.post as any).mockResolvedValueOnce({ data: { success: true } });
-
-      renderUserManagement();
-
-      await waitFor(() => {
-        expect(screen.getByText('ABCD-1234')).toBeInTheDocument();
-      });
-
-      // Click the deactivate (red) button on the first invite row
-      const deactivateButtons = screen.getAllByRole('button', { name: /deactivate invite/i });
-      fireEvent.click(deactivateButtons[0]);
-
-      // Confirmation dialog
-      await waitFor(() => {
-        expect(screen.getByText('Confirm Deactivation')).toBeInTheDocument();
-      });
-
-      // After deactivation, refetch should drop the first invite
-      setupDefaultGetMock(mockUsers, mockInvites.filter(i => i.id !== 10));
-
-      const dialog = screen.getByRole('dialog');
-      const confirmBtn = within(dialog).getByRole('button', { name: /^deactivate$/i });
-      fireEvent.click(confirmBtn);
-
-      await waitFor(() => {
-        expect(api.post).toHaveBeenCalledWith('/auth/deactivate-invite', { inviteId: 10 });
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText('Invite code deactivated successfully')).toBeInTheDocument();
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText('ABCD-1234')).not.toBeInTheDocument();
-      });
-    });
-
-    it('shows error when deactivation fails', async () => {
-      (api.post as any).mockRejectedValueOnce(new Error('fail'));
-
-      renderUserManagement();
-
-      await waitFor(() => {
-        expect(screen.getByText('ABCD-1234')).toBeInTheDocument();
-      });
-
-      const deactivateButtons = screen.getAllByRole('button', { name: /deactivate invite/i });
-      fireEvent.click(deactivateButtons[0]);
-
-      const dialog = await screen.findByRole('dialog');
-      const confirmBtn = within(dialog).getByRole('button', { name: /^deactivate$/i });
-      fireEvent.click(confirmBtn);
-
-      await waitFor(() => {
-        expect(screen.getByText('Error deactivating invite code')).toBeInTheDocument();
-      });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // 7. Copy invite code button
-  // -------------------------------------------------------------------------
-  describe('Copy invite code', () => {
-    it('calls navigator.clipboard.writeText with the invite code', async () => {
-      const writeTextMock = vi.fn().mockResolvedValue(undefined);
-      Object.defineProperty(window.navigator, 'clipboard', {
-        value: { writeText: writeTextMock },
-        writable: true,
-        configurable: true,
-      });
-
-      renderUserManagement();
-
-      await waitFor(() => {
-        expect(screen.getByText('ABCD-1234')).toBeInTheDocument();
-      });
-
-      const copyButtons = screen.getAllByRole('button', { name: /copy code/i });
-      fireEvent.click(copyButtons[0]);
-
-      await waitFor(() => {
-        expect(writeTextMock).toHaveBeenCalledWith('ABCD-1234');
-      });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // 8. Manual reset link generation
+  // 5. Manual reset link generation
   // -------------------------------------------------------------------------
   describe('Manual reset link', () => {
     it('generates a manual reset link and displays the URL', async () => {
@@ -674,13 +457,12 @@ describe('UserManagement', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 9. Empty / error states
+  // 6. Error states
   // -------------------------------------------------------------------------
-  describe('Error and empty states', () => {
+  describe('Error states', () => {
     it('shows an error alert if loading users fails', async () => {
       (api.get as any).mockImplementation((url: string) => {
         if (url === '/user/all') return Promise.reject(new Error('boom'));
-        if (url === '/auth/active-invites') return Promise.resolve({ data: [] });
         return Promise.resolve({ data: [] });
       });
 
@@ -689,34 +471,6 @@ describe('UserManagement', () => {
       await waitFor(() => {
         expect(
           screen.getByText('Error loading users. Please try again.')
-        ).toBeInTheDocument();
-      });
-    });
-
-    it('shows an empty-state row when there are no active invites', async () => {
-      setupDefaultGetMock(mockUsers, []);
-
-      renderUserManagement();
-
-      await waitFor(() => {
-        expect(
-          screen.getByText('No active invite codes found')
-        ).toBeInTheDocument();
-      });
-    });
-
-    it('shows an error alert if loading invites fails', async () => {
-      (api.get as any).mockImplementation((url: string) => {
-        if (url === '/user/all') return Promise.resolve({ data: mockUsers });
-        if (url === '/auth/active-invites') return Promise.reject(new Error('boom'));
-        return Promise.resolve({ data: [] });
-      });
-
-      renderUserManagement();
-
-      await waitFor(() => {
-        expect(
-          screen.getByText('Error loading active invites. Please try again.')
         ).toBeInTheDocument();
       });
     });

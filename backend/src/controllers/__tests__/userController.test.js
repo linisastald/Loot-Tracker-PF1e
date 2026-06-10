@@ -1015,6 +1015,43 @@ describe('userController', () => {
         expect.stringContaining('required')
       );
     });
+
+    it.each(['open', 'invite-only', 'closed'])(
+      'should accept registration_mode value %s',
+      async (value) => {
+        const req = createMockReq({
+          user: { id: 99, role: 'DM' },
+          body: { name: 'registration_mode', value },
+        });
+        const res = createMockRes();
+
+        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+        await userController.updateSetting(req, res);
+
+        expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+          expect.stringContaining('ON CONFLICT'),
+          ['registration_mode', value]
+        );
+        expect(res.success).toHaveBeenCalled();
+      }
+    );
+
+    it.each(['1', 'OPEN', 'invite', 'anything-else', ''])(
+      'should reject invalid registration_mode value %s',
+      async (value) => {
+        const req = createMockReq({
+          user: { id: 99, role: 'DM' },
+          body: { name: 'registration_mode', value },
+        });
+        const res = createMockRes();
+
+        await userController.updateSetting(req, res);
+
+        expect(res.validationError).toHaveBeenCalled();
+        expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      }
+    );
   });
 
   // ---------------------------------------------------------------

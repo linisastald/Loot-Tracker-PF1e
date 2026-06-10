@@ -311,6 +311,7 @@ const spellcastingRoutes = require('./src/api/routes/spellcasting');
 
 // Multi-campaign routes
 const campaignRoutes = require('./src/api/routes/campaigns');
+const inviteRoutes = require('./src/api/routes/invites');
 
 // Set up routes with appropriate protection
 // Auth routes with auth-specific rate limiting (applied before global rate limiting)
@@ -378,6 +379,7 @@ app.use('/api/spellcasting', csrfProtection, spellcastingRoutes);
 
 // Multi-campaign routes
 app.use('/api/campaigns', csrfProtection, campaignRoutes);
+app.use('/api/invites', csrfProtection, inviteRoutes);
 
 // Serve React frontend static files (production)
 if (process.env.NODE_ENV === 'production') {

@@ -560,7 +560,8 @@ CREATE TABLE imposition_uses (
 CREATE INDEX idx_imposition_uses_campaign_id ON imposition_uses(campaign_id);
 
 -- Insert initial data for settings
-INSERT INTO settings (name, value, value_type, description) VALUES ('registrations_open', '1', 'boolean', 'Whether new user registrations are allowed (1=open, 0=closed)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('registrations_open', '1', 'boolean', 'DEPRECATED (superseded by registration_mode): whether new user registrations are allowed (1=open, 0=closed)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('registration_mode', 'open', 'string', 'How new accounts may register: open (anyone), invite-only (a valid invite code is required), or closed (no new registrations)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('campaign_name', 'PF1e Campaign', 'string', 'Name of the current campaign/group');
 INSERT INTO settings (name, value, value_type, description) VALUES ('discord_integration_enabled', '0', 'boolean', 'Whether Discord integration is enabled (1=enabled, 0=disabled)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('infamy_system_enabled', '0', 'boolean', 'Whether infamy system is enabled (1=enabled, 0=disabled)');

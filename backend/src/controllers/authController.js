@@ -6,55 +6,71 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const emailService = require('../services/emailService');
+const campaignContext = require('../utils/campaignContext');
+const Invite = require('../models/Invite');
 const { AUTH, COOKIES } = require('../config/constants');
 require('dotenv').config();
 
+/** Valid values for the registration_mode setting. */
+const REGISTRATION_MODES = ['open', 'invite-only', 'closed'];
+
 /**
- * Register a new user
+ * Read the registration_mode setting ('open' | 'invite-only' | 'closed').
+ * A missing row or an unrecognized value defaults to 'open' (fresh installs
+ * seed 'open'; migration 046 derives the mode for existing deployments).
+ * @return {Promise<string>} The effective registration mode
+ */
+const getRegistrationMode = async () => {
+    const result = await dbUtils.executeQuery(
+        "SELECT value FROM settings WHERE name = 'registration_mode'"
+    );
+    const value = result.rows[0]?.value;
+    return REGISTRATION_MODES.includes(value) ? value : 'open';
+};
+
+/**
+ * Register a new user.
+ *
+ * Registration matrix (Phase 3b invite overhaul):
+ * - mode 'closed':       always rejected.
+ * - mode 'invite-only':  a valid invite code is REQUIRED.
+ * - mode 'open':         no invite needed. If a code IS provided anyway it is
+ *                        validated and redeemed — an invited user registering
+ *                        while registration happens to be open should still
+ *                        land in their campaign. Without a code the account is
+ *                        created with NO campaign membership (decided: general
+ *                        registration grants no membership; only invites do).
+ *
+ * A redeemed invite grants **Player** membership in the invite's campaign
+ * (the issuing DM's campaign at creation time) and is single-use.
  */
 const registerUser = async (req, res) => {
     const {username, password, inviteCode, email} = req.body;
 
-    // Check if registrations are open
-    const regOpenResult = await dbUtils.executeQuery(
-        "SELECT value FROM settings WHERE name = 'registrations_open'"
-    );
-    const isRegOpen = regOpenResult.rows[0] && (regOpenResult.rows[0].value === 1 || regOpenResult.rows[0].value === '1');
+    const registrationMode = await getRegistrationMode();
 
-    // If registrations are closed, require invite code
-    const isInviteRequired = !isRegOpen;
+    if (registrationMode === 'closed') {
+        throw controllerFactory.createValidationError('Registration is currently closed');
+    }
 
-    // Verify invite code if required
-    if (isInviteRequired && !inviteCode) {
+    if (registrationMode === 'invite-only' && !inviteCode) {
         throw controllerFactory.createValidationError('Invitation code is required for registration');
     }
 
-    if (!isRegOpen && !inviteCode) {
-        throw controllerFactory.createAuthorizationError('Registrations are currently closed. An invitation code is required.');
-    }
-
+    let invite = null;
     if (inviteCode) {
-        const inviteResult = await dbUtils.executeQuery(
-            `SELECT *
-             FROM invites
-             WHERE code = $1
-               AND is_used = FALSE
-               AND (expires_at IS NULL OR expires_at > NOW())`,
-            [inviteCode]
-        );
+        // CROSS-CAMPAIGN LOOKUP REQUIRED: /auth/register is unauthenticated,
+        // so no campaign context exists and the RLS GUC defaults to '1' — a
+        // campaign-2 invite would be invisible here. This is the one place
+        // 'all' mode is required on a request path: the code itself is the
+        // credential, and it determines which campaign membership is granted.
+        invite = await campaignContext.runWithCampaign('all', () => Invite.findByCode(inviteCode));
 
-        if (inviteResult.rows.length === 0) {
-            // Check if the invite exists but is expired
-            const expiredInviteResult = await dbUtils.executeQuery(
-                'SELECT expires_at FROM invites WHERE code = $1 AND is_used = FALSE AND expires_at <= NOW()',
-                [inviteCode]
-            );
-
-            if (expiredInviteResult.rows.length > 0) {
-                throw controllerFactory.createValidationError('This invitation code has expired');
-            }
-
+        if (!invite || invite.is_used) {
             throw controllerFactory.createValidationError('Invalid or used invite code');
+        }
+        if (invite.expires_at && new Date(invite.expires_at) <= new Date()) {
+            throw controllerFactory.createValidationError('This invitation code has expired');
         }
     }
 
@@ -132,7 +148,13 @@ const registerUser = async (req, res) => {
     // from inside the callback — executeTransaction only COMMITs after the
     // callback returns, so sending the response inside would release the
     // client to refetch before the commit is visible to other pool clients.
-    const user = await dbUtils.executeTransaction(async (client) => {
+    //
+    // The whole transactional block runs under runWithCampaign('all'): this
+    // unauthenticated path has no campaign context (GUC would default to '1'),
+    // and when a cross-campaign invite is redeemed both the user_campaign
+    // INSERT and the invites UPDATE must pass the RLS tenant policy's
+    // WITH CHECK for the invite's campaign.
+    const user = await campaignContext.runWithCampaign('all', () => dbUtils.executeTransaction(async (client) => {
         // Insert the user
         const result = await client.query(
             'INSERT INTO users (username, password, role, email) VALUES ($1, $2, $3, $4) RETURNING id, username, role, joined, email',
@@ -140,28 +162,52 @@ const registerUser = async (req, res) => {
         );
         const createdUser = result.rows[0];
 
-        // Grant campaign membership for the new user. Campaign 1 is correct
-        // for current single-campaign deployments; Phase 3 of the
-        // multi-campaign refactor replaces this with invite-scoped campaign
-        // membership.
-        const membershipRole = createdUser.role === 'DM' ? 'DM' : 'Player';
-        await client.query(
-            `INSERT INTO user_campaign (user_id, campaign_id, role)
-             VALUES ($1, 1, $2)
-             ON CONFLICT DO NOTHING`,
-            [createdUser.id, membershipRole]
-        );
-
-        // Mark invite as used if provided
-        if (inviteCode) {
+        if (invite) {
+            // Invite redemption grants membership in the INVITE's campaign.
+            // Invites always grant 'Player' — the single exception is the
+            // first-user DM bootstrap above: when it fired, the stored role is
+            // 'DM' and the membership mirrors it (the first account on a fresh
+            // install must be a usable DM).
+            const membershipRole = createdUser.role === 'DM' ? 'DM' : 'Player';
             await client.query(
-                'UPDATE invites SET is_used = TRUE, used_by = $1, used_at = NOW() WHERE code = $2',
-                [createdUser.id, inviteCode]
+                `INSERT INTO user_campaign (user_id, campaign_id, role)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT DO NOTHING`,
+                [createdUser.id, invite.campaign_id, membershipRole]
+            );
+
+            // Mark the invite used (single-use). The is_used = FALSE guard
+            // closes the race where two registrations validated the same code
+            // concurrently: the loser updates zero rows and the whole
+            // transaction (including the user INSERT) rolls back.
+            const inviteUpdate = await client.query(
+                `UPDATE invites
+                 SET is_used = TRUE, used_by = $1, used_at = NOW()
+                 WHERE id = $2
+                   AND is_used = FALSE`,
+                [createdUser.id, invite.id]
+            );
+            if (inviteUpdate.rowCount === 0) {
+                throw controllerFactory.createValidationError('Invalid or used invite code');
+            }
+        } else if (createdUser.role === 'DM') {
+            // SPECIAL CASE — first-user DM bootstrap without an invite (open
+            // mode): general registration normally grants NO membership, but a
+            // fresh single-campaign install must bootstrap usable, so the
+            // first DM gets DM membership in the seeded campaign 1.
+            await client.query(
+                `INSERT INTO user_campaign (user_id, campaign_id, role)
+                 VALUES ($1, 1, 'DM')
+                 ON CONFLICT DO NOTHING`,
+                [createdUser.id]
             );
         }
+        // Otherwise (open mode, no invite, not the bootstrap DM): the account
+        // is created with NO campaign membership — joining a campaign requires
+        // an invite.
 
         return createdUser;
-    });
+    }));
 
     // Generate JWT token
     const token = jwt.sign(
@@ -426,177 +472,34 @@ const checkForDm = async (req, res) => {
 };
 
 /**
- * Check registration status
+ * Check registration status.
+ * Returns the registration_mode plus a registrationsOpen compatibility
+ * boolean (true unless the mode is 'closed' — in invite-only mode the
+ * registration form must still be reachable to enter the code).
  */
 const checkRegistrationStatus = async (req, res) => {
-    const result = await dbUtils.executeQuery("SELECT value FROM settings WHERE name = 'registrations_open'");
-    const isOpen = result.rows[0] && (result.rows[0].value === 1 || result.rows[0].value === '1');
-    controllerFactory.sendSuccessResponse(res, {isOpen});
+    const mode = await getRegistrationMode();
+    controllerFactory.sendSuccessResponse(res, {
+        mode,
+        registrationsOpen: mode !== 'closed'
+    });
 };
 
 /**
- * Check if invite is required for registration
+ * Check if an invite code is required for registration.
  */
 const checkInviteRequired = async (req, res) => {
-    // Check if registrations are open
-    const regOpenResult = await dbUtils.executeQuery(
-        "SELECT value FROM settings WHERE name = 'registrations_open'"
-    );
-    const isRegOpen = regOpenResult.rows[0] && (regOpenResult.rows[0].value === 1 || regOpenResult.rows[0].value === '1');
-    
-    // If registrations are closed, invite code is required
-    const isRequired = !isRegOpen;
-    
-    controllerFactory.sendSuccessResponse(res, {isRequired});
+    const mode = await getRegistrationMode();
+    controllerFactory.sendSuccessResponse(res, {
+        isRequired: mode === 'invite-only',
+        mode
+    });
 };
 
-/**
- * Generate quick invite code (4 hour expiration)
- */
-const generateQuickInvite = async (req, res) => {
-    // Ensure DM permission
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can generate invite codes');
-    }
-
-    // Generate a random invite code
-    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-    // Set expiration to 4 hours from now
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 4);
-
-    const result = await dbUtils.executeQuery(
-        'INSERT INTO invites (code, created_by, expires_at) VALUES ($1, $2, $3) RETURNING code, expires_at',
-        [inviteCode, req.user.id, expiresAt]
-    );
-
-    controllerFactory.sendCreatedResponse(res, result.rows[0], 'Quick invite code generated successfully');
-};
-
-/**
- * Generate custom invite code with specified expiration
- */
-const generateCustomInvite = async (req, res) => {
-    const {expirationPeriod} = req.body;
-
-    // Ensure DM permission
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can generate invite codes');
-    }
-
-    if (!expirationPeriod) {
-        throw controllerFactory.createValidationError('Expiration period is required');
-    }
-
-    // Generate a random invite code
-    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-    // Calculate expiration date based on the provided period
-    let expiresAt;
-
-    switch (expirationPeriod) {
-        case '4h':
-            expiresAt = new Date();
-            expiresAt.setHours(expiresAt.getHours() + 4);
-            break;
-        case '12h':
-            expiresAt = new Date();
-            expiresAt.setHours(expiresAt.getHours() + 12);
-            break;
-        case '1d':
-            expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + 1);
-            break;
-        case '3d':
-            expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + 3);
-            break;
-        case '7d':
-            expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + 7);
-            break;
-        case '1m':
-            expiresAt = new Date();
-            expiresAt.setMonth(expiresAt.getMonth() + 1);
-            break;
-        case 'never':
-            expiresAt = new Date(9999, 11, 31); // Set to year 9999
-            break;
-        default:
-            throw controllerFactory.createValidationError('Invalid expiration period');
-    }
-
-    const result = await dbUtils.executeQuery(
-        'INSERT INTO invites (code, created_by, expires_at) VALUES ($1, $2, $3) RETURNING code, expires_at',
-        [inviteCode, req.user.id, expiresAt]
-    );
-
-    controllerFactory.sendCreatedResponse(res, result.rows[0], 'Custom invite code generated successfully');
-};
-
-/**
- * Get all active invite codes
- */
-const getActiveInvites = async (req, res) => {
-    // Ensure DM permission
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can view invite codes');
-    }
-
-    const result = await dbUtils.executeQuery(
-        `SELECT i.id,
-                i.code,
-                i.created_by,
-                i.used_by,
-                i.created_at,
-                i.used_at,
-                i.expires_at,
-                i.is_used,
-                u.username as created_by_username
-         FROM invites i
-                  LEFT JOIN users u ON i.created_by = u.id
-         WHERE i.is_used = FALSE
-           AND (i.expires_at IS NULL OR i.expires_at > NOW())
-         ORDER BY i.created_at DESC`,
-        []
-    );
-
-    controllerFactory.sendSuccessResponse(res, result.rows, 'Active invite codes retrieved successfully');
-};
-
-/**
- * Deactivate an invite code
- */
-const deactivateInvite = async (req, res) => {
-    const {inviteId} = req.body;
-
-    // Ensure DM permission
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can deactivate invite codes');
-    }
-
-    if (!inviteId) {
-        throw controllerFactory.createValidationError('Invite ID is required');
-    }
-
-    try {
-        // For deactivation we use the DM's user ID as the used_by field since it's an integer column
-        const result = await dbUtils.executeQuery(
-            'UPDATE invites SET is_used = TRUE, used_by = $1, used_at = NOW() WHERE id = $2 RETURNING *',
-            [req.user.id, inviteId]
-        );
-
-        if (result.rows.length === 0) {
-            throw controllerFactory.createNotFoundError('Invite code not found');
-        }
-
-        controllerFactory.sendSuccessResponse(res, result.rows[0], 'Invite code deactivated successfully');
-    } catch (error) {
-        logger.error(`Error deactivating invite: ${error.message}`);
-        throw error;
-    }
-};
+// NOTE: invite generation/listing/deactivation moved to
+// src/controllers/inviteController.js (mounted at /api/invites with CSRF
+// protection) as part of the Phase 3b invite overhaul — the old endpoints
+// lived on the CSRF-exempt /api/auth mount.
 
 /**
  * Refresh token
@@ -806,28 +709,6 @@ module.exports = {
 
     checkInviteRequired: controllerFactory.createHandler(checkInviteRequired, {
         errorMessage: 'Error checking invite requirement'
-    }),
-
-    generateQuickInvite: controllerFactory.createHandler(generateQuickInvite, {
-        errorMessage: 'Error generating quick invite code'
-    }),
-
-    generateCustomInvite: controllerFactory.createHandler(generateCustomInvite, {
-        errorMessage: 'Error generating custom invite code',
-        validation: {
-            requiredFields: ['expirationPeriod']
-        }
-    }),
-
-    getActiveInvites: controllerFactory.createHandler(getActiveInvites, {
-        errorMessage: 'Error fetching active invite codes'
-    }),
-
-    deactivateInvite: controllerFactory.createHandler(deactivateInvite, {
-        errorMessage: 'Error deactivating invite code',
-        validation: {
-            requiredFields: ['inviteId']
-        }
     }),
 
     refreshToken: controllerFactory.createHandler(refreshToken, {

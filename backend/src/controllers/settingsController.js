@@ -77,16 +77,26 @@ const updateSetting = async (req, res) => {
         throw controllerFactory.createValidationError('Setting name must contain only lowercase letters, numbers, and underscores');
     }
 
+    // registration_mode drives the registration flow — constrain it to the
+    // three supported values (scoped validation; other settings are free-form)
+    if (name === 'registration_mode' && !['open', 'invite-only', 'closed'].includes(value)) {
+        throw controllerFactory.createValidationError(
+            "registration_mode must be one of 'open', 'invite-only', or 'closed'"
+        );
+    }
+
     try {
         // Encrypt sensitive values before storing
         let valueToStore = value;
         let valueType = 'text'; // Default for most settings
-        
+
         if (name === 'openai_key' && value) {
             valueToStore = encryptValue(value);
             valueType = 'encrypted';
         } else if (name === 'registrations_open' || name === 'discord_integration_enabled' || name === 'infamy_system_enabled' || name === 'auto_appraisal_enabled') {
             valueType = 'boolean';
+        } else if (name === 'registration_mode') {
+            valueType = 'string';
         }
         
         await dbUtils.executeQuery(
@@ -124,6 +134,7 @@ const deleteSetting = async (req, res) => {
     // Check if this is a protected setting that cannot be deleted
     const protectedSettings = [
         'campaign_name',
+        'registration_mode',
         'registrations_open',
         'discord_bot_token',
         'discord_channel_id',

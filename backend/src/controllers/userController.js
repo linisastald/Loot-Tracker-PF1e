@@ -445,6 +445,14 @@ const updateSetting = async (req, res) => {
         throw controllerFactory.createAuthorizationError('Only DMs can update settings');
     }
 
+    // registration_mode drives the registration flow — constrain it to the
+    // three supported values (scoped validation; other settings are free-form)
+    if (name === 'registration_mode' && !['open', 'invite-only', 'closed'].includes(value)) {
+        throw controllerFactory.createValidationError(
+            "registration_mode must be one of 'open', 'invite-only', or 'closed'"
+        );
+    }
+
     await dbUtils.executeQuery(
         'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
         [name, value]

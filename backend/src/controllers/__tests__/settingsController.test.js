@@ -270,6 +270,37 @@ describe('settingsController', () => {
       expect(res.validationError).toHaveBeenCalled();
     });
 
+    it('should store registration_mode with value_type string when valid', async () => {
+      const req = createMockReq({
+        body: { name: 'registration_mode', value: 'invite-only' },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await settingsController.updateSetting(req, res);
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params[0]).toBe('registration_mode');
+      expect(params[1]).toBe('invite-only');
+      expect(params[2]).toBe('string');
+      expect(res.success).toHaveBeenCalled();
+    });
+
+    it('should reject registration_mode values outside open/invite-only/closed', async () => {
+      const req = createMockReq({
+        body: { name: 'registration_mode', value: 'sometimes' },
+      });
+      const res = createMockRes();
+
+      await settingsController.updateSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        expect.stringContaining('registration_mode')
+      );
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
     it('should reject invalid setting name patterns', async () => {
       const req = createMockReq({
         body: { name: 'Invalid-Name!', value: 'Test' },
