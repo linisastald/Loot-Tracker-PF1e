@@ -11,6 +11,7 @@ const logger = require('../../utils/logger');
 const cron = require('node-cron');
 const timezoneUtils = require('../../utils/timezoneUtils');
 const dbUtils = require('../../utils/dbUtils');
+const campaignContext = require('../../utils/campaignContext');
 
 // Cron schedule constants for self-documenting job timing
 const CRON_SCHEDULES = {
@@ -37,7 +38,9 @@ class SessionSchedulerService {
         if (this.isInitialized) return;
 
         try {
-            // Load campaign timezone from settings
+            // Load campaign timezone from the global settings table. NOTE: this
+            // becomes a per-campaign campaign_settings read in a later phase;
+            // until then all campaigns share one scheduler timezone.
             this.campaignTimezone = await timezoneUtils.getCampaignTimezone();
             logger.info(`Initializing session scheduler with timezone: ${this.campaignTimezone}`);
 
@@ -212,17 +215,22 @@ class SessionSchedulerService {
         // Lazy load to avoid circular dependency
         const sessionDiscordService = require('../discord/SessionDiscordService');
 
-        const result = await dbUtils.executeQuery(`
+        // Background job: find work across ALL campaigns, then act on each
+        // session under its own campaign context so every read/write the
+        // announcement performs is correctly tenant-scoped under RLS.
+        const result = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(`
             SELECT gs.* FROM game_sessions gs
             WHERE gs.status = 'scheduled'
             AND gs.discord_message_id IS NULL
             AND gs.start_time > NOW()
             AND gs.start_time <= NOW() + (COALESCE(gs.auto_announce_hours, 168) || ' hours')::INTERVAL
-        `);
+        `));
 
         for (const session of result.rows) {
             try {
-                await sessionDiscordService.postSessionAnnouncement(session.id);
+                await campaignContext.runWithCampaign(String(session.campaign_id), () =>
+                    sessionDiscordService.postSessionAnnouncement(session.id)
+                );
             } catch (error) {
                 logger.error(`Failed to post announcement for session ${session.id}:`, error);
             }
@@ -249,8 +257,10 @@ class SessionSchedulerService {
         // Prevents sending if:
         //   1. An automatic reminder was already sent for this session
         //   2. A manual reminder was sent within the last 12 hours (cooldown period)
-        const result = await dbUtils.executeQuery(`
-            SELECT gs.id as session_id, gs.title, gs.start_time, gs.reminder_hours
+        // Find-work query runs cross-campaign ('all'); campaign_id is selected
+        // explicitly so each reminder can be sent under its row's campaign.
+        const result = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(`
+            SELECT gs.id as session_id, gs.title, gs.start_time, gs.reminder_hours, gs.campaign_id
             FROM game_sessions gs
             WHERE gs.status IN ('scheduled', 'confirmed')
             AND gs.start_time > NOW()  -- Session hasn't started yet
@@ -271,7 +281,7 @@ class SessionSchedulerService {
                 AND sr.is_manual = TRUE
                 AND sr.sent_at > NOW() - INTERVAL '12 hours'
             )
-        `);
+        `));
 
         logger.info(`Found ${result.rows.length} sessions needing automated reminders`);
 
@@ -281,10 +291,14 @@ class SessionSchedulerService {
                 // Using 'auto' type which will be recorded by SessionDiscordService.recordReminder()
                 logger.info(`Sending automated reminder for session ${session.session_id}: ${session.title}`);
 
-                await sessionDiscordService.sendSessionReminder(
-                    session.session_id,
-                    'auto',
-                    { isManual: false }
+                // Act under the session's campaign so the reminder insert and
+                // attendance lookups carry the right tenant context.
+                await campaignContext.runWithCampaign(String(session.campaign_id), () =>
+                    sessionDiscordService.sendSessionReminder(
+                        session.session_id,
+                        'auto',
+                        { isManual: false }
+                    )
                 );
 
                 logger.info(`Successfully sent reminder for session ${session.session_id}`);
@@ -315,45 +329,49 @@ class SessionSchedulerService {
         const attendanceService = require('../attendance/AttendanceService');
         const sessionDiscordService = require('../discord/SessionDiscordService');
 
-        // Get sessions within their confirmation_hours window
-        const result = await dbUtils.executeQuery(`
+        // Get sessions within their confirmation_hours window (cross-campaign)
+        const result = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(`
             SELECT gs.* FROM game_sessions gs
             WHERE gs.status = 'scheduled'
             AND gs.start_time > NOW()
             AND gs.start_time <= NOW() + (COALESCE(gs.confirmation_hours, 48) || ' hours')::INTERVAL
-        `);
+        `));
 
         for (const session of result.rows) {
             try {
-                const attendanceCount = await attendanceService.getConfirmedAttendanceCount(session.id);
+                // Everything this session needs (attendance lookups, reminder
+                // checks/inserts, status updates) runs under its own campaign.
+                await campaignContext.runWithCampaign(String(session.campaign_id), async () => {
+                    const attendanceCount = await attendanceService.getConfirmedAttendanceCount(session.id);
 
-                if (attendanceCount >= session.minimum_players) {
-                    await sessionService.confirmSession(session.id);
-                } else {
-                    // Before cancelling, check if a reminder has been sent
-                    // This prevents cancellation before players have been notified
-                    const reminderCheck = await dbUtils.executeQuery(`
-                        SELECT 1 FROM session_reminders
-                        WHERE session_id = $1 AND sent = TRUE
-                        LIMIT 1
-                    `, [session.id]);
-
-                    if (reminderCheck.rows.length === 0) {
-                        // No reminder sent yet - send one first, don't cancel yet
-                        logger.info(`Session ${session.id} has insufficient players (${attendanceCount}/${session.minimum_players}) but no reminder sent yet. Sending reminder before potential cancellation.`);
-                        try {
-                            await sessionDiscordService.sendSessionReminder(session.id, 'auto', { isManual: false });
-                            logger.info(`Pre-cancellation reminder sent for session ${session.id}. Will check again at next confirmation check.`);
-                        } catch (reminderError) {
-                            logger.error(`Failed to send pre-cancellation reminder for session ${session.id}:`, reminderError);
-                            // Don't cancel if we couldn't send the reminder - try again next check
-                        }
+                    if (attendanceCount >= session.minimum_players) {
+                        await sessionService.confirmSession(session.id);
                     } else {
-                        // Reminder was already sent, now we can proceed with cancellation
-                        logger.info(`Session ${session.id} has insufficient players and reminder already sent. Proceeding with cancellation.`);
-                        await sessionService.cancelSession(session.id, `Insufficient confirmed players: ${attendanceCount} of ${session.minimum_players} minimum required`);
+                        // Before cancelling, check if a reminder has been sent
+                        // This prevents cancellation before players have been notified
+                        const reminderCheck = await dbUtils.executeQuery(`
+                            SELECT 1 FROM session_reminders
+                            WHERE session_id = $1 AND sent = TRUE
+                            LIMIT 1
+                        `, [session.id]);
+
+                        if (reminderCheck.rows.length === 0) {
+                            // No reminder sent yet - send one first, don't cancel yet
+                            logger.info(`Session ${session.id} has insufficient players (${attendanceCount}/${session.minimum_players}) but no reminder sent yet. Sending reminder before potential cancellation.`);
+                            try {
+                                await sessionDiscordService.sendSessionReminder(session.id, 'auto', { isManual: false });
+                                logger.info(`Pre-cancellation reminder sent for session ${session.id}. Will check again at next confirmation check.`);
+                            } catch (reminderError) {
+                                logger.error(`Failed to send pre-cancellation reminder for session ${session.id}:`, reminderError);
+                                // Don't cancel if we couldn't send the reminder - try again next check
+                            }
+                        } else {
+                            // Reminder was already sent, now we can proceed with cancellation
+                            logger.info(`Session ${session.id} has insufficient players and reminder already sent. Proceeding with cancellation.`);
+                            await sessionService.cancelSession(session.id, `Insufficient confirmed players: ${attendanceCount} of ${session.minimum_players} minimum required`);
+                        }
                     }
-                }
+                });
             } catch (error) {
                 logger.error(`Failed to process confirmation for session ${session.id}:`, error);
             }
@@ -369,17 +387,20 @@ class SessionSchedulerService {
             const sessionService = require('../sessionService');
 
             // Find sessions that have ended but are not yet marked as completed
-            const result = await dbUtils.executeQuery(`
+            // (cross-campaign find-work, per-row campaign-scoped completion)
+            const result = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(`
                 SELECT gs.*
                 FROM game_sessions gs
                 WHERE gs.status IN ('scheduled', 'confirmed')
                 AND gs.start_time + INTERVAL '6 hours' < NOW()
                 AND gs.start_time < NOW()
-            `);
+            `));
 
             for (const session of result.rows) {
                 try {
-                    await sessionService.completeSession(session.id);
+                    await campaignContext.runWithCampaign(String(session.campaign_id), () =>
+                        sessionService.completeSession(session.id)
+                    );
                     logger.info(`Auto-completed session: ${session.id} - ${session.title}`);
                 } catch (error) {
                     logger.error(`Failed to auto-complete session ${session.id}:`, error);
@@ -422,8 +443,21 @@ class SessionSchedulerService {
 
     /**
      * Clean up expired sessions, locked accounts, and stale data
+     *
+     * Runs in hardcoded cross-campaign ('all') mode: this is a system-wide
+     * sweep and several of the touched tables (invites, identify, appraisal,
+     * loot) are RLS-protected, so the UPDATEs/DELETEs must see every
+     * campaign's rows. users is a global (non-RLS) table.
      */
     async cleanupExpiredData() {
+        return campaignContext.runWithCampaign('all', () => this._cleanupExpiredDataAllCampaigns());
+    }
+
+    /**
+     * Internal cleanup body. Must run inside the cross-campaign ('all')
+     * context established by cleanupExpiredData().
+     */
+    async _cleanupExpiredDataAllCampaigns() {
         try {
             // Clean up expired locked accounts
             const unlockedAccounts = await dbUtils.executeQuery(

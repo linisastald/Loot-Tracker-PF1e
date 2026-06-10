@@ -22,6 +22,11 @@ class DiscordBrokerService {
   /**
    * Resolve the broker app ID from campaign_name in settings.
    * Falls back to GROUP_NAME env var for backwards compatibility, then 'default'.
+   *
+   * Multi-campaign note: this background registration path only reads the
+   * global (non-RLS) settings table, so it needs no campaign context. When
+   * Discord config moves to per-campaign campaign_settings in a later phase,
+   * registration becomes per-campaign and must iterate campaigns explicitly.
    */
   async resolveAppIdentity() {
     try {
@@ -105,6 +110,8 @@ class DiscordBrokerService {
 
   async getDiscordSettings() {
     try {
+      // Global (non-RLS) settings read - safe without campaign context.
+      // Becomes a per-campaign campaign_settings read in a later phase.
       const query = `
         SELECT name, value
         FROM settings

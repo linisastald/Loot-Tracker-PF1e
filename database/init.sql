@@ -21,9 +21,12 @@ CREATE UNIQUE INDEX users_discord_id_key ON users(discord_id);
 CREATE INDEX idx_users_google_id ON users(google_id);
 
 -- Multi-campaign support: campaigns, memberships, and per-campaign settings.
--- Campaign-specific tables below carry campaign_id (DEFAULT 1 = the default
--- campaign seeded here; Phase 2 of the multi-campaign refactor replaces the
--- hard default with a session-GUC default).
+-- Campaign-specific tables below carry campaign_id with a session-GUC default
+-- (mirrors migration 047): inserts inherit the request's campaign from
+-- app.current_campaign; if the GUC is unset or 'all' the default is NULL and
+-- NOT NULL rejects the insert (intentional fail-safe - cross-campaign code and
+-- manual sessions must set the GUC or pass campaign_id explicitly). This file
+-- contains no INSERTs into campaign-scoped tables, so it needs no GUC itself.
 CREATE TABLE campaigns (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -35,8 +38,8 @@ CREATE TABLE campaigns (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Seed the default campaign (id 1) before any campaign_id DEFAULT 1 columns
--- reference it, then keep the sequence ahead of the explicit id.
+-- Seed the default campaign (id 1) before any campaign_id columns reference
+-- it, then keep the sequence ahead of the explicit id.
 INSERT INTO campaigns (id, name, slug) VALUES (1, 'PF1e Campaign', 'default');
 SELECT setval(pg_get_serial_sequence('campaigns', 'id'), GREATEST((SELECT MAX(id) FROM campaigns), 1));
 
@@ -72,7 +75,7 @@ CREATE TABLE characters (
     deathday DATE,
     active BOOLEAN DEFAULT true,
     user_id INTEGER REFERENCES users(id),
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_characters_campaign_id ON characters(campaign_id);
@@ -86,7 +89,7 @@ CREATE TABLE ships (
     damage INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_ships_campaign_id ON ships(campaign_id);
@@ -98,7 +101,7 @@ CREATE TABLE outposts (
     access_date DATE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_outposts_campaign_id ON outposts(campaign_id);
@@ -118,7 +121,7 @@ CREATE TABLE crew (
     departure_reason TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 -- Indexes for crew performance
@@ -179,7 +182,7 @@ CREATE TABLE loot (
     notes VARCHAR(511),
     spellcraft_dc INTEGER,
     dm_notes TEXT,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_loot_campaign_id ON loot(campaign_id);
@@ -191,7 +194,7 @@ CREATE TABLE appraisal (
     lootid INTEGER REFERENCES loot(id),
     appraisalroll INTEGER,
     believedvalue NUMERIC,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
     UNIQUE (characterid, lootid)
 );
 
@@ -208,7 +211,7 @@ CREATE TABLE gold (
     gold INTEGER,
     platinum INTEGER,
     character_id INTEGER REFERENCES characters(id),
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 -- Create gold indexes
@@ -220,7 +223,7 @@ CREATE TABLE sold (
     lootid INTEGER REFERENCES loot(id),
     soldfor NUMERIC,
     soldon DATE,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_sold_campaign_id ON sold(campaign_id);
@@ -230,7 +233,7 @@ CREATE TABLE consumableuse (
     lootid INTEGER REFERENCES loot(id),
     who INTEGER REFERENCES characters(id),
     consumed_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 -- Create indexes for consumableuse
@@ -247,7 +250,7 @@ CREATE TABLE identify (
     identified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     golarion_date TEXT,
     success BOOLEAN DEFAULT true,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_identify_campaign_id ON identify(campaign_id);
@@ -282,7 +285,7 @@ CREATE TABLE spellbook (
     caster_level INTEGER NOT NULL,
     school VARCHAR(20),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE TABLE spellbook_spell (
@@ -292,7 +295,7 @@ CREATE TABLE spellbook_spell (
     spell_name VARCHAR(255) NOT NULL,
     spell_level INTEGER NOT NULL,
     school VARCHAR(50),
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_spellbook_loot ON spellbook(loot_id);
@@ -305,7 +308,7 @@ CREATE TABLE fame (
     character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
     points INTEGER NOT NULL DEFAULT 0,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
     UNIQUE (character_id)
 );
 
@@ -322,7 +325,7 @@ CREATE TABLE fame_history (
     added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     event VARCHAR(255),
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 -- Create fame_history indexes
@@ -340,7 +343,7 @@ CREATE TABLE invites (
     used_at TIMESTAMP,
     expires_at TIMESTAMP,
     is_used BOOLEAN DEFAULT false,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 -- Create invites indexes
@@ -366,7 +369,7 @@ CREATE TABLE session_messages (
     session_time TIMESTAMP NOT NULL,
     responses JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_session_messages_campaign_id ON session_messages(campaign_id);
@@ -376,7 +379,7 @@ CREATE TABLE golarion_current_date (
     year INTEGER NOT NULL,
     month INTEGER NOT NULL,
     day INTEGER NOT NULL,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
     CONSTRAINT golarion_current_date_pkey PRIMARY KEY (campaign_id)
 );
 
@@ -388,7 +391,7 @@ CREATE TABLE golarion_calendar_notes (
     month INTEGER NOT NULL,
     day INTEGER NOT NULL,
     note TEXT NOT NULL,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
     CONSTRAINT golarion_calendar_notes_campaign_year_month_day_key UNIQUE (campaign_id, year, month, day)
 );
 
@@ -410,7 +413,7 @@ CREATE TABLE golarion_notes (
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_golarion_notes_campaign_id ON golarion_notes (campaign_id);
@@ -476,7 +479,7 @@ CREATE TABLE golarion_weather (
     description TEXT,
     is_locked BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
     -- Name must stay golarion_weather_pkey: weatherController.js uses
     -- ON CONFLICT ON CONSTRAINT golarion_weather_pkey.
     CONSTRAINT golarion_weather_pkey PRIMARY KEY (campaign_id, year, month, day, region)
@@ -492,7 +495,7 @@ CREATE TABLE ship_infamy (
     infamy INTEGER NOT NULL DEFAULT 0,
     disrepute INTEGER NOT NULL DEFAULT 0,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
     CONSTRAINT ship_infamy_campaign_id_key UNIQUE (campaign_id)
 );
 
@@ -507,7 +510,7 @@ CREATE TABLE infamy_history (
     user_id INTEGER REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     golarion_date VARCHAR(20),
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_infamy_history_campaign_id ON infamy_history(campaign_id);
@@ -518,7 +521,7 @@ CREATE TABLE favored_ports (
     bonus INTEGER NOT NULL DEFAULT 2,
     user_id INTEGER REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id),
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
     CONSTRAINT favored_ports_campaign_port_name_key UNIQUE (campaign_id, port_name)
 );
 
@@ -533,7 +536,7 @@ CREATE TABLE port_visits (
     plunder_spent INTEGER DEFAULT 0,
     user_id INTEGER REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_port_visits_campaign_id ON port_visits(campaign_id);
@@ -554,7 +557,7 @@ CREATE TABLE imposition_uses (
     cost_paid INTEGER NOT NULL,
     user_id INTEGER REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT 1 REFERENCES campaigns(id)
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
 CREATE INDEX idx_imposition_uses_campaign_id ON imposition_uses(campaign_id);
