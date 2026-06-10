@@ -46,6 +46,7 @@ import {
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import CasinoIcon from '@mui/icons-material/Casino';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
 import versionService from '../../services/versionService';
@@ -383,6 +384,8 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
               <MenuItem to="/character-user-management" primary="Gen Management" icon={<Groups2 />} />
               <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
               <MenuItem to="/session-management" primary="Session Management" icon={<EmojiEvents />} />
+              <MenuItem to="/loot-generator" primary="Loot Generator" icon={<CasinoIcon />} />
+              <MenuItem to="/spellbook-generator" primary="Spellbook Generator" icon={<AutoStoriesIcon />} />
             </MenuItem>
           )}
         </List>

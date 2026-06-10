@@ -193,6 +193,29 @@ CREATE TABLE spells (
     source VARCHAR(255)
 );
 
+-- Generated spellbooks (loot generator). A spellbook is attached to a loot item;
+-- its spells are stored denormalized so the viewer needs no join.
+CREATE TABLE spellbook (
+    id SERIAL PRIMARY KEY,
+    loot_id INTEGER NOT NULL REFERENCES loot(id) ON DELETE CASCADE,
+    caster_class VARCHAR(20) NOT NULL,
+    caster_level INTEGER NOT NULL,
+    school VARCHAR(20),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE spellbook_spell (
+    id SERIAL PRIMARY KEY,
+    spellbook_id INTEGER NOT NULL REFERENCES spellbook(id) ON DELETE CASCADE,
+    spell_id INTEGER REFERENCES spells(id),
+    spell_name VARCHAR(255) NOT NULL,
+    spell_level INTEGER NOT NULL,
+    school VARCHAR(50)
+);
+
+CREATE INDEX IF NOT EXISTS idx_spellbook_loot ON spellbook(loot_id);
+CREATE INDEX IF NOT EXISTS idx_spellbook_spell_book ON spellbook_spell(spellbook_id);
+
 CREATE TABLE fame (
     id SERIAL PRIMARY KEY,
     character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
@@ -411,3 +434,5 @@ INSERT INTO settings (name, value, value_type, description) VALUES ('infamy_syst
 INSERT INTO settings (name, value, value_type, description) VALUES ('auto_appraisal_enabled', '0', 'boolean', 'Whether automatic appraisal is enabled (1=enabled, 0=disabled)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('theme', 'dark', 'string', 'Default UI theme (dark/light)');
 INSERT INTO settings (name, value, value_type, description) VALUES ('weather_forecast_days', '7', 'integer', 'Number of days ahead of the current Golarion date to pre-generate weather (DM-visible forecast; players see only up to the current date)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('treasure_track', 'medium', 'string', 'Treasure progression track used by the loot generator (slow, medium, or fast)');
+INSERT INTO settings (name, value, value_type, description) VALUES ('treasure_modifier', '1', 'string', 'Overall multiplier applied to generated treasure amounts (0.5 low fantasy, 1 standard, 2 high fantasy)');

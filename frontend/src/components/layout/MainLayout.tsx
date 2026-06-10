@@ -40,6 +40,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
               return 'Consumables';
           case '/golarion-calendar':
               return 'Calendar';
+          case '/loot-generator':
+              return 'Loot Generator';
+          case '/spellbook-generator':
+              return 'Spellbook Generator';
           case '/tasks':
               return 'Session Tasks';
           case '/identify':

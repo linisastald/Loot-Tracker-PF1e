@@ -22,6 +22,8 @@ const CharacterAndUserManagement = React.lazy(() => import('./components/pages/C
 const Consumables = React.lazy(() => import('./components/pages/Consumables'));
 const ItemManagement = React.lazy(() => import('./components/pages/ItemManagement'));
 const GolarionCalendar = React.lazy(() => import('./components/pages/GolarionCalendar'));
+const LootGenerator = React.lazy(() => import('./components/pages/LootGenerator'));
+const SpellbookGenerator = React.lazy(() => import('./components/pages/SpellbookGenerator'));
 const Tasks = React.lazy(() => import('./components/pages/Tasks'));
 const Identify = React.lazy(() => import('./components/pages/Identify'));
 const LootManagement = React.lazy(() => import('./components/pages/LootManagement'));
@@ -187,6 +189,8 @@ function App() {
               <Route path="character-user-management/*" element={<ErrorBoundary><CharacterAndUserManagement /></ErrorBoundary>} />
               <Route path="item-management/*" element={<ErrorBoundary><ItemManagement /></ErrorBoundary>} />
               <Route path="golarion-calendar" element={<ErrorBoundary><GolarionCalendar /></ErrorBoundary>} />
+              <Route path="loot-generator" element={<ErrorBoundary><LootGenerator /></ErrorBoundary>} />
+              <Route path="spellbook-generator" element={<ErrorBoundary><SpellbookGenerator /></ErrorBoundary>} />
               <Route path="consumables" element={<ErrorBoundary><Consumables /></ErrorBoundary>} />
               <Route path="tasks" element={<ErrorBoundary><Tasks /></ErrorBoundary>} />
               <Route path="identify" element={<ErrorBoundary><Identify /></ErrorBoundary>} />
