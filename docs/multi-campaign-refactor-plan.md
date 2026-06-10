@@ -386,6 +386,31 @@ Phase 0 (chokepoint refactor — all services through dbUtils) is DONE (90c3cc2)
    Phase 4, after the selector exists (it's only meaningful with multiple
    campaigns).
 
+## 7.6 Maintenance backlog (not urgent, scheduled)
+
+1. **Fresh-install schema cleanup** — prerequisite for **Phase 6** (which stands
+   up a fresh DB). Today a from-scratch install has no working documented path:
+   `DATABASE_SETUP.md` is stale (claims migrations were removed in v0.8.0 and
+   points at `init_complete.sql`, which is frozen pre-migration-014 and missing
+   30+ migrations of schema), nothing auto-runs any schema file, and
+   `game_sessions`/`session_attendance` exist in no runnable SQL file (only
+   `database/sessions.sql`, which nothing executes). Work: make `init.sql` the
+   single canonical schema (add the missing session tables in their original
+   shape — later migrations ALTER them up), retire `init_complete.sql` /
+   `schema.sql` / `sessions.sql`, rewrite `DATABASE_SETUP.md` with the real
+   flow (create DB → init.sql as owner → start app for migrations → optional
+   `setup_app_role.sql` + `DB_APP_*` env for RLS enforcement).
+
+2. **Docker compose review** — slot with **Phase 7** (collapse to one stack) or
+   earlier if convenient. Current test yaml (reviewed 2026-06-10) notes:
+   needs `DB_APP_USER`/`DB_APP_PASSWORD` added for the 2b flip; no `LOG_DIR`
+   set (logs likely falling back to container stdout/app dir — decide and
+   mount); consider pinning `postgres:16` to a minor version for reproducible
+   restores; `ALLOWED_ORIGINS` carries an http:// variant of the public domain
+   (drop once TLS-only is confirmed); healthchecks/resource limits/pgdata
+   volume look sound. Phase 7 will additionally template this per-stack →
+   single-stack and update `build_image.sh`/`update_containers.sh`.
+
 ## 8. Open questions — status
 - **Reference overrides (§4.2)**: DECIDED — `item`/`mod` (and `golarion_holidays`,
   which has `is_custom` rows) get a nullable `campaign_id` in Phase 1 (NULL =
