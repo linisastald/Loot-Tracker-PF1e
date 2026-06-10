@@ -43,20 +43,18 @@ Everything behaves exactly as before — the middleware resolves campaign 1 for 
 - [x] Login, pages load, loot/gold/sessions all normal (no header sent by the frontend yet)
 - [x] DM-only actions still work for the DM account (per-campaign role comes from user_campaign now)
 - [x] Player account still blocked from DM pages/actions
-- [ ] Campaigns API works (browser devtools or curl with your cookie):
-  - `GET /api/campaigns` → your one campaign with your role
-  - `GET /api/campaigns/current` → campaignId 1, your role, isSuperadmin false
-- [ ] Negative test: send a bogus header — in devtools console on any page:
+- [x] Campaigns API works (verified 2026-06-10): GET /api/campaigns → campaign 1
+  "test", role DM; GET /api/campaigns/current → campaignId 1, DM
+- [x] Malformed header `'abc'` → **400** (verified)
+- [ ] Non-member 403: run the `999` header probe **as a non-superadmin account**
+  (e.g. a Player login) → expect **403**:
   ```js
-  fetch('/api/campaigns/current', {headers: {'X-Campaign-Id': '999'}, credentials: 'include'}).then(r => r.status)
+  fetch('/api/campaigns/current', {headers: {'X-Campaign-Id': '999'}, credentials: 'include'}).then(r => console.log(r.status))
   ```
-  → **403** (not a member). `'abc'` → **400**.
 
-Optional superadmin setup (needed for in-app campaign creation later):
-```sql
-UPDATE users SET is_superadmin = TRUE WHERE username = '<your account>';
-```
-- [ ] After setting it: `GET /api/campaigns/current` → isSuperadmin true; header `999` now returns 200 (superadmin override) — both expected
+Superadmin setup (DONE — operator account has is_superadmin = TRUE):
+- [x] isSuperadmin true in /current; header `999` returns 200 (superadmin
+  override) — both verified, expected behavior with the flag set
 
 ## 2. Phase 3b — invite system
 
