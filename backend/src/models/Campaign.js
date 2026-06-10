@@ -1,5 +1,6 @@
 // src/models/Campaign.js
 const dbUtils = require('../utils/dbUtils');
+const logger = require('../utils/logger');
 
 /**
  * Get all campaigns a user is a member of, with the user's per-campaign role.
@@ -41,6 +42,99 @@ exports.getById = async (id) => {
   const query = 'SELECT id, name, slug, world, is_active FROM campaigns WHERE id = $1';
   const result = await dbUtils.executeQuery(query, [id]);
   return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Get a user's membership row for a specific campaign.
+ *
+ * user_campaign has no RLS, so this works regardless of the active campaign
+ * context (in particular when checking membership in a campaign other than
+ * the requester's current one, e.g. during invite redemption).
+ *
+ * @param {number} userId
+ * @param {number} campaignId
+ * @return {Promise<Object|null>} { role, joined_at } or null when not a member
+ */
+exports.getMembership = async (userId, campaignId) => {
+  const result = await dbUtils.executeQuery(
+    'SELECT role, joined_at FROM user_campaign WHERE user_id = $1 AND campaign_id = $2',
+    [userId, campaignId]
+  );
+  return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Get a campaign's settings as a { name: value } map.
+ *
+ * Rows with value_type 'json' are JSON.parsed; a row whose value fails to
+ * parse is skipped with a warning (a corrupt setting must not break the
+ * endpoint). All other value_types are returned as the raw stored string.
+ * campaign_settings has no RLS — the explicit campaign_id predicate is the
+ * scope.
+ *
+ * @param {number} campaignId
+ * @return {Promise<Object>} Map of setting name to (parsed) value; {} when none
+ */
+exports.getSettingsMap = async (campaignId) => {
+  const result = await dbUtils.executeQuery(
+    'SELECT name, value, value_type FROM campaign_settings WHERE campaign_id = $1',
+    [campaignId]
+  );
+
+  const settings = {};
+  for (const row of result.rows) {
+    // A NULL value carries no usable setting (clears are DELETEs, so this
+    // only happens via manual edits) — treat as absent
+    if (row.value === null) {
+      continue;
+    }
+    if (row.value_type === 'json') {
+      try {
+        settings[row.name] = JSON.parse(row.value);
+      } catch (error) {
+        logger.warn(`Skipping unparseable JSON campaign setting '${row.name}' for campaign ${campaignId}: ${error.message}`);
+      }
+    } else {
+      settings[row.name] = row.value;
+    }
+  }
+  return settings;
+};
+
+/**
+ * Upsert a campaign setting (UNIQUE (campaign_id, name) is the conflict target).
+ *
+ * @param {number} campaignId
+ * @param {string} name - Setting name (whitelisted by the controller)
+ * @param {string} value - Stored value (already serialized by the caller)
+ * @param {string} valueType - Type hint for parsing on read ('string', 'json', ...)
+ * @return {Promise<Object>} { name, value, value_type } as stored
+ */
+exports.upsertSetting = async (campaignId, name, value, valueType = 'string') => {
+  const result = await dbUtils.executeQuery(
+    `INSERT INTO campaign_settings (campaign_id, name, value, value_type)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (campaign_id, name)
+     DO UPDATE SET value = EXCLUDED.value, value_type = EXCLUDED.value_type, updated_at = NOW()
+     RETURNING name, value, value_type`,
+    [campaignId, name, value, valueType]
+  );
+  return result.rows[0];
+};
+
+/**
+ * Delete a campaign setting (absence of a row = "use the global default").
+ *
+ * @param {number} campaignId
+ * @param {string} name
+ * @return {Promise<boolean>} True when a row was deleted
+ */
+exports.deleteSetting = async (campaignId, name) => {
+  const result = await dbUtils.executeQuery(
+    'DELETE FROM campaign_settings WHERE campaign_id = $1 AND name = $2',
+    [campaignId, name]
+  );
+  return result.rowCount > 0;
 };
 
 /**

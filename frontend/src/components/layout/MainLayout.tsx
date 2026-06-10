@@ -1,5 +1,6 @@
 import React, {Suspense, useState, useEffect} from 'react';
 import Sidebar from './Sidebar';
+import CampaignSelector from './CampaignSelector';
 import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography, useMediaQuery, useTheme} from '@mui/material';
 import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -113,6 +114,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
             <Typography variant="h6" noWrap component="div">
               {getPageTitle()}
             </Typography>
+            <Box sx={{ flexGrow: 1 }} />
+            <CampaignSelector />
           </Toolbar>
         </AppBar>
 

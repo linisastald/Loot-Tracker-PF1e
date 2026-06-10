@@ -4,6 +4,91 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 
 /**
+ * Campaign settings a DM may write through PUT /campaigns/current/settings.
+ * Extend this list (plus a per-name validator below) as new per-campaign
+ * settings move out of the global settings table.
+ * @type {Array<string>}
+ */
+const ALLOWED_CAMPAIGN_SETTINGS = ['theme'];
+
+/** Keys a theme override may contain — all optional. */
+const THEME_KEYS = ['mode', 'primary', 'secondary'];
+
+/** Valid theme modes. */
+const THEME_MODES = ['dark', 'light'];
+
+/** #rrggbb hex color. */
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Validate a 'theme' setting value.
+ *
+ * Accepts an object or a JSON string encoding one, with ONLY the optional
+ * keys mode ('dark'|'light'), primary (#rrggbb), secondary (#rrggbb).
+ *
+ * @param {*} value - Raw value from the request body
+ * @return {Object|null} The validated theme object, or null when the value
+ *   means "clear the override" (null / undefined / '' / {})
+ * @throws {Error} ValidationError describing the first problem found
+ */
+const validateThemeValue = (value) => {
+  let theme = value;
+
+  if (typeof theme === 'string') {
+    if (!theme.trim()) {
+      return null;
+    }
+    try {
+      theme = JSON.parse(theme);
+    } catch (error) {
+      throw controllerFactory.createValidationError(
+        'theme must be an object (or a JSON string encoding one)'
+      );
+    }
+  }
+
+  if (theme === null || theme === undefined) {
+    return null;
+  }
+
+  if (typeof theme !== 'object' || Array.isArray(theme)) {
+    throw controllerFactory.createValidationError(
+      'theme must be an object (or a JSON string encoding one)'
+    );
+  }
+
+  const keys = Object.keys(theme);
+  if (keys.length === 0) {
+    // Empty object = no overrides = clear the row (absence means "use the
+    // global default")
+    return null;
+  }
+
+  const unknownKeys = keys.filter((key) => !THEME_KEYS.includes(key));
+  if (unknownKeys.length > 0) {
+    throw controllerFactory.createValidationError(
+      `theme may only contain the keys: ${THEME_KEYS.join(', ')}`
+    );
+  }
+
+  if ('mode' in theme && !THEME_MODES.includes(theme.mode)) {
+    throw controllerFactory.createValidationError(
+      "theme.mode must be 'dark' or 'light'"
+    );
+  }
+
+  for (const colorKey of ['primary', 'secondary']) {
+    if (colorKey in theme && (typeof theme[colorKey] !== 'string' || !HEX_COLOR_PATTERN.test(theme[colorKey]))) {
+      throw controllerFactory.createValidationError(
+        `theme.${colorKey} must be a hex color in #rrggbb format`
+      );
+    }
+  }
+
+  return theme;
+};
+
+/**
  * Derive a URL-safe slug from a name or candidate slug:
  * lowercase, spaces become hyphens, every other character is stripped,
  * runs of hyphens collapse, leading/trailing hyphens are removed.
@@ -41,9 +126,14 @@ const getMyCampaigns = async (req, res) => {
  * Get the requester's current campaign context (frontend picker bootstrap).
  * req.campaignId / req.campaignRole / req.isSuperadmin are set by the
  * verifyToken middleware.
+ *
+ * `settings` is the campaign's campaign_settings rows as a { name: value }
+ * map ({} when none); 'json'-typed values arrive parsed (e.g. the theme
+ * override object).
  */
 const getCurrentCampaign = async (req, res) => {
   const campaign = req.campaignId ? await Campaign.getById(req.campaignId) : null;
+  const settings = req.campaignId ? await Campaign.getSettingsMap(req.campaignId) : {};
 
   controllerFactory.sendSuccessResponse(res, {
     campaignId: req.campaignId ?? null,
@@ -57,8 +147,55 @@ const getCurrentCampaign = async (req, res) => {
           world: campaign.world,
           is_active: campaign.is_active
         }
-      : null
+      : null,
+    settings
   }, 'Current campaign retrieved successfully');
+};
+
+/**
+ * Update (or clear) one per-campaign setting for the requester's current
+ * campaign. DM-only (checkRole('DM') at the route layer — per-campaign role).
+ *
+ * Body: { name, value }
+ * - name must be whitelisted (ALLOWED_CAMPAIGN_SETTINGS).
+ * - 'theme': object/JSON-string with optional mode/primary/secondary keys
+ *   (validated); stored as a JSON string with value_type 'json'.
+ * - value null / '' / {} clears the override (the row is DELETEd, so
+ *   absence = use the global default).
+ *
+ * Response data: { name, value } — value is the stored object, or null when
+ * cleared.
+ */
+const updateCurrentCampaignSetting = async (req, res) => {
+  const { name, value } = req.body;
+
+  if (!ALLOWED_CAMPAIGN_SETTINGS.includes(name)) {
+    throw controllerFactory.createValidationError(
+      `'${name}' is not a configurable campaign setting (allowed: ${ALLOWED_CAMPAIGN_SETTINGS.join(', ')})`
+    );
+  }
+
+  // Only 'theme' is whitelisted today; per-name validators dispatch here as
+  // the whitelist grows
+  const theme = validateThemeValue(value);
+
+  if (theme === null) {
+    await Campaign.deleteSetting(req.campaignId, name);
+    logger.info(`Campaign setting '${name}' cleared for campaign ${req.campaignId} by user ${req.user.id}`);
+    return controllerFactory.sendSuccessResponse(
+      res,
+      { name, value: null },
+      'Campaign setting cleared successfully'
+    );
+  }
+
+  await Campaign.upsertSetting(req.campaignId, name, JSON.stringify(theme), 'json');
+  logger.info(`Campaign setting '${name}' updated for campaign ${req.campaignId} by user ${req.user.id}`);
+  controllerFactory.sendSuccessResponse(
+    res,
+    { name, value: theme },
+    'Campaign setting updated successfully'
+  );
 };
 
 /**
@@ -133,6 +270,13 @@ exports.getMyCampaigns = controllerFactory.createHandler(getMyCampaigns, {
 
 exports.getCurrentCampaign = controllerFactory.createHandler(getCurrentCampaign, {
   errorMessage: 'Error fetching current campaign'
+});
+
+exports.updateCurrentCampaignSetting = controllerFactory.createHandler(updateCurrentCampaignSetting, {
+  errorMessage: 'Error updating campaign setting',
+  validation: {
+    requiredFields: ['name']
+  }
 });
 
 exports.createCampaign = controllerFactory.createHandler(createCampaign, {

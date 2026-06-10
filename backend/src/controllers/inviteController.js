@@ -9,13 +9,22 @@
 // point in backend/index.js — these endpoints deliberately moved off the
 // CSRF-exempt /api/auth mount.
 const Invite = require('../models/Invite');
+const Campaign = require('../models/Campaign');
 const controllerFactory = require('../utils/controllerFactory');
+const campaignContext = require('../utils/campaignContext');
 const logger = require('../utils/logger');
 const { GAME } = require('../config/constants');
 
 /** Custom invite expiry bounds (hours). 720 hours = 30 days. */
 const MIN_EXPIRES_IN_HOURS = 1;
 const MAX_EXPIRES_IN_HOURS = 720;
+
+/**
+ * Redeemable code shape after server-side uppercasing: new codes are 8 chars
+ * from the unambiguous uppercase alphabet, legacy pre-overhaul codes are
+ * 6 base-36 chars — 6-8 alphanumeric covers both.
+ */
+const REDEEM_CODE_PATTERN = /^[A-Z0-9]{6,8}$/;
 
 /**
  * GET /api/invites
@@ -82,6 +91,87 @@ const generateCustomInvite = async (req, res) => {
 };
 
 /**
+ * POST /api/invites/redeem
+ * Redeem an invite code as an EXISTING, authenticated user: grants Player
+ * membership in the invite's campaign and consumes the code. Mirrors the
+ * redemption semantics of authController.registerUser (same error messages,
+ * same single-use race guard), but for an already-registered account.
+ *
+ * Unlike the other invite routes this is NOT DM-only — any authenticated
+ * user may redeem a code (verifyToken only at the route layer; CSRF comes
+ * from the mount).
+ *
+ * Body: { code } — 6-8 alphanumeric, uppercased server-side.
+ *
+ * Response data: { campaign: { id, name, slug }, role: 'Player' }
+ */
+const redeemInvite = async (req, res) => {
+    const { code } = req.body;
+
+    const normalizedCode = typeof code === 'string' ? code.trim().toUpperCase() : '';
+    if (!REDEEM_CODE_PATTERN.test(normalizedCode)) {
+        // A code that can't possibly exist gets the same message as an
+        // unknown one — no need to hit the database
+        throw controllerFactory.createValidationError('Invalid or used invite code');
+    }
+
+    // CROSS-CAMPAIGN LOOKUP REQUIRED: invites are RLS-scoped to their own
+    // campaign, and the requester's current context is (by definition) a
+    // campaign they already belong to — never the one they are joining. The
+    // code itself is the credential and determines which campaign membership
+    // is granted, so the lookup must run in 'all' mode or the invite would
+    // be invisible.
+    const invite = await campaignContext.runWithCampaign('all', () => Invite.findByCode(normalizedCode));
+
+    if (!invite || invite.is_used) {
+        throw controllerFactory.createValidationError('Invalid or used invite code');
+    }
+    if (invite.expires_at && new Date(invite.expires_at) <= new Date()) {
+        throw controllerFactory.createValidationError('This invitation code has expired');
+    }
+
+    // Already a member: reject WITHOUT consuming the code (it stays
+    // redeemable by whoever it was actually meant for). user_campaign has no
+    // RLS, so no special context is needed for this check.
+    const membership = await Campaign.getMembership(req.user.id, invite.campaign_id);
+    if (membership) {
+        throw controllerFactory.createValidationError('You are already a member of this campaign');
+    }
+
+    // Membership INSERT + invite consumption in one transaction, under 'all'
+    // mode: both statements must pass the RLS tenant policy for the INVITE's
+    // campaign, not the requester's current one.
+    try {
+        await campaignContext.runWithCampaign('all', () => Invite.redeem({
+            inviteId: invite.id,
+            campaignId: invite.campaign_id,
+            userId: req.user.id,
+        }));
+    } catch (error) {
+        if (error.code === 'INVITE_CONSUMED') {
+            // Lost the concurrent-redemption race; the transaction rolled back
+            throw controllerFactory.createValidationError('Invalid or used invite code');
+        }
+        if (error.code === '23505') {
+            // Lost a concurrent-membership race (user_campaign PK); the
+            // transaction rolled back, so the code was NOT consumed
+            throw controllerFactory.createValidationError('You are already a member of this campaign');
+        }
+        throw error;
+    }
+
+    const campaign = await Campaign.getById(invite.campaign_id);
+
+    logger.info(`Invite ${invite.id} redeemed by existing user ${req.user.id}: granted Player membership in campaign ${invite.campaign_id}`);
+    controllerFactory.sendSuccessResponse(res, {
+        campaign: campaign
+            ? { id: campaign.id, name: campaign.name, slug: campaign.slug }
+            : { id: invite.campaign_id, name: null, slug: null },
+        role: 'Player',
+    }, 'Campaign joined successfully');
+};
+
+/**
  * POST /api/invites/deactivate
  * Mark an invite as used so it can no longer be redeemed. Only invites
  * belonging to the requesting DM's current campaign can be deactivated;
@@ -117,6 +207,13 @@ module.exports = {
 
     generateCustomInvite: controllerFactory.createHandler(generateCustomInvite, {
         errorMessage: 'Error generating custom invite code'
+    }),
+
+    redeemInvite: controllerFactory.createHandler(redeemInvite, {
+        errorMessage: 'Error redeeming invite code',
+        validation: {
+            requiredFields: ['code']
+        }
     }),
 
     deactivateInvite: controllerFactory.createHandler(deactivateInvite, {

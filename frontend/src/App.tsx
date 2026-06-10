@@ -40,6 +40,7 @@ import theme from './theme';
 import api from './utils/api';
 import { ConfigProvider } from './contexts/ConfigContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { CampaignProvider } from './contexts/CampaignContext';
 import { SnackbarProvider } from 'notistack';
 
 function App() {
@@ -174,6 +175,9 @@ function App() {
         <SnackbarProvider maxSnack={3} autoHideDuration={5000}>
         <ConfigProvider>
           <AuthProvider user={user} isAuthenticated={isAuthenticated} onUserUpdate={handleUserUpdate}>
+          {/* CampaignProvider reads auth state from AuthContext and only fetches
+              campaign info once authenticated (it is a no-op on the login page) */}
+          <CampaignProvider>
           <Router>
           <Suspense fallback={null}>
           <Routes>
@@ -219,6 +223,7 @@ function App() {
           </Routes>
           </Suspense>
           </Router>
+          </CampaignProvider>
           </AuthProvider>
         </ConfigProvider>
         </SnackbarProvider>

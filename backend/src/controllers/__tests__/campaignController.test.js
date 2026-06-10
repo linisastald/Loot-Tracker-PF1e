@@ -107,7 +107,12 @@ describe('campaignController', () => {
   // getCurrentCampaign
   // -------------------------------------------------------------------
   describe('getCurrentCampaign', () => {
-    it('should return the current campaign context with the campaign row', async () => {
+    beforeEach(() => {
+      // Default: no per-campaign settings stored
+      Campaign.getSettingsMap.mockResolvedValue({});
+    });
+
+    it('should return the current campaign context with the campaign row and settings map', async () => {
       const req = createMockReq({ campaignId: 2, campaignRole: 'DM', isSuperadmin: false });
       const res = createMockRes();
 
@@ -122,6 +127,7 @@ describe('campaignController', () => {
       await campaignController.getCurrentCampaign(req, res);
 
       expect(Campaign.getById).toHaveBeenCalledWith(2);
+      expect(Campaign.getSettingsMap).toHaveBeenCalledWith(2);
       expect(res.success).toHaveBeenCalledWith(
         {
           campaignId: 2,
@@ -134,8 +140,31 @@ describe('campaignController', () => {
             world: 'Golarion',
             is_active: true,
           },
+          settings: {},
         },
         'Current campaign retrieved successfully'
+      );
+    });
+
+    it('should include the parsed per-campaign settings map (theme override etc.)', async () => {
+      const req = createMockReq({ campaignId: 2, campaignRole: 'Player' });
+      const res = createMockRes();
+
+      Campaign.getById.mockResolvedValue({
+        id: 2, name: 'Skulls & Shackles', slug: 'sns', world: 'Golarion', is_active: true,
+      });
+      // 'json'-typed rows arrive parsed from the model
+      Campaign.getSettingsMap.mockResolvedValue({
+        theme: { mode: 'dark', primary: '#336699' },
+      });
+
+      await campaignController.getCurrentCampaign(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({
+          settings: { theme: { mode: 'dark', primary: '#336699' } },
+        }),
+        expect.any(String)
       );
     });
 
@@ -155,19 +184,21 @@ describe('campaignController', () => {
       );
     });
 
-    it('should return null campaign fields when no campaign context is set', async () => {
+    it('should return null campaign fields and empty settings when no campaign context is set', async () => {
       const req = createMockReq({ campaignId: undefined, campaignRole: undefined, isSuperadmin: undefined });
       const res = createMockRes();
 
       await campaignController.getCurrentCampaign(req, res);
 
       expect(Campaign.getById).not.toHaveBeenCalled();
+      expect(Campaign.getSettingsMap).not.toHaveBeenCalled();
       expect(res.success).toHaveBeenCalledWith(
         {
           campaignId: null,
           role: null,
           isSuperadmin: false,
           campaign: null,
+          settings: {},
         },
         expect.any(String)
       );
@@ -185,6 +216,237 @@ describe('campaignController', () => {
         expect.objectContaining({ campaignId: 99, campaign: null }),
         expect.any(String)
       );
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // updateCurrentCampaignSetting (PUT /campaigns/current/settings)
+  // -------------------------------------------------------------------
+  describe('updateCurrentCampaignSetting', () => {
+    function createDmReq(body) {
+      return createMockReq({ campaignId: 2, campaignRole: 'DM', body });
+    }
+
+    it('should reject a setting name outside the whitelist', async () => {
+      const req = createDmReq({ name: 'discord_webhook', value: 'https://example.com' });
+      const res = createMockRes();
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        expect.stringContaining("'discord_webhook' is not a configurable campaign setting")
+      );
+      expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+      expect(Campaign.deleteSetting).not.toHaveBeenCalled();
+    });
+
+    it('should reject a missing name', async () => {
+      const req = createDmReq({ value: { mode: 'dark' } });
+      const res = createMockRes();
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith("Field 'name' is required");
+      expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+    });
+
+    it('should upsert a valid theme as a JSON string with value_type json', async () => {
+      const theme = { mode: 'dark', primary: '#336699', secondary: '#AB12CD' };
+      const req = createDmReq({ name: 'theme', value: theme });
+      const res = createMockRes();
+
+      Campaign.upsertSetting.mockResolvedValue({
+        name: 'theme', value: JSON.stringify(theme), value_type: 'json',
+      });
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(Campaign.upsertSetting).toHaveBeenCalledWith(2, 'theme', JSON.stringify(theme), 'json');
+      expect(res.success).toHaveBeenCalledWith(
+        { name: 'theme', value: theme },
+        'Campaign setting updated successfully'
+      );
+    });
+
+    it('should accept a partial theme (single key)', async () => {
+      const req = createDmReq({ name: 'theme', value: { primary: '#001122' } });
+      const res = createMockRes();
+
+      Campaign.upsertSetting.mockResolvedValue({ name: 'theme' });
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(Campaign.upsertSetting).toHaveBeenCalledWith(
+        2, 'theme', JSON.stringify({ primary: '#001122' }), 'json'
+      );
+      expect(res.success).toHaveBeenCalledWith(
+        { name: 'theme', value: { primary: '#001122' } },
+        'Campaign setting updated successfully'
+      );
+    });
+
+    it('should accept a theme provided as a JSON string', async () => {
+      const req = createDmReq({ name: 'theme', value: '{"mode":"light"}' });
+      const res = createMockRes();
+
+      Campaign.upsertSetting.mockResolvedValue({ name: 'theme' });
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(Campaign.upsertSetting).toHaveBeenCalledWith(
+        2, 'theme', JSON.stringify({ mode: 'light' }), 'json'
+      );
+      expect(res.success).toHaveBeenCalledWith(
+        { name: 'theme', value: { mode: 'light' } },
+        expect.any(String)
+      );
+    });
+
+    it('should reject an invalid theme mode', async () => {
+      const req = createDmReq({ name: 'theme', value: { mode: 'blue' } });
+      const res = createMockRes();
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith("theme.mode must be 'dark' or 'light'");
+      expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['too short', '#12345'],
+      ['too long', '#1234567'],
+      ['named color', 'red'],
+      ['missing hash', '336699'],
+      ['non-hex digits', '#33669g'],
+      ['non-string', 336699],
+    ])('should reject an invalid primary color (%s)', async (_label, primary) => {
+      const req = createDmReq({ name: 'theme', value: { primary } });
+      const res = createMockRes();
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        'theme.primary must be a hex color in #rrggbb format'
+      );
+      expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+    });
+
+    it('should reject an invalid secondary color', async () => {
+      const req = createDmReq({ name: 'theme', value: { mode: 'dark', secondary: '#xyzxyz' } });
+      const res = createMockRes();
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        'theme.secondary must be a hex color in #rrggbb format'
+      );
+      expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+    });
+
+    it('should reject a theme with unknown keys', async () => {
+      const req = createDmReq({ name: 'theme', value: { mode: 'dark', tertiary: '#336699' } });
+      const res = createMockRes();
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        'theme may only contain the keys: mode, primary, secondary'
+      );
+      expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['array', ['dark']],
+      ['number', 7],
+      ['boolean', true],
+      ['JSON string of a non-object', '"dark"'],
+      ['unparseable string', '{mode: dark}'],
+    ])('should reject a non-object theme value (%s)', async (_label, value) => {
+      const req = createDmReq({ name: 'theme', value });
+      const res = createMockRes();
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        'theme must be an object (or a JSON string encoding one)'
+      );
+      expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['null', null],
+      ['empty object', {}],
+      ['empty string', ''],
+      ['JSON empty object string', '{}'],
+    ])('should clear the override (DELETE the row) when value is %s', async (_label, value) => {
+      const req = createDmReq({ name: 'theme', value });
+      const res = createMockRes();
+
+      Campaign.deleteSetting.mockResolvedValue(true);
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(Campaign.deleteSetting).toHaveBeenCalledWith(2, 'theme');
+      expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledWith(
+        { name: 'theme', value: null },
+        'Campaign setting cleared successfully'
+      );
+    });
+
+    it('should clear the override when value is absent from the body', async () => {
+      const req = createDmReq({ name: 'theme' });
+      const res = createMockRes();
+
+      Campaign.deleteSetting.mockResolvedValue(false);
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(Campaign.deleteSetting).toHaveBeenCalledWith(2, 'theme');
+      expect(res.success).toHaveBeenCalledWith(
+        { name: 'theme', value: null },
+        'Campaign setting cleared successfully'
+      );
+    });
+
+    it('should surface model errors as server errors', async () => {
+      const req = createDmReq({ name: 'theme', value: { mode: 'dark' } });
+      const res = createMockRes();
+
+      Campaign.upsertSetting.mockRejectedValue(new Error('connection refused'));
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(res.error).toHaveBeenCalledWith('Internal server error');
+    });
+
+    // The DM gate lives at the route layer (checkRole('DM')); verify the
+    // middleware behavior with the per-campaign role the route relies on.
+    describe('route guard: checkRole(DM)', () => {
+      const checkRole = require('../../middleware/checkRole');
+
+      it('should 403 a per-campaign Player', () => {
+        const req = createMockReq({ campaignRole: 'Player' });
+        const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+        const next = jest.fn();
+
+        checkRole('DM')(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.json).toHaveBeenCalledWith({ message: 'Access denied: Insufficient permissions' });
+        expect(next).not.toHaveBeenCalled();
+      });
+
+      it('should pass a per-campaign DM through', () => {
+        const req = createMockReq({ campaignRole: 'DM' });
+        const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+        const next = jest.fn();
+
+        checkRole('DM')(req, res, next);
+
+        expect(next).toHaveBeenCalled();
+        expect(res.status).not.toHaveBeenCalled();
+      });
     });
   });
 

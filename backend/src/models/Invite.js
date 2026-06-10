@@ -132,6 +132,62 @@ exports.findByCode = async (code) => {
 };
 
 /**
+ * Redeem an invite for an EXISTING user: grant Player membership in the
+ * invite's campaign and consume the code, atomically.
+ *
+ * Mirrors the redemption block of authController.registerUser. The caller is
+ * responsible for the pre-checks (code valid, not used, not expired, user not
+ * already a member) and for wrapping this call in
+ * campaignContext.runWithCampaign('all', ...) — the invites UPDATE must pass
+ * the RLS tenant policy for the INVITE's campaign, which is generally not the
+ * requester's current campaign.
+ *
+ * Two races are closed inside the transaction:
+ * - Concurrent redemption of the same code: the `is_used = FALSE` guard makes
+ *   the loser's UPDATE match zero rows; this throws (error.code
+ *   'INVITE_CONSUMED') and the membership INSERT rolls back with it.
+ * - Concurrent membership grant (two different codes for the same campaign):
+ *   the plain INSERT (deliberately no ON CONFLICT) hits the user_campaign
+ *   primary key, surfaces as 23505, and rolls back WITHOUT consuming the code.
+ *
+ * @param {Object} data
+ * @param {number} data.inviteId - Id of the invite being redeemed
+ * @param {number} data.campaignId - The invite's campaign (membership granted here)
+ * @param {number} data.userId - Existing user redeeming the invite
+ * @return {Promise<void>}
+ * @throws {Error} code 'INVITE_CONSUMED' when the code was redeemed concurrently;
+ *   code '23505' when the user gained membership concurrently
+ */
+exports.redeem = async ({ inviteId, campaignId, userId }) => {
+  await dbUtils.executeTransaction(async (client) => {
+    // Invites always grant 'Player' membership (invite-scoped roles do not
+    // exist yet — see the role clamp discussion in authController.registerUser)
+    await client.query(
+      `INSERT INTO user_campaign (user_id, campaign_id, role)
+       VALUES ($1, $2, 'Player')`,
+      [userId, campaignId]
+    );
+
+    // Mark the invite used (single-use). The is_used = FALSE guard closes the
+    // race where two redemptions validated the same code concurrently: the
+    // loser updates zero rows and the whole transaction (including the
+    // membership INSERT) rolls back.
+    const inviteUpdate = await client.query(
+      `UPDATE invites
+       SET is_used = TRUE, used_by = $1, used_at = NOW()
+       WHERE id = $2
+         AND is_used = FALSE`,
+      [userId, inviteId]
+    );
+    if (inviteUpdate.rowCount === 0) {
+      const error = new Error('Invite code was redeemed concurrently');
+      error.code = 'INVITE_CONSUMED';
+      throw error;
+    }
+  });
+};
+
+/**
  * Deactivate (mark used) an invite belonging to a specific campaign.
  *
  * The DM's own user id is stored in used_by (integer column) to record who
