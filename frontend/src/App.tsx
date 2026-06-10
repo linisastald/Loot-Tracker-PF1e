@@ -40,6 +40,7 @@ import theme from './theme';
 import api from './utils/api';
 import { ConfigProvider } from './contexts/ConfigContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { SnackbarProvider } from 'notistack';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -168,6 +169,9 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider theme={theme}>
         <CssBaseline />
+        {/* Required for enqueueSnackbar everywhere (SessionManagement, SessionsPage, ...) —
+            without a mounted provider those calls are silent no-ops */}
+        <SnackbarProvider maxSnack={3} autoHideDuration={5000}>
         <ConfigProvider>
           <AuthProvider user={user} isAuthenticated={isAuthenticated} onUserUpdate={handleUserUpdate}>
           <Router>
@@ -217,6 +221,7 @@ function App() {
           </Router>
           </AuthProvider>
         </ConfigProvider>
+        </SnackbarProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
