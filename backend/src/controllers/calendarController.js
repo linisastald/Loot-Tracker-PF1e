@@ -16,6 +16,14 @@ const MAX_ADVANCE_DAYS = 366;
 const MAX_NOTE_SPAN_DAYS = 366;
 
 /**
+ * True if Golarion date a is strictly before date b.
+ */
+const isDateBefore = (a, b) =>
+  a.year !== b.year ? a.year < b.year :
+  a.month !== b.month ? a.month < b.month :
+  a.day < b.day;
+
+/**
  * Validate a {year, month, day} date object, throwing a validation error if
  * invalid. Returns the validated date.
  */
@@ -401,9 +409,16 @@ const extendWeatherForecast = async (oldDate, currentDate, region) => {
   const forecastDays = await getForecastDays();
   const horizonEnd = addDays(currentDate, forecastDays);
 
-  // When there was no previous date (first initialization), the current day
-  // itself needs weather; calculateDaysBetween is exclusive of its start.
-  const dates = oldDate
+  // Forward moves fill the gap from the old date through the horizon
+  // (calculateDaysBetween is exclusive of its start, so the old day keeps its
+  // weather and every skipped day gets some). Initialization, BACKWARDS moves,
+  // and same-day sets instead regenerate the window starting at the new
+  // current day — previously a backwards set produced an empty range and the
+  // new current day could end up with no weather at all.
+  // generateWeatherForDates skips days that already have weather, so this
+  // never overwrites existing rows.
+  const movedForward = oldDate && isDateBefore(oldDate, currentDate);
+  const dates = movedForward
     ? calculateDaysBetween(oldDate, horizonEnd)
     : [currentDate, ...calculateDaysBetween(currentDate, horizonEnd)];
 

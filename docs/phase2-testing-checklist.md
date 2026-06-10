@@ -10,18 +10,33 @@ Startup:
 - [x] (bonus) `Admin database pool created (owner credentials, migration runner only)` — migration runner used its dedicated owner pool; scheduler/outbox/broker all started clean through the new dbUtils wrapper
 
 App regression (everything should behave exactly as before):
-- [ ] Login, page loads, loot entry insert, gold transaction
-- [ ] Create a **regular** session
-- [ ] Create a **recurring** session (overnight times should auto-roll end to next day now)
-  - [ ] `SELECT * FROM session_reminders WHERE session_id = <new instance id>;` → 3 rows
+- [x] Login, page loads, loot entry insert, gold transaction
+- [x] Create a **regular** session
+- [x] Create a **recurring** session (overnight times should auto-roll end to next day now)
+  - [x] `SELECT * FROM session_reminders WHERE session_id = <new instance id>;` → 3 rows
 - [ ] Weather: advance the Golarion date a day or two (exercises the rebuilt weather PK)
+  - FOUND + FIXED (next build): setting a date backwards/same-day generated no
+    weather — generation only ever ran forward from the old date (pre-existing).
+    Retest: SET the date back a few days → current day + forecast get weather.
 - [ ] Calendar notes save; Infamy page loads
-- [ ] **Register a brand-new user** (invite flow), then:
-  ```sql
-  SELECT * FROM user_campaign ORDER BY joined_at DESC LIMIT 3;
-  ```
-  → new user has a campaign 1 membership row
-- [ ] Snackbars now visible (announce/cancel/etc. show toasts — new since SnackbarProvider fix)
+  - FOUND + FIXED (next build): `Failed to fetch dynamically imported module`
+    was a stale cached index.html — the server cached it for a DAY, so every
+    deploy broke lazy-loaded pages until a hard refresh. index.html is now
+    no-cache (pre-existing; this also caused tonight's earlier stale-bundle
+    confusion). One LAST hard refresh needed after the next deploy; after
+    that, plain reloads pick up new builds.
+- [x] **Register a brand-new user** (invite flow) → got campaign 1 membership row
+  - DESIGN DECISION (recorded for Phase 3): general registration should create
+    just a user with NO campaign membership; only campaign-scoped invites grant
+    membership. Current auto-assign-campaign-1 stays as a stopgap until the
+    Phase 3 invite overhaul (nothing reads memberships yet).
+- [ ] Snackbars now visible (announce/cancel/etc. show toasts)
+  - FOUND + FIXED (next build): "remind failed" toast while Discord posted fine —
+    recordReminder inserted the audience value into reminder_type, violating its
+    CHECK constraint AFTER the Discord post (pre-existing, previously invisible
+    because snackbars never rendered). Retest: remind → success toast, and
+    `SELECT reminder_type, is_manual, target_audience FROM session_reminders
+    ORDER BY id DESC LIMIT 1;` → 'manual', true, your chosen audience.
 
 ## 2. Flip to 2b (enforcement)
 

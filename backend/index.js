@@ -382,11 +382,19 @@ if (process.env.NODE_ENV === 'production') {
   logger.info(`Frontend build path: ${frontendBuildPath}`);
   logger.info(`Frontend build exists: ${require('fs').existsSync(frontendBuildPath)}`);
   
-  // Serve static files from React build with caching
+  // Serve static files from React build with caching.
+  // index.html must NEVER be cached: it references content-hashed chunk names
+  // that change every deploy, and a cached index points browsers at deleted
+  // assets ("Failed to fetch dynamically imported module" after deploys).
   app.use(express.static(frontendBuildPath, {
     maxAge: '1d',
     etag: true,
     immutable: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
   }));
 
   // Vite-hashed assets can be cached aggressively
@@ -408,7 +416,8 @@ if (process.env.NODE_ENV === 'production') {
     
     const indexPath = path.join(frontendBuildPath, 'index.html');
     if (require('fs').existsSync(indexPath)) {
-      res.sendFile(indexPath);
+      // Same no-cache rule as above: a cached index breaks every deploy
+      res.sendFile(indexPath, { headers: { 'Cache-Control': 'no-cache' } });
     } else {
       res.status(404).json({
         success: false,

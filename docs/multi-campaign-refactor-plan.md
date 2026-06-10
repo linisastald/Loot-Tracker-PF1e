@@ -363,10 +363,13 @@ Phase 0 (chokepoint refactor — all services through dbUtils) is DONE (90c3cc2)
    (exact failures to be enumerated with the user before design). Known
    direction: invites become **campaign-scoped** (the `invites` table already
    has `campaign_id` from migration 044) and grant membership in a specific
-   campaign with a specific role on redemption — replacing the Phase 3
-   "default to campaign 1" registration hook. Review existing
-   generate-quick/custom-invite endpoints + UI as part of this. Slot: Phase 3
-   (it IS the membership-granting mechanism).
+   campaign with a specific role on redemption — replacing the
+   "default to campaign 1" registration hook. **DECIDED (2026-06-10): general
+   registration (no invite) creates just a user with NO campaign membership;
+   only a campaign invite grants membership.** The campaign-1 auto-assign
+   stopgap stays until this lands (memberships are unread before Phase 3).
+   Review existing generate-quick/custom-invite endpoints + UI as part of
+   this. Slot: Phase 3 (it IS the membership-granting mechanism).
 
 3. **Campaign selector + in-app campaign creation** — switcher UI for users
    with multiple memberships (header/sidebar), persisted last-selected

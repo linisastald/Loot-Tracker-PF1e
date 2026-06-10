@@ -633,6 +633,14 @@ class SessionDiscordService {
                 targetAudience = 'all';
             }
 
+            // The reminder_type column only allows ('initial','followup','final',
+            // 'auto','manual') per migration 026 — the UI's audience selection
+            // ('all'/'non_responders'/...) belongs in target_audience, not here.
+            // Inserting the raw reminderType violated the CHECK constraint and
+            // made manual reminders 500 after the Discord post had succeeded.
+            // The scheduler's cooldown query filters on reminder_type = 'auto'.
+            const recordType = isManual ? 'manual' : 'auto';
+
             await dbUtils.executeQuery(`
                 INSERT INTO session_reminders (
                     session_id,
@@ -644,7 +652,7 @@ class SessionDiscordService {
                     days_before
                 )
                 VALUES ($1, $2, $3, $4, TRUE, CURRENT_TIMESTAMP, NULL)
-            `, [sessionId, reminderType, isManual, targetAudience]);
+            `, [sessionId, recordType, isManual, targetAudience]);
 
             logger.info('Reminder recorded:', {
                 sessionId,
