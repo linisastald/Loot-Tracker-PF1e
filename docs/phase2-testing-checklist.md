@@ -58,13 +58,20 @@ App regression (everything should behave exactly as before):
 ## 3. Test 2b (RLS now enforced)
 
 Startup:
-- [ ] Logs show `Database pool using dedicated app role: loot_app`
-- [ ] Migrations still run fine on restart (they use the owner credentials — restart twice to prove it)
+- [x] Logs show `Database pool using dedicated app role: loot_app` (verified 2026-06-10 14:22 UTC)
+- [x] Migrations still run fine on restart (verified same boot: admin pool created with
+  owner credentials, migration check completed, "No pending migrations")
 
-Leak test (from the dev machine or anywhere with node + env set):
+Leak test — the server has no Node and the DB port isn't exposed, so run it
+INSIDE the app container (env is already set there). The script isn't in the
+dev.5 image (Dockerfile fixed for future builds), so copy it in from the
+worktree first. From the `source` dir on the server:
 ```bash
-cd backend && node scripts/rls-leak-test.js
+docker cp ../worktrees/feature-multi-campaign/backend/scripts/rls-leak-test.js pathfinder-test:/app/backend/rls-leak-test.js
+docker exec -w /app/backend pathfinder-test node rls-leak-test.js
+docker exec pathfinder-test rm /app/backend/rls-leak-test.js
 ```
+(From dev.6+ images it's baked in: `docker exec -w /app/backend pathfinder-test node scripts/rls-leak-test.js`)
 - [ ] All checks PASS (it aborts with a warning if accidentally run as owner)
 
 Full app regression under enforcement — same list as section 1, plus:
