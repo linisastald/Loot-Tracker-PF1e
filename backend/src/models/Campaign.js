@@ -138,6 +138,25 @@ exports.deleteSetting = async (campaignId, name) => {
 };
 
 /**
+ * Rename a campaign (campaigns.name only — the slug is stable and unchanged).
+ *
+ * @param {number} id - Campaign id
+ * @param {string} name - New display name (validated by the controller)
+ * @return {Promise<Object|null>} The updated campaign row, or null when the
+ *   campaign does not exist
+ */
+exports.updateName = async (id, name) => {
+  const result = await dbUtils.executeQuery(
+    `UPDATE campaigns
+     SET name = $1, updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, name, slug, world, is_active`,
+    [name, id]
+  );
+  return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
  * Create a campaign and grant the creator DM membership, atomically.
  *
  * The slug must already be normalized (lowercase, alphanumeric + hyphens) by
@@ -167,6 +186,22 @@ exports.create = async ({ name, slug, world, createdById }) => {
       `INSERT INTO user_campaign (user_id, campaign_id, role)
        VALUES ($1, $2, 'DM')`,
       [createdById, campaign.id]
+    );
+
+    // Seed explicit EMPTY Discord settings: without rows, the
+    // campaignSettings global fallback would resolve the ORIGINAL
+    // deployment's discord_channel_id / campaign_role_id / integration flag
+    // for this brand-new campaign — its session announcements would post
+    // into another campaign's Discord channel. An '' / '0' row is
+    // authoritative ("explicitly unset"), so the fallback never fires.
+    await client.query(
+      `INSERT INTO campaign_settings (campaign_id, name, value, value_type)
+       VALUES
+         ($1, 'discord_integration_enabled', '0', 'boolean'),
+         ($1, 'discord_channel_id', '', 'string'),
+         ($1, 'campaign_role_id', '', 'string')
+       ON CONFLICT (campaign_id, name) DO NOTHING`,
+      [campaign.id]
     );
 
     return campaign;

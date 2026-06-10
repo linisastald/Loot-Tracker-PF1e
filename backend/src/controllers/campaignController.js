@@ -1,15 +1,128 @@
 // src/controllers/campaignController.js
 const Campaign = require('../models/Campaign');
 const controllerFactory = require('../utils/controllerFactory');
+const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
+const campaignSettings = require('../utils/campaignSettings');
+const timezoneUtils = require('../utils/timezoneUtils');
+const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
 
 /**
- * Campaign settings a DM may write through PUT /campaigns/current/settings.
- * Extend this list (plus a per-name validator below) as new per-campaign
- * settings move out of the global settings table.
+ * Campaign settings a DM may write through PUT /campaigns/current/settings:
+ * 'theme' (JSON override, clearable) plus every per-campaign scalar setting
+ * (campaign_timezone, region, weather_forecast_days, treasure_track,
+ * treasure_modifier, the boolean flags, and the Discord channel/role ids).
+ * Each name has a validator in SCALAR_SETTING_VALIDATORS (theme is special-
+ * cased: it is the only setting with clear-the-row semantics).
  * @type {Array<string>}
  */
-const ALLOWED_CAMPAIGN_SETTINGS = ['theme'];
+const ALLOWED_CAMPAIGN_SETTINGS = ['theme', ...campaignSettings.PER_CAMPAIGN_SETTINGS];
+
+/** Per-campaign boolean flags stored as '0'/'1' strings. */
+const BOOLEAN_SETTINGS = [
+  'infamy_system_enabled',
+  'auto_appraisal_enabled',
+  'auto_task_generation',
+  'discord_integration_enabled',
+];
+
+/** Treasure progression tracks accepted by the loot generator. */
+const TREASURE_TRACKS = ['slow', 'medium', 'fast'];
+
+/**
+ * Validate a '0'/'1' boolean flag value. Accepts real booleans and the
+ * strings '0'/'1'.
+ * @param {string} name - Setting name (for the error message)
+ * @param {*} value - Raw value from the request body
+ * @return {{value: string, valueType: string}}
+ */
+const validateBooleanValue = (name, value) => {
+  if (typeof value === 'boolean') {
+    return { value: value ? '1' : '0', valueType: 'boolean' };
+  }
+  if (value === '0' || value === '1') {
+    return { value, valueType: 'boolean' };
+  }
+  throw controllerFactory.createValidationError(`${name} must be '0' or '1'`);
+};
+
+/**
+ * Per-name validators for the scalar (non-theme) campaign settings. Each takes
+ * the raw request value and returns { value, valueType } ready for upsert
+ * (scalar settings are always stored — '' records an explicit unset that
+ * suppresses the deprecated-global fallback) or throws a validation error.
+ * These mirror the rules of the legacy global-settings endpoints.
+ */
+const SCALAR_SETTING_VALIDATORS = {
+  campaign_timezone: (value) => {
+    if (!value || typeof value !== 'string' || !timezoneUtils.isValidTimezone(value)) {
+      const validTimezones = timezoneUtils.getTimezoneOptions().map((opt) => opt.value).join(', ');
+      throw controllerFactory.createValidationError(
+        `Invalid timezone. Valid options are: ${validTimezones}`
+      );
+    }
+    return { value, valueType: 'string' };
+  },
+
+  region: (value) => {
+    if (typeof value !== 'string' || !value.trim()) {
+      throw controllerFactory.createValidationError('region must be a non-empty string');
+    }
+    const trimmed = value.trim();
+    if (trimmed.length > 255) {
+      throw controllerFactory.createValidationError('region cannot exceed 255 characters');
+    }
+    return { value: trimmed, valueType: 'string' };
+  },
+
+  weather_forecast_days: (value) => {
+    const parsed = parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_FORECAST_DAYS || String(parsed) !== String(value).trim()) {
+      throw controllerFactory.createValidationError(
+        `weather_forecast_days must be an integer between 0 and ${MAX_FORECAST_DAYS}`
+      );
+    }
+    return { value: String(parsed), valueType: 'integer' };
+  },
+
+  treasure_track: (value) => {
+    if (!TREASURE_TRACKS.includes(value)) {
+      throw controllerFactory.createValidationError('treasure_track must be slow, medium, or fast');
+    }
+    return { value, valueType: 'string' };
+  },
+
+  treasure_modifier: (value) => {
+    const mod = parseFloat(value);
+    if (!(mod > 0) || mod > 100) {
+      throw controllerFactory.createValidationError('treasure_modifier must be a positive number (at most 100)');
+    }
+    return { value: String(mod), valueType: 'string' };
+  },
+
+  infamy_system_enabled: (value) => validateBooleanValue('infamy_system_enabled', value),
+  auto_appraisal_enabled: (value) => validateBooleanValue('auto_appraisal_enabled', value),
+  auto_task_generation: (value) => validateBooleanValue('auto_task_generation', value),
+  discord_integration_enabled: (value) => validateBooleanValue('discord_integration_enabled', value),
+
+  discord_channel_id: (value) => {
+    const id = value === null || value === undefined ? '' : String(value).trim();
+    if (id !== '' && !/^\d{17,19}$/.test(id)) {
+      throw controllerFactory.createValidationError(
+        'discord_channel_id must be a Discord snowflake (17-19 digits) or empty'
+      );
+    }
+    return { value: id, valueType: 'string' };
+  },
+
+  campaign_role_id: (value) => {
+    const id = value === null || value === undefined ? '' : String(value).trim();
+    if (id !== '' && !/^\d{1,20}$/.test(id)) {
+      throw controllerFactory.createValidationError('campaign_role_id must contain only digits, or be empty');
+    }
+    return { value: id, valueType: 'string' };
+  },
+};
 
 /** Keys a theme override may contain — all optional. */
 const THEME_KEYS = ['mode', 'primary', 'secondary'];
@@ -160,11 +273,14 @@ const getCurrentCampaign = async (req, res) => {
  * - name must be whitelisted (ALLOWED_CAMPAIGN_SETTINGS).
  * - 'theme': object/JSON-string with optional mode/primary/secondary keys
  *   (validated); stored as a JSON string with value_type 'json'.
- * - value null / '' / {} clears the override (the row is DELETEd, so
+ *   value null / '' / {} clears the override (the row is DELETEd, so
  *   absence = use the global default).
+ * - scalar settings: validated per name (SCALAR_SETTING_VALIDATORS) and
+ *   always stored — for the Discord ids an empty value is stored as '' so an
+ *   explicit unset never falls back to the deprecated global row.
  *
- * Response data: { name, value } — value is the stored object, or null when
- * cleared.
+ * Response data: { name, value } — the stored value (theme: object or null
+ * when cleared).
  */
 const updateCurrentCampaignSetting = async (req, res) => {
   const { name, value } = req.body;
@@ -175,27 +291,90 @@ const updateCurrentCampaignSetting = async (req, res) => {
     );
   }
 
-  // Only 'theme' is whitelisted today; per-name validators dispatch here as
-  // the whitelist grows
-  const theme = validateThemeValue(value);
+  if (name === 'theme') {
+    const theme = validateThemeValue(value);
 
-  if (theme === null) {
-    await Campaign.deleteSetting(req.campaignId, name);
-    logger.info(`Campaign setting '${name}' cleared for campaign ${req.campaignId} by user ${req.user.id}`);
+    if (theme === null) {
+      await Campaign.deleteSetting(req.campaignId, name);
+      logger.info(`Campaign setting '${name}' cleared for campaign ${req.campaignId} by user ${req.user.id}`);
+      return controllerFactory.sendSuccessResponse(
+        res,
+        { name, value: null },
+        'Campaign setting cleared successfully'
+      );
+    }
+
+    await Campaign.upsertSetting(req.campaignId, name, JSON.stringify(theme), 'json');
+    logger.info(`Campaign setting '${name}' updated for campaign ${req.campaignId} by user ${req.user.id}`);
     return controllerFactory.sendSuccessResponse(
       res,
-      { name, value: null },
-      'Campaign setting cleared successfully'
+      { name, value: theme },
+      'Campaign setting updated successfully'
     );
   }
 
-  await Campaign.upsertSetting(req.campaignId, name, JSON.stringify(theme), 'json');
+  const validated = SCALAR_SETTING_VALIDATORS[name](value);
+  await Campaign.upsertSetting(req.campaignId, name, validated.value, validated.valueType);
+
+  // A timezone change must invalidate this campaign's cached timezone and
+  // restart the scheduler (its cron clock follows the default campaign)
+  if (name === 'campaign_timezone') {
+    timezoneUtils.clearTimezoneCache(req.campaignId);
+    const sessionSchedulerService = require('../services/scheduler/SessionSchedulerService');
+    await sessionSchedulerService.restart();
+  }
+
   logger.info(`Campaign setting '${name}' updated for campaign ${req.campaignId} by user ${req.user.id}`);
   controllerFactory.sendSuccessResponse(
     res,
-    { name, value: theme },
+    { name, value: validated.value },
     'Campaign setting updated successfully'
   );
+};
+
+/**
+ * Rename the requester's current campaign (campaigns.name; the slug stays
+ * unchanged). DM-only (checkRole('DM') at the route layer).
+ *
+ * Body: { name } — 1-255 characters after trimming.
+ *
+ * Supersedes the deprecated global 'campaign_name' setting row.
+ */
+const renameCurrentCampaign = async (req, res) => {
+  const { name } = req.body;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    throw controllerFactory.createValidationError('Campaign name is required');
+  }
+
+  const trimmedName = name.trim();
+  if (trimmedName.length > 255) {
+    throw controllerFactory.createValidationError('Campaign name cannot exceed 255 characters');
+  }
+
+  const campaign = await Campaign.updateName(req.campaignId, trimmedName);
+  if (!campaign) {
+    throw controllerFactory.createNotFoundError('Campaign not found');
+  }
+
+  // Keep deployment branding in sync: Discord embed titles, email, and the
+  // login page still read the deprecated global 'campaign_name' settings row,
+  // which the generic endpoints now refuse to write — without this sync a
+  // rename would leave that branding frozen on the old name forever. Synced
+  // only for campaign 1 (the primary/deployment campaign) so another
+  // campaign's DM cannot rewrite deployment-wide branding. Follow-up: convert
+  // those readers to campaigns.name and drop this sync.
+  if (Number(req.campaignId) === 1) {
+    await dbUtils.executeQuery(
+      `INSERT INTO settings (name, value, value_type, description)
+       VALUES ('campaign_name', $1, 'string', 'DEPRECATED (superseded by campaigns.name): kept in sync for branding readers')
+       ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
+      [trimmedName]
+    );
+  }
+
+  logger.info(`Campaign ${req.campaignId} renamed to '${trimmedName}' by user ${req.user.id}`);
+  controllerFactory.sendSuccessResponse(res, campaign, 'Campaign renamed successfully');
 };
 
 /**
@@ -274,6 +453,13 @@ exports.getCurrentCampaign = controllerFactory.createHandler(getCurrentCampaign,
 
 exports.updateCurrentCampaignSetting = controllerFactory.createHandler(updateCurrentCampaignSetting, {
   errorMessage: 'Error updating campaign setting',
+  validation: {
+    requiredFields: ['name']
+  }
+});
+
+exports.renameCurrentCampaign = controllerFactory.createHandler(renameCurrentCampaign, {
+  errorMessage: 'Error renaming campaign',
   validation: {
     requiredFields: ['name']
   }

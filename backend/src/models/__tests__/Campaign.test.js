@@ -155,6 +155,36 @@ describe('Campaign model', () => {
   });
 
   // -------------------------------------------------------------------
+  // updateName (Phase 4c: PATCH /campaigns/current rename)
+  // -------------------------------------------------------------------
+  describe('updateName', () => {
+    it('should update only campaigns.name (slug untouched) and return the row', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ id: 2, name: 'New Name', slug: 'sns', world: 'Golarion', is_active: true }],
+      });
+
+      const campaign = await Campaign.updateName(2, 'New Name');
+
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('UPDATE campaigns');
+      expect(query).toContain('SET name = $1');
+      expect(query).not.toContain('slug =');
+      expect(params).toEqual(['New Name', 2]);
+      expect(campaign).toEqual({
+        id: 2, name: 'New Name', slug: 'sns', world: 'Golarion', is_active: true,
+      });
+    });
+
+    it('should return null when the campaign does not exist', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const campaign = await Campaign.updateName(99, 'Ghost');
+
+      expect(campaign).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------
   // getMembership
   // -------------------------------------------------------------------
   describe('getMembership', () => {

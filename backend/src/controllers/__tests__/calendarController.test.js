@@ -61,6 +61,17 @@ function createMockReq(overrides = {}) {
   };
 }
 
+/**
+ * Mock the per-campaign region read that now happens BEFORE the date
+ * transaction (campaignSettings helper: campaign_settings miss, then the
+ * deprecated global settings row).
+ */
+function mockRegionRead(region = 'Varisia') {
+  dbUtils.executeQuery
+    .mockResolvedValueOnce({ rows: [] }) // campaign_settings miss
+    .mockResolvedValueOnce({ rows: [{ value: region }] }); // global fallback hit
+}
+
 describe('calendarController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -121,18 +132,17 @@ describe('calendarController', () => {
           // old date SELECT
           .mockResolvedValueOnce({ rows: [{ year: 4723, month: 3, day: 14 }] })
           // UPDATE
-          .mockResolvedValueOnce({ rows: [] })
-          // region setting
-          .mockResolvedValueOnce({ rows: [{ value: 'Varisia' }] }),
+          .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
-      // generateMissingWeather calls dbUtils.executeQuery for weather existence check
-      // For the one missing date (day 15), it checks if weather exists
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ count: '0' }] });
-      // generateWeatherForNextDay is already mocked to resolve
+      // Region is read via the campaignSettings helper before the transaction
+      mockRegionRead('Varisia');
+      // Remaining executeQuery calls: forecast-days read + weather existence
+      // checks (count '1' = weather already exists, skip generation)
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
 
       await calendarController.setCurrentDate(req, res);
 
@@ -218,13 +228,14 @@ describe('calendarController', () => {
           // old date SELECT - empty
           .mockResolvedValueOnce({ rows: [] })
           // INSERT
-          .mockResolvedValueOnce({ rows: [] })
-          // region setting
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      mockRegionRead();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
 
       await calendarController.setCurrentDate(req, res);
 
@@ -250,13 +261,14 @@ describe('calendarController', () => {
           // SELECT current date
           .mockResolvedValueOnce({ rows: [{ year: 4723, month: 3, day: 5 }] })
           // UPDATE
-          .mockResolvedValueOnce({ rows: [] })
-          // region setting
-          .mockResolvedValueOnce({ rows: [{ value: 'Varisia' }] }),
+          .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      mockRegionRead('Varisia');
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
 
       await calendarController.advanceDay(req, res);
 
@@ -273,12 +285,14 @@ describe('calendarController', () => {
       const mockClient = {
         query: jest.fn()
           .mockResolvedValueOnce({ rows: [{ year: 4723, month: 1, day: 31 }] })
-          .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      mockRegionRead();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
 
       await calendarController.advanceDay(req, res);
 
@@ -295,12 +309,14 @@ describe('calendarController', () => {
       const mockClient = {
         query: jest.fn()
           .mockResolvedValueOnce({ rows: [{ year: 4723, month: 12, day: 31 }] })
-          .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      mockRegionRead();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
 
       await calendarController.advanceDay(req, res);
 
@@ -325,6 +341,9 @@ describe('calendarController', () => {
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
+      mockRegionRead();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
+
       await calendarController.advanceDay(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
@@ -342,12 +361,15 @@ describe('calendarController', () => {
       const mockClient = {
         query: jest.fn()
           .mockResolvedValueOnce({ rows: [{ year: 4723, month: 6, day: 10 }] })
-          .mockResolvedValueOnce({ rows: [] })
-          .mockResolvedValueOnce({ rows: [{ value: 'Varisia' }] }),
+          .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      mockRegionRead('Varisia');
+      // Weather existence checks find nothing -> generation is attempted and fails
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '0' }] });
 
       await calendarController.advanceDay(req, res);
 
@@ -365,12 +387,14 @@ describe('calendarController', () => {
       const mockClient = {
         query: jest.fn()
           .mockResolvedValueOnce({ rows: [{ year: 4723, month: 4, day: 30 }] })
-          .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      mockRegionRead();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
 
       await calendarController.advanceDay(req, res);
 
@@ -385,13 +409,13 @@ describe('calendarController', () => {
   // advanceDays
   // ---------------------------------------------------------------
   describe('advanceDays', () => {
-    // Builds a transaction client mock for the date SELECT/UPDATE/region trio.
+    // Builds a transaction client mock for the date SELECT/UPDATE pair
+    // (region is read via the campaignSettings helper before the transaction).
     function mockAdvanceClient(currentDate) {
       return {
         query: jest.fn()
           .mockResolvedValueOnce({ rows: [currentDate] }) // SELECT current date
-          .mockResolvedValueOnce({ rows: [] })            // UPDATE
-          .mockResolvedValueOnce({ rows: [{ value: 'Varisia' }] }), // region setting
+          .mockResolvedValueOnce({ rows: [] }),           // UPDATE
         release: jest.fn(),
       };
     }
@@ -402,6 +426,7 @@ describe('calendarController', () => {
 
       const mockClient = mockAdvanceClient({ year: 4723, month: 3, day: 10 });
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      mockRegionRead('Varisia');
       // generateMissingWeather existence checks (runs after commit)
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '0' }] });
 
@@ -419,6 +444,7 @@ describe('calendarController', () => {
 
       const mockClient = mockAdvanceClient({ year: 4723, month: 12, day: 31 });
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      mockRegionRead('Varisia');
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '0' }] });
 
       await calendarController.advanceDays(req, res);
@@ -436,6 +462,7 @@ describe('calendarController', () => {
       // 4720 is a leap year; 28 Calistril -> 29 Calistril (not 1 Pharast).
       const mockClient = mockAdvanceClient({ year: 4720, month: 2, day: 28 });
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      mockRegionRead('Varisia');
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '0' }] });
 
       await calendarController.advanceDays(req, res);
@@ -483,7 +510,9 @@ describe('calendarController', () => {
 
       const mockClient = mockAdvanceClient({ year: 4723, month: 6, day: 10 });
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
-      // Existence check rejects -> generateMissingWeather throws -> swallowed
+      // Region read (before the transaction) succeeds...
+      mockRegionRead('Varisia');
+      // ...then the post-commit weather phase fails -> swallowed (best-effort)
       dbUtils.executeQuery.mockRejectedValue(new Error('Weather DB down'));
 
       await calendarController.advanceDays(req, res);

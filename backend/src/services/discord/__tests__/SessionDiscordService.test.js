@@ -170,4 +170,61 @@ describe('SessionDiscordService.processDiscordReaction campaign context', () => 
 
     expect(logger.error).toHaveBeenCalledWith('Failed to process Discord reaction:', expect.any(Error));
   });
+
+  // -----------------------------------------------------------------
+  // getDiscordSettings (Phase 4c: per-campaign channel/role split)
+  // -----------------------------------------------------------------
+  describe('getDiscordSettings', () => {
+    it('reads the bot token globally and the channel/role ids from campaign_settings under the active campaign', async () => {
+      const seenQueries = [];
+      mockExecuteQuery.mockImplementation(async (query, params) => {
+        seenQueries.push({ query, params, context: activeCampaign });
+        if (query.includes('FROM campaign_settings')) {
+          return {
+            rows: [
+              { name: 'discord_channel_id', value: '111111111111111111' },
+              { name: 'campaign_role_id', value: '222222222222222222' },
+            ],
+          };
+        }
+        // Global settings read (bot token + deprecated campaign_name)
+        return { rows: [{ name: 'discord_bot_token', value: 'global-token' }] };
+      });
+
+      const settings = await campaignContext.runWithCampaign('5', () =>
+        sessionDiscordService.getDiscordSettings()
+      );
+
+      expect(settings).toEqual({
+        discord_bot_token: 'global-token',
+        discord_channel_id: '111111111111111111',
+        campaign_role_id: '222222222222222222',
+      });
+
+      // The per-campaign read is scoped to the active campaign ('5')
+      const perCampaignRead = seenQueries.find(q => q.query.includes('FROM campaign_settings'));
+      expect(perCampaignRead.params).toEqual(['5', ['discord_channel_id', 'campaign_role_id']]);
+    });
+
+    it('falls back to the deprecated global rows when the campaign has no Discord settings', async () => {
+      mockExecuteQuery.mockImplementation(async (query, params) => {
+        if (query.includes('FROM campaign_settings')) {
+          return { rows: [] };
+        }
+        if (Array.isArray(params) && Array.isArray(params[0])) {
+          // Global fallback batch for the missing per-campaign names
+          return { rows: [{ name: 'discord_channel_id', value: 'legacy-channel' }] };
+        }
+        return { rows: [{ name: 'discord_bot_token', value: 'global-token' }] };
+      });
+
+      const settings = await campaignContext.runWithCampaign('9', () =>
+        sessionDiscordService.getDiscordSettings()
+      );
+
+      expect(settings.discord_bot_token).toBe('global-token');
+      expect(settings.discord_channel_id).toBe('legacy-channel');
+      expect(settings.campaign_role_id).toBeUndefined();
+    });
+  });
 });

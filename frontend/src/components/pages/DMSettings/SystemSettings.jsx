@@ -1,6 +1,13 @@
 // frontend/src/components/pages/DMSettings/SystemSettings.js
+// Multi-campaign Phase 4c: the Discord channel/role/enabled flag, the
+// campaign timezone, and auto-appraisal are per-campaign — they read from
+// useCampaign().campaignSettings and write to PUT /campaigns/current/settings.
+// Registration mode, theme, default quantity, bot token, and the OpenAI key
+// remain global (PUT /user/update-setting).
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
+import {useSnackbar} from 'notistack';
+import {useCampaign} from '../../../contexts/CampaignContext';
 import {
   Alert,
   Box,
@@ -38,6 +45,8 @@ const REGISTRATION_MODES = [
 ];
 
 const SystemSettings = () => {
+    const {currentCampaign, campaignSettings, refresh} = useCampaign();
+    const {enqueueSnackbar} = useSnackbar();
     const [registrationMode, setRegistrationMode] = useState('closed');
     const [savingRegistrationMode, setSavingRegistrationMode] = useState(false);
     const [error, setError] = useState('');
@@ -100,7 +109,36 @@ const SystemSettings = () => {
 
     useEffect(() => {
         fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Per-campaign values come from the campaign context (GET /campaigns/current
+    // settings map, values stored as strings). Re-sync whenever the context
+    // refreshes (e.g. after a save).
+    useEffect(() => {
+        const channelId = typeof campaignSettings?.discord_channel_id === 'string'
+            ? campaignSettings.discord_channel_id : '';
+        const roleId = typeof campaignSettings?.campaign_role_id === 'string'
+            ? campaignSettings.campaign_role_id : '';
+        const enabled = campaignSettings?.discord_integration_enabled === '1';
+
+        setDiscordSettings(prev => ({...prev, channelId, roleId, enabled}));
+        setOriginalSettings(prev => ({...prev, channelId, roleId, enabled}));
+
+        setDefaultSettings(prev => ({
+            ...prev,
+            autoAppraisalEnabled: campaignSettings?.auto_appraisal_enabled !== undefined
+                ? campaignSettings.auto_appraisal_enabled === '1'
+                : true
+        }));
+
+        const timezone = (typeof campaignSettings?.campaign_timezone === 'string' && campaignSettings.campaign_timezone)
+            ? campaignSettings.campaign_timezone
+            : 'America/New_York';
+        setCurrentTimezone(timezone);
+        // Don't clobber an in-progress selection on unrelated refreshes
+        setSelectedTimezone(prev => prev || timezone);
+    }, [campaignSettings]);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -109,13 +147,11 @@ const SystemSettings = () => {
                 settingsResponse,
                 discordResponse,
                 openaiResponse,
-                timezoneResponse,
                 timezoneOptionsResponse
             ] = await Promise.all([
                 api.get(`/user/settings`),
                 api.get('/settings/discord'),
                 api.get('/settings/openai-key'),
-                api.get('/settings/campaign-timezone'),
                 api.get('/settings/timezone-options')
             ]);
 
@@ -134,32 +170,27 @@ const SystemSettings = () => {
                 setRegistrationMode(!isOpen ? 'closed' : (isInvite ? 'invite-only' : 'open'));
             }
 
-            // Set Discord settings
+            // Set the global Discord settings (bot token + OpenAI key). The
+            // channel ID, role ID, and enabled flag are per-campaign and come
+            // from the campaign context instead.
             if (discordResponse.data) {
                 const botToken = discordResponse.data.discord_bot_token || '';
-                const channelId = discordResponse.data.discord_channel_id || '';
-                const roleId = discordResponse.data.campaign_role_id || '';
-                const enabled = discordResponse.data.discord_integration_enabled === '1';
-                
+
                 // Get OpenAI key
                 const openaiKey = openaiResponse.data?.hasKey ? maskedToken : '';
 
-                setDiscordSettings({
+                setDiscordSettings(prev => ({
+                    ...prev,
                     botToken: botToken ? maskedToken : '',
-                    channelId: channelId,
-                    roleId: roleId,
-                    enabled: enabled,
                     openaiKey: openaiKey,
                     originalBotToken: botToken
-                });
+                }));
 
-                setOriginalSettings({
+                setOriginalSettings(prev => ({
+                    ...prev,
                     botToken: botToken,
-                    channelId: channelId,
-                    roleId: roleId,
-                    enabled: enabled,
                     openaiKey: openaiKey
-                });
+                }));
             }
 
             // Load other settings
@@ -168,25 +199,22 @@ const SystemSettings = () => {
                 setTheme(themeSettings.value || 'dark');
             }
 
-            // Load default settings
+            // Load global default settings (auto-appraisal is per-campaign and
+            // synced from the campaign context instead)
             const defaultQuantity = settingsResponse.data.find(setting => setting.name === 'default_browser_quantity');
             const defaultQuantityEnabled = settingsResponse.data.find(setting => setting.name === 'default_quantity_enabled');
-            const autoAppraisal = settingsResponse.data.find(setting => setting.name === 'auto_appraisal_enabled');
             const autoSplitStacks = settingsResponse.data.find(setting => setting.name === 'auto_split_stacks_enabled');
 
-            setDefaultSettings({
+            setDefaultSettings(prev => ({
+                ...prev,
                 defaultBrowserQuantity: defaultQuantity ? parseInt(defaultQuantity.value) || 1 : 1,
                 defaultQuantityEnabled: defaultQuantityEnabled ? defaultQuantityEnabled.value === '1' : false,
-                autoAppraisalEnabled: autoAppraisal ? autoAppraisal.value === '1' : true,
                 autoSplitStacksEnabled: autoSplitStacks ? autoSplitStacks.value === '1' : false
-            });
+            }));
 
-            // Load timezone settings
-            const timezone = timezoneResponse.data?.timezone || timezoneResponse?.timezone || 'America/New_York';
+            // Load timezone option list (the current timezone itself is a
+            // per-campaign setting synced from the campaign context)
             const options = timezoneOptionsResponse.data?.options || timezoneOptionsResponse?.options || [];
-
-            setCurrentTimezone(timezone);
-            setSelectedTimezone(timezone);
             setTimezoneOptions(options);
         } catch (error) {
             console.error('Error fetching data', error);
@@ -224,8 +252,10 @@ const SystemSettings = () => {
     const handleSaveDiscordSettings = async () => {
         try {
             setIsLoadingDiscord(true);
+            let touchedCampaignSettings = false;
 
             // Only update token if it's changed and not the masked value
+            // (the bot token is shared by all campaigns)
             if (discordSettings.botToken !== maskedToken && discordSettings.botToken.trim() !== '') {
                 await api.put('/user/update-setting', {
                     name: 'discord_bot_token',
@@ -233,28 +263,33 @@ const SystemSettings = () => {
                 });
             }
 
+            // Channel ID, role ID, and the enabled flag are per-campaign
+
             // Only update channel ID if it's changed
             if (discordSettings.channelId !== originalSettings.channelId) {
-                await api.put('/user/update-setting', {
+                await api.put('/campaigns/current/settings', {
                     name: 'discord_channel_id',
                     value: discordSettings.channelId
                 });
+                touchedCampaignSettings = true;
             }
 
             // Only update role ID if it's changed
             if (discordSettings.roleId !== originalSettings.roleId) {
-                await api.put('/user/update-setting', {
+                await api.put('/campaigns/current/settings', {
                     name: 'campaign_role_id',
                     value: discordSettings.roleId
                 });
+                touchedCampaignSettings = true;
             }
 
             // Only update enabled status if it's changed
             if (discordSettings.enabled !== originalSettings.enabled) {
-                await api.put('/user/update-setting', {
+                await api.put('/campaigns/current/settings', {
                     name: 'discord_integration_enabled',
                     value: discordSettings.enabled ? '1' : '0'
                 });
+                touchedCampaignSettings = true;
             }
 
             // Only update OpenAI key if it's changed and not the masked value
@@ -274,11 +309,16 @@ const SystemSettings = () => {
                 openaiKey: discordSettings.openaiKey !== maskedToken ? discordSettings.openaiKey : originalSettings.openaiKey
             });
 
-            setSuccess('Discord settings updated successfully');
-            setError('');
+            if (touchedCampaignSettings) {
+                await refresh();
+            }
+
+            enqueueSnackbar('Discord settings updated successfully', {variant: 'success'});
         } catch (err) {
-            setError('Error updating Discord settings');
-            setSuccess('');
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error updating Discord settings',
+                {variant: 'error'}
+            );
         } finally {
             setIsLoadingDiscord(false);
         }
@@ -311,8 +351,8 @@ const SystemSettings = () => {
                 });
             }
 
-            // Save auto-appraisal setting
-            await api.put('/user/update-setting', {
+            // Save auto-appraisal setting (per-campaign)
+            await api.put('/campaigns/current/settings', {
                 name: 'auto_appraisal_enabled',
                 value: defaultSettings.autoAppraisalEnabled ? '1' : '0'
             });
@@ -323,28 +363,33 @@ const SystemSettings = () => {
                 value: defaultSettings.autoSplitStacksEnabled ? '1' : '0'
             });
 
-            setSuccess('General settings updated successfully');
-            setError('');
+            await refresh();
+            enqueueSnackbar('General settings updated successfully', {variant: 'success'});
         } catch (err) {
-            setError('Error updating general settings');
-            setSuccess('');
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error updating general settings',
+                {variant: 'error'}
+            );
         }
     };
 
-    // Timezone settings handler
+    // Timezone settings handler (per-campaign)
     const handleSaveTimezone = async () => {
         setSavingTimezone(true);
         try {
-            await api.post('/settings/campaign-timezone', {
-                timezone: selectedTimezone
+            await api.put('/campaigns/current/settings', {
+                name: 'campaign_timezone',
+                value: selectedTimezone
             });
 
             setCurrentTimezone(selectedTimezone);
-            setSuccess('Campaign timezone updated successfully! All scheduled tasks have been restarted.');
-            setError('');
+            await refresh();
+            enqueueSnackbar('Campaign timezone updated successfully!', {variant: 'success'});
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to update timezone');
-            setSuccess('');
+            enqueueSnackbar(
+                err.response?.data?.message || 'Failed to update timezone',
+                {variant: 'error'}
+            );
         } finally {
             setSavingTimezone(false);
         }
@@ -500,7 +545,13 @@ const SystemSettings = () => {
                 {/* Discord Integration Settings */}
                 <Grid size={{xs: 12, md: 6}}>
                     <Card variant="outlined">
-                        <CardHeader title="Discord Integration" avatar={<ChatIcon/>}/>
+                        <CardHeader
+                            title="Discord Integration"
+                            avatar={<ChatIcon/>}
+                            subheader={currentCampaign
+                                ? `Channel, role, and enable flag apply only to "${currentCampaign.name}"`
+                                : 'Channel, role, and enable flag apply only to the current campaign'}
+                        />
                         <CardContent>
                             <TextField
                                 label="Bot Token"
@@ -629,7 +680,7 @@ const SystemSettings = () => {
                                             })}
                                         />
                                     }
-                                    label="Auto-Appraisal"
+                                    label="Auto-Appraisal (this campaign only)"
                                 />
                             </Box>
 
@@ -663,7 +714,12 @@ const SystemSettings = () => {
                 {/* Timezone Settings */}
                 <Grid size={{xs: 12, md: 6}}>
                     <Card variant="outlined">
-                        <CardHeader title="Campaign Timezone" avatar={<ScheduleIcon/>}/>
+                        <CardHeader
+                            title={currentCampaign
+                                ? `Campaign Timezone — ${currentCampaign.name}`
+                                : 'Campaign Timezone'}
+                            avatar={<ScheduleIcon/>}
+                        />
                         <CardContent>
                             <Alert severity="info" sx={{ mb: 2 }}>
                                 All session times and automated reminders will use this timezone.

@@ -6,6 +6,7 @@
 const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
 const campaignContext = require('../../utils/campaignContext');
+const campaignSettings = require('../../utils/campaignSettings');
 const discordService = require('../discordBrokerService');
 const { DISCORD_EMBED_COLORS } = require('../../constants/discordConstants');
 
@@ -574,18 +575,21 @@ class SessionDiscordService {
     }
 
     /**
-     * Get Discord settings from database
+     * Get Discord settings from database.
      *
-     * NOTE: reads the global (non-RLS) settings table for now; becomes a
-     * per-campaign campaign_settings read in a later phase. Callers that run
-     * per-row under a campaign context are already correctly scoped for that.
+     * The bot token and the (deprecated) campaign_name branding are global
+     * (settings table); the channel and role ids are per-campaign
+     * (campaign_settings, resolved from the active campaign context — every
+     * caller runs either in a request context or under a per-row
+     * runWithCampaign() context established by the scheduler/outbox/inbound
+     * interaction handlers, never bare 'all').
      *
      * @returns {Promise<Object>} - Discord settings
      */
     async getDiscordSettings() {
         const result = await dbUtils.executeQuery(`
             SELECT name, value FROM settings
-            WHERE name IN ('discord_channel_id', 'discord_bot_token', 'campaign_role_id', 'campaign_name')
+            WHERE name IN ('discord_bot_token', 'campaign_name')
         `);
 
         const settings = {};
@@ -593,7 +597,11 @@ class SessionDiscordService {
             settings[row.name] = row.value;
         });
 
-        return settings;
+        const perCampaign = await campaignSettings.getCampaignSettings(
+            ['discord_channel_id', 'campaign_role_id']
+        );
+
+        return { ...settings, ...perCampaign };
     }
 
     /**

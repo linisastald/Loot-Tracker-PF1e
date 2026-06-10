@@ -4,6 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignContext = require('../utils/campaignContext');
+const campaignSettings = require('../utils/campaignSettings');
 const axios = require('axios');
 const { format, formatDistance } = require('date-fns');
 const {
@@ -817,18 +818,21 @@ const getEmojiForResponseType = (responseType) => {
  */
 const updateSessionMessageEmbed = async (messageId, sessionMessage, responses) => {
     try {
-        // Get Discord settings
+        // Bot token and the (deprecated) campaign_name branding are global;
+        // the channel id is per-campaign. This helper only runs under the
+        // message's campaign context (runWithCampaign in the interaction
+        // handlers), so the context resolution is correct.
         const settings = await dbUtils.executeQuery(
-            'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\', \'campaign_name\')'
+            'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'campaign_name\')'
         );
-        
+
         const configMap = {};
         settings.rows.forEach(row => {
             configMap[row.name] = row.value;
         });
-        
+
         const discord_bot_token = configMap['discord_bot_token'];
-        const discord_channel_id = configMap['discord_channel_id'];
+        const discord_channel_id = await campaignSettings.getCampaignSetting('discord_channel_id');
         const campaign_name = configMap['campaign_name'] || 'Pathfinder';
         
         if (!discord_bot_token || !discord_channel_id) {

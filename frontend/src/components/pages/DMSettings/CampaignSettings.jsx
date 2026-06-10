@@ -1,12 +1,19 @@
+// frontend/src/components/pages/DMSettings/CampaignSettings.jsx
+// Per-campaign DM settings (multi-campaign Phase 4c). Reads come from the
+// campaign context (GET /campaigns/current settings map); writes go to
+// PUT /campaigns/current/settings, and the campaign name renames the active
+// campaign via PATCH /campaigns/current. refresh() is called after each
+// successful write so the rest of the app (sidebar title, selector, infamy
+// nav) picks the change up immediately.
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
+import {useSnackbar} from 'notistack';
+import {useCampaign} from '../../../contexts/CampaignContext';
 import {
-    Alert,
     Box,
     Button,
     FormControl,
     FormControlLabel,
-    FormHelperText,
     InputLabel,
     MenuItem,
     Select,
@@ -17,9 +24,10 @@ import {
 } from '@mui/material';
 
 const CampaignSettings = () => {
+    const {currentCampaign, campaignSettings, refresh} = useCampaign();
+    const {enqueueSnackbar} = useSnackbar();
+
     const [campaignName, setCampaignName] = useState('');
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
 
     // Infamy system states
     const [infamyEnabled, setInfamyEnabled] = useState(false);
@@ -29,116 +37,113 @@ const CampaignSettings = () => {
     const [region, setRegion] = useState('Varisia');
     const [availableRegions, setAvailableRegions] = useState([]);
 
+    // The campaign name lives on the campaign record itself (campaigns.name),
+    // not in the settings map.
+    useEffect(() => {
+        if (currentCampaign?.name) {
+            setCampaignName(currentCampaign.name);
+        }
+    }, [currentCampaign]);
+
+    // Per-campaign settings arrive as strings ('1'/'0', region name) via the
+    // campaign context.
+    useEffect(() => {
+        setInfamyEnabled(campaignSettings?.infamy_system_enabled === '1');
+        if (typeof campaignSettings?.region === 'string' && campaignSettings.region) {
+            setRegion(campaignSettings.region);
+        }
+    }, [campaignSettings]);
+
     useEffect(() => {
         const fetchSettings = async () => {
             try {
-                // Fetch campaign name
-                const campaignResponse = await api.get('/settings/campaign-name');
-                if (campaignResponse.data && campaignResponse.data.value) {
-                    setCampaignName(campaignResponse.data.value);
-                }
+                // Average party level is not (yet) campaign-scoped; the region
+                // option list is static reference data.
+                const [aplResponse, regionsResponse] = await Promise.all([
+                    api.get('/settings/average-party-level'),
+                    api.get('/weather/regions')
+                ]);
 
-                // Fetch infamy system settings
-                const infamyResponse = await api.get('/settings/infamy-system');
-                if (infamyResponse.data && infamyResponse.data.value) {
-                    const infamyValue = infamyResponse.data.value;
-                    setInfamyEnabled(infamyValue === '1');
-                }
-
-                // Fetch average party level
-                const aplResponse = await api.get('/settings/average-party-level');
                 if (aplResponse.data && aplResponse.data.value) {
                     setAveragePartyLevel(parseInt(aplResponse.data.value) || 5);
                 }
-
-                // Fetch current region
-                const regionResponse = await api.get('/settings/region');
-                if (regionResponse.data && regionResponse.data.value) {
-                    setRegion(regionResponse.data.value);
-                }
-
-                // Fetch available regions
-                const regionsResponse = await api.get('/weather/regions');
                 if (regionsResponse.data) {
                     setAvailableRegions(regionsResponse.data);
                 }
             } catch (error) {
-                console.error('Error fetching settings', error);
-                setError('Error loading settings. Please try again.');
+                enqueueSnackbar('Error loading settings. Please try again.', {variant: 'error'});
             }
         };
 
         fetchSettings();
+        // enqueueSnackbar is stable; run once on mount
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleCampaignNameChange = async () => {
+        if (!campaignName || campaignName.trim() === '') {
+            enqueueSnackbar('Campaign name cannot be empty', {variant: 'error'});
+            return;
+        }
         try {
-            // Only update if there's an actual campaign name value
-            if (campaignName && campaignName.trim() !== '') {
-                await api.put('/user/update-setting', {
-                    name: 'campaign_name',
-                    value: campaignName
-                });
-                setSuccess('Campaign name updated successfully');
-                setError('');
-            } else {
-                setError('Campaign name cannot be empty');
-            }
+            // Renames the ACTIVE campaign (campaigns.name)
+            await api.patch('/campaigns/current', {name: campaignName.trim()});
+            await refresh();
+            enqueueSnackbar('Campaign name updated successfully', {variant: 'success'});
         } catch (err) {
-            setError('Error updating campaign name');
-            setSuccess('');
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error updating campaign name',
+                {variant: 'error'}
+            );
         }
     };
 
     const handleInfamySystemChange = async (event) => {
+        const isEnabled = event.target.checked;
+        const previous = infamyEnabled;
+        setInfamyEnabled(isEnabled);
         try {
-            const isEnabled = event.target.checked;
-            setInfamyEnabled(isEnabled);
-
-            // If turning off, set to '0'
-            // If turning on, set to '1'
-            const newValue = isEnabled ? '1' : '0';
-
-            await api.put('/user/update-setting', {
+            await api.put('/campaigns/current/settings', {
                 name: 'infamy_system_enabled',
-                value: newValue
+                value: isEnabled ? '1' : '0'
             });
-
-            setSuccess(`Infamy system ${isEnabled ? 'enabled' : 'disabled'} successfully`);
-            setError('');
+            await refresh();
+            enqueueSnackbar(
+                `Infamy system ${isEnabled ? 'enabled' : 'disabled'} successfully`,
+                {variant: 'success'}
+            );
         } catch (err) {
-            console.error('Error updating infamy system setting', err);
-            setError('Error updating infamy system setting');
-            setSuccess('');
+            setInfamyEnabled(previous);
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error updating infamy system setting',
+                {variant: 'error'}
+            );
         }
     };
 
     const handleAveragePartyLevelChange = async () => {
+        const apl = parseInt(averagePartyLevel);
+        if (isNaN(apl) || apl < 1 || apl > 20) {
+            enqueueSnackbar('Average Party Level must be a number between 1 and 20', {variant: 'error'});
+            return;
+        }
         try {
-            const apl = parseInt(averagePartyLevel);
-            if (isNaN(apl) || apl < 1 || apl > 20) {
-                setError('Average Party Level must be a number between 1 and 20');
-                return;
-            }
-
             await api.put('/user/update-setting', {
                 name: 'average_party_level',
                 value: apl.toString()
             });
-
-            setSuccess('Average Party Level updated successfully');
-            setError('');
+            enqueueSnackbar('Average Party Level updated successfully', {variant: 'success'});
         } catch (err) {
-            console.error('Error updating Average Party Level', err);
-            setError('Error updating Average Party Level');
-            setSuccess('');
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error updating Average Party Level',
+                {variant: 'error'}
+            );
         }
     };
 
-
     const handleRegionChange = async () => {
         try {
-            await api.put('/user/update-setting', {
+            await api.put('/campaigns/current/settings', {
                 name: 'region',
                 value: region
             });
@@ -146,21 +151,24 @@ const CampaignSettings = () => {
             // Initialize weather for the new region
             await api.post(`/weather/initialize/${region}`);
 
-            setSuccess('Region updated successfully and weather initialized');
-            setError('');
+            await refresh();
+            enqueueSnackbar('Region updated successfully and weather initialized', {variant: 'success'});
         } catch (err) {
-            console.error('Error updating region', err);
-            setError('Error updating region');
-            setSuccess('');
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error updating region',
+                {variant: 'error'}
+            );
         }
     };
 
     return (
         <div>
-            <Typography variant="h6" gutterBottom>Campaign Settings</Typography>
-
-            {success && <Alert severity="success" sx={{mt: 2, mb: 2}}>{success}</Alert>}
-            {error && <Alert severity="error" sx={{mt: 2, mb: 2}}>{error}</Alert>}
+            <Typography variant="h6" gutterBottom>
+                {currentCampaign ? `Campaign Settings — ${currentCampaign.name}` : 'Campaign Settings'}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" paragraph>
+                These settings apply only to the current campaign.
+            </Typography>
 
             <Box mt={2} mb={4} sx={{maxWidth: 500}}>
                 <TextField

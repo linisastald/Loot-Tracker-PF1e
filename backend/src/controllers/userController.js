@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const campaignSettings = require('../utils/campaignSettings');
 
 /**
  * Change user email
@@ -443,6 +444,22 @@ const updateSetting = async (req, res) => {
     // Ensure DM permission (should be handled by middleware too)
     if (req.user.role !== 'DM') {
         throw controllerFactory.createAuthorizationError('Only DMs can update settings');
+    }
+
+    // Per-campaign settings must never be written as global rows (that would
+    // silently change every campaign) — point callers at the campaign endpoint
+    if (campaignSettings.PER_CAMPAIGN_SETTINGS.includes(name)) {
+        throw controllerFactory.createValidationError(
+            `'${name}' is a per-campaign setting; update it via PUT /api/campaigns/current/settings`
+        );
+    }
+
+    // campaign_name is deprecated: the campaign's display name lives on
+    // campaigns.name and is renamed via PATCH /api/campaigns/current
+    if (name === 'campaign_name') {
+        throw controllerFactory.createValidationError(
+            "'campaign_name' is deprecated; rename the campaign via PATCH /api/campaigns/current"
+        );
     }
 
     // registration_mode drives the registration flow — constrain it to the

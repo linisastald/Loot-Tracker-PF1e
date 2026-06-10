@@ -1,6 +1,13 @@
 /**
  * Unit tests for discordController
  * Tests sendMessage, sendEvent, getIntegrationStatus, updateSettings
+ *
+ * Phase 4c (campaign settings split): the bot token (and deprecated
+ * campaign_name branding) are read from the global settings table; the
+ * channel/role ids and the integration-enabled flag are per-campaign
+ * (campaign_settings via the campaignSettings helper, with a global
+ * fallback when no per-campaign row exists). The tests below mock the
+ * resulting query sequences.
  */
 
 // Mock dependencies before requiring the controller
@@ -21,6 +28,9 @@ jest.mock('axios');
 const dbUtils = require('../../utils/dbUtils');
 const axios = require('axios');
 const discordController = require('../discordController');
+
+// A valid Discord snowflake for channel ids (17-19 digits)
+const VALID_CHANNEL_ID = '123456789012345678';
 
 // Helper to create a mock response object with all API response methods
 function createMockRes() {
@@ -55,6 +65,45 @@ function makeSettingsRows(configMap) {
   };
 }
 
+/**
+ * Mock the sendMessage settings reads:
+ *  1. global token (single-row SELECT value),
+ *  2. per-campaign discord_channel_id (campaign_settings),
+ *  3. global fallback for the channel when no per-campaign row exists.
+ */
+function mockSendMessageSettings({ token, channel } = {}) {
+  dbUtils.executeQuery
+    .mockResolvedValueOnce({ rows: token !== undefined ? [{ value: token }] : [] })
+    .mockResolvedValueOnce({ rows: channel !== undefined ? [{ value: channel }] : [] });
+  if (channel === undefined) {
+    // Helper consults the deprecated global row when the campaign has none
+    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+  }
+}
+
+/**
+ * Mock the sendEvent settings reads:
+ *  1. global rows (discord_bot_token, campaign_name),
+ *  2. per-campaign batch (discord_channel_id, campaign_role_id),
+ *  3. global fallback batch when some per-campaign names are missing.
+ */
+function mockSendEventSettings({ token, campaignName, channel, roleId } = {}) {
+  const globalRows = {};
+  if (token !== undefined) globalRows.discord_bot_token = token;
+  if (campaignName !== undefined) globalRows.campaign_name = campaignName;
+
+  const perCampaignRows = {};
+  if (channel !== undefined) perCampaignRows.discord_channel_id = channel;
+  if (roleId !== undefined) perCampaignRows.campaign_role_id = roleId;
+
+  dbUtils.executeQuery
+    .mockResolvedValueOnce(makeSettingsRows(globalRows))
+    .mockResolvedValueOnce(makeSettingsRows(perCampaignRows));
+  if (channel === undefined || roleId === undefined) {
+    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+  }
+}
+
 describe('discordController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -64,16 +113,11 @@ describe('discordController', () => {
   // sendMessage
   // ---------------------------------------------------------------
   describe('sendMessage', () => {
-    const defaultSettings = {
-      discord_bot_token: 'bot-token-123',
-      discord_channel_id: 'channel-456',
-    };
-
     it('should send a message with content successfully', async () => {
       const req = createMockReq({ body: { content: 'Hello Discord!' } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockResolvedValueOnce({ data: { id: 'msg-789' } });
 
       await discordController.sendMessage(req, res);
@@ -93,12 +137,49 @@ describe('discordController', () => {
       );
     });
 
+    it('should read the channel id from campaign_settings (per-campaign scope)', async () => {
+      const req = createMockReq({ body: { content: 'Hello!' } });
+      const res = createMockRes();
+
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
+      axios.post.mockResolvedValueOnce({ data: { id: 'msg-1' } });
+
+      await discordController.sendMessage(req, res);
+
+      // Second query is the per-campaign channel read, scoped to the
+      // resolved campaign (default '1' with no request context)
+      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('FROM campaign_settings'),
+        ['1', 'discord_channel_id']
+      );
+    });
+
+    it('should fall back to the global channel row when the campaign has none', async () => {
+      const req = createMockReq({ body: { content: 'Hello!' } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ value: 'bot-token-123' }] }) // global token
+        .mockResolvedValueOnce({ rows: [] })                            // campaign_settings miss
+        .mockResolvedValueOnce({ rows: [{ value: 'legacy-channel' }] }); // global fallback hit
+      axios.post.mockResolvedValueOnce({ data: { id: 'msg-2' } });
+
+      await discordController.sendMessage(req, res);
+
+      expect(axios.post).toHaveBeenCalledWith(
+        'https://discord.com/api/channels/legacy-channel/messages',
+        expect.any(Object),
+        expect.any(Object)
+      );
+    });
+
     it('should send a message with embeds successfully', async () => {
       const embeds = [{ title: 'Test Embed', description: 'Desc' }];
       const req = createMockReq({ body: { embeds } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockResolvedValueOnce({ data: { id: 'msg-001' } });
 
       await discordController.sendMessage(req, res);
@@ -119,7 +200,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: { embeds } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockResolvedValueOnce({ data: { id: 'msg-002' } });
 
       await discordController.sendMessage(req, res);
@@ -134,7 +215,7 @@ describe('discordController', () => {
       });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockResolvedValueOnce({ data: { id: 'msg-003' } });
 
       await discordController.sendMessage(req, res);
@@ -172,9 +253,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows({
-        discord_channel_id: 'channel-456',
-      }));
+      mockSendMessageSettings({ channel: 'channel-456' });
 
       await discordController.sendMessage(req, res);
 
@@ -185,9 +264,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows({
-        discord_bot_token: 'bot-token-123',
-      }));
+      mockSendMessageSettings({ token: 'bot-token-123' });
 
       await discordController.sendMessage(req, res);
 
@@ -198,7 +275,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockRejectedValueOnce({
         response: { status: 403, data: { message: 'Missing Permissions' } },
         message: 'Request failed with status 403',
@@ -215,7 +292,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockRejectedValueOnce({
         response: { status: 404, data: { message: 'Unknown Channel' } },
         message: 'Request failed with status 404',
@@ -230,7 +307,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockRejectedValueOnce({
         response: { status: 429, data: { retry_after: 5 } },
         message: 'Rate limited',
@@ -247,7 +324,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockRejectedValueOnce({
         response: { status: 400, data: { code: 50006, message: 'Cannot send empty message' } },
         message: 'Bad request',
@@ -262,7 +339,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockRejectedValueOnce({
         response: { status: 500, data: { message: 'Internal Server Error' } },
         message: 'Server error',
@@ -278,7 +355,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(defaultSettings));
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
       axios.post.mockRejectedValueOnce(new Error('Network Error'));
 
       await discordController.sendMessage(req, res);
@@ -292,10 +369,10 @@ describe('discordController', () => {
   // ---------------------------------------------------------------
   describe('sendEvent', () => {
     const eventSettings = {
-      discord_bot_token: 'bot-token-123',
-      discord_channel_id: 'channel-456',
-      campaign_name: 'Rise of the Runelords',
-      campaign_role_id: 'role-789',
+      token: 'bot-token-123',
+      campaignName: 'Rise of the Runelords',
+      channel: 'channel-456',
+      roleId: 'role-789',
     };
 
     const validBody = {
@@ -309,9 +386,8 @@ describe('discordController', () => {
       const req = createMockReq({ body: validBody });
       const res = createMockRes();
 
-      dbUtils.executeQuery
-        .mockResolvedValueOnce(makeSettingsRows(eventSettings))  // settings query
-        .mockResolvedValueOnce({ rows: [] });                     // session_messages insert
+      mockSendEventSettings(eventSettings);
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // session_messages insert
 
       axios.post.mockResolvedValueOnce({ data: { id: 'event-msg-001' } });
 
@@ -338,15 +414,11 @@ describe('discordController', () => {
     });
 
     it('should send event without role mention when campaign_role_id is not set', async () => {
-      const settingsNoRole = { ...eventSettings };
-      delete settingsNoRole.campaign_role_id;
-
       const req = createMockReq({ body: validBody });
       const res = createMockRes();
 
-      dbUtils.executeQuery
-        .mockResolvedValueOnce(makeSettingsRows(settingsNoRole))
-        .mockResolvedValueOnce({ rows: [] });
+      mockSendEventSettings({ ...eventSettings, roleId: undefined });
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // session_messages insert
 
       axios.post.mockResolvedValueOnce({ data: { id: 'event-msg-002' } });
 
@@ -357,17 +429,11 @@ describe('discordController', () => {
     });
 
     it('should use default campaign name when not configured', async () => {
-      const settingsNoCampaign = {
-        discord_bot_token: 'bot-token-123',
-        discord_channel_id: 'channel-456',
-      };
-
       const req = createMockReq({ body: validBody });
       const res = createMockRes();
 
-      dbUtils.executeQuery
-        .mockResolvedValueOnce(makeSettingsRows(settingsNoCampaign))
-        .mockResolvedValueOnce({ rows: [] });
+      mockSendEventSettings({ token: 'bot-token-123', channel: 'channel-456' });
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // session_messages insert
 
       axios.post.mockResolvedValueOnce({ data: { id: 'event-msg-003' } });
 
@@ -406,9 +472,6 @@ describe('discordController', () => {
       });
       const res = createMockRes();
 
-      // Settings still fetched before date validation
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(eventSettings));
-
       await discordController.sendEvent(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
@@ -420,9 +483,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: validBody });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows({
-        discord_channel_id: 'channel-456',
-      }));
+      mockSendEventSettings({ channel: 'channel-456', roleId: 'role-789' });
 
       await discordController.sendEvent(req, res);
 
@@ -433,9 +494,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: validBody });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows({
-        discord_bot_token: 'bot-token-123',
-      }));
+      mockSendEventSettings({ token: 'bot-token-123', roleId: 'role-789' });
 
       await discordController.sendEvent(req, res);
 
@@ -446,9 +505,8 @@ describe('discordController', () => {
       const req = createMockReq({ body: validBody });
       const res = createMockRes();
 
-      dbUtils.executeQuery
-        .mockResolvedValueOnce(makeSettingsRows(eventSettings))
-        .mockRejectedValueOnce(new Error('DB insert failed'));   // session_messages insert fails
+      mockSendEventSettings(eventSettings);
+      dbUtils.executeQuery.mockRejectedValueOnce(new Error('DB insert failed')); // session_messages insert fails
 
       axios.post.mockResolvedValueOnce({ data: { id: 'event-msg-004' } });
 
@@ -462,7 +520,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: validBody });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(eventSettings));
+      mockSendEventSettings(eventSettings);
       axios.post.mockRejectedValueOnce({
         response: { status: 403, data: { message: 'Missing Permissions' } },
         message: 'Forbidden',
@@ -477,7 +535,7 @@ describe('discordController', () => {
       const req = createMockReq({ body: validBody });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows(eventSettings));
+      mockSendEventSettings(eventSettings);
       axios.post.mockRejectedValueOnce({
         response: { status: 404, data: { message: 'Unknown Channel' } },
         message: 'Not found',
@@ -493,15 +551,28 @@ describe('discordController', () => {
   // getIntegrationStatus
   // ---------------------------------------------------------------
   describe('getIntegrationStatus', () => {
+    /**
+     * Mock the status reads: global token (single row), then the
+     * per-campaign batch, then the global fallback when names are missing.
+     */
+    function mockStatusSettings({ token, channel, enabled } = {}) {
+      const perCampaign = {};
+      if (channel !== undefined) perCampaign.discord_channel_id = channel;
+      if (enabled !== undefined) perCampaign.discord_integration_enabled = enabled;
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: token !== undefined ? [{ value: token }] : [] })
+        .mockResolvedValueOnce(makeSettingsRows(perCampaign));
+      if (channel === undefined || enabled === undefined) {
+        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      }
+    }
+
     it('should return fully configured and enabled status', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows({
-        discord_bot_token: 'token-123',
-        discord_channel_id: 'channel-456',
-        discord_integration_enabled: '1',
-      }));
+      mockStatusSettings({ token: 'token-123', channel: 'channel-456', enabled: '1' });
 
       await discordController.getIntegrationStatus(req, res);
 
@@ -520,11 +591,7 @@ describe('discordController', () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows({
-        discord_bot_token: 'token-123',
-        discord_channel_id: 'channel-456',
-        discord_integration_enabled: '0',
-      }));
+      mockStatusSettings({ token: 'token-123', channel: 'channel-456', enabled: '0' });
 
       await discordController.getIntegrationStatus(req, res);
 
@@ -543,10 +610,7 @@ describe('discordController', () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows({
-        discord_channel_id: 'channel-456',
-        discord_integration_enabled: '1',
-      }));
+      mockStatusSettings({ channel: 'channel-456', enabled: '1' });
 
       await discordController.getIntegrationStatus(req, res);
 
@@ -563,10 +627,7 @@ describe('discordController', () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce(makeSettingsRows({
-        discord_bot_token: 'token-123',
-        discord_integration_enabled: '1',
-      }));
+      mockStatusSettings({ token: 'token-123', enabled: '1' });
 
       await discordController.getIntegrationStatus(req, res);
 
@@ -583,7 +644,7 @@ describe('discordController', () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      mockStatusSettings({});
 
       await discordController.getIntegrationStatus(req, res);
 
@@ -605,25 +666,36 @@ describe('discordController', () => {
   describe('updateSettings', () => {
     it('should update all settings and test connection successfully', async () => {
       const req = createMockReq({
-        body: { bot_token: 'new-token', channel_id: 'new-channel', enabled: true },
+        body: { bot_token: 'new-token', channel_id: VALID_CHANNEL_ID, enabled: true },
         user: { role: 'DM' },
       });
       const res = createMockRes();
 
-      const mockClient = {
-        query: jest.fn().mockResolvedValue({ rows: [] }),
-        release: jest.fn(),
-      };
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
       axios.post.mockResolvedValueOnce({ data: { id: 'test-msg' } });
 
       await discordController.updateSettings(req, res);
 
-      // Should have called client.query for bot_token, channel_id, and enabled
-      expect(mockClient.query).toHaveBeenCalledTimes(3);
+      // bot token -> global settings; channel id + enabled -> campaign_settings
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
+      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining('INSERT INTO settings'),
+        ['discord_bot_token', 'new-token']
+      );
+      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('INSERT INTO campaign_settings'),
+        ['1', 'discord_channel_id', VALID_CHANNEL_ID, 'string']
+      );
+      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
+        3,
+        expect.stringContaining('INSERT INTO campaign_settings'),
+        ['1', 'discord_integration_enabled', '1', 'boolean']
+      );
       // Connection test should have been attempted
       expect(axios.post).toHaveBeenCalledWith(
-        'https://discord.com/api/channels/new-channel/messages',
+        `https://discord.com/api/channels/${VALID_CHANNEL_ID}/messages`,
         expect.objectContaining({ content: expect.stringContaining('test message') }),
         expect.any(Object)
       );
@@ -645,16 +717,16 @@ describe('discordController', () => {
       });
       const res = createMockRes();
 
-      const mockClient = {
-        query: jest.fn().mockResolvedValue({ rows: [] }),
-        release: jest.fn(),
-      };
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
 
       await discordController.updateSettings(req, res);
 
       // Only 1 query for bot_token, no connection test (channel_id not provided)
-      expect(mockClient.query).toHaveBeenCalledTimes(1);
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO settings'),
+        ['discord_bot_token', 'new-token']
+      );
       expect(axios.post).not.toHaveBeenCalled();
       expect(res.success).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -666,25 +738,55 @@ describe('discordController', () => {
       );
     });
 
-    it('should update enabled status to disabled', async () => {
+    it('should update enabled status to disabled (per-campaign row)', async () => {
       const req = createMockReq({
         body: { enabled: false },
         user: { role: 'DM' },
       });
       const res = createMockRes();
 
-      const mockClient = {
-        query: jest.fn().mockResolvedValue({ rows: [] }),
-        release: jest.fn(),
-      };
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
 
       await discordController.updateSettings(req, res);
 
-      // Only one query should be called (just enabled, not bot_token or channel_id)
-      expect(mockClient.query).toHaveBeenCalledTimes(1);
-      const queryCall = mockClient.query.mock.calls[0];
-      expect(queryCall[1]).toEqual(['discord_integration_enabled', '0']);
+      // Only one upsert should run (just enabled, not bot_token or channel_id)
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO campaign_settings'),
+        ['1', 'discord_integration_enabled', '0', 'boolean']
+      );
+    });
+
+    it('should store an empty channel id as an explicit per-campaign unset', async () => {
+      const req = createMockReq({
+        body: { channel_id: '' },
+        user: { role: 'DM' },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await discordController.updateSettings(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO campaign_settings'),
+        ['1', 'discord_channel_id', '', 'string']
+      );
+    });
+
+    it('should reject a malformed channel id', async () => {
+      const req = createMockReq({
+        body: { channel_id: 'not-a-snowflake' },
+        user: { role: 'DM' },
+      });
+      const res = createMockRes();
+
+      await discordController.updateSettings(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        'discord_channel_id must be a Discord snowflake (17-19 digits) or empty'
+      );
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
 
     it('should return forbidden error when non-DM user tries to update', async () => {
@@ -694,26 +796,20 @@ describe('discordController', () => {
       });
       const res = createMockRes();
 
-      // executeTransaction is still called by createHandler wrapping;
-      // the authorization check happens inside the handler before transaction usage
-      // Actually the auth check is before executeTransaction call
       await discordController.updateSettings(req, res);
 
       expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update Discord settings');
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
 
     it('should save settings even when connection test fails', async () => {
       const req = createMockReq({
-        body: { bot_token: 'bad-token', channel_id: 'bad-channel', enabled: true },
+        body: { bot_token: 'bad-token', channel_id: VALID_CHANNEL_ID, enabled: true },
         user: { role: 'DM' },
       });
       const res = createMockRes();
 
-      const mockClient = {
-        query: jest.fn().mockResolvedValue({ rows: [] }),
-        release: jest.fn(),
-      };
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
       axios.post.mockRejectedValueOnce({
         response: { data: { message: 'Invalid token' } },
         message: 'Unauthorized',
@@ -721,8 +817,8 @@ describe('discordController', () => {
 
       await discordController.updateSettings(req, res);
 
-      // Settings should still be saved (3 queries)
-      expect(mockClient.query).toHaveBeenCalledTimes(3);
+      // Settings should still be saved (3 writes)
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
       expect(res.success).toHaveBeenCalledWith(
         expect.objectContaining({
           connection_test: expect.objectContaining({

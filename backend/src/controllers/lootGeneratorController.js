@@ -2,6 +2,7 @@
 const controllerFactory = require('../utils/controllerFactory');
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
+const campaignSettings = require('../utils/campaignSettings');
 const lootGeneratorService = require('../services/lootGenerator/lootGeneratorService');
 const { crKey } = require('../services/lootGenerator/treasureTables');
 const { ENVIRONMENTS, listEnvironments } = require('../services/lootGenerator/treasureFlavor');
@@ -203,20 +204,10 @@ const updateTreasureSettings = async (req, res) => {
   }
 
   if (track !== undefined) {
-    await dbUtils.executeQuery(
-      `INSERT INTO settings (name, value, value_type, description)
-       VALUES ('treasure_track', $1, 'string', 'Treasure progression track used by the loot generator')
-       ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
-      [track]
-    );
+    await campaignSettings.setCampaignSetting('treasure_track', track, 'string');
   }
   if (mod !== undefined) {
-    await dbUtils.executeQuery(
-      `INSERT INTO settings (name, value, value_type, description)
-       VALUES ('treasure_modifier', $1, 'string', 'Overall multiplier applied to generated treasure amounts')
-       ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
-      [String(mod)]
-    );
+    await campaignSettings.setCampaignSetting('treasure_modifier', String(mod), 'string');
   }
 
   const settings = await lootGeneratorService.getTreasureSettings();

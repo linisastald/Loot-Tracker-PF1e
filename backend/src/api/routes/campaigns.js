@@ -15,6 +15,10 @@ router.get('/current', verifyToken, campaignController.getCurrentCampaign);
 // current campaign only. CSRF protection is applied at the mount point.
 router.put('/current/settings', verifyToken, checkRole('DM'), campaignController.updateCurrentCampaignSetting);
 
+// Rename the current campaign (campaigns.name; slug unchanged) — DM of the
+// current campaign only. Supersedes the deprecated 'campaign_name' setting.
+router.patch('/current', verifyToken, checkRole('DM'), campaignController.renameCurrentCampaign);
+
 // Create a campaign — superadmin only for v1, enforced inside the controller
 // via req.isSuperadmin (campaign-creation policy is still open, design doc §8).
 // CSRF protection is applied at the mount point in backend/index.js.

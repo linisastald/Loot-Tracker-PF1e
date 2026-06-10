@@ -161,11 +161,9 @@ class DiscordOutboxService {
                     break;
 
                 case 'session_cancellation':
-                    // Send cancellation notification. NOTE: Discord settings
-                    // are read from the global settings table for now; this
-                    // becomes a per-campaign campaign_settings read in a later
-                    // phase (correctly scoped already - we run under the
-                    // message's campaign context).
+                    // Send cancellation notification. Discord channel/role ids
+                    // are per-campaign (campaign_settings) and resolve from the
+                    // message's campaign context established in processOutbox.
                     const settings = await sessionService.getDiscordSettings();
                     if (settings.campaign_role_id && settings.discord_channel_id) {
                         const discordService = require('./discordBrokerService');

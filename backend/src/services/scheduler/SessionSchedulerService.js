@@ -38,10 +38,13 @@ class SessionSchedulerService {
         if (this.isInitialized) return;
 
         try {
-            // Load campaign timezone from the global settings table. NOTE: this
-            // becomes a per-campaign campaign_settings read in a later phase;
-            // until then all campaigns share one scheduler timezone.
-            this.campaignTimezone = await timezoneUtils.getCampaignTimezone();
+            // The scheduler's cron clock follows the DEFAULT campaign's
+            // timezone (campaign_settings with global fallback), passed
+            // explicitly because initialize() runs at startup outside any
+            // campaign context. The find-work queries themselves run
+            // cross-campaign and act per-row, so only the trigger times are
+            // single-timezone; per-campaign scheduler clocks are a later phase.
+            this.campaignTimezone = await timezoneUtils.getCampaignTimezone({ campaignId: '1' });
             logger.info(`Initializing session scheduler with timezone: ${this.campaignTimezone}`);
 
             // Schedule automatic session announcements

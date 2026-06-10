@@ -12,8 +12,12 @@ jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
   debug: jest.fn(),
 }));
+jest.mock('../../services/scheduler/SessionSchedulerService', () => ({
+  restart: jest.fn().mockResolvedValue(undefined),
+}));
 
 const Campaign = require('../../models/Campaign');
+const sessionSchedulerService = require('../../services/scheduler/SessionSchedulerService');
 const campaignController = require('../campaignController');
 
 function createMockRes() {
@@ -420,6 +424,106 @@ describe('campaignController', () => {
       expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
 
+    // ---------------------------------------------------------------
+    // Per-campaign scalar settings (Phase 4c whitelist extension)
+    // ---------------------------------------------------------------
+    describe('scalar per-campaign settings', () => {
+      beforeEach(() => {
+        Campaign.upsertSetting.mockResolvedValue({});
+      });
+
+      // Valid value matrix: name, request value, stored value, value_type
+      it.each([
+        ['campaign_timezone', 'America/Chicago', 'America/Chicago', 'string'],
+        ['region', 'The Shackles', 'The Shackles', 'string'],
+        ['region', '  Varisia  ', 'Varisia', 'string'], // trimmed
+        ['weather_forecast_days', '14', '14', 'integer'],
+        ['weather_forecast_days', 0, '0', 'integer'],
+        ['weather_forecast_days', 60, '60', 'integer'],
+        ['treasure_track', 'slow', 'slow', 'string'],
+        ['treasure_track', 'fast', 'fast', 'string'],
+        ['treasure_modifier', '1.5', '1.5', 'string'],
+        ['treasure_modifier', 2, '2', 'string'],
+        ['infamy_system_enabled', '1', '1', 'boolean'],
+        ['infamy_system_enabled', false, '0', 'boolean'],
+        ['auto_appraisal_enabled', true, '1', 'boolean'],
+        ['auto_task_generation', '0', '0', 'boolean'],
+        ['discord_integration_enabled', '1', '1', 'boolean'],
+        ['discord_channel_id', '123456789012345678', '123456789012345678', 'string'],
+        ['discord_channel_id', '', '', 'string'], // explicit unset
+        ['discord_channel_id', null, '', 'string'], // explicit unset
+        ['campaign_role_id', '987654321098765432', '987654321098765432', 'string'],
+        ['campaign_role_id', '', '', 'string'], // explicit unset
+      ])('should store %s = %p as %p (%s)', async (name, value, stored, valueType) => {
+        const req = createDmReq({ name, value });
+        const res = createMockRes();
+
+        await campaignController.updateCurrentCampaignSetting(req, res);
+
+        expect(Campaign.upsertSetting).toHaveBeenCalledWith(2, name, stored, valueType);
+        expect(res.success).toHaveBeenCalledWith(
+          { name, value: stored },
+          'Campaign setting updated successfully'
+        );
+      });
+
+      // Invalid value matrix: name, request value, expected error fragment
+      it.each([
+        ['campaign_timezone', 'Not/A/Timezone', 'Invalid timezone'],
+        ['campaign_timezone', '', 'Invalid timezone'],
+        ['region', '', 'region must be a non-empty string'],
+        ['region', '   ', 'region must be a non-empty string'],
+        ['region', 42, 'region must be a non-empty string'],
+        ['region', 'x'.repeat(256), 'region cannot exceed 255 characters'],
+        ['weather_forecast_days', -1, 'weather_forecast_days must be an integer between 0 and 60'],
+        ['weather_forecast_days', 61, 'weather_forecast_days must be an integer between 0 and 60'],
+        ['weather_forecast_days', 'soon', 'weather_forecast_days must be an integer between 0 and 60'],
+        ['weather_forecast_days', 7.5, 'weather_forecast_days must be an integer between 0 and 60'],
+        ['treasure_track', 'epic', 'treasure_track must be slow, medium, or fast'],
+        ['treasure_modifier', 0, 'treasure_modifier must be a positive number'],
+        ['treasure_modifier', -2, 'treasure_modifier must be a positive number'],
+        ['treasure_modifier', 101, 'treasure_modifier must be a positive number'],
+        ['treasure_modifier', 'lots', 'treasure_modifier must be a positive number'],
+        ['infamy_system_enabled', 'yes', "infamy_system_enabled must be '0' or '1'"],
+        ['auto_appraisal_enabled', 2, "auto_appraisal_enabled must be '0' or '1'"],
+        ['auto_task_generation', 'on', "auto_task_generation must be '0' or '1'"],
+        ['discord_integration_enabled', 'enabled', "discord_integration_enabled must be '0' or '1'"],
+        ['discord_channel_id', 'abc', 'discord_channel_id must be a Discord snowflake'],
+        ['discord_channel_id', '1234567890123456', 'discord_channel_id must be a Discord snowflake'], // 16 digits
+        ['discord_channel_id', '12345678901234567890', 'discord_channel_id must be a Discord snowflake'], // 20 digits
+        ['campaign_role_id', 'role-789', 'campaign_role_id must contain only digits'],
+      ])('should reject %s = %p', async (name, value, errorFragment) => {
+        const req = createDmReq({ name, value });
+        const res = createMockRes();
+
+        await campaignController.updateCurrentCampaignSetting(req, res);
+
+        expect(res.validationError).toHaveBeenCalledWith(
+          expect.stringContaining(errorFragment)
+        );
+        expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+      });
+
+      it('should clear the timezone cache and restart the scheduler on a timezone change', async () => {
+        const req = createDmReq({ name: 'campaign_timezone', value: 'America/Denver' });
+        const res = createMockRes();
+
+        await campaignController.updateCurrentCampaignSetting(req, res);
+
+        expect(Campaign.upsertSetting).toHaveBeenCalledWith(2, 'campaign_timezone', 'America/Denver', 'string');
+        expect(sessionSchedulerService.restart).toHaveBeenCalled();
+      });
+
+      it('should not restart the scheduler for non-timezone settings', async () => {
+        const req = createDmReq({ name: 'treasure_track', value: 'medium' });
+        const res = createMockRes();
+
+        await campaignController.updateCurrentCampaignSetting(req, res);
+
+        expect(sessionSchedulerService.restart).not.toHaveBeenCalled();
+      });
+    });
+
     // The DM gate lives at the route layer (checkRole('DM')); verify the
     // middleware behavior with the per-campaign role the route relies on.
     describe('route guard: checkRole(DM)', () => {
@@ -447,6 +551,141 @@ describe('campaignController', () => {
         expect(next).toHaveBeenCalled();
         expect(res.status).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // renameCurrentCampaign (PATCH /campaigns/current)
+  // -------------------------------------------------------------------
+  describe('renameCurrentCampaign', () => {
+    function createDmReq(body) {
+      return createMockReq({ campaignId: 2, campaignRole: 'DM', body });
+    }
+
+    it('should rename the current campaign for a DM (slug unchanged)', async () => {
+      const req = createDmReq({ name: 'Skulls & Shackles: Remastered' });
+      const res = createMockRes();
+
+      Campaign.updateName.mockResolvedValue({
+        id: 2,
+        name: 'Skulls & Shackles: Remastered',
+        slug: 'sns',
+        world: 'Golarion',
+        is_active: true,
+      });
+
+      await campaignController.renameCurrentCampaign(req, res);
+
+      expect(Campaign.updateName).toHaveBeenCalledWith(2, 'Skulls & Shackles: Remastered');
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 2, name: 'Skulls & Shackles: Remastered', slug: 'sns' }),
+        'Campaign renamed successfully'
+      );
+    });
+
+    it('should trim the name before saving', async () => {
+      const req = createDmReq({ name: '  Trimmed Name  ' });
+      const res = createMockRes();
+
+      Campaign.updateName.mockResolvedValue({ id: 2, name: 'Trimmed Name', slug: 'sns' });
+
+      await campaignController.renameCurrentCampaign(req, res);
+
+      expect(Campaign.updateName).toHaveBeenCalledWith(2, 'Trimmed Name');
+    });
+
+    it('syncs the deprecated global campaign_name branding row when campaign 1 is renamed', async () => {
+      const dbUtils = require('../../utils/dbUtils');
+      dbUtils.executeQuery.mockClear();
+      const req = createMockReq({ campaignId: 1, campaignRole: 'DM', body: { name: 'New Branding' } });
+      const res = createMockRes();
+
+      Campaign.updateName.mockResolvedValue({ id: 1, name: 'New Branding', slug: 'default' });
+
+      await campaignController.renameCurrentCampaign(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO settings"),
+        ['New Branding']
+      );
+    });
+
+    it('does NOT touch global branding when a non-primary campaign is renamed', async () => {
+      const dbUtils = require('../../utils/dbUtils');
+      dbUtils.executeQuery.mockClear();
+      const req = createDmReq({ name: 'Side Campaign' });
+      const res = createMockRes();
+
+      Campaign.updateName.mockResolvedValue({ id: 2, name: 'Side Campaign', slug: 'sns' });
+
+      await campaignController.renameCurrentCampaign(req, res);
+
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should reject a missing name', async () => {
+      const req = createDmReq({});
+      const res = createMockRes();
+
+      await campaignController.renameCurrentCampaign(req, res);
+
+      expect(res.validationError).toHaveBeenCalled();
+      expect(Campaign.updateName).not.toHaveBeenCalled();
+    });
+
+    it('should reject a whitespace-only name', async () => {
+      const req = createDmReq({ name: '   ' });
+      const res = createMockRes();
+
+      await campaignController.renameCurrentCampaign(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('Campaign name is required');
+      expect(Campaign.updateName).not.toHaveBeenCalled();
+    });
+
+    it('should reject a non-string name', async () => {
+      const req = createDmReq({ name: 42 });
+      const res = createMockRes();
+
+      await campaignController.renameCurrentCampaign(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('Campaign name is required');
+      expect(Campaign.updateName).not.toHaveBeenCalled();
+    });
+
+    it('should reject a name longer than 255 characters', async () => {
+      const req = createDmReq({ name: 'x'.repeat(256) });
+      const res = createMockRes();
+
+      await campaignController.renameCurrentCampaign(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('Campaign name cannot exceed 255 characters');
+      expect(Campaign.updateName).not.toHaveBeenCalled();
+    });
+
+    it('should return not found when the campaign row no longer exists', async () => {
+      const req = createDmReq({ name: 'Ghost Campaign' });
+      const res = createMockRes();
+
+      Campaign.updateName.mockResolvedValue(null);
+
+      await campaignController.renameCurrentCampaign(req, res);
+
+      expect(res.notFound).toHaveBeenCalledWith('Campaign not found');
+    });
+
+    // The DM gate lives at the route layer (checkRole('DM')) — verify a
+    // per-campaign Player is rejected by the middleware the route uses.
+    it('should be blocked for a per-campaign Player by checkRole(DM)', () => {
+      const checkRole = require('../../middleware/checkRole');
+      const req = createMockReq({ campaignRole: 'Player' });
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      checkRole('DM')(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
     });
   });
 

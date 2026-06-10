@@ -3,13 +3,22 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const timezoneUtils = require('../utils/timezoneUtils');
+const campaignSettings = require('../utils/campaignSettings');
 const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
 
 /**
  * Get Discord settings
  */
 const getDiscordSettings = async (req, res) => {
-    const settings = await fetchSettingsByNames(['discord_bot_token', 'discord_channel_id', 'discord_integration_enabled']);
+    // Bot token is global broker infrastructure; channel id and the
+    // integration-enabled flag are per-campaign (campaign_settings with
+    // global fallback)
+    const globalSettings = await fetchSettingsByNames(['discord_bot_token']);
+    const perCampaign = await campaignSettings.getCampaignSettings(
+        ['discord_channel_id', 'discord_integration_enabled']
+    );
+
+    const settings = { ...globalSettings, ...perCampaign };
 
     // Mask the bot token for security if it exists
     if (settings.discord_bot_token) {
@@ -77,6 +86,22 @@ const updateSetting = async (req, res) => {
         throw controllerFactory.createValidationError('Setting name must contain only lowercase letters, numbers, and underscores');
     }
 
+    // Per-campaign settings must never be written as global rows (that would
+    // silently change every campaign) — point callers at the campaign endpoint
+    if (campaignSettings.PER_CAMPAIGN_SETTINGS.includes(name)) {
+        throw controllerFactory.createValidationError(
+            `'${name}' is a per-campaign setting; update it via PUT /api/campaigns/current/settings`
+        );
+    }
+
+    // campaign_name is deprecated: the campaign's display name lives on
+    // campaigns.name and is renamed via PATCH /api/campaigns/current
+    if (name === 'campaign_name') {
+        throw controllerFactory.createValidationError(
+            "'campaign_name' is deprecated; rename the campaign via PATCH /api/campaigns/current"
+        );
+    }
+
     // registration_mode drives the registration flow — constrain it to the
     // three supported values (scoped validation; other settings are free-form)
     if (name === 'registration_mode' && !['open', 'invite-only', 'closed'].includes(value)) {
@@ -93,7 +118,8 @@ const updateSetting = async (req, res) => {
         if (name === 'openai_key' && value) {
             valueToStore = encryptValue(value);
             valueType = 'encrypted';
-        } else if (name === 'registrations_open' || name === 'discord_integration_enabled' || name === 'infamy_system_enabled' || name === 'auto_appraisal_enabled') {
+        } else if (name === 'registrations_open') {
+            // (the other boolean settings are per-campaign now and rejected above)
             valueType = 'boolean';
         } else if (name === 'registration_mode') {
             valueType = 'string';
@@ -233,8 +259,9 @@ const decryptValue = (encryptedValue) => {
  */
 const getInfamySystem = async (req, res) => {
     try {
-        const settings = await fetchSettingsByNames(['infamy_system_enabled']);
-        const infamySystem = settings.infamy_system_enabled || '0';
+        const infamySystem = await campaignSettings.getCampaignSetting('infamy_system_enabled', {
+            defaultValue: '0'
+        }) || '0';
 
         controllerFactory.sendSuccessResponse(res, {value: infamySystem}, 'Infamy system setting retrieved');
     } catch (error) {
@@ -263,8 +290,9 @@ const getAveragePartyLevel = async (req, res) => {
  */
 const getRegion = async (req, res) => {
     try {
-        const settings = await fetchSettingsByNames(['region']);
-        const region = settings.region || 'Varisia';
+        const region = await campaignSettings.getCampaignSetting('region', {
+            defaultValue: 'Varisia'
+        }) || 'Varisia';
 
         controllerFactory.sendSuccessResponse(res, {value: region}, 'Region setting retrieved');
     } catch (error) {
@@ -278,8 +306,9 @@ const getRegion = async (req, res) => {
  * weather is pre-generated and visible to DMs).
  */
 const getWeatherForecastDays = async (req, res) => {
-    const settings = await fetchSettingsByNames(['weather_forecast_days']);
-    const value = settings.weather_forecast_days || '7';
+    const value = await campaignSettings.getCampaignSetting('weather_forecast_days', {
+        defaultValue: '7'
+    }) || '7';
 
     controllerFactory.sendSuccessResponse(res, { value }, 'Weather forecast days retrieved');
 };
@@ -299,12 +328,7 @@ const updateWeatherForecastDays = async (req, res) => {
         throw controllerFactory.createValidationError(`Forecast days must be an integer between 0 and ${MAX_FORECAST_DAYS}`);
     }
 
-    await dbUtils.executeQuery(
-        `INSERT INTO settings (name, value, value_type, description)
-         VALUES ('weather_forecast_days', $1, 'integer', 'Number of days ahead of the current Golarion date to pre-generate weather')
-         ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
-        [String(parsed)]
-    );
+    await campaignSettings.setCampaignSetting('weather_forecast_days', String(parsed), 'integer');
 
     logger.info(`Weather forecast days updated to ${parsed}`, { userId: req.user.id });
 
@@ -373,14 +397,11 @@ const updateCampaignTimezone = async (req, res) => {
         );
     }
 
-    // Update setting in database
-    await dbUtils.executeQuery(
-        'UPDATE settings SET value = $1 WHERE name = $2',
-        [timezone, 'campaign_timezone']
-    );
+    // Update the per-campaign setting
+    await campaignSettings.setCampaignSetting('campaign_timezone', timezone, 'string');
 
-    // Clear cache and restart scheduler
-    timezoneUtils.clearTimezoneCache();
+    // Clear this campaign's cached timezone and restart the scheduler
+    timezoneUtils.clearTimezoneCache(campaignSettings.resolveCampaignId());
 
     const sessionSchedulerService = require('../services/scheduler/SessionSchedulerService');
     await sessionSchedulerService.restart();

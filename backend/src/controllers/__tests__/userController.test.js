@@ -1052,6 +1052,49 @@ describe('userController', () => {
         expect(dbUtils.executeQuery).not.toHaveBeenCalled();
       }
     );
+
+    // Phase 4c: per-campaign settings must not be writable as global rows
+    it.each([
+      'campaign_timezone',
+      'region',
+      'weather_forecast_days',
+      'treasure_track',
+      'treasure_modifier',
+      'infamy_system_enabled',
+      'auto_appraisal_enabled',
+      'auto_task_generation',
+      'discord_integration_enabled',
+      'discord_channel_id',
+      'campaign_role_id',
+    ])('should reject the per-campaign setting %s with a pointer to the campaign endpoint', async (name) => {
+      const req = createMockReq({
+        user: { id: 99, role: 'DM' },
+        body: { name, value: '1' },
+      });
+      const res = createMockRes();
+
+      await userController.updateSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        `'${name}' is a per-campaign setting; update it via PUT /api/campaigns/current/settings`
+      );
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should reject the deprecated campaign_name with a pointer to the rename endpoint', async () => {
+      const req = createMockReq({
+        user: { id: 99, role: 'DM' },
+        body: { name: 'campaign_name', value: 'New Name' },
+      });
+      const res = createMockRes();
+
+      await userController.updateSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        "'campaign_name' is deprecated; rename the campaign via PATCH /api/campaigns/current"
+      );
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
   });
 
   // ---------------------------------------------------------------

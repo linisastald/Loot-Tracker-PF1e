@@ -4,6 +4,11 @@ const logger = require('../utils/logger');
 const dbUtils = require('../utils/dbUtils');
 const { discordRateLimiter } = require('../utils/rateLimiter');
 const ServiceResult = require('../utils/ServiceResult');
+const campaignSettings = require('../utils/campaignSettings');
+
+// Broker registration is single-campaign for now: it registers the DEFAULT
+// campaign's channel config. Per-campaign registration is a later phase.
+const DEFAULT_BROKER_CAMPAIGN_ID = '1';
 
 class DiscordBrokerService {
   constructor() {
@@ -110,25 +115,23 @@ class DiscordBrokerService {
 
   async getDiscordSettings() {
     try {
-      // Global (non-RLS) settings read - safe without campaign context.
-      // Becomes a per-campaign campaign_settings read in a later phase.
-      const query = `
-        SELECT name, value
-        FROM settings
-        WHERE name IN ('discord_channel_id', 'campaign_role_id', 'discord_bot_token')
-      `;
+      // Channel and role ids are per-campaign (campaign_settings with global
+      // fallback). Broker registration is a startup background path that runs
+      // outside any campaign context, so it registers for the DEFAULT
+      // campaign (id 1) explicitly; per-campaign broker registration (one
+      // registration per campaign) is a later phase.
+      const rows = await campaignSettings.getCampaignSettings(
+        ['discord_channel_id', 'campaign_role_id'],
+        { campaignId: DEFAULT_BROKER_CAMPAIGN_ID }
+      );
 
-      const result = await dbUtils.executeQuery(query);
       const settings = {};
-
-      result.rows.forEach(row => {
-        // Map database names to expected keys
-        if (row.name === 'discord_channel_id') {
-          settings.session_channel_id = row.value;
-        } else if (row.name === 'campaign_role_id') {
-          settings.guild_id = row.value; // Using role_id as guild identifier for now
-        }
-      });
+      if (rows.discord_channel_id !== undefined) {
+        settings.session_channel_id = rows.discord_channel_id;
+      }
+      if (rows.campaign_role_id !== undefined) {
+        settings.guild_id = rows.campaign_role_id; // Using role_id as guild identifier for now
+      }
 
       return settings;
     } catch (error) {

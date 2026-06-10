@@ -47,10 +47,10 @@ import {
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import CasinoIcon from '@mui/icons-material/Casino';
-import api from '../../utils/api';
 import lootService from '../../services/lootService';
 import versionService from '../../services/versionService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCampaign } from '../../contexts/CampaignContext';
 import { APP_EVENTS } from '../../utils/events';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLogout }) => {
@@ -60,8 +60,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
   const [openFleetManagement, setOpenFleetManagement] = useState(false);
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
   const [unidentifiedLootCount, setUnidentifiedLootCount] = useState(0);
-  const [groupName, setGroupName] = useState('Loot Tracker');
-  const [infamyEnabled, setInfamyEnabled] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [versionInfo, setVersionInfo] = useState({ fullVersion: '0.7.1', version: '0.7.1', buildNumber: 0 });
   const location = useLocation();
@@ -71,13 +69,21 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
   const username = user?.username || '';
   const activeCharacter = user?.activeCharacter || null;
 
+  // Per-campaign: the sidebar title is the active campaign's name and the
+  // Infamy nav entries follow the campaign's infamy_system_enabled setting.
+  // Both update live when the campaign context refreshes (e.g. after a DM
+  // renames the campaign or toggles infamy in Campaign Settings).
+  const { currentCampaign, campaignSettings } = useCampaign();
+  const groupName = currentCampaign?.name || 'Loot Tracker';
+  const infamyEnabled = campaignSettings?.infamy_system_enabled === '1';
+
   const handleToggle = (setter) => () => setter(prev => !prev);
 
   // Refetch only the badge counts. Used when the user navigates, comes back
   // to the tab, or a page tells us via the LOOT_COUNTS_CHANGED event that
   // an action (status change, identification, etc.) might have moved the
-  // numbers. The other settings (campaign name, infamy, version) only fetch
-  // on mount because they rarely change inside a session.
+  // numbers. The version only fetches on mount because it cannot change
+  // inside a session.
   const refreshCounts = useCallback(async () => {
     try {
       const [lootCountRes, unidentifiedCountRes] = await Promise.all([
@@ -96,11 +102,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
 
     const fetchInitial = async () => {
       try {
-        const [lootCountRes, unidentifiedCountRes, groupNameRes, infamyRes, versionRes] = await Promise.all([
+        const [lootCountRes, unidentifiedCountRes, versionRes] = await Promise.all([
           lootService.getUnprocessedCount(),
           lootService.getUnidentifiedCount(),
-          api.get('/settings/campaign-name'),
-          api.get('/settings/infamy-system'),
           versionService.getVersion()
         ]);
 
@@ -108,10 +112,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
           setUnprocessedLootCount(lootCountRes.data.count);
           setUnidentifiedLootCount(unidentifiedCountRes.data.count);
 
-          setGroupName(groupNameRes.data.value);
-          if (infamyRes.data?.value) {
-            setInfamyEnabled(infamyRes.data.value === '1');
-          }
           if (versionRes.data) {
             setVersionInfo(versionRes.data);
           }
