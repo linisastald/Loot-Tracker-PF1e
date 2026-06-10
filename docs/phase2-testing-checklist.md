@@ -5,8 +5,9 @@ Build under test: `feature/multi-campaign` @ `bb248ad` (or later) — v0.12.2-de
 ## 1. Test 2a (deployed normally — RLS is dormant, this is a regression pass)
 
 Startup:
-- [ ] Logs show `045_enable_rls.sql` applied successfully, server starts
-- [ ] Logs show `Database pool using owner credentials (RLS not enforced)` — expected for 2a
+- [x] Logs show `045_enable_rls.sql` applied successfully, server starts (verified 2026-06-10 04:05 UTC, 99ms)
+- [x] Logs show `Database pool using owner credentials (RLS not enforced)` — expected for 2a
+- [x] (bonus) `Admin database pool created (owner credentials, migration runner only)` — migration runner used its dedicated owner pool; scheduler/outbox/broker all started clean through the new dbUtils wrapper
 
 App regression (everything should behave exactly as before):
 - [ ] Login, page loads, loot entry insert, gold transaction
