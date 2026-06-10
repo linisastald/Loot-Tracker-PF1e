@@ -350,6 +350,39 @@ Phase 0 (chokepoint refactor — all services through dbUtils) is DONE (90c3cc2)
   UNIQUE(name) with partial unique indexes, so a bare `ON CONFLICT (name)`
   no longer finds an arbiter.
 
+## 7.5 Feature additions (requested 2026-06-10, in scope for this feature set)
+
+1. **Per-campaign theme / custom themes** — each campaign gets its own color
+   theme. Storage: `campaign_settings` (the global `theme` setting stays as the
+   app default; a campaign override wins when present). "Custom theme" =
+   DM-editable palette (at minimum primary/secondary/mode), validated and fed
+   into the MUI theme factory at campaign-switch time. Slot: Phase 4 (frontend
+   campaign context) or immediately after.
+
+2. **Invite system overhaul** — current invite flow "doesn't work as expected"
+   (exact failures to be enumerated with the user before design). Known
+   direction: invites become **campaign-scoped** (the `invites` table already
+   has `campaign_id` from migration 044) and grant membership in a specific
+   campaign with a specific role on redemption — replacing the Phase 3
+   "default to campaign 1" registration hook. Review existing
+   generate-quick/custom-invite endpoints + UI as part of this. Slot: Phase 3
+   (it IS the membership-granting mechanism).
+
+3. **Campaign selector + in-app campaign creation** — switcher UI for users
+   with multiple memberships (header/sidebar), persisted last-selected
+   campaign, and the DM-facing "create campaign" flow (gated per the §8
+   creation-policy decision). Already implied by Phases 3-4; called out
+   explicitly as a deliverable.
+
+4. **"No session today" indicator** — when the active campaign has no
+   `game_sessions` row for the current real-world day, show a passive,
+   non-blocking banner/chip (e.g. in the app bar) so a multi-campaign user
+   notices they may be in the wrong campaign before entering data. Must not
+   gate any action. Needs: cheap "session today?" lookup (existing
+   upcoming-sessions data may already cover it), dismissible per day. Slot:
+   Phase 4, after the selector exists (it's only meaningful with multiple
+   campaigns).
+
 ## 8. Open questions — status
 - **Reference overrides (§4.2)**: DECIDED — `item`/`mod` (and `golarion_holidays`,
   which has `is_custom` rows) get a nullable `campaign_id` in Phase 1 (NULL =
