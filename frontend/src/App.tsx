@@ -75,6 +75,8 @@ function App() {
           setIsAuthenticated(true);
           setUser(response.data.user);
           localStorage.setItem('user', JSON.stringify(response.data.user));
+          // Slide the 24h session window so active users aren't logged out mid-use
+          api.post('/auth/refresh').catch(() => {});
         } else if (isMounted) {
           // Server responded but user is not authenticated - log out
           handleLogout();
@@ -96,9 +98,17 @@ function App() {
     };
 
     checkAuthStatus();
-    
+
+    // Keep long-lived tabs alive: re-issue the token periodically while open.
+    // Failures are ignored; an expired token just means the next API call
+    // redirects to login with the "session expired" message.
+    const refreshInterval = setInterval(() => {
+      api.post('/auth/refresh').catch(() => {});
+    }, 6 * 60 * 60 * 1000); // every 6 hours
+
     return () => {
       isMounted = false;
+      clearInterval(refreshInterval);
     };
   }, []);
 

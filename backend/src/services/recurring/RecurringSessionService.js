@@ -16,7 +16,7 @@ class RecurringSessionService {
      */
     async createRecurringSession(sessionData) {
         try {
-            return await dbUtils.executeTransaction(async (client) => {
+            const result = await dbUtils.executeTransaction(async (client) => {
             const {
                 title,
                 start_time,
@@ -85,6 +85,16 @@ class RecurringSessionService {
             };
             });
 
+            // Schedule reminders after the transaction commits: scheduleSessionEvents
+            // runs on its own pooled connection, which cannot see uncommitted session
+            // rows (FK violation on session_reminders otherwise).
+            const sessionService = require('../sessionService');
+            for (const instance of result.instances) {
+                await sessionService.scheduleSessionEvents(instance);
+            }
+
+            return result;
+
         } catch (error) {
             logger.error('Failed to create recurring session:', error);
             throw error;
@@ -98,9 +108,6 @@ class RecurringSessionService {
      * @returns {Promise<Array>} - Generated session instances
      */
     async generateRecurringInstances(client, template) {
-        // Lazy load to avoid circular dependency
-        const sessionService = require('../sessionService');
-
         // Cache the campaign timezone for DST-aware date calculations
         this._cachedTimezone = await timezoneUtils.getCampaignTimezone();
 
@@ -150,9 +157,6 @@ class RecurringSessionService {
                     ]);
 
                     instances.push(instanceResult.rows[0]);
-
-                    // Schedule events for this instance
-                    await sessionService.scheduleSessionEvents(instanceResult.rows[0]);
                 } catch (error) {
                     logger.error(`Failed to create session instance for ${currentDate}:`, error);
                     // Continue with other instances
@@ -371,7 +375,7 @@ class RecurringSessionService {
 
             const newInstances = [];
 
-            return await dbUtils.executeTransaction(async (client) => {
+            const createdInstances = await dbUtils.executeTransaction(async (client) => {
                 for (let i = 0; i < count; i++) {
                     lastDate = this.calculateNextOccurrence(
                         lastDate,
@@ -411,9 +415,6 @@ class RecurringSessionService {
                     ]);
 
                     newInstances.push(instanceResult.rows[0]);
-
-                    // Schedule events for this instance
-                    await sessionService.scheduleSessionEvents(instanceResult.rows[0]);
                 }
 
                 logger.info('Generated additional recurring instances:', {
@@ -423,6 +424,15 @@ class RecurringSessionService {
 
                 return newInstances;
             });
+
+            // Schedule reminders after the transaction commits: scheduleSessionEvents
+            // runs on its own pooled connection, which cannot see uncommitted session
+            // rows (FK violation on session_reminders otherwise).
+            for (const instance of createdInstances) {
+                await sessionService.scheduleSessionEvents(instance);
+            }
+
+            return createdInstances;
 
         } catch (error) {
             logger.error('Failed to generate additional instances:', error);
