@@ -5,16 +5,15 @@
  * backoff calculation, cleanup, and start/stop lifecycle.
  */
 
-const mockPoolQuery = jest.fn();
+const mockExecuteQuery = jest.fn();
+const mockExecuteTransaction = jest.fn();
 const mockClient = {
   query: jest.fn(),
-  release: jest.fn(),
 };
-const mockConnect = jest.fn(() => Promise.resolve(mockClient));
 
-jest.mock('../../config/db', () => ({
-  query: (...args) => mockPoolQuery(...args),
-  connect: (...args) => mockConnect(...args),
+jest.mock('../../utils/dbUtils', () => ({
+  executeQuery: (...args) => mockExecuteQuery(...args),
+  executeTransaction: (...args) => mockExecuteTransaction(...args),
 }));
 
 jest.mock('../../utils/logger', () => ({
@@ -54,10 +53,10 @@ describe('DiscordOutboxService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockClient.query.mockReset();
-    mockClient.release.mockReset();
-    mockPoolQuery.mockReset();
-    mockConnect.mockReset();
-    mockConnect.mockResolvedValue(mockClient);
+    mockExecuteQuery.mockReset();
+    mockExecuteTransaction.mockReset();
+    // Transaction callbacks receive a mock client
+    mockExecuteTransaction.mockImplementation(async (cb) => cb(mockClient));
     // Re-setup cron mock (resetMocks clears it)
     cron.schedule.mockReturnValue({ stop: jest.fn() });
     // Reset internal state
@@ -169,18 +168,16 @@ describe('DiscordOutboxService', () => {
           retry_count: 0,
         },
       ];
-      mockPoolQuery.mockResolvedValueOnce({ rows: messages });
+      mockExecuteQuery.mockResolvedValue({});
+      mockExecuteQuery.mockResolvedValueOnce({ rows: messages });
 
-      // processMessage will call pool.connect (which returns mockClient)
-      // Then mark as processing, call sessionService, mark as sent
-      mockClient.query.mockResolvedValue({});
-
+      // processMessage will mark as processing, call sessionService, mark as sent
       const sessionService = require('../sessionService');
       sessionService.postSessionAnnouncement.mockResolvedValueOnce({});
 
       await discordOutboxService.processOutbox();
 
-      expect(mockPoolQuery).toHaveBeenCalledWith(
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining("status IN ('pending', 'failed')"),
       );
       // Should have set isProcessing back to false
@@ -188,7 +185,7 @@ describe('DiscordOutboxService', () => {
     });
 
     it('should handle empty outbox gracefully', async () => {
-      mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+      mockExecuteQuery.mockResolvedValueOnce({ rows: [] });
 
       await discordOutboxService.processOutbox();
 
@@ -196,7 +193,7 @@ describe('DiscordOutboxService', () => {
     });
 
     it('should log error and reset isProcessing on query failure', async () => {
-      mockPoolQuery.mockRejectedValueOnce(new Error('DB down'));
+      mockExecuteQuery.mockRejectedValueOnce(new Error('DB down'));
 
       await discordOutboxService.processOutbox();
 
@@ -209,7 +206,7 @@ describe('DiscordOutboxService', () => {
 
     it('should set isProcessing to true during execution', async () => {
       let capturedState = null;
-      mockPoolQuery.mockImplementationOnce(() => {
+      mockExecuteQuery.mockImplementationOnce(() => {
         capturedState = discordOutboxService.isProcessing;
         return Promise.resolve({ rows: [] });
       });
@@ -231,7 +228,7 @@ describe('DiscordOutboxService', () => {
         payload: { sessionId: 10 },
         retry_count: 0,
       };
-      mockClient.query.mockResolvedValue({});
+      mockExecuteQuery.mockResolvedValue({});
 
       const sessionService = require('../sessionService');
       sessionService.postSessionAnnouncement.mockResolvedValueOnce({});
@@ -240,11 +237,10 @@ describe('DiscordOutboxService', () => {
 
       expect(sessionService.postSessionAnnouncement).toHaveBeenCalledWith(10);
       // Should mark as sent
-      const sentCall = mockClient.query.mock.calls.find(
+      const sentCall = mockExecuteQuery.mock.calls.find(
         call => typeof call[0] === 'string' && call[0].includes("status = 'sent'")
       );
       expect(sentCall).toBeDefined();
-      expect(mockClient.release).toHaveBeenCalled();
     });
 
     it('should process session_update message', async () => {
@@ -254,7 +250,7 @@ describe('DiscordOutboxService', () => {
         payload: { sessionId: 10 },
         retry_count: 0,
       };
-      mockClient.query.mockResolvedValue({});
+      mockExecuteQuery.mockResolvedValue({});
 
       const sessionService = require('../sessionService');
       sessionService.updateSessionMessage.mockResolvedValueOnce({});
@@ -271,7 +267,7 @@ describe('DiscordOutboxService', () => {
         payload: { message: 'Session cancelled' },
         retry_count: 0,
       };
-      mockClient.query.mockResolvedValue({});
+      mockExecuteQuery.mockResolvedValue({});
 
       const sessionService = require('../sessionService');
       sessionService.getDiscordSettings.mockResolvedValueOnce({
@@ -297,7 +293,7 @@ describe('DiscordOutboxService', () => {
         payload: {},
         retry_count: 0,
       };
-      mockClient.query.mockResolvedValue({});
+      mockExecuteQuery.mockResolvedValue({});
 
       await discordOutboxService.processMessage(message);
 
@@ -314,49 +310,41 @@ describe('DiscordOutboxService', () => {
         retry_count: 1,
       };
 
-      // First call (mark as processing) succeeds
-      mockClient.query
+      mockExecuteQuery
         .mockResolvedValueOnce({}) // UPDATE processing
-        .mockRejectedValueOnce(new Error('Discord API error')); // postSessionAnnouncement will be mocked to fail
+        .mockResolvedValueOnce({}); // UPDATE failed
 
       const sessionService = require('../sessionService');
       sessionService.postSessionAnnouncement.mockRejectedValueOnce(new Error('Discord API error'));
 
-      // Reset mockClient.query for the failure path
-      mockClient.query.mockReset();
-      mockClient.query
-        .mockResolvedValueOnce({}) // UPDATE processing
-        .mockResolvedValueOnce({}); // UPDATE failed
-
-      // Re-mock postSessionAnnouncement to fail
-      sessionService.postSessionAnnouncement.mockRejectedValueOnce(new Error('Discord API error'));
-
       await discordOutboxService.processMessage(message);
 
-      const failedCall = mockClient.query.mock.calls.find(
+      const failedCall = mockExecuteQuery.mock.calls.find(
         call => typeof call[0] === 'string' && call[0].includes("status = 'failed'")
       );
       expect(failedCall).toBeDefined();
       expect(failedCall[1]).toContain('Discord API error');
-      expect(mockClient.release).toHaveBeenCalled();
     });
 
-    it('should always release client even on error', async () => {
+    it('should not throw when processing fails', async () => {
       const message = {
         id: 6,
         message_type: 'session_announcement',
         payload: { sessionId: 10 },
         retry_count: 0,
       };
-      mockClient.query.mockResolvedValueOnce({}); // mark processing
+      mockExecuteQuery.mockResolvedValueOnce({}); // mark processing
 
       const sessionService = require('../sessionService');
       sessionService.postSessionAnnouncement.mockRejectedValueOnce(new Error('fail'));
-      mockClient.query.mockResolvedValueOnce({}); // mark failed
+      mockExecuteQuery.mockResolvedValueOnce({}); // mark failed
 
-      await discordOutboxService.processMessage(message);
+      await expect(discordOutboxService.processMessage(message)).resolves.toBeUndefined();
 
-      expect(mockClient.release).toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        'Failed to process outbox message',
+        expect.objectContaining({ id: 6, error: 'fail' })
+      );
     });
   });
 
@@ -365,21 +353,21 @@ describe('DiscordOutboxService', () => {
   // ========================================================================
   describe('cleanup', () => {
     it('should delete sent messages older than 7 days', async () => {
-      mockPoolQuery.mockResolvedValueOnce({ rowCount: 5 });
+      mockExecuteQuery.mockResolvedValueOnce({ rowCount: 5 });
 
       await discordOutboxService.cleanup();
 
-      expect(mockPoolQuery).toHaveBeenCalledWith(
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining("status = 'sent'")
       );
-      expect(mockPoolQuery.mock.calls[0][0]).toContain('7 days');
+      expect(mockExecuteQuery.mock.calls[0][0]).toContain('7 days');
       expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining('Cleaned up 5 old outbox messages')
       );
     });
 
     it('should not log when no messages cleaned up', async () => {
-      mockPoolQuery.mockResolvedValueOnce({ rowCount: 0 });
+      mockExecuteQuery.mockResolvedValueOnce({ rowCount: 0 });
 
       await discordOutboxService.cleanup();
 
@@ -389,7 +377,7 @@ describe('DiscordOutboxService', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      mockPoolQuery.mockRejectedValueOnce(new Error('DB error'));
+      mockExecuteQuery.mockRejectedValueOnce(new Error('DB error'));
 
       // Should not throw
       await discordOutboxService.cleanup();

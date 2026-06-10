@@ -5,7 +5,7 @@
  * the Discord notifications are not lost and will be retried.
  */
 
-const pool = require('../config/db');
+const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 const cron = require('node-cron');
 
@@ -79,7 +79,7 @@ class DiscordOutboxService {
         try {
             // Get pending and failed messages that are ready for retry
             // Uses exponential backoff based on retry_count
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 SELECT *,
                     CASE
                         WHEN retry_count = 0 THEN INTERVAL '5 minutes'
@@ -118,11 +118,9 @@ class DiscordOutboxService {
      * Process a single outbox message
      */
     async processMessage(message) {
-        const client = await pool.connect();
-
         try {
             // Mark as processing
-            await client.query(`
+            await dbUtils.executeQuery(`
                 UPDATE discord_outbox
                 SET status = 'processing', last_attempt_at = NOW()
                 WHERE id = $1
@@ -160,7 +158,7 @@ class DiscordOutboxService {
             }
 
             // Mark as sent
-            await client.query(`
+            await dbUtils.executeQuery(`
                 UPDATE discord_outbox
                 SET status = 'sent', sent_at = NOW()
                 WHERE id = $1
@@ -173,7 +171,7 @@ class DiscordOutboxService {
 
         } catch (error) {
             // Mark as failed and increment retry count
-            await client.query(`
+            await dbUtils.executeQuery(`
                 UPDATE discord_outbox
                 SET status = 'failed',
                     retry_count = retry_count + 1,
@@ -187,8 +185,6 @@ class DiscordOutboxService {
                 error: error.message,
                 retryCount: message.retry_count + 1
             });
-        } finally {
-            client.release();
         }
     }
 
@@ -197,7 +193,7 @@ class DiscordOutboxService {
      */
     async cleanup() {
         try {
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 DELETE FROM discord_outbox
                 WHERE status = 'sent'
                 AND sent_at < NOW() - INTERVAL '7 days'

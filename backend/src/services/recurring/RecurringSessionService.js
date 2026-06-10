@@ -3,7 +3,7 @@
  * Extracted from sessionService.js for better separation of concerns
  */
 
-const pool = require('../../config/db');
+const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
 const timezoneUtils = require('../../utils/timezoneUtils');
 const { DEFAULT_VALUES } = require('../../constants/sessionConstants');
@@ -15,11 +15,8 @@ class RecurringSessionService {
      * @returns {Promise<Object>} - Template and generated instances
      */
     async createRecurringSession(sessionData) {
-        const client = await pool.connect();
-
         try {
-            await client.query('BEGIN');
-
+            return await dbUtils.executeTransaction(async (client) => {
             const {
                 title,
                 start_time,
@@ -79,8 +76,6 @@ class RecurringSessionService {
             // Generate individual session instances
             const generatedSessions = await this.generateRecurringInstances(client, recurringSession);
 
-            await client.query('COMMIT');
-
             logger.info(`Created recurring session template: ${recurringSession.id} - ${title}`);
             logger.info(`Generated ${generatedSessions.length} session instances`);
 
@@ -88,13 +83,11 @@ class RecurringSessionService {
                 template: recurringSession,
                 instances: generatedSessions
             };
+            });
 
         } catch (error) {
-            await client.query('ROLLBACK');
             logger.error('Failed to create recurring session:', error);
             throw error;
-        } finally {
-            client.release();
         }
     }
 
@@ -192,7 +185,7 @@ class RecurringSessionService {
                 whereClause += ' AND start_time > NOW()';
             }
 
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 SELECT
                     gs.*,
                     COUNT(sa.id) FILTER (WHERE sa.status = 'accepted') as confirmed_count,
@@ -221,11 +214,8 @@ class RecurringSessionService {
      * @returns {Promise<Object>} - Updated template
      */
     async updateRecurringSession(templateId, updateData) {
-        const client = await pool.connect();
-
         try {
-            await client.query('BEGIN');
-
+            return await dbUtils.executeTransaction(async (client) => {
             const {
                 title,
                 description,
@@ -293,17 +283,13 @@ class RecurringSessionService {
                 ]);
             }
 
-            await client.query('COMMIT');
-
             logger.info('Recurring session template updated:', { templateId });
             return template;
+            });
 
         } catch (error) {
-            await client.query('ROLLBACK');
             logger.error('Failed to update recurring session:', error);
             throw error;
-        } finally {
-            client.release();
         }
     }
 
@@ -314,11 +300,8 @@ class RecurringSessionService {
      * @returns {Promise<Object>} - Deleted template
      */
     async deleteRecurringSession(templateId, deleteFutureInstances = true) {
-        const client = await pool.connect();
-
         try {
-            await client.query('BEGIN');
-
+            return await dbUtils.executeTransaction(async (client) => {
             if (deleteFutureInstances) {
                 // Delete future instances (not yet started)
                 await client.query(`
@@ -338,21 +321,17 @@ class RecurringSessionService {
                 throw new Error('Recurring session template not found');
             }
 
-            await client.query('COMMIT');
-
             logger.info('Recurring session deleted:', {
                 templateId,
                 deletedInstances: deleteFutureInstances
             });
 
             return result.rows[0];
+            });
 
         } catch (error) {
-            await client.query('ROLLBACK');
             logger.error('Failed to delete recurring session:', error);
             throw error;
-        } finally {
-            client.release();
         }
     }
 
@@ -376,7 +355,7 @@ class RecurringSessionService {
             }
 
             // Find the last generated instance
-            const lastInstanceResult = await pool.query(`
+            const lastInstanceResult = await dbUtils.executeQuery(`
                 SELECT * FROM game_sessions
                 WHERE parent_recurring_id = $1
                 ORDER BY start_time DESC
@@ -390,12 +369,9 @@ class RecurringSessionService {
                 lastDate = new Date(template.start_time);
             }
 
-            const client = await pool.connect();
             const newInstances = [];
 
-            try {
-                await client.query('BEGIN');
-
+            return await dbUtils.executeTransaction(async (client) => {
                 for (let i = 0; i < count; i++) {
                     lastDate = this.calculateNextOccurrence(
                         lastDate,
@@ -440,21 +416,13 @@ class RecurringSessionService {
                     await sessionService.scheduleSessionEvents(instanceResult.rows[0]);
                 }
 
-                await client.query('COMMIT');
-
                 logger.info('Generated additional recurring instances:', {
                     templateId,
                     count: newInstances.length
                 });
 
                 return newInstances;
-
-            } catch (error) {
-                await client.query('ROLLBACK');
-                throw error;
-            } finally {
-                client.release();
-            }
+            });
 
         } catch (error) {
             logger.error('Failed to generate additional instances:', error);

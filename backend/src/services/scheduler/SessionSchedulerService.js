@@ -7,7 +7,6 @@
  * - sessionCleanup.js (cleanup logic moved here)
  */
 
-const pool = require('../../config/db');
 const logger = require('../../utils/logger');
 const cron = require('node-cron');
 const timezoneUtils = require('../../utils/timezoneUtils');
@@ -213,7 +212,7 @@ class SessionSchedulerService {
         // Lazy load to avoid circular dependency
         const sessionDiscordService = require('../discord/SessionDiscordService');
 
-        const result = await pool.query(`
+        const result = await dbUtils.executeQuery(`
             SELECT gs.* FROM game_sessions gs
             WHERE gs.status = 'scheduled'
             AND gs.discord_message_id IS NULL
@@ -250,7 +249,7 @@ class SessionSchedulerService {
         // Prevents sending if:
         //   1. An automatic reminder was already sent for this session
         //   2. A manual reminder was sent within the last 12 hours (cooldown period)
-        const result = await pool.query(`
+        const result = await dbUtils.executeQuery(`
             SELECT gs.id as session_id, gs.title, gs.start_time, gs.reminder_hours
             FROM game_sessions gs
             WHERE gs.status IN ('scheduled', 'confirmed')
@@ -317,7 +316,7 @@ class SessionSchedulerService {
         const sessionDiscordService = require('../discord/SessionDiscordService');
 
         // Get sessions within their confirmation_hours window
-        const result = await pool.query(`
+        const result = await dbUtils.executeQuery(`
             SELECT gs.* FROM game_sessions gs
             WHERE gs.status = 'scheduled'
             AND gs.start_time > NOW()
@@ -333,7 +332,7 @@ class SessionSchedulerService {
                 } else {
                     // Before cancelling, check if a reminder has been sent
                     // This prevents cancellation before players have been notified
-                    const reminderCheck = await pool.query(`
+                    const reminderCheck = await dbUtils.executeQuery(`
                         SELECT 1 FROM session_reminders
                         WHERE session_id = $1 AND sent = TRUE
                         LIMIT 1
@@ -370,7 +369,7 @@ class SessionSchedulerService {
             const sessionService = require('../sessionService');
 
             // Find sessions that have ended but are not yet marked as completed
-            const result = await pool.query(`
+            const result = await dbUtils.executeQuery(`
                 SELECT gs.*
                 FROM game_sessions gs
                 WHERE gs.status IN ('scheduled', 'confirmed')

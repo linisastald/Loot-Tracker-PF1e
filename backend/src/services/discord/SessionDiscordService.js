@@ -3,7 +3,7 @@
  * Extracted from sessionService.js for better separation of concerns
  */
 
-const pool = require('../../config/db');
+const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
 const discordService = require('../discordBrokerService');
 const { DISCORD_EMBED_COLORS } = require('../../constants/discordConstants');
@@ -53,7 +53,7 @@ class SessionDiscordService {
 
             if (messageResult.success) {
                 // Store message ID for tracking
-                const updateResult = await pool.query(`
+                const updateResult = await dbUtils.executeQuery(`
                     UPDATE game_sessions
                     SET discord_message_id = $1, discord_channel_id = $2
                     WHERE id = $3
@@ -100,7 +100,7 @@ class SessionDiscordService {
             // Get DM's discord_id to exclude them from reminders
             let dmDiscordId = null;
             if (session.created_by) {
-                const dmResult = await pool.query(
+                const dmResult = await dbUtils.executeQuery(
                     'SELECT discord_id FROM users WHERE id = $1',
                     [session.created_by]
                 );
@@ -275,7 +275,7 @@ class SessionDiscordService {
             }
 
             // Find session by message ID
-            const sessionResult = await pool.query(`
+            const sessionResult = await dbUtils.executeQuery(`
                 SELECT id FROM game_sessions
                 WHERE discord_message_id = $1 OR confirmation_message_id = $1
             `, [messageId]);
@@ -288,7 +288,7 @@ class SessionDiscordService {
             const sessionId = sessionResult.rows[0].id;
 
             // Find user by Discord ID
-            const userResult = await pool.query(`
+            const userResult = await dbUtils.executeQuery(`
                 SELECT id FROM users WHERE discord_id = $1
             `, [userId]);
 
@@ -307,7 +307,7 @@ class SessionDiscordService {
                 await attendanceService.recordAttendance(sessionId, dbUserId, responseType, { discord_id: userId });
 
                 // Record reaction tracking
-                await pool.query(`
+                await dbUtils.executeQuery(`
                     INSERT INTO discord_reaction_tracking
                     (message_id, user_discord_id, reaction_emoji, session_id)
                     VALUES ($1, $2, $3, $4)
@@ -317,13 +317,13 @@ class SessionDiscordService {
 
             } else if (action === 'remove') {
                 // Remove attendance
-                await pool.query(`
+                await dbUtils.executeQuery(`
                     DELETE FROM session_attendance
                     WHERE session_id = $1 AND user_id = $2
                 `, [sessionId, dbUserId]);
 
                 // Remove reaction tracking
-                await pool.query(`
+                await dbUtils.executeQuery(`
                     DELETE FROM discord_reaction_tracking
                     WHERE message_id = $1 AND user_discord_id = $2 AND reaction_emoji = $3
                 `, [messageId, userId, emoji]);
@@ -355,7 +355,7 @@ class SessionDiscordService {
         // session" task is responsible for snacks at THIS session.
         let snackMasterName = null;
         try {
-            const snackResult = await pool.query(`
+            const snackResult = await dbUtils.executeQuery(`
                 SELECT sth.snack_master_name
                 FROM session_task_history sth
                 JOIN game_sessions gs ON sth.session_id = gs.id
@@ -566,7 +566,7 @@ class SessionDiscordService {
      * @returns {Promise<Object>} - Discord settings
      */
     async getDiscordSettings() {
-        const result = await pool.query(`
+        const result = await dbUtils.executeQuery(`
             SELECT name, value FROM settings
             WHERE name IN ('discord_channel_id', 'discord_bot_token', 'campaign_role_id', 'campaign_name')
         `);
@@ -584,7 +584,7 @@ class SessionDiscordService {
      * @returns {Promise<Object>} - Reaction map
      */
     async getReactionMap() {
-        const result = await pool.query(`
+        const result = await dbUtils.executeQuery(`
             SELECT setting_value FROM session_config
             WHERE setting_name = 'attendance_reactions'
         `);
@@ -633,7 +633,7 @@ class SessionDiscordService {
                 targetAudience = 'all';
             }
 
-            await pool.query(`
+            await dbUtils.executeQuery(`
                 INSERT INTO session_reminders (
                     session_id,
                     reminder_type,
