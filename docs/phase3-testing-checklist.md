@@ -46,11 +46,7 @@ Everything behaves exactly as before — the middleware resolves campaign 1 for 
 - [x] Campaigns API works (verified 2026-06-10): GET /api/campaigns → campaign 1
   "test", role DM; GET /api/campaigns/current → campaignId 1, DM
 - [x] Malformed header `'abc'` → **400** (verified)
-- [ ] Non-member 403: run the `999` header probe **as a non-superadmin account**
-  (e.g. a Player login) → expect **403**:
-  ```js
-  fetch('/api/campaigns/current', {headers: {'X-Campaign-Id': '999'}, credentials: 'include'}).then(r => console.log(r.status))
-  ```
+- [x] Non-member 403 verified from a non-superadmin account (2026-06-10)
 
 Superadmin setup (DONE — operator account has is_superadmin = TRUE):
 - [x] isSuperadmin true in /current; header `999` returns 200 (superadmin
