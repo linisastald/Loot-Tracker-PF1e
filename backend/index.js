@@ -309,6 +309,10 @@ const cityRoutes = require('./src/api/routes/cities');
 const itemSearchRoutes = require('./src/api/routes/itemSearch');
 const spellcastingRoutes = require('./src/api/routes/spellcasting');
 
+// Multi-campaign routes
+const campaignRoutes = require('./src/api/routes/campaigns');
+const inviteRoutes = require('./src/api/routes/invites');
+
 // Set up routes with appropriate protection
 // Auth routes with auth-specific rate limiting (applied before global rate limiting)
 app.use('/api/auth', authRoutes);
@@ -373,6 +377,10 @@ app.use('/api/cities', csrfProtection, cityRoutes);
 app.use('/api/item-search', csrfProtection, itemSearchRoutes);
 app.use('/api/spellcasting', csrfProtection, spellcastingRoutes);
 
+// Multi-campaign routes
+app.use('/api/campaigns', csrfProtection, campaignRoutes);
+app.use('/api/invites', csrfProtection, inviteRoutes);
+
 // Serve React frontend static files (production)
 if (process.env.NODE_ENV === 'production') {
   const path = require('path');
@@ -382,11 +390,19 @@ if (process.env.NODE_ENV === 'production') {
   logger.info(`Frontend build path: ${frontendBuildPath}`);
   logger.info(`Frontend build exists: ${require('fs').existsSync(frontendBuildPath)}`);
   
-  // Serve static files from React build with caching
+  // Serve static files from React build with caching.
+  // index.html must NEVER be cached: it references content-hashed chunk names
+  // that change every deploy, and a cached index points browsers at deleted
+  // assets ("Failed to fetch dynamically imported module" after deploys).
   app.use(express.static(frontendBuildPath, {
     maxAge: '1d',
     etag: true,
     immutable: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
   }));
 
   // Vite-hashed assets can be cached aggressively
@@ -408,7 +424,8 @@ if (process.env.NODE_ENV === 'production') {
     
     const indexPath = path.join(frontendBuildPath, 'index.html');
     if (require('fs').existsSync(indexPath)) {
-      res.sendFile(indexPath);
+      // Same no-cache rule as above: a cached index breaks every deploy
+      res.sendFile(indexPath, { headers: { 'Cache-Control': 'no-cache' } });
     } else {
       res.status(404).json({
         success: false,

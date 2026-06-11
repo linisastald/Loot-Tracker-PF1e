@@ -274,6 +274,45 @@ describe('weatherController', () => {
       expect(returned).toHaveLength(2);
       expect(returned.every(w => w.day <= 15)).toBe(true);
     });
+
+    it('hides a future date from a user demoted to Player despite a stale JWT DM role', async () => {
+      const req = createMockReq({
+        user: { role: 'DM' },     // stale JWT role
+        campaignRole: 'Player',    // per-campaign role wins
+        params: { year: '4723', month: '6', day: '20', region: 'Varisia' },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ year: 4723, month: 6, day: 15 }] });
+
+      await weatherController.getWeatherForDate(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1); // no weather SELECT
+      expect(res.success).toHaveBeenCalledWith(null, 'Weather not found for this date and region');
+    });
+
+    it('shows a future date to a superadmin without any DM role', async () => {
+      const req = createMockReq({
+        user: { role: 'Player' },
+        campaignRole: 'Player',
+        isSuperadmin: true,
+        params: { year: '4723', month: '6', day: '20', region: 'Varisia' },
+      });
+      const res = createMockRes();
+
+      // DM path: no current-date clamp lookup, straight to the weather SELECT
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ condition: 'Clear', year: 4723, month: 6, day: 20 }],
+      });
+
+      await weatherController.getWeatherForDate(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ condition: 'Clear' }),
+        'Weather retrieved successfully'
+      );
+    });
   });
 
   // ---------------------------------------------------------------

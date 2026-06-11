@@ -267,6 +267,14 @@ const SessionManagement = () => {
             newEndTime.setHours(currentEndTime.getHours());
             newEndTime.setMinutes(currentEndTime.getMinutes());
 
+            // Overnight sessions: if the preserved clock time lands at or before
+            // the new start (e.g. 11 PM start, 4 AM end), the session crosses
+            // midnight — roll the end to the next day instead of producing an
+            // end time before the start
+            if (newEndTime <= newStartTime) {
+                newEndTime.setDate(newEndTime.getDate() + 1);
+            }
+
             setEndTime(newEndTime);
         }
     };
@@ -1000,7 +1008,15 @@ const SessionManagement = () => {
                                     label="End Time"
                                     value={endTime}
                                     onChange={handleEndTimeChange}
-                                    slotProps={{ textField: { fullWidth: true } }}
+                                    slotProps={{
+                                        textField: {
+                                            fullWidth: true,
+                                            error: !!(startTime && endTime && endTime <= startTime),
+                                            helperText: startTime && endTime && endTime <= startTime
+                                                ? 'End time must be after start time'
+                                                : undefined
+                                        }
+                                    }}
                                 />
                             </Grid>
                         </Grid>

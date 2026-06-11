@@ -1,6 +1,15 @@
 // frontend/src/components/pages/DMSettings/SystemSettings.js
+// Multi-campaign Phase 4c: the Discord channel/role/enabled flag, the
+// campaign timezone, and auto-appraisal are per-campaign — they read from
+// useCampaign().campaignSettings and write to PUT /campaigns/current/settings.
+// Default quantity, bot token, and the OpenAI key remain global
+// (PUT /user/update-setting). Registration mode moved to the System Admin
+// page (Phase 5a); the legacy global 'theme' toggle was removed (the app
+// uses the static base theme plus per-campaign overrides).
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
+import {useSnackbar} from 'notistack';
+import {useCampaign} from '../../../contexts/CampaignContext';
 import {
   Alert,
   Box,
@@ -9,39 +18,35 @@ import {
   CardContent,
   CardHeader,
   CircularProgress,
-  Divider,
   FormControl,
   FormControlLabel,
   Grid,
-  IconButton,
   InputLabel,
   MenuItem,
   Select,
   Snackbar,
   Switch,
   TextField,
-  Tooltip,
   Typography
 } from '@mui/material';
 import {
   CloudDownload,
   CloudUpload,
-  FileCopy as FileCopyIcon,
   Message as ChatIcon,
   Settings as SettingsIcon,
   DataObject as TestDataIcon,
   Schedule as ScheduleIcon
 } from '@mui/icons-material';
-import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
-import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
+import CampaignThemeSettings from './CampaignThemeSettings';
+
+// Display-only mask for the saved OpenAI key (never applies to the bot token)
+const MASKED_VALUE = '********';
 
 const SystemSettings = () => {
-    const { timezone: campaignTimezone } = useCampaignTimezone();
-    const [registrationOpen, setRegistrationOpen] = useState(false);
-    const [inviteRequired, setInviteRequired] = useState(false);
+    const {currentCampaign, campaignSettings, refresh} = useCampaign();
+    const {enqueueSnackbar} = useSnackbar();
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [theme, setTheme] = useState('dark');
     const [isLoadingDiscord, setIsLoadingDiscord] = useState(false);
     const [isBackingUp, setIsBackingUp] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
@@ -49,8 +54,6 @@ const SystemSettings = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
-    const [quickInviteData, setQuickInviteData] = useState(null);
-    const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
     const [isGeneratingTestData, setIsGeneratingTestData] = useState(false);
 
     // Timezone settings
@@ -85,23 +88,43 @@ const SystemSettings = () => {
         openaiKey: ''
     });
 
-    const [maskedToken, setMaskedToken] = useState('********');
-
-    useEffect(() => {
-        // When Discord settings are loaded, handle masking the token
-        if (discordSettings.botToken && discordSettings.botToken !== maskedToken) {
-            // If it's a real token (not the mask), we should mask it for display
-            setDiscordSettings(prev => ({
-                ...prev,
-                originalBotToken: prev.botToken, // Store the original
-                botToken: maskedToken // Display the mask
-            }));
-        }
-    }, [maskedToken, discordSettings.botToken]);
+    // The saved bot token is never echoed back into the field. When a token
+    // exists server-side the input stays empty and shows a placeholder; any
+    // user input is kept raw in state and sent verbatim on save.
+    const [hasSavedBotToken, setHasSavedBotToken] = useState(false);
 
     useEffect(() => {
         fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Per-campaign values come from the campaign context (GET /campaigns/current
+    // settings map, values stored as strings). Re-sync whenever the context
+    // refreshes (e.g. after a save).
+    useEffect(() => {
+        const channelId = typeof campaignSettings?.discord_channel_id === 'string'
+            ? campaignSettings.discord_channel_id : '';
+        const roleId = typeof campaignSettings?.campaign_role_id === 'string'
+            ? campaignSettings.campaign_role_id : '';
+        const enabled = campaignSettings?.discord_integration_enabled === '1';
+
+        setDiscordSettings(prev => ({...prev, channelId, roleId, enabled}));
+        setOriginalSettings(prev => ({...prev, channelId, roleId, enabled}));
+
+        setDefaultSettings(prev => ({
+            ...prev,
+            autoAppraisalEnabled: campaignSettings?.auto_appraisal_enabled !== undefined
+                ? campaignSettings.auto_appraisal_enabled === '1'
+                : true
+        }));
+
+        const timezone = (typeof campaignSettings?.campaign_timezone === 'string' && campaignSettings.campaign_timezone)
+            ? campaignSettings.campaign_timezone
+            : 'America/New_York';
+        setCurrentTimezone(timezone);
+        // Don't clobber an in-progress selection on unrelated refreshes
+        setSelectedTimezone(prev => prev || timezone);
+    }, [campaignSettings]);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -110,77 +133,54 @@ const SystemSettings = () => {
                 settingsResponse,
                 discordResponse,
                 openaiResponse,
-                timezoneResponse,
                 timezoneOptionsResponse
             ] = await Promise.all([
                 api.get(`/user/settings`),
                 api.get('/settings/discord'),
                 api.get('/settings/openai-key'),
-                api.get('/settings/campaign-timezone'),
                 api.get('/settings/timezone-options')
             ]);
 
-            // Handle registration setting
-            const registrationSetting = settingsResponse.data.find(setting => setting.name === 'registrations_open');
-            setRegistrationOpen(registrationSetting?.value === '1' || registrationSetting?.value === 1);
-
-            // Handle invite required setting
-            const inviteRequiredSetting = settingsResponse.data.find(setting => setting.name === 'invite_required');
-            setInviteRequired(inviteRequiredSetting?.value === '1' || inviteRequiredSetting?.value === 1);
-
-            // Set Discord settings
+            // Set the global Discord settings (bot token + OpenAI key). The
+            // channel ID, role ID, and enabled flag are per-campaign and come
+            // from the campaign context instead.
             if (discordResponse.data) {
-                const botToken = discordResponse.data.discord_bot_token || '';
-                const channelId = discordResponse.data.discord_channel_id || '';
-                const roleId = discordResponse.data.campaign_role_id || '';
-                const enabled = discordResponse.data.discord_integration_enabled === '1';
-                
+                // Never put the saved token in the field — only remember that
+                // one exists so the input can show a placeholder.
+                setHasSavedBotToken(!!discordResponse.data.discord_bot_token);
+
                 // Get OpenAI key
-                const openaiKey = openaiResponse.data?.hasKey ? maskedToken : '';
+                const openaiKey = openaiResponse.data?.hasKey ? MASKED_VALUE : '';
 
-                setDiscordSettings({
-                    botToken: botToken ? maskedToken : '',
-                    channelId: channelId,
-                    roleId: roleId,
-                    enabled: enabled,
-                    openaiKey: openaiKey,
-                    originalBotToken: botToken
-                });
-
-                setOriginalSettings({
-                    botToken: botToken,
-                    channelId: channelId,
-                    roleId: roleId,
-                    enabled: enabled,
+                setDiscordSettings(prev => ({
+                    ...prev,
+                    botToken: '',
                     openaiKey: openaiKey
-                });
+                }));
+
+                setOriginalSettings(prev => ({
+                    ...prev,
+                    botToken: '',
+                    openaiKey: openaiKey
+                }));
             }
 
-            // Load other settings
-            const themeSettings = settingsResponse.data.find(setting => setting.name === 'theme');
-            if (themeSettings) {
-                setTheme(themeSettings.value || 'dark');
-            }
-
-            // Load default settings
+            // Load global default settings (auto-appraisal is per-campaign and
+            // synced from the campaign context instead)
             const defaultQuantity = settingsResponse.data.find(setting => setting.name === 'default_browser_quantity');
             const defaultQuantityEnabled = settingsResponse.data.find(setting => setting.name === 'default_quantity_enabled');
-            const autoAppraisal = settingsResponse.data.find(setting => setting.name === 'auto_appraisal_enabled');
             const autoSplitStacks = settingsResponse.data.find(setting => setting.name === 'auto_split_stacks_enabled');
 
-            setDefaultSettings({
+            setDefaultSettings(prev => ({
+                ...prev,
                 defaultBrowserQuantity: defaultQuantity ? parseInt(defaultQuantity.value) || 1 : 1,
                 defaultQuantityEnabled: defaultQuantityEnabled ? defaultQuantityEnabled.value === '1' : false,
-                autoAppraisalEnabled: autoAppraisal ? autoAppraisal.value === '1' : true,
                 autoSplitStacksEnabled: autoSplitStacks ? autoSplitStacks.value === '1' : false
-            });
+            }));
 
-            // Load timezone settings
-            const timezone = timezoneResponse.data?.timezone || timezoneResponse?.timezone || 'America/New_York';
+            // Load timezone option list (the current timezone itself is a
+            // per-campaign setting synced from the campaign context)
             const options = timezoneOptionsResponse.data?.options || timezoneOptionsResponse?.options || [];
-
-            setCurrentTimezone(timezone);
-            setSelectedTimezone(timezone);
             setTimezoneOptions(options);
         } catch (error) {
             console.error('Error fetching data', error);
@@ -190,79 +190,54 @@ const SystemSettings = () => {
         }
     };
 
-    const handleRegistrationToggle = async () => {
-        try {
-            const newValue = registrationOpen ? 0 : 1;
-            await api.put(
-                `/user/update-setting`,
-                {name: 'registrations_open', value: newValue}
-            );
-            setRegistrationOpen(!registrationOpen);
-            setSuccess(`Registration ${!registrationOpen ? 'opened' : 'closed'} successfully`);
-            setError('');
-        } catch (error) {
-            console.error('Error updating registration setting', error);
-            setError('Error updating registration setting');
-            setSuccess('');
-        }
-    };
-
-    const handleInviteRequiredToggle = async () => {
-        try {
-            const newValue = inviteRequired ? 0 : 1;
-            await api.put(
-                `/user/update-setting`,
-                {name: 'invite_required', value: newValue}
-            );
-            setInviteRequired(!inviteRequired);
-            setSuccess(`Invite requirement ${!inviteRequired ? 'enabled' : 'disabled'} successfully`);
-            setError('');
-        } catch (error) {
-            console.error('Error updating invite required setting', error);
-            setError('Error updating invite required setting');
-            setSuccess('');
-        }
-    };
-
     // Discord settings handlers
     const handleSaveDiscordSettings = async () => {
         try {
             setIsLoadingDiscord(true);
+            let touchedCampaignSettings = false;
 
-            // Only update token if it's changed and not the masked value
-            if (discordSettings.botToken !== maskedToken && discordSettings.botToken.trim() !== '') {
+            // Only send the token if the user typed a replacement; an empty
+            // field means "keep the saved token" (shared by all campaigns)
+            const typedBotToken = discordSettings.botToken.trim() !== '';
+            if (typedBotToken) {
                 await api.put('/user/update-setting', {
                     name: 'discord_bot_token',
-                    value: discordSettings.botToken
+                    // Trim: a pasted token often carries a trailing newline/space
+                    value: discordSettings.botToken.trim()
                 });
             }
 
+            // Channel ID, role ID, and the enabled flag are per-campaign
+
             // Only update channel ID if it's changed
             if (discordSettings.channelId !== originalSettings.channelId) {
-                await api.put('/user/update-setting', {
+                await api.put('/campaigns/current/settings', {
                     name: 'discord_channel_id',
                     value: discordSettings.channelId
                 });
+                touchedCampaignSettings = true;
             }
 
             // Only update role ID if it's changed
             if (discordSettings.roleId !== originalSettings.roleId) {
-                await api.put('/user/update-setting', {
+                await api.put('/campaigns/current/settings', {
                     name: 'campaign_role_id',
                     value: discordSettings.roleId
                 });
+                touchedCampaignSettings = true;
             }
 
             // Only update enabled status if it's changed
             if (discordSettings.enabled !== originalSettings.enabled) {
-                await api.put('/user/update-setting', {
+                await api.put('/campaigns/current/settings', {
                     name: 'discord_integration_enabled',
                     value: discordSettings.enabled ? '1' : '0'
                 });
+                touchedCampaignSettings = true;
             }
 
             // Only update OpenAI key if it's changed and not the masked value
-            if (discordSettings.openaiKey !== maskedToken && discordSettings.openaiKey !== originalSettings.openaiKey) {
+            if (discordSettings.openaiKey !== MASKED_VALUE && discordSettings.openaiKey !== originalSettings.openaiKey) {
                 await api.put('/user/update-setting', {
                     name: 'openai_key',
                     value: discordSettings.openaiKey
@@ -271,18 +246,30 @@ const SystemSettings = () => {
 
             // Update original settings for next comparison
             setOriginalSettings({
-                botToken: discordSettings.botToken !== maskedToken ? discordSettings.botToken : originalSettings.botToken,
+                botToken: '',
                 channelId: discordSettings.channelId,
                 roleId: discordSettings.roleId,
                 enabled: discordSettings.enabled,
-                openaiKey: discordSettings.openaiKey !== maskedToken ? discordSettings.openaiKey : originalSettings.openaiKey
+                openaiKey: discordSettings.openaiKey !== MASKED_VALUE ? discordSettings.openaiKey : originalSettings.openaiKey
             });
 
-            setSuccess('Discord settings updated successfully');
-            setError('');
+            // After a successful token save, reset the field to placeholder
+            // mode — never echo the saved token back into the input.
+            if (typedBotToken) {
+                setDiscordSettings(prev => ({...prev, botToken: ''}));
+                setHasSavedBotToken(true);
+            }
+
+            if (touchedCampaignSettings) {
+                await refresh();
+            }
+
+            enqueueSnackbar('Discord settings updated successfully', {variant: 'success'});
         } catch (err) {
-            setError('Error updating Discord settings');
-            setSuccess('');
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error updating Discord settings',
+                {variant: 'error'}
+            );
         } finally {
             setIsLoadingDiscord(false);
         }
@@ -292,14 +279,6 @@ const SystemSettings = () => {
     const handleSaveGeneralSettings = async () => {
         try {
             // Only update settings if they've been changed from defaults
-
-            // Save theme if it has a valid value
-            if (theme === 'dark' || theme === 'light') {
-                await api.put('/user/update-setting', {
-                    name: 'theme',
-                    value: theme
-                });
-            }
 
             // Save default quantity enabled setting
             await api.put('/user/update-setting', {
@@ -315,8 +294,8 @@ const SystemSettings = () => {
                 });
             }
 
-            // Save auto-appraisal setting
-            await api.put('/user/update-setting', {
+            // Save auto-appraisal setting (per-campaign)
+            await api.put('/campaigns/current/settings', {
                 name: 'auto_appraisal_enabled',
                 value: defaultSettings.autoAppraisalEnabled ? '1' : '0'
             });
@@ -327,28 +306,33 @@ const SystemSettings = () => {
                 value: defaultSettings.autoSplitStacksEnabled ? '1' : '0'
             });
 
-            setSuccess('General settings updated successfully');
-            setError('');
+            await refresh();
+            enqueueSnackbar('General settings updated successfully', {variant: 'success'});
         } catch (err) {
-            setError('Error updating general settings');
-            setSuccess('');
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error updating general settings',
+                {variant: 'error'}
+            );
         }
     };
 
-    // Timezone settings handler
+    // Timezone settings handler (per-campaign)
     const handleSaveTimezone = async () => {
         setSavingTimezone(true);
         try {
-            await api.post('/settings/campaign-timezone', {
-                timezone: selectedTimezone
+            await api.put('/campaigns/current/settings', {
+                name: 'campaign_timezone',
+                value: selectedTimezone
             });
 
             setCurrentTimezone(selectedTimezone);
-            setSuccess('Campaign timezone updated successfully! All scheduled tasks have been restarted.');
-            setError('');
+            await refresh();
+            enqueueSnackbar('Campaign timezone updated successfully!', {variant: 'success'});
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to update timezone');
-            setSuccess('');
+            enqueueSnackbar(
+                err.response?.data?.message || 'Failed to update timezone',
+                {variant: 'error'}
+            );
         } finally {
             setSavingTimezone(false);
         }
@@ -428,60 +412,6 @@ const SystemSettings = () => {
         }
     };
 
-    const handleGenerateQuickInvite = async () => {
-        try {
-            setIsGeneratingInvite(true);
-            setQuickInviteData(null);
-
-            const response = await api.post('/auth/generate-quick-invite');
-            if (response && response.data) {
-                setQuickInviteData(response.data);
-                setSuccess('Quick invite code generated successfully');
-                setError('');
-            }
-        } catch (err) {
-            setError('Error generating quick invite code');
-            setSuccess('');
-        } finally {
-            setIsGeneratingInvite(false);
-        }
-    };
-
-    const handleCopyInviteCode = () => {
-        if (!quickInviteData || !quickInviteData.code) return;
-
-        // Check if navigator.clipboard is available
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(quickInviteData.code)
-                .then(() => {
-                    setSnackbarMessage('Invite code copied to clipboard');
-                    setSnackbarOpen(true);
-                })
-                .catch(() => {
-                    setSnackbarMessage('Failed to copy invite code');
-                    setSnackbarOpen(true);
-                });
-        } else {
-            // Fallback method for browsers that don't support clipboard API
-            const textArea = document.createElement('textarea');
-            textArea.value = quickInviteData.code;
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-
-            try {
-                const successful = document.execCommand('copy');
-                setSnackbarMessage(successful ? 'Invite code copied to clipboard' : 'Failed to copy invite code');
-                setSnackbarOpen(true);
-            } catch (err) {
-                setSnackbarMessage('Failed to copy invite code');
-                setSnackbarOpen(true);
-            }
-
-            document.body.removeChild(textArea);
-        }
-    };
-
     const handleGenerateTestData = async () => {
         setIsGeneratingTestData(true);
         try {
@@ -504,11 +434,6 @@ const SystemSettings = () => {
         setSnackbarOpen(false);
     };
 
-    const formatExpirationDate = (dateString) => {
-        if (!dateString) return '';
-        return campaignTimezone ? formatInCampaignTimezone(dateString, campaignTimezone, 'PPpp z') : new Date(dateString).toLocaleString();
-    };
-
     if (isLoading) {
         return (
             <Box display="flex" justifyContent="center" alignItems="center" height="300px">
@@ -526,100 +451,16 @@ const SystemSettings = () => {
             {error && <Alert severity="error" sx={{mt: 2, mb: 2}}>{error}</Alert>}
 
             <Grid container spacing={3}>
-                {/* Registration Settings */}
-                <Grid size={{xs: 12, md: 6}}>
-                    <Card variant="outlined">
-                        <CardHeader title="Registration Settings"/>
-                        <CardContent>
-                            <Typography variant="body1" gutterBottom>Registration
-                                Status: {registrationOpen ? 'Open' : 'Closed'}</Typography>
-                            <Button
-                                variant="outlined"
-                                color={registrationOpen ? "secondary" : "primary"}
-                                onClick={handleRegistrationToggle}
-                                fullWidth
-                            >
-                                {registrationOpen ? 'Close Registration' : 'Open Registration'}
-                            </Button>
-
-                            <Divider sx={{my: 2}}/>
-
-                            <Typography variant="body1" gutterBottom>Invite
-                                Required: {inviteRequired ? 'Yes' : 'No'}</Typography>
-                            <Button
-                                variant="outlined"
-                                color={inviteRequired ? "secondary" : "primary"}
-                                onClick={handleInviteRequiredToggle}
-                                fullWidth
-                            >
-                                {inviteRequired ? 'Make Registration Public' : 'Require Invitation Code'}
-                            </Button>
-
-                            {inviteRequired && (
-                                <>
-                                    <Divider sx={{my: 2}}/>
-
-                                    <Typography variant="body1" gutterBottom>Generate Quick Invite (expires in 4
-                                        hours)</Typography>
-                                    <Button
-                                        variant="outlined"
-                                        color="primary"
-                                        onClick={handleGenerateQuickInvite}
-                                        disabled={isGeneratingInvite}
-                                        fullWidth
-                                        sx={{mb: 2}}
-                                    >
-                                        {isGeneratingInvite ? <CircularProgress size={24}/> : 'Generate Quick Invite'}
-                                    </Button>
-
-                                    {quickInviteData && (
-                                        <Box sx={{
-                                            mt: 2,
-                                            p: 2,
-                                            backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                                            borderRadius: 1,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between'
-                                        }}>
-                                            <Box>
-                                                <Typography variant="subtitle2">Code:</Typography>
-                                                <Typography
-                                                    variant="body1"
-                                                    fontWeight="bold"
-                                                    fontFamily="monospace"
-                                                    fontSize="1.1rem"
-                                                >
-                                                    {quickInviteData.code}
-                                                </Typography>
-                                                <Typography variant="caption" display="block" sx={{mt: 1}}>
-                                                    Expires: {formatExpirationDate(quickInviteData.expires_at)}
-                                                </Typography>
-                                            </Box>
-                                            <Tooltip title="Copy code">
-                                                <IconButton onClick={handleCopyInviteCode} size="small">
-                                                    <FileCopyIcon/>
-                                                </IconButton>
-                                            </Tooltip>
-                                        </Box>
-                                    )}
-                                </>
-                            )}
-
-                            <Box mt={2}>
-                                <Typography variant="body2" color="textSecondary">
-                                    Current settings: Registration is {registrationOpen ? 'open' : 'closed'} and invites
-                                    are {inviteRequired ? 'required' : 'not required'}
-                                </Typography>
-                            </Box>
-                        </CardContent>
-                    </Card>
-                </Grid>
-
                 {/* Discord Integration Settings */}
                 <Grid size={{xs: 12, md: 6}}>
                     <Card variant="outlined">
-                        <CardHeader title="Discord Integration" avatar={<ChatIcon/>}/>
+                        <CardHeader
+                            title="Discord Integration"
+                            avatar={<ChatIcon/>}
+                            subheader={currentCampaign
+                                ? `Channel, role, and enable flag apply only to "${currentCampaign.name}"`
+                                : 'Channel, role, and enable flag apply only to the current campaign'}
+                        />
                         <CardContent>
                             <TextField
                                 label="Bot Token"
@@ -628,8 +469,10 @@ const SystemSettings = () => {
                                 onChange={(e) => setDiscordSettings({...discordSettings, botToken: e.target.value})}
                                 fullWidth
                                 margin="normal"
-                                placeholder="Enter Discord Bot Token"
-                                helperText="Only enter a value if you want to change the existing token"
+                                placeholder={hasSavedBotToken ? 'Token saved — type to replace' : 'Enter Discord Bot Token'}
+                                helperText={hasSavedBotToken
+                                    ? 'A token is saved. Leave blank to keep it, or type a new one to replace it.'
+                                    : 'Enter the Discord bot token'}
                             />
                             <TextField
                                 label="Channel ID"
@@ -691,21 +534,6 @@ const SystemSettings = () => {
                         <CardHeader title="General Settings" avatar={<SettingsIcon/>}/>
                         <CardContent>
                             <Box sx={{mb: 2}}>
-                                <Typography variant="subtitle2" gutterBottom>Interface Theme</Typography>
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={theme === 'dark'}
-                                            onChange={(e) => setTheme(e.target.checked ? 'dark' : 'light')}
-                                        />
-                                    }
-                                    label={theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
-                                />
-                            </Box>
-
-                            <Divider sx={{my: 2}}/>
-
-                            <Box sx={{mb: 2}}>
                                 <Typography variant="subtitle2" gutterBottom>Default Item Quantity</Typography>
                                 <FormControlLabel
                                     control={
@@ -748,7 +576,7 @@ const SystemSettings = () => {
                                             })}
                                         />
                                     }
-                                    label="Auto-Appraisal"
+                                    label="Auto-Appraisal (this campaign only)"
                                 />
                             </Box>
 
@@ -782,7 +610,12 @@ const SystemSettings = () => {
                 {/* Timezone Settings */}
                 <Grid size={{xs: 12, md: 6}}>
                     <Card variant="outlined">
-                        <CardHeader title="Campaign Timezone" avatar={<ScheduleIcon/>}/>
+                        <CardHeader
+                            title={currentCampaign
+                                ? `Campaign Timezone — ${currentCampaign.name}`
+                                : 'Campaign Timezone'}
+                            avatar={<ScheduleIcon/>}
+                        />
                         <CardContent>
                             <Alert severity="info" sx={{ mb: 2 }}>
                                 All session times and automated reminders will use this timezone.
@@ -844,6 +677,11 @@ const SystemSettings = () => {
                             )}
                         </CardContent>
                     </Card>
+                </Grid>
+
+                {/* Campaign Theme (per-campaign override, Phase 4b) */}
+                <Grid size={{xs: 12, md: 6}}>
+                    <CampaignThemeSettings/>
                 </Grid>
 
                 {/* Database Backup & Restore */}

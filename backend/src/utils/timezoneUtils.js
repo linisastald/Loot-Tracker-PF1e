@@ -1,9 +1,11 @@
 /**
  * Timezone utility for managing campaign timezone settings
- * Provides cached access to the campaign timezone configuration
+ * Provides cached, per-campaign access to the campaign timezone configuration
+ * (campaign_settings via the campaignSettings helper, with the deprecated
+ * global settings row as transition fallback).
  */
 
-const dbUtils = require('./dbUtils');
+const campaignSettings = require('./campaignSettings');
 const logger = require('./logger');
 
 // Valid IANA timezone identifiers commonly used in North America
@@ -24,54 +26,62 @@ const VALID_TIMEZONES = [
     'UTC'                    // Coordinated Universal Time
 ];
 
-// Cache for timezone setting
-let cachedTimezone = null;
-let lastFetchTime = null;
+// Per-campaign cache for the timezone setting: campaignId -> { timezone, fetchedAt }
+const timezoneCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
 
+// Timezone used when the setting is missing or invalid.
+const DEFAULT_TIMEZONE = 'America/New_York';
+
 /**
- * Get the campaign timezone from settings
- * Uses cache to avoid frequent database queries
+ * Get the timezone configured for a campaign.
+ *
+ * The campaign is resolved from the active campaign context unless an
+ * explicit campaignId is passed. Callers running in cross-campaign ('all')
+ * mode (background find-work phases) MUST pass the campaign id of the row
+ * they are processing — implicit resolution throws there.
+ *
+ * Uses a per-campaign cache to avoid frequent database queries.
+ *
+ * @param {Object} [options]
+ * @param {number|string} [options.campaignId] - Explicit campaign id
  * @returns {Promise<string>} IANA timezone identifier (e.g., 'America/New_York')
  */
-async function getCampaignTimezone() {
+async function getCampaignTimezone({ campaignId } = {}) {
+    // Resolve outside the try block: an 'all'-context caller without an
+    // explicit campaignId is a programming error and must surface, not be
+    // swallowed into the default timezone.
+    const resolvedId = campaignSettings.resolveCampaignId(campaignId);
     const now = Date.now();
 
-    // Return cached value if still valid
-    if (cachedTimezone && lastFetchTime && (now - lastFetchTime) < CACHE_TTL) {
-        return cachedTimezone;
+    const cached = timezoneCache.get(resolvedId);
+    if (cached && (now - cached.fetchedAt) < CACHE_TTL) {
+        return cached.timezone;
     }
 
     try {
-        const result = await dbUtils.executeQuery(
-            'SELECT value FROM settings WHERE name = $1',
-            ['campaign_timezone']
-        );
+        const timezone = await campaignSettings.getCampaignSetting('campaign_timezone', {
+            campaignId: resolvedId
+        });
 
-        if (result.rows.length > 0) {
-            const timezone = result.rows[0].value;
-
+        if (timezone !== undefined) {
             // Validate timezone
             if (isValidTimezone(timezone)) {
-                cachedTimezone = timezone;
-                lastFetchTime = now;
-                logger.debug(`Campaign timezone loaded: ${timezone}`);
+                timezoneCache.set(resolvedId, { timezone, fetchedAt: now });
+                logger.debug(`Campaign timezone loaded for campaign ${resolvedId}: ${timezone}`);
                 return timezone;
-            } else {
-                logger.warn(`Invalid timezone in database: ${timezone}. Using default America/New_York`);
             }
+            logger.warn(`Invalid timezone in database for campaign ${resolvedId}: ${timezone}. Using default ${DEFAULT_TIMEZONE}`);
         } else {
-            logger.warn('No campaign_timezone setting found. Using default America/New_York');
+            logger.warn(`No campaign_timezone setting found for campaign ${resolvedId}. Using default ${DEFAULT_TIMEZONE}`);
         }
     } catch (error) {
-        logger.error('Error fetching campaign timezone:', error);
+        logger.error(`Error fetching campaign timezone for campaign ${resolvedId}:`, error);
     }
 
     // Fallback to default
-    const defaultTimezone = 'America/New_York';
-    cachedTimezone = defaultTimezone;
-    lastFetchTime = now;
-    return defaultTimezone;
+    timezoneCache.set(resolvedId, { timezone: DEFAULT_TIMEZONE, fetchedAt: now });
+    return DEFAULT_TIMEZONE;
 }
 
 /**
@@ -102,13 +112,20 @@ function isValidTimezone(timezone) {
 }
 
 /**
- * Clear the timezone cache
- * Call this after updating the timezone setting to force a refresh
+ * Clear the timezone cache.
+ * Call this after updating the timezone setting to force a refresh.
+ *
+ * @param {number|string} [campaignId] - Clear only this campaign's cached
+ *   timezone; omit to clear every campaign's cache
  */
-function clearTimezoneCache() {
-    cachedTimezone = null;
-    lastFetchTime = null;
-    logger.info('Timezone cache cleared');
+function clearTimezoneCache(campaignId) {
+    if (campaignId !== undefined && campaignId !== null) {
+        timezoneCache.delete(String(campaignId));
+        logger.info(`Timezone cache cleared for campaign ${campaignId}`);
+    } else {
+        timezoneCache.clear();
+        logger.info('Timezone cache cleared');
+    }
 }
 
 /**

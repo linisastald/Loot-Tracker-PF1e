@@ -1,8 +1,12 @@
 // src/controllers/sessionController.js
 const Session = require('../models/Session');
+const Campaign = require('../models/Campaign');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const campaignContext = require('../utils/campaignContext');
+const campaignSettings = require('../utils/campaignSettings');
+const { APP_NAME } = require('../config/constants');
 const axios = require('axios');
 const { format, formatDistance } = require('date-fns');
 const {
@@ -316,11 +320,59 @@ const updateAttendance = async (req, res) => {
 };
 
 /**
+ * Resolve a Discord message id to the campaign that owns it.
+ *
+ * Inbound Discord interactions arrive over HTTP without verifyToken, so no
+ * request campaign context exists (queries would default to campaign '1').
+ * This is the primitive message -> campaign resolution: look the message up
+ * across ALL campaigns, then let the caller act under the owning campaign's
+ * context. The 'all' sentinel is hardcoded here and never derived from client
+ * input. Per-campaign Discord config (channel -> campaign mapping via
+ * campaign_settings) comes in a later phase.
+ *
+ * @param {string} messageId - Discord message snowflake
+ * @returns {Promise<{campaignId: string, sessionId: number|null, legacyMessage: Object|null}|null>}
+ *   - null when no session or legacy message matches
+ */
+const resolveDiscordMessageCampaign = async (messageId) => {
+    return campaignContext.runWithCampaign('all', async () => {
+        // Enhanced sessions first
+        const sessionResult = await dbUtils.executeQuery(`
+            SELECT id, campaign_id FROM game_sessions
+            WHERE discord_message_id = $1
+               OR confirmation_message_id = $1
+        `, [messageId]);
+
+        if (sessionResult.rows.length > 0) {
+            return {
+                campaignId: String(sessionResult.rows[0].campaign_id),
+                sessionId: sessionResult.rows[0].id,
+                legacyMessage: null
+            };
+        }
+
+        // Fall back to legacy session_messages table
+        const legacyResult = await dbUtils.executeQuery(
+            'SELECT session_date, session_time, responses, campaign_id FROM session_messages WHERE message_id = $1',
+            [messageId]
+        );
+
+        if (legacyResult.rows.length > 0) {
+            return {
+                campaignId: String(legacyResult.rows[0].campaign_id),
+                sessionId: null,
+                legacyMessage: legacyResult.rows[0]
+            };
+        }
+
+        return null;
+    });
+};
+
+/**
  * Process Discord interaction for session attendance (enhanced version)
  */
 const processSessionInteraction = async (req, res) => {
-    const sessionService = require('../services/sessionService');
-
     // Add comprehensive logging
     logger.info('Discord interaction received:', {
         type: req.body.type,
@@ -350,6 +402,21 @@ const processSessionInteraction = async (req, res) => {
                     data: { content: "Invalid selection.", flags: 64 }
                 });
             }
+
+            // custom_id is `link_character_<messageId>_<discordUserId>`; resolve
+            // the originating session message to its campaign so the
+            // campaign-scoped characters lookup below sees the right rows.
+            // Fall back to the current (default) context if it can't be
+            // resolved, preserving single-campaign behavior.
+            const linkOriginMessageId = data.custom_id.split('_')[2];
+            const linkResolved = /^\d{17,19}$/.test(linkOriginMessageId || '')
+                ? await resolveDiscordMessageCampaign(linkOriginMessageId)
+                : null;
+            const linkCampaignId = linkResolved
+                ? linkResolved.campaignId
+                : campaignContext.getCampaignId();
+
+            return await campaignContext.runWithCampaign(linkCampaignId, async () => {
 
             // Get the user who owns this character
             const characterResult = await dbUtils.executeQuery(
@@ -403,6 +470,8 @@ const processSessionInteraction = async (req, res) => {
                     flags: 64
                 }
             });
+
+            }); // end runWithCampaign(linkCampaignId)
 
         } catch (error) {
             logger.error('Character linking error:', error);
@@ -461,35 +530,51 @@ const processSessionInteraction = async (req, res) => {
                 });
             }
 
-            // Find session by message ID
-            const sessionResult = await dbUtils.executeQuery(`
-                SELECT id FROM game_sessions
-                WHERE discord_message_id = $1
-                   OR confirmation_message_id = $1
-            `, [messageId]);
+            // Resolve the message to its owning campaign under hardcoded
+            // cross-campaign mode, then process the interaction under that
+            // campaign's context so all tenant-scoped reads/writes pass RLS.
+            const resolved = await resolveDiscordMessageCampaign(messageId);
 
-            let sessionId = null;
-
-            if (sessionResult.rows.length > 0) {
-                // Enhanced session found
-                sessionId = sessionResult.rows[0].id;
-            } else {
-                // Fall back to legacy session_messages table
-                const legacyResult = await dbUtils.executeQuery(
-                    'SELECT session_date, session_time, responses FROM session_messages WHERE message_id = $1',
-                    [messageId]
-                );
-
-                if (legacyResult.rows.length === 0) {
-                    return res.json({
-                        type: 4,
-                        data: { content: "Session not found.", flags: 64 }
-                    });
-                }
-
-                // Handle legacy format (existing code)
-                return await handleLegacySessionInteraction(req, res, legacyResult.rows[0], messageId, discordUserId, discordNickname, action);
+            if (!resolved) {
+                return res.json({
+                    type: 4,
+                    data: { content: "Session not found.", flags: 64 }
+                });
             }
+
+            if (resolved.legacyMessage) {
+                // Handle legacy format (existing code) under the message's campaign
+                return await campaignContext.runWithCampaign(resolved.campaignId, () =>
+                    handleLegacySessionInteraction(req, res, resolved.legacyMessage, messageId, discordUserId, discordNickname, action)
+                );
+            }
+
+            // Enhanced session found - act under its campaign
+            return await campaignContext.runWithCampaign(resolved.campaignId, () =>
+                handleEnhancedSessionInteraction(res, resolved.sessionId, messageId, discordUserId, discordNickname, responseType)
+            );
+
+        } catch (error) {
+            logger.error('Session interaction error:', error);
+            return res.json({
+                type: 4,
+                data: { content: "An error occurred.", flags: 64 }
+            });
+        }
+    }
+
+    return res.json({ type: 4, data: { content: "Unknown interaction", flags: 64 } });
+};
+
+/**
+ * Process an enhanced (game_sessions) Discord attendance interaction.
+ *
+ * Must be called inside the owning campaign's context (established by
+ * processSessionInteraction) so the characters/attendance/reaction-tracking
+ * reads and writes are correctly tenant-scoped.
+ */
+const handleEnhancedSessionInteraction = async (res, sessionId, messageId, discordUserId, discordNickname, responseType) => {
+    const sessionService = require('../services/sessionService');
 
             // Find user by Discord ID
             let userId = null;
@@ -613,17 +698,6 @@ const processSessionInteraction = async (req, res) => {
                     components: components
                 }
             });
-
-        } catch (error) {
-            logger.error('Session interaction error:', error);
-            return res.json({
-                type: 4,
-                data: { content: "An error occurred.", flags: 64 }
-            });
-        }
-    }
-
-    return res.json({ type: 4, data: { content: "Unknown interaction", flags: 64 } });
 };
 
 /**
@@ -746,19 +820,27 @@ const getEmojiForResponseType = (responseType) => {
  */
 const updateSessionMessageEmbed = async (messageId, sessionMessage, responses) => {
     try {
-        // Get Discord settings
+        // Bot token is global broker infrastructure; the channel id is
+        // per-campaign. This helper only runs under the message's campaign
+        // context (runWithCampaign in the interaction handlers), so the
+        // context resolution is correct.
         const settings = await dbUtils.executeQuery(
-            'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\', \'campaign_name\')'
+            'SELECT value FROM settings WHERE name = $1',
+            ['discord_bot_token']
         );
-        
-        const configMap = {};
-        settings.rows.forEach(row => {
-            configMap[row.name] = row.value;
-        });
-        
-        const discord_bot_token = configMap['discord_bot_token'];
-        const discord_channel_id = configMap['discord_channel_id'];
-        const campaign_name = configMap['campaign_name'] || 'Pathfinder';
+
+        const discord_bot_token = settings.rows[0]?.value;
+        const discord_channel_id = await campaignSettings.getCampaignSetting('discord_channel_id');
+
+        // Embed title branding: the message's campaign display name
+        // (campaigns.name), resolved from the per-row campaign context the
+        // interaction handlers establish. Defensive: in a cross-campaign
+        // ('all') context there is no single campaign, so fall back to the
+        // static APP_NAME rather than guessing.
+        const contextCampaignId = campaignContext.getCampaignId();
+        const campaign_name = (contextCampaignId !== 'all'
+            ? await Campaign.getNameById(contextCampaignId)
+            : null) || APP_NAME;
         
         if (!discord_bot_token || !discord_channel_id) {
             throw new Error('Discord not configured');

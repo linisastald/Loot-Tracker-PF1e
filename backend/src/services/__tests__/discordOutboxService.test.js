@@ -20,6 +20,13 @@ jest.mock('../../utils/logger', () => ({
   error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn(),
 }));
 
+// Mock campaign context but keep the real validation semantics so a row with
+// a garbage campaign id throws exactly like the real implementation.
+jest.mock('../../utils/campaignContext', () => ({
+  runWithCampaign: jest.fn(),
+  getCampaignId: jest.fn(),
+}));
+
 jest.mock('node-cron', () => ({
   schedule: jest.fn((pattern, callback) => {
     // Store the callback so tests can trigger it
@@ -40,6 +47,7 @@ jest.mock('../discordBrokerService', () => ({
 
 const cron = require('node-cron');
 const logger = require('../../utils/logger');
+const campaignContext = require('../../utils/campaignContext');
 
 // Need to re-require to get fresh singleton since module is cached
 // Clear the module from cache so we get a clean instance
@@ -59,6 +67,16 @@ describe('DiscordOutboxService', () => {
     mockExecuteTransaction.mockImplementation(async (cb) => cb(mockClient));
     // Re-setup cron mock (resetMocks clears it)
     cron.schedule.mockReturnValue({ stop: jest.fn() });
+    // Re-setup campaign context mock (resetMocks clears implementations):
+    // pass-through with the real id validation
+    campaignContext.runWithCampaign.mockImplementation((campaignId, fn) => {
+      const id = String(campaignId);
+      if (!/^\d+$|^all$/.test(id)) {
+        throw new Error(`Invalid campaign id: ${id}`);
+      }
+      return fn();
+    });
+    campaignContext.getCampaignId.mockReturnValue('1');
     // Reset internal state
     discordOutboxService.isProcessing = false;
   });
@@ -166,6 +184,7 @@ describe('DiscordOutboxService', () => {
           message_type: 'session_announcement',
           payload: { sessionId: 10 },
           retry_count: 0,
+          campaign_id: 1,
         },
       ];
       mockExecuteQuery.mockResolvedValue({});
@@ -214,6 +233,66 @@ describe('DiscordOutboxService', () => {
       await discordOutboxService.processOutbox();
 
       expect(capturedState).toBe(true);
+    });
+  });
+
+  // ========================================================================
+  // campaign context (multi-campaign Phase 3c)
+  // ========================================================================
+  describe('campaign context', () => {
+    it('should run the find-work query under cross-campaign mode and each message under its own campaign', async () => {
+      const messages = [
+        { id: 1, message_type: 'session_announcement', payload: { sessionId: 10 }, retry_count: 0, campaign_id: 2 },
+        { id: 2, message_type: 'session_update', payload: { sessionId: 11 }, retry_count: 0, campaign_id: 5 },
+      ];
+      mockExecuteQuery.mockResolvedValue({});
+      mockExecuteQuery.mockResolvedValueOnce({ rows: messages });
+
+      const sessionService = require('../sessionService');
+      sessionService.postSessionAnnouncement.mockResolvedValue({});
+      sessionService.updateSessionMessage.mockResolvedValue({});
+
+      await discordOutboxService.processOutbox();
+
+      // First context established is the hardcoded 'all' for the SELECT,
+      // then one per-row context per message in order
+      const contextIds = campaignContext.runWithCampaign.mock.calls.map(call => call[0]);
+      expect(contextIds).toEqual(['all', '2', '5']);
+
+      expect(sessionService.postSessionAnnouncement).toHaveBeenCalledWith(10);
+      expect(sessionService.updateSessionMessage).toHaveBeenCalledWith(11);
+    });
+
+    it('should process the remaining messages when one row has an invalid campaign id', async () => {
+      const messages = [
+        // campaign_id missing -> String(undefined) fails validation and throws
+        { id: 1, message_type: 'session_announcement', payload: { sessionId: 10 }, retry_count: 0 },
+        { id: 2, message_type: 'session_update', payload: { sessionId: 11 }, retry_count: 0, campaign_id: 3 },
+      ];
+      mockExecuteQuery.mockResolvedValue({});
+      mockExecuteQuery.mockResolvedValueOnce({ rows: messages });
+
+      const sessionService = require('../sessionService');
+      sessionService.updateSessionMessage.mockResolvedValue({});
+
+      await discordOutboxService.processOutbox();
+
+      // First row failed before processing, second row still processed
+      expect(sessionService.postSessionAnnouncement).not.toHaveBeenCalled();
+      expect(sessionService.updateSessionMessage).toHaveBeenCalledWith(11);
+      expect(logger.error).toHaveBeenCalledWith(
+        'Failed to process outbox message in campaign context',
+        expect.objectContaining({ id: 1 })
+      );
+      expect(discordOutboxService.isProcessing).toBe(false);
+    });
+
+    it('should run cleanup under cross-campaign mode', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({ rowCount: 0 });
+
+      await discordOutboxService.cleanup();
+
+      expect(campaignContext.runWithCampaign).toHaveBeenCalledWith('all', expect.any(Function));
     });
   });
 

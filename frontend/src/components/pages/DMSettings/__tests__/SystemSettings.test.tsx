@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import { SnackbarProvider } from 'notistack';
 import React from 'react';
 
 // Mock the api utility (note depth: this test lives one level deeper than UserSettings.test.tsx)
@@ -9,8 +10,38 @@ vi.mock('../../../../utils/api', () => ({
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
+    patch: vi.fn(),
     delete: vi.fn(),
   },
+}));
+
+// Control the campaign context directly (Phase 4c: discord channel/role/enabled,
+// campaign timezone, and auto-appraisal are per-campaign settings)
+const refreshMock = vi.fn().mockResolvedValue(undefined);
+let campaignContextValue: any;
+
+const makeContext = (settings: Record<string, unknown> = {}) => ({
+  campaigns: [
+    { id: 1, name: 'Rise of the Runelords', slug: 'rotrl', role: 'DM' as const },
+  ],
+  currentCampaign: { id: 1, name: 'Rise of the Runelords', slug: 'rotrl' },
+  campaignRole: 'DM' as const,
+  isSuperadmin: false,
+  campaignSettings: {
+    discord_channel_id: '',
+    campaign_role_id: '',
+    discord_integration_enabled: '0',
+    auto_appraisal_enabled: '1',
+    campaign_timezone: 'America/New_York',
+    ...settings,
+  },
+  loading: false,
+  switchCampaign: vi.fn(),
+  refresh: refreshMock,
+});
+
+vi.mock('../../../../contexts/CampaignContext', () => ({
+  useCampaign: () => campaignContextValue,
 }));
 
 // Mock the useCampaignTimezone hook so we don't pull the timezone util's caching logic
@@ -28,15 +59,17 @@ vi.mock('../../../../utils/timezoneUtils', () => ({
   fetchCampaignTimezone: vi.fn().mockResolvedValue('America/New_York'),
 }));
 
+// CampaignThemeSettings needs CampaignContext (tested on its own); stub it out
+vi.mock('../CampaignThemeSettings', () => ({
+  default: () => <div data-testid="campaign-theme-settings" />,
+}));
+
 import api from '../../../../utils/api';
 import SystemSettings from '../SystemSettings';
 
 // ----- Default fixture data ---------------------------------------------------
 const buildSettingsList = (overrides: Partial<Record<string, string>> = {}) => {
   const base: Record<string, string> = {
-    registrations_open: '0',
-    invite_required: '0',
-    theme: 'dark',
     default_browser_quantity: '1',
     default_quantity_enabled: '0',
     auto_appraisal_enabled: '1',
@@ -46,21 +79,16 @@ const buildSettingsList = (overrides: Partial<Record<string, string>> = {}) => {
   return Object.entries(base).map(([name, value]) => ({ name, value }));
 };
 
+// Only the (global) bot token is still served by /settings/discord; the
+// channel/role/enabled values are per-campaign and come from the context.
 const defaultDiscordResponse = {
   data: {
     discord_bot_token: '',
-    discord_channel_id: '',
-    campaign_role_id: '',
-    discord_integration_enabled: '0',
   },
 };
 
 const defaultOpenAiResponse = {
   data: { hasKey: false },
-};
-
-const defaultTimezoneResponse = {
-  data: { timezone: 'America/New_York' },
 };
 
 const defaultTimezoneOptionsResponse = {
@@ -73,25 +101,22 @@ const defaultTimezoneOptionsResponse = {
   },
 };
 
-// Build a get-mock that responds to all five startup endpoints, with optional overrides
+// Build a get-mock that responds to all startup endpoints, with optional overrides
 const makeGetMock = (opts: {
   settings?: Array<{ name: string; value: string }>;
   discord?: any;
   openai?: any;
-  timezone?: any;
   timezoneOptions?: any;
 } = {}) => {
   const settings = opts.settings ?? buildSettingsList();
   const discord = opts.discord ?? defaultDiscordResponse;
   const openai = opts.openai ?? defaultOpenAiResponse;
-  const timezone = opts.timezone ?? defaultTimezoneResponse;
   const timezoneOptions = opts.timezoneOptions ?? defaultTimezoneOptionsResponse;
 
   return vi.fn().mockImplementation((url: string) => {
     if (url === '/user/settings') return Promise.resolve({ data: settings });
     if (url === '/settings/discord') return Promise.resolve(discord);
     if (url === '/settings/openai-key') return Promise.resolve(openai);
-    if (url === '/settings/campaign-timezone') return Promise.resolve(timezone);
     if (url === '/settings/timezone-options') return Promise.resolve(timezoneOptions);
     return Promise.resolve({ data: {} });
   });
@@ -100,7 +125,9 @@ const makeGetMock = (opts: {
 const renderSystemSettings = () =>
   render(
     <BrowserRouter>
-      <SystemSettings />
+      <SnackbarProvider maxSnack={3}>
+        <SystemSettings />
+      </SnackbarProvider>
     </BrowserRouter>,
   );
 
@@ -118,6 +145,7 @@ describe('SystemSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (global as any).ResizeObserver = MockResizeObserver;
+    campaignContextValue = makeContext();
     (api.get as any).mockImplementation(makeGetMock());
     (api.put as any).mockResolvedValue({ data: { success: true } });
     (api.post as any).mockResolvedValue({ data: { success: true } });
@@ -141,146 +169,68 @@ describe('SystemSettings', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 2. Registration toggle
+  // 2. Moved/removed controls (Phase 5a)
   // -----------------------------------------------------------------------
-  it('toggles registration open and PUTs the correct setting', async () => {
+  it('no longer renders the registration mode dropdown (moved to System Admin)', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByText(/Registration Status: Closed/i)).toBeInTheDocument();
+      expect(screen.getByText(/System Settings/i)).toBeInTheDocument();
     });
 
-    const button = screen.getByRole('button', { name: /Open Registration/i });
-    fireEvent.click(button);
-
-    await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
-        name: 'registrations_open',
-        value: 1,
-      });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Registration opened successfully/i)).toBeInTheDocument();
-      expect(screen.getByText(/Registration Status: Open/i)).toBeInTheDocument();
-    });
+    expect(screen.queryByText(/Registration Settings/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Registration/i })).not.toBeInTheDocument();
   });
 
-  it('toggles registration closed when currently open', async () => {
-    (api.get as any).mockImplementation(
-      makeGetMock({ settings: buildSettingsList({ registrations_open: '1' }) }),
-    );
-
+  it('no longer renders the dead global Interface Theme toggle', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByText(/Registration Status: Open/i)).toBeInTheDocument();
+      expect(screen.getByText(/System Settings/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Close Registration/i }));
-
-    await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
-        name: 'registrations_open',
-        value: 0,
-      });
-    });
+    expect(screen.queryByText(/Interface Theme/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Dark Mode/i)).not.toBeInTheDocument();
   });
 
   // -----------------------------------------------------------------------
-  // 3. Invite-required toggle
+  // 5. Discord settings save - only changed fields PUT (per-campaign endpoint)
   // -----------------------------------------------------------------------
-  it('toggles invite required and PUTs the correct setting', async () => {
-    renderSystemSettings();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Invite Required: No/i)).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /Require Invitation Code/i }));
-
-    await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
-        name: 'invite_required',
-        value: 1,
-      });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Invite requirement enabled successfully/i)).toBeInTheDocument();
-      expect(screen.getByText(/Invite Required: Yes/i)).toBeInTheDocument();
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // 4. Quick Invite generation (only visible when invite_required is on)
-  // -----------------------------------------------------------------------
-  it('does not show the Quick Invite generator when invites are not required', async () => {
-    renderSystemSettings();
-
-    await waitFor(() => {
-      expect(screen.getByText(/Invite Required: No/i)).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole('button', { name: /Generate Quick Invite/i })).not.toBeInTheDocument();
-  });
-
-  it('generates a quick invite code and exposes a working copy button', async () => {
-    (api.get as any).mockImplementation(
-      makeGetMock({ settings: buildSettingsList({ invite_required: '1' }) }),
-    );
-
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
-
-    (api.post as any).mockImplementation((url: string) => {
-      if (url === '/auth/generate-quick-invite') {
-        return Promise.resolve({
-          data: { code: 'ABC123', expires_at: '2026-04-25T00:00:00Z' },
-        });
-      }
-      return Promise.resolve({ data: {} });
+  it('reads the per-campaign Discord values from the campaign context', async () => {
+    campaignContextValue = makeContext({
+      discord_channel_id: 'chan-from-context',
+      campaign_role_id: 'role-from-context',
+      discord_integration_enabled: '1',
     });
 
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByText(/Invite Required: Yes/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Channel ID/i)).toHaveValue('chan-from-context');
     });
+    expect(screen.getByLabelText(/Campaign Role ID/i)).toHaveValue('role-from-context');
+    expect(screen.getByLabelText(/Enable Discord Integration/i)).toBeChecked();
+  });
 
-    const generateBtn = screen.getByRole('button', { name: /Generate Quick Invite/i });
-    fireEvent.click(generateBtn);
+  it('shows the campaign name on the Discord card to make the scope unmistakable', async () => {
+    renderSystemSettings();
 
     await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith('/auth/generate-quick-invite');
-      expect(screen.getByText('ABC123')).toBeInTheDocument();
-    });
-
-    const copyBtn = screen.getByRole('button', { name: /Copy code/i });
-    fireEvent.click(copyBtn);
-
-    await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('ABC123');
+      expect(
+        screen.getByText(/Channel, role, and enable flag apply only to "Rise of the Runelords"/i)
+      ).toBeInTheDocument();
     });
   });
 
-  // -----------------------------------------------------------------------
-  // 5. Discord settings save - only changed fields PUT
-  // -----------------------------------------------------------------------
-  it('only PUTs Discord fields whose values changed', async () => {
+  it('only PUTs Discord fields whose values changed, to the per-campaign endpoint, and refreshes', async () => {
+    campaignContextValue = makeContext({
+      discord_channel_id: 'chan-old',
+      campaign_role_id: 'role-old',
+      discord_integration_enabled: '0',
+    });
     (api.get as any).mockImplementation(
       makeGetMock({
-        discord: {
-          data: {
-            discord_bot_token: 'secrettoken',
-            discord_channel_id: 'chan-old',
-            campaign_role_id: 'role-old',
-            discord_integration_enabled: '0',
-          },
-        },
+        discord: { data: { discord_bot_token: 'secrettoken' } },
         openai: { data: { hasKey: true } },
       }),
     );
@@ -288,7 +238,7 @@ describe('SystemSettings', () => {
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/Channel ID/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Channel ID/i)).toHaveValue('chan-old');
     });
 
     // Change ONLY the channel ID
@@ -301,33 +251,20 @@ describe('SystemSettings', () => {
       expect(screen.getByText(/Discord settings updated successfully/i)).toBeInTheDocument();
     });
 
-    // Filter PUTs to those that targeted /user/update-setting
-    const putCalls = (api.put as any).mock.calls.filter(
-      ([url]: any[]) => url === '/user/update-setting',
-    );
-
-    // Only one PUT — for discord_channel_id
+    // Exactly one PUT — for discord_channel_id — and it hits the campaign endpoint
+    const putCalls = (api.put as any).mock.calls;
     expect(putCalls).toHaveLength(1);
+    expect(putCalls[0][0]).toBe('/campaigns/current/settings');
     expect(putCalls[0][1]).toEqual({
       name: 'discord_channel_id',
       value: 'chan-new',
     });
+
+    // The campaign context is refreshed so other consumers see the new value
+    expect(refreshMock).toHaveBeenCalled();
   });
 
-  it('PUTs the enabled flag as "1" when toggled on', async () => {
-    (api.get as any).mockImplementation(
-      makeGetMock({
-        discord: {
-          data: {
-            discord_bot_token: '',
-            discord_channel_id: '',
-            campaign_role_id: '',
-            discord_integration_enabled: '0',
-          },
-        },
-      }),
-    );
-
+  it('PUTs the enabled flag as "1" to the per-campaign endpoint when toggled on', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
@@ -340,17 +277,155 @@ describe('SystemSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
 
     await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
+      expect(api.put).toHaveBeenCalledWith('/campaigns/current/settings', {
         name: 'discord_integration_enabled',
         value: '1',
       });
     });
   });
 
+  it('never sends the (global) bot token to the per-campaign endpoint', async () => {
+    (api.get as any).mockImplementation(
+      makeGetMock({ discord: { data: { discord_bot_token: 'secrettoken' } } }),
+    );
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Bot Token/i)).toBeInTheDocument();
+    });
+
+    // Change a per-campaign field so the save actually writes something
+    fireEvent.change(screen.getByLabelText(/Channel ID/i), { target: { value: 'chan-z' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Discord settings updated successfully/i)).toBeInTheDocument();
+    });
+
+    const campaignPuts = (api.put as any).mock.calls.filter(
+      ([url]: any[]) => url === '/campaigns/current/settings',
+    );
+    expect(
+      campaignPuts.filter(([, body]: any[]) => body?.name === 'discord_bot_token'),
+    ).toHaveLength(0);
+    // And the token itself was not re-sent anywhere (unchanged/masked)
+    const tokenPuts = (api.put as any).mock.calls.filter(
+      ([, body]: any[]) => body?.name === 'discord_bot_token',
+    );
+    expect(tokenPuts).toHaveLength(0);
+  });
+
+  // -----------------------------------------------------------------------
+  // 5b. Bot token: placeholder mode, typed token saved, field reset (Phase 5b)
+  // -----------------------------------------------------------------------
+  it('keeps the bot token field empty with a placeholder when a token exists server-side', async () => {
+    (api.get as any).mockImplementation(
+      makeGetMock({ discord: { data: { discord_bot_token: 'secrettoken' } } }),
+    );
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Bot Token/i)).toBeInTheDocument();
+    });
+
+    const tokenInput = screen.getByLabelText(/Bot Token/i) as HTMLInputElement;
+    // The saved token is never echoed back into the field
+    expect(tokenInput).toHaveValue('');
+    expect(tokenInput).toHaveAttribute('placeholder', 'Token saved — type to replace');
+  });
+
+  it('saves a typed bot token via the global endpoint and resets the field to placeholder mode', async () => {
+    (api.get as any).mockImplementation(
+      makeGetMock({ discord: { data: { discord_bot_token: 'old-secret' } } }),
+    );
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Bot Token/i)).toBeInTheDocument();
+    });
+
+    const tokenInput = screen.getByLabelText(/Bot Token/i) as HTMLInputElement;
+    fireEvent.change(tokenInput, { target: { value: 'brand-new-token' } });
+    // The user's raw input is preserved (no masking effect clobbers it)
+    expect(tokenInput).toHaveValue('brand-new-token');
+
+    fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
+        name: 'discord_bot_token',
+        value: 'brand-new-token',
+      });
+    });
+
+    // After a successful save the field returns to placeholder mode
+    await waitFor(() => {
+      expect(tokenInput).toHaveValue('');
+    });
+    expect(tokenInput).toHaveAttribute('placeholder', 'Token saved — type to replace');
+  });
+
+  it('does not send a token write when the bot token field is left untouched', async () => {
+    (api.get as any).mockImplementation(
+      makeGetMock({ discord: { data: { discord_bot_token: 'old-secret' } } }),
+    );
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Bot Token/i)).toBeInTheDocument();
+    });
+
+    // Save without touching the token field at all
+    fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Discord settings updated successfully/i)).toBeInTheDocument();
+    });
+
+    const tokenPuts = (api.put as any).mock.calls.filter(
+      ([, body]: any[]) => body?.name === 'discord_bot_token',
+    );
+    expect(tokenPuts).toHaveLength(0);
+  });
+
+  it('shows the plain placeholder when no token exists server-side yet', async () => {
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Bot Token/i)).toBeInTheDocument();
+    });
+
+    const tokenInput = screen.getByLabelText(/Bot Token/i) as HTMLInputElement;
+    expect(tokenInput).toHaveValue('');
+    expect(tokenInput).toHaveAttribute('placeholder', 'Enter Discord Bot Token');
+  });
+
+  it('surfaces the backend envelope message when a Discord save fails', async () => {
+    (api.put as any).mockRejectedValue({
+      response: { status: 400, data: { success: false, message: 'Unknown setting name' } },
+    });
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Channel ID/i)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/Channel ID/i), { target: { value: 'chan-x' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
+
+    expect(await screen.findByText('Unknown setting name')).toBeInTheDocument();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
   // -----------------------------------------------------------------------
   // 6. General settings save
   // -----------------------------------------------------------------------
-  it('saves all general settings (theme, auto-appraisal, auto-split, default qty disabled)', async () => {
+  it('saves general settings: globals via /user/update-setting, auto-appraisal via the per-campaign endpoint', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
@@ -363,24 +438,51 @@ describe('SystemSettings', () => {
       expect(screen.getByText(/General settings updated successfully/i)).toBeInTheDocument();
     });
 
-    const putCalls = (api.put as any).mock.calls.map(([, body]: any[]) => body);
+    const globalPuts = (api.put as any).mock.calls
+      .filter(([url]: any[]) => url === '/user/update-setting')
+      .map(([, body]: any[]) => body);
+    const campaignPuts = (api.put as any).mock.calls
+      .filter(([url]: any[]) => url === '/campaigns/current/settings')
+      .map(([, body]: any[]) => body);
 
-    // theme=dark (default), default_quantity_enabled=0, auto_appraisal_enabled=1, auto_split_stacks_enabled=0
-    expect(putCalls).toEqual(
+    // default_quantity_enabled=0 and auto_split_stacks_enabled=0 stay global
+    expect(globalPuts).toEqual(
       expect.arrayContaining([
-        { name: 'theme', value: 'dark' },
         { name: 'default_quantity_enabled', value: '0' },
-        { name: 'auto_appraisal_enabled', value: '1' },
         { name: 'auto_split_stacks_enabled', value: '0' },
+      ]),
+    );
+    // The dead global 'theme' setting is never written anymore
+    expect(globalPuts).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'theme' })]),
+    );
+    // auto_appraisal_enabled (from the campaign context default '1') is per-campaign
+    expect(campaignPuts).toEqual([{ name: 'auto_appraisal_enabled', value: '1' }]);
+    expect(globalPuts).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'auto_appraisal_enabled' }),
       ]),
     );
 
     // default_browser_quantity should NOT be PUT because default_quantity_enabled is false
-    expect(putCalls).not.toEqual(
+    expect(globalPuts).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'default_browser_quantity' }),
       ]),
     );
+
+    // Context refreshed after the per-campaign write
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it('reads auto-appraisal from the campaign settings map', async () => {
+    campaignContextValue = makeContext({ auto_appraisal_enabled: '0' });
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Auto-Appraisal/i)).not.toBeChecked();
+    });
   });
 
   it('PUTs default_browser_quantity when enabled and > 0', async () => {
@@ -425,7 +527,19 @@ describe('SystemSettings', () => {
     expect(saveBtn).toBeDisabled();
   });
 
-  it('POSTs the campaign timezone when changed and shows a success message', async () => {
+  it('reads the current timezone from the campaign settings map and titles the card with the campaign name', async () => {
+    campaignContextValue = makeContext({ campaign_timezone: 'Europe/London' });
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Campaign Timezone — Rise of the Runelords/i)).toBeInTheDocument();
+    });
+    // Current timezone box (and the select) show the option label for the context value
+    expect(screen.getAllByText('London').length).toBeGreaterThan(0);
+  });
+
+  it('PUTs the campaign timezone to the per-campaign endpoint, refreshes, and shows success', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
@@ -446,11 +560,13 @@ describe('SystemSettings', () => {
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith('/settings/campaign-timezone', {
-        timezone: 'Europe/London',
+      expect(api.put).toHaveBeenCalledWith('/campaigns/current/settings', {
+        name: 'campaign_timezone',
+        value: 'Europe/London',
       });
       expect(screen.getByText(/Campaign timezone updated successfully/i)).toBeInTheDocument();
     });
+    expect(refreshMock).toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
@@ -615,7 +731,6 @@ describe('SystemSettings', () => {
       // Provide benign defaults for the others so the assertion focuses on the error
       if (url === '/settings/discord') return Promise.resolve(defaultDiscordResponse);
       if (url === '/settings/openai-key') return Promise.resolve(defaultOpenAiResponse);
-      if (url === '/settings/campaign-timezone') return Promise.resolve(defaultTimezoneResponse);
       if (url === '/settings/timezone-options') return Promise.resolve(defaultTimezoneOptionsResponse);
       return Promise.resolve({ data: {} });
     });

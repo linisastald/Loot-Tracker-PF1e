@@ -9,8 +9,12 @@ import {createTheme} from '@mui/material/styles';
  * - index.css
  * - Sidebar.css
  * - MainLayout.css
+ *
+ * The raw options object is also exported so the per-campaign theme factory
+ * (utils/campaignTheme.ts) can merge campaign overrides into the same base
+ * design tokens instead of duplicating them.
  */
-const theme = createTheme({
+export const themeOptions = {
   palette: {
     mode: 'dark',
     primary: {
@@ -618,6 +622,8 @@ const theme = createTheme({
       },
     },
   },
-});
+};
+
+const theme = createTheme(themeOptions);
 
 export default theme;

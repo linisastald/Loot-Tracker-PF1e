@@ -1,4 +1,4 @@
-// frontend/src/components/pages/Register.js
+// frontend/src/components/pages/Register.tsx
 
 import React, {useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
@@ -6,6 +6,7 @@ import api from '../../utils/api';
 import {
   Box,
   Button,
+  CircularProgress,
   Container,
   FormHelperText,
   IconButton,
@@ -17,7 +18,21 @@ import {
 } from '@mui/material';
 import {Visibility, VisibilityOff} from '@mui/icons-material';
 
-const Register = () => {
+type RegistrationMode = 'open' | 'invite-only' | 'closed';
+
+interface RegistrationStatusData {
+    mode: RegistrationMode;
+    registrationsOpen: boolean;
+}
+
+interface CheckDmData {
+    dmExists: boolean;
+}
+
+// Invite codes are 8 alphanumeric characters (legacy codes were 6)
+const INVITE_CODE_PATTERN = /^[A-Z0-9]{6,8}$/;
+
+const Register: React.FC = () => {
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -26,47 +41,46 @@ const Register = () => {
     const [role, setRole] = useState('Player');
     const [error, setError] = useState('');
     const [dmExists, setDmExists] = useState(false);
-    const [registrationsOpen, setRegistrationsOpen] = useState(false);
-    const [inviteRequired, setInviteRequired] = useState(false);
+    const [mode, setMode] = useState<RegistrationMode | null>(null);
+    const [statusLoading, setStatusLoading] = useState(true);
     const navigate = useNavigate();
 
     useEffect(() => {
         const checkForDm = async () => {
             try {
-                const response = await api.get(`/auth/check-dm`);
-                setDmExists(response.data.dmExists);
-            } catch (error) {
-                console.error('Error checking for DM', error);
+                const response = await api.get('/auth/check-dm');
+                const data = response.data as CheckDmData;
+                setDmExists(Boolean(data?.dmExists));
+            } catch {
+                // Non-fatal: role selector simply stays enabled
             }
         };
 
         const checkRegistrationStatus = async () => {
             try {
-                const response = await api.get(`/auth/check-registration-status`);
-                setRegistrationsOpen(response.data.isOpen);
-            } catch (error) {
-                console.error('Error checking registration status', error);
-            }
-        };
-
-        const checkInviteRequired = async () => {
-            try {
-                const response = await api.get(`/auth/check-invite-required`);
-                setInviteRequired(response.data.isRequired);
-            } catch (error) {
-                console.error('Error checking invite requirement', error);
+                const response = await api.get('/auth/check-registration-status');
+                const data = response.data as RegistrationStatusData;
+                setMode(data?.mode || 'closed');
+            } catch {
+                // Fail safe: treat unknown status as closed
+                setMode('closed');
+            } finally {
+                setStatusLoading(false);
             }
         };
 
         checkForDm();
         checkRegistrationStatus();
-        checkInviteRequired();
     }, []);
 
     // Email validation function
-    const validateEmail = (email) => {
+    const validateEmail = (value: string): boolean => {
         const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-        return re.test(email);
+        return re.test(value);
+    };
+
+    const handleInviteCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setInviteCode(e.target.value.toUpperCase());
     };
 
     const handleRegister = async () => {
@@ -102,13 +116,18 @@ const Register = () => {
                 return;
             }
 
-            // Check for invite code if required
-            if (inviteRequired && !inviteCode) {
-                setError('Invitation code is required for registration');
+            // Invite code handling: required when invite-only, optional when open
+            if (mode === 'invite-only' && !inviteCode) {
+                setError('An invite code is required for registration');
                 return;
             }
 
-            const response = await api.post(`/auth/register`, {
+            if (inviteCode && !INVITE_CODE_PATTERN.test(inviteCode)) {
+                setError('Invite codes are 6-8 letters and numbers');
+                return;
+            }
+
+            await api.post('/auth/register', {
                 username,
                 email,
                 password,
@@ -116,17 +135,15 @@ const Register = () => {
                 inviteCode: inviteCode || undefined
             });
 
-            localStorage.setItem('token', response.data.token);
+            // Auth token arrives as an HTTP-only cookie; nothing to store here
             navigate('/user-settings');
-        } catch (err) {
-            // Enhanced error handling for invite codes
-            if (err.response?.data?.message?.includes('Invalid or used invite code')) {
-                setError('The invite code is invalid, has already been used, or has expired');
-            } else if (err.response?.data?.message?.includes('expired')) {
-                setError('This invitation code has expired');
-            } else {
-                setError(err.response?.data?.error || err.response?.data?.message || 'Registration failed');
-            }
+        } catch (err: any) {
+            // Surface the backend's validation message when available
+            setError(
+                err.response?.data?.message ||
+                err.response?.data?.error ||
+                'Registration failed'
+            );
         }
     };
 
@@ -136,18 +153,32 @@ const Register = () => {
     };
 
     // Handle Enter key press for form submission
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             handleRegister();
         }
     };
 
-    if (!registrationsOpen) {
+    if (statusLoading) {
+        return (
+            <Container component="main" maxWidth="xs">
+                <Box display="flex" justifyContent="center" mt={8}>
+                    <CircularProgress/>
+                </Box>
+            </Container>
+        );
+    }
+
+    if (mode === 'closed') {
         return (
             <Container component="main" maxWidth="xs">
                 <Paper sx={{p: 2, mt: 8}}>
-                    <Typography component="h1" variant="h5">
-                        Registrations are currently closed.
+                    <Typography component="h1" variant="h5" gutterBottom>
+                        Registration is currently closed
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                        New registrations are not being accepted right now. Please check
+                        back later or contact your DM.
                     </Typography>
                 </Paper>
             </Container>
@@ -212,16 +243,31 @@ const Register = () => {
                     or symbols for increased security.
                 </FormHelperText>
 
-                {inviteRequired && (
+                {mode === 'invite-only' && (
                     <TextField
                         variant="outlined"
                         margin="normal"
                         required
                         fullWidth
-                        label="Invitation Code"
+                        label="Invite code (required)"
                         value={inviteCode}
-                        onChange={(e) => setInviteCode(e.target.value)}
+                        onChange={handleInviteCodeChange}
                         onKeyDown={handleKeyDown}
+                        inputProps={{maxLength: 8}}
+                        helperText="Registration requires an invite code from your DM"
+                    />
+                )}
+
+                {mode === 'open' && (
+                    <TextField
+                        variant="outlined"
+                        margin="normal"
+                        fullWidth
+                        label="Invite code (optional — joins you to your group's campaign)"
+                        value={inviteCode}
+                        onChange={handleInviteCodeChange}
+                        onKeyDown={handleKeyDown}
+                        inputProps={{maxLength: 8}}
                     />
                 )}
 
@@ -246,12 +292,13 @@ const Register = () => {
                     color="primary"
                     sx={{mt: 3, mb: 2}}
                     onClick={handleRegister}
+                    disabled={mode === 'invite-only' && !inviteCode}
                 >
                     Register
                 </Button>
 
                 <Box mt={2}>
-                    <Typography variant="body2" color="textSecondary">
+                    <Typography component="div" variant="body2" color="textSecondary">
                         Strong password tips:
                         <ul>
                             <li>Use longer phrases that are easy for you to remember</li>

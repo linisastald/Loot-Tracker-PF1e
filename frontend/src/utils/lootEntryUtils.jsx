@@ -91,27 +91,24 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
   let data = { ...entry.data };
 
   if (entry.type === 'gold') {
-    const { transactionType, platinum, gold, silver, copper } = data;
-    if (
-      ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(
-        transactionType
-      )
-    ) {
-      data = {
-        ...data,
-        platinum: platinum ? -Math.abs(platinum) : 0,
-        gold: gold ? -Math.abs(gold) : 0,
-        silver: silver ? -Math.abs(silver) : 0,
-        copper: copper ? -Math.abs(copper) : 0,
-      };
-    }
+    const { transactionType } = data;
+
+    // Send non-negative amounts: the backend derives the sign from the
+    // transaction type (Withdrawal/Purchase/etc. are negated server-side via
+    // -Math.abs), and its validation rejects negative inputs. Negating here
+    // as well used to be harmless double-negation until input validation was
+    // added; now it 400s ("must be at least 0").
+    const toAmount = (value) => {
+      const parsed = Math.abs(parseFloat(value));
+      return Number.isNaN(parsed) || parsed === 0 ? null : parsed;
+    };
 
     const goldData = {
       ...data,
-      platinum: data.platinum || null,
-      gold: data.gold || null,
-      silver: data.silver || null,
-      copper: data.copper || null,
+      platinum: toAmount(data.platinum),
+      gold: toAmount(data.gold),
+      silver: toAmount(data.silver),
+      copper: toAmount(data.copper),
       character_id:
         transactionType === 'Party Payment' ? activeCharacterId : null,
     };

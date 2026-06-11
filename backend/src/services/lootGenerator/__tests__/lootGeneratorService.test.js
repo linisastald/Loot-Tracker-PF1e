@@ -91,6 +91,40 @@ describe('pure helpers', () => {
   });
 });
 
+describe('getTreasureSettings (per-campaign, Phase 4c)', () => {
+  const campaignContext = require('../../../utils/campaignContext');
+
+  it('reads treasure_track/treasure_modifier from campaign_settings scoped to the active campaign', async () => {
+    dbUtils.executeQuery.mockResolvedValueOnce({
+      rows: [
+        { name: 'treasure_track', value: 'fast' },
+        { name: 'treasure_modifier', value: '2' },
+      ],
+    });
+
+    const settings = await campaignContext.runWithCampaign('3', () =>
+      service.getTreasureSettings()
+    );
+
+    expect(settings).toEqual({ track: 'fast', modifier: 2 });
+    expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+    expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+      expect.stringContaining('FROM campaign_settings'),
+      ['3', ['treasure_track', 'treasure_modifier']]
+    );
+  });
+
+  it('falls back to the deprecated global rows, then defaults, when the campaign has no rows', async () => {
+    dbUtils.executeQuery
+      .mockResolvedValueOnce({ rows: [] }) // campaign_settings miss
+      .mockResolvedValueOnce({ rows: [{ name: 'treasure_track', value: 'slow' }] }); // global partial hit
+
+    const settings = await service.getTreasureSettings();
+
+    expect(settings).toEqual({ track: 'slow', modifier: 1 }); // modifier defaulted
+  });
+});
+
 describe('generate', () => {
   it('produces coins AND items that track the CR budget (not coin-only)', async () => {
     // CR 8 medium budget 3350 * 0.7 donjon factor * swing(0.6-1.4) = ~1400-3300

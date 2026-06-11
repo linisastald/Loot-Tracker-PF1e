@@ -3,6 +3,10 @@ const axios = require('axios');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
+const Campaign = require('../models/Campaign');
+const { APP_NAME } = require('../config/constants');
 
 /**
  * Send a message to Discord
@@ -15,19 +19,14 @@ const sendMessage = async (req, res) => {
         throw controllerFactory.createValidationError('Either message content or embeds are required');
     }
 
-    // Fetch Discord settings
-    const settings = await dbUtils.executeQuery(
-        'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\')'
+    // Bot token is global broker infrastructure; the default channel is
+    // per-campaign (campaign_settings with global fallback)
+    const tokenResult = await dbUtils.executeQuery(
+        'SELECT value FROM settings WHERE name = $1',
+        ['discord_bot_token']
     );
-
-    // Convert rows to a settings object
-    const configMap = {};
-    settings.rows.forEach(row => {
-        configMap[row.name] = row.value;
-    });
-
-    const discord_bot_token = configMap['discord_bot_token'];
-    const default_channel_id = configMap['discord_channel_id'];
+    const discord_bot_token = tokenResult.rows[0]?.value;
+    const default_channel_id = await campaignSettings.getCampaignSetting('discord_channel_id');
 
     // Check if Discord settings are configured
     if (!discord_bot_token) {
@@ -142,20 +141,21 @@ const sendEvent = async (req, res) => {
         throw controllerFactory.createValidationError('Invalid date format for start_time or end_time');
     }
 
-    // Fetch Discord settings
-    const settings = await dbUtils.executeQuery(
-        'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\', \'campaign_name\', \'campaign_role_id\')'
+    // Bot token is global broker infrastructure; channel and role ids are
+    // per-campaign (campaign_settings with global fallback). The embed title
+    // uses the CURRENT campaign's display name (campaigns.name, request
+    // context via req.campaignId), falling back to the static APP_NAME.
+    const tokenResult = await dbUtils.executeQuery(
+        'SELECT value FROM settings WHERE name = $1',
+        ['discord_bot_token']
     );
 
-    const configMap = {};
-    settings.rows.forEach(row => {
-        configMap[row.name] = row.value;
-    });
+    const perCampaign = await campaignSettings.getCampaignSettings(['discord_channel_id', 'campaign_role_id']);
 
-    const discord_bot_token = configMap['discord_bot_token'];
-    const discord_channel_id = configMap['discord_channel_id'];
-    const campaign_name = configMap['campaign_name'] || 'Pathfinder';
-    const campaign_role_id = configMap['campaign_role_id'];
+    const discord_bot_token = tokenResult.rows[0]?.value;
+    const discord_channel_id = perCampaign['discord_channel_id'];
+    const campaign_name = (req.campaignId ? await Campaign.getNameById(req.campaignId) : null) || APP_NAME;
+    const campaign_role_id = perCampaign['campaign_role_id'];
 
     if (!discord_bot_token) {
         throw controllerFactory.createValidationError('Discord bot token is not configured');
@@ -329,23 +329,23 @@ const sendEvent = async (req, res) => {
  * Get Discord integration status
  */
 const getIntegrationStatus = async (req, res) => {
-    // Fetch Discord settings
-    const settings = await dbUtils.executeQuery(
-        'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'discord_channel_id\', \'discord_integration_enabled\')'
+    // Bot token is global; the enabled flag and channel id are per-campaign
+    const tokenResult = await dbUtils.executeQuery(
+        'SELECT value FROM settings WHERE name = $1',
+        ['discord_bot_token']
+    );
+    const configMap = await campaignSettings.getCampaignSettings(
+        ['discord_channel_id', 'discord_integration_enabled']
     );
 
-    // Convert rows to a settings object
-    const configMap = {};
-    settings.rows.forEach(row => {
-        configMap[row.name] = row.value;
-    });
+    const tokenConfigured = Boolean(tokenResult.rows[0]?.value);
 
     const status = {
         enabled: configMap['discord_integration_enabled'] === '1',
-        token_configured: Boolean(configMap['discord_bot_token']),
+        token_configured: tokenConfigured,
         channel_configured: Boolean(configMap['discord_channel_id']),
         ready: configMap['discord_integration_enabled'] === '1' &&
-            Boolean(configMap['discord_bot_token']) &&
+            tokenConfigured &&
             Boolean(configMap['discord_channel_id'])
     };
 
@@ -359,76 +359,75 @@ const updateSettings = async (req, res) => {
     const {bot_token, channel_id, enabled} = req.body;
 
     // Validate user has DM permissions (should be handled by middleware)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update Discord settings');
     }
 
-    // Run the setting upserts inside a transaction, but send the HTTP
-    // response only after executeTransaction resolves (i.e. after COMMIT).
-    // Otherwise the client can refetch before the commit is visible to
-    // other pool clients (MVCC) and see stale data.
-    const updatedSettings = await dbUtils.executeTransaction(async (client) => {
-        // Update bot token if provided
-        if (bot_token !== undefined) {
-            await client.query(
-                'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
-                ['discord_bot_token', bot_token]
-            );
-        }
+    // Validate the channel id before writing (digits 17-19, or empty to unset)
+    if (channel_id !== undefined && channel_id !== null && channel_id !== ''
+        && !/^\d{17,19}$/.test(String(channel_id))) {
+        throw controllerFactory.createValidationError(
+            'discord_channel_id must be a Discord snowflake (17-19 digits) or empty'
+        );
+    }
 
-        // Update channel ID if provided
-        if (channel_id !== undefined) {
-            await client.query(
-                'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
-                ['discord_channel_id', channel_id]
-            );
-        }
+    // Bot token is global broker infrastructure (settings table); channel id
+    // and the enabled flag are per-campaign (campaign_settings). Each write
+    // autocommits, so the HTTP response is only sent after all writes are
+    // visible to other pool clients.
+    if (bot_token !== undefined) {
+        await dbUtils.executeQuery(
+            'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
+            ['discord_bot_token', bot_token]
+        );
+    }
 
-        // Update enabled status if provided
-        if (enabled !== undefined) {
-            await client.query(
-                'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
-                ['discord_integration_enabled', enabled ? '1' : '0']
-            );
-        }
+    if (channel_id !== undefined) {
+        // Store '' (not delete) so an explicit unset never falls back to the
+        // deprecated global row
+        await campaignSettings.setCampaignSetting('discord_channel_id', channel_id ?? '', 'string');
+    }
 
-        // If bot token and channel ID are provided, test the connection
-        let connectionTestResult = null;
-        if (bot_token && channel_id) {
-            try {
-                await axios.post(
-                    `https://discord.com/api/channels/${channel_id}/messages`,
-                    {content: 'Discord integration test message - please ignore'},
-                    {
-                        headers: {
-                            'Authorization': `Bot ${bot_token}`,
-                            'Content-Type': 'application/json'
-                        }
+    if (enabled !== undefined) {
+        await campaignSettings.setCampaignSetting('discord_integration_enabled', enabled ? '1' : '0', 'boolean');
+    }
+
+    // If bot token and channel ID are provided, test the connection
+    let connectionTestResult = null;
+    if (bot_token && channel_id) {
+        try {
+            await axios.post(
+                `https://discord.com/api/channels/${channel_id}/messages`,
+                {content: 'Discord integration test message - please ignore'},
+                {
+                    headers: {
+                        'Authorization': `Bot ${bot_token}`,
+                        'Content-Type': 'application/json'
                     }
-                );
-                connectionTestResult = {success: true, message: 'Connection test successful'};
-            } catch (error) {
-                connectionTestResult = {
-                    success: false,
-                    message: 'Connection test failed',
-                    error: error.response?.data?.message || error.message
-                };
+                }
+            );
+            connectionTestResult = {success: true, message: 'Connection test successful'};
+        } catch (error) {
+            connectionTestResult = {
+                success: false,
+                message: 'Connection test failed',
+                error: error.response?.data?.message || error.message
+            };
 
-                // Log the error but don't throw - we want to save the settings even if the test fails
-                logger.warn('Discord connection test failed:', {
-                    error: error.message,
-                    response: error.response?.data
-                });
-            }
+            // Log the error but don't throw - we want to save the settings even if the test fails
+            logger.warn('Discord connection test failed:', {
+                error: error.message,
+                response: error.response?.data
+            });
         }
+    }
 
-        return {
-            bot_token: bot_token !== undefined,
-            channel_id: channel_id !== undefined,
-            enabled: enabled,
-            connection_test: connectionTestResult
-        };
-    });
+    const updatedSettings = {
+        bot_token: bot_token !== undefined,
+        channel_id: channel_id !== undefined,
+        enabled: enabled,
+        connection_test: connectionTestResult
+    };
 
     return controllerFactory.sendSuccessResponse(res, updatedSettings, 'Discord settings updated successfully');
 };

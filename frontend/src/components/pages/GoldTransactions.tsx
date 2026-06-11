@@ -343,14 +343,22 @@ const GoldTransactions: React.FC = () => {
                 return;
             }
 
-            // Prepare entry
+            // Prepare entry. Amounts are always sent as non-negative numbers:
+            // the backend derives the sign from the transaction type (e.g.
+            // withdrawals are negated server-side), and its validation rejects
+            // negative inputs. Empty/invalid fields become 0.
+            const toAmount = (value: string | null | undefined): number => {
+                const parsed = parseInt(value ?? '', 10);
+                return Number.isNaN(parsed) ? 0 : Math.abs(parsed);
+            };
+
             const entry = {
                 sessionDate: newEntry.sessionDate,
                 transactionType: newEntry.transactionType,
-                platinum: newEntry.platinum === '' ? 0 : parseInt(newEntry.platinum),
-                gold: newEntry.gold === '' ? 0 : parseInt(newEntry.gold),
-                silver: newEntry.silver === '' ? 0 : parseInt(newEntry.silver),
-                copper: newEntry.copper === '' ? 0 : parseInt(newEntry.copper),
+                platinum: toAmount(newEntry.platinum),
+                gold: toAmount(newEntry.gold),
+                silver: toAmount(newEntry.silver),
+                copper: toAmount(newEntry.copper),
                 notes: newEntry.notes
             };
 
@@ -378,7 +386,8 @@ const GoldTransactions: React.FC = () => {
             }
         } catch (error) {
             console.error('Error creating gold entry:', error);
-            setError('Failed to create gold entry.');
+            const err = error as { response?: { data?: { message?: string } } };
+            setError(err.response?.data?.message || 'Failed to create gold entry.');
         }
     };
 

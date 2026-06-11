@@ -8,6 +8,7 @@
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 const cron = require('node-cron');
+const campaignContext = require('../utils/campaignContext');
 
 class DiscordOutboxService {
     constructor() {
@@ -78,8 +79,11 @@ class DiscordOutboxService {
 
         try {
             // Get pending and failed messages that are ready for retry
-            // Uses exponential backoff based on retry_count
-            const result = await dbUtils.executeQuery(`
+            // Uses exponential backoff based on retry_count.
+            // Background job: the find-work SELECT runs cross-campaign ('all')
+            // so the outbox of every campaign is drained; each message is then
+            // processed under its own row's campaign context.
+            const result = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(`
                 SELECT *,
                     CASE
                         WHEN retry_count = 0 THEN INTERVAL '5 minutes'
@@ -100,12 +104,27 @@ class DiscordOutboxService {
                 END)
                 ORDER BY created_at ASC
                 LIMIT 10
-            `);
+            `));
 
             logger.debug(`Processing ${result.rows.length} outbox messages (with exponential backoff)`);
 
             for (const message of result.rows) {
-                await this.processMessage(message);
+                try {
+                    // Act under the message's campaign so the session reads,
+                    // Discord settings and status updates the processing
+                    // performs carry the right tenant context (RLS WITH CHECK).
+                    await campaignContext.runWithCampaign(String(message.campaign_id), () =>
+                        this.processMessage(message)
+                    );
+                } catch (error) {
+                    // A bad row (e.g. invalid campaign id) must not abort the
+                    // rest of the batch.
+                    logger.error('Failed to process outbox message in campaign context', {
+                        id: message.id,
+                        campaignId: message.campaign_id,
+                        error: error.message
+                    });
+                }
             }
         } catch (error) {
             logger.error('Error processing outbox:', error);
@@ -142,7 +161,9 @@ class DiscordOutboxService {
                     break;
 
                 case 'session_cancellation':
-                    // Send cancellation notification
+                    // Send cancellation notification. Discord channel/role ids
+                    // are per-campaign (campaign_settings) and resolve from the
+                    // message's campaign context established in processOutbox.
                     const settings = await sessionService.getDiscordSettings();
                     if (settings.campaign_role_id && settings.discord_channel_id) {
                         const discordService = require('./discordBrokerService');
@@ -190,14 +211,18 @@ class DiscordOutboxService {
 
     /**
      * Clean up old sent messages (older than 7 days)
+     *
+     * Background maintenance: runs in hardcoded cross-campaign ('all') mode so
+     * sent messages from every campaign are purged (discord_outbox is
+     * RLS-protected).
      */
     async cleanup() {
         try {
-            const result = await dbUtils.executeQuery(`
+            const result = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(`
                 DELETE FROM discord_outbox
                 WHERE status = 'sent'
                 AND sent_at < NOW() - INTERVAL '7 days'
-            `);
+            `));
 
             if (result.rowCount > 0) {
                 logger.info(`Cleaned up ${result.rowCount} old outbox messages`);

@@ -5,6 +5,8 @@ const logger = require('../utils/logger');
 const { generateWeatherForNextDay } = require('./weatherController');
 const { getMonthDays, addDays, calculateDaysBetween } = require('../utils/golarionCalendar');
 const { getForecastDays } = require('../utils/weatherForecast');
+const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
 const GolarionNote = require('../models/GolarionNote');
 
 // Maximum number of days a single advance request may jump, to avoid a
@@ -14,6 +16,14 @@ const MAX_ADVANCE_DAYS = 366;
 
 // Maximum span (in days) of a single note or copy-to-days action.
 const MAX_NOTE_SPAN_DAYS = 366;
+
+/**
+ * True if Golarion date a is strictly before date b.
+ */
+const isDateBefore = (a, b) =>
+  a.year !== b.year ? a.year < b.year :
+  a.month !== b.month ? a.month < b.month :
+  a.day < b.day;
 
 /**
  * Validate a {year, month, day} date object, throwing a validation error if
@@ -84,11 +94,16 @@ const setCurrentDate = async (req, res) => {
     throw controllerFactory.createValidationError(`Day must be between 1 and ${daysInMonth} for this month`);
   }
 
+  // Per-campaign weather region (campaign_settings with global fallback);
+  // read before the transaction so the settings query doesn't hold a second
+  // pooled connection while the date transaction is open.
+  const region = await campaignSettings.getCampaignSetting('region', { defaultValue: 'Varisia' });
+
   // Update the date inside a transaction, but send the HTTP response only
   // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
   // client can refetch before the commit is visible to other pool clients
   // (MVCC) and see stale data.
-  const { oldDate, region } = await dbUtils.executeTransaction(async (client) => {
+  const { oldDate } = await dbUtils.executeTransaction(async (client) => {
     // Get the old date before updating (for weather generation)
     const oldDateResult = await client.query('SELECT year, month, day FROM golarion_current_date LIMIT 1');
 
@@ -105,12 +120,8 @@ const setCurrentDate = async (req, res) => {
       );
     }
 
-    // Get global region setting
-    const regionResult = await client.query('SELECT value FROM settings WHERE name = $1', ['region']);
-
     return {
       oldDate: oldDateResult.rows[0] || null,
-      region: regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia',
     };
   });
 
@@ -131,16 +142,16 @@ const setCurrentDate = async (req, res) => {
  * Advance the current date by one day
  */
 const advanceDay = async (req, res) => {
+  // Per-campaign weather region, read before the transaction (see setCurrentDate)
+  const region = await campaignSettings.getCampaignSetting('region', { defaultValue: 'Varisia' });
+
   // Run the UPDATE inside a transaction, but send the HTTP response only
   // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
   // client can refetch before the commit is visible to other pool clients
   // (MVCC) and see stale data.
-  const { oldDate, target, region, initialized } = await dbUtils.executeTransaction(async (client) => {
+  const { oldDate, target, initialized } = await dbUtils.executeTransaction(async (client) => {
     // Get current date
     const result = await client.query('SELECT year, month, day FROM golarion_current_date LIMIT 1');
-
-    const regionResult = await client.query('SELECT value FROM settings WHERE name = $1', ['region']);
-    const regionValue = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
 
     if (result.rows.length === 0) {
       // Initialize if not exists
@@ -150,7 +161,7 @@ const advanceDay = async (req, res) => {
           [initDate.year, initDate.month, initDate.day]
       );
 
-      return { oldDate: null, target: initDate, region: regionValue, initialized: true };
+      return { oldDate: null, target: initDate, initialized: true };
     }
 
     // Advance by one day (leap-aware month/year rollover)
@@ -161,7 +172,7 @@ const advanceDay = async (req, res) => {
         [newDate.year, newDate.month, newDate.day]
     );
 
-    return { oldDate: result.rows[0], target: newDate, region: regionValue, initialized: false };
+    return { oldDate: result.rows[0], target: newDate, initialized: false };
   });
 
   // Generate weather (current day + forecast horizon) AFTER commit so the
@@ -197,7 +208,10 @@ const advanceDays = async (req, res) => {
     );
   }
 
-  const { oldDate, target, region } = await dbUtils.executeTransaction(async (client) => {
+  // Per-campaign weather region, read before the transaction (see setCurrentDate)
+  const region = await campaignSettings.getCampaignSetting('region', { defaultValue: 'Varisia' });
+
+  const { oldDate, target } = await dbUtils.executeTransaction(async (client) => {
     // Get current date, initializing if it doesn't exist
     const result = await client.query('SELECT year, month, day FROM golarion_current_date LIMIT 1');
 
@@ -219,13 +233,9 @@ const advanceDays = async (req, res) => {
       [newDate.year, newDate.month, newDate.day]
     );
 
-    // Get global region setting
-    const regionResult = await client.query('SELECT value FROM settings WHERE name = $1', ['region']);
-
     return {
       oldDate: current,
       target: newDate,
-      region: regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia',
     };
   });
 
@@ -246,7 +256,7 @@ const advanceDays = async (req, res) => {
  * Get all calendar notes. DM-only notes are hidden from non-DM users.
  */
 const getNotes = async (req, res) => {
-  const isDm = req.user?.role === 'DM';
+  const isDm = hasDmRights(req);
   const notes = await GolarionNote.getAll({ includeDmOnly: isDm });
   controllerFactory.sendSuccessResponse(res, notes, 'Calendar notes retrieved');
 };
@@ -273,7 +283,7 @@ const createNote = async (req, res) => {
     throw controllerFactory.createValidationError(`days must be an integer between 1 and ${MAX_NOTE_SPAN_DAYS}`);
   }
 
-  const isDm = req.user?.role === 'DM';
+  const isDm = hasDmRights(req);
   const effectiveDmOnly = isDm ? Boolean(dmOnly) : false;
   const createdBy = req.user?.id ?? null;
 
@@ -308,7 +318,7 @@ const updateNote = async (req, res) => {
     throw controllerFactory.createNotFoundError('Note not found');
   }
 
-  const isDm = req.user?.role === 'DM';
+  const isDm = hasDmRights(req);
   if (existing.dmOnly && !isDm) {
     throw controllerFactory.createNotFoundError('Note not found');
   }
@@ -348,7 +358,7 @@ const deleteNote = async (req, res) => {
     throw controllerFactory.createNotFoundError('Note not found');
   }
 
-  const isDm = req.user?.role === 'DM';
+  const isDm = hasDmRights(req);
   if (existing.dmOnly && !isDm) {
     throw controllerFactory.createNotFoundError('Note not found');
   }
@@ -401,9 +411,16 @@ const extendWeatherForecast = async (oldDate, currentDate, region) => {
   const forecastDays = await getForecastDays();
   const horizonEnd = addDays(currentDate, forecastDays);
 
-  // When there was no previous date (first initialization), the current day
-  // itself needs weather; calculateDaysBetween is exclusive of its start.
-  const dates = oldDate
+  // Forward moves fill the gap from the old date through the horizon
+  // (calculateDaysBetween is exclusive of its start, so the old day keeps its
+  // weather and every skipped day gets some). Initialization, BACKWARDS moves,
+  // and same-day sets instead regenerate the window starting at the new
+  // current day — previously a backwards set produced an empty range and the
+  // new current day could end up with no weather at all.
+  // generateWeatherForDates skips days that already have weather, so this
+  // never overwrites existing rows.
+  const movedForward = oldDate && isDateBefore(oldDate, currentDate);
+  const dates = movedForward
     ? calculateDaysBetween(oldDate, horizonEnd)
     : [currentDate, ...calculateDaysBetween(currentDate, horizonEnd)];
 

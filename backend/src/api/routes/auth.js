@@ -35,9 +35,12 @@ router.post('/register', [
       .withMessage(`Username must be at least ${AUTH.USERNAME_MIN_LENGTH} characters long`),
   body('password').isLength({min: AUTH.PASSWORD_MIN_LENGTH})
       .withMessage(`Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters long`),
+  // New invite codes are exactly 8 characters (see models/Invite.js), but
+  // legacy 6-character codes generated before the Phase 3b overhaul may
+  // still sit unused in production — accept both.
   body('inviteCode').if(body('inviteCode').exists())
-      .isLength({min: 6}).trim().escape()
-      .withMessage('Invite code must be at least 6 characters long')
+      .isLength({min: 6, max: 8}).trim().escape()
+      .withMessage('Invite code must be 6 to 8 characters long')
 ], (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -52,10 +55,8 @@ router.get('/check-invite-required', authController.checkInviteRequired);
 router.get('/status', verifyToken, authController.getUserStatus);
 router.post('/logout', authController.logoutUser);
 router.post('/refresh', authController.refreshToken);
-router.post('/generate-quick-invite', verifyToken, authController.generateQuickInvite);
-router.post('/generate-custom-invite', verifyToken, authController.generateCustomInvite);
-router.get('/active-invites', verifyToken, authController.getActiveInvites);
-router.post('/deactivate-invite', verifyToken, authController.deactivateInvite);
+// Invite management moved to /api/invites (CSRF-protected mount) — see
+// src/api/routes/invites.js (Phase 3b invite overhaul).
 router.post('/forgot-password', [
   body('username').trim().notEmpty().withMessage('Username is required'),
   body('email').isEmail().withMessage('Valid email is required')
@@ -77,14 +78,8 @@ router.post('/reset-password', [
   }
   next();
 }, authController.resetPassword);
-router.post('/generate-manual-reset-link', verifyToken, [
-  body('username').trim().notEmpty().withMessage('Username is required')
-], (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({errors: errors.array()});
-  }
-  next();
-}, authController.generateManualResetLink);
+// NOTE: generate-manual-reset-link moved to POST /api/user/generate-manual-
+// reset-link (Phase 5b hardening): it is a state-changing superadmin action
+// and must live on a CSRF-protected mount — /api/auth is CSRF-exempt.
 
 module.exports = router;

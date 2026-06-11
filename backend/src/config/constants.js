@@ -4,6 +4,12 @@
  */
 
 module.exports = {
+  // Static application name. Used for deployment-level branding (login page,
+  // password-reset email, Discord broker identity). Campaign-specific display
+  // names live on campaigns.name — never on a settings row (the old global
+  // 'campaign_name' settings row is deprecated and unread).
+  APP_NAME: 'Pathfinder Loot Tracker',
+
   // Authentication settings
   AUTH: {
     MAX_LOGIN_ATTEMPTS: parseInt(process.env.MAX_LOGIN_ATTEMPTS) || 5,

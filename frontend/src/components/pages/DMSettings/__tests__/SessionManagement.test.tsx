@@ -525,6 +525,74 @@ describe('SessionManagement', () => {
   });
 
   // -------------------------------------------------------------------------
+  // 6b. Start/end time auto-sync
+  // -------------------------------------------------------------------------
+  describe('End time auto-sync', () => {
+    it('rolls the auto-synced end time to the next day for overnight sessions', async () => {
+      renderSessionManagement();
+      await waitFor(() => {
+        expect(screen.getByText('Weekly Game Night')).toBeInTheDocument();
+      });
+
+      await openCreateSessionDialog();
+      const dialog = screen.getByRole('dialog');
+
+      const startInput = within(dialog).getByTestId('dtp-Start Time') as HTMLInputElement;
+      const endInput = within(dialog).getByTestId('dtp-End Time') as HTMLInputElement;
+
+      // Choose a start whose clock time equals the current (auto-derived) end
+      // time, on a future date. The sync copies the end's clock onto the new
+      // start date, which would land exactly at the start — i.e. an overnight
+      // session — and must roll to the NEXT day, not stay before/at the start.
+      const initialEnd = new Date(endInput.value);
+      const startDate = new Date(initialEnd);
+      startDate.setDate(startDate.getDate() + 30);
+      fireEvent.change(startInput, { target: { value: startDate.toISOString() } });
+
+      const expectedEnd = new Date(startDate);
+      expectedEnd.setDate(expectedEnd.getDate() + 1);
+
+      await waitFor(() => {
+        expect(new Date(endInput.value).getTime()).toBe(expectedEnd.getTime());
+      });
+      // Regression guard for the silent-failure bug: end must be after start
+      expect(new Date(endInput.value).getTime()).toBeGreaterThan(startDate.getTime());
+    });
+
+    it('blocks creation and shows a visible error when end time is before start time', async () => {
+      renderSessionManagement();
+      await waitFor(() => {
+        expect(screen.getByText('Weekly Game Night')).toBeInTheDocument();
+      });
+
+      await openCreateSessionDialog();
+      const dialog = screen.getByRole('dialog');
+
+      const titleInput = within(dialog).getByLabelText(/session title/i);
+      fireEvent.change(titleInput, { target: { value: 'Backwards Times' } });
+
+      const startInput = within(dialog).getByTestId('dtp-Start Time');
+      const endInput = within(dialog).getByTestId('dtp-End Time');
+      const startDate = new Date();
+      startDate.setUTCDate(startDate.getUTCDate() + 20);
+      startDate.setUTCHours(23, 0, 0, 0);
+      const endDate = new Date(startDate);
+      endDate.setUTCHours(4, 0, 0, 0); // same day, 7h BEFORE start
+      fireEvent.change(startInput, { target: { value: startDate.toISOString() } });
+      fireEvent.change(endInput, { target: { value: endDate.toISOString() } });
+
+      const createBtn = within(dialog).getByRole('button', { name: /^create session$/i });
+      fireEvent.click(createBtn);
+
+      // Visible feedback (snackbar and/or inline helper text) must appear...
+      const errors = await screen.findAllByText(/end time must be after start time/i);
+      expect(errors.length).toBeGreaterThan(0);
+      // ...and no request may be sent
+      expect(api.post).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // 7. Required-field validation
   // -------------------------------------------------------------------------
   describe('Required-field validation on Create', () => {

@@ -15,9 +15,6 @@ vi.mock('../../../utils/api', () => ({
       if (url === '/calendar/notes') {
         return Promise.resolve({ data: [] });
       }
-      if (url === '/settings/region') {
-        return Promise.resolve({ data: { value: 'Varisia' } });
-      }
       if (url.startsWith('/weather/range')) {
         return Promise.resolve({ data: [] });
       }
@@ -26,7 +23,26 @@ vi.mock('../../../utils/api', () => ({
     post: vi.fn().mockResolvedValue({
       data: { year: 4722, month: 1, day: 16 },
     }),
+    put: vi.fn().mockResolvedValue({ data: { success: true } }),
   },
+}));
+
+// Per-campaign settings (region, weather_forecast_days) come from the
+// campaign context as strings (multi-campaign Phase 4c)
+const refreshMock = vi.fn().mockResolvedValue(undefined);
+let campaignSettingsValue: Record<string, unknown>;
+
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useCampaign: () => ({
+    campaigns: [],
+    currentCampaign: { id: 1, name: 'Test Campaign', slug: 'test' },
+    campaignRole: 'DM',
+    isSuperadmin: false,
+    campaignSettings: campaignSettingsValue,
+    loading: false,
+    switchCampaign: vi.fn(),
+    refresh: refreshMock,
+  }),
 }));
 
 import api from '../../../utils/api';
@@ -43,6 +59,7 @@ const renderCalendar = () => {
 describe('GolarionCalendar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    campaignSettingsValue = { region: 'Varisia', weather_forecast_days: '7' };
   });
 
   it('renders the calendar with Golarion day-of-week headers', async () => {
@@ -143,6 +160,42 @@ describe('GolarionCalendar', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Add Note/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('set current day', () => {
+    const weatherCallCount = () =>
+      (api.get as any).mock.calls.filter((call: unknown[]) =>
+        String(call[0]).startsWith('/weather/range')
+      ).length;
+
+    it('refetches weather for the month after confirming Set Current Day', async () => {
+      renderCalendar();
+
+      // Initial load: current date selected + first weather fetch done
+      await waitFor(() => {
+        expect(screen.getByText(/Calendar Information/i)).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(weatherCallCount()).toBeGreaterThan(0);
+      });
+      const callsBefore = weatherCallCount();
+
+      fireEvent.click(screen.getByRole('button', { name: /Set Current Day/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /Confirm/i }));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith('/calendar/set-current-date', {
+          year: 4722,
+          month: 1,
+          day: 15,
+        });
+      });
+      // The fix: weather is refetched so newly generated weather appears
+      // without a page reload
+      await waitFor(() => {
+        expect(weatherCallCount()).toBeGreaterThan(callsBefore);
+      });
     });
   });
 
@@ -258,6 +311,77 @@ describe('GolarionCalendar', () => {
         expect(screen.getByRole('button', { name: /Regenerate Forecast/i })).toBeInTheDocument();
       });
       expect(screen.getByLabelText(/Days ahead/i)).toBeInTheDocument();
+    });
+
+    it('prefills the forecast length from campaignSettings.weather_forecast_days', async () => {
+      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+      campaignSettingsValue = { region: 'Varisia', weather_forecast_days: '14' };
+
+      renderCalendar();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Days ahead/i)).toHaveValue(14);
+      });
+      // The legacy settings GET is gone
+      const calls = (api.get as any).mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(calls).not.toContain('/settings/weather-forecast-days');
+      expect(calls).not.toContain('/settings/region');
+    });
+
+    it('saves the forecast length to the per-campaign settings endpoint and refreshes', async () => {
+      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+
+      renderCalendar();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Days ahead/i)).toBeInTheDocument();
+      });
+
+      fireEvent.change(screen.getByLabelText(/Days ahead/i), { target: { value: '10' } });
+      fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/campaigns/current/settings', {
+          name: 'weather_forecast_days',
+          value: '10',
+        });
+      });
+      await waitFor(() => {
+        expect(refreshMock).toHaveBeenCalled();
+      });
+      expect(await screen.findByText(/Forecast length set to 10 day\(s\)/i)).toBeInTheDocument();
+    });
+
+    it('surfaces the backend envelope message when the forecast save fails', async () => {
+      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+      (api.put as any).mockRejectedValueOnce({
+        response: { status: 403, data: { success: false, message: 'DM role required' } },
+      });
+
+      renderCalendar();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Days ahead/i)).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+
+      expect(await screen.findByText('DM role required')).toBeInTheDocument();
+      expect(refreshMock).not.toHaveBeenCalled();
+    });
+
+    it('uses the campaign-settings region for weather fetches', async () => {
+      campaignSettingsValue = { region: 'Cheliax', weather_forecast_days: '7' };
+
+      renderCalendar();
+
+      await waitFor(() => {
+        const weatherCalls = (api.get as any).mock.calls
+          .map((c: unknown[]) => String(c[0]))
+          .filter((u: string) => u.startsWith('/weather/range'));
+        expect(weatherCalls.length).toBeGreaterThan(0);
+        expect(weatherCalls[weatherCalls.length - 1]).toMatch(/\/Cheliax$/);
+      });
     });
   });
 });

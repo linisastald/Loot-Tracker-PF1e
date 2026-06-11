@@ -49,6 +49,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import api from '../../utils/api';
 import {isDM} from '../../utils/auth';
+import {useCampaign} from '../../contexts/CampaignContext';
 import {
     getGolarionDayOfWeek,
     getGolarionMonthDays,
@@ -321,6 +322,7 @@ const InfoCardContent = styled(CardContent)(({theme}) => ({
 }));
 
 const GolarionCalendar: React.FC = () => {
+    const {campaignSettings, refresh: refreshCampaign} = useCampaign();
     const [currentDate, setCurrentDate] = useState<DateObject & {day: number}>({year: 4722, month: 1, day: 1});
     const [displayedDate, setDisplayedDate] = useState<DateObject>({year: 4722, month: 1});
     const [selectedDate, setSelectedDate] = useState<DateObject & {day: number} | null>(null);
@@ -355,12 +357,22 @@ const GolarionCalendar: React.FC = () => {
     useEffect(() => {
         fetchCurrentDate();
         fetchNotes();
-        fetchCurrentRegion();
         fetchHolidays();
-        if (dmMode) {
-            fetchForecastDays();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // The campaign region and the DM forecast length are per-campaign settings
+    // (multi-campaign Phase 4c) served by the campaign context as strings.
+    useEffect(() => {
+        const region = campaignSettings?.region;
+        if (typeof region === 'string' && region) {
+            setCurrentRegion(region);
         }
-    }, [dmMode]);
+        const days = campaignSettings?.weather_forecast_days;
+        if (days !== undefined && days !== null && String(days) !== '') {
+            setForecastDays(String(days));
+        }
+    }, [campaignSettings]);
 
     // Fetch weather data when displayed month changes
     useEffect(() => {
@@ -402,17 +414,6 @@ const GolarionCalendar: React.FC = () => {
         }
     };
 
-    const fetchCurrentRegion = async (): Promise<void> => {
-        try {
-            const response = await api.get('/settings/region');
-            if (response.data && response.data.value) {
-                setCurrentRegion(response.data.value);
-            }
-        } catch (error) {
-            // Don't show error for region fetch, use default
-        }
-    };
-
     const fetchWeatherForMonth = useCallback(async (year: number, month: number): Promise<void> => {
         try {
             // Calculate start and end dates for the month (leap-aware)
@@ -437,17 +438,6 @@ const GolarionCalendar: React.FC = () => {
             // Don't show error for weather fetch
         }
     }, [currentRegion]);
-
-    const fetchForecastDays = async (): Promise<void> => {
-        try {
-            const response = await api.get('/settings/weather-forecast-days');
-            if (response.data && response.data.value !== undefined) {
-                setForecastDays(String(response.data.value));
-            }
-        } catch (error) {
-            // Non-fatal; keep default
-        }
-    };
 
     // Whether a date falls after the current (in-game) date — i.e. it is a
     // DM-only forecast day rather than a day the party has reached.
@@ -519,11 +509,16 @@ const GolarionCalendar: React.FC = () => {
             return;
         }
         try {
-            await api.post('/settings/weather-forecast-days', {days});
+            // weather_forecast_days is a per-campaign setting (Phase 4c)
+            await api.put('/campaigns/current/settings', {
+                name: 'weather_forecast_days',
+                value: String(days)
+            });
+            await refreshCampaign();
             setError(null);
             setStatusMessage(`Forecast length set to ${days} day(s).`);
-        } catch (error) {
-            setError('Failed to update forecast length. Please try again later.');
+        } catch (error: any) {
+            setError(error.response?.data?.message || 'Failed to update forecast length. Please try again later.');
         }
     };
 
@@ -564,6 +559,11 @@ const GolarionCalendar: React.FC = () => {
             });
 
             setCurrentDate(selectedDate);
+            // Jump the view to the new current month: the displayedDate effect
+            // refetches that month's weather, so the weather the backend just
+            // generated shows without a reload (same mechanism as the
+            // next-day/advance handlers — no explicit fetch needed here).
+            setDisplayedDate({year: selectedDate.year, month: selectedDate.month});
             setConfirmDialogOpen(false);
             setError(null);
         } catch (error) {

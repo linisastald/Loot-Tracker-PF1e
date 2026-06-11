@@ -10,6 +10,7 @@
 // budgets from the catalog (sampling within value bands, weighted by creature
 // type; magic weapons/armor are synthesized from a base item + a "+N" mod).
 const dbUtils = require('../../utils/dbUtils');
+const campaignSettings = require('../../utils/campaignSettings');
 const { calculateFinalValue } = require('../calculateFinalValue');
 const {
   getTreasureGp, getNpcGearGp, GEM_TIERS, ART_TIERS, TREASURE_MULTIPLIERS,
@@ -111,15 +112,11 @@ const ENH_PLUS_TABLE = {
 const MASTERWORK_ADD = { weapon: 300, armor: 150 };
 
 /**
- * Read the track + modifier tuning settings (with safe defaults).
+ * Read the track + modifier tuning settings for the active campaign
+ * (campaign_settings with global fallback), with safe defaults.
  */
 const getTreasureSettings = async () => {
-  const result = await dbUtils.executeQuery(
-    'SELECT name, value FROM settings WHERE name = ANY($1)',
-    [['treasure_track', 'treasure_modifier']]
-  );
-  const map = {};
-  result.rows.forEach(r => { map[r.name] = r.value; });
+  const map = await campaignSettings.getCampaignSettings(['treasure_track', 'treasure_modifier']);
   const track = ['slow', 'medium', 'fast'].includes(map.treasure_track) ? map.treasure_track : 'medium';
   let modifier = parseFloat(map.treasure_modifier);
   if (!(modifier > 0)) modifier = 1;

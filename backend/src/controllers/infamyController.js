@@ -2,6 +2,8 @@
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Get the current infamy status for the ship
@@ -208,11 +210,11 @@ const gainInfamy = async (req, res) => {
             throw controllerFactory.createValidationError('You cannot use the reroll option on your first attempt. Make a regular attempt first.');
         }
 
-        // Get the APL setting or default to 5
-        const aplSettingResult = await dbUtils.executeQuery(
-            "SELECT value FROM settings WHERE name = 'average_party_level'"
-        );
-        const apl = aplSettingResult.rows.length > 0 ? parseInt(aplSettingResult.rows[0].value) || 5 : 5;
+        // Get the APL setting (per-campaign with global fallback) or default to 5
+        const aplValue = await campaignSettings.getCampaignSetting('average_party_level', {
+            defaultValue: '5'
+        });
+        const apl = parseInt(aplValue, 10) || 5;
 
         // Get current infamy and threshold
         const infamyResult = await dbUtils.executeQuery(
@@ -769,8 +771,8 @@ const adjustInfamy = async (req, res) => {
     const userId = req.user.id;
 
     try {
-        // Verify DM role
-        if (req.user.role !== 'DM') {
+        // Verify DM rights (per-campaign role; superadmins pass)
+        if (!hasDmRights(req)) {
             throw controllerFactory.createAuthorizationError('Only DMs can manually adjust infamy/disrepute');
         }
 

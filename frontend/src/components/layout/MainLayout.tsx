@@ -1,5 +1,7 @@
 import React, {Suspense, useState, useEffect} from 'react';
 import Sidebar from './Sidebar';
+import CampaignSelector from './CampaignSelector';
+import NoSessionTodayBanner from './NoSessionTodayBanner';
 import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography, useMediaQuery, useTheme} from '@mui/material';
 import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -54,6 +56,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
               return 'Infamy';
           case '/city-services':
               return 'City Services';
+          case '/system-admin':
+              return 'System Admin';
           default:
               if (path.includes('/loot-management')) return 'Loot Management';
               if (path.includes('/item-management')) return 'Item Management';
@@ -113,6 +117,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
             <Typography variant="h6" noWrap component="div">
               {getPageTitle()}
             </Typography>
+            <Box sx={{ flexGrow: 1 }} />
+            <CampaignSelector />
           </Toolbar>
         </AppBar>
 
@@ -125,6 +131,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
             overflow: 'auto',
           }}
         >
+          {/* Multi-campaign: gentle "wrong campaign?" hint, above page content */}
+          <NoSessionTodayBanner />
           <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress size={32} /></Box>}>
             <Outlet />
           </Suspense>

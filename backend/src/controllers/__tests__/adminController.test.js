@@ -30,6 +30,10 @@ function createMockReq(overrides = {}) {
     params: {},
     query: {},
     user: { id: 1, role: 'DM' },
+    // The shared item/mod catalog is superadmin-only to write (Phase 5a);
+    // default the mock requester to superadmin so the CRUD tests exercise
+    // the happy path.
+    isSuperadmin: true,
     ...overrides,
   };
 }
@@ -37,6 +41,42 @@ function createMockReq(overrides = {}) {
 describe('adminController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  // ─── superadmin gate (shared catalog writes) ────────────────────
+
+  describe('superadmin gate', () => {
+    const validItemBody = { name: 'Longsword', type: 'Weapon', value: 15 };
+    const validModBody = { name: 'Flaming', type: 'Weapon', target: 'weapon' };
+
+    it.each([
+      ['createItem', { body: validItemBody }],
+      ['updateItem', { params: { id: '1' }, body: validItemBody }],
+      ['createMod', { body: validModBody }],
+      ['updateMod', { params: { id: '1' }, body: validModBody }],
+    ])('should forbid a non-superadmin campaign DM from %s', async (handler, reqOverrides) => {
+      const req = createMockReq({ ...reqOverrides, isSuperadmin: false });
+      const res = createMockRes();
+
+      await adminController[handler](req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith(
+        'Only the system administrator can modify the shared item catalog'
+      );
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should allow a superadmin through the gate (createItem reaches the DB)', async () => {
+      const req = createMockReq({ body: validItemBody, isSuperadmin: true });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1, ...validItemBody }] });
+
+      await adminController.createItem(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalled();
+    });
   });
 
   // ─── createItem ─────────────────────────────────────────────────

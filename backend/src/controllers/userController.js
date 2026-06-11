@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Change user email
@@ -354,14 +356,16 @@ const deactivateAllCharacters = async (req, res) => {
 };
 
 /**
- * Reset user's password (DM only)
+ * Reset another user's password (superadmin only — account-level action)
  */
 const resetPassword = async (req, res) => {
     const {userId, newPassword} = req.body;
 
-    // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can reset passwords');
+    // Account-level admin action: setting another user's password affects the
+    // ACCOUNT (shared across all campaigns), so it is superadmin-only — a
+    // per-campaign DM passes the route's checkRole('DM') but is rejected here.
+    if (!req.isSuperadmin) {
+        throw controllerFactory.createAuthorizationError('Only the system administrator can reset passwords');
     }
 
     // Validate password length
@@ -399,14 +403,16 @@ const resetPassword = async (req, res) => {
 };
 
 /**
- * Delete a user (mark as deleted) (DM only)
+ * Delete a user account (mark as deleted) (superadmin only — account-level action)
  */
 const deleteUser = async (req, res) => {
     const {userId} = req.body;
 
-    // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can delete users');
+    // Account-level admin action: deactivating an ACCOUNT affects every
+    // campaign the user belongs to, so it is superadmin-only. Removing a user
+    // from one campaign is DELETE /api/campaigns/current/members/:userId.
+    if (!req.isSuperadmin) {
+        throw controllerFactory.createAuthorizationError('Only the system administrator can delete users');
     }
 
     // Check if user exists
@@ -419,8 +425,9 @@ const deleteUser = async (req, res) => {
         throw controllerFactory.createNotFoundError('User not found');
     }
 
-    // Don't allow deleting yourself
-    if (userId === req.user.id) {
+    // Don't allow deleting yourself (Number() both sides: the body value may
+    // arrive as a string, which would bypass a strict === self-check)
+    if (Number(userId) === Number(req.user.id)) {
         throw controllerFactory.createValidationError('You cannot delete your own account');
     }
 
@@ -441,8 +448,32 @@ const updateSetting = async (req, res) => {
     const {name, value} = req.body;
 
     // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update settings');
+    }
+
+    // Per-campaign settings must never be written as global rows (that would
+    // silently change every campaign) — point callers at the campaign endpoint
+    if (campaignSettings.PER_CAMPAIGN_SETTINGS.includes(name)) {
+        throw controllerFactory.createValidationError(
+            `'${name}' is a per-campaign setting; update it via PUT /api/campaigns/current/settings`
+        );
+    }
+
+    // campaign_name is deprecated: the campaign's display name lives on
+    // campaigns.name and is renamed via PATCH /api/campaigns/current
+    if (name === 'campaign_name') {
+        throw controllerFactory.createValidationError(
+            "'campaign_name' is deprecated; rename the campaign via PATCH /api/campaigns/current"
+        );
+    }
+
+    // registration_mode drives the registration flow — constrain it to the
+    // three supported values (scoped validation; other settings are free-form)
+    if (name === 'registration_mode' && !['open', 'invite-only', 'closed'].includes(value)) {
+        throw controllerFactory.createValidationError(
+            "registration_mode must be one of 'open', 'invite-only', or 'closed'"
+        );
     }
 
     await dbUtils.executeQuery(
@@ -459,7 +490,7 @@ const updateSetting = async (req, res) => {
  */
 const getSettings = async (req, res) => {
     // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can view all settings');
     }
 
@@ -468,16 +499,18 @@ const getSettings = async (req, res) => {
 };
 
 /**
- * Get all users (DM only)
+ * Get all user accounts (superadmin only — account-level listing)
  */
 const getAllUsers = async (req, res) => {
-    // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can view all users');
+    // Account-level admin listing: every ACCOUNT in the deployment, across all
+    // campaigns — superadmin-only. A campaign DM manages their own roster via
+    // GET /api/campaigns/current/members instead.
+    if (!req.isSuperadmin) {
+        throw controllerFactory.createAuthorizationError('Only the system administrator can view all users');
     }
 
     const users = await dbUtils.executeQuery(
-        'SELECT id, username, role, joined, email FROM users WHERE role != $1 ORDER BY username',
+        'SELECT id, username, role, joined, email, is_superadmin FROM users WHERE role != $1 ORDER BY username',
         ['deleted']
     );
 
@@ -489,7 +522,7 @@ const getAllUsers = async (req, res) => {
  */
 const getAllCharacters = async (req, res) => {
     // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can view all characters');
     }
 
@@ -518,7 +551,7 @@ const updateAnyCharacter = async (req, res) => {
     const {id, name, appraisal_bonus, birthday, deathday, active, user_id} = req.body;
 
     // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update any character');
     }
 

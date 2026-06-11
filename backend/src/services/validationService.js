@@ -1,17 +1,18 @@
 // src/services/validationService.js
 const controllerFactory = require('../utils/controllerFactory');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Service for handling validation operations
  */
 class ValidationService {
   /**
-   * Validate DM permission
-   * @param {Object} req - Express request object
-   * @throws {Error} - If user is not a DM
+   * Validate DM permission (per-campaign role; superadmins always pass)
+   * @param {Object} req - Express request object (after verifyToken)
+   * @throws {Error} - If user is not a DM in the resolved campaign
    */
   static requireDM(req) {
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
       throw controllerFactory.createAuthorizationError('Only DMs can perform this operation');
     }
   }

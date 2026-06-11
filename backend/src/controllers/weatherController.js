@@ -3,6 +3,8 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const { getMonthDays, addDays, calculateDaysBetween, compareDates } = require('../utils/golarionCalendar');
 const { getForecastDays } = require('../utils/weatherForecast');
+const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Read the current Golarion date from the database, defaulting to 4722-1-1.
@@ -16,8 +18,9 @@ const getCurrentGolarionDate = async () => {
 
 /**
  * Whether the request is from a DM (forecast weather is DM-only).
+ * Per-campaign role; superadmins pass.
  */
-const isDmRequest = (req) => req.user?.role === 'DM';
+const isDmRequest = (req) => hasDmRights(req);
 
 // Weather condition types and their emojis
 const WEATHER_CONDITIONS = {
@@ -391,8 +394,8 @@ const setWeatherForDate = async (req, res) => {
 const regenerateForecast = async (req, res) => {
     const currentDate = await getCurrentGolarionDate();
 
-    const regionResult = await dbUtils.executeQuery('SELECT value FROM settings WHERE name = $1', ['region']);
-    const region = regionResult.rows.length > 0 ? regionResult.rows[0].value : 'Varisia';
+    // Per-campaign weather region (campaign_settings with global fallback)
+    const region = await campaignSettings.getCampaignSetting('region', { defaultValue: 'Varisia' });
 
     const forecastDays = await getForecastDays();
     const horizonEnd = addDays(currentDate, forecastDays);

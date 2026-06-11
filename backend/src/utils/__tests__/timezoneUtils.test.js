@@ -131,4 +131,78 @@ describe('timezoneUtils', () => {
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('per-campaign behavior (Phase 4c)', () => {
+    const campaignContext = require('../campaignContext');
+
+    it('should cache timezones per campaign, not globally', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ value: 'America/Chicago' }] })
+        .mockResolvedValueOnce({ rows: [{ value: 'America/Los_Angeles' }] });
+
+      const tz1 = await getCampaignTimezone({ campaignId: '1' });
+      const tz2 = await getCampaignTimezone({ campaignId: '2' });
+
+      expect(tz1).toBe('America/Chicago');
+      expect(tz2).toBe('America/Los_Angeles');
+      // Each campaign's first read queried campaign_settings with its own id
+      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining('FROM campaign_settings'),
+        ['1', 'campaign_timezone']
+      );
+      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('FROM campaign_settings'),
+        ['2', 'campaign_timezone']
+      );
+
+      // Cached independently — no further queries
+      await getCampaignTimezone({ campaignId: '1' });
+      await getCampaignTimezone({ campaignId: '2' });
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
+    });
+
+    it('should clear only the given campaign from the cache', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ value: 'America/Denver' }] });
+
+      await getCampaignTimezone({ campaignId: '1' });
+      await getCampaignTimezone({ campaignId: '2' });
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
+
+      clearTimezoneCache('1');
+
+      await getCampaignTimezone({ campaignId: '1' }); // re-fetch
+      await getCampaignTimezone({ campaignId: '2' }); // still cached
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
+    });
+
+    it('should resolve the campaign id from the active context', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ value: 'America/Chicago' }] });
+
+      await campaignContext.runWithCampaign('7', () => getCampaignTimezone());
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        expect.stringContaining('FROM campaign_settings'),
+        ['7', 'campaign_timezone']
+      );
+    });
+
+    it("should throw in cross-campaign ('all') context without an explicit campaignId", async () => {
+      await expect(
+        campaignContext.runWithCampaign('all', () => getCampaignTimezone())
+      ).rejects.toThrow(/cross-campaign \('all'\) context/);
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to the deprecated global row when the campaign has no row', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [] }) // campaign_settings miss
+        .mockResolvedValueOnce({ rows: [{ value: 'America/Phoenix' }] }); // global hit
+
+      const result = await getCampaignTimezone({ campaignId: '3' });
+
+      expect(result).toBe('America/Phoenix');
+    });
+  });
 });

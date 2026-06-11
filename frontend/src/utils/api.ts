@@ -45,6 +45,17 @@ const fetchCsrfToken = async (): Promise<string | null> => {
 // Request interceptor
 api.interceptors.request.use(
     async (config: InternalAxiosRequestConfig): Promise<InternalAxiosRequestConfig> => {
+        // Multi-campaign: attach the active campaign selection so the backend
+        // scopes queries to the chosen tenant. Deliberately NOT attached to
+        // /auth/* requests: auth endpoints are campaign-independent, and a
+        // stale selection 403ing /auth/status would race App.tsx's logout
+        // handler and force-log-out the user instead of recovering.
+        const isAuthRoute = !!config.url && config.url.includes('/auth/');
+        const activeCampaignId = localStorage.getItem('activeCampaignId');
+        if (!isAuthRoute && activeCampaignId && /^\d+$/.test(activeCampaignId) && config.headers) {
+            config.headers['X-Campaign-Id'] = activeCampaignId;
+        }
+
         // Skip CSRF for auth routes
         if (config.url && (
             config.url.includes('/auth/login') ||
@@ -101,6 +112,19 @@ api.interceptors.response.use(
                 window.location.href = '/login';
                 return Promise.reject(error);
             }
+        }
+
+        // Stale campaign selection recovery (403 - membership revoked, campaign
+        // deleted, etc.). Clear the stored selection and reload so the backend
+        // falls back to a valid default campaign. Only fires when the request
+        // actually carried the X-Campaign-Id header — after the reload the key
+        // is gone, the header is no longer sent, so this cannot loop.
+        if (error.response?.status === 403 &&
+            (error.response?.data as any)?.message === 'Not a member of this campaign' &&
+            authConfig?.headers?.['X-Campaign-Id']) {
+            localStorage.removeItem('activeCampaignId');
+            window.location.reload();
+            return Promise.reject(error);
         }
 
         // Handle CSRF token errors (403 Forbidden - prevent infinite retry)

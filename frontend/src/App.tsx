@@ -10,6 +10,7 @@ import Login from './components/pages/Login';
 import MainLayout from './components/layout/MainLayout';
 import ProtectedRoute from './components/hoc/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
+import CampaignThemeProvider from './components/CampaignThemeProvider';
 
 // Lazy loaded page components
 const Register = React.lazy(() => import('./components/pages/Register'));
@@ -34,12 +35,15 @@ const CrewManagement = React.lazy(() => import('./components/pages/CrewManagemen
 const SessionsPage = React.lazy(() => import('./components/pages/Sessions/SessionsPage'));
 const SessionManagement = React.lazy(() => import('./components/pages/DMSettings/SessionManagement'));
 const CityServices = React.lazy(() => import('./components/pages/CityServices'));
+const SystemAdmin = React.lazy(() => import('./components/pages/SystemAdmin'));
 
 
 import theme from './theme';
 import api from './utils/api';
 import { ConfigProvider } from './contexts/ConfigContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { CampaignProvider } from './contexts/CampaignContext';
+import { SnackbarProvider } from 'notistack';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -168,8 +172,20 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider theme={theme}>
         <CssBaseline />
+        {/* Required for enqueueSnackbar everywhere (SessionManagement, SessionsPage, ...) —
+            without a mounted provider those calls are silent no-ops */}
+        <SnackbarProvider maxSnack={3} autoHideDuration={5000}>
         <ConfigProvider>
           <AuthProvider user={user} isAuthenticated={isAuthenticated} onUserUpdate={handleUserUpdate}>
+          {/* CampaignProvider reads auth state from AuthContext and only fetches
+              campaign info once authenticated (it is a no-op on the login page) */}
+          <CampaignProvider>
+          {/* Per-campaign theme override (Phase 4b). Wraps the Router so the
+              app bar / campaign selector get the campaign theme too; renders
+              children unchanged when no valid override exists (login page
+              keeps the default theme since settings are only fetched once
+              authenticated). */}
+          <CampaignThemeProvider>
           <Router>
           <Suspense fallback={null}>
           <Routes>
@@ -211,12 +227,16 @@ function App() {
               <Route path="sessions" element={<ErrorBoundary><SessionsPage /></ErrorBoundary>} />
               <Route path="session-management" element={<ErrorBoundary><SessionManagement /></ErrorBoundary>} />
               <Route path="city-services" element={<ErrorBoundary><CityServices /></ErrorBoundary>} />
+              <Route path="system-admin" element={<ErrorBoundary><SystemAdmin /></ErrorBoundary>} />
             </Route>
           </Routes>
           </Suspense>
           </Router>
+          </CampaignThemeProvider>
+          </CampaignProvider>
           </AuthProvider>
         </ConfigProvider>
+        </SnackbarProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
