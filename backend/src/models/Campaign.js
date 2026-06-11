@@ -45,6 +45,25 @@ exports.getById = async (id) => {
 };
 
 /**
+ * Get a campaign's display name (campaigns.name) by id.
+ *
+ * Branding helper for Discord embed titles etc. Callers must resolve the
+ * campaign id explicitly (req.campaignId in request paths, the per-row
+ * campaignContext id in background paths) and fall back to the static
+ * APP_NAME when this returns null (campaign row missing).
+ *
+ * @param {number|string} id - Campaign id
+ * @return {Promise<string|null>} The campaign name, or null when not found
+ */
+exports.getNameById = async (id) => {
+  const result = await dbUtils.executeQuery(
+    'SELECT name FROM campaigns WHERE id = $1',
+    [id]
+  );
+  return result.rows.length > 0 ? result.rows[0].name : null;
+};
+
+/**
  * Get a user's membership row for a specific campaign.
  *
  * user_campaign has no RLS, so this works regardless of the active campaign
@@ -61,6 +80,44 @@ exports.getMembership = async (userId, campaignId) => {
     [userId, campaignId]
   );
   return result.rows.length > 0 ? result.rows[0] : null;
+};
+
+/**
+ * Get a campaign's member roster (user_campaign joined with users), ordered
+ * by username.
+ *
+ * Neither table has RLS — the explicit campaign_id predicate is the scope.
+ *
+ * @param {number} campaignId
+ * @return {Promise<Array>} [{ user_id, username, email, role, joined_at }]
+ */
+exports.getMembers = async (campaignId) => {
+  const result = await dbUtils.executeQuery(
+    `SELECT uc.user_id, u.username, u.email, uc.role, uc.joined_at
+     FROM user_campaign uc
+     JOIN users u ON u.id = uc.user_id
+     WHERE uc.campaign_id = $1
+       AND u.role != 'deleted'
+     ORDER BY u.username`,
+    [campaignId]
+  );
+  return result.rows;
+};
+
+/**
+ * Remove a user's membership in a campaign (deletes the user_campaign row
+ * only — the user ACCOUNT is never touched).
+ *
+ * @param {number} campaignId
+ * @param {number} userId
+ * @return {Promise<boolean>} True when a membership row was deleted
+ */
+exports.removeMember = async (campaignId, userId) => {
+  const result = await dbUtils.executeQuery(
+    'DELETE FROM user_campaign WHERE campaign_id = $1 AND user_id = $2',
+    [campaignId, userId]
+  );
+  return result.rowCount > 0;
 };
 
 /**

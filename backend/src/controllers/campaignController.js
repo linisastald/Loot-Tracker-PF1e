@@ -1,7 +1,6 @@
 // src/controllers/campaignController.js
 const Campaign = require('../models/Campaign');
 const controllerFactory = require('../utils/controllerFactory');
-const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
 const timezoneUtils = require('../utils/timezoneUtils');
@@ -125,7 +124,10 @@ const SCALAR_SETTING_VALIDATORS = {
 };
 
 /** Keys a theme override may contain — all optional. */
-const THEME_KEYS = ['mode', 'primary', 'secondary'];
+const THEME_KEYS = ['mode', 'primary', 'secondary', 'background_default', 'background_paper'];
+
+/** Theme keys holding a #rrggbb color value. */
+const THEME_COLOR_KEYS = ['primary', 'secondary', 'background_default', 'background_paper'];
 
 /** Valid theme modes. */
 const THEME_MODES = ['dark', 'light'];
@@ -137,7 +139,8 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
  * Validate a 'theme' setting value.
  *
  * Accepts an object or a JSON string encoding one, with ONLY the optional
- * keys mode ('dark'|'light'), primary (#rrggbb), secondary (#rrggbb).
+ * keys mode ('dark'|'light') and the #rrggbb colors primary, secondary,
+ * background_default, background_paper.
  *
  * @param {*} value - Raw value from the request body
  * @return {Object|null} The validated theme object, or null when the value
@@ -190,7 +193,7 @@ const validateThemeValue = (value) => {
     );
   }
 
-  for (const colorKey of ['primary', 'secondary']) {
+  for (const colorKey of THEME_COLOR_KEYS) {
     if (colorKey in theme && (typeof theme[colorKey] !== 'string' || !HEX_COLOR_PATTERN.test(theme[colorKey]))) {
       throw controllerFactory.createValidationError(
         `theme.${colorKey} must be a hex color in #rrggbb format`
@@ -357,24 +360,63 @@ const renameCurrentCampaign = async (req, res) => {
     throw controllerFactory.createNotFoundError('Campaign not found');
   }
 
-  // Keep deployment branding in sync: Discord embed titles, email, and the
-  // login page still read the deprecated global 'campaign_name' settings row,
-  // which the generic endpoints now refuse to write — without this sync a
-  // rename would leave that branding frozen on the old name forever. Synced
-  // only for campaign 1 (the primary/deployment campaign) so another
-  // campaign's DM cannot rewrite deployment-wide branding. Follow-up: convert
-  // those readers to campaigns.name and drop this sync.
-  if (Number(req.campaignId) === 1) {
-    await dbUtils.executeQuery(
-      `INSERT INTO settings (name, value, value_type, description)
-       VALUES ('campaign_name', $1, 'string', 'DEPRECATED (superseded by campaigns.name): kept in sync for branding readers')
-       ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`,
-      [trimmedName]
-    );
-  }
+  // Note: the deprecated global 'campaign_name' settings row is intentionally
+  // NOT synced here. App branding is the static APP_NAME constant; everything
+  // campaign-facing (Discord embed titles, the current-campaign endpoint)
+  // reads campaigns.name directly. The old row stays in the DB, fully unread.
 
   logger.info(`Campaign ${req.campaignId} renamed to '${trimmedName}' by user ${req.user.id}`);
   controllerFactory.sendSuccessResponse(res, campaign, 'Campaign renamed successfully');
+};
+
+/**
+ * List the current campaign's members (DM User Management page).
+ * DM-only (checkRole('DM') at the route layer; superadmins pass via bypass).
+ *
+ * Response data: { members: [{ user_id, username, email, role, joined_at }] }
+ * ordered by username.
+ */
+const getCurrentCampaignMembers = async (req, res) => {
+  const members = await Campaign.getMembers(req.campaignId);
+  controllerFactory.sendSuccessResponse(res, { members }, 'Campaign members retrieved successfully');
+};
+
+/**
+ * Remove a member from the current campaign (DELETE the user_campaign row —
+ * the user ACCOUNT is never deleted; account deletion is a separate
+ * superadmin-only action).
+ *
+ * DM-only (checkRole('DM') at the route layer), with two extra guards:
+ * - a DM cannot remove themselves;
+ * - only a superadmin may remove a fellow DM (a campaign DM removing
+ *   another DM would otherwise be a privilege fight).
+ */
+const removeCurrentCampaignMember = async (req, res) => {
+  const { userId } = req.params;
+
+  const targetUserId = parseInt(userId, 10);
+  if (!/^\d+$/.test(String(userId)) || !Number.isSafeInteger(targetUserId)) {
+    throw controllerFactory.createValidationError('userId must be a positive integer');
+  }
+
+  if (targetUserId === Number(req.user.id)) {
+    throw controllerFactory.createValidationError('You cannot remove yourself from the campaign');
+  }
+
+  const membership = await Campaign.getMembership(targetUserId, req.campaignId);
+  if (!membership) {
+    throw controllerFactory.createNotFoundError('User is not a member of this campaign');
+  }
+
+  if (membership.role === 'DM' && !req.isSuperadmin) {
+    throw controllerFactory.createAuthorizationError('Only the system administrator can remove a DM');
+  }
+
+  // Deletes the membership row only — the account itself is never deleted here.
+  await Campaign.removeMember(req.campaignId, targetUserId);
+
+  logger.info(`User ${targetUserId} removed from campaign ${req.campaignId} by user ${req.user.id}`);
+  controllerFactory.sendSuccessMessage(res, 'Member removed from campaign successfully');
 };
 
 /**
@@ -463,6 +505,14 @@ exports.renameCurrentCampaign = controllerFactory.createHandler(renameCurrentCam
   validation: {
     requiredFields: ['name']
   }
+});
+
+exports.getCurrentCampaignMembers = controllerFactory.createHandler(getCurrentCampaignMembers, {
+  errorMessage: 'Error fetching campaign members'
+});
+
+exports.removeCurrentCampaignMember = controllerFactory.createHandler(removeCurrentCampaignMember, {
+  errorMessage: 'Error removing campaign member'
 });
 
 exports.createCampaign = controllerFactory.createHandler(createCampaign, {

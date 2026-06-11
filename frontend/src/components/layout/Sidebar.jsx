@@ -43,6 +43,7 @@ import {
   People as CrewIcon,
   Home as OutpostIcon,
   LocationCity as LocationCityIcon,
+  AdminPanelSettings as AdminPanelSettingsIcon,
 } from '@mui/icons-material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -73,7 +74,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
   // Infamy nav entries follow the campaign's infamy_system_enabled setting.
   // Both update live when the campaign context refreshes (e.g. after a DM
   // renames the campaign or toggles infamy in Campaign Settings).
-  const { currentCampaign, campaignSettings } = useCampaign();
+  const { currentCampaign, campaignSettings, isSuperadmin } = useCampaign();
   const groupName = currentCampaign?.name || 'Loot Tracker';
   const infamyEnabled = campaignSettings?.infamy_system_enabled === '1';
 
@@ -387,6 +388,10 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
               <MenuItem to="/loot-generator" primary="Loot Generator" icon={<CasinoIcon />} />
               <MenuItem to="/spellbook-generator" primary="Spellbook Generator" icon={<AutoStoriesIcon />} />
             </MenuItem>
+          )}
+
+          {isSuperadmin && (
+            <MenuItem to="/system-admin" primary="System Admin" icon={<AdminPanelSettingsIcon />} isCategory />
           )}
         </List>
       </Box>

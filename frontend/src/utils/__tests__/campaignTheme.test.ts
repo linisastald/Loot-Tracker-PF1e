@@ -45,6 +45,21 @@ describe('parseCampaignThemeOverride', () => {
     ).toEqual({ mode: 'light', secondary: '#abcdef' });
   });
 
+  it('accepts valid background overrides and drops malformed ones', () => {
+    expect(
+      parseCampaignThemeOverride({
+        background_default: '#1a0505',
+        background_paper: 'maroon',
+      })
+    ).toEqual({ background_default: '#1a0505' });
+    expect(
+      parseCampaignThemeOverride({
+        background_default: '#1a0505',
+        background_paper: '#2a0808',
+      })
+    ).toEqual({ background_default: '#1a0505', background_paper: '#2a0808' });
+  });
+
   it('passes a fully valid override through', () => {
     expect(
       parseCampaignThemeOverride({ mode: 'dark', primary: '#112233', secondary: '#445566' })
@@ -106,6 +121,43 @@ describe('buildCampaignTheme', () => {
     // White-text typography colors stripped, sizes kept
     expect((theme.typography as any).body2.color).toBeUndefined();
     expect((theme.typography as any).body2.fontSize).toBe('0.85rem');
+  });
+
+  it('applies background overrides to palette.background in dark mode', () => {
+    const theme = buildCampaignTheme({
+      background_default: '#1a0505',
+      background_paper: '#2a0808',
+    });
+    expect(theme.palette.mode).toBe('dark');
+    expect(theme.palette.background.default).toBe('#1a0505');
+    expect(theme.palette.background.paper).toBe('#2a0808');
+  });
+
+  it('keeps the base value for the non-overridden background key in dark mode', () => {
+    const theme = buildCampaignTheme({ background_paper: '#2a0808' });
+    expect(theme.palette.background.paper).toBe('#2a0808');
+    expect(theme.palette.background.default).toBe('#121212');
+  });
+
+  it('applies background overrides in light mode too', () => {
+    const theme = buildCampaignTheme({ mode: 'light', background_default: '#fff5e6' });
+    expect(theme.palette.mode).toBe('light');
+    expect(theme.palette.background.default).toBe('#fff5e6');
+    // The unset key gets a light default, not the base dark paper
+    expect(theme.palette.background.paper).not.toBe('#1e1e1e');
+  });
+
+  it('drops the MuiDrawer override that hardcodes the dark paper color when a background is overridden', () => {
+    const theme = buildCampaignTheme({ background_paper: '#2a0808' });
+    expect((theme.components as any).MuiDrawer).toBeUndefined();
+    // Paper/Card only style shadows + backgroundImage and are kept
+    expect((theme.components as any).MuiPaper).toBeDefined();
+    expect((theme.components as any).MuiCard).toBeDefined();
+  });
+
+  it('keeps the MuiDrawer override when no background is overridden', () => {
+    const theme = buildCampaignTheme({ primary: '#ff0000' });
+    expect((theme.components as any).MuiDrawer).toBeDefined();
   });
 
   it('does not mutate the shared base theme options', () => {

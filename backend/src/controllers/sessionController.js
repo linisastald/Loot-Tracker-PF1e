@@ -1,10 +1,12 @@
 // src/controllers/sessionController.js
 const Session = require('../models/Session');
+const Campaign = require('../models/Campaign');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignContext = require('../utils/campaignContext');
 const campaignSettings = require('../utils/campaignSettings');
+const { APP_NAME } = require('../config/constants');
 const axios = require('axios');
 const { format, formatDistance } = require('date-fns');
 const {
@@ -818,22 +820,27 @@ const getEmojiForResponseType = (responseType) => {
  */
 const updateSessionMessageEmbed = async (messageId, sessionMessage, responses) => {
     try {
-        // Bot token and the (deprecated) campaign_name branding are global;
-        // the channel id is per-campaign. This helper only runs under the
-        // message's campaign context (runWithCampaign in the interaction
-        // handlers), so the context resolution is correct.
+        // Bot token is global broker infrastructure; the channel id is
+        // per-campaign. This helper only runs under the message's campaign
+        // context (runWithCampaign in the interaction handlers), so the
+        // context resolution is correct.
         const settings = await dbUtils.executeQuery(
-            'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'campaign_name\')'
+            'SELECT value FROM settings WHERE name = $1',
+            ['discord_bot_token']
         );
 
-        const configMap = {};
-        settings.rows.forEach(row => {
-            configMap[row.name] = row.value;
-        });
-
-        const discord_bot_token = configMap['discord_bot_token'];
+        const discord_bot_token = settings.rows[0]?.value;
         const discord_channel_id = await campaignSettings.getCampaignSetting('discord_channel_id');
-        const campaign_name = configMap['campaign_name'] || 'Pathfinder';
+
+        // Embed title branding: the message's campaign display name
+        // (campaigns.name), resolved from the per-row campaign context the
+        // interaction handlers establish. Defensive: in a cross-campaign
+        // ('all') context there is no single campaign, so fall back to the
+        // static APP_NAME rather than guessing.
+        const contextCampaignId = campaignContext.getCampaignId();
+        const campaign_name = (contextCampaignId !== 'all'
+            ? await Campaign.getNameById(contextCampaignId)
+            : null) || APP_NAME;
         
         if (!discord_bot_token || !discord_channel_id) {
             throw new Error('Discord not configured');

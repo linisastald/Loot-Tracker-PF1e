@@ -4,9 +4,32 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 
 /**
+ * The base `item` and `mod` tables are the SHARED catalog: they have no
+ * campaign scoping, so a write here changes reference data for EVERY
+ * campaign. Writes are therefore superadmin-only (the route's checkRole('DM')
+ * stays — superadmins pass via its bypass; campaign DMs are rejected here).
+ *
+ * Design doc §4.2: the long-term path is DM additions becoming
+ * campaign-scoped overrides via item.campaign_id / mod.campaign_id; this gate
+ * is the interim hardening, NOT that override mechanism.
+ *
+ * @param {Object} req - Express request (req.isSuperadmin from verifyToken)
+ * @throws {Error} AuthorizationError when the requester is not a superadmin
+ */
+const requireSuperadminForCatalogWrite = (req) => {
+  if (!req.isSuperadmin) {
+    throw controllerFactory.createAuthorizationError(
+      'Only the system administrator can modify the shared item catalog'
+    );
+  }
+};
+
+/**
  * Create a new item
  */
 const createItem = async (req, res) => {
+  requireSuperadminForCatalogWrite(req);
+
   const {name, type, subtype, value, weight, casterlevel} = req.body;
 
   // Validate required fields using controllerFactory error types
@@ -42,6 +65,8 @@ const createItem = async (req, res) => {
  * Update an existing item
  */
 const updateItem = async (req, res) => {
+  requireSuperadminForCatalogWrite(req);
+
   const {id} = req.params;
   const {name, type, subtype, value, weight, casterlevel} = req.body;
 
@@ -89,6 +114,8 @@ const updateItem = async (req, res) => {
  * Create a new mod
  */
 const createMod = async (req, res) => {
+  requireSuperadminForCatalogWrite(req);
+
   const {name, plus, type, valuecalc, target, subtarget, casterlevel} = req.body;
 
   // Validate required fields using controllerFactory error types
@@ -125,6 +152,8 @@ const createMod = async (req, res) => {
  * Update an existing mod
  */
 const updateMod = async (req, res) => {
+  requireSuperadminForCatalogWrite(req);
+
   const {id} = req.params;
   const {name, plus, type, valuecalc, target, subtarget, casterlevel} = req.body;
 

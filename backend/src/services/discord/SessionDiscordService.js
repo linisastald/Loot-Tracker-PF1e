@@ -577,19 +577,20 @@ class SessionDiscordService {
     /**
      * Get Discord settings from database.
      *
-     * The bot token and the (deprecated) campaign_name branding are global
-     * (settings table); the channel and role ids are per-campaign
-     * (campaign_settings, resolved from the active campaign context — every
-     * caller runs either in a request context or under a per-row
-     * runWithCampaign() context established by the scheduler/outbox/inbound
-     * interaction handlers, never bare 'all').
+     * The bot token is global (settings table); the channel and role ids are
+     * per-campaign (campaign_settings, resolved from the active campaign
+     * context — every caller runs either in a request context or under a
+     * per-row runWithCampaign() context established by the
+     * scheduler/outbox/inbound interaction handlers, never bare 'all').
+     * Embed titles in this service use session.title, not branding, so the
+     * deprecated 'campaign_name' settings row is no longer read.
      *
      * @returns {Promise<Object>} - Discord settings
      */
     async getDiscordSettings() {
         const result = await dbUtils.executeQuery(`
             SELECT name, value FROM settings
-            WHERE name IN ('discord_bot_token', 'campaign_name')
+            WHERE name IN ('discord_bot_token')
         `);
 
         const settings = {};

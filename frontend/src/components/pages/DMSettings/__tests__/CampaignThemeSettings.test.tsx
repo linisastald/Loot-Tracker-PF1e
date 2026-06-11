@@ -76,6 +76,11 @@ describe('CampaignThemeSettings', () => {
       expect(screen.getByLabelText('Primary color')).toHaveValue('');
       expect(screen.getByLabelText('Primary color')).toHaveAttribute('placeholder', '#5c8db8');
       expect(screen.getByLabelText('Secondary color')).toHaveAttribute('placeholder', '#c77a9e');
+      expect(screen.getByLabelText('Page background')).toHaveAttribute('placeholder', '#121212');
+      expect(screen.getByLabelText('Surface background (cards, tables)')).toHaveAttribute(
+        'placeholder',
+        '#1e1e1e'
+      );
       expect(screen.getByRole('combobox', { name: /mode/i })).toHaveTextContent('Default (Dark)');
     });
 
@@ -87,6 +92,15 @@ describe('CampaignThemeSettings', () => {
       expect(screen.getByLabelText('Primary color')).toHaveValue('#aabbcc');
       expect(screen.getByLabelText('Secondary color')).toHaveValue('');
       expect(screen.getByRole('combobox', { name: /mode/i })).toHaveTextContent('Light');
+    });
+
+    it('pre-fills the background fields from a stored override', () => {
+      campaignContextValue = makeContext({
+        theme: { background_default: '#1a0505', background_paper: '#2a0808' },
+      });
+      renderCard();
+      expect(screen.getByLabelText('Page background')).toHaveValue('#1a0505');
+      expect(screen.getByLabelText('Surface background (cards, tables)')).toHaveValue('#2a0808');
     });
 
     it('renders the live preview swatch row', () => {
@@ -129,6 +143,58 @@ describe('CampaignThemeSettings', () => {
           value: null,
         });
       });
+    });
+
+    it('includes the background keys in the PUT only when set', async () => {
+      renderCard();
+
+      fireEvent.change(screen.getByLabelText('Primary color'), {
+        target: { value: '#8b0000' },
+      });
+      fireEvent.change(screen.getByLabelText('Page background'), {
+        target: { value: '#1a0505' },
+      });
+      fireEvent.change(screen.getByLabelText('Surface background (cards, tables)'), {
+        target: { value: '#2a0808' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save Theme' }));
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/campaigns/current/settings', {
+          name: 'theme',
+          value: {
+            primary: '#8b0000',
+            background_default: '#1a0505',
+            background_paper: '#2a0808',
+          },
+        });
+      });
+    });
+
+    it('omits background keys from the PUT when left empty', async () => {
+      renderCard();
+
+      fireEvent.change(screen.getByLabelText('Primary color'), {
+        target: { value: '#8b0000' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save Theme' }));
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/campaigns/current/settings', {
+          name: 'theme',
+          value: { primary: '#8b0000' },
+        });
+      });
+    });
+
+    it('blocks saving while a background color is not valid #rrggbb hex', () => {
+      renderCard();
+      fireEvent.change(screen.getByLabelText('Page background'), {
+        target: { value: 'darkred' },
+      });
+      expect(screen.getByText('Use #rrggbb hex format')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Save Theme' })).toBeDisabled();
+      expect(api.put).not.toHaveBeenCalled();
     });
 
     it('blocks saving while a color is not valid #rrggbb hex', () => {

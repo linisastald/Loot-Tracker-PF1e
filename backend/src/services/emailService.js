@@ -55,18 +55,16 @@ class EmailService {
         }
 
         try {
-            // Get campaign name from database for the email address
             const dbUtils = require('../utils/dbUtils');
-            const campaignResult = await dbUtils.executeQuery(
-                "SELECT value FROM settings WHERE name = 'campaign_name'"
-            );
-            const campaignName = campaignResult.rows[0]?.value || 'campaign';
-            // Sanitize campaign name for email address (remove special characters, spaces, etc.)
-            const sanitizedCampaignName = campaignName
+            // From-address is derived from the static app name (deployment
+            // branding) — the deprecated 'campaign_name' settings row is no
+            // longer read. Sanitize for email-localpart standards.
+            const { APP_NAME } = require('../config/constants');
+            const sanitizedAppName = APP_NAME
                 .toLowerCase()
                 .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric characters
                 .substring(0, 64); // Limit length for email standards
-            const fromEmail = `${sanitizedCampaignName}@kempsonandko.com`;
+            const fromEmail = `${sanitizedAppName}@kempsonandko.com`;
 
             // Look up frontend_url from settings, falling back to env, then localhost
             const frontendUrlResult = await dbUtils.executeQuery(

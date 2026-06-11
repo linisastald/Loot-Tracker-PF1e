@@ -1184,9 +1184,10 @@ describe('authController', () => {
   // generateManualResetLink
   // ---------------------------------------------------------------
   describe('generateManualResetLink', () => {
-    it('should generate reset link for DM', async () => {
+    it('should generate reset link for a superadmin', async () => {
       const req = createMockReq({
         user: { id: 1, username: 'dm_user', role: 'DM' },
+        isSuperadmin: true,
         body: { username: 'player1' },
       });
       const res = createMockRes();
@@ -1215,7 +1216,21 @@ describe('authController', () => {
       );
     });
 
-    it('should reject non-DM user', async () => {
+    it('should reject a non-superadmin, even a campaign DM', async () => {
+      const req = createMockReq({
+        user: { id: 2, username: 'dm_user', role: 'DM' },
+        campaignRole: 'DM',
+        isSuperadmin: false,
+        body: { username: 'someuser' },
+      });
+      const res = createMockRes();
+
+      await authController.generateManualResetLink(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can generate manual reset links');
+    });
+
+    it('should reject a Player', async () => {
       const req = createMockReq({
         user: { id: 2, username: 'player1', role: 'Player' },
         body: { username: 'someuser' },
@@ -1224,12 +1239,13 @@ describe('authController', () => {
 
       await authController.generateManualResetLink(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can generate manual reset links');
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can generate manual reset links');
     });
 
     it('should return not found for nonexistent user', async () => {
       const req = createMockReq({
         user: { id: 1, username: 'dm_user', role: 'DM' },
+        isSuperadmin: true,
         body: { username: 'nonexistent' },
       });
       const res = createMockRes();
@@ -1244,6 +1260,7 @@ describe('authController', () => {
     it('should reject when username is missing', async () => {
       const req = createMockReq({
         user: { id: 1, username: 'dm_user', role: 'DM' },
+        isSuperadmin: true,
         body: {},
       });
       const res = createMockRes();

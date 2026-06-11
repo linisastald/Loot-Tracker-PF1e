@@ -354,7 +354,44 @@ describe('campaignController', () => {
       await campaignController.updateCurrentCampaignSetting(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        'theme may only contain the keys: mode, primary, secondary'
+        'theme may only contain the keys: mode, primary, secondary, background_default, background_paper'
+      );
+      expect(Campaign.upsertSetting).not.toHaveBeenCalled();
+    });
+
+    it('should accept the optional background color keys', async () => {
+      const theme = {
+        mode: 'dark',
+        background_default: '#101418',
+        background_paper: '#1A2027',
+      };
+      const req = createDmReq({ name: 'theme', value: theme });
+      const res = createMockRes();
+
+      Campaign.upsertSetting.mockResolvedValue({ name: 'theme' });
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(Campaign.upsertSetting).toHaveBeenCalledWith(2, 'theme', JSON.stringify(theme), 'json');
+      expect(res.success).toHaveBeenCalledWith(
+        { name: 'theme', value: theme },
+        'Campaign setting updated successfully'
+      );
+    });
+
+    it.each([
+      ['background_default', 'darkgray'],
+      ['background_default', '#12345'],
+      ['background_paper', '#1234567'],
+      ['background_paper', 123456],
+    ])('should reject an invalid %s color (%p)', async (key, color) => {
+      const req = createDmReq({ name: 'theme', value: { [key]: color } });
+      const res = createMockRes();
+
+      await campaignController.updateCurrentCampaignSetting(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        `theme.${key} must be a hex color in #rrggbb format`
       );
       expect(Campaign.upsertSetting).not.toHaveBeenCalled();
     });
@@ -594,9 +631,10 @@ describe('campaignController', () => {
       expect(Campaign.updateName).toHaveBeenCalledWith(2, 'Trimmed Name');
     });
 
-    it('syncs the deprecated global campaign_name branding row when campaign 1 is renamed', async () => {
+    it('never writes the deprecated global campaign_name settings row (branding is static APP_NAME)', async () => {
       const dbUtils = require('../../utils/dbUtils');
       dbUtils.executeQuery.mockClear();
+      // Campaign 1 (the old "primary campaign" sync trigger) — still no write
       const req = createMockReq({ campaignId: 1, campaignRole: 'DM', body: { name: 'New Branding' } });
       const res = createMockRes();
 
@@ -604,23 +642,8 @@ describe('campaignController', () => {
 
       await campaignController.renameCurrentCampaign(req, res);
 
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining("INSERT INTO settings"),
-        ['New Branding']
-      );
-    });
-
-    it('does NOT touch global branding when a non-primary campaign is renamed', async () => {
-      const dbUtils = require('../../utils/dbUtils');
-      dbUtils.executeQuery.mockClear();
-      const req = createDmReq({ name: 'Side Campaign' });
-      const res = createMockRes();
-
-      Campaign.updateName.mockResolvedValue({ id: 2, name: 'Side Campaign', slug: 'sns' });
-
-      await campaignController.renameCurrentCampaign(req, res);
-
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalled();
     });
 
     it('should reject a missing name', async () => {
@@ -686,6 +709,177 @@ describe('campaignController', () => {
 
       expect(res.status).toHaveBeenCalledWith(403);
       expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // getCurrentCampaignMembers (GET /campaigns/current/members)
+  // -------------------------------------------------------------------
+  describe('getCurrentCampaignMembers', () => {
+    it('should return the member roster for the current campaign', async () => {
+      const members = [
+        { user_id: 3, username: 'alice', email: 'alice@test.com', role: 'DM', joined_at: '2024-01-01' },
+        { user_id: 5, username: 'bob', email: 'bob@test.com', role: 'Player', joined_at: '2024-02-01' },
+      ];
+      const req = createMockReq({ campaignId: 2, campaignRole: 'DM' });
+      const res = createMockRes();
+
+      Campaign.getMembers.mockResolvedValue(members);
+
+      await campaignController.getCurrentCampaignMembers(req, res);
+
+      expect(Campaign.getMembers).toHaveBeenCalledWith(2);
+      expect(res.success).toHaveBeenCalledWith(
+        { members },
+        'Campaign members retrieved successfully'
+      );
+    });
+
+    it('should return an empty roster when the campaign has no members', async () => {
+      const req = createMockReq({ campaignId: 2, campaignRole: 'DM' });
+      const res = createMockRes();
+
+      Campaign.getMembers.mockResolvedValue([]);
+
+      await campaignController.getCurrentCampaignMembers(req, res);
+
+      expect(res.success).toHaveBeenCalledWith({ members: [] }, expect.any(String));
+    });
+
+    it('should surface model errors as server errors', async () => {
+      const req = createMockReq({ campaignId: 2, campaignRole: 'DM' });
+      const res = createMockRes();
+
+      Campaign.getMembers.mockRejectedValue(new Error('connection refused'));
+
+      await campaignController.getCurrentCampaignMembers(req, res);
+
+      expect(res.error).toHaveBeenCalledWith('Internal server error');
+    });
+
+    // The DM gate lives at the route layer (checkRole('DM'))
+    it('should be blocked for a per-campaign Player by checkRole(DM)', () => {
+      const checkRole = require('../../middleware/checkRole');
+      const req = createMockReq({ campaignRole: 'Player' });
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      checkRole('DM')(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // removeCurrentCampaignMember (DELETE /campaigns/current/members/:userId)
+  // -------------------------------------------------------------------
+  describe('removeCurrentCampaignMember', () => {
+    function createRemoveReq({ userId, requesterId = 1, isSuperadmin = false } = {}) {
+      return createMockReq({
+        campaignId: 2,
+        campaignRole: 'DM',
+        isSuperadmin,
+        user: { id: requesterId, username: 'tester' },
+        params: { userId: String(userId) },
+      });
+    }
+
+    it('should remove a Player membership (account untouched)', async () => {
+      const req = createRemoveReq({ userId: 5 });
+      const res = createMockRes();
+
+      Campaign.getMembership.mockResolvedValue({ role: 'Player', joined_at: '2024-02-01' });
+      Campaign.removeMember.mockResolvedValue(true);
+
+      await campaignController.removeCurrentCampaignMember(req, res);
+
+      expect(Campaign.getMembership).toHaveBeenCalledWith(5, 2);
+      expect(Campaign.removeMember).toHaveBeenCalledWith(2, 5);
+      expect(res.success).toHaveBeenCalledWith(null, 'Member removed from campaign successfully');
+    });
+
+    it('should reject removing yourself', async () => {
+      const req = createRemoveReq({ userId: 1, requesterId: 1 });
+      const res = createMockRes();
+
+      await campaignController.removeCurrentCampaignMember(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('You cannot remove yourself from the campaign');
+      expect(Campaign.getMembership).not.toHaveBeenCalled();
+      expect(Campaign.removeMember).not.toHaveBeenCalled();
+    });
+
+    it('should reject removing yourself even as a superadmin', async () => {
+      const req = createRemoveReq({ userId: 1, requesterId: 1, isSuperadmin: true });
+      const res = createMockRes();
+
+      await campaignController.removeCurrentCampaignMember(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('You cannot remove yourself from the campaign');
+      expect(Campaign.removeMember).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 when the target is not a member of this campaign', async () => {
+      const req = createRemoveReq({ userId: 42 });
+      const res = createMockRes();
+
+      Campaign.getMembership.mockResolvedValue(null);
+
+      await campaignController.removeCurrentCampaignMember(req, res);
+
+      expect(res.notFound).toHaveBeenCalledWith('User is not a member of this campaign');
+      expect(Campaign.removeMember).not.toHaveBeenCalled();
+    });
+
+    it('should forbid a non-superadmin DM from removing a fellow DM', async () => {
+      const req = createRemoveReq({ userId: 7, isSuperadmin: false });
+      const res = createMockRes();
+
+      Campaign.getMembership.mockResolvedValue({ role: 'DM', joined_at: '2024-01-01' });
+
+      await campaignController.removeCurrentCampaignMember(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can remove a DM');
+      expect(Campaign.removeMember).not.toHaveBeenCalled();
+    });
+
+    it('should allow a superadmin to remove a DM membership', async () => {
+      const req = createRemoveReq({ userId: 7, isSuperadmin: true });
+      const res = createMockRes();
+
+      Campaign.getMembership.mockResolvedValue({ role: 'DM', joined_at: '2024-01-01' });
+      Campaign.removeMember.mockResolvedValue(true);
+
+      await campaignController.removeCurrentCampaignMember(req, res);
+
+      expect(Campaign.removeMember).toHaveBeenCalledWith(2, 7);
+      expect(res.success).toHaveBeenCalledWith(null, 'Member removed from campaign successfully');
+    });
+
+    it.each([
+      ['non-numeric', 'abc'],
+      ['negative', '-3'],
+      ['decimal', '3.5'],
+    ])('should reject a malformed userId param (%s)', async (_label, userId) => {
+      const req = createRemoveReq({ userId });
+      const res = createMockRes();
+
+      await campaignController.removeCurrentCampaignMember(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('userId must be a positive integer');
+      expect(Campaign.getMembership).not.toHaveBeenCalled();
+    });
+
+    it('should surface model errors as server errors', async () => {
+      const req = createRemoveReq({ userId: 5 });
+      const res = createMockRes();
+
+      Campaign.getMembership.mockRejectedValue(new Error('connection refused'));
+
+      await campaignController.removeCurrentCampaignMember(req, res);
+
+      expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
   });
 

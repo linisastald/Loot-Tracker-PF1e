@@ -33,6 +33,22 @@ vi.mock('../../../../services/lootService', () => ({
   },
 }));
 
+// Catalog writes are superadmin-only (Phase 5a); default to superadmin so the
+// existing save tests keep exercising the submit path.
+let isSuperadminValue = true;
+vi.mock('../../../../contexts/CampaignContext', () => ({
+  useCampaign: () => ({
+    campaigns: [],
+    currentCampaign: { id: 1, name: 'Rise of the Runelords', slug: 'rotrl' },
+    campaignRole: 'DM' as const,
+    isSuperadmin: isSuperadminValue,
+    campaignSettings: {},
+    loading: false,
+    switchCampaign: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}));
+
 import api from '../../../../utils/api';
 import lootService from '../../../../services/lootService';
 import AddItemMod from '../AddItemMod';
@@ -117,7 +133,38 @@ const selectMuiOption = async (labelPattern: RegExp, optionText: string) => {
 describe('AddItemMod', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    isSuperadminValue = true;
     setupDefaultMocks();
+  });
+
+  // -------------------------------------------------------------------------
+  // 0. Superadmin catalog guard (Phase 5a)
+  // -------------------------------------------------------------------------
+  describe('Superadmin catalog guard', () => {
+    it('disables the item and mod save buttons for non-superadmins', async () => {
+      isSuperadminValue = false;
+      renderAddItemMod();
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /add item/i })).toBeInTheDocument();
+      });
+
+      expect(screen.getByRole('button', { name: /add item/i })).toBeDisabled();
+
+      // Switch to the Mods tab and check there too
+      fireEvent.click(screen.getByRole('tab', { name: /mods/i }));
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /add mod/i })).toBeDisabled();
+      });
+    });
+
+    it('keeps the save buttons enabled for superadmins', async () => {
+      renderAddItemMod();
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /add item/i })).not.toBeDisabled();
+      });
+    });
   });
 
   // -------------------------------------------------------------------------

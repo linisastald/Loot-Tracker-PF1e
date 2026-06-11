@@ -11,6 +11,15 @@ router.get('/', verifyToken, campaignController.getMyCampaigns);
 // including the campaign's settings map (theme override etc.)
 router.get('/current', verifyToken, campaignController.getCurrentCampaign);
 
+// Campaign member roster (DM User Management page) — DM of the current
+// campaign only (superadmins pass via the checkRole bypass).
+router.get('/current/members', verifyToken, checkRole('DM'), campaignController.getCurrentCampaignMembers);
+
+// Remove a member from the current campaign (membership row only — never the
+// account). DM-only; removing a DM additionally requires superadmin (enforced
+// in the controller). CSRF protection is applied at the mount point.
+router.delete('/current/members/:userId', verifyToken, checkRole('DM'), campaignController.removeCurrentCampaignMember);
+
 // Update/clear one per-campaign setting (whitelisted names only) — DM of the
 // current campaign only. CSRF protection is applied at the mount point.
 router.put('/current/settings', verifyToken, checkRole('DM'), campaignController.updateCurrentCampaignSetting);

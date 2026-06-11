@@ -210,4 +210,87 @@ describe('Campaign model', () => {
       expect(membership).toBeNull();
     });
   });
+
+  // -------------------------------------------------------------------
+  // getNameById (Phase 5a: branding via campaigns.name)
+  // -------------------------------------------------------------------
+  describe('getNameById', () => {
+    it('should return the campaign name', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ name: 'Skulls & Shackles' }],
+      });
+
+      const name = await Campaign.getNameById(2);
+
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('SELECT name FROM campaigns WHERE id = $1');
+      expect(params).toEqual([2]);
+      expect(name).toBe('Skulls & Shackles');
+    });
+
+    it('should return null when the campaign does not exist', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const name = await Campaign.getNameById(99);
+
+      expect(name).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // getMembers (Phase 5a: DM User Management roster)
+  // -------------------------------------------------------------------
+  describe('getMembers', () => {
+    it('should return the roster joined with users, scoped to the campaign and ordered by username', async () => {
+      const rows = [
+        { user_id: 3, username: 'alice', email: 'alice@test.com', role: 'DM', joined_at: '2024-01-01' },
+        { user_id: 5, username: 'bob', email: 'bob@test.com', role: 'Player', joined_at: '2024-02-01' },
+      ];
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows });
+
+      const members = await Campaign.getMembers(2);
+
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('FROM user_campaign uc');
+      expect(query).toContain('JOIN users u ON u.id = uc.user_id');
+      expect(query).toContain('uc.campaign_id = $1');
+      expect(query).toContain('ORDER BY u.username');
+      expect(params).toEqual([2]);
+      expect(members).toEqual(rows);
+    });
+
+    it('should return an empty array when the campaign has no members', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const members = await Campaign.getMembers(2);
+
+      expect(members).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // removeMember (Phase 5a: membership row only — never the account)
+  // -------------------------------------------------------------------
+  describe('removeMember', () => {
+    it('should delete the user_campaign row and report true', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+      const removed = await Campaign.removeMember(2, 5);
+
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('DELETE FROM user_campaign');
+      expect(query).toContain('campaign_id = $1 AND user_id = $2');
+      expect(query).not.toContain('users'); // never touches the accounts table
+      expect(params).toEqual([2, 5]);
+      expect(removed).toBe(true);
+    });
+
+    it('should report false when no membership row existed', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+      const removed = await Campaign.removeMember(2, 5);
+
+      expect(removed).toBe(false);
+    });
+  });
 });

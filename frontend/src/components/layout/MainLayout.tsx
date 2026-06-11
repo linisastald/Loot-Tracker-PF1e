@@ -56,6 +56,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
               return 'Infamy';
           case '/city-services':
               return 'City Services';
+          case '/system-admin':
+              return 'System Admin';
           default:
               if (path.includes('/loot-management')) return 'Loot Management';
               if (path.includes('/item-management')) return 'Item Management';

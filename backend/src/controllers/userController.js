@@ -355,14 +355,16 @@ const deactivateAllCharacters = async (req, res) => {
 };
 
 /**
- * Reset user's password (DM only)
+ * Reset another user's password (superadmin only — account-level action)
  */
 const resetPassword = async (req, res) => {
     const {userId, newPassword} = req.body;
 
-    // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can reset passwords');
+    // Account-level admin action: setting another user's password affects the
+    // ACCOUNT (shared across all campaigns), so it is superadmin-only — a
+    // per-campaign DM passes the route's checkRole('DM') but is rejected here.
+    if (!req.isSuperadmin) {
+        throw controllerFactory.createAuthorizationError('Only the system administrator can reset passwords');
     }
 
     // Validate password length
@@ -400,14 +402,16 @@ const resetPassword = async (req, res) => {
 };
 
 /**
- * Delete a user (mark as deleted) (DM only)
+ * Delete a user account (mark as deleted) (superadmin only — account-level action)
  */
 const deleteUser = async (req, res) => {
     const {userId} = req.body;
 
-    // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can delete users');
+    // Account-level admin action: deactivating an ACCOUNT affects every
+    // campaign the user belongs to, so it is superadmin-only. Removing a user
+    // from one campaign is DELETE /api/campaigns/current/members/:userId.
+    if (!req.isSuperadmin) {
+        throw controllerFactory.createAuthorizationError('Only the system administrator can delete users');
     }
 
     // Check if user exists
@@ -493,16 +497,18 @@ const getSettings = async (req, res) => {
 };
 
 /**
- * Get all users (DM only)
+ * Get all user accounts (superadmin only — account-level listing)
  */
 const getAllUsers = async (req, res) => {
-    // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can view all users');
+    // Account-level admin listing: every ACCOUNT in the deployment, across all
+    // campaigns — superadmin-only. A campaign DM manages their own roster via
+    // GET /api/campaigns/current/members instead.
+    if (!req.isSuperadmin) {
+        throw controllerFactory.createAuthorizationError('Only the system administrator can view all users');
     }
 
     const users = await dbUtils.executeQuery(
-        'SELECT id, username, role, joined, email FROM users WHERE role != $1 ORDER BY username',
+        'SELECT id, username, role, joined, email, is_superadmin FROM users WHERE role != $1 ORDER BY username',
         ['deleted']
     );
 

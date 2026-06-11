@@ -17,6 +17,10 @@ export interface CampaignThemeOverride {
   mode?: 'dark' | 'light';
   primary?: string;
   secondary?: string;
+  /** palette.background.default — the page background */
+  background_default?: string;
+  /** palette.background.paper — cards, tables, dialogs, drawers */
+  background_paper?: string;
 }
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -44,6 +48,12 @@ export const parseCampaignThemeOverride = (raw: unknown): CampaignThemeOverride 
   }
   if (isValidHexColor(candidate.secondary)) {
     override.secondary = candidate.secondary;
+  }
+  if (isValidHexColor(candidate.background_default)) {
+    override.background_default = candidate.background_default;
+  }
+  if (isValidHexColor(candidate.background_paper)) {
+    override.background_paper = candidate.background_paper;
   }
 
   return Object.keys(override).length > 0 ? override : null;
@@ -85,6 +95,7 @@ export const buildCampaignTheme = (override: CampaignThemeOverride): Theme => {
   const base = themeOptions as Record<string, any>;
   const mode: 'dark' | 'light' = override.mode ?? base.palette?.mode ?? 'dark';
   const paletteChanged = Boolean(override.primary || override.secondary);
+  const backgroundChanged = Boolean(override.background_default || override.background_paper);
 
   const palette: Record<string, any> = { ...base.palette, mode };
   if (mode === 'light') {
@@ -94,6 +105,17 @@ export const buildCampaignTheme = (override: CampaignThemeOverride): Theme => {
     delete palette.divider;
     delete palette.text;
     delete palette.action;
+  }
+  if (backgroundChanged) {
+    // Apply the overridden surfaces on top of whatever the mode left behind:
+    // in dark mode the non-overridden key keeps its base value, in light mode
+    // createTheme fills the missing key with its light default.
+    const background: Record<string, string> = {
+      ...(mode === 'light' ? {} : base.palette?.background),
+    };
+    if (override.background_default) background.default = override.background_default;
+    if (override.background_paper) background.paper = override.background_paper;
+    palette.background = background;
   }
   if (override.primary) {
     // Replace the whole color object (not just .main) so light/dark/
@@ -128,6 +150,18 @@ export const buildCampaignTheme = (override: CampaignThemeOverride): Theme => {
     // These hardcode the base primary color (#5c8db8) directly.
     delete components.MuiAvatar;
     delete components.MuiTextField;
+  }
+
+  if (backgroundChanged && mode !== 'light') {
+    // Audit of base surface styling vs. a custom background (light mode
+    // already drops these via DARK_ONLY_COMPONENT_KEYS):
+    // - MuiDrawer hardcodes backgroundColor '#1e1e1e' on its paper — it would
+    //   defeat an overridden palette.background.paper, so drop it.
+    // - MuiPaper / MuiCard only set shadows and backgroundImage: 'none'
+    //   (which actually helps a custom surface) — keep them.
+    // - MuiTableCell / MuiTableRow use rgba(255,255,255,…) tints that layer
+    //   over any dark surface rather than replace it — keep them.
+    delete components.MuiDrawer;
   }
 
   if (mode === 'light') {

@@ -43,6 +43,8 @@ const basePalette = (themeOptions as Record<string, any>).palette ?? {};
 const BASE_MODE: string = basePalette.mode ?? 'dark';
 const BASE_PRIMARY: string = basePalette.primary?.main ?? '#5c8db8';
 const BASE_SECONDARY: string = basePalette.secondary?.main ?? '#c77a9e';
+const BASE_BACKGROUND_DEFAULT: string = basePalette.background?.default ?? '#121212';
+const BASE_BACKGROUND_PAPER: string = basePalette.background?.paper ?? '#1e1e1e';
 
 interface ColorFieldProps {
   label: string;
@@ -93,6 +95,8 @@ const CampaignThemeSettings: React.FC = () => {
   const [mode, setMode] = useState<ModeChoice>('default');
   const [primary, setPrimary] = useState('');
   const [secondary, setSecondary] = useState('');
+  const [backgroundDefault, setBackgroundDefault] = useState('');
+  const [backgroundPaper, setBackgroundPaper] = useState('');
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
 
@@ -106,10 +110,16 @@ const CampaignThemeSettings: React.FC = () => {
     setMode(stored?.mode ?? 'default');
     setPrimary(stored?.primary ?? '');
     setSecondary(stored?.secondary ?? '');
+    setBackgroundDefault(stored?.background_default ?? '');
+    setBackgroundPaper(stored?.background_paper ?? '');
   }, [campaignSettings]);
 
   const primaryInvalid = primary !== '' && !isValidHexColor(primary);
   const secondaryInvalid = secondary !== '' && !isValidHexColor(secondary);
+  const backgroundDefaultInvalid = backgroundDefault !== '' && !isValidHexColor(backgroundDefault);
+  const backgroundPaperInvalid = backgroundPaper !== '' && !isValidHexColor(backgroundPaper);
+  const anyInvalid =
+    primaryInvalid || secondaryInvalid || backgroundDefaultInvalid || backgroundPaperInvalid;
 
   // Only the keys the DM actually set go into the saved value.
   const draftOverride = useMemo(() => {
@@ -117,8 +127,10 @@ const CampaignThemeSettings: React.FC = () => {
     if (mode !== 'default') draft.mode = mode;
     if (isValidHexColor(primary)) draft.primary = primary;
     if (isValidHexColor(secondary)) draft.secondary = secondary;
+    if (isValidHexColor(backgroundDefault)) draft.background_default = backgroundDefault;
+    if (isValidHexColor(backgroundPaper)) draft.background_paper = backgroundPaper;
     return draft;
-  }, [mode, primary, secondary]);
+  }, [mode, primary, secondary, backgroundDefault, backgroundPaper]);
 
   // Live preview: render the swatch row inside the would-be theme.
   const previewTheme = useMemo(() => buildCampaignTheme(draftOverride), [draftOverride]);
@@ -138,7 +150,7 @@ const CampaignThemeSettings: React.FC = () => {
   };
 
   const handleSave = async (): Promise<void> => {
-    if (primaryInvalid || secondaryInvalid) return;
+    if (anyInvalid) return;
     setSaving(true);
     const value = Object.keys(draftOverride).length > 0 ? draftOverride : null;
     const ok = await saveThemeSetting(value);
@@ -155,6 +167,8 @@ const CampaignThemeSettings: React.FC = () => {
       setMode('default');
       setPrimary('');
       setSecondary('');
+      setBackgroundDefault('');
+      setBackgroundPaper('');
       enqueueSnackbar('Campaign theme reset to default', { variant: 'success' });
     }
     setResetting(false);
@@ -202,32 +216,54 @@ const CampaignThemeSettings: React.FC = () => {
           baseValue={BASE_SECONDARY}
           onChange={setSecondary}
         />
+        <ColorField
+          label="Page background"
+          value={backgroundDefault}
+          baseValue={BASE_BACKGROUND_DEFAULT}
+          onChange={setBackgroundDefault}
+        />
+        <ColorField
+          label="Surface background (cards, tables)"
+          value={backgroundPaper}
+          baseValue={BASE_BACKGROUND_PAPER}
+          onChange={setBackgroundPaper}
+        />
 
         <Typography variant="subtitle2" gutterBottom>
           Preview
         </Typography>
         <ThemeProvider theme={previewTheme}>
-          <Paper
-            variant="outlined"
+          {/* Outer box shows the page background, inner Paper the surface
+              background — so background overrides are visible in the preview */}
+          <Box
             sx={{
               p: 1.5,
               mb: 2,
-              display: 'flex',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 1,
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
               bgcolor: 'background.default',
             }}
           >
-            <Button variant="contained" color="primary" size="small">
-              Primary
-            </Button>
-            <Button variant="contained" color="secondary" size="small">
-              Secondary
-            </Button>
-            <Chip label="Primary chip" color="primary" size="small" />
-            <Chip label="Secondary chip" color="secondary" size="small" />
-          </Paper>
+            <Paper
+              sx={{
+                p: 1.5,
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 1,
+              }}
+            >
+              <Button variant="contained" color="primary" size="small">
+                Primary
+              </Button>
+              <Button variant="contained" color="secondary" size="small">
+                Secondary
+              </Button>
+              <Chip label="Primary chip" color="primary" size="small" />
+              <Chip label="Secondary chip" color="secondary" size="small" />
+            </Paper>
+          </Box>
         </ThemeProvider>
 
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -236,7 +272,7 @@ const CampaignThemeSettings: React.FC = () => {
             color="primary"
             fullWidth
             onClick={handleSave}
-            disabled={busy || primaryInvalid || secondaryInvalid}
+            disabled={busy || anyInvalid}
           >
             {saving ? <CircularProgress size={24} /> : 'Save Theme'}
           </Button>

@@ -114,23 +114,27 @@ describe('settingsController', () => {
   // ─── getCampaignName ────────────────────────────────────────────
 
   describe('getCampaignName', () => {
-    it('should return stored campaign name', async () => {
-      const req = createMockReq();
+    it('should return the current campaign name from campaigns.name (not the deprecated settings row)', async () => {
+      const req = createMockReq({ campaignId: 2 });
       const res = createMockRes();
 
       dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ name: 'campaign_name', value: 'Skulls & Shackles', value_type: 'text' }],
+        rows: [{ name: 'Skulls & Shackles' }],
       });
 
       await settingsController.getCampaignName(req, res);
 
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        expect.stringContaining('FROM campaigns'),
+        [2]
+      );
       expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
       expect(data.value).toBe('Skulls & Shackles');
     });
 
-    it('should return default "Loot Tracker" when no campaign name is set', async () => {
-      const req = createMockReq();
+    it('should fall back to the static app name when the campaign row is missing', async () => {
+      const req = createMockReq({ campaignId: 99 });
       const res = createMockRes();
 
       dbUtils.executeQuery.mockResolvedValue({ rows: [] });
@@ -138,7 +142,18 @@ describe('settingsController', () => {
       await settingsController.getCampaignName(req, res);
 
       const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('Loot Tracker');
+      expect(data.value).toBe('Pathfinder Loot Tracker');
+    });
+
+    it('should fall back to the static app name when no campaign context is set', async () => {
+      const req = createMockReq({ campaignId: undefined });
+      const res = createMockRes();
+
+      await settingsController.getCampaignName(req, res);
+
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      const data = res.success.mock.calls[0][0];
+      expect(data.value).toBe('Pathfinder Loot Tracker');
     });
   });
 

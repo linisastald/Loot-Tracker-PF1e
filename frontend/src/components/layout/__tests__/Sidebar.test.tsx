@@ -39,11 +39,12 @@ const makeContext = (
     name: 'Rise of the Runelords',
     slug: 'rotrl',
   },
+  isSuperadmin = false,
 ) => ({
   campaigns: [],
   currentCampaign,
   campaignRole: 'DM' as const,
-  isSuperadmin: false,
+  isSuperadmin,
   campaignSettings: settings,
   loading: false,
   switchCampaign: vi.fn(),
@@ -108,5 +109,24 @@ describe('Sidebar (campaign context integration)', () => {
     });
     expect(screen.queryByText('Infamy')).not.toBeInTheDocument();
     expect(screen.queryByText('Fleet Management')).not.toBeInTheDocument();
+  });
+
+  it('shows the System Admin entry only for superadmins', async () => {
+    campaignContextValue = makeContext({}, undefined, true);
+
+    renderSidebar();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('System Admin').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('hides the System Admin entry for plain DMs', async () => {
+    renderSidebar();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Loot Entry').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText('System Admin')).not.toBeInTheDocument();
   });
 });

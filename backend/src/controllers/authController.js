@@ -235,14 +235,16 @@ const registerUser = async (req, res) => {
 };
 
 /**
- * Generate manual password reset link for DM
+ * Generate a manual password reset link (superadmin only — account-level action)
  */
 const generateManualResetLink = async (req, res) => {
     const { username } = req.body;
 
-    // Ensure DM permission
-    if (req.user.role !== 'DM') {
-        throw controllerFactory.createAuthorizationError('Only DMs can generate manual reset links');
+    // Account-level admin action: a reset link grants control of the target
+    // ACCOUNT (shared across all campaigns), so it is superadmin-only. The
+    // self-service forgot-password/reset-password flow is unaffected.
+    if (!req.isSuperadmin) {
+        throw controllerFactory.createAuthorizationError('Only the system administrator can generate manual reset links');
     }
 
     if (!username) {

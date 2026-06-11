@@ -2,8 +2,10 @@
 // Multi-campaign Phase 4c: the Discord channel/role/enabled flag, the
 // campaign timezone, and auto-appraisal are per-campaign — they read from
 // useCampaign().campaignSettings and write to PUT /campaigns/current/settings.
-// Registration mode, theme, default quantity, bot token, and the OpenAI key
-// remain global (PUT /user/update-setting).
+// Default quantity, bot token, and the OpenAI key remain global
+// (PUT /user/update-setting). Registration mode moved to the System Admin
+// page (Phase 5a); the legacy global 'theme' toggle was removed (the app
+// uses the static base theme plus per-campaign overrides).
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
 import {useSnackbar} from 'notistack';
@@ -16,7 +18,6 @@ import {
   CardContent,
   CardHeader,
   CircularProgress,
-  Divider,
   FormControl,
   FormControlLabel,
   Grid,
@@ -38,20 +39,11 @@ import {
 } from '@mui/icons-material';
 import CampaignThemeSettings from './CampaignThemeSettings';
 
-const REGISTRATION_MODES = [
-    {value: 'open', label: 'Open', description: 'Anyone may register'},
-    {value: 'invite-only', label: 'Invite only', description: 'Registration requires an invite code'},
-    {value: 'closed', label: 'Closed', description: 'No new registrations'}
-];
-
 const SystemSettings = () => {
     const {currentCampaign, campaignSettings, refresh} = useCampaign();
     const {enqueueSnackbar} = useSnackbar();
-    const [registrationMode, setRegistrationMode] = useState('closed');
-    const [savingRegistrationMode, setSavingRegistrationMode] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    const [theme, setTheme] = useState('dark');
     const [isLoadingDiscord, setIsLoadingDiscord] = useState(false);
     const [isBackingUp, setIsBackingUp] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
@@ -155,21 +147,6 @@ const SystemSettings = () => {
                 api.get('/settings/timezone-options')
             ]);
 
-            // Handle registration mode (single setting replacing the old
-            // registrations_open + invite_required toggles)
-            const registrationModeSetting = settingsResponse.data.find(setting => setting.name === 'registration_mode');
-            if (registrationModeSetting && REGISTRATION_MODES.some(m => m.value === registrationModeSetting.value)) {
-                setRegistrationMode(registrationModeSetting.value);
-            } else {
-                // Fall back to deriving the mode from the legacy settings if the
-                // new setting has not been written yet
-                const legacyOpen = settingsResponse.data.find(setting => setting.name === 'registrations_open');
-                const legacyInvite = settingsResponse.data.find(setting => setting.name === 'invite_required');
-                const isOpen = legacyOpen?.value === '1' || legacyOpen?.value === 1;
-                const isInvite = legacyInvite?.value === '1' || legacyInvite?.value === 1;
-                setRegistrationMode(!isOpen ? 'closed' : (isInvite ? 'invite-only' : 'open'));
-            }
-
             // Set the global Discord settings (bot token + OpenAI key). The
             // channel ID, role ID, and enabled flag are per-campaign and come
             // from the campaign context instead.
@@ -191,12 +168,6 @@ const SystemSettings = () => {
                     botToken: botToken,
                     openaiKey: openaiKey
                 }));
-            }
-
-            // Load other settings
-            const themeSettings = settingsResponse.data.find(setting => setting.name === 'theme');
-            if (themeSettings) {
-                setTheme(themeSettings.value || 'dark');
             }
 
             // Load global default settings (auto-appraisal is per-campaign and
@@ -221,30 +192,6 @@ const SystemSettings = () => {
             setError('Error loading settings data. Please try again.');
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const handleRegistrationModeChange = async (event) => {
-        const newMode = event.target.value;
-        const previousMode = registrationMode;
-
-        try {
-            setSavingRegistrationMode(true);
-            setRegistrationMode(newMode);
-            await api.put(
-                `/user/update-setting`,
-                {name: 'registration_mode', value: newMode}
-            );
-            const modeLabel = REGISTRATION_MODES.find(m => m.value === newMode)?.label || newMode;
-            setSuccess(`Registration mode set to ${modeLabel}`);
-            setError('');
-        } catch (error) {
-            console.error('Error updating registration mode', error);
-            setRegistrationMode(previousMode);
-            setError(error.response?.data?.message || 'Error updating registration mode');
-            setSuccess('');
-        } finally {
-            setSavingRegistrationMode(false);
         }
     };
 
@@ -328,14 +275,6 @@ const SystemSettings = () => {
     const handleSaveGeneralSettings = async () => {
         try {
             // Only update settings if they've been changed from defaults
-
-            // Save theme if it has a valid value
-            if (theme === 'dark' || theme === 'light') {
-                await api.put('/user/update-setting', {
-                    name: 'theme',
-                    value: theme
-                });
-            }
 
             // Save default quantity enabled setting
             await api.put('/user/update-setting', {
@@ -508,40 +447,6 @@ const SystemSettings = () => {
             {error && <Alert severity="error" sx={{mt: 2, mb: 2}}>{error}</Alert>}
 
             <Grid container spacing={3}>
-                {/* Registration Settings */}
-                <Grid size={{xs: 12, md: 6}}>
-                    <Card variant="outlined">
-                        <CardHeader title="Registration Settings"/>
-                        <CardContent>
-                            <FormControl fullWidth>
-                                <InputLabel id="registration-mode-label">Registration</InputLabel>
-                                <Select
-                                    labelId="registration-mode-label"
-                                    id="registration-mode-select"
-                                    value={registrationMode}
-                                    label="Registration"
-                                    onChange={handleRegistrationModeChange}
-                                    disabled={savingRegistrationMode}
-                                >
-                                    {REGISTRATION_MODES.map((mode) => (
-                                        <MenuItem key={mode.value} value={mode.value}>
-                                            {mode.label} ({mode.description.toLowerCase()})
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-
-                            <Box mt={2}>
-                                <Typography variant="body2" color="textSecondary">
-                                    {REGISTRATION_MODES.find(m => m.value === registrationMode)?.description}.
-                                    Invite codes can be created in the User Management tab and are
-                                    single-use, granting Player membership in this campaign.
-                                </Typography>
-                            </Box>
-                        </CardContent>
-                    </Card>
-                </Grid>
-
                 {/* Discord Integration Settings */}
                 <Grid size={{xs: 12, md: 6}}>
                     <Card variant="outlined">
@@ -622,21 +527,6 @@ const SystemSettings = () => {
                     <Card variant="outlined">
                         <CardHeader title="General Settings" avatar={<SettingsIcon/>}/>
                         <CardContent>
-                            <Box sx={{mb: 2}}>
-                                <Typography variant="subtitle2" gutterBottom>Interface Theme</Typography>
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={theme === 'dark'}
-                                            onChange={(e) => setTheme(e.target.checked ? 'dark' : 'light')}
-                                        />
-                                    }
-                                    label={theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
-                                />
-                            </Box>
-
-                            <Divider sx={{my: 2}}/>
-
                             <Box sx={{mb: 2}}>
                                 <Typography variant="subtitle2" gutterBottom>Default Item Quantity</Typography>
                                 <FormControlLabel

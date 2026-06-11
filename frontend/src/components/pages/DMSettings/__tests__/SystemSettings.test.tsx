@@ -70,8 +70,6 @@ import SystemSettings from '../SystemSettings';
 // ----- Default fixture data ---------------------------------------------------
 const buildSettingsList = (overrides: Partial<Record<string, string>> = {}) => {
   const base: Record<string, string> = {
-    registration_mode: 'closed',
-    theme: 'dark',
     default_browser_quantity: '1',
     default_quantity_enabled: '0',
     auto_appraisal_enabled: '1',
@@ -171,94 +169,28 @@ describe('SystemSettings', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 2. Registration mode dropdown
+  // 2. Moved/removed controls (Phase 5a)
   // -----------------------------------------------------------------------
-  it('shows the current registration mode from the registration_mode setting', async () => {
-    (api.get as any).mockImplementation(
-      makeGetMock({ settings: buildSettingsList({ registration_mode: 'invite-only' }) }),
-    );
-
+  it('no longer renders the registration mode dropdown (moved to System Admin)', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: /Registration/i })).toBeInTheDocument();
+      expect(screen.getByText(/System Settings/i)).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByRole('combobox', { name: /Registration/i })
-    ).toHaveTextContent(/Invite only/i);
+    expect(screen.queryByText(/Registration Settings/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Registration/i })).not.toBeInTheDocument();
   });
 
-  it('PUTs registration_mode when a new mode is selected and shows success', async () => {
+  it('no longer renders the dead global Interface Theme toggle', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: /Registration/i })).toBeInTheDocument();
+      expect(screen.getByText(/System Settings/i)).toBeInTheDocument();
     });
 
-    // Default fixture mode is 'closed'; switch to 'invite-only'
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Registration/i }));
-    const listbox = await screen.findByRole('listbox');
-    fireEvent.click(within(listbox).getByText(/Invite only/i));
-
-    await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
-        name: 'registration_mode',
-        value: 'invite-only',
-      });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Registration mode set to Invite only/i)).toBeInTheDocument();
-    });
-  });
-
-  it('derives the mode from legacy settings when registration_mode is missing', async () => {
-    // Legacy: registrations open + invite required -> invite-only
-    const legacySettings = [
-      { name: 'registrations_open', value: '1' },
-      { name: 'invite_required', value: '1' },
-      { name: 'theme', value: 'dark' },
-    ];
-    (api.get as any).mockImplementation(makeGetMock({ settings: legacySettings }));
-
-    renderSystemSettings();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole('combobox', { name: /Registration/i })
-      ).toHaveTextContent(/Invite only/i);
-    });
-  });
-
-  it('reverts the mode and shows the backend message when the update fails', async () => {
-    (api.put as any).mockRejectedValueOnce({
-      response: { data: { message: 'Not allowed' } },
-    });
-
-    // Silence the expected console.error from the component
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    renderSystemSettings();
-
-    await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: /Registration/i })).toBeInTheDocument();
-    });
-
-    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Registration/i }));
-    const listbox = await screen.findByRole('listbox');
-    fireEvent.click(within(listbox).getByText(/^Open/i));
-
-    await waitFor(() => {
-      expect(screen.getByText('Not allowed')).toBeInTheDocument();
-    });
-
-    // Mode reverted to the previous value ('closed' from the default fixture)
-    expect(
-      screen.getByRole('combobox', { name: /Registration/i })
-    ).toHaveTextContent(/Closed/i);
-
-    errSpy.mockRestore();
+    expect(screen.queryByText(/Interface Theme/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Dark Mode/i)).not.toBeInTheDocument();
   });
 
   // -----------------------------------------------------------------------
@@ -425,13 +357,16 @@ describe('SystemSettings', () => {
       .filter(([url]: any[]) => url === '/campaigns/current/settings')
       .map(([, body]: any[]) => body);
 
-    // theme=dark (default), default_quantity_enabled=0, auto_split_stacks_enabled=0 stay global
+    // default_quantity_enabled=0 and auto_split_stacks_enabled=0 stay global
     expect(globalPuts).toEqual(
       expect.arrayContaining([
-        { name: 'theme', value: 'dark' },
         { name: 'default_quantity_enabled', value: '0' },
         { name: 'auto_split_stacks_enabled', value: '0' },
       ]),
+    );
+    // The dead global 'theme' setting is never written anymore
+    expect(globalPuts).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'theme' })]),
     );
     // auto_appraisal_enabled (from the campaign context default '1') is per-campaign
     expect(campaignPuts).toEqual([{ name: 'auto_appraisal_enabled', value: '1' }]);

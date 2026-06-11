@@ -2,12 +2,15 @@
  * Unit tests for discordController
  * Tests sendMessage, sendEvent, getIntegrationStatus, updateSettings
  *
- * Phase 4c (campaign settings split): the bot token (and deprecated
- * campaign_name branding) are read from the global settings table; the
- * channel/role ids and the integration-enabled flag are per-campaign
- * (campaign_settings via the campaignSettings helper, with a global
- * fallback when no per-campaign row exists). The tests below mock the
+ * Phase 4c (campaign settings split): the bot token is read from the global
+ * settings table; the channel/role ids and the integration-enabled flag are
+ * per-campaign (campaign_settings via the campaignSettings helper, with a
+ * global fallback when no per-campaign row exists). The tests below mock the
  * resulting query sequences.
+ *
+ * Phase 5a (branding): the sendEvent embed title uses the CURRENT campaign's
+ * campaigns.name (Campaign.getNameById on req.campaignId), falling back to
+ * the static APP_NAME — the deprecated 'campaign_name' settings row is gone.
  */
 
 // Mock dependencies before requiring the controller
@@ -23,10 +26,15 @@ jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
+jest.mock('../../models/Campaign', () => ({
+  getNameById: jest.fn(),
+}));
+
 jest.mock('axios');
 
 const dbUtils = require('../../utils/dbUtils');
 const axios = require('axios');
+const Campaign = require('../../models/Campaign');
 const discordController = require('../discordController');
 
 // A valid Discord snowflake for channel ids (17-19 digits)
@@ -54,6 +62,9 @@ function createMockReq(overrides = {}) {
     query: {},
     cookies: {},
     user: null,
+    // Set by verifyToken on real requests; sendEvent uses it for the
+    // embed-title branding (campaigns.name)
+    campaignId: 1,
     ...overrides,
   };
 }
@@ -83,21 +94,21 @@ function mockSendMessageSettings({ token, channel } = {}) {
 
 /**
  * Mock the sendEvent settings reads:
- *  1. global rows (discord_bot_token, campaign_name),
+ *  1. global bot token (single-row SELECT value),
  *  2. per-campaign batch (discord_channel_id, campaign_role_id),
  *  3. global fallback batch when some per-campaign names are missing.
+ * The embed-title branding comes from Campaign.getNameById (mocked model),
+ * not the settings table.
  */
 function mockSendEventSettings({ token, campaignName, channel, roleId } = {}) {
-  const globalRows = {};
-  if (token !== undefined) globalRows.discord_bot_token = token;
-  if (campaignName !== undefined) globalRows.campaign_name = campaignName;
+  Campaign.getNameById.mockResolvedValue(campaignName !== undefined ? campaignName : null);
 
   const perCampaignRows = {};
   if (channel !== undefined) perCampaignRows.discord_channel_id = channel;
   if (roleId !== undefined) perCampaignRows.campaign_role_id = roleId;
 
   dbUtils.executeQuery
-    .mockResolvedValueOnce(makeSettingsRows(globalRows))
+    .mockResolvedValueOnce({ rows: token !== undefined ? [{ value: token }] : [] })
     .mockResolvedValueOnce(makeSettingsRows(perCampaignRows));
   if (channel === undefined || roleId === undefined) {
     dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
@@ -393,6 +404,8 @@ describe('discordController', () => {
 
       await discordController.sendEvent(req, res);
 
+      // Branding comes from the request campaign's campaigns.name
+      expect(Campaign.getNameById).toHaveBeenCalledWith(1);
       expect(axios.post).toHaveBeenCalledWith(
         'https://discord.com/api/channels/channel-456/messages',
         expect.objectContaining({
@@ -428,7 +441,7 @@ describe('discordController', () => {
       expect(postedPayload.content).toBe('');
     });
 
-    it('should use default campaign name when not configured', async () => {
+    it('should fall back to the static app name when the campaign row is missing', async () => {
       const req = createMockReq({ body: validBody });
       const res = createMockRes();
 
@@ -440,7 +453,7 @@ describe('discordController', () => {
       await discordController.sendEvent(req, res);
 
       const postedPayload = axios.post.mock.calls[0][1];
-      expect(postedPayload.embeds[0].title).toBe('Pathfinder Session');
+      expect(postedPayload.embeds[0].title).toBe('Pathfinder Loot Tracker Session');
     });
 
     it('should return validation error when title is missing', async () => {

@@ -35,6 +35,7 @@ const CrewManagement = React.lazy(() => import('./components/pages/CrewManagemen
 const SessionsPage = React.lazy(() => import('./components/pages/Sessions/SessionsPage'));
 const SessionManagement = React.lazy(() => import('./components/pages/DMSettings/SessionManagement'));
 const CityServices = React.lazy(() => import('./components/pages/CityServices'));
+const SystemAdmin = React.lazy(() => import('./components/pages/SystemAdmin'));
 
 
 import theme from './theme';
@@ -226,6 +227,7 @@ function App() {
               <Route path="sessions" element={<ErrorBoundary><SessionsPage /></ErrorBoundary>} />
               <Route path="session-management" element={<ErrorBoundary><SessionManagement /></ErrorBoundary>} />
               <Route path="city-services" element={<ErrorBoundary><CityServices /></ErrorBoundary>} />
+              <Route path="system-admin" element={<ErrorBoundary><SystemAdmin /></ErrorBoundary>} />
             </Route>
           </Routes>
           </Suspense>

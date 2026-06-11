@@ -187,7 +187,7 @@ describe('SessionDiscordService.processDiscordReaction campaign context', () => 
             ],
           };
         }
-        // Global settings read (bot token + deprecated campaign_name)
+        // Global settings read (bot token only — campaign_name is no longer read)
         return { rows: [{ name: 'discord_bot_token', value: 'global-token' }] };
       });
 

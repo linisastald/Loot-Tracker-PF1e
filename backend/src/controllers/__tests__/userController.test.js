@@ -775,11 +775,11 @@ describe('userController', () => {
   });
 
   // ---------------------------------------------------------------
-  // getAllUsers (DM only)
+  // getAllUsers (superadmin only — account-level listing)
   // ---------------------------------------------------------------
   describe('getAllUsers', () => {
-    it('should return all non-deleted users for DM', async () => {
-      const req = createMockReq({ user: { id: 99, role: 'DM' } });
+    it('should return all non-deleted users for a superadmin', async () => {
+      const req = createMockReq({ user: { id: 99, role: 'DM' }, isSuperadmin: true });
       const res = createMockRes();
 
       const users = [
@@ -797,23 +797,33 @@ describe('userController', () => {
       expect(res.success).toHaveBeenCalledWith(users, 'All users retrieved successfully');
     });
 
-    it('should reject non-DM users', async () => {
+    it('should reject a non-superadmin, even a campaign DM', async () => {
+      const req = createMockReq({ user: { id: 1, role: 'DM' }, campaignRole: 'DM', isSuperadmin: false });
+      const res = createMockRes();
+
+      await userController.getAllUsers(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can view all users');
+    });
+
+    it('should reject a Player', async () => {
       const req = createMockReq({ user: { id: 1, role: 'Player' } });
       const res = createMockRes();
 
       await userController.getAllUsers(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can view all users');
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can view all users');
     });
   });
 
   // ---------------------------------------------------------------
-  // resetPassword (DM only)
+  // resetPassword (superadmin only — account-level action)
   // ---------------------------------------------------------------
   describe('resetPassword', () => {
-    it('should reset password successfully as DM', async () => {
+    it('should reset password successfully as superadmin', async () => {
       const req = createMockReq({
         user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
         body: { userId: 1, newPassword: 'TempPass123' },
       });
       const res = createMockRes();
@@ -834,21 +844,24 @@ describe('userController', () => {
       expect(res.success).toHaveBeenCalledWith(null, 'Password reset successfully');
     });
 
-    it('should reject non-DM users', async () => {
+    it('should reject a non-superadmin, even a campaign DM', async () => {
       const req = createMockReq({
-        user: { id: 1, role: 'Player' },
+        user: { id: 1, role: 'DM' },
+        campaignRole: 'DM',
+        isSuperadmin: false,
         body: { userId: 2, newPassword: 'TempPass123' },
       });
       const res = createMockRes();
 
       await userController.resetPassword(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can reset passwords');
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can reset passwords');
     });
 
     it('should reject short password', async () => {
       const req = createMockReq({
         user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
         body: { userId: 1, newPassword: 'short' },
       });
       const res = createMockRes();
@@ -863,6 +876,7 @@ describe('userController', () => {
     it('should reject password exceeding 64 characters', async () => {
       const req = createMockReq({
         user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
         body: { userId: 1, newPassword: 'a'.repeat(65) },
       });
       const res = createMockRes();
@@ -877,6 +891,7 @@ describe('userController', () => {
     it('should return notFound when target user does not exist', async () => {
       const req = createMockReq({
         user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
         body: { userId: 999, newPassword: 'TempPass123' },
       });
       const res = createMockRes();
@@ -891,6 +906,7 @@ describe('userController', () => {
     it('should reject when required fields are missing', async () => {
       const req = createMockReq({
         user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
         body: {},
       });
       const res = createMockRes();
@@ -904,12 +920,13 @@ describe('userController', () => {
   });
 
   // ---------------------------------------------------------------
-  // deleteUser (DM only)
+  // deleteUser (superadmin only — account-level action)
   // ---------------------------------------------------------------
   describe('deleteUser', () => {
     it('should mark user as deleted successfully', async () => {
       const req = createMockReq({
         user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
         body: { userId: 1 },
       });
       const res = createMockRes();
@@ -927,7 +944,21 @@ describe('userController', () => {
       expect(res.success).toHaveBeenCalledWith(null, 'User deleted successfully');
     });
 
-    it('should reject non-DM users', async () => {
+    it('should reject a non-superadmin, even a campaign DM', async () => {
+      const req = createMockReq({
+        user: { id: 1, role: 'DM' },
+        campaignRole: 'DM',
+        isSuperadmin: false,
+        body: { userId: 2 },
+      });
+      const res = createMockRes();
+
+      await userController.deleteUser(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can delete users');
+    });
+
+    it('should reject a Player', async () => {
       const req = createMockReq({
         user: { id: 1, role: 'Player' },
         body: { userId: 2 },
@@ -936,12 +967,13 @@ describe('userController', () => {
 
       await userController.deleteUser(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can delete users');
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can delete users');
     });
 
-    it('should prevent DM from deleting themselves', async () => {
+    it('should prevent the superadmin from deleting themselves', async () => {
       const req = createMockReq({
         user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
         body: { userId: 99 },
       });
       const res = createMockRes();
@@ -956,6 +988,7 @@ describe('userController', () => {
     it('should return notFound when target user does not exist', async () => {
       const req = createMockReq({
         user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
         body: { userId: 999 },
       });
       const res = createMockRes();

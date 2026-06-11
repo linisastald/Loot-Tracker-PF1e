@@ -4,6 +4,8 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const timezoneUtils = require('../utils/timezoneUtils');
 const campaignSettings = require('../utils/campaignSettings');
+const Campaign = require('../models/Campaign');
+const { APP_NAME } = require('../config/constants');
 const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
 
 /**
@@ -29,11 +31,15 @@ const getDiscordSettings = async (req, res) => {
 };
 
 /**
- * Get campaign name
+ * Get the current campaign's display name (campaigns.name, resolved from the
+ * request's campaign context). The deprecated global 'campaign_name' settings
+ * row is no longer read; falls back to the static APP_NAME when the campaign
+ * row is missing.
  */
 const getCampaignName = async (req, res) => {
-    const settings = await fetchSettingsByNames(['campaign_name']);
-    const campaignName = settings.campaign_name || 'Loot Tracker';
+    const campaignName = (req.campaignId
+        ? await Campaign.getNameById(req.campaignId)
+        : null) || APP_NAME;
 
     controllerFactory.sendSuccessResponse(res, {value: campaignName}, 'Campaign name retrieved');
 };

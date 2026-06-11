@@ -4,6 +4,8 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
+const Campaign = require('../models/Campaign');
+const { APP_NAME } = require('../config/constants');
 
 /**
  * Send a message to Discord
@@ -138,22 +140,20 @@ const sendEvent = async (req, res) => {
         throw controllerFactory.createValidationError('Invalid date format for start_time or end_time');
     }
 
-    // Bot token and the (deprecated) campaign_name branding are global;
-    // channel and role ids are per-campaign (campaign_settings with global fallback)
-    const globalSettings = await dbUtils.executeQuery(
-        'SELECT name, value FROM settings WHERE name IN (\'discord_bot_token\', \'campaign_name\')'
+    // Bot token is global broker infrastructure; channel and role ids are
+    // per-campaign (campaign_settings with global fallback). The embed title
+    // uses the CURRENT campaign's display name (campaigns.name, request
+    // context via req.campaignId), falling back to the static APP_NAME.
+    const tokenResult = await dbUtils.executeQuery(
+        'SELECT value FROM settings WHERE name = $1',
+        ['discord_bot_token']
     );
-
-    const configMap = {};
-    globalSettings.rows.forEach(row => {
-        configMap[row.name] = row.value;
-    });
 
     const perCampaign = await campaignSettings.getCampaignSettings(['discord_channel_id', 'campaign_role_id']);
 
-    const discord_bot_token = configMap['discord_bot_token'];
+    const discord_bot_token = tokenResult.rows[0]?.value;
     const discord_channel_id = perCampaign['discord_channel_id'];
-    const campaign_name = configMap['campaign_name'] || 'Pathfinder';
+    const campaign_name = (req.campaignId ? await Campaign.getNameById(req.campaignId) : null) || APP_NAME;
     const campaign_role_id = perCampaign['campaign_role_id'];
 
     if (!discord_bot_token) {

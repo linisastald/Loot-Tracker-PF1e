@@ -25,30 +25,14 @@ class DiscordBrokerService {
   }
 
   /**
-   * Resolve the broker app ID from campaign_name in settings.
-   * Falls back to GROUP_NAME env var for backwards compatibility, then 'default'.
-   *
-   * Multi-campaign note: this background registration path only reads the
-   * global (non-RLS) settings table, so it needs no campaign context. When
-   * Discord config moves to per-campaign campaign_settings in a later phase,
-   * registration becomes per-campaign and must iterate campaigns explicitly.
+   * Resolve the broker app identity from the static app name (deployment
+   * branding — the deprecated 'campaign_name' settings row is no longer
+   * read). The GROUP_NAME env var still overrides for deployments that pin
+   * a custom broker identity.
    */
   async resolveAppIdentity() {
-    try {
-      const result = await dbUtils.executeQuery(
-        "SELECT value FROM settings WHERE name = 'campaign_name'"
-      );
-      if (result.rows.length > 0 && result.rows[0].value) {
-        this.groupName = result.rows[0].value;
-      } else {
-        this.groupName = process.env.GROUP_NAME || 'default';
-      }
-    } catch (error) {
-      logger.warn('Could not read campaign_name from settings, falling back to env', {
-        error: error.message,
-      });
-      this.groupName = process.env.GROUP_NAME || 'default';
-    }
+    const { APP_NAME } = require('../config/constants');
+    this.groupName = process.env.GROUP_NAME || APP_NAME;
     this.appId = `pathfinder-loot-tracker-${this.groupName.toLowerCase().replace(/\s+/g, '-')}`;
   }
 

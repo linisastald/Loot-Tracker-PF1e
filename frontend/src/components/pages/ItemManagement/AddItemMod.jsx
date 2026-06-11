@@ -1,7 +1,11 @@
 // frontend/src/components/pages/ItemManagement/AddItemMod.js
+// Phase 5a: the item/mod catalog is shared by every campaign, so writes are
+// superadmin-only (the backend 403s otherwise). The save buttons are disabled
+// for plain DMs; search/read stays available to them.
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
 import lootService from '../../../services/lootService';
+import {useCampaign} from '../../../contexts/CampaignContext';
 import {
   Alert,
   Autocomplete,
@@ -17,10 +21,14 @@ import {
   Tab,
   Tabs,
   TextField,
+  Tooltip,
   Typography
 } from '@mui/material';
 
+const SUPERADMIN_ONLY_TOOLTIP = 'Shared catalog — system administrator only';
+
 const AddItemMod = () => {
+    const {isSuperadmin} = useCampaign();
     const [activeTab, setActiveTab] = useState(0);
     const [items, setItems] = useState([]);
     const [itemsLoading, setItemsLoading] = useState(false);
@@ -502,13 +510,18 @@ const AddItemMod = () => {
                                         >
                                             Clear Form
                                         </Button>
-                                        <Button
-                                            variant="contained"
-                                            color="primary"
-                                            onClick={handleSubmitItem}
-                                        >
-                                            {itemForm.id ? 'Update Item' : 'Add Item'}
-                                        </Button>
+                                        <Tooltip title={isSuperadmin ? '' : SUPERADMIN_ONLY_TOOLTIP}>
+                                            <span>
+                                                <Button
+                                                    variant="contained"
+                                                    color="primary"
+                                                    onClick={handleSubmitItem}
+                                                    disabled={!isSuperadmin}
+                                                >
+                                                    {itemForm.id ? 'Update Item' : 'Add Item'}
+                                                </Button>
+                                            </span>
+                                        </Tooltip>
                                     </Box>
                                 </Grid>
                             </Grid>
@@ -647,13 +660,18 @@ const AddItemMod = () => {
                                         >
                                             Clear Form
                                         </Button>
-                                        <Button
-                                            variant="contained"
-                                            color="primary"
-                                            onClick={handleSubmitMod}
-                                        >
-                                            {modForm.id ? 'Update Mod' : 'Add Mod'}
-                                        </Button>
+                                        <Tooltip title={isSuperadmin ? '' : SUPERADMIN_ONLY_TOOLTIP}>
+                                            <span>
+                                                <Button
+                                                    variant="contained"
+                                                    color="primary"
+                                                    onClick={handleSubmitMod}
+                                                    disabled={!isSuperadmin}
+                                                >
+                                                    {modForm.id ? 'Update Mod' : 'Add Mod'}
+                                                </Button>
+                                            </span>
+                                        </Tooltip>
                                     </Box>
                                 </Grid>
                             </Grid>
