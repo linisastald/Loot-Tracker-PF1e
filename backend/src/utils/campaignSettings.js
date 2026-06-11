@@ -41,6 +41,7 @@ const PER_CAMPAIGN_SETTINGS = [
   'weather_forecast_days',
   'treasure_track',
   'treasure_modifier',
+  'average_party_level',
   'infamy_system_enabled',
   'auto_appraisal_enabled',
   'auto_task_generation',

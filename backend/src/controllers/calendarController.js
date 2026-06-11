@@ -6,6 +6,7 @@ const { generateWeatherForNextDay } = require('./weatherController');
 const { getMonthDays, addDays, calculateDaysBetween } = require('../utils/golarionCalendar');
 const { getForecastDays } = require('../utils/weatherForecast');
 const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
 const GolarionNote = require('../models/GolarionNote');
 
 // Maximum number of days a single advance request may jump, to avoid a
@@ -255,7 +256,7 @@ const advanceDays = async (req, res) => {
  * Get all calendar notes. DM-only notes are hidden from non-DM users.
  */
 const getNotes = async (req, res) => {
-  const isDm = req.user?.role === 'DM';
+  const isDm = hasDmRights(req);
   const notes = await GolarionNote.getAll({ includeDmOnly: isDm });
   controllerFactory.sendSuccessResponse(res, notes, 'Calendar notes retrieved');
 };
@@ -282,7 +283,7 @@ const createNote = async (req, res) => {
     throw controllerFactory.createValidationError(`days must be an integer between 1 and ${MAX_NOTE_SPAN_DAYS}`);
   }
 
-  const isDm = req.user?.role === 'DM';
+  const isDm = hasDmRights(req);
   const effectiveDmOnly = isDm ? Boolean(dmOnly) : false;
   const createdBy = req.user?.id ?? null;
 
@@ -317,7 +318,7 @@ const updateNote = async (req, res) => {
     throw controllerFactory.createNotFoundError('Note not found');
   }
 
-  const isDm = req.user?.role === 'DM';
+  const isDm = hasDmRights(req);
   if (existing.dmOnly && !isDm) {
     throw controllerFactory.createNotFoundError('Note not found');
   }
@@ -357,7 +358,7 @@ const deleteNote = async (req, res) => {
     throw controllerFactory.createNotFoundError('Note not found');
   }
 
-  const isDm = req.user?.role === 'DM';
+  const isDm = hasDmRights(req);
   if (existing.dmOnly && !isDm) {
     throw controllerFactory.createNotFoundError('Note not found');
   }

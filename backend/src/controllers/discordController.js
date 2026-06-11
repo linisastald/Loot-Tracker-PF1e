@@ -4,6 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
 const Campaign = require('../models/Campaign');
 const { APP_NAME } = require('../config/constants');
 
@@ -358,7 +359,7 @@ const updateSettings = async (req, res) => {
     const {bot_token, channel_id, enabled} = req.body;
 
     // Validate user has DM permissions (should be handled by middleware)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update Discord settings');
     }
 

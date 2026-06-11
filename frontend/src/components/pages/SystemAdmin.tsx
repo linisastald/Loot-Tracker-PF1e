@@ -146,7 +146,7 @@ const SystemAdmin: React.FC = () => {
     setGeneratingReset(true);
     setGeneratedResetLink('');
     try {
-      const response: any = await api.post('/auth/generate-manual-reset-link', {
+      const response: any = await api.post('/user/generate-manual-reset-link', {
         username: target.username,
       });
       const url = response?.data?.resetUrl;

@@ -15,6 +15,17 @@ require('dotenv').config();
 const REGISTRATION_MODES = ['open', 'invite-only', 'closed'];
 
 /**
+ * Constant key for the pg_advisory_xact_lock serializing the first-user DM
+ * bootstrap: two concurrent registrations both requesting 'DM' must not both
+ * pass the no-DM-exists check. The value is arbitrary but must be unique
+ * among this app's advisory-lock keys (currently the only one). The lock is
+ * transaction-scoped (auto-released at COMMIT/ROLLBACK) and only taken when a
+ * registration actually requests the DM role, so normal registrations are
+ * never serialized.
+ */
+const FIRST_DM_BOOTSTRAP_LOCK_KEY = 727450001;
+
+/**
  * Read the registration_mode setting ('open' | 'invite-only' | 'closed').
  * A missing row or an unrecognized value defaults to 'open' (fresh installs
  * seed 'open'; migration 046 derives the mode for existing deployments).
@@ -120,29 +131,7 @@ const registerUser = async (req, res) => {
     // Add salt and hash the password with bcrypt (cost factor 10)
     const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
 
-    // Role clamp (security): the stored users.role and the user_campaign
-    // membership role may only ever be 'DM' or 'Player'. 'DM' is honored
-    // exclusively via the legitimate first-user bootstrap path — when no DM
-    // account exists yet (the same condition the frontend's /auth/check-dm
-    // gate uses to enable the role selector). Once a DM exists, or for any
-    // other requested value, the role falls back to 'Player'. A future
-    // legitimate path (Phase 3 of the multi-campaign refactor) is
-    // invite-scoped roles; it does not exist yet — today's invites carry no
-    // role and therefore never grant DM.
     const { role: requestedRole } = req.body;
-    let userRole = 'Player';
-    if (requestedRole === 'DM') {
-        const dmCheck = await dbUtils.executeQuery(
-            "SELECT 1 FROM users WHERE role = 'DM' LIMIT 1"
-        );
-        if (dmCheck.rows.length === 0) {
-            userRole = 'DM';
-        } else {
-            logger.warn(`Registration for '${username}' requested DM role but a DM already exists; clamping to Player`);
-        }
-    } else if (requestedRole && requestedRole !== 'Player') {
-        logger.warn(`Registration for '${username}' requested invalid role '${requestedRole}'; clamping to Player`);
-    }
 
     // Run the INSERT inside a transaction, but do NOT send the HTTP response
     // from inside the callback — executeTransaction only COMMITs after the
@@ -155,6 +144,34 @@ const registerUser = async (req, res) => {
     // INSERT and the invites UPDATE must pass the RLS tenant policy's
     // WITH CHECK for the invite's campaign.
     const user = await campaignContext.runWithCampaign('all', () => dbUtils.executeTransaction(async (client) => {
+        // Role clamp (security): the stored users.role and the user_campaign
+        // membership role may only ever be 'DM' or 'Player'. 'DM' is honored
+        // exclusively via the legitimate first-user bootstrap path — when no
+        // DM account exists yet (the same condition the frontend's
+        // /auth/check-dm gate uses to enable the role selector). Once a DM
+        // exists, or for any other requested value, the role falls back to
+        // 'Player'. A future legitimate path (Phase 3 of the multi-campaign
+        // refactor) is invite-scoped roles; it does not exist yet — today's
+        // invites carry no role and therefore never grant DM.
+        //
+        // The check runs INSIDE the transaction, behind a transaction-scoped
+        // advisory lock, so two concurrent first registrations cannot both
+        // see "no DM exists" and both become DM.
+        let userRole = 'Player';
+        if (requestedRole === 'DM') {
+            await client.query('SELECT pg_advisory_xact_lock($1)', [FIRST_DM_BOOTSTRAP_LOCK_KEY]);
+            const dmCheck = await client.query(
+                "SELECT 1 FROM users WHERE role = 'DM' LIMIT 1"
+            );
+            if (dmCheck.rows.length === 0) {
+                userRole = 'DM';
+            } else {
+                logger.warn(`Registration for '${username}' requested DM role but a DM already exists; clamping to Player`);
+            }
+        } else if (requestedRole && requestedRole !== 'Player') {
+            logger.warn(`Registration for '${username}' requested invalid role '${requestedRole}'; clamping to Player`);
+        }
+
         // Insert the user
         const result = await client.query(
             'INSERT INTO users (username, password, role, email) VALUES ($1, $2, $3, $4) RETURNING id, username, role, joined, email',
@@ -294,7 +311,7 @@ const generateManualResetLink = async (req, res) => {
         return `${frontendUrl}/reset-password?token=${resetToken}`;
     });
 
-    logger.info(`Manual password reset link generated for user: ${user.username} by DM: ${req.user.username}`);
+    logger.info(`Manual password reset link generated for user: ${user.username} by superadmin: ${req.user.username}`);
 
     return controllerFactory.sendSuccessResponse(res, {
         resetUrl,

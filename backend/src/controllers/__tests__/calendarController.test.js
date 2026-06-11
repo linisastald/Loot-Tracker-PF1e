@@ -550,6 +550,46 @@ describe('calendarController', () => {
       expect(GolarionNote.getAll).toHaveBeenCalledWith({ includeDmOnly: false });
       expect(res.success).toHaveBeenCalledWith([], 'Calendar notes retrieved');
     });
+
+    it('excludes dm_only notes for a user demoted to Player despite a stale JWT DM role', async () => {
+      const req = createMockReq({
+        user: { role: 'DM', id: 2 },  // stale JWT role
+        campaignRole: 'Player',        // per-campaign role wins
+      });
+      const res = createMockRes();
+      GolarionNote.getAll.mockResolvedValueOnce([]);
+
+      await calendarController.getNotes(req, res);
+
+      expect(GolarionNote.getAll).toHaveBeenCalledWith({ includeDmOnly: false });
+    });
+
+    it('includes dm_only notes for a per-campaign DM whose JWT role is Player', async () => {
+      const req = createMockReq({
+        user: { role: 'Player', id: 3 },
+        campaignRole: 'DM',
+      });
+      const res = createMockRes();
+      GolarionNote.getAll.mockResolvedValueOnce([]);
+
+      await calendarController.getNotes(req, res);
+
+      expect(GolarionNote.getAll).toHaveBeenCalledWith({ includeDmOnly: true });
+    });
+
+    it('includes dm_only notes for a superadmin without any DM role', async () => {
+      const req = createMockReq({
+        user: { role: 'Player', id: 4 },
+        campaignRole: 'Player',
+        isSuperadmin: true,
+      });
+      const res = createMockRes();
+      GolarionNote.getAll.mockResolvedValueOnce([]);
+
+      await calendarController.getNotes(req, res);
+
+      expect(GolarionNote.getAll).toHaveBeenCalledWith({ includeDmOnly: true });
+    });
   });
 
   // ---------------------------------------------------------------

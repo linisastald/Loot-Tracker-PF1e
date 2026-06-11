@@ -304,6 +304,7 @@ describe('campaignSettings', () => {
       expect([...campaignSettings.PER_CAMPAIGN_SETTINGS].sort()).toEqual([
         'auto_appraisal_enabled',
         'auto_task_generation',
+        'average_party_level',
         'campaign_role_id',
         'campaign_timezone',
         'discord_channel_id',

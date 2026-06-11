@@ -50,14 +50,13 @@ class MockResizeObserver {
 
 /**
  * The api response interceptor returns the body envelope (response.data).
- * The remaining ad-hoc GETs are the (global) average party level and the
- * static region option list.
+ * The only remaining ad-hoc GET is the static region option list (APL is
+ * per-campaign and comes from the campaign context as of Phase 5b).
  */
 const defaultRegions = ['Varisia', 'Andoran', 'Cheliax', 'Taldor'];
 
 const buildGetMock = (overrides: Record<string, any> = {}) => {
   const responses: Record<string, any> = {
-    '/settings/average-party-level': { data: { value: '5' } },
     '/weather/regions': { data: defaultRegions },
     ...overrides,
   };
@@ -116,7 +115,7 @@ describe('CampaignSettings', () => {
       ).toBeInTheDocument();
     });
 
-    it('reads per-campaign values from the campaign context and only fetches APL + regions', async () => {
+    it('reads per-campaign values from the campaign context and only fetches the region list', async () => {
       campaignContextValue = makeContext({ region: 'Cheliax', infamy_system_enabled: '1' });
       renderCampaignSettings();
 
@@ -135,12 +134,13 @@ describe('CampaignSettings', () => {
       ).toBeChecked();
 
       await waitFor(() => {
-        expect(api.get).toHaveBeenCalledWith('/settings/average-party-level');
+        expect(api.get).toHaveBeenCalledWith('/weather/regions');
       });
-      expect(api.get).toHaveBeenCalledWith('/weather/regions');
 
-      // No legacy per-campaign settings GETs remain
+      // No legacy per-campaign settings GETs remain — including the old
+      // global APL endpoint (APL is in the campaign settings map now)
       const calls = (api.get as any).mock.calls.map((c: any[]) => c[0]);
+      expect(calls).not.toContain('/settings/average-party-level');
       expect(calls).not.toContain('/settings/campaign-name');
       expect(calls).not.toContain('/settings/region');
       expect(calls).not.toContain('/settings/infamy-system');
@@ -303,11 +303,39 @@ describe('CampaignSettings', () => {
 
   describe('Average Party Level (APL)', () => {
     beforeEach(() => {
-      // APL controls only show when infamy is enabled
-      campaignContextValue = makeContext({ infamy_system_enabled: '1' });
+      // APL controls only show when infamy is enabled; APL itself is a
+      // per-campaign setting (string in the settings map)
+      campaignContextValue = makeContext({
+        infamy_system_enabled: '1',
+        average_party_level: '5',
+      });
     });
 
-    it('still PUTs through the legacy endpoint (APL is not campaign-scoped yet)', async () => {
+    it('reads APL from the campaign settings map, not a settings GET', async () => {
+      campaignContextValue = makeContext({
+        infamy_system_enabled: '1',
+        average_party_level: '7',
+      });
+      renderCampaignSettings();
+
+      await waitFor(() => {
+        expect(getInputByLabel(/^Average Party Level/).value).toBe('7');
+      });
+
+      const calls = (api.get as any).mock.calls.map((c: any[]) => c[0]);
+      expect(calls).not.toContain('/settings/average-party-level');
+    });
+
+    it('falls back to the default APL when the setting is absent from the map', async () => {
+      campaignContextValue = makeContext({ infamy_system_enabled: '1' });
+      renderCampaignSettings();
+
+      await waitFor(() => {
+        expect(getInputByLabel(/^Average Party Level/).value).toBe('5');
+      });
+    });
+
+    it('PUTs the per-campaign endpoint with an integer value, refreshes, and skips the legacy endpoint', async () => {
       renderCampaignSettings();
 
       await waitFor(() => {
@@ -318,32 +346,55 @@ describe('CampaignSettings', () => {
       fireEvent.click(screen.getByRole('button', { name: /update apl/i }));
 
       await waitFor(() => {
-        expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
+        expect(api.put).toHaveBeenCalledWith('/campaigns/current/settings', {
           name: 'average_party_level',
-          value: '10',
+          value: 10,
         });
+      });
+      await waitFor(() => {
+        expect(refreshMock).toHaveBeenCalled();
       });
       expect(
         await screen.findByText(/average party level updated successfully/i)
       ).toBeInTheDocument();
+
+      // The legacy global endpoint is never used for APL
+      const legacyPuts = (api.put as any).mock.calls.filter(
+        (c: any[]) => c[0] === '/user/update-setting'
+      );
+      expect(legacyPuts).toHaveLength(0);
     });
 
-    it('rejects values outside 1-20 (no PUT, shows error)', async () => {
+    it('surfaces the backend envelope message when the APL save fails', async () => {
+      (api.put as any).mockRejectedValue({
+        response: { status: 400, data: { success: false, message: 'Value must be an integer' } },
+      });
+
+      renderCampaignSettings();
+
+      fireEvent.change(getInputByLabel(/^Average Party Level/), { target: { value: '10' } });
+      fireEvent.click(screen.getByRole('button', { name: /update apl/i }));
+
+      expect(await screen.findByText('Value must be an integer')).toBeInTheDocument();
+      expect(refreshMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects values outside 1-30 (no PUT, shows error)', async () => {
       renderCampaignSettings();
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /update apl/i })).toBeInTheDocument();
       });
 
-      fireEvent.change(getInputByLabel(/^Average Party Level/), { target: { value: '21' } });
+      fireEvent.change(getInputByLabel(/^Average Party Level/), { target: { value: '31' } });
       fireEvent.click(screen.getByRole('button', { name: /update apl/i }));
 
       expect(
-        await screen.findByText(/average party level must be a number between 1 and 20/i)
+        await screen.findByText(/average party level must be a number between 1 and 30/i)
       ).toBeInTheDocument();
 
       const aplPuts = (api.put as any).mock.calls.filter(
-        (c: any[]) => c[0] === '/user/update-setting' && c[1]?.name === 'average_party_level'
+        (c: any[]) => c[1]?.name === 'average_party_level'
       );
       expect(aplPuts).toHaveLength(0);
     });
@@ -351,7 +402,7 @@ describe('CampaignSettings', () => {
     it('displays the correct Infamy Check DC (15 + 2*APL)', async () => {
       renderCampaignSettings();
 
-      // APL = 5 from initial fetch -> DC = 15 + 10 = 25
+      // APL = 5 from the campaign settings map -> DC = 15 + 10 = 25
       await waitFor(() => {
         expect(screen.getByText(/current infamy check dc/i)).toBeInTheDocument();
       });

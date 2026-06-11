@@ -257,6 +257,41 @@ describe('infamyController', () => {
       );
     });
 
+    it('should reject a user demoted to Player in the campaign even with a stale JWT DM role', async () => {
+      const req = createMockReq({
+        body: { infamyChange: 5, reason: 'Cheating' },
+        user: { id: 2, role: 'DM' },  // stale JWT role
+        campaignRole: 'Player',        // per-campaign role wins
+      });
+      const res = createMockRes();
+
+      await infamyController.adjustInfamy(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith(
+        'Only DMs can manually adjust infamy/disrepute'
+      );
+    });
+
+    it('should allow a superadmin whose JWT role is not DM', async () => {
+      const req = createMockReq({
+        body: { infamyChange: 5, reason: 'Story correction' },
+        user: { id: 3, role: 'Player' },
+        campaignRole: 'Player',
+        isSuperadmin: true,
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ infamy: 10, disrepute: 8 }] })  // SELECT ship_infamy
+        .mockResolvedValueOnce({ rows: [] })  // UPDATE ship_infamy
+        .mockResolvedValueOnce({ rows: [] }); // INSERT infamy_history
+
+      await infamyController.adjustInfamy(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalled();
+    });
+
     it('should require a reason', async () => {
       const req = createMockReq({
         body: { infamyChange: 5 },

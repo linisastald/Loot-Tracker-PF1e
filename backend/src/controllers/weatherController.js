@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const { getMonthDays, addDays, calculateDaysBetween, compareDates } = require('../utils/golarionCalendar');
 const { getForecastDays } = require('../utils/weatherForecast');
 const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Read the current Golarion date from the database, defaulting to 4722-1-1.
@@ -17,8 +18,9 @@ const getCurrentGolarionDate = async () => {
 
 /**
  * Whether the request is from a DM (forecast weather is DM-only).
+ * Per-campaign role; superadmins pass.
  */
-const isDmRequest = (req) => req.user?.role === 'DM';
+const isDmRequest = (req) => hasDmRights(req);
 
 // Weather condition types and their emojis
 const WEATHER_CONDITIONS = {

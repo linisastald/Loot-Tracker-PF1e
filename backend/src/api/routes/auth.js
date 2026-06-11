@@ -78,14 +78,8 @@ router.post('/reset-password', [
   }
   next();
 }, authController.resetPassword);
-router.post('/generate-manual-reset-link', verifyToken, [
-  body('username').trim().notEmpty().withMessage('Username is required')
-], (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({errors: errors.array()});
-  }
-  next();
-}, authController.generateManualResetLink);
+// NOTE: generate-manual-reset-link moved to POST /api/user/generate-manual-
+// reset-link (Phase 5b hardening): it is a state-changing superadmin action
+// and must live on a CSRF-protected mount — /api/auth is CSRF-exempt.
 
 module.exports = router;

@@ -20,8 +20,9 @@ jest.mock('../../utils/dbUtils', () => ({
 process.env.JWT_SECRET = 'test-secret-key';
 
 /** Build a membership-query result row. */
-const row = (campaignId, role, isSuperadmin = false) => ({
+const row = (campaignId, role, isSuperadmin = false, userRole = 'Player') => ({
   is_superadmin: isSuperadmin,
+  user_role: userRole,
   campaign_id: campaignId,
   role,
 });
@@ -240,7 +241,7 @@ describe('verifyToken middleware', () => {
       it('falls back to campaign 1 with the JWT role when the user has no memberships', async () => {
         authedRequest({ id: 7, role: 'DM' });
         dbUtils.executeQuery.mockResolvedValue({
-          rows: [{ is_superadmin: false, campaign_id: null, role: null }],
+          rows: [{ is_superadmin: false, user_role: 'DM', campaign_id: null, role: null }],
         });
 
         await verifyToken(req, res, next);
@@ -250,16 +251,50 @@ describe('verifyToken middleware', () => {
         expect(req.campaignRole).toBe('DM');
         expect(req.isSuperadmin).toBe(false);
       });
+    });
 
-      it('falls back to campaign 1 when the membership query returns no rows at all', async () => {
+    describe('deleted or missing user accounts', () => {
+      it('returns 401 when the membership query returns no rows (user row deleted)', async () => {
         authedRequest({ id: 7, role: 'Player' });
         dbUtils.executeQuery.mockResolvedValue({ rows: [] });
 
         await verifyToken(req, res, next);
 
-        expect(next).toHaveBeenCalled();
-        expect(req.campaignId).toBe(1);
-        expect(req.campaignRole).toBe('Player');
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({
+          success: false,
+          message: 'Invalid token',
+        });
+      });
+
+      it('returns 401 when the user account is soft-deleted (role = deleted)', async () => {
+        authedRequest({ id: 7, role: 'Player' });
+        dbUtils.executeQuery.mockResolvedValue({
+          rows: [row(1, 'Player', false, 'deleted')],
+        });
+
+        await verifyToken(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({
+          success: false,
+          message: 'Invalid token',
+        });
+      });
+
+      it('rejects a soft-deleted user even with a valid X-Campaign-Id membership', async () => {
+        authedRequest({ id: 7, role: 'DM' });
+        req.headers['x-campaign-id'] = '1';
+        dbUtils.executeQuery.mockResolvedValue({
+          rows: [row(1, 'DM', false, 'deleted')],
+        });
+
+        await verifyToken(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
       });
     });
 

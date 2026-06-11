@@ -52,21 +52,18 @@ const CampaignSettings = () => {
         if (typeof campaignSettings?.region === 'string' && campaignSettings.region) {
             setRegion(campaignSettings.region);
         }
+        // APL is per-campaign (string in the settings map); absent keeps the default
+        if (typeof campaignSettings?.average_party_level === 'string' && campaignSettings.average_party_level) {
+            setAveragePartyLevel(parseInt(campaignSettings.average_party_level) || 5);
+        }
     }, [campaignSettings]);
 
     useEffect(() => {
         const fetchSettings = async () => {
             try {
-                // Average party level is not (yet) campaign-scoped; the region
-                // option list is static reference data.
-                const [aplResponse, regionsResponse] = await Promise.all([
-                    api.get('/settings/average-party-level'),
-                    api.get('/weather/regions')
-                ]);
+                // The region option list is static reference data
+                const regionsResponse = await api.get('/weather/regions');
 
-                if (aplResponse.data && aplResponse.data.value) {
-                    setAveragePartyLevel(parseInt(aplResponse.data.value) || 5);
-                }
                 if (regionsResponse.data) {
                     setAvailableRegions(regionsResponse.data);
                 }
@@ -123,15 +120,17 @@ const CampaignSettings = () => {
 
     const handleAveragePartyLevelChange = async () => {
         const apl = parseInt(averagePartyLevel);
-        if (isNaN(apl) || apl < 1 || apl > 20) {
-            enqueueSnackbar('Average Party Level must be a number between 1 and 20', {variant: 'error'});
+        // 1-30 matches the backend validator (levels 1-20 plus mythic-adjusted)
+        if (isNaN(apl) || apl < 1 || apl > 30) {
+            enqueueSnackbar('Average Party Level must be a number between 1 and 30', {variant: 'error'});
             return;
         }
         try {
-            await api.put('/user/update-setting', {
+            await api.put('/campaigns/current/settings', {
                 name: 'average_party_level',
-                value: apl.toString()
+                value: apl
             });
+            await refresh();
             enqueueSnackbar('Average Party Level updated successfully', {variant: 'success'});
         } catch (err) {
             enqueueSnackbar(
@@ -243,12 +242,12 @@ const CampaignSettings = () => {
                         <TextField
                             label="Average Party Level"
                             type="number"
-                            InputProps={{ inputProps: { min: 1, max: 20 } }}
+                            InputProps={{ inputProps: { min: 1, max: 30 } }}
                             value={averagePartyLevel}
                             onChange={(e) => setAveragePartyLevel(e.target.value)}
                             fullWidth
                             margin="normal"
-                            helperText="Enter a value between 1 and 20"
+                            helperText="Enter a value between 1 and 30"
                         />
 
                         <Button

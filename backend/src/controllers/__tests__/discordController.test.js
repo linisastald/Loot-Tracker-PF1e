@@ -815,6 +815,37 @@ describe('discordController', () => {
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
 
+    it('should reject a user demoted to Player in the campaign even with a stale JWT DM role', async () => {
+      const req = createMockReq({
+        body: { bot_token: 'new-token' },
+        user: { role: 'DM' },     // stale JWT role
+        campaignRole: 'Player',    // per-campaign role wins
+      });
+      const res = createMockRes();
+
+      await discordController.updateSettings(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update Discord settings');
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should allow a superadmin whose JWT role is not DM', async () => {
+      const req = createMockReq({
+        body: { bot_token: 'new-token' },
+        user: { role: 'Player' },
+        campaignRole: 'Player',
+        isSuperadmin: true,
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await discordController.updateSettings(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalled();
+    });
+
     it('should save settings even when connection test fails', async () => {
       const req = createMockReq({
         body: { bot_token: 'bad-token', channel_id: VALID_CHANNEL_ID, enabled: true },

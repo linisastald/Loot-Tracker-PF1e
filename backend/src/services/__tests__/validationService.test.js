@@ -15,13 +15,28 @@ jest.mock('../../utils/controllerFactory', () => ({
 
 describe('ValidationService', () => {
   describe('requireDM', () => {
-    it('should not throw for DM role', () => {
+    it('should not throw for DM role (JWT fallback, no campaign resolution)', () => {
       expect(() => ValidationService.requireDM({ user: { role: 'DM' } })).not.toThrow();
     });
 
     it('should throw AuthorizationError for non-DM', () => {
       expect(() => ValidationService.requireDM({ user: { role: 'player' } }))
         .toThrow('Only DMs can perform this operation');
+    });
+
+    it('should let the per-campaign role win over a stale JWT DM role', () => {
+      expect(() => ValidationService.requireDM({ campaignRole: 'Player', user: { role: 'DM' } }))
+        .toThrow('Only DMs can perform this operation');
+    });
+
+    it('should not throw for a per-campaign DM whose JWT role is Player', () => {
+      expect(() => ValidationService.requireDM({ campaignRole: 'DM', user: { role: 'Player' } }))
+        .not.toThrow();
+    });
+
+    it('should not throw for a superadmin without any DM role', () => {
+      expect(() => ValidationService.requireDM({ isSuperadmin: true, campaignRole: 'Player', user: { role: 'Player' } }))
+        .not.toThrow();
     });
   });
 

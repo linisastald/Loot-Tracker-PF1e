@@ -9,9 +9,13 @@ require('dotenv').config();
  * One row per campaign membership (campaign_id/role NULL when the user has
  * none). `users` and `user_campaign` intentionally have no RLS, so this
  * lookup works before any campaign context is established.
+ *
+ * u.role is selected only to detect soft-deleted accounts (role = 'deleted');
+ * zero rows means the user row itself no longer exists. Both cases must be
+ * rejected even though the JWT signature is still valid.
  */
 const MEMBERSHIP_QUERY = `
-  SELECT u.is_superadmin, uc.campaign_id, uc.role
+  SELECT u.is_superadmin, u.role AS user_role, uc.campaign_id, uc.role
   FROM users u
   LEFT JOIN user_campaign uc ON uc.user_id = u.id
   WHERE u.id = $1
@@ -127,7 +131,24 @@ const verifyToken = async (req, res, next) => {
     );
     const rows = result.rows || [];
 
-    isSuperadmin = rows.length > 0 && rows[0].is_superadmin === true;
+    // A valid JWT for an account that no longer exists (zero rows from the
+    // LEFT JOIN) or was soft-deleted (role = 'deleted') must not authenticate.
+    if (rows.length === 0) {
+      logger.warn(`Authentication failed: user ${decoded.id} no longer exists`);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token'
+      });
+    }
+    if (rows[0].user_role === 'deleted') {
+      logger.warn(`Authentication failed: user ${decoded.id} is deleted`);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token'
+      });
+    }
+
+    isSuperadmin = rows[0].is_superadmin === true;
     const memberships = rows.filter((row) => row.campaign_id !== null && row.campaign_id !== undefined);
 
     if (headerValue !== undefined) {

@@ -4,6 +4,7 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const timezoneUtils = require('../utils/timezoneUtils');
 const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
 const Campaign = require('../models/Campaign');
 const { APP_NAME } = require('../config/constants');
 const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
@@ -50,7 +51,7 @@ const getCampaignName = async (req, res) => {
  */
 const getAllSettings = async (req, res) => {
     // This should be protected by middleware to ensure only DMs can access
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can access all settings');
     }
 
@@ -78,7 +79,7 @@ const updateSetting = async (req, res) => {
     const {name, value} = req.body;
 
     // Validate user has DM permissions
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update settings');
     }
 
@@ -155,7 +156,7 @@ const deleteSetting = async (req, res) => {
     const {name} = req.params;
 
     // Validate user has DM permissions
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can delete settings');
     }
 
@@ -277,12 +278,13 @@ const getInfamySystem = async (req, res) => {
 };
 
 /**
- * Get average party level
+ * Get average party level (per-campaign setting with global fallback)
  */
 const getAveragePartyLevel = async (req, res) => {
     try {
-        const settings = await fetchSettingsByNames(['average_party_level']);
-        const apl = settings.average_party_level || '5';
+        const apl = await campaignSettings.getCampaignSetting('average_party_level', {
+            defaultValue: '5'
+        }) || '5';
 
         controllerFactory.sendSuccessResponse(res, {value: apl}, 'Average party level retrieved');
     } catch (error) {
@@ -325,7 +327,7 @@ const getWeatherForecastDays = async (req, res) => {
 const updateWeatherForecastDays = async (req, res) => {
     const { days } = req.body;
 
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update the weather forecast');
     }
 
@@ -386,7 +388,7 @@ const updateCampaignTimezone = async (req, res) => {
     const { timezone } = req.body;
 
     // Validate user has DM permissions
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update timezone settings');
     }
 

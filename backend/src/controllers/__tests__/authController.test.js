@@ -393,13 +393,14 @@ describe('authController', () => {
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ value: 'open' }] })  // registration_mode
         .mockResolvedValueOnce({ rows: [] })                     // username ok
-        .mockResolvedValueOnce({ rows: [] })                     // email ok
-        .mockResolvedValueOnce({ rows: [] });                    // role clamp: no DM exists yet
+        .mockResolvedValueOnce({ rows: [] });                    // email ok
 
       let txClient;
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
           query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })  // advisory lock (bootstrap serialization)
+            .mockResolvedValueOnce({ rows: [] })  // role clamp: no DM exists yet
             .mockResolvedValueOnce({
               rows: [{ id: 7, username: 'newplayer', role: 'DM', email: 'new@example.com' }],
             })
@@ -411,14 +412,24 @@ describe('authController', () => {
 
       await authController.registerUser(req, res);
 
+      // RACE SAFETY: the no-DM-exists check runs INSIDE the transaction,
+      // behind a transaction-scoped advisory lock, so two concurrent first
+      // registrations cannot both become DM
+      const lockCall = txClient.query.mock.calls[0];
+      expect(lockCall[0]).toContain('pg_advisory_xact_lock');
+      expect(lockCall[1]).toEqual([expect.any(Number)]);
+
+      const dmCheckCall = txClient.query.mock.calls[1];
+      expect(dmCheckCall[0]).toContain("role = 'DM'");
+
       // The bootstrap path stores 'DM' in users.role
-      const userInsertCall = txClient.query.mock.calls[0];
+      const userInsertCall = txClient.query.mock.calls[2];
       expect(userInsertCall[0]).toContain('INSERT INTO users');
       expect(userInsertCall[1][2]).toBe('DM');
 
       // SPECIAL CASE: bootstrap without invite grants campaign-1 DM
       // membership so a fresh single-campaign install bootstraps usable
-      const membershipCall = txClient.query.mock.calls[1];
+      const membershipCall = txClient.query.mock.calls[3];
       expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
       expect(membershipCall[0]).toContain("'DM'");
       expect(membershipCall[1]).toEqual([7]);
@@ -438,15 +449,17 @@ describe('authController', () => {
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ value: 'open' }] })   // registration_mode
         .mockResolvedValueOnce({ rows: [] })                      // username ok
-        .mockResolvedValueOnce({ rows: [] })                      // email ok
-        .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });  // role clamp: a DM exists
+        .mockResolvedValueOnce({ rows: [] });                     // email ok
 
       let txClient;
       dbUtils.executeTransaction.mockImplementation(async (callback) => {
         txClient = {
-          query: jest.fn().mockResolvedValueOnce({
-            rows: [{ id: 8, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
-          }),
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] })                     // advisory lock
+            .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })  // role clamp: a DM exists
+            .mockResolvedValueOnce({
+              rows: [{ id: 8, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
+            }),
           release: jest.fn(),
         };
         return await callback(txClient);
@@ -455,12 +468,12 @@ describe('authController', () => {
       await authController.registerUser(req, res);
 
       // The stored users.role must be clamped to Player
-      const userInsertCall = txClient.query.mock.calls[0];
+      const userInsertCall = txClient.query.mock.calls[2];
       expect(userInsertCall[0]).toContain('INSERT INTO users');
       expect(userInsertCall[1][2]).toBe('Player');
 
-      // No invite, not bootstrap: no membership insert
-      expect(txClient.query).toHaveBeenCalledTimes(1);
+      // No invite, not bootstrap: lock + DM check + user insert only
+      expect(txClient.query).toHaveBeenCalledTimes(3);
 
       expect(res.created).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -495,7 +508,9 @@ describe('authController', () => {
       // Non-'DM' values never trigger the DM-exists lookup
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
 
+      // ... nor the advisory lock — the first tx query is the user INSERT
       const userInsertCall = txClient.query.mock.calls[0];
+      expect(userInsertCall[0]).toContain('INSERT INTO users');
       expect(userInsertCall[1][2]).toBe('Player');
 
       // No invite, not bootstrap: no membership insert

@@ -39,6 +39,9 @@ import {
 } from '@mui/icons-material';
 import CampaignThemeSettings from './CampaignThemeSettings';
 
+// Display-only mask for the saved OpenAI key (never applies to the bot token)
+const MASKED_VALUE = '********';
+
 const SystemSettings = () => {
     const {currentCampaign, campaignSettings, refresh} = useCampaign();
     const {enqueueSnackbar} = useSnackbar();
@@ -85,19 +88,10 @@ const SystemSettings = () => {
         openaiKey: ''
     });
 
-    const [maskedToken, setMaskedToken] = useState('********');
-
-    useEffect(() => {
-        // When Discord settings are loaded, handle masking the token
-        if (discordSettings.botToken && discordSettings.botToken !== maskedToken) {
-            // If it's a real token (not the mask), we should mask it for display
-            setDiscordSettings(prev => ({
-                ...prev,
-                originalBotToken: prev.botToken, // Store the original
-                botToken: maskedToken // Display the mask
-            }));
-        }
-    }, [maskedToken, discordSettings.botToken]);
+    // The saved bot token is never echoed back into the field. When a token
+    // exists server-side the input stays empty and shows a placeholder; any
+    // user input is kept raw in state and sent verbatim on save.
+    const [hasSavedBotToken, setHasSavedBotToken] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -151,21 +145,22 @@ const SystemSettings = () => {
             // channel ID, role ID, and enabled flag are per-campaign and come
             // from the campaign context instead.
             if (discordResponse.data) {
-                const botToken = discordResponse.data.discord_bot_token || '';
+                // Never put the saved token in the field — only remember that
+                // one exists so the input can show a placeholder.
+                setHasSavedBotToken(!!discordResponse.data.discord_bot_token);
 
                 // Get OpenAI key
-                const openaiKey = openaiResponse.data?.hasKey ? maskedToken : '';
+                const openaiKey = openaiResponse.data?.hasKey ? MASKED_VALUE : '';
 
                 setDiscordSettings(prev => ({
                     ...prev,
-                    botToken: botToken ? maskedToken : '',
-                    openaiKey: openaiKey,
-                    originalBotToken: botToken
+                    botToken: '',
+                    openaiKey: openaiKey
                 }));
 
                 setOriginalSettings(prev => ({
                     ...prev,
-                    botToken: botToken,
+                    botToken: '',
                     openaiKey: openaiKey
                 }));
             }
@@ -201,12 +196,14 @@ const SystemSettings = () => {
             setIsLoadingDiscord(true);
             let touchedCampaignSettings = false;
 
-            // Only update token if it's changed and not the masked value
-            // (the bot token is shared by all campaigns)
-            if (discordSettings.botToken !== maskedToken && discordSettings.botToken.trim() !== '') {
+            // Only send the token if the user typed a replacement; an empty
+            // field means "keep the saved token" (shared by all campaigns)
+            const typedBotToken = discordSettings.botToken.trim() !== '';
+            if (typedBotToken) {
                 await api.put('/user/update-setting', {
                     name: 'discord_bot_token',
-                    value: discordSettings.botToken
+                    // Trim: a pasted token often carries a trailing newline/space
+                    value: discordSettings.botToken.trim()
                 });
             }
 
@@ -240,7 +237,7 @@ const SystemSettings = () => {
             }
 
             // Only update OpenAI key if it's changed and not the masked value
-            if (discordSettings.openaiKey !== maskedToken && discordSettings.openaiKey !== originalSettings.openaiKey) {
+            if (discordSettings.openaiKey !== MASKED_VALUE && discordSettings.openaiKey !== originalSettings.openaiKey) {
                 await api.put('/user/update-setting', {
                     name: 'openai_key',
                     value: discordSettings.openaiKey
@@ -249,12 +246,19 @@ const SystemSettings = () => {
 
             // Update original settings for next comparison
             setOriginalSettings({
-                botToken: discordSettings.botToken !== maskedToken ? discordSettings.botToken : originalSettings.botToken,
+                botToken: '',
                 channelId: discordSettings.channelId,
                 roleId: discordSettings.roleId,
                 enabled: discordSettings.enabled,
-                openaiKey: discordSettings.openaiKey !== maskedToken ? discordSettings.openaiKey : originalSettings.openaiKey
+                openaiKey: discordSettings.openaiKey !== MASKED_VALUE ? discordSettings.openaiKey : originalSettings.openaiKey
             });
+
+            // After a successful token save, reset the field to placeholder
+            // mode — never echo the saved token back into the input.
+            if (typedBotToken) {
+                setDiscordSettings(prev => ({...prev, botToken: ''}));
+                setHasSavedBotToken(true);
+            }
 
             if (touchedCampaignSettings) {
                 await refresh();
@@ -465,8 +469,10 @@ const SystemSettings = () => {
                                 onChange={(e) => setDiscordSettings({...discordSettings, botToken: e.target.value})}
                                 fullWidth
                                 margin="normal"
-                                placeholder="Enter Discord Bot Token"
-                                helperText="Only enter a value if you want to change the existing token"
+                                placeholder={hasSavedBotToken ? 'Token saved — type to replace' : 'Enter Discord Bot Token'}
+                                helperText={hasSavedBotToken
+                                    ? 'A token is saved. Leave blank to keep it, or type a new one to replace it.'
+                                    : 'Enter the Discord bot token'}
                             />
                             <TextField
                                 label="Channel ID"

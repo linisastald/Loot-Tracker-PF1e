@@ -316,6 +316,94 @@ describe('SystemSettings', () => {
     expect(tokenPuts).toHaveLength(0);
   });
 
+  // -----------------------------------------------------------------------
+  // 5b. Bot token: placeholder mode, typed token saved, field reset (Phase 5b)
+  // -----------------------------------------------------------------------
+  it('keeps the bot token field empty with a placeholder when a token exists server-side', async () => {
+    (api.get as any).mockImplementation(
+      makeGetMock({ discord: { data: { discord_bot_token: 'secrettoken' } } }),
+    );
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Bot Token/i)).toBeInTheDocument();
+    });
+
+    const tokenInput = screen.getByLabelText(/Bot Token/i) as HTMLInputElement;
+    // The saved token is never echoed back into the field
+    expect(tokenInput).toHaveValue('');
+    expect(tokenInput).toHaveAttribute('placeholder', 'Token saved — type to replace');
+  });
+
+  it('saves a typed bot token via the global endpoint and resets the field to placeholder mode', async () => {
+    (api.get as any).mockImplementation(
+      makeGetMock({ discord: { data: { discord_bot_token: 'old-secret' } } }),
+    );
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Bot Token/i)).toBeInTheDocument();
+    });
+
+    const tokenInput = screen.getByLabelText(/Bot Token/i) as HTMLInputElement;
+    fireEvent.change(tokenInput, { target: { value: 'brand-new-token' } });
+    // The user's raw input is preserved (no masking effect clobbers it)
+    expect(tokenInput).toHaveValue('brand-new-token');
+
+    fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
+        name: 'discord_bot_token',
+        value: 'brand-new-token',
+      });
+    });
+
+    // After a successful save the field returns to placeholder mode
+    await waitFor(() => {
+      expect(tokenInput).toHaveValue('');
+    });
+    expect(tokenInput).toHaveAttribute('placeholder', 'Token saved — type to replace');
+  });
+
+  it('does not send a token write when the bot token field is left untouched', async () => {
+    (api.get as any).mockImplementation(
+      makeGetMock({ discord: { data: { discord_bot_token: 'old-secret' } } }),
+    );
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Bot Token/i)).toBeInTheDocument();
+    });
+
+    // Save without touching the token field at all
+    fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Discord settings updated successfully/i)).toBeInTheDocument();
+    });
+
+    const tokenPuts = (api.put as any).mock.calls.filter(
+      ([, body]: any[]) => body?.name === 'discord_bot_token',
+    );
+    expect(tokenPuts).toHaveLength(0);
+  });
+
+  it('shows the plain placeholder when no token exists server-side yet', async () => {
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Bot Token/i)).toBeInTheDocument();
+    });
+
+    const tokenInput = screen.getByLabelText(/Bot Token/i) as HTMLInputElement;
+    expect(tokenInput).toHaveValue('');
+    expect(tokenInput).toHaveAttribute('placeholder', 'Enter Discord Bot Token');
+  });
+
   it('surfaces the backend envelope message when a Discord save fails', async () => {
     (api.put as any).mockRejectedValue({
       response: { status: 400, data: { success: false, message: 'Unknown setting name' } },

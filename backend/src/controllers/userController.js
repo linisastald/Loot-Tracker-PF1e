@@ -4,6 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Change user email
@@ -424,8 +425,9 @@ const deleteUser = async (req, res) => {
         throw controllerFactory.createNotFoundError('User not found');
     }
 
-    // Don't allow deleting yourself
-    if (userId === req.user.id) {
+    // Don't allow deleting yourself (Number() both sides: the body value may
+    // arrive as a string, which would bypass a strict === self-check)
+    if (Number(userId) === Number(req.user.id)) {
         throw controllerFactory.createValidationError('You cannot delete your own account');
     }
 
@@ -446,7 +448,7 @@ const updateSetting = async (req, res) => {
     const {name, value} = req.body;
 
     // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update settings');
     }
 
@@ -488,7 +490,7 @@ const updateSetting = async (req, res) => {
  */
 const getSettings = async (req, res) => {
     // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can view all settings');
     }
 
@@ -520,7 +522,7 @@ const getAllUsers = async (req, res) => {
  */
 const getAllCharacters = async (req, res) => {
     // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can view all characters');
     }
 
@@ -549,7 +551,7 @@ const updateAnyCharacter = async (req, res) => {
     const {id, name, appraisal_bonus, birthday, deathday, active, user_id} = req.body;
 
     // Ensure DM permission (should be handled by middleware too)
-    if (req.user.role !== 'DM') {
+    if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update any character');
     }
 

@@ -10,7 +10,8 @@ const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
  * Campaign settings a DM may write through PUT /campaigns/current/settings:
  * 'theme' (JSON override, clearable) plus every per-campaign scalar setting
  * (campaign_timezone, region, weather_forecast_days, treasure_track,
- * treasure_modifier, the boolean flags, and the Discord channel/role ids).
+ * treasure_modifier, average_party_level, the boolean flags, and the Discord
+ * channel/role ids).
  * Each name has a validator in SCALAR_SETTING_VALIDATORS (theme is special-
  * cased: it is the only setting with clear-the-row semantics).
  * @type {Array<string>}
@@ -97,6 +98,16 @@ const SCALAR_SETTING_VALIDATORS = {
       throw controllerFactory.createValidationError('treasure_modifier must be a positive number (at most 100)');
     }
     return { value: String(mod), valueType: 'string' };
+  },
+
+  average_party_level: (value) => {
+    const parsed = parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 30 || String(parsed) !== String(value).trim()) {
+      throw controllerFactory.createValidationError(
+        'average_party_level must be an integer between 1 and 30'
+      );
+    }
+    return { value: String(parsed), valueType: 'integer' };
   },
 
   infamy_system_enabled: (value) => validateBooleanValue('infamy_system_enabled', value),

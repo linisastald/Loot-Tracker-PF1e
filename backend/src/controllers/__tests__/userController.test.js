@@ -985,6 +985,23 @@ describe('userController', () => {
       expect(res.validationError).toHaveBeenCalledWith('You cannot delete your own account');
     });
 
+    it('should prevent self-deletion even when the body userId is a string (type-safe compare)', async () => {
+      const req = createMockReq({
+        user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
+        body: { userId: '99' },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [mockDmUser] });
+
+      await userController.deleteUser(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('You cannot delete your own account');
+      // No UPDATE ran
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+    });
+
     it('should return notFound when target user does not exist', async () => {
       const req = createMockReq({
         user: { id: 99, role: 'DM' },
@@ -1033,6 +1050,37 @@ describe('userController', () => {
       await userController.updateSetting(req, res);
 
       expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update settings');
+    });
+
+    it('should reject a user demoted to Player in the campaign even with a stale JWT DM role', async () => {
+      const req = createMockReq({
+        user: { id: 1, role: 'DM' },  // stale JWT role
+        campaignRole: 'Player',        // per-campaign role wins
+        body: { name: 'theme', value: 'dark' },
+      });
+      const res = createMockRes();
+
+      await userController.updateSetting(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update settings');
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should allow a superadmin whose JWT role is not DM', async () => {
+      const req = createMockReq({
+        user: { id: 1, role: 'Player' },
+        campaignRole: 'Player',
+        isSuperadmin: true,
+        body: { name: 'theme', value: 'dark' },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await userController.updateSetting(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledWith(null, 'Setting updated successfully');
     });
 
     it('should reject when required fields are missing', async () => {
@@ -1093,6 +1141,7 @@ describe('userController', () => {
       'weather_forecast_days',
       'treasure_track',
       'treasure_modifier',
+      'average_party_level',
       'infamy_system_enabled',
       'auto_appraisal_enabled',
       'auto_task_generation',

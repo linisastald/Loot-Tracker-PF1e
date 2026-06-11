@@ -189,7 +189,7 @@ describe('SystemAdmin', () => {
       );
 
       await waitFor(() => {
-        expect(api.post).toHaveBeenCalledWith('/auth/generate-manual-reset-link', {
+        expect(api.post).toHaveBeenCalledWith('/user/generate-manual-reset-link', {
           username: 'alice',
         });
       });

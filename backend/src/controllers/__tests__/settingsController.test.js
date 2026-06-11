@@ -222,6 +222,7 @@ describe('settingsController', () => {
       'weather_forecast_days',
       'treasure_track',
       'treasure_modifier',
+      'average_party_level',
       'infamy_system_enabled',
       'auto_appraisal_enabled',
       'auto_task_generation',
@@ -293,6 +294,37 @@ describe('settingsController', () => {
 
       expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update settings');
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should reject a user demoted to Player in the campaign even with a stale JWT DM role', async () => {
+      const req = createMockReq({
+        user: { id: 2, role: 'DM' },     // stale JWT role
+        campaignRole: 'Player',           // per-campaign role wins
+        body: { name: 'frontend_url', value: 'Test' },
+      });
+      const res = createMockRes();
+
+      await settingsController.updateSetting(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update settings');
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should allow a superadmin whose JWT role is not DM', async () => {
+      const req = createMockReq({
+        user: { id: 3, role: 'Player' },
+        campaignRole: 'Player',
+        isSuperadmin: true,
+        body: { name: 'frontend_url', value: 'https://loot.example.com' },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await settingsController.updateSetting(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalled();
     });
 
     it('should reject when name is missing', async () => {
@@ -482,21 +514,40 @@ describe('settingsController', () => {
   // ─── getAveragePartyLevel ───────────────────────────────────────
 
   describe('getAveragePartyLevel', () => {
-    it('should return stored average party level', async () => {
+    it('should return the per-campaign average party level (campaign_settings read)', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
       dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ name: 'average_party_level', value: '12', value_type: 'text' }],
+        rows: [{ value: '12' }],
       });
 
       await settingsController.getAveragePartyLevel(req, res);
+
+      // The read is campaign-scoped, not a global settings fetch
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('FROM campaign_settings');
+      expect(params).toContain('average_party_level');
 
       const data = res.success.mock.calls[0][0];
       expect(data.value).toBe('12');
     });
 
-    it('should return default "5" when not set', async () => {
+    it('should fall back to the deprecated global row when no per-campaign row exists', async () => {
+      const req = createMockReq();
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [] })                 // campaign_settings: none
+        .mockResolvedValueOnce({ rows: [{ value: '8' }] });  // global fallback
+
+      await settingsController.getAveragePartyLevel(req, res);
+
+      const data = res.success.mock.calls[0][0];
+      expect(data.value).toBe('8');
+    });
+
+    it('should return default "5" when not set in either table', async () => {
       const req = createMockReq();
       const res = createMockRes();
 

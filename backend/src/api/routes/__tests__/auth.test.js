@@ -120,6 +120,8 @@ describe('auth routes', () => {
       ['post', '/api/auth/generate-custom-invite'],
       ['get', '/api/auth/active-invites'],
       ['post', '/api/auth/deactivate-invite'],
+      // Phase 5b: moved to the CSRF-protected /api/user mount
+      ['post', '/api/auth/generate-manual-reset-link'],
     ])('%s %s no longer exists on the auth mount', async (method, path) => {
       const res = await request(app)[method](path).send({});
       expect(res.status).toBe(404);
