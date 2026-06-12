@@ -490,16 +490,18 @@ CREATE INDEX idx_weather_date_region ON golarion_weather(year, month, day, regio
 CREATE INDEX idx_golarion_weather_campaign_id ON golarion_weather(campaign_id);
 
 -- One infamy row per campaign (UNIQUE on campaign_id); legacy id PK retained.
+-- One infamy row per campaign. PK is campaign_id; the legacy id column is
+-- fixed at 1 (infamyController addresses the per-campaign singleton as
+-- WHERE id = 1 under RLS). A global PK on id would block every campaign
+-- after the first from initializing infamy (see migration 051).
 CREATE TABLE ship_infamy (
-    id INTEGER PRIMARY KEY,
+    id INTEGER NOT NULL DEFAULT 1,
     infamy INTEGER NOT NULL DEFAULT 0,
     disrepute INTEGER NOT NULL DEFAULT 0,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
-    CONSTRAINT ship_infamy_campaign_id_key UNIQUE (campaign_id)
+    CONSTRAINT ship_infamy_pkey PRIMARY KEY (campaign_id)
 );
-
-CREATE INDEX idx_ship_infamy_campaign_id ON ship_infamy(campaign_id);
 
 CREATE TABLE infamy_history (
     id SERIAL PRIMARY KEY,
