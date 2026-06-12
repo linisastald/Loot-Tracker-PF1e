@@ -186,6 +186,7 @@ CREATE TABLE loot (
 );
 
 CREATE INDEX idx_loot_campaign_id ON loot(campaign_id);
+CREATE INDEX idx_loot_status_character ON loot(status, whohas);
 
 CREATE TABLE appraisal (
     id SERIAL PRIMARY KEY,
@@ -227,6 +228,7 @@ CREATE TABLE sold (
 );
 
 CREATE INDEX idx_sold_campaign_id ON sold(campaign_id);
+CREATE INDEX idx_sold_loot_date ON sold(lootid, soldon);
 
 CREATE TABLE consumableuse (
     id SERIAL PRIMARY KEY,
@@ -254,6 +256,7 @@ CREATE TABLE identify (
 );
 
 CREATE INDEX idx_identify_campaign_id ON identify(campaign_id);
+CREATE INDEX idx_identify_loot_date ON identify(lootid, golarion_date);
 
 CREATE TABLE settings (
     id SERIAL PRIMARY KEY,
@@ -383,8 +386,6 @@ CREATE TABLE golarion_current_date (
     CONSTRAINT golarion_current_date_pkey PRIMARY KEY (campaign_id)
 );
 
-CREATE INDEX idx_golarion_current_date_campaign_id ON golarion_current_date(campaign_id);
-
 CREATE TABLE golarion_calendar_notes (
     id SERIAL PRIMARY KEY,
     year INTEGER NOT NULL,
@@ -485,9 +486,9 @@ CREATE TABLE golarion_weather (
     CONSTRAINT golarion_weather_pkey PRIMARY KEY (campaign_id, year, month, day, region)
 );
 
--- Create weather indexes
+-- Create weather indexes (campaign_id needs no index: it is the PK's
+-- leading column; see migration 052)
 CREATE INDEX idx_weather_date_region ON golarion_weather(year, month, day, region);
-CREATE INDEX idx_golarion_weather_campaign_id ON golarion_weather(campaign_id);
 
 -- One infamy row per campaign (UNIQUE on campaign_id); legacy id PK retained.
 -- One infamy row per campaign. PK is campaign_id; the legacy id column is
