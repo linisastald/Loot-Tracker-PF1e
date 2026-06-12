@@ -342,7 +342,7 @@ CREATE TABLE invites (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     used_at TIMESTAMP,
     expires_at TIMESTAMP,
-    is_used BOOLEAN DEFAULT false,
+    is_used BOOLEAN NOT NULL DEFAULT false,
     campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
