@@ -21,6 +21,7 @@ const ALLOWED_CAMPAIGN_SETTINGS = ['theme', ...campaignSettings.PER_CAMPAIGN_SET
 /** Per-campaign boolean flags stored as '0'/'1' strings. */
 const BOOLEAN_SETTINGS = [
   'infamy_system_enabled',
+  'harrow_system_enabled',
   'auto_appraisal_enabled',
   'auto_task_generation',
   'discord_integration_enabled',
@@ -111,6 +112,18 @@ const SCALAR_SETTING_VALIDATORS = {
   },
 
   infamy_system_enabled: (value) => validateBooleanValue('infamy_system_enabled', value),
+  harrow_system_enabled: (value) => validateBooleanValue('harrow_system_enabled', value),
+
+  harrow_current_chapter: (value) => {
+    const parsed = parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 6 || String(parsed) !== String(value).trim()) {
+      throw controllerFactory.createValidationError(
+        'harrow_current_chapter must be an integer between 1 and 6'
+      );
+    }
+    return { value: String(parsed), valueType: 'integer' };
+  },
+
   auto_appraisal_enabled: (value) => validateBooleanValue('auto_appraisal_enabled', value),
   auto_task_generation: (value) => validateBooleanValue('auto_task_generation', value),
   discord_integration_enabled: (value) => validateBooleanValue('discord_integration_enabled', value),

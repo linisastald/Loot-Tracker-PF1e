@@ -48,6 +48,7 @@ import {
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import CasinoIcon from '@mui/icons-material/Casino';
+import StyleIcon from '@mui/icons-material/Style';
 import lootService from '../../services/lootService';
 import versionService from '../../services/versionService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -77,6 +78,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
   const { currentCampaign, campaignSettings, isSuperadmin } = useCampaign();
   const groupName = currentCampaign?.name || 'Loot Tracker';
   const infamyEnabled = campaignSettings?.infamy_system_enabled === '1';
+  const harrowEnabled = campaignSettings?.harrow_system_enabled === '1';
 
   const handleToggle = (setter) => () => setter(prev => !prev);
 
@@ -333,6 +335,15 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
               to="/infamy"
               primary="Infamy"
               icon={<SailingIcon/>}
+              isCategory
+            />
+          )}
+
+          {harrowEnabled && (
+            <MenuItem
+              to="/harrow"
+              primary="Harrow Points"
+              icon={<StyleIcon/>}
               isCategory
             />
           )}

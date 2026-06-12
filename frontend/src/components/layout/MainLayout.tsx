@@ -54,6 +54,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
               return 'Character Loot Ledger';
           case '/infamy':
               return 'Infamy';
+          case '/harrow':
+              return 'Harrow Points';
           case '/city-services':
               return 'City Services';
           case '/system-admin':

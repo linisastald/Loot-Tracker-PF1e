@@ -32,6 +32,7 @@ const Infamy = React.lazy(() => import('./components/pages/Infamy'));
 const ShipManagement = React.lazy(() => import('./components/pages/ShipManagement'));
 const OutpostManagement = React.lazy(() => import('./components/pages/OutpostManagement'));
 const CrewManagement = React.lazy(() => import('./components/pages/CrewManagement'));
+const HarrowTracker = React.lazy(() => import('./components/pages/HarrowTracker'));
 const SessionsPage = React.lazy(() => import('./components/pages/Sessions/SessionsPage'));
 const SessionManagement = React.lazy(() => import('./components/pages/DMSettings/SessionManagement'));
 const CityServices = React.lazy(() => import('./components/pages/CityServices'));
@@ -224,6 +225,7 @@ function App() {
               <Route path="ships" element={<ErrorBoundary><ShipManagement /></ErrorBoundary>} />
               <Route path="outposts" element={<ErrorBoundary><OutpostManagement /></ErrorBoundary>} />
               <Route path="crew" element={<ErrorBoundary><CrewManagement /></ErrorBoundary>} />
+              <Route path="harrow" element={<ErrorBoundary><HarrowTracker /></ErrorBoundary>} />
               <Route path="sessions" element={<ErrorBoundary><SessionsPage /></ErrorBoundary>} />
               <Route path="session-management" element={<ErrorBoundary><SessionManagement /></ErrorBoundary>} />
               <Route path="city-services" element={<ErrorBoundary><CityServices /></ErrorBoundary>} />

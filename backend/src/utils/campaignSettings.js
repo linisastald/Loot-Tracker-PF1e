@@ -43,6 +43,8 @@ const PER_CAMPAIGN_SETTINGS = [
   'treasure_modifier',
   'average_party_level',
   'infamy_system_enabled',
+  'harrow_system_enabled',
+  'harrow_current_chapter',
   'auto_appraisal_enabled',
   'auto_task_generation',
   'discord_integration_enabled',

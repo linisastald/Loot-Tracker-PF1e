@@ -309,6 +309,8 @@ describe('campaignSettings', () => {
         'campaign_timezone',
         'discord_channel_id',
         'discord_integration_enabled',
+        'harrow_current_chapter',
+        'harrow_system_enabled',
         'infamy_system_enabled',
         'region',
         'treasure_modifier',

@@ -294,6 +294,7 @@ const configRoutes = require('./src/api/routes/config');
 const shipRoutes = require('./src/api/routes/ships');
 const outpostRoutes = require('./src/api/routes/outposts');
 const crewRoutes = require('./src/api/routes/crew');
+const harrowRoutes = require('./src/api/routes/harrow');
 
 // New refactored routes
 const itemRoutes = require('./src/api/routes/items');
@@ -360,6 +361,7 @@ app.use('/api/weather', csrfProtection, weatherRoutes);
 app.use('/api/ships', csrfProtection, shipRoutes);
 app.use('/api/outposts', csrfProtection, outpostRoutes);
 app.use('/api/crew', csrfProtection, crewRoutes);
+app.use('/api/harrow', csrfProtection, harrowRoutes);
 
 // New refactored routes
 app.use('/api/items', csrfProtection, itemRoutes);

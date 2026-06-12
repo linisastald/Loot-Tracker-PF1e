@@ -33,6 +33,9 @@ const CampaignSettings = () => {
     const [infamyEnabled, setInfamyEnabled] = useState(false);
     const [averagePartyLevel, setAveragePartyLevel] = useState(5);
 
+    // Harrow Point Tracker (Curse of the Crimson Throne)
+    const [harrowEnabled, setHarrowEnabled] = useState(false);
+
     // Region states
     const [region, setRegion] = useState('Varisia');
     const [availableRegions, setAvailableRegions] = useState([]);
@@ -49,6 +52,7 @@ const CampaignSettings = () => {
     // campaign context.
     useEffect(() => {
         setInfamyEnabled(campaignSettings?.infamy_system_enabled === '1');
+        setHarrowEnabled(campaignSettings?.harrow_system_enabled === '1');
         if (typeof campaignSettings?.region === 'string' && campaignSettings.region) {
             setRegion(campaignSettings.region);
         }
@@ -113,6 +117,29 @@ const CampaignSettings = () => {
             setInfamyEnabled(previous);
             enqueueSnackbar(
                 err.response?.data?.message || 'Error updating infamy system setting',
+                {variant: 'error'}
+            );
+        }
+    };
+
+    const handleHarrowSystemChange = async (event) => {
+        const isEnabled = event.target.checked;
+        const previous = harrowEnabled;
+        setHarrowEnabled(isEnabled);
+        try {
+            await api.put('/campaigns/current/settings', {
+                name: 'harrow_system_enabled',
+                value: isEnabled ? '1' : '0'
+            });
+            await refresh();
+            enqueueSnackbar(
+                `Harrow Point Tracker ${isEnabled ? 'enabled' : 'disabled'} successfully`,
+                {variant: 'success'}
+            );
+        } catch (err) {
+            setHarrowEnabled(previous);
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error updating Harrow Point Tracker setting',
                 {variant: 'error'}
             );
         }
@@ -268,6 +295,25 @@ const CampaignSettings = () => {
                         )}
                     </Box>
                 )}
+            </Paper>
+
+            <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
+                <Typography variant="h6" gutterBottom>Harrow Point Tracker</Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                    Curse of the Crimson Throne flavor module. Tracks each PC's Harrow Point
+                    balance for the current chapter.
+                </Typography>
+
+                <FormControlLabel
+                    control={
+                        <Switch
+                            checked={harrowEnabled}
+                            onChange={handleHarrowSystemChange}
+                            color="primary"
+                        />
+                    }
+                    label="Enable Harrow Point Tracker"
+                />
             </Paper>
         </div>
     );
