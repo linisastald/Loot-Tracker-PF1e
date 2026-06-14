@@ -6,8 +6,16 @@ const { discordRateLimiter } = require('../utils/rateLimiter');
 const ServiceResult = require('../utils/ServiceResult');
 const campaignSettings = require('../utils/campaignSettings');
 
-// Broker registration is single-campaign for now: it registers the DEFAULT
-// campaign's channel config. Per-campaign registration is a later phase.
+// Broker registration enumerates EVERY campaign that has a Discord channel
+// configured and registers them all under one broker app (one appId, one
+// callback endpoint, many channels). The single-container backend serves all
+// campaigns at the same endpoint, and processSessionInteraction resolves the
+// campaign from the interaction's message id, so the broker only needs to know
+// which channels belong to this deployment.
+//
+// DEFAULT_BROKER_CAMPAIGN_ID is the legacy fallback used only when no campaign
+// has an explicit per-campaign discord_channel_id row (pre-migration-048
+// deployments where the channel lived in the global settings table).
 const DEFAULT_BROKER_CAMPAIGN_ID = '1';
 
 class DiscordBrokerService {
@@ -18,6 +26,7 @@ class DiscordBrokerService {
     this.groupName = null;
     this.isRegistered = false;
     this.heartbeatInterval = null;
+    this.lastChannelKey = null; // signature of last-registered channel set
     this.retryTimeout = null;
     this.retryAttempts = 0;
     this.maxRetries = 5;
@@ -49,26 +58,18 @@ class DiscordBrokerService {
 
   async registerWithBroker() {
     try {
-      // Get Discord settings from database
-      const settings = await this.getDiscordSettings();
-      if (!settings || !settings.session_channel_id) {
-        logger.warn('Discord channel ID not configured in database, skipping registration');
+      // Enumerate the Discord channels of EVERY campaign so inbound interactions
+      // (button clicks) route correctly for all campaigns, not just campaign 1.
+      const channels = await this.buildAllChannelsConfig();
+      if (Object.keys(channels).length === 0) {
+        logger.warn('No Discord channel configured for any campaign, skipping registration');
         return;
       }
 
-      const registrationData = {
-        appId: this.appId,
-        name: `Pathfinder Loot Tracker - ${this.groupName}`,
-        description: 'Session attendance tracking and loot management',
-        endpoint: this.buildCallbackUrl(),
-        guildId: settings.guild_id || 'unknown', // Will be determined by the broker
-        channels: this.buildChannelConfig(settings),
-        healthCheckInterval: 30000
-      };
+      const registrationData = this.buildRegistrationData(channels);
 
       logger.info('Registering with Discord broker...', {
         appId: this.appId,
-        guildId: settings.guild_id,
         endpoint: registrationData.endpoint,
         channels: Object.keys(registrationData.channels)
       });
@@ -79,6 +80,7 @@ class DiscordBrokerService {
         logger.info('Successfully registered with Discord broker');
         this.isRegistered = true;
         this.retryAttempts = 0;
+        this.lastChannelKey = this.channelKey(channels);
         this.startHeartbeat();
       } else {
         throw new Error(`Registration failed: ${response.message}`);
@@ -97,13 +99,124 @@ class DiscordBrokerService {
     }
   }
 
+  /**
+   * Build the broker channel map for EVERY campaign that has a Discord channel
+   * configured. Each campaign's explicit campaign_settings.discord_channel_id
+   * row is authoritative; a campaign whose discord_integration_enabled is
+   * explicitly 'false' is skipped. When no campaign has an explicit channel row
+   * (legacy / pre-migration-048 deployments) it falls back to the deprecated
+   * global settings channel for the default campaign.
+   *
+   * @return {Promise<Object>} Map of Discord channel id to broker channel config
+   */
+  async buildAllChannelsConfig() {
+    const channels = {};
+
+    try {
+      // Authoritative per-campaign channel rows. Reads campaign_settings
+      // directly (NOT via the global fallback) so each campaign only registers
+      // a channel it has explicitly configured.
+      const result = await dbUtils.executeQuery(
+        `SELECT cs.campaign_id,
+                cs.value      AS channel_id,
+                c.name        AS campaign_name,
+                en.value      AS enabled
+           FROM campaign_settings cs
+           JOIN campaigns c ON c.id = cs.campaign_id
+           LEFT JOIN campaign_settings en
+             ON en.campaign_id = cs.campaign_id
+            AND en.name = 'discord_integration_enabled'
+          WHERE cs.name = 'discord_channel_id'
+            AND cs.value IS NOT NULL
+            AND cs.value <> ''`
+      );
+
+      for (const row of result.rows) {
+        if (row.enabled === 'false') continue; // explicitly disabled
+        channels[row.channel_id] = {
+          type: 'session-attendance',
+          name: `Session Attendance - ${row.campaign_name}`,
+          description: `Session attendance tracking for ${row.campaign_name}`,
+          campaignId: String(row.campaign_id)
+        };
+      }
+    } catch (error) {
+      logger.error('Failed to enumerate campaign Discord channels for broker registration:', error);
+    }
+
+    // Legacy fallback: deployments with no explicit per-campaign channel row
+    // (channel still lives in the deprecated global settings table).
+    if (Object.keys(channels).length === 0) {
+      const legacy = await this.getDiscordSettings();
+      if (legacy && legacy.session_channel_id) {
+        Object.assign(channels, this.buildChannelConfig(legacy));
+      }
+    }
+
+    return channels;
+  }
+
+  /**
+   * Build the /register payload for a given channel map.
+   * @param {Object} channels - Map of channel id to broker channel config
+   * @return {Object} Registration payload
+   */
+  buildRegistrationData(channels) {
+    return {
+      appId: this.appId,
+      name: `Pathfinder Loot Tracker - ${this.groupName}`,
+      description: 'Session attendance tracking and loot management',
+      endpoint: this.buildCallbackUrl(),
+      guildId: 'unknown', // Will be determined by the broker
+      channels,
+      healthCheckInterval: 30000
+    };
+  }
+
+  /**
+   * Stable signature of a channel map, used to detect when the set of
+   * registered channels has changed (e.g. a new campaign was created).
+   * @param {Object} channels - Map of channel id to broker channel config
+   * @return {string}
+   */
+  channelKey(channels) {
+    return Object.keys(channels).sort().join(',');
+  }
+
+  /**
+   * Re-register with the broker when the campaign channel set has changed since
+   * the last registration. Runs on the heartbeat tick so campaigns created
+   * after startup are picked up within one heartbeat interval (~30s) without a
+   * backend restart. The broker's /register is idempotent (overwrites the app's
+   * entry), so re-sending is safe.
+   */
+  async refreshRegistrationIfChanged() {
+    if (!this.isRegistered) return;
+
+    const channels = await this.buildAllChannelsConfig();
+    if (Object.keys(channels).length === 0) return; // never drop to empty
+    const key = this.channelKey(channels);
+    if (key === this.lastChannelKey) return;
+
+    logger.info('Discord campaign channel set changed, re-registering with broker', {
+      appId: this.appId,
+      channels: Object.keys(channels)
+    });
+
+    const response = await this.makeRequest('/register', 'POST', this.buildRegistrationData(channels));
+    if (response.success) {
+      this.lastChannelKey = key;
+    } else {
+      throw new Error(`Re-registration failed: ${response.message}`);
+    }
+  }
+
   async getDiscordSettings() {
     try {
-      // Channel and role ids are per-campaign (campaign_settings with global
-      // fallback). Broker registration is a startup background path that runs
-      // outside any campaign context, so it registers for the DEFAULT
-      // campaign (id 1) explicitly; per-campaign broker registration (one
-      // registration per campaign) is a later phase.
+      // Legacy fallback only (see buildAllChannelsConfig). Reads the DEFAULT
+      // campaign (id 1) with the global settings fallback so pre-migration-048
+      // deployments — where the channel lived in the global settings table —
+      // still register a channel.
       const rows = await campaignSettings.getCampaignSettings(
         ['discord_channel_id', 'campaign_role_id'],
         { campaignId: DEFAULT_BROKER_CAMPAIGN_ID }
@@ -159,6 +272,8 @@ class DiscordBrokerService {
     this.heartbeatInterval = setInterval(async () => {
       try {
         await this.sendHeartbeat();
+        // Pick up channels for campaigns created/changed after startup.
+        await this.refreshRegistrationIfChanged();
       } catch (error) {
         logger.error('Discord broker heartbeat failed:', error);
 

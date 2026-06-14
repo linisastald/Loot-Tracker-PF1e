@@ -60,3 +60,59 @@ describe('DiscordBrokerService.resolveAppIdentity', () => {
     expect(dbUtils.executeQuery).not.toHaveBeenCalled();
   });
 });
+
+describe('DiscordBrokerService.buildAllChannelsConfig', () => {
+  beforeEach(() => {
+    dbUtils.executeQuery.mockReset();
+  });
+
+  it('registers a channel for every campaign with an explicit channel row', async () => {
+    dbUtils.executeQuery.mockResolvedValueOnce({
+      rows: [
+        { campaign_id: 1, channel_id: '111', campaign_name: 'ROTR', enabled: 'true' },
+        { campaign_id: 2, channel_id: '222', campaign_name: 'Skulls', enabled: null },
+      ],
+    });
+
+    const channels = await discordBrokerService.buildAllChannelsConfig();
+
+    expect(Object.keys(channels).sort()).toEqual(['111', '222']);
+    expect(channels['222'].campaignId).toBe('2');
+    expect(channels['111'].name).toContain('ROTR');
+  });
+
+  it('skips campaigns whose Discord integration is explicitly disabled', async () => {
+    dbUtils.executeQuery.mockResolvedValueOnce({
+      rows: [
+        { campaign_id: 1, channel_id: '111', campaign_name: 'ROTR', enabled: 'true' },
+        { campaign_id: 2, channel_id: '222', campaign_name: 'Off', enabled: 'false' },
+      ],
+    });
+
+    const channels = await discordBrokerService.buildAllChannelsConfig();
+
+    expect(Object.keys(channels)).toEqual(['111']);
+  });
+
+  it('falls back to the legacy global channel when no campaign has an explicit row', async () => {
+    // 1st query: no explicit per-campaign rows.
+    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+    // getDiscordSettings -> getCampaignSettings: campaign row empty, then global fallback hit.
+    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // campaign_settings
+    dbUtils.executeQuery.mockResolvedValueOnce({
+      rows: [{ name: 'discord_channel_id', value: '999' }],
+    }); // global settings fallback
+
+    const channels = await discordBrokerService.buildAllChannelsConfig();
+
+    expect(Object.keys(channels)).toEqual(['999']);
+  });
+});
+
+describe('DiscordBrokerService.channelKey', () => {
+  it('is order-independent so reordered channel sets compare equal', () => {
+    const a = discordBrokerService.channelKey({ '222': {}, '111': {} });
+    const b = discordBrokerService.channelKey({ '111': {}, '222': {} });
+    expect(a).toBe(b);
+  });
+});
