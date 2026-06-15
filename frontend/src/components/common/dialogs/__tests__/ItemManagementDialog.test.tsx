@@ -301,12 +301,13 @@ describe('ItemManagementDialog', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Calculate Value: clicking the button calls the backend calculator with the
-  // linked item's base data + selected mods (masterwork honored) and writes the
-  // returned value into the Value field. Regression for the dead/never-wired
-  // calculateValue path.
+  // Auto value calculation: when the dialog opens for an item linked to a
+  // catalog base item, the value is recomputed automatically (no button) from
+  // the base item's data + selected mods, with masterwork honored, and written
+  // into the Value field. Regression for the dead/never-wired calculateValue
+  // path.
   // -------------------------------------------------------------------------
-  it('calculates the value from the linked item + mods when Calculate is clicked', async () => {
+  it('auto-calculates the value from the linked item + mods on open', async () => {
     (lootService.getItemsByIds as any).mockResolvedValueOnce({
       data: {
         items: [{ ...longsword, value: 15, subtype: null, weight: 4 }],
@@ -331,12 +332,6 @@ describe('ItemManagementDialog', () => {
     );
 
     await waitFor(() => {
-      expect(lootService.getItemsByIds).toHaveBeenCalledWith([100]);
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /calculate/i }));
-
-    await waitFor(() => {
       expect(lootService.calculateValue).toHaveBeenCalledWith(
         expect.objectContaining({
           itemId: 100,
@@ -354,7 +349,7 @@ describe('ItemManagementDialog', () => {
     });
   });
 
-  it('disables Calculate when no base item is linked', async () => {
+  it('does not auto-calculate value when no base item is linked', async () => {
     render(
       <ItemManagementDialog
         open
@@ -368,7 +363,9 @@ describe('ItemManagementDialog', () => {
       expect(lootService.getMods).toHaveBeenCalled();
     });
 
-    expect(screen.getByRole('button', { name: /calculate/i })).toBeDisabled();
+    // No linked catalog item -> the custom value is preserved, not recalculated.
+    const valueInput = screen.getByLabelText('Value') as HTMLInputElement;
+    expect(valueInput.value).toBe('50');
     expect(lootService.calculateValue).not.toHaveBeenCalled();
   });
 });

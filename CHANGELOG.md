@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - **Discord session responses now work in every campaign.** When a newer campaign posted a session attendance message, players who clicked to respond got "This channel is not configured for session attendance tracking." Each campaign's Discord channel is now registered for interactions, and channels for campaigns created later are picked up automatically (within ~30 seconds) without a restart.
-- **The Update Item dialog can calculate an item's value again.** A new **Calculate** button next to the Value field works out the price from the linked base item plus its selected mods (honoring masterwork, size, and charges). It only runs when you click it, so a hand-entered custom value is never overwritten, and it's disabled until a base item is linked.
+- **The Update Item dialog calculates an item's value automatically again.** The Value field now recomputes from the linked base item plus its selected mods (honoring masterwork, size, and charges) whenever you change any of those. Items that aren't linked to a catalog item keep their hand-entered value.
 - **+4 and +5 enhancements now appear under armor.** They were mislabeled as weapon enhancements, so they showed up twice in the weapon list and were missing from armor entirely — you can now apply a +4 or +5 enhancement to armor.
 
 ### Notes

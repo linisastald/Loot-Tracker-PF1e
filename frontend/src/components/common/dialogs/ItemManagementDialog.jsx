@@ -3,7 +3,6 @@ import React, {useEffect, useState} from 'react';
 import {
   Alert,
   Autocomplete,
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -179,43 +178,58 @@ const ItemManagementDialog = ({
 
     const [calculatingValue, setCalculatingValue] = useState(false);
 
-    // Recompute the Value from the linked base item + selected mods (plus
-    // masterwork/size/charges) via the backend calculator. Explicit (button)
-    // rather than automatic so a DM's hand-set custom value is never silently
-    // clobbered. Requires a linked catalog item to have a base value to work from.
-    const handleCalculateValue = async () => {
-        if (!linkedCatalogItem) {
-            setError('Link a base item before calculating its value.');
-            return;
-        }
-        setError(null);
-        setCalculatingValue(true);
-        try {
-            const modids = Array.isArray(updatedItem?.modids) ? updatedItem.modids : [];
-            const response = await lootService.calculateValue({
-                itemId: linkedCatalogItem.id,
-                itemType: linkedCatalogItem.type || null,
-                itemSubtype: linkedCatalogItem.subtype || null,
-                itemValue: linkedCatalogItem.value,
-                isMasterwork: !!updatedItem?.masterwork,
-                mods: modids.map(id => ({ id })),
-                charges: updatedItem?.charges ? parseInt(updatedItem.charges, 10) : null,
-                size: updatedItem?.size || null,
-                weight: linkedCatalogItem.weight ?? null,
-            });
-            const calculated = response?.data?.value;
-            if (calculated === undefined || calculated === null) {
-                setError('Value calculation returned no result.');
-                return;
+    // Auto-recompute the Value from the linked base item + selected mods (plus
+    // masterwork/size/charges) via the backend calculator whenever any of those
+    // price-affecting inputs change. Only runs for items linked to a catalog
+    // base item — custom items (no itemid) keep their hand-entered value, since
+    // there is no base item to calculate from. A value typed by hand for a
+    // linked item persists until the item/mods/etc. change or the dialog is
+    // reopened.
+    useEffect(() => {
+        if (!open || !linkedCatalogItem) return;
+        let cancelled = false;
+        const recompute = async () => {
+            setCalculatingValue(true);
+            try {
+                const modids = Array.isArray(updatedItem?.modids) ? updatedItem.modids : [];
+                const response = await lootService.calculateValue({
+                    itemId: linkedCatalogItem.id,
+                    itemType: linkedCatalogItem.type || null,
+                    itemSubtype: linkedCatalogItem.subtype || null,
+                    itemValue: linkedCatalogItem.value,
+                    isMasterwork: !!updatedItem?.masterwork,
+                    mods: modids.map(id => ({ id })),
+                    charges: updatedItem?.charges ? parseInt(updatedItem.charges, 10) : null,
+                    size: updatedItem?.size || null,
+                    weight: linkedCatalogItem.weight ?? null,
+                });
+                if (cancelled) return;
+                const calculated = response?.data?.value;
+                if (calculated !== undefined && calculated !== null) {
+                    setUpdatedItem(prev =>
+                        prev?.value === calculated ? prev : { ...prev, value: calculated }
+                    );
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    console.error('Error auto-calculating item value:', err);
+                }
+            } finally {
+                if (!cancelled) setCalculatingValue(false);
             }
-            handleItemUpdateChange('value', calculated);
-        } catch (err) {
-            console.error('Error calculating item value:', err);
-            setError(err.response?.data?.message || 'Failed to calculate item value');
-        } finally {
-            setCalculatingValue(false);
-        }
-    };
+        };
+        recompute();
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        open,
+        linkedCatalogItem,
+        updatedItem?.modids,
+        updatedItem?.masterwork,
+        updatedItem?.size,
+        updatedItem?.charges,
+    ]);
 
     const handleSave = () => {
         try {
@@ -432,24 +446,19 @@ const ItemManagementDialog = ({
                     onChange={(e) => handleItemUpdateChange('charges', e.target.value)}
                     margin="normal"
                 />
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                    <TextField
-                        label="Value"
-                        type="number"
-                        fullWidth
-                        value={updatedItem.value ?? ''}
-                        onChange={(e) => handleItemUpdateChange('value', e.target.value)}
-                        margin="normal"
-                    />
-                    <Button
-                        onClick={handleCalculateValue}
-                        variant="outlined"
-                        disabled={!updatedItem.itemid || calculatingValue}
-                        sx={{ mt: 2, whiteSpace: 'nowrap' }}
-                    >
-                        {calculatingValue ? 'Calculating…' : 'Calculate'}
-                    </Button>
-                </Box>
+                <TextField
+                    label="Value"
+                    type="number"
+                    fullWidth
+                    value={updatedItem.value ?? ''}
+                    onChange={(e) => handleItemUpdateChange('value', e.target.value)}
+                    margin="normal"
+                    helperText={
+                        calculatingValue
+                            ? 'Calculating value…'
+                            : (updatedItem.itemid ? 'Auto-calculated from the linked item and mods' : ' ')
+                    }
+                />
                 <TextField
                     label="Notes"
                     fullWidth
