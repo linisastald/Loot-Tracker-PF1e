@@ -41,6 +41,7 @@ vi.mock('../../../../services/lootService', () => ({
     getMods: vi.fn(),
     getItemsByIds: vi.fn(),
     suggestItems: vi.fn(),
+    calculateValue: vi.fn(),
   },
 }));
 
@@ -90,6 +91,9 @@ const setupDefaultMocks = () => {
   });
   (lootService.suggestItems as any).mockResolvedValue({
     data: { suggestions: [], count: 0 },
+  });
+  (lootService.calculateValue as any).mockResolvedValue({
+    data: { value: 2315 },
   });
 };
 
@@ -294,5 +298,77 @@ describe('ItemManagementDialog', () => {
     expect(dcInput.value).toBe('12');
     // The catalog lookup should not have been triggered with no itemid.
     expect(lootService.getItemsByIds).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Calculate Value: clicking the button calls the backend calculator with the
+  // linked item's base data + selected mods (masterwork honored) and writes the
+  // returned value into the Value field. Regression for the dead/never-wired
+  // calculateValue path.
+  // -------------------------------------------------------------------------
+  it('calculates the value from the linked item + mods when Calculate is clicked', async () => {
+    (lootService.getItemsByIds as any).mockResolvedValueOnce({
+      data: {
+        items: [{ ...longsword, value: 15, subtype: null, weight: 4 }],
+        count: 1,
+      },
+    });
+
+    render(
+      <ItemManagementDialog
+        open
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        item={{
+          id: 5,
+          name: '+1 Longsword',
+          itemid: 100,
+          modids: [7],
+          masterwork: true,
+          value: 15,
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(lootService.getItemsByIds).toHaveBeenCalledWith([100]);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /calculate/i }));
+
+    await waitFor(() => {
+      expect(lootService.calculateValue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId: 100,
+          itemType: 'weapon',
+          itemValue: 15,
+          isMasterwork: true,
+          mods: [{ id: 7 }],
+        })
+      );
+    });
+
+    const valueInput = screen.getByLabelText('Value') as HTMLInputElement;
+    await waitFor(() => {
+      expect(valueInput.value).toBe('2315');
+    });
+  });
+
+  it('disables Calculate when no base item is linked', async () => {
+    render(
+      <ItemManagementDialog
+        open
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        item={{ id: 6, name: 'Loose gem', itemid: null, modids: [], value: 50 }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(lootService.getMods).toHaveBeenCalled();
+    });
+
+    expect(screen.getByRole('button', { name: /calculate/i })).toBeDisabled();
+    expect(lootService.calculateValue).not.toHaveBeenCalled();
   });
 });

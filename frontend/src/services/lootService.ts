@@ -58,10 +58,19 @@ export interface IdentificationData {
   spellcraftRolls: number[];
 }
 
+// Matches the backend contract for POST /item-creation/calculate-value
+// (ItemParsingService.calculateItemValue -> calculateFinalValue). `mods` is a
+// list of mod references by id; the backend fetches each mod's plus/valuecalc.
 export interface ValueCalculationData {
-  baseValue?: number;
-  itemType?: ItemType;
-  modifications?: Array<{ type: string; value: number }>;
+  itemId?: number | null;
+  itemType?: ItemType | string | null;
+  itemSubtype?: string | null;
+  itemValue?: number | null;
+  isMasterwork?: boolean;
+  mods?: Array<{ id: number }>;
+  charges?: number | null;
+  size?: string | null;
+  weight?: number | null;
 }
 
 export interface SuggestionParams {

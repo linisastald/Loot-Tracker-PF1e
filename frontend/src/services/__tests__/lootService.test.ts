@@ -375,15 +375,18 @@ describe('lootService', () => {
 
   describe('calculateValue', () => {
     it('should POST to /item-creation/calculate-value with value data', async () => {
-      const data = { baseValue: 100, itemType: 'Weapon' as any };
+      const data = { itemId: 5, itemType: 'weapon', itemValue: 100 };
       await lootService.calculateValue(data);
       expect(api.post).toHaveBeenCalledWith('/item-creation/calculate-value', data);
     });
 
-    it('should handle modifications array', async () => {
+    it('should pass mods as id references', async () => {
       const data = {
-        baseValue: 100,
-        modifications: [{ type: 'enhancement', value: 2000 }],
+        itemId: 5,
+        itemType: 'weapon',
+        itemValue: 100,
+        isMasterwork: true,
+        mods: [{ id: 12 }, { id: 34 }],
       };
       await lootService.calculateValue(data);
       expect(api.post).toHaveBeenCalledWith('/item-creation/calculate-value', data);
