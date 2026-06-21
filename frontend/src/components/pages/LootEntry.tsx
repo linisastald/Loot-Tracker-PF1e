@@ -81,59 +81,62 @@ const LootEntry = () => {
         }
     };
 
+    // The action bar is rendered both stickied to the top and to the bottom so
+    // the buttons stay reachable no matter how far you've scrolled while adding
+    // a long list of entries.
+    const renderActionBar = (placement: 'top' | 'bottom') => (
+        <Box sx={{
+            position: 'sticky',
+            [placement]: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1100,
+            backgroundColor: 'background.default',
+            pt: 2,
+            pb: 2,
+        }}>
+            <Paper sx={{ p: { xs: 1.5, md: 2 } }}>
+                <Box sx={{
+                    display: 'flex',
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    gap: 1,
+                }}>
+                    <Button
+                        variant="outlined"
+                        color="primary"
+                        onClick={() => handleAddEntry('item')}
+                        fullWidth
+                        sx={{ flex: { sm: 1 } }}
+                    >
+                        Add Item Entry
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={() => handleAddEntry('gold')}
+                        fullWidth
+                        sx={{ flex: { sm: 1 } }}
+                    >
+                        Add Gold Entry
+                    </Button>
+                    <Button
+                        type="submit"
+                        variant="outlined"
+                        color="primary"
+                        onClick={handleSubmit}
+                        fullWidth
+                        sx={{ flex: { sm: 1 } }}
+                    >
+                        Submit
+                    </Button>
+                </Box>
+            </Paper>
+        </Box>
+    );
+
     return (
         <Container maxWidth={false} component="main">
-            <Box sx={{
-                position: 'sticky',
-                top: 0,
-                left: 0,
-                right: 0,
-                zIndex: 1100,
-                backgroundColor: 'background.default',
-                pb: 2,
-                pt: 2
-            }}>
-                <Paper sx={{
-                    p: { xs: 1.5, md: 2 },
-                    mb: 2,
-                }}>
-                    <Box sx={{
-                        display: 'flex',
-                        flexDirection: { xs: 'column', sm: 'row' },
-                        gap: 1,
-                    }}>
-                        <Button
-                            variant="outlined"
-                            color="primary"
-                            onClick={() => handleAddEntry('item')}
-                            fullWidth
-                            sx={{ flex: { sm: 1 } }}
-                        >
-                            Add Item Entry
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            color="secondary"
-                            onClick={() => handleAddEntry('gold')}
-                            fullWidth
-                            sx={{ flex: { sm: 1 } }}
-                        >
-                            Add Gold Entry
-                        </Button>
-                        <Button
-                            type="submit"
-                            variant="outlined"
-                            color="primary"
-                            onClick={handleSubmit}
-                            fullWidth
-                            sx={{ flex: { sm: 1 } }}
-                        >
-                            Submit
-                        </Button>
-                    </Box>
-                </Paper>
-            </Box>
-
+            {renderActionBar('top')}
 
             {error && <Alert severity="error" sx={{mt: 2, mb: 2}}>{error}</Alert>}
             {success && <Alert severity="success" sx={{mt: 2, mb: 2}}>{success}</Alert>}
@@ -151,6 +154,8 @@ const LootEntry = () => {
                     />
                 ))}
             </form>
+
+            {renderActionBar('bottom')}
         </Container>
     );
 };

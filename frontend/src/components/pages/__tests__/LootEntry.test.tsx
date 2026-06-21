@@ -57,12 +57,13 @@ describe('LootEntry', () => {
     vi.clearAllMocks();
   });
 
-  it('renders with Add Item Entry and Add Gold Entry buttons', () => {
+  it('renders the action bar at both top and bottom', () => {
     renderLootEntry();
 
-    expect(screen.getByRole('button', { name: /add item entry/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add gold entry/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /submit/i })).toBeInTheDocument();
+    // The bar is rendered twice (sticky top + sticky bottom)
+    expect(screen.getAllByRole('button', { name: /add item entry/i })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /add gold entry/i })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /submit/i })).toHaveLength(2);
   });
 
   it('renders with an initial entry form', () => {
@@ -76,7 +77,7 @@ describe('LootEntry', () => {
   it('adds a new item entry when Add Item Entry is clicked', async () => {
     renderLootEntry();
 
-    fireEvent.click(screen.getByRole('button', { name: /add item entry/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /add item entry/i })[0]);
 
     await waitFor(() => {
       expect(screen.getByTestId('entry-form-1')).toBeInTheDocument();
@@ -87,7 +88,7 @@ describe('LootEntry', () => {
   it('adds a new gold entry when Add Gold Entry is clicked', async () => {
     renderLootEntry();
 
-    fireEvent.click(screen.getByRole('button', { name: /add gold entry/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /add gold entry/i })[0]);
 
     await waitFor(() => {
       expect(screen.getByTestId('entry-form-1')).toBeInTheDocument();
@@ -99,7 +100,7 @@ describe('LootEntry', () => {
     renderLootEntry();
 
     // Add a second entry first
-    fireEvent.click(screen.getByRole('button', { name: /add item entry/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /add item entry/i })[0]);
 
     await waitFor(() => {
       expect(screen.getByTestId('entry-form-1')).toBeInTheDocument();
@@ -119,7 +120,7 @@ describe('LootEntry', () => {
 
     renderLootEntry();
 
-    fireEvent.click(screen.getByRole('button', { name: /submit/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /submit/i })[0]);
 
     await waitFor(() => {
       expect(screen.getByText(/no valid entries to submit/i)).toBeInTheDocument();
@@ -136,7 +137,7 @@ describe('LootEntry', () => {
 
     renderLootEntry();
 
-    fireEvent.click(screen.getByRole('button', { name: /submit/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /submit/i })[0]);
 
     await waitFor(() => {
       expect(screen.getByText(/successfully processed 1 entries/i)).toBeInTheDocument();
