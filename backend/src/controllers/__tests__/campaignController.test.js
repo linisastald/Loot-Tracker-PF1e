@@ -15,9 +15,14 @@ jest.mock('../../utils/logger', () => ({
 jest.mock('../../services/scheduler/SessionSchedulerService', () => ({
   restart: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('../../services/discordBrokerService', () => ({
+  sendMessage: jest.fn(),
+}));
 
 const Campaign = require('../../models/Campaign');
 const sessionSchedulerService = require('../../services/scheduler/SessionSchedulerService');
+const campaignSettings = require('../../utils/campaignSettings');
+const discordService = require('../../services/discordBrokerService');
 const campaignController = require('../campaignController');
 
 function createMockRes() {
@@ -49,6 +54,112 @@ function createMockReq(overrides = {}) {
 describe('campaignController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  // -------------------------------------------------------------------
+  // levelUpCampaign
+  // -------------------------------------------------------------------
+  describe('levelUpCampaign', () => {
+    it('increments APL and reports no Discord when integration is disabled', async () => {
+      const req = createMockReq({ campaignRole: 'DM' });
+      const res = createMockRes();
+
+      jest.spyOn(campaignSettings, 'getCampaignSetting').mockResolvedValue('5');
+      jest.spyOn(campaignSettings, 'setCampaignSetting').mockResolvedValue({});
+      jest.spyOn(campaignSettings, 'getCampaignSettings').mockResolvedValue({}); // no discord config
+
+      await campaignController.levelUpCampaign(req, res);
+
+      expect(campaignSettings.setCampaignSetting).toHaveBeenCalledWith(
+        'average_party_level', 6, 'integer', { campaignId: 1 }
+      );
+      expect(discordService.sendMessage).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledWith(
+        { average_party_level: 6, discordSent: false },
+        'Party leveled up to level 6'
+      );
+    });
+
+    it('announces to Discord tagging the role when enabled and configured', async () => {
+      const req = createMockReq({ campaignRole: 'DM' });
+      const res = createMockRes();
+
+      jest.spyOn(campaignSettings, 'getCampaignSetting').mockResolvedValue('4');
+      jest.spyOn(campaignSettings, 'setCampaignSetting').mockResolvedValue({});
+      jest.spyOn(campaignSettings, 'getCampaignSettings').mockResolvedValue({
+        discord_integration_enabled: '1',
+        discord_channel_id: '123456789012345678',
+        campaign_role_id: '987654321098765432',
+      });
+      discordService.sendMessage.mockResolvedValue({ success: true });
+
+      await campaignController.levelUpCampaign(req, res);
+
+      expect(discordService.sendMessage).toHaveBeenCalledTimes(1);
+      const arg = discordService.sendMessage.mock.calls[0][0];
+      expect(arg.channelId).toBe('123456789012345678');
+      expect(arg.content).toContain('<@&987654321098765432>');
+      expect(arg.content).toContain('level 5');
+      expect(res.success).toHaveBeenCalledWith(
+        { average_party_level: 5, discordSent: true },
+        'Party leveled up to level 5'
+      );
+    });
+
+    it('does not send a role mention when no campaign role is set', async () => {
+      const req = createMockReq({ campaignRole: 'DM' });
+      const res = createMockRes();
+
+      jest.spyOn(campaignSettings, 'getCampaignSetting').mockResolvedValue('2');
+      jest.spyOn(campaignSettings, 'setCampaignSetting').mockResolvedValue({});
+      jest.spyOn(campaignSettings, 'getCampaignSettings').mockResolvedValue({
+        discord_integration_enabled: '1',
+        discord_channel_id: '123456789012345678',
+        campaign_role_id: '',
+      });
+      discordService.sendMessage.mockResolvedValue({ success: true });
+
+      await campaignController.levelUpCampaign(req, res);
+
+      const arg = discordService.sendMessage.mock.calls[0][0];
+      expect(arg.content).not.toContain('<@&');
+    });
+
+    it('rejects when already at the maximum level', async () => {
+      const req = createMockReq({ campaignRole: 'DM' });
+      const res = createMockRes();
+
+      jest.spyOn(campaignSettings, 'getCampaignSetting').mockResolvedValue('30');
+      const setSpy = jest.spyOn(campaignSettings, 'setCampaignSetting').mockResolvedValue({});
+
+      await campaignController.levelUpCampaign(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        'The party is already at the maximum level (30)'
+      );
+      expect(setSpy).not.toHaveBeenCalled();
+    });
+
+    it('still succeeds when the Discord announcement throws', async () => {
+      const req = createMockReq({ campaignRole: 'DM' });
+      const res = createMockRes();
+
+      jest.spyOn(campaignSettings, 'getCampaignSetting').mockResolvedValue('7');
+      jest.spyOn(campaignSettings, 'setCampaignSetting').mockResolvedValue({});
+      jest.spyOn(campaignSettings, 'getCampaignSettings').mockResolvedValue({
+        discord_integration_enabled: '1',
+        discord_channel_id: '123456789012345678',
+        campaign_role_id: '987654321098765432',
+      });
+      discordService.sendMessage.mockRejectedValue(new Error('Discord down'));
+
+      await campaignController.levelUpCampaign(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        { average_party_level: 8, discordSent: false },
+        'Party leveled up to level 8'
+      );
+    });
   });
 
   // -------------------------------------------------------------------

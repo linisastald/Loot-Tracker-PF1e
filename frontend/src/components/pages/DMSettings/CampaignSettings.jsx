@@ -12,6 +12,11 @@ import {useCampaign} from '../../../contexts/CampaignContext';
 import {
     Box,
     Button,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogContentText,
+    DialogTitle,
     FormControl,
     FormControlLabel,
     InputLabel,
@@ -32,6 +37,10 @@ const CampaignSettings = () => {
     // Infamy system states
     const [infamyEnabled, setInfamyEnabled] = useState(false);
     const [averagePartyLevel, setAveragePartyLevel] = useState(5);
+
+    // Level Up (confirmation dialog because it can ping Discord)
+    const [levelUpDialogOpen, setLevelUpDialogOpen] = useState(false);
+    const [levelingUp, setLevelingUp] = useState(false);
 
     // Harrow Point Tracker (Curse of the Crimson Throne)
     const [harrowEnabled, setHarrowEnabled] = useState(false);
@@ -167,6 +176,31 @@ const CampaignSettings = () => {
         }
     };
 
+    const currentLevel = parseInt(averagePartyLevel) || 0;
+    const atMaxLevel = currentLevel >= 30;
+
+    const handleLevelUp = async () => {
+        setLevelingUp(true);
+        try {
+            const response = await api.post('/campaigns/current/level-up');
+            const data = response.data || response;
+            await refresh();
+            setLevelUpDialogOpen(false);
+            enqueueSnackbar(
+                `Party leveled up to level ${data.average_party_level}` +
+                    (data.discordSent ? ' — Discord notified' : ''),
+                {variant: 'success'}
+            );
+        } catch (err) {
+            enqueueSnackbar(
+                err.response?.data?.message || 'Error leveling up the party',
+                {variant: 'error'}
+            );
+        } finally {
+            setLevelingUp(false);
+        }
+    };
+
     const handleRegionChange = async () => {
         try {
             await api.put('/campaigns/current/settings', {
@@ -246,6 +280,33 @@ const CampaignSettings = () => {
             </Paper>
 
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
+                <Typography variant="h6" gutterBottom>Party Level</Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                    The current average party level for this campaign. "Level Up" raises it
+                    by one and, when Discord integration is enabled, announces the new level
+                    to your campaign channel.
+                </Typography>
+
+                <Typography variant="body1" sx={{mb: 2}}>
+                    Current level: <strong>{currentLevel || '—'}</strong>
+                </Typography>
+
+                <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => setLevelUpDialogOpen(true)}
+                    disabled={atMaxLevel}
+                >
+                    Level Up
+                </Button>
+                {atMaxLevel && (
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{mt: 1}}>
+                        The party is already at the maximum level (30).
+                    </Typography>
+                )}
+            </Paper>
+
+            <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Infamy System</Typography>
 
                 <FormControlLabel
@@ -315,6 +376,25 @@ const CampaignSettings = () => {
                     label="Enable Harrow Point Tracker"
                 />
             </Paper>
+
+            <Dialog open={levelUpDialogOpen} onClose={() => !levelingUp && setLevelUpDialogOpen(false)}>
+                <DialogTitle>Level Up Party?</DialogTitle>
+                <DialogContent>
+                    <DialogContentText>
+                        This will set the average party level to <strong>{currentLevel + 1}</strong>.
+                        If Discord integration is enabled, an announcement will be posted to your
+                        campaign channel (tagging the campaign role).
+                    </DialogContentText>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setLevelUpDialogOpen(false)} disabled={levelingUp}>
+                        Cancel
+                    </Button>
+                    <Button onClick={handleLevelUp} color="primary" variant="contained" disabled={levelingUp}>
+                        {levelingUp ? 'Leveling Up…' : 'Level Up'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </div>
     );
 };

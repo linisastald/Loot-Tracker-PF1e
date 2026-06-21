@@ -5,6 +5,10 @@ const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
 const timezoneUtils = require('../utils/timezoneUtils');
 const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
+const discordService = require('../services/discordBrokerService');
+
+/** Highest average party level the campaign can reach (matches the APL validator). */
+const MAX_PARTY_LEVEL = 30;
 
 /**
  * Campaign settings a DM may write through PUT /campaigns/current/settings:
@@ -360,6 +364,63 @@ const updateCurrentCampaignSetting = async (req, res) => {
 };
 
 /**
+ * Level up the current campaign: increment its average party level (APL) by one
+ * and, when Discord is enabled and configured, announce the new level to the
+ * campaign's channel (tagging the campaign role when set). DM-only.
+ *
+ * A Discord failure never fails the request — the APL is already persisted; the
+ * response reports whether the announcement was sent.
+ *
+ * Response data: { average_party_level, discordSent }
+ */
+const levelUpCampaign = async (req, res) => {
+  const currentValue = await campaignSettings.getCampaignSetting('average_party_level', {
+    campaignId: req.campaignId,
+    defaultValue: '5'
+  });
+  const currentApl = parseInt(currentValue, 10) || 5;
+
+  if (currentApl >= MAX_PARTY_LEVEL) {
+    throw controllerFactory.createValidationError(
+      `The party is already at the maximum level (${MAX_PARTY_LEVEL})`
+    );
+  }
+
+  const newApl = currentApl + 1;
+  await campaignSettings.setCampaignSetting('average_party_level', newApl, 'integer', {
+    campaignId: req.campaignId
+  });
+  logger.info(`Campaign ${req.campaignId} leveled up to APL ${newApl} by user ${req.user.id}`);
+
+  // Announce to Discord when enabled and configured. Wrapped so a Discord
+  // outage (or missing bot token) cannot roll back or fail the level-up.
+  let discordSent = false;
+  try {
+    const settings = await campaignSettings.getCampaignSettings(
+      ['discord_integration_enabled', 'discord_channel_id', 'campaign_role_id'],
+      { campaignId: req.campaignId }
+    );
+
+    if (settings.discord_integration_enabled === '1' && settings.discord_channel_id) {
+      const mention = settings.campaign_role_id ? `<@&${settings.campaign_role_id}> ` : '';
+      const result = await discordService.sendMessage({
+        channelId: settings.discord_channel_id,
+        content: `${mention}🎉 The party has leveled up! Please level your characters up to **level ${newApl}**.`
+      });
+      discordSent = !!(result && result.success);
+    }
+  } catch (error) {
+    logger.error('Level-up Discord announcement failed', { error: error.message });
+  }
+
+  controllerFactory.sendSuccessResponse(
+    res,
+    { average_party_level: newApl, discordSent },
+    `Party leveled up to level ${newApl}`
+  );
+};
+
+/**
  * Rename the requester's current campaign (campaigns.name; the slug stays
  * unchanged). DM-only (checkRole('DM') at the route layer).
  *
@@ -522,6 +583,10 @@ exports.updateCurrentCampaignSetting = controllerFactory.createHandler(updateCur
   validation: {
     requiredFields: ['name']
   }
+});
+
+exports.levelUpCampaign = controllerFactory.createHandler(levelUpCampaign, {
+  errorMessage: 'Error leveling up the campaign'
 });
 
 exports.renameCurrentCampaign = controllerFactory.createHandler(renameCurrentCampaign, {

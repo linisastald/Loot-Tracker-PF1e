@@ -416,6 +416,31 @@ describe('CampaignSettings', () => {
     });
   });
 
+  describe('level up', () => {
+    it('levels up the party after confirming the dialog', async () => {
+      (api.post as any).mockResolvedValue({ data: { average_party_level: 6, discordSent: true } });
+      renderCampaignSettings();
+
+      // Open the confirmation dialog from the Party Level section
+      fireEvent.click(screen.getByRole('button', { name: /^level up$/i }));
+
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: /^level up$/i }));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith('/campaigns/current/level-up');
+      });
+      expect(refreshMock).toHaveBeenCalled();
+    });
+
+    it('disables Level Up at the maximum level', () => {
+      campaignContextValue = makeContext({ average_party_level: '30' });
+      renderCampaignSettings();
+
+      expect(screen.getByRole('button', { name: /^level up$/i })).toBeDisabled();
+    });
+  });
+
   describe('error handling', () => {
     it('shows an error snackbar when the initial fetch fails', async () => {
       (api.get as any).mockRejectedValue(new Error('Boom'));
