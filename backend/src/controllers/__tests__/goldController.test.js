@@ -98,6 +98,8 @@ describe('goldController', () => {
   describe('createGoldEntry', () => {
     it('should create a valid gold entry (Loot deposit)', async () => {
       const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
         body: {
           goldEntries: [
             {
@@ -141,6 +143,8 @@ describe('goldController', () => {
 
     it('should negate amounts for Withdrawal transaction type', async () => {
       const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
         body: {
           goldEntries: [
             {
@@ -173,6 +177,8 @@ describe('goldController', () => {
 
     it('should negate amounts for Purchase transaction type', async () => {
       const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
         body: {
           goldEntries: [
             {
@@ -206,6 +212,8 @@ describe('goldController', () => {
 
     it('should negate amounts for Party Loot Purchase transaction type', async () => {
       const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
         body: {
           goldEntries: [
             {
@@ -267,6 +275,8 @@ describe('goldController', () => {
 
     it('should reject withdrawal that would cause negative balance', async () => {
       const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
         body: {
           goldEntries: [
             {
@@ -296,6 +306,8 @@ describe('goldController', () => {
 
     it('should handle multiple entries in a single request', async () => {
       const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
         body: {
           goldEntries: [
             { sessionDate: '2024-06-15', transactionType: 'Loot', gold: 50, notes: 'First' },
@@ -323,6 +335,8 @@ describe('goldController', () => {
 
     it('should default missing currency values to 0', async () => {
       const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
         body: {
           goldEntries: [
             {
@@ -351,8 +365,93 @@ describe('goldController', () => {
       expect(createArg.gold).toBe(10);
     });
 
+    it('should force a player\'s active character and ignore any character_id in the body', async () => {
+      const req = {
+        user: { id: 7 },
+        campaignRole: 'Player',
+        body: {
+          goldEntries: [
+            { sessionDate: '2024-06-15', transactionType: 'Withdrawal', gold: 10, notes: 'My share', character_id: 999 },
+          ],
+        },
+      };
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockImplementation((sql) => {
+        if (sql.includes('FROM characters WHERE user_id')) {
+          return Promise.resolve({ rows: [{ id: 42 }] }); // player's active character
+        }
+        if (sql.includes('SUM(platinum)')) {
+          return Promise.resolve({ rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }] });
+        }
+        return Promise.resolve({ rows: [] });
+      });
+      Gold.create.mockResolvedValue({ id: 1 });
+
+      await goldController.createGoldEntry(req, res);
+
+      const createArg = Gold.create.mock.calls[0][0];
+      expect(createArg.character_id).toBe(42); // forced to active character, not the body's 999
+    });
+
+    it('should attribute to the DM-selected character when provided', async () => {
+      const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
+        body: {
+          goldEntries: [
+            { sessionDate: '2024-06-15', transactionType: 'Withdrawal', gold: 10, notes: 'Paid Alice', character_id: 5 },
+          ],
+        },
+      };
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockImplementation((sql) => {
+        if (sql.includes('SELECT 1 FROM characters')) {
+          return Promise.resolve({ rows: [{ '?column?': 1 }] }); // character exists
+        }
+        if (sql.includes('SUM(platinum)')) {
+          return Promise.resolve({ rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }] });
+        }
+        return Promise.resolve({ rows: [] });
+      });
+      Gold.create.mockResolvedValue({ id: 1 });
+
+      await goldController.createGoldEntry(req, res);
+
+      const createArg = Gold.create.mock.calls[0][0];
+      expect(createArg.character_id).toBe(5);
+    });
+
+    it('should reject when a DM selects a character that does not exist', async () => {
+      const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
+        body: {
+          goldEntries: [
+            { sessionDate: '2024-06-15', transactionType: 'Withdrawal', gold: 10, notes: 'Bad', character_id: 12345 },
+          ],
+        },
+      };
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockImplementation((sql) => {
+        if (sql.includes('SELECT 1 FROM characters')) {
+          return Promise.resolve({ rows: [] }); // not found
+        }
+        return Promise.resolve({ rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }] });
+      });
+
+      await goldController.createGoldEntry(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('Selected character not found');
+      expect(Gold.create).not.toHaveBeenCalled();
+    });
+
     it('should return 500 when Gold.create throws an error', async () => {
       const req = {
+        user: { id: 1 },
+        campaignRole: 'DM',
         body: {
           goldEntries: [
             { sessionDate: '2024-06-15', transactionType: 'Loot', gold: 10, notes: 'Fail test' },

@@ -20,7 +20,7 @@ import { Delete as DeleteIcon } from '@mui/icons-material';
 import { fetchItemNames } from '../../utils/lootEntryUtils';
 import api from '../../utils/api';
 
-const EntryForm = ({ entry, index, onRemove, onChange }) => {
+const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters = [] }) => {
   const [localEntry, setLocalEntry] = useState(entry.data);
   const [itemSuggestions, setItemSuggestions] = useState([]);
   const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
@@ -406,7 +406,7 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
         />
       </Grid>
 
-      {/* Second Line: Transaction Type (1/3), Notes (2/3) */}
+      {/* Second Line: Transaction Type, Character (DM only), Notes */}
       <Grid size={{ xs: 12, sm: 4 }}>
         <FormControl fullWidth>
           <InputLabel>Transaction Type</InputLabel>
@@ -423,7 +423,28 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           </Select>
         </FormControl>
       </Grid>
-      <Grid size={{ xs: 12, sm: 8 }}>
+      {isDM && (
+        <Grid size={{ xs: 12, sm: 4 }}>
+          <FormControl fullWidth>
+            <InputLabel>Character (optional)</InputLabel>
+            <Select
+              value={localEntry.characterId || ''}
+              onChange={e => handleChange('characterId', e.target.value)}
+              label="Character (optional)"
+            >
+              <MenuItem value="">
+                <em>None (party / unattributed)</em>
+              </MenuItem>
+              {characters.map(c => (
+                <MenuItem key={c.id} value={String(c.id)}>
+                  {c.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+      )}
+      <Grid size={{ xs: 12, sm: isDM ? 4 : 8 }}>
         <TextField
           label="Notes"
           fullWidth
@@ -433,6 +454,13 @@ const EntryForm = ({ entry, index, onRemove, onChange }) => {
           onChange={e => handleChange('notes', e.target.value)}
         />
       </Grid>
+      {!isDM && (
+        <Grid size={12}>
+          <Typography variant="caption" color="text.secondary">
+            This gold entry will be recorded under your active character.
+          </Typography>
+        </Grid>
+      )}
     </Grid>
   );
 

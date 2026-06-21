@@ -138,6 +138,39 @@ describe('EntryForm', () => {
       renderComponent(defaultGoldEntry);
       expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument();
     });
+
+    it('shows a character selector for DMs and no auto-attach note', () => {
+      render(
+        <BrowserRouter>
+          <EntryForm
+            entry={defaultGoldEntry}
+            index={0}
+            onRemove={vi.fn()}
+            onChange={vi.fn()}
+            isDM={true}
+            characters={[{ id: 7, name: 'Valeros' }]}
+          />
+        </BrowserRouter>
+      );
+      expect(screen.getAllByText(/character \(optional\)/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText(/recorded under your active character/i)).not.toBeInTheDocument();
+    });
+
+    it('shows the auto-attach note for non-DMs and no character selector', () => {
+      render(
+        <BrowserRouter>
+          <EntryForm
+            entry={defaultGoldEntry}
+            index={0}
+            onRemove={vi.fn()}
+            onChange={vi.fn()}
+            isDM={false}
+          />
+        </BrowserRouter>
+      );
+      expect(screen.getByText(/recorded under your active character/i)).toBeInTheDocument();
+      expect(screen.queryByText(/character \(optional\)/i)).not.toBeInTheDocument();
+    });
   });
 
   it('shows error message when entry has error', () => {

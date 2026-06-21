@@ -13,6 +13,17 @@ vi.mock('../../../utils/api', () => ({
   },
 }));
 
+// Mock AuthContext (LootEntry uses useAuth for the DM character selector)
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: 1, username: 'testuser', role: 'player' },
+    isAuthenticated: true,
+    isDM: false,
+    refreshUser: vi.fn(),
+    setUser: vi.fn(),
+  }),
+}));
+
 // Mock the lootEntryUtils module
 vi.mock('../../../utils/lootEntryUtils', () => ({
   fetchInitialData: vi.fn(),

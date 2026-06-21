@@ -182,22 +182,41 @@ const getTrashedLoot = async (req, res) => {
  */
 const getCharacterLedger = async (req, res) => {
   try {
+    // Aggregate loot and gold separately before joining. Joining the raw loot
+    // and gold rows directly would fan out (loot rows × gold rows per character)
+    // and multiply every sum — which only stayed hidden while gold.character_id
+    // was rarely populated. Pre-aggregating keeps each total correct.
     const ledgerQuery = `
       SELECT c.name AS character,
              c.active,
-             COALESCE(SUM(l.value), 0) AS lootValue,
-             COALESCE(SUM(
-                          CASE
-                              WHEN g.transaction_type = 'Party Payment'
-                                  THEN (g.copper::decimal / 100 + g.silver::decimal / 10 + g.gold::decimal +
-                                        g.platinum::decimal * 10)
-                              ELSE 0
-                              END
-                      ), 0) AS payments
+             COALESCE(lv.loot_value, 0)  AS lootValue,
+             COALESCE(gt.payments, 0)    AS payments,
+             COALESCE(gt.withdrawn, 0)   AS withdrawn
       FROM characters c
-               LEFT JOIN loot l ON c.id = l.whohas AND l.status = 'Kept Character'
-               LEFT JOIN gold g ON c.id = g.character_id
-      GROUP BY c.id, c.name, c.active
+               LEFT JOIN (
+                   SELECT whohas, SUM(value) AS loot_value
+                   FROM loot
+                   WHERE status = 'Kept Character'
+                   GROUP BY whohas
+               ) lv ON lv.whohas = c.id
+               LEFT JOIN (
+                   SELECT character_id,
+                          SUM(CASE
+                                  WHEN transaction_type = 'Party Payment'
+                                      THEN (copper::decimal / 100 + silver::decimal / 10 + gold::decimal +
+                                            platinum::decimal * 10)
+                                  ELSE 0
+                              END) AS payments,
+                          SUM(CASE
+                                  WHEN transaction_type = 'Withdrawal'
+                                      THEN -(copper::decimal / 100 + silver::decimal / 10 + gold::decimal +
+                                             platinum::decimal * 10)
+                                  ELSE 0
+                              END) AS withdrawn
+                   FROM gold
+                   WHERE character_id IS NOT NULL
+                   GROUP BY character_id
+               ) gt ON gt.character_id = c.id
       ORDER BY c.active DESC, lootValue DESC
     `;
 
@@ -208,12 +227,14 @@ const getCharacterLedger = async (req, res) => {
       active: row.active,
       lootValue: parseFloat(row.lootvalue) || 0,
       payments: parseFloat(row.payments) || 0,
+      withdrawn: parseFloat(row.withdrawn) || 0,
       balance: (parseFloat(row.lootvalue) || 0) - (parseFloat(row.payments) || 0)
     }));
 
     const totals = {
       totalLootValue: ledger.reduce((sum, char) => sum + char.lootValue, 0),
       totalPayments: ledger.reduce((sum, char) => sum + char.payments, 0),
+      totalWithdrawn: ledger.reduce((sum, char) => sum + char.withdrawn, 0),
       totalBalance: ledger.reduce((sum, char) => sum + char.balance, 0)
     };
 

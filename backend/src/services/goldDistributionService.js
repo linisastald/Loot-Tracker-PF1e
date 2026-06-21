@@ -101,13 +101,16 @@ class GoldDistributionService {
 
     await dbUtils.executeTransaction(async (client) => {
       const now = new Date();
-      const names = characters.map(c => c.name);
-      const notesList = names.map(n => `Distributed to ${n}`);
+      const notesList = characters.map(c => `Distributed to ${c.name}`);
+      const characterIds = characters.map(c => c.id);
 
-      // Batch insert all distribution entries in a single query
+      // Batch insert all distribution entries in a single query. Each row is
+      // attributed to its character via character_id (not just the notes text)
+      // so distributions can be summed per character in reporting.
       const insertQuery = `
-        INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes)
-        SELECT $1, $2, $3, $4, $5, $6, unnest($7::text[])
+        INSERT INTO gold (session_date, transaction_type, platinum, gold, silver, copper, notes, character_id)
+        SELECT $1, $2, $3, $4, $5, $6, d.note, d.character_id
+        FROM unnest($7::text[], $8::int[]) AS d(note, character_id)
         RETURNING *
       `;
 
@@ -118,7 +121,8 @@ class GoldDistributionService {
         -distribution.gold,
         -distribution.silver,
         -distribution.copper,
-        notesList
+        notesList,
+        characterIds
       ]);
 
       createdEntries.push(...insertResult.rows);

@@ -22,7 +22,8 @@ const initialGoldEntry = {
   gold: '',
   silver: '',
   copper: '',
-  notes: ''
+  notes: '',
+  characterId: ''
 };
 
 const useLootEntryForm = () => {

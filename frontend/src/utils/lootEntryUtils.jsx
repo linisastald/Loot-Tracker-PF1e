@@ -91,8 +91,6 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
   let data = { ...entry.data };
 
   if (entry.type === 'gold') {
-    const { transactionType } = data;
-
     // Send non-negative amounts: the backend derives the sign from the
     // transaction type (Withdrawal/Purchase/etc. are negated server-side via
     // -Math.abs), and its validation rejects negative inputs. Negating here
@@ -103,15 +101,20 @@ export const prepareEntryForSubmission = async (entry, activeCharacterId) => {
       return Number.isNaN(parsed) || parsed === 0 ? null : parsed;
     };
 
+    // Character attribution is authoritative on the server: a player's gold
+    // entry is always tied to their own active character (the backend ignores
+    // whatever we send), so we only forward a character_id when a DM has
+    // explicitly chosen one. "None" must stay unattributed, so there is
+    // intentionally no fallback to activeCharacterId here.
     const goldData = {
       ...data,
       platinum: toAmount(data.platinum),
       gold: toAmount(data.gold),
       silver: toAmount(data.silver),
       copper: toAmount(data.copper),
-      character_id:
-        transactionType === 'Party Payment' ? activeCharacterId : null,
+      character_id: data.characterId ? parseInt(data.characterId, 10) : null,
     };
+    delete goldData.characterId;
 
     return await api.post('/gold', { goldEntries: [goldData] });
   } else {

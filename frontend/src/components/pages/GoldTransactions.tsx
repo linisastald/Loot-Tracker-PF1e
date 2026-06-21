@@ -11,6 +11,7 @@ import {
   CircularProgress,
   Container,
   FormControl,
+  FormHelperText,
   Grid,
   InputLabel,
   MenuItem,
@@ -66,6 +67,12 @@ interface NewEntry {
     silver: string;
     copper: string;
     notes: string;
+    characterId: string;
+}
+
+interface CharacterOption {
+    id: number;
+    name: string;
 }
 
 interface LedgerEntry {
@@ -78,6 +85,7 @@ interface LedgerEntry {
     character?: string;
     lootvalue?: string;
     payments?: string;
+    withdrawn?: string;
     active?: boolean;
 }
 
@@ -115,7 +123,7 @@ const GoldTransactions: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [totals, setTotals] = useState<GoldTotals>({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
-    const { user: authUser } = useAuth();
+    const { user: authUser, isDM } = useAuth();
     const userRole = authUser?.role || '';
     const [startDate, setStartDate] = useState<Date>(new Date(new Date().setMonth(new Date().getMonth() - 6)));
     const [endDate, setEndDate] = useState<Date>(new Date());
@@ -124,6 +132,7 @@ const GoldTransactions: React.FC = () => {
     const { timezone } = useCampaignTimezone();
     const [ledgerData, setLedgerData] = useState<LedgerEntry[]>([]);
     const [ledgerLoading, setLedgerLoading] = useState<boolean>(false);
+    const [characters, setCharacters] = useState<CharacterOption[]>([]);
 
     // Memoized utility function to safely format numbers
     const formatCurrency = useCallback((value: number | string, defaultValue: string = '0.00'): string => {
@@ -142,13 +151,29 @@ const GoldTransactions: React.FC = () => {
         gold: '',
         silver: '',
         copper: '',
-        notes: ''
+        notes: '',
+        characterId: ''
     });
 
     useEffect(() => {
         fetchOverviewTotals();
         fetchLedgerData();
     }, []);
+
+    // DMs can attribute a transaction to any character, so load the list for them
+    useEffect(() => {
+        if (!isDM) return;
+        const fetchCharacters = async () => {
+            try {
+                const response: any = await api.get('/user/active-characters');
+                const rows = response.data || response;
+                setCharacters(Array.isArray(rows) ? rows.map((r: any) => ({ id: r.id, name: r.name })) : []);
+            } catch (err) {
+                console.error('Failed to fetch characters:', err);
+            }
+        };
+        fetchCharacters();
+    }, [isDM]);
 
     useEffect(() => {
         // Only fetch filtered entries when on Transaction History tab
@@ -282,6 +307,7 @@ const GoldTransactions: React.FC = () => {
             // Safely parse numeric values with fallback to 0
             const lootValue = parseFloat(row.lootvalue) || 0;
             const payments = parseFloat(row.payments) || 0;
+            const withdrawn = parseFloat(row.withdrawn) || 0;
             const balance = lootValue - payments;
             
             // Check for valid balance calculation
@@ -300,6 +326,7 @@ const GoldTransactions: React.FC = () => {
                 ...row,
                 lootValue,
                 payments,
+                withdrawn,
                 balance,
                 isValidBalance,
                 isOverpaid,
@@ -352,7 +379,7 @@ const GoldTransactions: React.FC = () => {
                 return Number.isNaN(parsed) ? 0 : Math.abs(parsed);
             };
 
-            const entry = {
+            const entry: Record<string, unknown> = {
                 sessionDate: newEntry.sessionDate,
                 transactionType: newEntry.transactionType,
                 platinum: toAmount(newEntry.platinum),
@@ -361,6 +388,13 @@ const GoldTransactions: React.FC = () => {
                 copper: toAmount(newEntry.copper),
                 notes: newEntry.notes
             };
+
+            // Only a DM may attribute a transaction to a chosen character. For
+            // players the server forces their own active character, so we don't
+            // send a character_id at all.
+            if (isDM && newEntry.characterId) {
+                entry.character_id = parseInt(newEntry.characterId, 10);
+            }
 
             await api.post('/gold', {goldEntries: [entry]});
 
@@ -373,7 +407,8 @@ const GoldTransactions: React.FC = () => {
                 gold: '',
                 silver: '',
                 copper: '',
-                notes: ''
+                notes: '',
+                characterId: ''
             });
 
             fetchOverviewTotals(); // Always refresh overview totals after new entry
@@ -407,6 +442,7 @@ const GoldTransactions: React.FC = () => {
                         character: row.character || 'Unknown Character',
                         lootvalue: row.lootvalue || '0',
                         payments: row.payments || '0',
+                        withdrawn: row.withdrawn || '0',
                         active: Boolean(row.active)
                     }));
 
@@ -427,6 +463,7 @@ const GoldTransactions: React.FC = () => {
                         character: row.character || 'Unknown Character',
                         lootvalue: row.lootvalue || '0',
                         payments: row.payments || '0',
+                        withdrawn: row.withdrawn || '0',
                         active: Boolean(row.active)
                     }));
 
@@ -631,6 +668,37 @@ const GoldTransactions: React.FC = () => {
                                             </Select>
                                         </FormControl>
                                     </Grid>
+
+                                    {isDM ? (
+                                        <Grid size={{xs: 12}}>
+                                            <FormControl fullWidth>
+                                                <InputLabel>Character (optional)</InputLabel>
+                                                <Select
+                                                    value={newEntry.characterId}
+                                                    onChange={(e) => handleEntryChange('characterId', e.target.value)}
+                                                    label="Character (optional)"
+                                                >
+                                                    <MenuItem value="">
+                                                        <em>None (party / unattributed)</em>
+                                                    </MenuItem>
+                                                    {characters.map((c) => (
+                                                        <MenuItem key={c.id} value={String(c.id)}>
+                                                            {c.name}
+                                                        </MenuItem>
+                                                    ))}
+                                                </Select>
+                                                <FormHelperText>
+                                                    Attribute this transaction to a character (e.g. a withdrawal). Leave as None for party-level transactions.
+                                                </FormHelperText>
+                                            </FormControl>
+                                        </Grid>
+                                    ) : (
+                                        <Grid size={{xs: 12}}>
+                                            <Typography variant="body2" color="text.secondary">
+                                                This transaction will be recorded under your active character.
+                                            </Typography>
+                                        </Grid>
+                                    )}
 
                                     <Grid size={12}>
                                         <Typography variant="subtitle1" gutterBottom>Amount</Typography>
@@ -984,12 +1052,13 @@ const GoldTransactions: React.FC = () => {
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Character Loot Ledger</Typography>
                             <Typography variant="body2" paragraph>
-                                This table shows the value of items kept by each character and payments made to them.
-                                The balance column shows the difference between loot value and payments.
+                                This table shows the value of items kept by each character, payments made to them,
+                                and gold withdrawn (including distributions). The balance column shows the
+                                difference between loot value and payments.
                             </Typography>
 
                             {ledgerLoading ? (
-                                <TableSkeleton rows={5} columns={5} />
+                                <TableSkeleton rows={5} columns={6} />
                             ) : (
                                 <TableContainer component={Paper}>
                                     <Table>
@@ -998,6 +1067,7 @@ const GoldTransactions: React.FC = () => {
                                                 <TableCell>Character</TableCell>
                                                 <TableCell align="right">Value of Loot</TableCell>
                                                 <TableCell align="right">Payments</TableCell>
+                                                <TableCell align="right">Gold Withdrawn</TableCell>
                                                 <TableCell align="right">Balance</TableCell>
                                                 <TableCell align="center">Status</TableCell>
                                             </TableRow>
@@ -1005,7 +1075,7 @@ const GoldTransactions: React.FC = () => {
                                         <TableBody>
                                             {processedLedgerData.length === 0 ? (
                                                 <TableRow>
-                                                    <TableCell colSpan={5} align="center">No ledger data
+                                                    <TableCell colSpan={6} align="center">No ledger data
                                                         available</TableCell>
                                                 </TableRow>
                                             ) : (
@@ -1031,10 +1101,13 @@ const GoldTransactions: React.FC = () => {
                                                         <TableCell align="right">
                                                             {formatCurrency(row.payments)}
                                                         </TableCell>
+                                                        <TableCell align="right">
+                                                            {formatCurrency(row.withdrawn)}
+                                                        </TableCell>
                                                         <TableCell
                                                             align="right"
                                                             sx={{
-                                                                color: !row.isValidBalance ? 'text.disabled' : 
+                                                                color: !row.isValidBalance ? 'text.disabled' :
                                                                        row.isOverpaid ? 'error.main' : 
                                                                        row.isUnderpaid ? 'warning.main' : 'inherit',
                                                                 fontWeight: (row.isOverpaid || row.isUnderpaid) ? 'bold' : 'normal'

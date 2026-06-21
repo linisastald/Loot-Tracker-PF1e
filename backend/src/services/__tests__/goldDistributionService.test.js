@@ -178,13 +178,16 @@ describe('GoldDistributionService', () => {
       expect(result).toHaveLength(2);
 
       // Verify negative amounts in batch query
+      const query = mockClient.query.mock.calls[0][0];
       const values = mockClient.query.mock.calls[0][1];
+      expect(query).toContain('character_id');
       expect(values[1]).toBe('Withdrawal');
       expect(values[2]).toBe(-2);   // platinum
       expect(values[3]).toBe(-25);  // gold
       expect(values[4]).toBe(-5);   // silver
       expect(values[5]).toBe(-10);  // copper
       expect(values[6]).toEqual(['Distributed to Valeros', 'Distributed to Merisiel']);
+      expect(values[7]).toEqual([1, 2]); // each row attributed to its character
     });
   });
 

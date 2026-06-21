@@ -4,6 +4,8 @@ import useLootEntryForm from '../../hooks/useLootEntryForm';
 import {notifyLootCountsChanged} from '../../utils/events';
 import {Alert, Box, Button, Container, Paper, Typography} from '@mui/material';
 import EntryForm from './EntryForm';
+import api from '../../utils/api';
+import {useAuth} from '../../contexts/AuthContext';
 
 const LootEntry = () => {
     const {
@@ -21,10 +23,27 @@ const LootEntry = () => {
 
     const [activeCharacterId, setActiveCharacterId] = useState(null);
     const [itemOptions, setItemOptions] = useState([]);
+    const [characters, setCharacters] = useState([]);
+    const {isDM} = useAuth();
 
     useEffect(() => {
         fetchInitialData(setItemOptions, setActiveCharacterId);
     }, []);
+
+    // DMs can attribute a gold entry to any character, so load the list for them
+    useEffect(() => {
+        if (!isDM) return;
+        const loadCharacters = async () => {
+            try {
+                const response = await api.get('/user/active-characters');
+                const rows = response.data || response;
+                setCharacters(Array.isArray(rows) ? rows.map((r) => ({id: r.id, name: r.name})) : []);
+            } catch (err) {
+                console.error('Failed to fetch characters:', err);
+            }
+        };
+        loadCharacters();
+    }, [isDM]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -127,6 +146,8 @@ const LootEntry = () => {
                         index={index}
                         onRemove={() => handleRemoveEntry(index)}
                         onChange={handleEntryChange}
+                        isDM={isDM}
+                        characters={characters}
                     />
                 ))}
             </form>

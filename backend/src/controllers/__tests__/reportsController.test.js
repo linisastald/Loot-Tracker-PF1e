@@ -240,9 +240,9 @@ describe('reportsController', () => {
 
       dbUtils.executeQuery.mockResolvedValue({
         rows: [
-          { character: 'Valeros', active: true, lootvalue: '1500.00', payments: '500.00' },
-          { character: 'Merisiel', active: true, lootvalue: '1000.00', payments: '300.00' },
-          { character: 'Ezren', active: false, lootvalue: '200.00', payments: '0' },
+          { character: 'Valeros', active: true, lootvalue: '1500.00', payments: '500.00', withdrawn: '250.00' },
+          { character: 'Merisiel', active: true, lootvalue: '1000.00', payments: '300.00', withdrawn: '0' },
+          { character: 'Ezren', active: false, lootvalue: '200.00', payments: '0', withdrawn: '40.00' },
         ],
       });
 
@@ -255,6 +255,7 @@ describe('reportsController', () => {
       expect(data.ledger[0].character).toBe('Valeros');
       expect(data.ledger[0].lootValue).toBe(1500);
       expect(data.ledger[0].payments).toBe(500);
+      expect(data.ledger[0].withdrawn).toBe(250);
       expect(data.ledger[0].balance).toBe(1000);
 
       expect(data.ledger[1].balance).toBe(700);
@@ -262,6 +263,7 @@ describe('reportsController', () => {
 
       expect(data.totals.totalLootValue).toBe(2700);
       expect(data.totals.totalPayments).toBe(800);
+      expect(data.totals.totalWithdrawn).toBe(290);
       expect(data.totals.totalBalance).toBe(1900);
       expect(data.characterCount).toBe(3);
     });

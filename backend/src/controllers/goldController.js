@@ -4,6 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const GoldDistributionService = require('../services/goldDistributionService');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Create a new gold entry
@@ -15,14 +16,46 @@ const createGoldEntry = async (req, res) => {
         throw controllerFactory.createValidationError('Gold entries array is required');
     }
 
+    // Resolve who a transaction is attributed to. A DM may attribute a
+    // transaction to any character (via the request); a player can only ever
+    // attribute it to their own active character, regardless of what the
+    // request body claims. This is enforced server-side, not just in the UI.
+    const dmRights = hasDmRights(req);
+    let playerCharacterId = null;
+    if (!dmRights) {
+        const charResult = await dbUtils.executeQuery(
+            'SELECT id FROM characters WHERE user_id = $1 AND active = true',
+            [req.user.id]
+        );
+        playerCharacterId = charResult.rows.length > 0 ? charResult.rows[0].id : null;
+    }
+
     const createdEntries = [];
 
     for (const entry of goldEntries) {
         const {transactionType, platinum, gold, silver, copper} = entry;
 
+        // Determine the attributed character id
+        let characterId;
+        if (dmRights) {
+            characterId = entry.character_id || null;
+            if (characterId) {
+                const charCheck = await dbUtils.executeQuery(
+                    'SELECT 1 FROM characters WHERE id = $1',
+                    [characterId]
+                );
+                if (charCheck.rows.length === 0) {
+                    throw controllerFactory.createValidationError('Selected character not found');
+                }
+            }
+        } else {
+            characterId = playerCharacterId;
+        }
+
         // Adjust values based on transaction type
         const adjustedEntry = {
             ...entry,
+            character_id: characterId,
             platinum: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(platinum || 0) : (platinum || 0),
             gold: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(gold || 0) : (gold || 0),
             silver: ['Withdrawal', 'Purchase', 'Party Loot Purchase'].includes(transactionType) ? -Math.abs(silver || 0) : (silver || 0),
