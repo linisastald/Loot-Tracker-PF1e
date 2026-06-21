@@ -138,6 +138,32 @@ describe('ItemSearch model', () => {
     });
   });
 
+  describe('calculateCasterLevelPenalty (pure - house rule)', () => {
+    it('should return 0 when item caster level is within settlement caster level', () => {
+      expect(ItemSearch.calculateCasterLevelPenalty(5, 9)).toBe(0);
+      expect(ItemSearch.calculateCasterLevelPenalty(9, 9)).toBe(0);
+    });
+
+    it('should return 0 for mundane items (no caster level)', () => {
+      expect(ItemSearch.calculateCasterLevelPenalty(0, 5)).toBe(0);
+      expect(ItemSearch.calculateCasterLevelPenalty(null, 5)).toBe(0);
+      expect(ItemSearch.calculateCasterLevelPenalty(undefined, 5)).toBe(0);
+    });
+
+    it('should apply 10 percentage points per caster level above settlement', () => {
+      // CL 12 ioun stone in a Small Town (effective CL 5) => 7 over => 70%
+      expect(ItemSearch.calculateCasterLevelPenalty(12, 5)).toBe(70);
+      // 1 over
+      expect(ItemSearch.calculateCasterLevelPenalty(10, 9)).toBe(10);
+      // 3 over
+      expect(ItemSearch.calculateCasterLevelPenalty(12, 9)).toBe(30);
+    });
+
+    it('should expose the per-CL penalty constant', () => {
+      expect(ItemSearch.CASTER_LEVEL_PENALTY_PER_CL).toBe(10);
+    });
+  });
+
   describe('create', () => {
     it('should insert search record with all fields', async () => {
       const searchData = {

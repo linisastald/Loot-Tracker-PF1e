@@ -134,6 +134,66 @@ describe('SpellcastingService model', () => {
     });
   });
 
+  describe('getMinCasterLevel (pure - PF1e game mechanic)', () => {
+    it('should return 1 for 0 and 1st level spells', () => {
+      expect(SpellcastingService.getMinCasterLevel(0)).toBe(1);
+      expect(SpellcastingService.getMinCasterLevel(1)).toBe(1);
+    });
+
+    it('should follow 2×spell_level - 1 for levels 2-9', () => {
+      expect(SpellcastingService.getMinCasterLevel(2)).toBe(3);
+      expect(SpellcastingService.getMinCasterLevel(3)).toBe(5);
+      expect(SpellcastingService.getMinCasterLevel(4)).toBe(7);
+      expect(SpellcastingService.getMinCasterLevel(5)).toBe(9);
+      expect(SpellcastingService.getMinCasterLevel(6)).toBe(11);
+      expect(SpellcastingService.getMinCasterLevel(7)).toBe(13);
+      expect(SpellcastingService.getMinCasterLevel(8)).toBe(15);
+      expect(SpellcastingService.getMinCasterLevel(9)).toBe(17);
+    });
+  });
+
+  describe('checkCasterLevelAvailability (house rule)', () => {
+    it('should always be available at the minimum caster level', () => {
+      // 3rd-level spell (min CL 5) in a Small Town (effective CL 5)
+      const result = SpellcastingService.checkCasterLevelAvailability(5, 5, 5);
+      expect(result.available).toBe(true);
+      expect(result.threshold).toBe(100);
+      expect(result.roll).toBeUndefined(); // no roll needed
+    });
+
+    it('should be available up to the settlement caster level without rolling', () => {
+      // Want CL 9 in a Small City (effective CL 9) for a 3rd-level spell (min 5)
+      const result = SpellcastingService.checkCasterLevelAvailability(9, 5, 9);
+      expect(result.available).toBe(true);
+      expect(result.threshold).toBe(100);
+      expect(result.reason).toBe('cl_within_settlement');
+    });
+
+    it('should roll with a 10%/CL penalty above the settlement ceiling', () => {
+      // Want CL 12 in a Small City (effective CL 9), min CL 5 => 3 over => 70%
+      const result = SpellcastingService.checkCasterLevelAvailability(12, 5, 9);
+      expect(result.threshold).toBe(70);
+      expect(result.roll).toBeGreaterThanOrEqual(1);
+      expect(result.roll).toBeLessThanOrEqual(100);
+      expect(['cl_higher_found', 'cl_higher_not_found']).toContain(result.reason);
+    });
+
+    it('should floor the find chance at 1% for extreme requests', () => {
+      // Want CL 20 in a Small City (effective CL 9) => 11 over => floored at 1%
+      const result = SpellcastingService.checkCasterLevelAvailability(20, 5, 9);
+      expect(result.threshold).toBe(1);
+    });
+
+    it('should use the higher of min CL and settlement CL as the free ceiling', () => {
+      // 9th-level spell (min CL 17) in a Metropolis (effective CL 15):
+      // min CL is guaranteed even though it exceeds settlement CL
+      const result = SpellcastingService.checkCasterLevelAvailability(17, 17, 15);
+      expect(result.available).toBe(true);
+      expect(result.threshold).toBe(100);
+      expect(result.ceiling).toBe(17);
+    });
+  });
+
   describe('create', () => {
     it('should auto-calculate cost and insert record', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1, cost: 150 }] });

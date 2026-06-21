@@ -71,6 +71,14 @@ describe('spellcastingController', () => {
         rows: [{ year: 4712, month: 6, day: 1 }],
       });
       City.getOrCreate.mockResolvedValue(mockCity);
+      City.getEffectiveCasterLevel.mockReturnValue(15);
+      // Default: minimum CL caster is found and any requested CL is within reach
+      SpellcastingService.getMinCasterLevel.mockReturnValue(1);
+      SpellcastingService.checkCasterLevelAvailability.mockReturnValue({
+        available: true,
+        threshold: 100,
+        reason: 'cl_within_settlement',
+      });
     });
 
     // -- Validation tests --
@@ -369,6 +377,77 @@ describe('spellcastingController', () => {
         expect.objectContaining({
           available: true,
           message: expect.stringContaining('9th level spell'),
+        }),
+        expect.any(String)
+      );
+    });
+
+    it('should reject caster_level below the spell minimum', async () => {
+      SpellcastingService.getMinCasterLevel.mockReturnValue(5);
+
+      const req = createMockReq({
+        body: { ...baseSpellBody, spell_name: 'Fireball', spell_level: 3, caster_level: 3 },
+      });
+      const res = createMockRes();
+
+      await spellcastingController.checkSpellcastingService(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        'Caster level must be at least 5 for a level 3 spell'
+      );
+    });
+
+    it('should return unavailable when a higher-CL caster is not found', async () => {
+      SpellcastingService.getMinCasterLevel.mockReturnValue(5);
+      SpellcastingService.isSpellAvailable.mockReturnValue({ available: true, reason: 'available' });
+      SpellcastingService.checkCasterLevelAvailability.mockReturnValue({
+        available: false,
+        threshold: 70,
+        roll: 90,
+        ceiling: 9,
+        reason: 'cl_higher_not_found',
+      });
+
+      const req = createMockReq({
+        body: { ...baseSpellBody, spell_name: 'Fireball', spell_level: 3, caster_level: 12 },
+      });
+      const res = createMockRes();
+
+      await spellcastingController.checkSpellcastingService(req, res);
+
+      expect(SpellcastingService.calculateCost).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({
+          available: false,
+          message: expect.stringContaining('No spellcaster of caster level 12'),
+        }),
+        expect.any(String)
+      );
+    });
+
+    it('should include a lucky-find message when a higher-CL caster is found', async () => {
+      SpellcastingService.getMinCasterLevel.mockReturnValue(5);
+      SpellcastingService.isSpellAvailable.mockReturnValue({ available: true, reason: 'available' });
+      SpellcastingService.checkCasterLevelAvailability.mockReturnValue({
+        available: true,
+        threshold: 70,
+        roll: 20,
+        ceiling: 9,
+        reason: 'cl_higher_found',
+      });
+      SpellcastingService.calculateCost.mockReturnValue(360);
+
+      const req = createMockReq({
+        body: { ...baseSpellBody, spell_name: 'Fireball', spell_level: 3, caster_level: 12 },
+      });
+      const res = createMockRes();
+
+      await spellcastingController.checkSpellcastingService(req, res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({
+          available: true,
+          message: expect.stringContaining('Lucky find! A caster of CL 12'),
         }),
         expect.any(String)
       );

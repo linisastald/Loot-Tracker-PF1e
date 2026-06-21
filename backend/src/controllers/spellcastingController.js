@@ -47,6 +47,14 @@ const checkSpellcastingService = async (req, res) => {
     throw controllerFactory.createValidationError('Spell level must be between 0 and 9');
   }
 
+  // A spell cannot be cast below its minimum caster level
+  const minCasterLevel = SpellcastingService.getMinCasterLevel(spell_level);
+  if (caster_level < minCasterLevel) {
+    throw controllerFactory.createValidationError(
+      `Caster level must be at least ${minCasterLevel} for a level ${spell_level} spell`
+    );
+  }
+
   // Get current Golarion date
   const currentDateResult = await dbUtils.executeQuery('SELECT * FROM golarion_current_date LIMIT 1');
   const golarionDate = currentDateResult.rows.length > 0
@@ -86,6 +94,30 @@ const checkSpellcastingService = async (req, res) => {
     });
   }
 
+  // House rule: the spell is available, but is a caster of the *requested* caster level
+  // present? The minimum CL is always available; higher CLs roll a find chance.
+  const settlementCasterLevel = City.getEffectiveCasterLevel(city.size);
+  const casterLevelCheck = SpellcastingService.checkCasterLevelAvailability(
+    caster_level, minCasterLevel, settlementCasterLevel
+  );
+
+  if (!casterLevelCheck.available) {
+    return controllerFactory.sendSuccessResponse(res, {
+      available: false,
+      city,
+      spell_name: spell_name.trim(),
+      spell_level,
+      caster_level,
+      max_spell_level: city.max_spell_level,
+      min_caster_level: minCasterLevel,
+      settlement_caster_level: settlementCasterLevel,
+      caster_level_check: casterLevelCheck,
+      message: `No spellcaster of caster level ${caster_level} could be found in ${city.name} ` +
+               `(rolled ${casterLevelCheck.roll}/100, needed ${casterLevelCheck.threshold} or less). ` +
+               `A caster of CL ${minCasterLevel} (the minimum for ${spell_name.trim()}) is available here.`
+    });
+  }
+
   // Calculate cost
   const cost = SpellcastingService.calculateCost(spell_level, caster_level);
 
@@ -117,6 +149,9 @@ const checkSpellcastingService = async (req, res) => {
   } else if (availabilityCheck.reason === 'level_9_found') {
     successMessage = `Lucky find! A caster capable of casting this 9th level spell was found in ${city.name} ` +
                     `(rolled ${availabilityCheck.roll}/100).`;
+  } else if (casterLevelCheck.reason === 'cl_higher_found') {
+    successMessage = `Lucky find! A caster of CL ${caster_level} was found in ${city.name} ` +
+                    `(rolled ${casterLevelCheck.roll}/100, needed ${casterLevelCheck.threshold} or less).`;
   }
 
   controllerFactory.sendSuccessResponse(res, {
@@ -127,10 +162,13 @@ const checkSpellcastingService = async (req, res) => {
     caster_level,
     cost,
     service: serviceRecord,
+    min_caster_level: minCasterLevel,
+    settlement_caster_level: settlementCasterLevel,
     formula: spell_level === 0
       ? `${caster_level} × 5 gp (min 10 gp)`
       : `${spell_level} × ${caster_level} × 10 gp`,
     availability_check: availabilityCheck,
+    caster_level_check: casterLevelCheck,
     message: successMessage
   }, purchase ? 'Spellcasting service purchased' : 'Spellcasting availability checked');
 };

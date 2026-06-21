@@ -39,6 +39,28 @@ const calculateAvailability = (itemValue, baseValue) => {
 };
 
 /**
+ * House-rule penalty (percentage points) applied to an item's availability when its
+ * caster level exceeds the settlement's effective caster level. Models the idea that a
+ * settlement needs a crafter capable of making/importing an item for it to be on sale.
+ * Not RAW - PF1e settlement availability is gp-value-only.
+ */
+const CASTER_LEVEL_PENALTY_PER_CL = 10;
+
+/**
+ * Calculate the availability penalty (in percentage points) for an item whose caster
+ * level exceeds what the settlement can support.
+ * @param {number} itemCasterLevel - Effective caster level of the item (0 = mundane)
+ * @param {number} settlementCasterLevel - Settlement's effective caster level
+ * @return {number} Penalty in percentage points (0 if none)
+ */
+const calculateCasterLevelPenalty = (itemCasterLevel, settlementCasterLevel) => {
+  if (!itemCasterLevel || itemCasterLevel <= settlementCasterLevel) {
+    return 0;
+  }
+  return (itemCasterLevel - settlementCasterLevel) * CASTER_LEVEL_PENALTY_PER_CL;
+};
+
+/**
  * Create a new item search record
  * @param {Object} searchData
  * @return {Promise<Object>} Created search record
@@ -167,8 +189,10 @@ exports.delete = async (id) => {
 };
 
 /**
- * Export the availability calculation function
+ * Export the availability calculation functions
  */
 exports.calculateAvailability = calculateAvailability;
+exports.calculateCasterLevelPenalty = calculateCasterLevelPenalty;
+exports.CASTER_LEVEL_PENALTY_PER_CL = CASTER_LEVEL_PENALTY_PER_CL;
 
 module.exports = exports;

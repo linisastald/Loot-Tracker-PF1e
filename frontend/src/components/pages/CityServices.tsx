@@ -76,9 +76,15 @@ interface ItemSearchResult {
     threshold: number;
     percentage: number;
     description: string;
+    base_percentage?: number;
+    caster_level_penalty?: number;
+    item_caster_level?: number;
+    settlement_caster_level?: number;
   };
   item_value: number;
   item_name: string;
+  item_caster_level?: number;
+  settlement_caster_level?: number;
   city: City;
 }
 
@@ -89,6 +95,14 @@ interface SpellcastingResult {
   spell_name: string;
   spell_level: number;
   caster_level: number;
+  min_caster_level?: number;
+  settlement_caster_level?: number;
+  caster_level_check?: {
+    threshold: number;
+    roll?: number;
+    ceiling?: number;
+    reason?: string;
+  };
   city: City;
   message?: string;
 }
@@ -122,6 +136,19 @@ const SETTLEMENT_SIZES = [
   'Large City',
   'Metropolis',
 ];
+
+// House-rule effective caster level by settlement size (mirrors backend City model).
+// Gates availability of high-caster-level items and high-CL spellcasting services.
+const SETTLEMENT_CASTER_LEVELS: Record<string, number> = {
+  'Thorp': 1,
+  'Hamlet': 2,
+  'Village': 3,
+  'Small Town': 5,
+  'Large Town': 7,
+  'Small City': 9,
+  'Large City': 12,
+  'Metropolis': 15,
+};
 
 const CityServices: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
@@ -437,6 +464,12 @@ const CityServices: React.FC = () => {
               </Grid>
               <Grid size={{xs: 6, md: 3}}>
                 <Typography variant="caption" color="text.secondary">
+                  Effective Caster Level
+                </Typography>
+                <Typography variant="body1">{SETTLEMENT_CASTER_LEVELS[selectedCity.size] ?? '—'}</Typography>
+              </Grid>
+              <Grid size={{xs: 6, md: 3}}>
+                <Typography variant="caption" color="text.secondary">
                   Population
                 </Typography>
                 <Typography variant="body1">
@@ -539,6 +572,23 @@ const CityServices: React.FC = () => {
                         {itemSearchResult.city.name} ({itemSearchResult.city.size})
                       </TableCell>
                     </TableRow>
+                    {(itemSearchResult.item_caster_level ?? 0) > 0 && (
+                      <TableRow>
+                        <TableCell>
+                          <strong>Caster Level:</strong>
+                        </TableCell>
+                        <TableCell>
+                          Item CL {itemSearchResult.item_caster_level} vs. settlement CL{' '}
+                          {itemSearchResult.settlement_caster_level}
+                          {(itemSearchResult.availability.caster_level_penalty ?? 0) > 0 && (
+                            <Typography variant="caption" color="warning.main" display="block">
+                              −{itemSearchResult.availability.caster_level_penalty}% caster-level penalty
+                              {' '}(base {itemSearchResult.availability.base_percentage}%)
+                            </Typography>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )}
                     <TableRow>
                       <TableCell>
                         <strong>Availability:</strong>
@@ -616,7 +666,11 @@ const CityServices: React.FC = () => {
                 onChange={(e) => setCasterLevel(parseInt(e.target.value) || 1)}
                 required
                 inputProps={{ min: 1, max: 20 }}
-                helperText="Required caster level"
+                helperText={
+                  selectedSpell
+                    ? `Min CL ${getMinCasterLevel(selectedSpell.spelllevel)} always available; higher CLs roll a find chance`
+                    : 'Required caster level'
+                }
               />
             </Grid>
             <Grid size={{xs: 12}}>
@@ -671,6 +725,22 @@ const CityServices: React.FC = () => {
                       </TableCell>
                       <TableCell>{spellcastingResult.city.max_spell_level}</TableCell>
                     </TableRow>
+                    {spellcastingResult.settlement_caster_level !== undefined && (
+                      <TableRow>
+                        <TableCell>
+                          <strong>Settlement Caster Level:</strong>
+                        </TableCell>
+                        <TableCell>
+                          {spellcastingResult.settlement_caster_level}
+                          {spellcastingResult.caster_level_check?.roll !== undefined && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Higher-CL find roll: {spellcastingResult.caster_level_check.roll}/100
+                              {' '}(needed {spellcastingResult.caster_level_check.threshold} or less)
+                            </Typography>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )}
                     {spellcastingResult.available ? (
                       <>
                         <TableRow>
@@ -760,6 +830,9 @@ const CityServices: React.FC = () => {
                 <TableCell align="center">
                   <strong>Max Spell Level</strong>
                 </TableCell>
+                <TableCell align="center">
+                  <strong>Eff. Caster Level</strong>
+                </TableCell>
                 <TableCell align="right">
                   <strong>Typical Population</strong>
                 </TableCell>
@@ -771,6 +844,7 @@ const CityServices: React.FC = () => {
                 <TableCell align="right">50 gp</TableCell>
                 <TableCell align="right">500 gp</TableCell>
                 <TableCell align="center">None</TableCell>
+                <TableCell align="center">1</TableCell>
                 <TableCell align="right">1-20</TableCell>
               </TableRow>
               <TableRow>
@@ -778,6 +852,7 @@ const CityServices: React.FC = () => {
                 <TableCell align="right">200 gp</TableCell>
                 <TableCell align="right">1,000 gp</TableCell>
                 <TableCell align="center">None</TableCell>
+                <TableCell align="center">2</TableCell>
                 <TableCell align="right">21-60</TableCell>
               </TableRow>
               <TableRow>
@@ -790,6 +865,7 @@ const CityServices: React.FC = () => {
                     (1st: 5% chance)
                   </Typography>
                 </TableCell>
+                <TableCell align="center">3</TableCell>
                 <TableCell align="right">20-200</TableCell>
               </TableRow>
               <TableRow>
@@ -797,6 +873,7 @@ const CityServices: React.FC = () => {
                 <TableCell align="right">1,000 gp</TableCell>
                 <TableCell align="right">5,000 gp</TableCell>
                 <TableCell align="center">1st</TableCell>
+                <TableCell align="center">5</TableCell>
                 <TableCell align="right">201-2,000</TableCell>
               </TableRow>
               <TableRow>
@@ -804,6 +881,7 @@ const CityServices: React.FC = () => {
                 <TableCell align="right">2,000 gp</TableCell>
                 <TableCell align="right">10,000 gp</TableCell>
                 <TableCell align="center">2nd</TableCell>
+                <TableCell align="center">7</TableCell>
                 <TableCell align="right">2,001-5,000</TableCell>
               </TableRow>
               <TableRow>
@@ -811,6 +889,7 @@ const CityServices: React.FC = () => {
                 <TableCell align="right">4,000 gp</TableCell>
                 <TableCell align="right">25,000 gp</TableCell>
                 <TableCell align="center">3rd-4th</TableCell>
+                <TableCell align="center">9</TableCell>
                 <TableCell align="right">5,001-10,000</TableCell>
               </TableRow>
               <TableRow>
@@ -818,6 +897,7 @@ const CityServices: React.FC = () => {
                 <TableCell align="right">8,000 gp</TableCell>
                 <TableCell align="right">50,000 gp</TableCell>
                 <TableCell align="center">5th-6th</TableCell>
+                <TableCell align="center">12</TableCell>
                 <TableCell align="right">10,001-25,000</TableCell>
               </TableRow>
               <TableRow>
@@ -830,6 +910,7 @@ const CityServices: React.FC = () => {
                     (9th: 1% chance)
                   </Typography>
                 </TableCell>
+                <TableCell align="center">15</TableCell>
                 <TableCell align="right">25,001+</TableCell>
               </TableRow>
             </TableBody>

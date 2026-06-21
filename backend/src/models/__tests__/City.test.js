@@ -73,6 +73,30 @@ describe('City model', () => {
     });
   });
 
+  describe('getEffectiveCasterLevel (pure - house rule)', () => {
+    it('should return the configured caster level for each size', () => {
+      expect(City.getEffectiveCasterLevel('Thorp')).toBe(1);
+      expect(City.getEffectiveCasterLevel('Hamlet')).toBe(2);
+      expect(City.getEffectiveCasterLevel('Village')).toBe(3);
+      expect(City.getEffectiveCasterLevel('Small Town')).toBe(5);
+      expect(City.getEffectiveCasterLevel('Large Town')).toBe(7);
+      expect(City.getEffectiveCasterLevel('Small City')).toBe(9);
+      expect(City.getEffectiveCasterLevel('Large City')).toBe(12);
+      expect(City.getEffectiveCasterLevel('Metropolis')).toBe(15);
+    });
+
+    it('should fall back to 1 for unknown sizes', () => {
+      expect(City.getEffectiveCasterLevel('Castle')).toBe(1);
+      expect(City.getEffectiveCasterLevel(undefined)).toBe(1);
+    });
+
+    it('getSettlementCasterLevels should return all eight sizes', () => {
+      const levels = City.getSettlementCasterLevels();
+      expect(Object.keys(levels)).toHaveLength(8);
+      expect(levels['Metropolis']).toBe(15);
+    });
+  });
+
   describe('getValidSizes (pure)', () => {
     it('should return array of valid size names', () => {
       const sizes = City.getValidSizes();

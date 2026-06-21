@@ -68,6 +68,8 @@ describe('itemSearchController', () => {
         rows: [{ year: 4712, month: 3, day: 15 }],
       });
       City.getOrCreate.mockResolvedValue(mockCity);
+      City.getEffectiveCasterLevel.mockReturnValue(5);
+      ItemSearch.calculateCasterLevelPenalty.mockReturnValue(0);
     });
 
     it('should reject when city_name is missing', async () => {
@@ -110,7 +112,7 @@ describe('itemSearchController', () => {
       await itemSearchController.checkItemAvailability(req, res);
 
       expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        'SELECT name, value FROM item WHERE id = $1',
+        'SELECT name, value, casterlevel FROM item WHERE id = $1',
         [5]
       );
       expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(15, 1000);
@@ -253,6 +255,47 @@ describe('itemSearchController', () => {
           too_expensive: true,
           search: null,
           found: false,
+        }),
+        expect.any(String)
+      );
+    });
+
+    it('should apply a caster-level penalty for high-CL items (e.g. ioun stone)', async () => {
+      const req = createMockReq({
+        body: { ...baseBody, item_id: 7 },
+      });
+      const res = createMockRes();
+
+      // Cracked ioun stone: 150 gp, caster level 12
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Cracked Ioun Stone', value: '150', casterlevel: 12 }] });
+
+      // Base value tier (150 <= 25% of 1000) => 90%
+      ItemSearch.calculateAvailability.mockReturnValue({
+        threshold: 90, percentage: 90, description: '90%', reason: 'available',
+      });
+      // Small Town effective CL 5; item CL 12 => 7 over => 70 point penalty
+      City.getEffectiveCasterLevel.mockReturnValue(5);
+      ItemSearch.calculateCasterLevelPenalty.mockReturnValue(70);
+      ItemSearch.create.mockResolvedValue({ id: 9 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      expect(ItemSearch.calculateCasterLevelPenalty).toHaveBeenCalledWith(12, 5);
+      // 90 - 70 = 20 final threshold persisted
+      expect(ItemSearch.create).toHaveBeenCalledWith(
+        expect.objectContaining({ availability_threshold: 20 })
+      );
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({
+          item_caster_level: 12,
+          settlement_caster_level: 5,
+          availability: expect.objectContaining({
+            percentage: 20,
+            base_percentage: 90,
+            caster_level_penalty: 70,
+          }),
         }),
         expect.any(String)
       );

@@ -24,6 +24,24 @@ const SETTLEMENT_SIZES = {
 };
 
 /**
+ * House-rule "effective caster level" of the most capable spellcaster/crafter a
+ * settlement of each size can plausibly support. Used to gate the availability of
+ * high-caster-level items (item finder) and high-CL spellcasting services.
+ * This is NOT RAW - PF1e settlement rules use gp value only - but it models the
+ * realism that a small village won't have crafters capable of a CL 12 ioun stone.
+ */
+const SETTLEMENT_CASTER_LEVELS = {
+  'Thorp': 1,
+  'Hamlet': 2,
+  'Village': 3,
+  'Small Town': 5,
+  'Large Town': 7,
+  'Small City': 9,
+  'Large City': 12,
+  'Metropolis': 15
+};
+
+/**
  * Get all cities
  * @return {Promise<Array>} Array of cities
  */
@@ -176,6 +194,24 @@ exports.getSettlementSizes = () => {
  */
 exports.getValidSizes = () => {
   return Object.keys(SETTLEMENT_SIZES);
+};
+
+/**
+ * Get the house-rule effective caster level for a settlement size.
+ * Falls back to 1 for unknown sizes.
+ * @param {string} size - Settlement size name
+ * @return {number} Effective caster level
+ */
+exports.getEffectiveCasterLevel = (size) => {
+  return SETTLEMENT_CASTER_LEVELS[size] || 1;
+};
+
+/**
+ * Get the full settlement effective caster level map.
+ * @return {Object} Map of size name to effective caster level
+ */
+exports.getSettlementCasterLevels = () => {
+  return SETTLEMENT_CASTER_LEVELS;
 };
 
 module.exports = exports;

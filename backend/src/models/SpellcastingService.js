@@ -66,6 +66,55 @@ const isSpellAvailable = (spellLevel, cityMaxSpellLevel) => {
 };
 
 /**
+ * Minimum caster level required to cast a spell of a given level on the standard
+ * full-caster progression. Formula: max(1, 2 × spellLevel - 1).
+ * @param {number} spellLevel - Spell level (0-9)
+ * @return {number} Minimum caster level
+ */
+const getMinCasterLevel = (spellLevel) => {
+  if (spellLevel <= 1) return 1;
+  return spellLevel * 2 - 1;
+};
+
+/**
+ * House-rule find-chance penalty (percentage points) per caster level requested above
+ * what the settlement can readily supply.
+ */
+const CASTER_LEVEL_FIND_PENALTY_PER_CL = 10;
+
+/**
+ * Check whether a spellcaster of the requested caster level can be found in a settlement.
+ * RAW: a settlement service is cast at the spell's minimum caster level, which is always
+ * available. This house rule lets a buyer gamble on finding a higher-level caster: the
+ * minimum CL (and anything up to the settlement's effective CL) is guaranteed, while each
+ * caster level requested beyond that ceiling reduces the find chance.
+ * @param {number} requestedCL - Caster level the buyer wants
+ * @param {number} minCL - Minimum caster level for the spell
+ * @param {number} settlementCasterLevel - Settlement's effective caster level
+ * @return {Object} { available, threshold, roll, ceiling, reason }
+ */
+const checkCasterLevelAvailability = (requestedCL, minCL, settlementCasterLevel) => {
+  // The minimum-CL caster is always present (the spell itself is already available),
+  // as is any caster up to the settlement's effective caster level.
+  const ceiling = Math.max(minCL, settlementCasterLevel);
+
+  if (requestedCL <= ceiling) {
+    return { available: true, threshold: 100, ceiling, reason: 'cl_within_settlement' };
+  }
+
+  const threshold = Math.max(1, 100 - (requestedCL - ceiling) * CASTER_LEVEL_FIND_PENALTY_PER_CL);
+  const roll = Math.floor(Math.random() * 100) + 1; // 1d100
+  const available = roll <= threshold;
+  return {
+    available,
+    threshold,
+    roll,
+    ceiling,
+    reason: available ? 'cl_higher_found' : 'cl_higher_not_found'
+  };
+};
+
+/**
  * Create a new spellcasting service record
  * @param {Object} serviceData
  * @return {Promise<Object>} Created service record
@@ -190,5 +239,8 @@ exports.delete = async (id) => {
  */
 exports.calculateCost = calculateCost;
 exports.isSpellAvailable = isSpellAvailable;
+exports.getMinCasterLevel = getMinCasterLevel;
+exports.checkCasterLevelAvailability = checkCasterLevelAvailability;
+exports.CASTER_LEVEL_FIND_PENALTY_PER_CL = CASTER_LEVEL_FIND_PENALTY_PER_CL;
 
 module.exports = exports;

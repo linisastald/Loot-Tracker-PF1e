@@ -39,10 +39,12 @@ const checkItemAvailability = async (req, res) => {
   // Calculate item value
   let itemValue = 0;
   let itemName = 'Custom Item';
+  let baseItemCasterLevel = 0;
+  let totalEnhancementPlus = 0;
 
   if (item_id) {
-    // Get base item value
-    const itemQuery = 'SELECT name, value FROM item WHERE id = $1';
+    // Get base item value and caster level
+    const itemQuery = 'SELECT name, value, casterlevel FROM item WHERE id = $1';
     const itemResult = await dbUtils.executeQuery(itemQuery, [item_id]);
 
     if (itemResult.rows.length === 0) {
@@ -52,6 +54,7 @@ const checkItemAvailability = async (req, res) => {
     const item = itemResult.rows[0];
     itemName = item.name;
     itemValue = parseFloat(item.value) || 0;
+    baseItemCasterLevel = parseInt(item.casterlevel) || 0;
   }
 
   // Add mod values if any (batch fetch all mods at once)
@@ -68,13 +71,18 @@ const checkItemAvailability = async (req, res) => {
         const multiplier = mod.target === 'armor' ? 1000 : 2000;
         const enhancementCost = plus * plus * multiplier;
         itemValue += enhancementCost;
+        totalEnhancementPlus += plus;
       } else if (mod.valuecalc && !isNaN(parseFloat(mod.valuecalc))) {
         itemValue += parseFloat(mod.valuecalc);
       }
     }
   }
 
-  // Calculate availability
+  // Effective caster level of the item: the higher of the item's intrinsic caster level
+  // and the minimum CL to craft its enhancement bonus (magic arms/armor: CL = 3 × bonus).
+  const itemCasterLevel = Math.max(baseItemCasterLevel, totalEnhancementPlus * 3);
+
+  // Calculate base (value-only) availability
   const availability = ItemSearch.calculateAvailability(itemValue, city.base_value);
 
   // If item is too expensive for this settlement (threshold = 0), return immediately
@@ -99,9 +107,27 @@ const checkItemAvailability = async (req, res) => {
     });
   }
 
+  // House rule: apply a caster-level penalty when the item's caster level exceeds what
+  // the settlement can plausibly support. Floored at 1% so high-CL items remain a rare find.
+  const settlementCasterLevel = City.getEffectiveCasterLevel(city.size);
+  const casterLevelPenalty = ItemSearch.calculateCasterLevelPenalty(itemCasterLevel, settlementCasterLevel);
+  const baseThreshold = availability.threshold;
+  const threshold = casterLevelPenalty > 0
+    ? Math.max(1, baseThreshold - casterLevelPenalty)
+    : baseThreshold;
+
+  // Reflect the adjusted chance back into the availability object for the response
+  availability.threshold = threshold;
+  availability.percentage = threshold;
+  availability.description = `${threshold}%`;
+  availability.base_percentage = baseThreshold;
+  availability.caster_level_penalty = casterLevelPenalty;
+  availability.item_caster_level = itemCasterLevel;
+  availability.settlement_caster_level = settlementCasterLevel;
+
   // Roll d100
   const rollResult = Math.floor(Math.random() * 100) + 1;
-  const found = rollResult <= availability.threshold;
+  const found = rollResult <= threshold;
 
   // Save the search
   const searchRecord = await ItemSearch.create({
@@ -111,7 +137,7 @@ const checkItemAvailability = async (req, res) => {
     golarion_date: golarionDate,
     found,
     roll_result: rollResult,
-    availability_threshold: availability.threshold,
+    availability_threshold: threshold,
     item_value: itemValue,
     character_id: character_id || null,
     notes: notes || null
@@ -119,7 +145,8 @@ const checkItemAvailability = async (req, res) => {
 
   logger.info(
     `Item search: ${itemName} in ${city.name} - ` +
-    `Value: ${itemValue}gp, Roll: ${rollResult}, Threshold: ${availability.threshold}, Found: ${found}`
+    `Value: ${itemValue}gp, ItemCL: ${itemCasterLevel}, SettlementCL: ${settlementCasterLevel}, ` +
+    `Penalty: ${casterLevelPenalty}%, Roll: ${rollResult}, Threshold: ${threshold}, Found: ${found}`
   );
 
   controllerFactory.sendSuccessResponse(res, {
@@ -127,6 +154,8 @@ const checkItemAvailability = async (req, res) => {
     city,
     item_name: itemName,
     item_value: itemValue,
+    item_caster_level: itemCasterLevel,
+    settlement_caster_level: settlementCasterLevel,
     availability,
     roll_result: rollResult,
     found,
