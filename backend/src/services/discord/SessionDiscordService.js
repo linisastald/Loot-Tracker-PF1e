@@ -363,18 +363,26 @@ class SessionDiscordService {
             attendance = await attendanceService.getSessionAttendance(session.id);
         }
 
-        // Look up the snack master designated in the PREVIOUS session's task
-        // assignment. Whoever was given the post-session "snacks for next
-        // session" task is responsible for snacks at THIS session.
+        // Look up the snack master designated in the most recent task
+        // assignment made before this session begins. Whoever was given the
+        // post-session "snacks for next session" task is responsible for
+        // snacks at THIS (the next) session.
+        //
+        // We key off the assignment's own created_at rather than its linked
+        // session_id: the DM usually runs the Tasks page at the table once a
+        // session has already started, at which point that row gets linked to
+        // the FOLLOWING upcoming session (the only one still in the future),
+        // not the session just played. Trusting session_id therefore lags one
+        // session behind. created_at is reliable because each task run is
+        // created at the previous session, before this one's start_time.
         let snackMasterName = null;
         try {
             const snackResult = await dbUtils.executeQuery(`
-                SELECT sth.snack_master_name
-                FROM session_task_history sth
-                JOIN game_sessions gs ON sth.session_id = gs.id
-                WHERE gs.start_time < $1
-                  AND sth.snack_master_name IS NOT NULL
-                ORDER BY gs.start_time DESC, sth.created_at DESC
+                SELECT snack_master_name
+                FROM session_task_history
+                WHERE snack_master_name IS NOT NULL
+                  AND created_at < $1
+                ORDER BY created_at DESC
                 LIMIT 1
             `, [session.start_time]);
             if (snackResult.rows.length > 0) {
