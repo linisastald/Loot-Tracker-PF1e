@@ -18,6 +18,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   TextField,
   Typography,
   InputAdornment,
@@ -51,6 +52,54 @@ interface OpenSections {
   scrolls: boolean;
 }
 
+type SortDirection = 'asc' | 'desc';
+
+interface SortState<T> {
+  key: keyof T;
+  direction: SortDirection;
+}
+
+// Sort a copy of the list by the given key. Numbers sort numerically, strings
+// case-insensitively, and null/undefined values (e.g. wands with unset charges)
+// always sink to the bottom regardless of direction.
+const sortItems = <T,>(items: T[], key: keyof T, direction: SortDirection): T[] => {
+  const factor = direction === 'asc' ? 1 : -1;
+  return [...items].sort((a, b) => {
+    const av = a[key];
+    const bv = b[key];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor;
+    return String(av).localeCompare(String(bv)) * factor;
+  });
+};
+
+interface SortableHeaderCellProps {
+  label: string;
+  columnKey: string;
+  activeKey: string;
+  direction: SortDirection;
+  onSort: (key: string) => void;
+}
+
+const SortableHeaderCell: React.FC<SortableHeaderCellProps> = ({
+  label, columnKey, activeKey, direction, onSort,
+}) => {
+  const active = activeKey === columnKey;
+  return (
+    <TableCell sortDirection={active ? direction : false}>
+      <TableSortLabel
+        active={active}
+        direction={active ? direction : 'asc'}
+        onClick={() => onSort(columnKey)}
+      >
+        {label}
+      </TableSortLabel>
+    </TableCell>
+  );
+};
+
 const Consumables: React.FC = () => {
   const [wands, setWands] = useState<Wand[]>([]);
   const [potions, setPotions] = useState<PotionScroll[]>([]);
@@ -60,6 +109,9 @@ const Consumables: React.FC = () => {
   const [newCharges, setNewCharges] = useState<string>('');
   const [openSections, setOpenSections] = useState<OpenSections>({wands: true, potions: true, scrolls: true});
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [wandSort, setWandSort] = useState<SortState<Wand>>({key: 'name', direction: 'asc'});
+  const [potionSort, setPotionSort] = useState<SortState<PotionScroll>>({key: 'name', direction: 'asc'});
+  const [scrollSort, setScrollSort] = useState<SortState<PotionScroll>>({key: 'name', direction: 'asc'});
 
   // Maximum charges for wands
   const MAX_WAND_CHARGES = 50;
@@ -182,10 +234,21 @@ const Consumables: React.FC = () => {
     );
   };
 
-  // Filter consumables based on search query
-  const filteredWands = filterItems(wands);
-  const filteredPotions = filterItems(potions);
-  const filteredScrolls = filterItems(scrolls);
+  // Toggle sort: clicking the active column flips direction, a new column starts ascending
+  const handleSort = <T,>(
+    setter: React.Dispatch<React.SetStateAction<SortState<T>>>,
+    key: string,
+  ): void => {
+    setter(prev => ({
+      key: key as keyof T,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  // Filter then sort each section
+  const filteredWands = sortItems(filterItems(wands), wandSort.key, wandSort.direction);
+  const filteredPotions = sortItems(filterItems(potions), potionSort.key, potionSort.direction);
+  const filteredScrolls = sortItems(filterItems(scrolls), scrollSort.key, scrollSort.direction);
 
   return (
     <Container maxWidth={false} component="main">
@@ -222,9 +285,9 @@ const Consumables: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Quantity</TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Charges</TableCell>
+                  <SortableHeaderCell label="Quantity" columnKey="quantity" activeKey={wandSort.key} direction={wandSort.direction} onSort={(k) => handleSort(setWandSort, k)} />
+                  <SortableHeaderCell label="Name" columnKey="name" activeKey={wandSort.key} direction={wandSort.direction} onSort={(k) => handleSort(setWandSort, k)} />
+                  <SortableHeaderCell label="Charges" columnKey="charges" activeKey={wandSort.key} direction={wandSort.direction} onSort={(k) => handleSort(setWandSort, k)} />
                   <TableCell>Action</TableCell>
                 </TableRow>
               </TableHead>
@@ -285,8 +348,8 @@ const Consumables: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Quantity</TableCell>
-                  <TableCell>Name</TableCell>
+                  <SortableHeaderCell label="Quantity" columnKey="quantity" activeKey={potionSort.key} direction={potionSort.direction} onSort={(k) => handleSort(setPotionSort, k)} />
+                  <SortableHeaderCell label="Name" columnKey="name" activeKey={potionSort.key} direction={potionSort.direction} onSort={(k) => handleSort(setPotionSort, k)} />
                   <TableCell>Action</TableCell>
                 </TableRow>
               </TableHead>
@@ -334,8 +397,8 @@ const Consumables: React.FC = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Quantity</TableCell>
-                  <TableCell>Name</TableCell>
+                  <SortableHeaderCell label="Quantity" columnKey="quantity" activeKey={scrollSort.key} direction={scrollSort.direction} onSort={(k) => handleSort(setScrollSort, k)} />
+                  <SortableHeaderCell label="Name" columnKey="name" activeKey={scrollSort.key} direction={scrollSort.direction} onSort={(k) => handleSort(setScrollSort, k)} />
                   <TableCell>Action</TableCell>
                 </TableRow>
               </TableHead>

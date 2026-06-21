@@ -140,6 +140,26 @@ describe('Consumables', () => {
     });
   });
 
+  it('sorts wands by a column when its header is clicked', async () => {
+    renderConsumables();
+
+    await waitFor(() => {
+      expect(screen.getByText('Wand of Cure Light Wounds')).toBeInTheDocument();
+    });
+
+    // Default sort is by name ascending
+    const namesBefore = screen.getAllByText(/^Wand of/).map((el) => el.textContent);
+    expect(namesBefore).toEqual(['Wand of Cure Light Wounds', 'Wand of Magic Missile']);
+
+    // Sorting by Charges ascending puts the 10-charge wand before the 35-charge wand
+    fireEvent.click(screen.getByRole('button', { name: /charges/i }));
+
+    await waitFor(() => {
+      const namesAfter = screen.getAllByText(/^Wand of/).map((el) => el.textContent);
+      expect(namesAfter).toEqual(['Wand of Magic Missile', 'Wand of Cure Light Wounds']);
+    });
+  });
+
   it('handles empty consumables data', async () => {
     (api.get as any).mockResolvedValue({
       data: { wands: [], potionsScrolls: [] },
