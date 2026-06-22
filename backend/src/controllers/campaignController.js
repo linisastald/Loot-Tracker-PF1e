@@ -438,7 +438,7 @@ const levelUpCampaign = async (req, res) => {
       const mention = settings.campaign_role_id ? `<@&${settings.campaign_role_id}> ` : '';
       const result = await discordService.sendMessage({
         channelId: settings.discord_channel_id,
-        content: `${mention}🎉 The party has leveled up! Please level your characters up to **level ${newLevel}** (Average Party Level ${apl}).`
+        content: `${mention}🎉 The party has leveled up! Please level your characters up to **level ${newLevel}**.`
       });
       discordSent = !!(result && result.success);
     }
