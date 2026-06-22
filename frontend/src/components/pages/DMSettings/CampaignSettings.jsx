@@ -28,6 +28,20 @@ import {
     Paper
 } from '@mui/material';
 
+// Derive the Average Party Level (APL) from the shared character level and the
+// party size, mirroring backend utils/partyLevel (CRB p.397: <=3 chars -> -1,
+// 4-5 -> 0, >=6 -> +1; clamped to a minimum of 1). Used for live previews; the
+// backend stays the source of truth for persisted/announced values.
+const deriveApl = (characterLevel, characterCount) => {
+    const level = parseInt(characterLevel) || 0;
+    let adjustment = 0;
+    if (characterCount > 0) {
+        if (characterCount <= 3) adjustment = -1;
+        else if (characterCount >= 6) adjustment = 1;
+    }
+    return Math.max(1, level + adjustment);
+};
+
 const CampaignSettings = () => {
     const {currentCampaign, campaignSettings, refresh} = useCampaign();
     const {enqueueSnackbar} = useSnackbar();
@@ -36,7 +50,10 @@ const CampaignSettings = () => {
 
     // Infamy system states
     const [infamyEnabled, setInfamyEnabled] = useState(false);
+    // The shared character level every PC is at (stored as 'average_party_level').
     const [averagePartyLevel, setAveragePartyLevel] = useState(5);
+    // Active party size, used to derive the APL from the character level.
+    const [characterCount, setCharacterCount] = useState(0);
 
     // Level Up (confirmation dialog because it can ping Discord)
     const [levelUpDialogOpen, setLevelUpDialogOpen] = useState(false);
@@ -71,6 +88,21 @@ const CampaignSettings = () => {
         }
     }, [campaignSettings]);
 
+    // Active party size drives the APL size adjustment; the character level
+    // comes from the settings map (handled above). Re-fetched after a level-up.
+    const fetchPartyLevel = async () => {
+        try {
+            const response = await api.get('/campaigns/current/party-level');
+            const data = response.data || response;
+            if (typeof data.character_count === 'number') {
+                setCharacterCount(data.character_count);
+            }
+        } catch (error) {
+            // Non-fatal: the page still works, the APL preview just assumes no
+            // size adjustment until the count loads.
+        }
+    };
+
     useEffect(() => {
         const fetchSettings = async () => {
             try {
@@ -86,6 +118,7 @@ const CampaignSettings = () => {
         };
 
         fetchSettings();
+        fetchPartyLevel();
         // enqueueSnackbar is stable; run once on mount
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -155,28 +188,30 @@ const CampaignSettings = () => {
     };
 
     const handleAveragePartyLevelChange = async () => {
-        const apl = parseInt(averagePartyLevel);
+        const level = parseInt(averagePartyLevel);
         // 1-30 matches the backend validator (levels 1-20 plus mythic-adjusted)
-        if (isNaN(apl) || apl < 1 || apl > 30) {
-            enqueueSnackbar('Average Party Level must be a number between 1 and 30', {variant: 'error'});
+        if (isNaN(level) || level < 1 || level > 30) {
+            enqueueSnackbar('Character level must be a number between 1 and 30', {variant: 'error'});
             return;
         }
         try {
             await api.put('/campaigns/current/settings', {
                 name: 'average_party_level',
-                value: apl
+                value: level
             });
             await refresh();
-            enqueueSnackbar('Average Party Level updated successfully', {variant: 'success'});
+            await fetchPartyLevel();
+            enqueueSnackbar('Character level updated successfully', {variant: 'success'});
         } catch (err) {
             enqueueSnackbar(
-                err.response?.data?.message || 'Error updating Average Party Level',
+                err.response?.data?.message || 'Error updating character level',
                 {variant: 'error'}
             );
         }
     };
 
     const currentLevel = parseInt(averagePartyLevel) || 0;
+    const currentApl = deriveApl(averagePartyLevel, characterCount);
     const atMaxLevel = currentLevel >= 30;
 
     const handleLevelUp = async () => {
@@ -185,9 +220,10 @@ const CampaignSettings = () => {
             const response = await api.post('/campaigns/current/level-up');
             const data = response.data || response;
             await refresh();
+            await fetchPartyLevel();
             setLevelUpDialogOpen(false);
             enqueueSnackbar(
-                `Party leveled up to level ${data.average_party_level}` +
+                `Characters leveled up to level ${data.character_level} (APL ${data.apl})` +
                     (data.discordSent ? ' — Discord notified' : ''),
                 {variant: 'success'}
             );
@@ -282,13 +318,20 @@ const CampaignSettings = () => {
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Party Level</Typography>
                 <Typography variant="body2" color="text.secondary" paragraph>
-                    The current average party level for this campaign. "Level Up" raises it
-                    by one and, when Discord integration is enabled, announces the new level
-                    to your campaign channel.
+                    The level every character in the party is at. "Level Up" raises it by one
+                    and, when Discord integration is enabled, announces the new level to your
+                    campaign channel. The Average Party Level (APL) is derived from this level
+                    and the party size (Core Rulebook p.397).
                 </Typography>
 
+                <Typography variant="body1">
+                    Character level: <strong>{currentLevel || '—'}</strong>
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                    Active characters: <strong>{characterCount}</strong>
+                </Typography>
                 <Typography variant="body1" sx={{mb: 2}}>
-                    Current level: <strong>{currentLevel || '—'}</strong>
+                    Average Party Level (APL): <strong>{currentLevel ? currentApl : '—'}</strong>
                 </Typography>
 
                 <Button
@@ -322,13 +365,15 @@ const CampaignSettings = () => {
 
                 {infamyEnabled && (
                     <Box mt={3}>
-                        <Typography variant="subtitle1" gutterBottom>Average Party Level (APL)</Typography>
+                        <Typography variant="subtitle1" gutterBottom>Character Level</Typography>
                         <Typography variant="body2" color="text.secondary" paragraph>
-                            This value is used to calculate the DC for infamy checks: 15 + (2 × APL)
+                            The shared character level (same value the "Level Up" button raises).
+                            Infamy check DC = 15 + (2 × APL), where the APL is derived from this
+                            level and the {characterCount}-character party size.
                         </Typography>
 
                         <TextField
-                            label="Average Party Level"
+                            label="Character Level"
                             type="number"
                             InputProps={{ inputProps: { min: 1, max: 30 } }}
                             value={averagePartyLevel}
@@ -344,13 +389,13 @@ const CampaignSettings = () => {
                             onClick={handleAveragePartyLevelChange}
                             sx={{mt: 2}}
                         >
-                            Update APL
+                            Update Level
                         </Button>
 
                         {averagePartyLevel && (
                             <Box mt={2} p={2} sx={{backgroundColor: 'rgba(0, 0, 0, 0.05)', borderRadius: 1}}>
                                 <Typography variant="body2">
-                                    Current Infamy Check DC: <strong>{15 + (2 * parseInt(averagePartyLevel || 0))}</strong>
+                                    APL: <strong>{currentApl}</strong> · Current Infamy Check DC: <strong>{15 + (2 * currentApl)}</strong>
                                 </Typography>
                             </Box>
                         )}
@@ -381,7 +426,8 @@ const CampaignSettings = () => {
                 <DialogTitle>Level Up Party?</DialogTitle>
                 <DialogContent>
                     <DialogContentText>
-                        This will set the average party level to <strong>{currentLevel + 1}</strong>.
+                        This will raise every character to <strong>level {currentLevel + 1}</strong>
+                        {' '}(Average Party Level <strong>{deriveApl(currentLevel + 1, characterCount)}</strong>).
                         If Discord integration is enabled, an announcement will be posted to your
                         campaign channel (tagging the campaign role).
                     </DialogContentText>

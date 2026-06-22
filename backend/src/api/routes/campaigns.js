@@ -24,8 +24,13 @@ router.delete('/current/members/:userId', verifyToken, checkRole('DM'), campaign
 // current campaign only. CSRF protection is applied at the mount point.
 router.put('/current/settings', verifyToken, checkRole('DM'), campaignController.updateCurrentCampaignSetting);
 
-// Level up the current campaign (increment APL, announce to Discord) — DM of the
-// current campaign only. CSRF protection is applied at the mount point.
+// Current party-level picture: shared character level, active character count,
+// and the derived Average Party Level (APL). Any campaign member may read it.
+router.get('/current/party-level', verifyToken, campaignController.getCurrentPartyLevel);
+
+// Level up the current campaign (raise the shared character level, announce to
+// Discord) — DM of the current campaign only. CSRF protection is applied at the
+// mount point.
 router.post('/current/level-up', verifyToken, checkRole('DM'), campaignController.levelUpCampaign);
 
 // Rename the current campaign (campaigns.name; slug unchanged) — DM of the

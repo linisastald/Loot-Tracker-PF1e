@@ -18,11 +18,19 @@ jest.mock('../../services/scheduler/SessionSchedulerService', () => ({
 jest.mock('../../services/discordBrokerService', () => ({
   sendMessage: jest.fn(),
 }));
+jest.mock('../../utils/partyLevel', () => ({
+  // Default mock party: 4 active characters (no APL size adjustment), so the
+  // derived APL equals the character level.
+  getActiveCharacterCount: jest.fn().mockResolvedValue(4),
+  computeApl: jest.fn((characterLevel) => characterLevel),
+  getPartyLevelInfo: jest.fn(),
+}));
 
 const Campaign = require('../../models/Campaign');
 const sessionSchedulerService = require('../../services/scheduler/SessionSchedulerService');
 const campaignSettings = require('../../utils/campaignSettings');
 const discordService = require('../../services/discordBrokerService');
+const partyLevel = require('../../utils/partyLevel');
 const campaignController = require('../campaignController');
 
 function createMockRes() {
@@ -60,6 +68,13 @@ describe('campaignController', () => {
   // levelUpCampaign
   // -------------------------------------------------------------------
   describe('levelUpCampaign', () => {
+    beforeEach(() => {
+      // resetMocks wipes implementations before each test; restore the default
+      // party (4 active characters -> derived APL equals the character level).
+      partyLevel.getActiveCharacterCount.mockResolvedValue(4);
+      partyLevel.computeApl.mockImplementation((characterLevel) => characterLevel);
+    });
+
     it('increments APL and reports no Discord when integration is disabled', async () => {
       const req = createMockReq({ campaignRole: 'DM' });
       const res = createMockRes();
@@ -75,8 +90,8 @@ describe('campaignController', () => {
       );
       expect(discordService.sendMessage).not.toHaveBeenCalled();
       expect(res.success).toHaveBeenCalledWith(
-        { average_party_level: 6, discordSent: false },
-        'Party leveled up to level 6'
+        { character_level: 6, apl: 6, character_count: 4, average_party_level: 6, discordSent: false },
+        'Party leveled up to level 6 (APL 6)'
       );
     });
 
@@ -101,8 +116,8 @@ describe('campaignController', () => {
       expect(arg.content).toContain('<@&987654321098765432>');
       expect(arg.content).toContain('level 5');
       expect(res.success).toHaveBeenCalledWith(
-        { average_party_level: 5, discordSent: true },
-        'Party leveled up to level 5'
+        { character_level: 5, apl: 5, character_count: 4, average_party_level: 5, discordSent: true },
+        'Party leveled up to level 5 (APL 5)'
       );
     });
 
@@ -156,8 +171,51 @@ describe('campaignController', () => {
       await campaignController.levelUpCampaign(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { average_party_level: 8, discordSent: false },
-        'Party leveled up to level 8'
+        { character_level: 8, apl: 8, character_count: 4, average_party_level: 8, discordSent: false },
+        'Party leveled up to level 8 (APL 8)'
+      );
+    });
+
+    it('derives the APL from the size-adjusted party (6 characters -> +1)', async () => {
+      const req = createMockReq({ campaignRole: 'DM' });
+      const res = createMockRes();
+
+      jest.spyOn(campaignSettings, 'getCampaignSetting').mockResolvedValue('5');
+      jest.spyOn(campaignSettings, 'setCampaignSetting').mockResolvedValue({});
+      jest.spyOn(campaignSettings, 'getCampaignSettings').mockResolvedValue({});
+      partyLevel.getActiveCharacterCount.mockResolvedValueOnce(6);
+      partyLevel.computeApl.mockReturnValueOnce(7); // level 6 + size adjustment
+
+      await campaignController.levelUpCampaign(req, res);
+
+      expect(partyLevel.computeApl).toHaveBeenCalledWith(6, 6);
+      expect(res.success).toHaveBeenCalledWith(
+        { character_level: 6, apl: 7, character_count: 6, average_party_level: 6, discordSent: false },
+        'Party leveled up to level 6 (APL 7)'
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // getCurrentPartyLevel
+  // -------------------------------------------------------------------
+  describe('getCurrentPartyLevel', () => {
+    it('returns the character level, party size, and derived APL', async () => {
+      const req = createMockReq();
+      const res = createMockRes();
+
+      partyLevel.getPartyLevelInfo.mockResolvedValueOnce({
+        characterLevel: 5,
+        characterCount: 3,
+        apl: 4,
+      });
+
+      await campaignController.getCurrentPartyLevel(req, res);
+
+      expect(partyLevel.getPartyLevelInfo).toHaveBeenCalledWith(req.campaignId);
+      expect(res.success).toHaveBeenCalledWith(
+        { character_level: 5, character_count: 3, apl: 4 },
+        'Party level retrieved'
       );
     });
   });

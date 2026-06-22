@@ -3,6 +3,7 @@ const Campaign = require('../models/Campaign');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
+const partyLevel = require('../utils/partyLevel');
 const timezoneUtils = require('../utils/timezoneUtils');
 const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
 const discordService = require('../services/discordBrokerService');
@@ -364,33 +365,65 @@ const updateCurrentCampaignSetting = async (req, res) => {
 };
 
 /**
- * Level up the current campaign: increment its average party level (APL) by one
- * and, when Discord is enabled and configured, announce the new level to the
+ * Read the current campaign's party-level picture: the shared character level
+ * (the 'average_party_level' setting), the active character count, and the
+ * Average Party Level (APL) derived from them (CRB p.397 size adjustment).
+ *
+ * Response data: { character_level, character_count, apl }
+ */
+const getCurrentPartyLevel = async (req, res) => {
+  const info = await partyLevel.getPartyLevelInfo(req.campaignId);
+  controllerFactory.sendSuccessResponse(
+    res,
+    {
+      character_level: info.characterLevel,
+      character_count: info.characterCount,
+      apl: info.apl,
+    },
+    'Party level retrieved'
+  );
+};
+
+/**
+ * Level up the current campaign: raise the shared character level by one and,
+ * when Discord is enabled and configured, announce the new level to the
  * campaign's channel (tagging the campaign role when set). DM-only.
  *
- * A Discord failure never fails the request — the APL is already persisted; the
- * response reports whether the announcement was sent.
+ * The stored 'average_party_level' setting holds the CHARACTER LEVEL every PC
+ * shares; the Average Party Level (APL) is derived from that level and the
+ * active party size (see utils/partyLevel).
  *
- * Response data: { average_party_level, discordSent }
+ * A Discord failure never fails the request — the level is already persisted;
+ * the response reports whether the announcement was sent.
+ *
+ * Response data: { character_level, apl, character_count, average_party_level, discordSent }
+ * (average_party_level mirrors character_level for backward compatibility.)
  */
 const levelUpCampaign = async (req, res) => {
   const currentValue = await campaignSettings.getCampaignSetting('average_party_level', {
     campaignId: req.campaignId,
     defaultValue: '5'
   });
-  const currentApl = parseInt(currentValue, 10) || 5;
+  const currentLevel = parseInt(currentValue, 10) || 5;
 
-  if (currentApl >= MAX_PARTY_LEVEL) {
+  if (currentLevel >= MAX_PARTY_LEVEL) {
     throw controllerFactory.createValidationError(
       `The party is already at the maximum level (${MAX_PARTY_LEVEL})`
     );
   }
 
-  const newApl = currentApl + 1;
-  await campaignSettings.setCampaignSetting('average_party_level', newApl, 'integer', {
+  const newLevel = currentLevel + 1;
+  await campaignSettings.setCampaignSetting('average_party_level', newLevel, 'integer', {
     campaignId: req.campaignId
   });
-  logger.info(`Campaign ${req.campaignId} leveled up to APL ${newApl} by user ${req.user.id}`);
+
+  // APL is derived from the new shared character level and the party size.
+  const characterCount = await partyLevel.getActiveCharacterCount(req.campaignId);
+  const apl = partyLevel.computeApl(newLevel, characterCount);
+  logger.info(
+    `Campaign ${req.campaignId} leveled up to character level ${newLevel} ` +
+    `(APL ${apl}, ${characterCount} characters) by user ${req.user.id}`
+  );
 
   // Announce to Discord when enabled and configured. Wrapped so a Discord
   // outage (or missing bot token) cannot roll back or fail the level-up.
@@ -405,7 +438,7 @@ const levelUpCampaign = async (req, res) => {
       const mention = settings.campaign_role_id ? `<@&${settings.campaign_role_id}> ` : '';
       const result = await discordService.sendMessage({
         channelId: settings.discord_channel_id,
-        content: `${mention}🎉 The party has leveled up! Please level your characters up to **level ${newApl}**.`
+        content: `${mention}🎉 The party has leveled up! Please level your characters up to **level ${newLevel}** (Average Party Level ${apl}).`
       });
       discordSent = !!(result && result.success);
     }
@@ -415,8 +448,14 @@ const levelUpCampaign = async (req, res) => {
 
   controllerFactory.sendSuccessResponse(
     res,
-    { average_party_level: newApl, discordSent },
-    `Party leveled up to level ${newApl}`
+    {
+      character_level: newLevel,
+      apl,
+      character_count: characterCount,
+      average_party_level: newLevel,
+      discordSent,
+    },
+    `Party leveled up to level ${newLevel} (APL ${apl})`
   );
 };
 
@@ -583,6 +622,10 @@ exports.updateCurrentCampaignSetting = controllerFactory.createHandler(updateCur
   validation: {
     requiredFields: ['name']
   }
+});
+
+exports.getCurrentPartyLevel = controllerFactory.createHandler(getCurrentPartyLevel, {
+  errorMessage: 'Error fetching party level'
 });
 
 exports.levelUpCampaign = controllerFactory.createHandler(levelUpCampaign, {

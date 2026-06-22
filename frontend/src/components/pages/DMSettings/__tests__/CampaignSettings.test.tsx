@@ -238,7 +238,7 @@ describe('CampaignSettings', () => {
       renderCampaignSettings();
 
       // APL controls hidden initially (infamy_system_enabled === '0')
-      expect(screen.queryByRole('button', { name: /update apl/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /update level/i })).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('switch', { name: /enable infamy system/i }));
 
@@ -253,7 +253,7 @@ describe('CampaignSettings', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /update apl/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /update level/i })).toBeInTheDocument();
       });
       expect(
         await screen.findByText(/infamy system enabled successfully/i)
@@ -264,7 +264,7 @@ describe('CampaignSettings', () => {
       campaignContextValue = makeContext({ infamy_system_enabled: '1' });
       renderCampaignSettings();
 
-      expect(screen.getByRole('button', { name: /update apl/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /update level/i })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('switch', { name: /enable infamy system/i }));
 
@@ -275,7 +275,7 @@ describe('CampaignSettings', () => {
         });
       });
       await waitFor(() => {
-        expect(screen.queryByRole('button', { name: /update apl/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /update level/i })).not.toBeInTheDocument();
       });
       expect(
         await screen.findByText(/infamy system disabled successfully/i)
@@ -319,7 +319,7 @@ describe('CampaignSettings', () => {
       renderCampaignSettings();
 
       await waitFor(() => {
-        expect(getInputByLabel(/^Average Party Level/).value).toBe('7');
+        expect(getInputByLabel(/^Character Level/).value).toBe('7');
       });
 
       const calls = (api.get as any).mock.calls.map((c: any[]) => c[0]);
@@ -331,7 +331,7 @@ describe('CampaignSettings', () => {
       renderCampaignSettings();
 
       await waitFor(() => {
-        expect(getInputByLabel(/^Average Party Level/).value).toBe('5');
+        expect(getInputByLabel(/^Character Level/).value).toBe('5');
       });
     });
 
@@ -339,11 +339,11 @@ describe('CampaignSettings', () => {
       renderCampaignSettings();
 
       await waitFor(() => {
-        expect(getInputByLabel(/^Average Party Level/).value).toBe('5');
+        expect(getInputByLabel(/^Character Level/).value).toBe('5');
       });
 
-      fireEvent.change(getInputByLabel(/^Average Party Level/), { target: { value: '10' } });
-      fireEvent.click(screen.getByRole('button', { name: /update apl/i }));
+      fireEvent.change(getInputByLabel(/^Character Level/), { target: { value: '10' } });
+      fireEvent.click(screen.getByRole('button', { name: /update level/i }));
 
       await waitFor(() => {
         expect(api.put).toHaveBeenCalledWith('/campaigns/current/settings', {
@@ -355,7 +355,7 @@ describe('CampaignSettings', () => {
         expect(refreshMock).toHaveBeenCalled();
       });
       expect(
-        await screen.findByText(/average party level updated successfully/i)
+        await screen.findByText(/character level updated successfully/i)
       ).toBeInTheDocument();
 
       // The legacy global endpoint is never used for APL
@@ -372,8 +372,8 @@ describe('CampaignSettings', () => {
 
       renderCampaignSettings();
 
-      fireEvent.change(getInputByLabel(/^Average Party Level/), { target: { value: '10' } });
-      fireEvent.click(screen.getByRole('button', { name: /update apl/i }));
+      fireEvent.change(getInputByLabel(/^Character Level/), { target: { value: '10' } });
+      fireEvent.click(screen.getByRole('button', { name: /update level/i }));
 
       expect(await screen.findByText('Value must be an integer')).toBeInTheDocument();
       expect(refreshMock).not.toHaveBeenCalled();
@@ -383,14 +383,14 @@ describe('CampaignSettings', () => {
       renderCampaignSettings();
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /update apl/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /update level/i })).toBeInTheDocument();
       });
 
-      fireEvent.change(getInputByLabel(/^Average Party Level/), { target: { value: '31' } });
-      fireEvent.click(screen.getByRole('button', { name: /update apl/i }));
+      fireEvent.change(getInputByLabel(/^Character Level/), { target: { value: '31' } });
+      fireEvent.click(screen.getByRole('button', { name: /update level/i }));
 
       expect(
-        await screen.findByText(/average party level must be a number between 1 and 30/i)
+        await screen.findByText(/character level must be a number between 1 and 30/i)
       ).toBeInTheDocument();
 
       const aplPuts = (api.put as any).mock.calls.filter(
@@ -408,7 +408,7 @@ describe('CampaignSettings', () => {
       });
       expect(screen.getByText('25')).toBeInTheDocument();
 
-      fireEvent.change(getInputByLabel(/^Average Party Level/), { target: { value: '10' } });
+      fireEvent.change(getInputByLabel(/^Character Level/), { target: { value: '10' } });
 
       await waitFor(() => {
         expect(screen.getByText('35')).toBeInTheDocument();
@@ -418,7 +418,7 @@ describe('CampaignSettings', () => {
 
   describe('level up', () => {
     it('levels up the party after confirming the dialog', async () => {
-      (api.post as any).mockResolvedValue({ data: { average_party_level: 6, discordSent: true } });
+      (api.post as any).mockResolvedValue({ data: { character_level: 6, apl: 6, character_count: 4, average_party_level: 6, discordSent: true } });
       renderCampaignSettings();
 
       // Open the confirmation dialog from the Party Level section

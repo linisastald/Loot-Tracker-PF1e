@@ -3,6 +3,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
+const partyLevel = require('../utils/partyLevel');
 const { hasDmRights } = require('../utils/roleUtils');
 
 /**
@@ -210,11 +211,10 @@ const gainInfamy = async (req, res) => {
             throw controllerFactory.createValidationError('You cannot use the reroll option on your first attempt. Make a regular attempt first.');
         }
 
-        // Get the APL setting (per-campaign with global fallback) or default to 5
-        const aplValue = await campaignSettings.getCampaignSetting('average_party_level', {
-            defaultValue: '5'
-        });
-        const apl = parseInt(aplValue, 10) || 5;
+        // Infamy check DC uses the size-adjusted Average Party Level (S&S rule
+        // DC = 15 + 2 x APL). The stored setting is the shared character level;
+        // partyLevel derives the true APL from it and the active party size.
+        const { apl } = await partyLevel.getPartyLevelInfo(req.campaignId);
 
         // Get current infamy and threshold
         const infamyResult = await dbUtils.executeQuery(
