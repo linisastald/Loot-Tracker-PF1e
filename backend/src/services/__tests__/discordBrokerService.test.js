@@ -116,3 +116,105 @@ describe('DiscordBrokerService.channelKey', () => {
     expect(a).toBe(b);
   });
 });
+
+describe('DiscordBrokerService registration recovery', () => {
+  const svc = discordBrokerService;
+
+  beforeEach(() => {
+    svc.isRegistered = false;
+    svc.registrationInProgress = false;
+    svc.retryAttempts = 0;
+    svc.maxRetries = 5;
+    svc.heartbeatInterval = null;
+    svc.retryTimeout = null;
+    svc.emptyChannelsWarned = false;
+    svc.appId = 'test-app';
+    svc.groupName = 'Test';
+    // One campaign channel is configured. startHeartbeat is stubbed so the
+    // recovery logic can be exercised without leaking a real 30s interval.
+    jest.spyOn(svc, 'buildAllChannelsConfig').mockResolvedValue({ '111': { campaignId: '1' } });
+    jest.spyOn(svc, 'startHeartbeat').mockImplementation(() => {});
+    jest.spyOn(svc, 'makeRequest');
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (svc.heartbeatInterval) { clearInterval(svc.heartbeatInterval); svc.heartbeatInterval = null; }
+    if (svc.retryTimeout) { clearTimeout(svc.retryTimeout); svc.retryTimeout = null; }
+  });
+
+  it('re-registers after the broker drops us (broker restart self-heal)', async () => {
+    svc.makeRequest.mockResolvedValue({ success: true });
+
+    await svc.registerWithBroker();
+    expect(svc.isRegistered).toBe(true);
+
+    // Broker restarted and forgot us; a later attempt registers again instead
+    // of being permanently stuck unregistered.
+    svc.isRegistered = false;
+    await svc.registerWithBroker();
+
+    expect(svc.isRegistered).toBe(true);
+    expect(svc.makeRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not give up permanently once fast-retries are exhausted', async () => {
+    svc.maxRetries = 1; // exhaust immediately, scheduling no setTimeout
+    svc.makeRequest.mockRejectedValueOnce(new Error('broker down'));
+
+    await svc.registerWithBroker();
+    expect(svc.isRegistered).toBe(false); // still retriable, not a dead state
+
+    // Broker comes back; the next attempt (driven by the heartbeat loop) succeeds.
+    svc.makeRequest.mockResolvedValueOnce({ success: true });
+    await svc.registerWithBroker();
+    expect(svc.isRegistered).toBe(true);
+  });
+
+  it('does not stack overlapping registrations', async () => {
+    let resolveRequest;
+    svc.makeRequest.mockReturnValue(new Promise((resolve) => {
+      resolveRequest = () => resolve({ success: true });
+    }));
+
+    const first = svc.registerWithBroker();
+    const second = svc.registerWithBroker(); // guarded no-op while first is in flight
+    resolveRequest();
+    await Promise.all([first, second]);
+
+    expect(svc.makeRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns about missing channels only once, not every retry', async () => {
+    const logger = require('../../utils/logger');
+    logger.warn.mockClear();
+    svc.buildAllChannelsConfig.mockResolvedValue({}); // nothing configured
+
+    await svc.registerWithBroker();
+    await svc.registerWithBroker();
+    await svc.registerWithBroker();
+
+    const emptyWarns = logger.warn.mock.calls.filter(
+      ([msg]) => typeof msg === 'string' && msg.includes('No Discord channel configured')
+    );
+    expect(emptyWarns).toHaveLength(1);
+  });
+});
+
+describe('DiscordBrokerService.startHeartbeat', () => {
+  const svc = discordBrokerService;
+
+  afterEach(() => {
+    if (svc.heartbeatInterval) { clearInterval(svc.heartbeatInterval); svc.heartbeatInterval = null; }
+  });
+
+  it('is idempotent so re-registration never stacks a second interval', () => {
+    svc.heartbeatInterval = null;
+
+    svc.startHeartbeat();
+    const firstInterval = svc.heartbeatInterval;
+    svc.startHeartbeat();
+
+    expect(svc.heartbeatInterval).toBe(firstInterval);
+  });
+});

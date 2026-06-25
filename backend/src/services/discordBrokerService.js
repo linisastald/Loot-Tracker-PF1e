@@ -31,6 +31,8 @@ class DiscordBrokerService {
     this.retryAttempts = 0;
     this.maxRetries = 5;
     this.retryDelay = 5000; // 5 seconds
+    this.registrationInProgress = false; // guards against overlapping registers
+    this.emptyChannelsWarned = false; // de-dupes the "no channel configured" warning
   }
 
   /**
@@ -54,17 +56,35 @@ class DiscordBrokerService {
     await this.resolveAppIdentity();
     logger.info(`Starting Discord broker integration with URL: ${this.brokerUrl} as ${this.appId}`);
     await this.registerWithBroker();
+    // Always run the maintenance loop, even if the initial registration above
+    // failed. The broker keeps its app registry in memory, so a broker restart
+    // (redeploy/crash) silently drops us with NO error on our side until the
+    // next interaction fails. The loop is the steady-state driver that sends
+    // heartbeats AND re-registers whenever we've fallen out of the registry —
+    // without it, a broker restart left us permanently unregistered until a
+    // full backend restart.
+    this.startHeartbeat();
   }
 
   async registerWithBroker() {
+    // Serialize registration: the maintenance loop and the fast-retry timer can
+    // both call this, and double-registering races the lastChannelKey/isRegistered state.
+    if (this.registrationInProgress) return;
+    this.registrationInProgress = true;
     try {
       // Enumerate the Discord channels of EVERY campaign so inbound interactions
       // (button clicks) route correctly for all campaigns, not just campaign 1.
       const channels = await this.buildAllChannelsConfig();
       if (Object.keys(channels).length === 0) {
-        logger.warn('No Discord channel configured for any campaign, skipping registration');
+        // Genuine "nothing to register yet" state — the maintenance loop retries
+        // this every 30s, so warn only once until a channel actually appears.
+        if (!this.emptyChannelsWarned) {
+          logger.warn('No Discord channel configured for any campaign, skipping registration');
+          this.emptyChannelsWarned = true;
+        }
         return;
       }
+      this.emptyChannelsWarned = false;
 
       const registrationData = this.buildRegistrationData(channels);
 
@@ -88,14 +108,23 @@ class DiscordBrokerService {
 
     } catch (error) {
       logger.error('Failed to register with Discord broker:', error);
+      this.isRegistered = false;
 
+      // Fast-retry a few times so a brief broker blip recovers in seconds rather
+      // than waiting a full heartbeat interval. When these are exhausted we do
+      // NOT give up: the maintenance loop keeps calling registerWithBroker()
+      // every heartbeat tick as long as we remain unregistered, so the backend
+      // self-heals once the broker comes back (e.g. after a redeploy).
       this.retryAttempts++;
       if (this.retryAttempts < this.maxRetries) {
         logger.info(`Retrying registration in ${this.retryDelay}ms (attempt ${this.retryAttempts}/${this.maxRetries})`);
+        clearTimeout(this.retryTimeout);
         this.retryTimeout = setTimeout(() => this.registerWithBroker(), this.retryDelay);
       } else {
-        logger.error('Max registration retries reached, giving up on Discord integration');
+        logger.warn('Discord broker registration retries exhausted; the heartbeat loop will keep retrying every 30s');
       }
+    } finally {
+      this.registrationInProgress = false;
     }
   }
 
@@ -265,22 +294,31 @@ class DiscordBrokerService {
   }
 
   startHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-    }
+    // Idempotent: registerWithBroker() and start() both call this, but there
+    // must only ever be one ticker. Without this guard a re-registration would
+    // stack a second interval on top of the first.
+    if (this.heartbeatInterval) return;
 
     this.heartbeatInterval = setInterval(async () => {
       try {
+        if (!this.isRegistered) {
+          // Self-heal: we've fallen out of the broker's registry (broker
+          // restarted, or an earlier registration exhausted its fast retries).
+          // Re-register here so the loop — not a one-shot retry chain — is the
+          // thing that guarantees recovery. registerWithBroker() is guarded
+          // against overlapping with any in-flight fast-retry.
+          await this.registerWithBroker();
+          return;
+        }
+
         await this.sendHeartbeat();
         // Pick up channels for campaigns created/changed after startup.
         await this.refreshRegistrationIfChanged();
       } catch (error) {
         logger.error('Discord broker heartbeat failed:', error);
 
-        // Try to re-register if heartbeat fails
+        // Drop to unregistered; the next tick re-registers (see above).
         this.isRegistered = false;
-        this.retryAttempts = 0;
-        await this.registerWithBroker();
       }
     }, 30000); // Send heartbeat every 30 seconds
   }
