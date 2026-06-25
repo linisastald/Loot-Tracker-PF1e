@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.14.0]
+
 ### Added
 - **"Level Up" button for the party (DM only).** On the DM Campaign Settings page, a new Party Level section shows the party's shared **character level** alongside the derived **Average Party Level (APL)**, and a Level Up button that raises the character level by one. The APL is calculated the standard Pathfinder way (Core Rulebook p.397) from the character level and the number of active characters: 3 or fewer characters give APL −1, four or five no change, six or more APL +1. If Discord integration is enabled, the announcement tells players which level to level up to. A confirmation dialog guards the action since it pings Discord.
 - **Loot Entry action bar is now reachable from top and bottom.** The Add Item / Add Gold / Submit bar is stickied at both the top and the bottom of the page, so you no longer have to scroll back up to add another row when entering a long list of loot.
@@ -18,6 +20,9 @@ All notable changes to this project are documented in this file.
 ### Fixed
 - **Session reminders no longer ping players from other campaigns.** A campaign's reminder could mention someone who only belongs to a different campaign. The cause: anyone whose Discord account was linked could react to a session announcement and be recorded as attending — even a session in a campaign they're not part of — which then pulled them into that campaign's reminders. Responding to a session via Discord now requires having an active character in that session's campaign; players who haven't joined the campaign are told to join first instead of being silently signed up. Reminder recipients are also now limited to that campaign's members.
 - **The Snack Master shown on session announcements is correct again.** The next session's Discord announcement could name the wrong person (lagging one session behind), because the lookup trusted the task assignment's linked session rather than when it was made — and the DM usually runs the Tasks page after a session has started, which links that assignment to the *following* session. It now uses the most recent task assignment created before the session begins.
+
+### Notes
+- Includes database migration (055) that runs automatically on server start.
 
 ## [0.13.3]
 
