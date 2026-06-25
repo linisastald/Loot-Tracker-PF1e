@@ -173,14 +173,43 @@ class AttendanceService {
     }
 
     /**
+     * Get a user's active character within a specific campaign.
+     *
+     * This is the membership gate for Discord attendance: a user may only
+     * respond to a session if they own an active character in that session's
+     * campaign. The campaign_id filter is explicit on purpose — RLS is not yet
+     * enforced (the app connects as the table owner), so campaign context alone
+     * does not scope the `characters` read.
+     *
+     * @param {number} userId - User ID
+     * @param {number|string} campaignId - Campaign ID of the session
+     * @returns {Promise<number|null>} - Active character id in that campaign, or null
+     */
+    async getActiveCharacterInCampaign(userId, campaignId) {
+        const result = await dbUtils.executeQuery(`
+            SELECT id FROM characters
+            WHERE user_id = $1 AND campaign_id = $2 AND active = true
+            ORDER BY id ASC
+            LIMIT 1
+        `, [userId, campaignId]);
+
+        return result.rows.length > 0 ? result.rows[0].id : null;
+    }
+
+    /**
      * Get users who haven't responded to a session
      * @param {number} sessionId - Session ID
      * @returns {Promise<Array>} - Non-responder user records
      */
     async getNonResponders(sessionId) {
+        // Scope non-responders to members of the session's own campaign.
+        // Without the user_campaign join, this returned every user with a
+        // discord_id across ALL campaigns, causing cross-campaign reminder pings.
         const result = await dbUtils.executeQuery(`
             SELECT u.id, u.username, u.discord_id
             FROM users u
+            JOIN game_sessions gs ON gs.id = $1
+            JOIN user_campaign uc ON uc.user_id = u.id AND uc.campaign_id = gs.campaign_id
             WHERE u.discord_id IS NOT NULL
             AND NOT EXISTS (
                 SELECT 1 FROM session_attendance sa

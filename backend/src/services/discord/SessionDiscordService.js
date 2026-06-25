@@ -286,7 +286,8 @@ class SessionDiscordService {
             }
 
             const sessionId = sessionResult.rows[0].id;
-            const sessionCampaignId = String(sessionResult.rows[0].campaign_id);
+            const sessionCampaignIdNum = sessionResult.rows[0].campaign_id;
+            const sessionCampaignId = String(sessionCampaignIdNum);
 
             await campaignContext.runWithCampaign(sessionCampaignId, async () => {
                 // Map emoji to response type (session_config is campaign-scoped,
@@ -315,8 +316,22 @@ class SessionDiscordService {
                 const attendanceService = require('../attendance/AttendanceService');
 
                 if (action === 'add') {
+                    // Membership gate: only record if the user owns an active
+                    // character in this session's campaign. Otherwise a user
+                    // from another campaign would be recorded as attending and
+                    // later leak into this campaign's reminders.
+                    const characterId = await attendanceService.getActiveCharacterInCampaign(dbUserId, sessionCampaignIdNum);
+                    if (!characterId) {
+                        logger.warn('Ignoring Discord reaction - user has no active character in session campaign:', {
+                            dbUserId,
+                            sessionId,
+                            campaignId: sessionCampaignIdNum
+                        });
+                        return;
+                    }
+
                     // Record attendance
-                    await attendanceService.recordAttendance(sessionId, dbUserId, responseType, { discord_id: userId });
+                    await attendanceService.recordAttendance(sessionId, dbUserId, responseType, { discord_id: userId, character_id: characterId });
 
                     // Record reaction tracking
                     await dbUtils.executeQuery(`

@@ -34,6 +34,7 @@ jest.mock('../../attendance/AttendanceService', () => ({
   recordAttendance: jest.fn(),
   getSessionAttendance: jest.fn(),
   getNonResponders: jest.fn(),
+  getActiveCharacterInCampaign: jest.fn(),
 }));
 
 jest.mock('../../sessionService', () => ({
@@ -98,6 +99,7 @@ describe('SessionDiscordService.processDiscordReaction campaign context', () => 
       }
       return { rows: [], rowCount: 0 };
     });
+    attendanceService.getActiveCharacterInCampaign.mockResolvedValue(77);
     attendanceService.recordAttendance.mockImplementation(async () => {
       expect(activeCampaign).toBe('4');
     });
@@ -119,10 +121,39 @@ describe('SessionDiscordService.processDiscordReaction campaign context', () => 
     const trackingInsert = seenContexts.find(c => c.query.includes('discord_reaction_tracking'));
     expect(trackingInsert.context).toBe('4');
 
+    // The membership gate is checked under the session's campaign
+    expect(attendanceService.getActiveCharacterInCampaign).toHaveBeenCalledWith(9, 4);
     expect(attendanceService.recordAttendance).toHaveBeenCalledWith(
-      33, 9, 'yes', { discord_id: '222' }
+      33, 9, 'yes', { discord_id: '222', character_id: 77 }
     );
     expect(sessionDiscordService.updateSessionMessage).toHaveBeenCalledWith(33);
+  });
+
+  it('ignores a reaction from a user with no active character in the session campaign', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) {
+        return { rows: [{ id: 33, campaign_id: 4 }] };
+      }
+      if (query.includes('FROM session_config')) {
+        return { rows: [] };
+      }
+      if (query.includes('FROM users')) {
+        return { rows: [{ id: 9 }] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    // User belongs to no character in campaign 4 -> not a member
+    attendanceService.getActiveCharacterInCampaign.mockResolvedValue(null);
+
+    await sessionDiscordService.processDiscordReaction('111111111111111111', '222', '✅', 'add');
+
+    expect(attendanceService.getActiveCharacterInCampaign).toHaveBeenCalledWith(9, 4);
+    expect(attendanceService.recordAttendance).not.toHaveBeenCalled();
+    // No reaction-tracking row written for a rejected response
+    const trackingInsert = mockExecuteQuery.mock.calls.find(
+      ([q]) => typeof q === 'string' && q.includes('discord_reaction_tracking')
+    );
+    expect(trackingInsert).toBeUndefined();
   });
 
   it('removes attendance under the session campaign on reaction removal', async () => {

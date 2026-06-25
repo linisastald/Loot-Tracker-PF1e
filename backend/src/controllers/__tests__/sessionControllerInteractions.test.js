@@ -152,6 +152,72 @@ describe('processSessionInteraction campaign context', () => {
     );
   });
 
+  it('refuses a linked user with no active character in the session campaign', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) {
+        return { rows: [{ id: 50, campaign_id: 6 }] };
+      }
+      if (query.includes('FROM users')) {
+        return { rows: [{ id: 7, username: 'bob' }] };
+      }
+      if (query.includes('FROM characters')) {
+        return { rows: [] }; // user has no character in this campaign
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = makeRes();
+    await sessionController.processSessionInteraction(buttonRequest(), res);
+
+    // No attendance recorded, ephemeral refusal returned
+    expect(sessionService.recordAttendance).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 4,
+        data: expect.objectContaining({
+          content: expect.stringContaining("not in this campaign"),
+          flags: 64,
+        }),
+      })
+    );
+  });
+
+  it('offers only this campaign characters and refuses when the campaign has none', async () => {
+    const seenQueries = [];
+    mockExecuteQuery.mockImplementation(async (query, params) => {
+      seenQueries.push({ query, params });
+      if (query.includes('FROM game_sessions')) {
+        return { rows: [{ id: 50, campaign_id: 6 }] };
+      }
+      if (query.includes('FROM users WHERE discord_id')) {
+        return { rows: [] }; // unlinked Discord account
+      }
+      if (query.includes('FROM characters')) {
+        return { rows: [] }; // no characters in this campaign
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = makeRes();
+    await sessionController.processSessionInteraction(buttonRequest(), res);
+
+    // The offered-characters lookup is campaign-scoped
+    const charLookup = seenQueries.find(q => q.query.includes('FROM characters'));
+    expect(charLookup.query).toContain('campaign_id');
+    expect(charLookup.params).toEqual(['6']);
+
+    expect(sessionService.recordAttendance).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 4,
+        data: expect.objectContaining({
+          content: expect.stringContaining("No characters found for this campaign"),
+          flags: 64,
+        }),
+      })
+    );
+  });
+
   it('processes a legacy session_messages interaction under the legacy row campaign', async () => {
     const seenQueries = [];
     mockExecuteQuery.mockImplementation(async (query) => {

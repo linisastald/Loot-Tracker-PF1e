@@ -418,16 +418,19 @@ const processSessionInteraction = async (req, res) => {
 
             return await campaignContext.runWithCampaign(linkCampaignId, async () => {
 
-            // Get the user who owns this character
+            // Get the user who owns this character, scoped to the session's
+            // campaign so a crafted/stale select value can't link to a
+            // character outside this campaign (campaign_id explicit: RLS is
+            // not yet enforced).
             const characterResult = await dbUtils.executeQuery(
-                'SELECT user_id, name FROM characters WHERE id = $1',
-                [characterId]
+                'SELECT user_id, name FROM characters WHERE id = $1 AND campaign_id = $2',
+                [characterId, linkCampaignId]
             );
 
             if (characterResult.rows.length === 0) {
                 return res.json({
                     type: 4,
-                    data: { content: "Character not found.", flags: 64 }
+                    data: { content: "Character not found in this campaign.", flags: 64 }
                 });
             }
 
@@ -575,6 +578,10 @@ const processSessionInteraction = async (req, res) => {
  */
 const handleEnhancedSessionInteraction = async (res, sessionId, messageId, discordUserId, discordNickname, responseType) => {
     const sessionService = require('../services/sessionService');
+    const attendanceService = require('../services/attendance/AttendanceService');
+
+            // The session's campaign (this runs inside runWithCampaign for it).
+            const campaignId = campaignContext.getCampaignId();
 
             // Find user by Discord ID
             let userId = null;
@@ -589,19 +596,23 @@ const handleEnhancedSessionInteraction = async (res, sessionId, messageId, disco
                 userId = userResult.rows[0].id;
                 displayName = userResult.rows[0].username;
             } else {
-                // User not found - offer character selection to link account
-                logger.warn('Discord user not linked to account, showing character selection:', { discordUserId, discordNickname });
+                // User not found - offer character selection to link account.
+                // Only offer characters in THIS session's campaign so a Discord
+                // user can't link to (and respond as) a character from another
+                // campaign. campaign_id is filtered explicitly because RLS is
+                // not yet enforced.
+                logger.warn('Discord user not linked to account, showing character selection:', { discordUserId, discordNickname, campaignId });
 
-                // Get all active characters for selection
                 const charactersResult = await dbUtils.executeQuery(
-                    'SELECT c.id, c.name, u.username FROM characters c JOIN users u ON c.user_id = u.id WHERE c.active = true ORDER BY c.name ASC'
+                    'SELECT c.id, c.name, u.username FROM characters c JOIN users u ON c.user_id = u.id WHERE c.active = true AND c.campaign_id = $1 ORDER BY c.name ASC',
+                    [campaignId]
                 );
 
                 if (charactersResult.rows.length === 0) {
                     return res.json({
                         type: 4,
                         data: {
-                            content: `⚠️ No active characters found. Please log into the web app and create a character, then link your Discord account in your profile settings.`,
+                            content: `⚠️ No characters found for this campaign. Join the campaign in the web app and create a character, then link your Discord account in your profile settings.`,
                             flags: 64
                         }
                     });
@@ -632,43 +643,51 @@ const handleEnhancedSessionInteraction = async (res, sessionId, messageId, disco
                 });
             }
 
-            // Look up user's active character
+            // Membership gate: a linked user may only respond if they own an
+            // active character in THIS session's campaign. Without this, a user
+            // who belongs to another campaign (or never joined this one) could
+            // react and be recorded as attending, which then leaked them into
+            // that campaign's reminders.
             let characterId = null;
             try {
-                const characterResult = await dbUtils.executeQuery(
-                    'SELECT id FROM characters WHERE user_id = $1 AND active = true ORDER BY id ASC LIMIT 1',
-                    [userId]
-                );
-
-                if (characterResult.rows.length > 0) {
-                    characterId = characterResult.rows[0].id;
-                    logger.info('Found active character for Discord attendance:', {
-                        userId,
-                        characterId,
-                        discordUserId
-                    });
-                } else {
-                    logger.warn('No active character found for user attending via Discord:', {
-                        userId,
-                        discordUserId
-                    });
-                }
+                characterId = await attendanceService.getActiveCharacterInCampaign(userId, campaignId);
             } catch (charError) {
                 logger.error('Error looking up character for Discord attendance:', {
                     error: charError.message,
                     stack: charError.stack,
                     userId,
                     discordUserId,
-                    sessionId
+                    sessionId,
+                    campaignId
                 });
-                // Continue without character_id - attendance will still be recorded
+                return res.json({
+                    type: 4,
+                    data: { content: "An error occurred while recording your response.", flags: 64 }
+                });
             }
 
+            if (!characterId) {
+                logger.warn('Discord attendance refused - user has no active character in session campaign:', {
+                    userId,
+                    discordUserId,
+                    sessionId,
+                    campaignId
+                });
+                return res.json({
+                    type: 4,
+                    data: {
+                        content: `⚠️ You're not in this campaign, so you can't respond to its sessions. Join the campaign in the web app and create a character first.`,
+                        flags: 64
+                    }
+                });
+            }
+
+            logger.info('Found active character for Discord attendance:', { userId, characterId, discordUserId, campaignId });
+
             // Record attendance (Discord update is now queued in outbox within transaction)
-            // Note: characterId may be null if user has no active character - Discord will display username as fallback
             await sessionService.recordAttendance(sessionId, userId, responseType, {
                 discord_id: discordUserId,
-                character_id: characterId  // May be null - handled gracefully by AttendanceService
+                character_id: characterId
             });
 
             // Update Discord reaction tracking
