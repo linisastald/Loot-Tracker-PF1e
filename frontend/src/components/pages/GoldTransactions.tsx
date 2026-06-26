@@ -647,9 +647,6 @@ const GoldTransactions: React.FC = () => {
                                                 label="Session Date"
                                                 value={newEntry.sessionDate}
                                                 onChange={(date) => handleEntryChange('sessionDate', date)}
-                                                    slots={{
-                                                    textField: TextField
-                                                }}
                                                 slotProps={{
                                                     textField: { fullWidth: true }
                                                 }}
@@ -800,9 +797,6 @@ const GoldTransactions: React.FC = () => {
                                             label="Start Date"
                                             value={startDate}
                                             onChange={(date) => setStartDate(date)}
-                                            slots={{
-                                                textField: TextField
-                                            }}
                                             slotProps={{
                                                 textField: { fullWidth: true }
                                             }}
@@ -813,9 +807,6 @@ const GoldTransactions: React.FC = () => {
                                             label="End Date"
                                             value={endDate}
                                             onChange={(date) => setEndDate(date)}
-                                            slots={{
-                                                textField: TextField
-                                            }}
                                             slotProps={{
                                                 textField: { fullWidth: true }
                                             }}
