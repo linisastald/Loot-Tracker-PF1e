@@ -1,5 +1,10 @@
 {
   "compilerOptions": {
+    // TS 6 deprecates target=ES5, moduleResolution=node10, and baseUrl (they
+    // still work until TS 7). Silencing for now to keep this a behavior-neutral
+    // TS 6 bump; modernizing these (target->ES2020+, moduleResolution->bundler,
+    // drop baseUrl) is a separate task to do before TS 7.
+    "ignoreDeprecations": "6.0",
     "target": "es5",
     "lib": [
       "dom",
