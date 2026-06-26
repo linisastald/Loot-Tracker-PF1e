@@ -358,30 +358,28 @@ const CityServices: React.FC = () => {
           <LocationCityIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
           City Services
         </Typography>
-        <Typography variant="body1" color="text.secondary">
+        <Typography variant="body1" sx={{
+          color: "text.secondary"
+        }}>
           Check item availability and spellcasting services in settlements
         </Typography>
       </Box>
-
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}
         </Alert>
       )}
-
       {success && (
         <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>
           {success}
         </Alert>
       )}
-
       <Paper sx={{ mb: 3 }}>
         <Tabs value={tabValue} onChange={handleTabChange}>
           <Tab icon={<SearchIcon />} label="Item Availability" />
           <Tab icon={<AutoAwesomeIcon />} label="Spellcasting Services" />
         </Tabs>
       </Paper>
-
       {/* City Selection - Common to both tabs */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
@@ -445,31 +443,41 @@ const CityServices: React.FC = () => {
           <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
             <Grid container spacing={2}>
               <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   Base Value
                 </Typography>
                 <Typography variant="body1">{selectedCity.base_value.toLocaleString()} gp</Typography>
               </Grid>
               <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   Purchase Limit
                 </Typography>
                 <Typography variant="body1">{selectedCity.purchase_limit.toLocaleString()} gp</Typography>
               </Grid>
               <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   Max Spell Level
                 </Typography>
                 <Typography variant="body1">{selectedCity.max_spell_level}</Typography>
               </Grid>
               <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   Effective Caster Level
                 </Typography>
                 <Typography variant="body1">{SETTLEMENT_CASTER_LEVELS[selectedCity.size] ?? '—'}</Typography>
               </Grid>
               <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   Population
                 </Typography>
                 <Typography variant="body1">
@@ -480,7 +488,6 @@ const CityServices: React.FC = () => {
           </Box>
         )}
       </Paper>
-
       {/* Item Availability Tab */}
       <TabPanel value={tabValue} index={0}>
         <Paper sx={{ p: 3, mb: 3 }}>
@@ -581,7 +588,12 @@ const CityServices: React.FC = () => {
                           Item CL {itemSearchResult.item_caster_level} vs. settlement CL{' '}
                           {itemSearchResult.settlement_caster_level}
                           {(itemSearchResult.availability.caster_level_penalty ?? 0) > 0 && (
-                            <Typography variant="caption" color="warning.main" display="block">
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "warning.main",
+                                display: "block"
+                              }}>
                               −{itemSearchResult.availability.caster_level_penalty}% caster-level penalty
                               {' '}(base {itemSearchResult.availability.base_percentage}%)
                             </Typography>
@@ -623,7 +635,6 @@ const CityServices: React.FC = () => {
           </Card>
         )}
       </TabPanel>
-
       {/* Spellcasting Services Tab */}
       <TabPanel value={tabValue} index={1}>
         <Paper sx={{ p: 3, mb: 3 }}>
@@ -665,7 +676,7 @@ const CityServices: React.FC = () => {
                 value={casterLevel}
                 onChange={(e) => setCasterLevel(parseInt(e.target.value) || 1)}
                 required
-                inputProps={{ min: 1, max: 20 }}
+                slotProps={{ htmlInput: { min: 1, max: 20 } }}
                 helperText={
                   selectedSpell
                     ? `Min CL ${getMinCasterLevel(selectedSpell.spelllevel)} always available; higher CLs roll a find chance`
@@ -733,7 +744,12 @@ const CityServices: React.FC = () => {
                         <TableCell>
                           {spellcastingResult.settlement_caster_level}
                           {spellcastingResult.caster_level_check?.roll !== undefined && (
-                            <Typography variant="caption" color="text.secondary" display="block">
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "text.secondary",
+                                display: "block"
+                              }}>
                               Higher-CL find roll: {spellcastingResult.caster_level_check.roll}/100
                               {' '}(needed {spellcastingResult.caster_level_check.threshold} or less)
                             </Typography>
@@ -758,10 +774,18 @@ const CityServices: React.FC = () => {
                             <strong>Formula:</strong>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{
+                              color: "text.secondary"
+                            }}>
                               {spellcastingResult.formula}
                             </Typography>
-                            <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "warning.main",
+                                display: "block",
+                                mt: 0.5
+                              }}>
                               Note: Material costs not included
                             </Typography>
                           </TableCell>
@@ -792,7 +816,6 @@ const CityServices: React.FC = () => {
           </Card>
         )}
       </TabPanel>
-
       {/* Settlement Availability Reference Table */}
       <Paper sx={{ p: { xs: 1.5, md: 3 }, mt: 4 }}>
         <Box
@@ -804,7 +827,12 @@ const CityServices: React.FC = () => {
               Settlement Quick Reference
             </Typography>
             {referenceOpen && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  mb: 2
+                }}>
                 Based on Pathfinder 1st Edition settlement rules
               </Typography>
             )}
@@ -861,7 +889,12 @@ const CityServices: React.FC = () => {
                 <TableCell align="right">2,500 gp</TableCell>
                 <TableCell align="center">
                   None
-                  <Typography variant="caption" display="block" color="text.secondary">
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: "block",
+                      color: "text.secondary"
+                    }}>
                     (1st: 5% chance)
                   </Typography>
                 </TableCell>
@@ -906,7 +939,12 @@ const CityServices: React.FC = () => {
                 <TableCell align="right">100,000 gp</TableCell>
                 <TableCell align="center">
                   7th-8th
-                  <Typography variant="caption" display="block" color="text.secondary">
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: "block",
+                      color: "text.secondary"
+                    }}>
                     (9th: 1% chance)
                   </Typography>
                 </TableCell>

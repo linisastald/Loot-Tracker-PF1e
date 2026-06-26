@@ -103,7 +103,11 @@ const ResetPassword = () => {
                     <Alert severity="error" sx={{ mt: 2 }}>
                         This password reset link is invalid or has expired.
                     </Alert>
-                    <Box textAlign="center" mt={2}>
+                    <Box
+                        sx={{
+                            textAlign: "center",
+                            mt: 2
+                        }}>
                         <Link
                             component="button"
                             variant="body2"
@@ -123,7 +127,9 @@ const ResetPassword = () => {
                 <Typography component="h1" variant="h5" gutterBottom>
                     Set New Password
                 </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" gutterBottom sx={{
+                    color: "text.secondary"
+                }}>
                     Enter your new password below.
                 </Typography>
 
@@ -139,7 +145,7 @@ const ResetPassword = () => {
                     onChange={(e) => setNewPassword(e.target.value)}
                     onKeyDown={handleKeyDown}
                     disabled={loading}
-                    InputProps={{
+                    slotProps={{ input: {
                         endAdornment: (
                             <InputAdornment position="end">
                                 <IconButton
@@ -151,7 +157,7 @@ const ResetPassword = () => {
                                 </IconButton>
                             </InputAdornment>
                         ),
-                    }}
+                    } }}
                 />
 
                 <TextField
@@ -165,7 +171,7 @@ const ResetPassword = () => {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     onKeyDown={handleKeyDown}
                     disabled={loading}
-                    InputProps={{
+                    slotProps={{ input: {
                         endAdornment: (
                             <InputAdornment position="end">
                                 <IconButton
@@ -177,7 +183,7 @@ const ResetPassword = () => {
                                 </IconButton>
                             </InputAdornment>
                         ),
-                    }}
+                    } }}
                 />
 
                 {error && (
@@ -206,7 +212,11 @@ const ResetPassword = () => {
                     {loading ? 'Resetting...' : 'Reset Password'}
                 </Button>
 
-                <Box textAlign="center" mt={2}>
+                <Box
+                    sx={{
+                        textAlign: "center",
+                        mt: 2
+                    }}>
                     <Typography variant="body2">
                         <Link
                             component="button"

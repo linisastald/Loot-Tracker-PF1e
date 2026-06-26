@@ -546,7 +546,6 @@ const Tasks: React.FC = () => {
                     <Tab label="History" />
                 </Tabs>
             </Box>
-
             {activeTab === 0 && (
               <>
             <Paper sx={{p: 3, mb: 3, borderRadius: 2}} elevation={3}>
@@ -561,7 +560,7 @@ const Tasks: React.FC = () => {
                     </Alert>
                 )}
 
-                <Typography variant="body1" paragraph>
+                <Typography variant="body1" sx={{ mb: 2 }}>
                     Characters who have RSVP'd "yes" to the next session are pre-selected automatically, and those who
                     responded "late" are pre-marked as arriving late. Adjust selections as needed, then click Assign
                     Tasks. Late arrivals will be excluded from pre-session tasks.
@@ -582,7 +581,11 @@ const Tasks: React.FC = () => {
                                     late={lateArrivals[char.id] && selectedCharacters[char.id]}
                                     onClick={() => handleToggle(char.id)}
                                 >
-                                    <Box display="flex" alignItems="center">
+                                    <Box
+                                        sx={{
+                                            display: "flex",
+                                            alignItems: "center"
+                                        }}>
                                         <Checkbox
                                             checked={selectedCharacters[char.id] || false}
                                             onChange={(e) => {
@@ -645,7 +648,13 @@ const Tasks: React.FC = () => {
                                 Ready to assign tasks?
                             </Typography>
 
-                            <Typography variant="body2" color="text.secondary" paragraph sx={{textAlign: 'center'}}>
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    color: "text.secondary",
+                                    textAlign: 'center',
+                                    mb: 2
+                                }}>
                                 Tasks will be randomly assigned to selected characters.
                                 Late arrivals will not receive pre-session tasks.
                             </Typography>
@@ -690,8 +699,13 @@ const Tasks: React.FC = () => {
                                 {Object.keys(assignedTasks.pre).length > 0 ? (
                                     renderTaskList(assignedTasks.pre)
                                 ) : (
-                                    <Typography variant="body2" color="text.secondary"
-                                                sx={{py: 2, textAlign: 'center'}}>
+                                    <Typography
+                                        variant="body2"
+                                        sx={{
+                                            color: "text.secondary",
+                                            py: 2,
+                                            textAlign: 'center'
+                                        }}>
                                         No pre-session tasks assigned. All selected players are marked as arriving late.
                                     </Typography>
                                 )}
@@ -724,7 +738,6 @@ const Tasks: React.FC = () => {
             )}
               </>
             )}
-
             {activeTab === 1 && (
               <Paper sx={{p: 3, mb: 3, borderRadius: 2}} elevation={3}>
                 <Typography variant="h6" gutterBottom sx={{display: 'flex', alignItems: 'center'}}>
@@ -737,7 +750,12 @@ const Tasks: React.FC = () => {
                         <CircularProgress/>
                     </Box>
                 ) : history.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary" sx={{py: 2}}>
+                    <Typography
+                        variant="body2"
+                        sx={{
+                            color: "text.secondary",
+                            py: 2
+                        }}>
                         No task assignments have been saved yet. Assign tasks on the Assign tab to start tracking history.
                     </Typography>
                 ) : (
@@ -748,7 +766,9 @@ const Tasks: React.FC = () => {
                                     <Typography variant="subtitle1">
                                         {record.session_title || 'No linked session'}
                                     </Typography>
-                                    <Typography variant="caption" color="text.secondary">
+                                    <Typography variant="caption" sx={{
+                                        color: "text.secondary"
+                                    }}>
                                         {formatInCampaignTimezone(record.created_at, timezone, 'PPpp')}
                                         {` • ${record.character_count} characters`}
                                         {record.late_count > 0 ? `, ${record.late_count} late` : ''}
@@ -777,7 +797,6 @@ const Tasks: React.FC = () => {
                 )}
               </Paper>
             )}
-
             <Snackbar
                 anchorOrigin={{
                     vertical: 'bottom',

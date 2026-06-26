@@ -65,7 +65,9 @@ const ShipDialog = ({
                 <Box component="li" {...props}>
                   <Box>
                     <Typography variant="body1">{option.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{
+                      color: "text.secondary"
+                    }}>
                       {option.size} • {option.cost} gp
                     </Typography>
                   </Box>
@@ -297,13 +299,23 @@ const ShipDialog = ({
                     <Typography variant="h6" color="primary" sx={{ mb: 1 }}>
                       {improvement.name}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: "text.secondary",
+                        mb: 1
+                      }}>
                       {improvement.description}
                     </Typography>
                     {Object.keys(improvement.effects).length > 0 && (
                       <Box>
                         <Typography variant="subtitle2" sx={{ mb: 1 }}>Effects:</Typography>
-                        <Box display="flex" flexWrap="wrap" gap={1}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 1
+                          }}>
                           {Object.entries(improvement.effects).map(([effect, value]) => (
                             <Chip
                               key={effect}
@@ -324,7 +336,6 @@ const ShipDialog = ({
           
         </Grid>
       </DialogContent>
-      
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
         <Button onClick={onSave} variant="contained">

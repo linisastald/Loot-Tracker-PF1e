@@ -233,7 +233,13 @@ const SystemAdmin: React.FC = () => {
   // --- Gate --------------------------------------------------------------
   if (campaignLoading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="300px">
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "300px"
+        }}>
         <CircularProgress />
       </Box>
     );
@@ -254,10 +260,11 @@ const SystemAdmin: React.FC = () => {
       <Typography variant="h6" gutterBottom>
         System Administration
       </Typography>
-      <Typography variant="body2" color="text.secondary" gutterBottom>
+      <Typography variant="body2" gutterBottom sx={{
+        color: "text.secondary"
+      }}>
         Instance-wide administration: every account, global registration policy, and all campaigns.
       </Typography>
-
       <Grid container spacing={3} sx={{ mt: 0 }}>
         {/* ----------------------------- Users ----------------------------- */}
         <Grid size={12}>
@@ -270,7 +277,12 @@ const SystemAdmin: React.FC = () => {
                 </Alert>
               )}
               {usersLoading ? (
-                <Box display="flex" justifyContent="center" py={3}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    py: 3
+                  }}>
                   <CircularProgress size={28} />
                 </Box>
               ) : (
@@ -301,7 +313,12 @@ const SystemAdmin: React.FC = () => {
                           </TableCell>
                           <TableCell>{formatDate(account.created_at ?? account.joined)}</TableCell>
                           <TableCell align="right">
-                            <Box display="flex" gap={1} justifyContent="flex-end">
+                            <Box
+                              sx={{
+                                display: "flex",
+                                gap: 1,
+                                justifyContent: "flex-end"
+                              }}>
                               <Button
                                 size="small"
                                 variant="outlined"
@@ -327,7 +344,9 @@ const SystemAdmin: React.FC = () => {
                       {users.length === 0 && !usersError && (
                         <TableRow>
                           <TableCell colSpan={6}>
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant="body2" sx={{
+                              color: "text.secondary"
+                            }}>
                               No users found.
                             </Typography>
                           </TableCell>
@@ -368,8 +387,12 @@ const SystemAdmin: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
-              <Box mt={2}>
-                <Typography variant="body2" color="text.secondary">
+              <Box sx={{
+                mt: 2
+              }}>
+                <Typography variant="body2" sx={{
+                  color: "text.secondary"
+                }}>
                   {REGISTRATION_MODES.find((m) => m.value === registrationMode)?.description}.
                   Registration mode applies to the whole instance; invite codes are created
                   per-campaign in the DM User Management tab.
@@ -412,7 +435,9 @@ const SystemAdmin: React.FC = () => {
                     {campaigns.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={4}>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant="body2" sx={{
+                            color: "text.secondary"
+                          }}>
                             No campaigns found.
                           </Typography>
                         </TableCell>
@@ -425,7 +450,6 @@ const SystemAdmin: React.FC = () => {
           </Card>
         </Grid>
       </Grid>
-
       {/* Reset link dialog (loading + result) */}
       <Dialog open={resetTarget !== null} onClose={generatingReset ? undefined : closeResetDialog} maxWidth="md">
         <DialogTitle>
@@ -433,7 +457,12 @@ const SystemAdmin: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           {generatingReset ? (
-            <Box display="flex" justifyContent="center" py={2}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "center",
+                py: 2
+              }}>
               <CircularProgress size={28} />
             </Box>
           ) : (
@@ -455,7 +484,9 @@ const SystemAdmin: React.FC = () => {
               >
                 {generatedResetLink}
               </Box>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>
                 This link will expire in 1 hour.
               </Typography>
             </>
@@ -475,7 +506,6 @@ const SystemAdmin: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Delete account dialog (type the username to confirm) */}
       <Dialog open={deleteTarget !== null} onClose={closeDeleteDialog}>
         <DialogTitle>Delete account</DialogTitle>

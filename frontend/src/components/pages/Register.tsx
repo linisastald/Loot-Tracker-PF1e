@@ -162,7 +162,12 @@ const Register: React.FC = () => {
     if (statusLoading) {
         return (
             <Container component="main" maxWidth="xs">
-                <Box display="flex" justifyContent="center" mt={8}>
+                <Box
+                    sx={{
+                        display: "flex",
+                        justifyContent: "center",
+                        mt: 8
+                    }}>
                     <CircularProgress/>
                 </Box>
             </Container>
@@ -223,7 +228,7 @@ const Register: React.FC = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    InputProps={{
+                    slotProps={{ input: {
                         // Add eye icon to toggle password visibility
                         endAdornment: (
                             <InputAdornment position="end">
@@ -236,7 +241,7 @@ const Register: React.FC = () => {
                                 </IconButton>
                             </InputAdornment>
                         ),
-                    }}
+                    } }}
                 />
                 <FormHelperText>
                     Password must be at least 8 characters long. Use a mix of words, numbers,
@@ -253,7 +258,7 @@ const Register: React.FC = () => {
                         value={inviteCode}
                         onChange={handleInviteCodeChange}
                         onKeyDown={handleKeyDown}
-                        inputProps={{maxLength: 8}}
+                        slotProps={{ htmlInput: {maxLength: 8} }}
                         helperText="Registration requires an invite code from your DM"
                     />
                 )}
@@ -267,7 +272,7 @@ const Register: React.FC = () => {
                         value={inviteCode}
                         onChange={handleInviteCodeChange}
                         onKeyDown={handleKeyDown}
-                        inputProps={{maxLength: 8}}
+                        slotProps={{ htmlInput: {maxLength: 8} }}
                     />
                 )}
 
@@ -297,7 +302,9 @@ const Register: React.FC = () => {
                     Register
                 </Button>
 
-                <Box mt={2}>
+                <Box sx={{
+                    mt: 2
+                }}>
                     <Typography component="div" variant="body2" color="textSecondary">
                         Strong password tips:
                         <ul>

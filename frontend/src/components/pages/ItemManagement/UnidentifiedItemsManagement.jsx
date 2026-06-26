@@ -268,12 +268,15 @@ const UnidentifiedItemsManagement = () => {
                 Manage items that have been marked as unidentified. Link them to the actual items they represent and set
                 spellcraft DCs.
             </Typography>
-
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}
-
             {loading ? (
-                <Box display="flex" justifyContent="center" p={3}>
+                <Box
+                    sx={{
+                        display: "flex",
+                        justifyContent: "center",
+                        p: 3
+                    }}>
                     <CircularProgress/>
                 </Box>
             ) : (
@@ -333,7 +336,6 @@ const UnidentifiedItemsManagement = () => {
                     </Table>
                 </TableContainer>
             )}
-
             <ItemManagementDialog
                 open={updateDialogOpen}
                 onClose={() => setUpdateDialogOpen(false)}

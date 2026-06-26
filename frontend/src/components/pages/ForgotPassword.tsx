@@ -64,7 +64,9 @@ const ForgotPassword = () => {
                 <Typography component="h1" variant="h5" gutterBottom>
                     Reset Password
                 </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" gutterBottom sx={{
+                    color: "text.secondary"
+                }}>
                     Enter your username and email address to receive a password reset link.
                 </Typography>
 
@@ -117,7 +119,11 @@ const ForgotPassword = () => {
                     {loading ? 'Sending...' : 'Send Reset Link'}
                 </Button>
 
-                <Box textAlign="center" mt={2}>
+                <Box
+                    sx={{
+                        textAlign: "center",
+                        mt: 2
+                    }}>
                     <Typography variant="body2">
                         <Link
                             component="button"

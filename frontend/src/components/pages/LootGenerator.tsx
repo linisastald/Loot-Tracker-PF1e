@@ -267,10 +267,8 @@ const LootGenerator: React.FC = () => {
             <Typography variant="h4" gutterBottom sx={{display: 'flex', alignItems: 'center', mt: 1}}>
                 <CasinoIcon sx={{mr: 1}}/> Loot Generator
             </Typography>
-
             {error && <Alert severity="error" sx={{mb: 2}} onClose={() => setError(null)}>{error}</Alert>}
             {status && <Alert severity="success" sx={{mb: 2}} onClose={() => setStatus(null)}>{status}</Alert>}
-
             {/* Treasure settings */}
             <Paper sx={{p: 2, mb: 2, borderRadius: 2}} elevation={2}>
                 <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2}}>
@@ -297,7 +295,6 @@ const LootGenerator: React.FC = () => {
                     />
                 </Box>
             </Paper>
-
             {/* Enemy list */}
             <Paper sx={{p: 2, mb: 2, borderRadius: 2}} elevation={2}>
                 <Typography variant="h6" gutterBottom>Encounter</Typography>
@@ -333,7 +330,7 @@ const LootGenerator: React.FC = () => {
                                     </TableCell>
                                     <TableCell>
                                         <TextField size="small" type="number" fullWidth value={e.count}
-                                                   InputProps={{inputProps: {min: 1}}}
+                                                   slotProps={{ input: {inputProps: {min: 1}} }}
                                                    onChange={(ev) => updateEnemy(e.localId, 'count', ev.target.value)}/>
                                     </TableCell>
                                     <TableCell>
@@ -373,7 +370,6 @@ const LootGenerator: React.FC = () => {
                     </Button>
                 </Box>
             </Paper>
-
             {/* Preview */}
             {preview && (
                 <Paper sx={{p: 2, mb: 2, borderRadius: 2}} elevation={3}>
@@ -404,7 +400,7 @@ const LootGenerator: React.FC = () => {
                             <Grid size={{xs: 6, sm: 3}} key={denom}>
                                 <TextField size="small" type="number" fullWidth label={denom}
                                            value={preview.coins[denom]}
-                                           InputProps={{inputProps: {min: 0}}}
+                                           slotProps={{ input: {inputProps: {min: 0}} }}
                                            onChange={(e) => handleCoinChange(denom, e.target.value)}/>
                             </Grid>
                         ))}
@@ -414,7 +410,9 @@ const LootGenerator: React.FC = () => {
                         Items → pending loot ({previewItemsValue.toLocaleString()} gp)
                     </Typography>
                     {preview.items.length === 0 ? (
-                        <Typography variant="body2" color="text.secondary">No items generated.</Typography>
+                        <Typography variant="body2" sx={{
+                            color: "text.secondary"
+                        }}>No items generated.</Typography>
                     ) : (
                         <TableContainer>
                             <Table size="small">
@@ -436,7 +434,13 @@ const LootGenerator: React.FC = () => {
                                                 {it.name}
                                                 {it.charges ? ` (${it.charges} charges)` : ''}
                                                 {it.unidentified && (
-                                                    <Typography component="span" variant="caption" color="text.secondary" sx={{ml: 0.5}}>
+                                                    <Typography
+                                                        component="span"
+                                                        variant="caption"
+                                                        sx={{
+                                                            color: "text.secondary",
+                                                            ml: 0.5
+                                                        }}>
                                                         (unident. → {it.unidentifiedName || 'Unidentified item'})
                                                     </Typography>
                                                 )}
@@ -444,12 +448,12 @@ const LootGenerator: React.FC = () => {
                                             <TableCell>{it.type}</TableCell>
                                             <TableCell>
                                                 <TextField size="small" type="number" value={it.value}
-                                                           InputProps={{inputProps: {min: 0}}}
+                                                           slotProps={{ input: {inputProps: {min: 0}} }}
                                                            onChange={(e) => handleItemChange(i, 'value', e.target.value)}/>
                                             </TableCell>
                                             <TableCell>
                                                 <TextField size="small" type="number" value={it.quantity}
-                                                           InputProps={{inputProps: {min: 1}}}
+                                                           slotProps={{ input: {inputProps: {min: 1}} }}
                                                            onChange={(e) => handleItemChange(i, 'quantity', e.target.value)}/>
                                             </TableCell>
                                             <TableCell align="center">
@@ -469,7 +473,9 @@ const LootGenerator: React.FC = () => {
                         </TableContainer>
                     )}
                     <Divider sx={{my: 1}}/>
-                    <Typography variant="caption" color="text.secondary">
+                    <Typography variant="caption" sx={{
+                        color: "text.secondary"
+                    }}>
                         Items are added to pending loot (unprocessed); coins post to the gold ledger as a "Loot" transaction.
                     </Typography>
                 </Paper>

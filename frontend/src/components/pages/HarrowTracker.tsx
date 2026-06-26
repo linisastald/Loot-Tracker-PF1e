@@ -311,25 +311,26 @@ const HarrowTracker: React.FC = () => {
         <StyleIcon color="primary" />
         <Typography variant="h4">Harrow Point Tracker</Typography>
       </Box>
-
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}
         </Alert>
       )}
-
       {state && !state.enabled && (
         <Alert severity="info" sx={{ mb: 2 }}>
           The Harrow Point Tracker is currently disabled for this campaign. A DM can enable it in
           Campaign Settings.
         </Alert>
       )}
-
       {/* Chapter header */}
       <Paper sx={{ p: 3, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
+        <Grid container spacing={2} sx={{
+          alignItems: "center"
+        }}>
           <Grid size={{ xs: 12, md: 7 }}>
-            <Typography variant="overline" color="text.secondary">
+            <Typography variant="overline" sx={{
+              color: "text.secondary"
+            }}>
               Chapter {chapterInfo.chapter}
             </Typography>
             <Typography variant="h5">{chapterInfo.name}</Typography>
@@ -341,7 +342,13 @@ const HarrowTracker: React.FC = () => {
 
           {isDM && (
             <Grid size={{ xs: 12, md: 5 }}>
-              <Stack direction="row" spacing={1} alignItems="center" justifyContent={{ md: 'flex-end' }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{
+                  alignItems: "center",
+                  justifyContent: { md: 'flex-end' }
+                }}>
                 <FormControl size="small" sx={{ minWidth: 160 }}>
                   <InputLabel id="harrow-chapter-label">Set chapter</InputLabel>
                   <Select
@@ -366,7 +373,14 @@ const HarrowTracker: React.FC = () => {
                 </Button>
               </Stack>
               {chapterDraft !== currentChapter && (
-                <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 1, textAlign: { md: 'right' } }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "warning.main",
+                    display: 'block',
+                    mt: 1,
+                    textAlign: { md: 'right' }
+                  }}>
                   Points from chapter {currentChapter} will no longer count once you advance.
                 </Typography>
               )}
@@ -374,7 +388,6 @@ const HarrowTracker: React.FC = () => {
           )}
         </Grid>
       </Paper>
-
       {/* Spend-options reference panel */}
       <Paper sx={{ mb: 3 }}>
         <Box
@@ -398,13 +411,19 @@ const HarrowTracker: React.FC = () => {
               </ListItem>
             ))}
           </List>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 2, pb: 2 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              display: 'block',
+              px: 2,
+              pb: 2
+            }}>
             Spending is a free action with no per-round limit. Unspent points are lost at the end of
             the chapter.
           </Typography>
         </Collapse>
       </Paper>
-
       {/* Roster */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
@@ -416,7 +435,6 @@ const HarrowTracker: React.FC = () => {
           </Button>
         )}
       </Box>
-
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -431,7 +449,12 @@ const HarrowTracker: React.FC = () => {
             {state?.balances.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4}>
-                  <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.secondary",
+                      py: 2
+                    }}>
                     No active characters in this campaign yet.
                   </Typography>
                 </TableCell>
@@ -445,7 +468,9 @@ const HarrowTracker: React.FC = () => {
                 </TableCell>
                 <TableCell>
                   {entry.choosing?.card_name ? (
-                    <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Stack direction="row" spacing={0.5} sx={{
+                      alignItems: "center"
+                    }}>
                       <Typography variant="body2">{entry.choosing.card_name}</Typography>
                       {entry.choosing.is_chosen_boon && (
                         <Tooltip title="Earned The Chosen boon this chapter">
@@ -454,13 +479,17 @@ const HarrowTracker: React.FC = () => {
                       )}
                     </Stack>
                   ) : (
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: "text.secondary"
+                    }}>
                       —
                     </Typography>
                   )}
                 </TableCell>
                 <TableCell align="right">
-                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                  <Stack direction="row" spacing={0.5} sx={{
+                    justifyContent: "flex-end"
+                  }}>
                     {isDM && (
                       <Tooltip title="Award (1 point)">
                         <span>
@@ -529,12 +558,16 @@ const HarrowTracker: React.FC = () => {
           </TableBody>
         </Table>
       </TableContainer>
-
       {/* Spend dialog */}
       <Dialog open={!!spendTarget} onClose={() => setSpendTarget(null)} fullWidth maxWidth="xs">
         <DialogTitle>Spend Harrow Points — {spendTarget?.name}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2
+            }}>
             Available this chapter: {spendTarget?.balance ?? 0}
           </Typography>
           <TextField
@@ -544,7 +577,7 @@ const HarrowTracker: React.FC = () => {
             margin="normal"
             value={spendPoints}
             onChange={(e) => setSpendPoints(e.target.value)}
-            InputProps={{ inputProps: { min: 1, max: spendTarget?.balance ?? 1 } }}
+            slotProps={{ input: { inputProps: { min: 1, max: spendTarget?.balance ?? 1 } } }}
           />
           <FormControl fullWidth margin="normal">
             <InputLabel id="spend-reason-label">What for? (optional)</InputLabel>
@@ -572,7 +605,6 @@ const HarrowTracker: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Adjust dialog */}
       <Dialog open={!!adjustTarget} onClose={() => setAdjustTarget(null)} fullWidth maxWidth="xs">
         <DialogTitle>Adjust Harrow Points — {adjustTarget?.name}</DialogTitle>
@@ -602,12 +634,16 @@ const HarrowTracker: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Award helper dialog */}
       <Dialog open={awardOpen} onClose={() => setAwardOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Award from reading — Chapter {currentChapter}</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              mb: 2
+            }}>
             Each PC earns (spread cards matching the {chapterInfo.suit} suit) + 1 guaranteed point
             (the Choosing), plus 1 more if their own Choosing card appeared in the spread.
           </Typography>
@@ -618,7 +654,7 @@ const HarrowTracker: React.FC = () => {
             margin="normal"
             value={suitMatchCount}
             onChange={(e) => setSuitMatchCount(e.target.value)}
-            InputProps={{ inputProps: { min: 0, max: 9 } }}
+            slotProps={{ input: { inputProps: { min: 0, max: 9 } } }}
           />
           <Divider sx={{ my: 2 }} />
           <Typography variant="subtitle2" gutterBottom>
@@ -659,7 +695,6 @@ const HarrowTracker: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Choosing editor dialog */}
       <Dialog open={!!choosingTarget} onClose={() => setChoosingTarget(null)} fullWidth maxWidth="xs">
         <DialogTitle>Choosing card — {choosingTarget?.name}</DialogTitle>
@@ -686,7 +721,6 @@ const HarrowTracker: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* History drawer */}
       <Drawer anchor="right" open={!!historyTarget} onClose={() => setHistoryTarget(null)}>
         <Box sx={{ width: 360, p: 2 }}>
@@ -698,7 +732,9 @@ const HarrowTracker: React.FC = () => {
               <CircularProgress />
             </Box>
           ) : historyEntries.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               No entries yet.
             </Typography>
           ) : (
@@ -707,7 +743,9 @@ const HarrowTracker: React.FC = () => {
                 <ListItem key={h.id} divider>
                   <ListItemText
                     primary={
-                      <Stack direction="row" spacing={1} alignItems="center">
+                      <Stack direction="row" spacing={1} sx={{
+                        alignItems: "center"
+                      }}>
                         <Chip
                           label={`${h.delta > 0 ? '+' : ''}${h.delta}`}
                           size="small"

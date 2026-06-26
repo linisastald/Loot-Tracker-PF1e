@@ -162,7 +162,13 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
                 </ListItemAvatar>
                 <ListItemText
                     primary={
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
+                        <Box
+                            sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 1,
+                                mb: 1
+                            }}>
                             <Typography variant="subtitle2">
                                 {note.username}
                                 {note.character_name && ` (${note.character_name})`}
@@ -187,7 +193,9 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
                             <Typography variant="body2" sx={{ mb: 1 }}>
                                 {note.note}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{
+                                color: "text.secondary"
+                            }}>
                                 {timezone ? formatInCampaignTimezone(note.created_at, timezone, 'PPpp z') : ''}
                             </Typography>
                         </Box>
@@ -205,7 +213,13 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
 
     if (loading) {
         return (
-            <Box display="flex" justifyContent="center" alignItems="center" height="200px">
+            <Box
+                sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    height: "200px"
+                }}>
                 <CircularProgress />
                 <Typography variant="body1" sx={{ ml: 2 }}>Loading session notes...</Typography>
             </Box>
@@ -214,11 +228,19 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
 
     return (
         <Box>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Box
+                sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    mb: 2
+                }}>
                 <Typography variant="h6">
                     Session Notes
                     {sessionTitle && (
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" sx={{
+                            color: "text.secondary"
+                        }}>
                             {sessionTitle}
                         </Typography>
                     )}
@@ -232,19 +254,24 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
                     Add Note
                 </Button>
             </Box>
-
             {error && (
                 <Alert severity="error" sx={{ mb: 2 }}>
                     {error}
                 </Alert>
             )}
-
             {notes.length === 0 ? (
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
-                    <Typography variant="h6" color="text.secondary">
+                    <Typography variant="h6" sx={{
+                        color: "text.secondary"
+                    }}>
                         No session notes yet
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" mt={1}>
+                    <Typography
+                        variant="body1"
+                        sx={{
+                            color: "text.secondary",
+                            mt: 1
+                        }}>
                         Add prep requests, general notes, or DM notes for this session.
                     </Typography>
                 </Paper>
@@ -305,11 +332,15 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
                     )}
                 </Grid>
             )}
-
             {/* Add Note Dialog */}
             <Dialog open={addNoteDialog} onClose={() => setAddNoteDialog(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>
-                    <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <Box
+                        sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center"
+                        }}>
                         Add Session Note
                         <IconButton onClick={() => setAddNoteDialog(false)}>
                             <CloseIcon />
@@ -326,20 +357,35 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
                             label="Note Type"
                         >
                             <MenuItem value="general">
-                                <Box display="flex" alignItems="center" gap={1}>
+                                <Box
+                                    sx={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 1
+                                    }}>
                                     <NoteIcon />
                                     General Note
                                 </Box>
                             </MenuItem>
                             <MenuItem value="prep_request">
-                                <Box display="flex" alignItems="center" gap={1}>
+                                <Box
+                                    sx={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 1
+                                    }}>
                                     <AssignmentIcon />
                                     Prep Request
                                 </Box>
                             </MenuItem>
                             {user?.role === 'DM' && (
                                 <MenuItem value="dm_note">
-                                    <Box display="flex" alignItems="center" gap={1}>
+                                    <Box
+                                        sx={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 1
+                                        }}>
                                         <ShieldIcon />
                                         DM Note (Private)
                                     </Box>
@@ -348,8 +394,12 @@ const SessionNotes = ({ sessionId, sessionTitle }) => {
                         </Select>
                     </FormControl>
 
-                    <Box mb={2}>
-                        <Typography variant="body2" color="text.secondary">
+                    <Box sx={{
+                        mb: 2
+                    }}>
+                        <Typography variant="body2" sx={{
+                            color: "text.secondary"
+                        }}>
                             {getNoteTypeInfo(newNoteType).description}
                         </Typography>
                     </Box>

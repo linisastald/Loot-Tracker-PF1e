@@ -114,7 +114,7 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           label="Session Date"
           type="date"
           fullWidth
-          InputLabelProps={{ shrink: true }}
+          slotProps={{ inputLabel: { shrink: true } }}
           value={
             localEntry.sessionDate
               ? typeof localEntry.sessionDate === 'string'
@@ -342,7 +342,7 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           label="Session Date"
           type="date"
           fullWidth
-          InputLabelProps={{ shrink: true }}
+          slotProps={{ inputLabel: { shrink: true } }}
           value={
             localEntry.sessionDate
               ? typeof localEntry.sessionDate === 'string'
@@ -358,7 +358,7 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           label="Platinum"
           type="number"
           fullWidth
-          inputProps={{ min: 0 }}
+          slotProps={{ htmlInput: { min: 0 } }}
           value={localEntry.platinum || ''}
           onChange={e => {
             const value = Math.max(0, parseInt(e.target.value) || 0);
@@ -371,7 +371,7 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           label="Gold"
           type="number"
           fullWidth
-          inputProps={{ min: 0 }}
+          slotProps={{ htmlInput: { min: 0 } }}
           value={localEntry.gold || ''}
           onChange={e => {
             const value = Math.max(0, parseInt(e.target.value) || 0);
@@ -384,7 +384,7 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           label="Silver"
           type="number"
           fullWidth
-          inputProps={{ min: 0 }}
+          slotProps={{ htmlInput: { min: 0 } }}
           value={localEntry.silver || ''}
           onChange={e => {
             const value = Math.max(0, parseInt(e.target.value) || 0);
@@ -397,7 +397,7 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           label="Copper"
           type="number"
           fullWidth
-          inputProps={{ min: 0 }}
+          slotProps={{ htmlInput: { min: 0 } }}
           value={localEntry.copper || ''}
           onChange={e => {
             const value = Math.max(0, parseInt(e.target.value) || 0);
@@ -456,7 +456,9 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
       </Grid>
       {!isDM && (
         <Grid size={12}>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             This gold entry will be recorded under your active character.
           </Typography>
         </Grid>

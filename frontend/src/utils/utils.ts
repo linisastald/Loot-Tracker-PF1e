@@ -92,7 +92,7 @@ export const handleSell = async (
   activeUser?: User | null
 ): Promise<void> => {
   try {
-    const user = activeUser || await fetchActiveUser();
+    const user = activeUser || (await fetchActiveUser());
     await lootService.updateLootStatus({
       lootIds: selectedItems,
       status: 'Pending Sale' as LootStatus,
@@ -113,7 +113,7 @@ export const handleTrash = async (
   activeUser?: User | null
 ): Promise<void> => {
   try {
-    const user = activeUser || await fetchActiveUser();
+    const user = activeUser || (await fetchActiveUser());
     await lootService.updateLootStatus({
       lootIds: selectedItems,
       status: 'Trashed' as LootStatus,
@@ -155,7 +155,7 @@ export const handleKeepParty = async (
   activeUser?: User | null
 ): Promise<void> => {
   try {
-    const user = activeUser || await fetchActiveUser();
+    const user = activeUser || (await fetchActiveUser());
     await lootService.updateLootStatus({
       lootIds: selectedItems,
       status: 'Kept Party' as LootStatus,

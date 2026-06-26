@@ -191,11 +191,13 @@ const GeneralItemManagement = () => {
     return (
         <>
             <Typography variant="h6" gutterBottom>General Item Search</Typography>
-
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}
-
-            <Box mt={2} mb={2}>
+            <Box
+                sx={{
+                    mt: 2,
+                    mb: 2
+                }}>
                 <Grid container spacing={2} size={12}>
                     <Grid size={{xs: 12, md: 6}}>
                         <TextField
@@ -328,7 +330,6 @@ const GeneralItemManagement = () => {
                     </Grid>
                 </Grid>
             </Box>
-
             {filteredItems.length > 0 && (
                 <TableContainer component={Paper} sx={{mt: 2}}>
                     <Table>
@@ -384,7 +385,9 @@ const GeneralItemManagement = () => {
                                     <TableCell>{item.value}</TableCell>
                                     <TableCell>{item.notes}</TableCell>
                                     <TableCell>
-                                        <Typography variant="caption" color="text.secondary">
+                                        <Typography variant="caption" sx={{
+                                            color: "text.secondary"
+                                        }}>
                                             Click row to edit
                                         </Typography>
                                     </TableCell>
@@ -394,7 +397,6 @@ const GeneralItemManagement = () => {
                     </Table>
                 </TableContainer>
             )}
-
             <ItemManagementDialog
                 open={updateDialogOpen}
                 onClose={() => setUpdateDialogOpen(false)}

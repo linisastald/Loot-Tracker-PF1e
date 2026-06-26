@@ -262,11 +262,17 @@ const CampaignSettings = () => {
             <Typography variant="h6" gutterBottom>
                 {currentCampaign ? `Campaign Settings — ${currentCampaign.name}` : 'Campaign Settings'}
             </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph>
+            <Typography variant="body2" paragraph sx={{
+                color: "text.secondary"
+            }}>
                 These settings apply only to the current campaign.
             </Typography>
-
-            <Box mt={2} mb={4} sx={{maxWidth: 500}}>
+            <Box
+                sx={{
+                    mt: 2,
+                    mb: 4,
+                    maxWidth: 500
+                }}>
                 <TextField
                     fullWidth
                     label="Campaign Name"
@@ -283,10 +289,11 @@ const CampaignSettings = () => {
                     Update Campaign Name
                 </Button>
             </Box>
-
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Campaign Region</Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
+                <Typography variant="body2" paragraph sx={{
+                    color: "text.secondary"
+                }}>
                     The region affects weather patterns and conditions in your campaign.
                 </Typography>
 
@@ -314,10 +321,11 @@ const CampaignSettings = () => {
                     Update Region
                 </Button>
             </Paper>
-
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Party Level</Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
+                <Typography variant="body2" paragraph sx={{
+                    color: "text.secondary"
+                }}>
                     The level every character in the party is at. "Level Up" raises it by one
                     and, when Discord integration is enabled, announces the new level to your
                     campaign channel. The Average Party Level (APL) is derived from this level
@@ -327,7 +335,9 @@ const CampaignSettings = () => {
                 <Typography variant="body1">
                     Character level: <strong>{currentLevel || '—'}</strong>
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{
+                    color: "text.secondary"
+                }}>
                     Active characters: <strong>{characterCount}</strong>
                 </Typography>
                 <Typography variant="body1" sx={{mb: 2}}>
@@ -343,12 +353,17 @@ const CampaignSettings = () => {
                     Level Up
                 </Button>
                 {atMaxLevel && (
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{mt: 1}}>
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: "text.secondary",
+                            display: "block",
+                            mt: 1
+                        }}>
                         The party is already at the maximum level (30).
                     </Typography>
                 )}
             </Paper>
-
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Infamy System</Typography>
 
@@ -364,9 +379,13 @@ const CampaignSettings = () => {
                 />
 
                 {infamyEnabled && (
-                    <Box mt={3}>
+                    <Box sx={{
+                        mt: 3
+                    }}>
                         <Typography variant="subtitle1" gutterBottom>Character Level</Typography>
-                        <Typography variant="body2" color="text.secondary" paragraph>
+                        <Typography variant="body2" paragraph sx={{
+                            color: "text.secondary"
+                        }}>
                             The shared character level (same value the "Level Up" button raises).
                             Infamy check DC = 15 + (2 × APL), where the APL is derived from this
                             level and the {characterCount}-character party size.
@@ -393,7 +412,13 @@ const CampaignSettings = () => {
                         </Button>
 
                         {averagePartyLevel && (
-                            <Box mt={2} p={2} sx={{backgroundColor: 'rgba(0, 0, 0, 0.05)', borderRadius: 1}}>
+                            <Box
+                                sx={{
+                                    mt: 2,
+                                    p: 2,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                                    borderRadius: 1
+                                }}>
                                 <Typography variant="body2">
                                     APL: <strong>{currentApl}</strong> · Current Infamy Check DC: <strong>{15 + (2 * currentApl)}</strong>
                                 </Typography>
@@ -402,10 +427,11 @@ const CampaignSettings = () => {
                     </Box>
                 )}
             </Paper>
-
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Harrow Point Tracker</Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
+                <Typography variant="body2" paragraph sx={{
+                    color: "text.secondary"
+                }}>
                     Curse of the Crimson Throne flavor module. Tracks each PC's Harrow Point
                     balance for the current chapter.
                 </Typography>
@@ -421,7 +447,6 @@ const CampaignSettings = () => {
                     label="Enable Harrow Point Tracker"
                 />
             </Paper>
-
             <Dialog open={levelUpDialogOpen} onClose={() => !levelingUp && setLevelUpDialogOpen(false)}>
                 <DialogTitle>Level Up Party?</DialogTitle>
                 <DialogContent>

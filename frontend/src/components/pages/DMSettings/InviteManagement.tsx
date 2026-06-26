@@ -185,7 +185,6 @@ const InviteManagement: React.FC = () => {
             <Typography variant="body2" color="textSecondary" gutterBottom>
                 Invites are single-use and grant the new user Player membership in this campaign.
             </Typography>
-
             <Box sx={{display: 'flex', justifyContent: 'flex-end', gap: 2, mb: 2}}>
                 <Button
                     variant="outlined"
@@ -205,7 +204,6 @@ const InviteManagement: React.FC = () => {
                     Custom Invite
                 </Button>
             </Box>
-
             {lastGeneratedInvite && (
                 <Box sx={{
                     mb: 2,
@@ -220,13 +218,16 @@ const InviteManagement: React.FC = () => {
                         <Typography variant="subtitle2">New invite code:</Typography>
                         <Typography
                             variant="h6"
-                            fontWeight="bold"
-                            fontFamily="monospace"
                             data-testid="generated-invite-code"
-                        >
+                            sx={{
+                                fontWeight: "bold",
+                                fontFamily: "monospace"
+                            }}>
                             {lastGeneratedInvite.code}
                         </Typography>
-                        <Typography variant="caption" display="block">
+                        <Typography variant="caption" sx={{
+                            display: "block"
+                        }}>
                             Expires: {formatDate(lastGeneratedInvite.expires_at)}
                         </Typography>
                     </Box>
@@ -241,7 +242,6 @@ const InviteManagement: React.FC = () => {
                     </Tooltip>
                 </Box>
             )}
-
             <TableContainer component={Paper}>
                 <Table>
                     <TableHead>
@@ -271,7 +271,11 @@ const InviteManagement: React.FC = () => {
                                 <TableRow key={invite.id}>
                                     <TableCell>
                                         <Box sx={{display: 'flex', alignItems: 'center'}}>
-                                            <Typography fontFamily="monospace" fontWeight="bold">
+                                            <Typography
+                                                sx={{
+                                                    fontFamily: "monospace",
+                                                    fontWeight: "bold"
+                                                }}>
                                                 {invite.code}
                                             </Typography>
                                             <Tooltip title="Copy code">
@@ -307,7 +311,6 @@ const InviteManagement: React.FC = () => {
                     </TableBody>
                 </Table>
             </TableContainer>
-
             {/* Custom Invite Dialog */}
             <Dialog open={customDialogOpen} onClose={() => setCustomDialogOpen(false)}>
                 <DialogTitle>Create Custom Invite</DialogTitle>
@@ -330,7 +333,7 @@ const InviteManagement: React.FC = () => {
                             margin="normal"
                             value={expiresInHours}
                             onChange={(e) => setExpiresInHours(e.target.value)}
-                            inputProps={{min: MIN_EXPIRY_HOURS, max: MAX_EXPIRY_HOURS}}
+                            slotProps={{ htmlInput: {min: MIN_EXPIRY_HOURS, max: MAX_EXPIRY_HOURS} }}
                             error={!customHoursValid()}
                             helperText={`Between ${MIN_EXPIRY_HOURS} and ${MAX_EXPIRY_HOURS} hours (30 days)`}
                         />
@@ -350,7 +353,6 @@ const InviteManagement: React.FC = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
-
             {/* Deactivate Invite Confirmation Dialog */}
             <Dialog open={deactivateDialogOpen} onClose={() => setDeactivateDialogOpen(false)}>
                 <DialogTitle>Confirm Deactivation</DialogTitle>

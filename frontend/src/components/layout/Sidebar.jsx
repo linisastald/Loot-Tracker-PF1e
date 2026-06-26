@@ -419,14 +419,13 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
           borderBottom: '1px solid',
           borderColor: 'divider',
         }}>
-          <Typography 
-            variant="caption" 
-            color="text.secondary"
-            sx={{ 
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
               fontSize: '0.75rem',
-              fontWeight: 500,
-            }}
-          >
+              fontWeight: 500
+            }}>
             v{versionInfo.fullVersion}
           </Typography>
         </Box>
@@ -474,7 +473,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
                 {username}
               </Typography>
               {activeCharacter && (
-                <Typography variant="caption" color="text.secondary" noWrap>
+                <Typography variant="caption" noWrap sx={{
+                  color: "text.secondary"
+                }}>
                   {activeCharacter.name}
                 </Typography>
               )}

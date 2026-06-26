@@ -116,7 +116,10 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
               Oops! Something went wrong
             </Typography>
             
-            <Typography variant="body1" paragraph color="text.secondary">
+            <Typography variant="body1" sx={{
+              color: "text.secondary",
+              mb: 2
+            }}>
               The application encountered an unexpected error. Don't worry, your data is safe.
             </Typography>
 

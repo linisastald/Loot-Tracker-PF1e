@@ -924,7 +924,9 @@ const GolarionCalendar: React.FC = () => {
                                                     title={
                                                         <Box>
                                                             {weatherData && (
-                                                                <Box mb={1}>
+                                                                <Box sx={{
+                                                                    mb: 1
+                                                                }}>
                                                                     <Typography variant="caption">
                                                                         {weatherData.emoji} {weatherData.condition}
                                                                     </Typography>
@@ -945,7 +947,9 @@ const GolarionCalendar: React.FC = () => {
                                                                 </Box>
                                                             )}
                                                             {dayHolidays.length > 0 && (
-                                                                <Box mb={0.5}>
+                                                                <Box sx={{
+                                                                    mb: 0.5
+                                                                }}>
                                                                     {dayHolidays.map(h => (
                                                                         <Typography key={h.id} variant="caption" sx={{display: 'block'}}>
                                                                             🎉 {h.name}
@@ -966,9 +970,18 @@ const GolarionCalendar: React.FC = () => {
                                                         isSelected={isSelected}
                                                         elevation={isCurrentDay || isSelected ? 3 : 1}
                                                     >
-                                                        <Box display="flex" justifyContent="space-between"
-                                                             alignItems="flex-start" width="100%">
-                                                            <Box display="flex" flexDirection="column">
+                                                        <Box
+                                                            sx={{
+                                                                display: "flex",
+                                                                justifyContent: "space-between",
+                                                                alignItems: "flex-start",
+                                                                width: "100%"
+                                                            }}>
+                                                            <Box
+                                                                sx={{
+                                                                    display: "flex",
+                                                                    flexDirection: "column"
+                                                                }}>
                                                                 <DayNumber variant="body2" isCurrentDay={isCurrentDay}>
                                                                     {day}
                                                                 </DayNumber>
@@ -988,7 +1001,12 @@ const GolarionCalendar: React.FC = () => {
                                                                     </Typography>
                                                                 )}
                                                             </Box>
-                                                            <Box display="flex" flexDirection="column" alignItems="flex-end">
+                                                            <Box
+                                                                sx={{
+                                                                    display: "flex",
+                                                                    flexDirection: "column",
+                                                                    alignItems: "flex-end"
+                                                                }}>
                                                                 {showMoonPhase && (
                                                                     <Typography variant="caption" sx={{fontSize: '0.7rem'}}>
                                                                         {moonEmoji}
@@ -1046,19 +1064,16 @@ const GolarionCalendar: React.FC = () => {
                     {error}
                 </Alert>
             )}
-
             {statusMessage && (
                 <Alert severity="success" sx={{mb: 2}} onClose={() => setStatusMessage(null)}>
                     {statusMessage}
                 </Alert>
             )}
-
             <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{mb: 2}}>
                 <Tab label="Calendar"/>
                 <Tab label="Notes"/>
                 <Tab label="Holidays"/>
             </Tabs>
-
             {activeTab === 0 && (
             <>
             <Paper sx={{p: 3, mb: 3, borderRadius: 2}} elevation={3}>
@@ -1129,7 +1144,7 @@ const GolarionCalendar: React.FC = () => {
                             onChange={(e) => setDaysToAdd(e.target.value)}
                             size="small"
                             sx={{width: '80px', mr: 1}}
-                            InputProps={{inputProps: {min: 1}}}
+                            slotProps={{ input: {inputProps: {min: 1}} }}
                         />
                         <Button
                             variant="outlined"
@@ -1147,7 +1162,12 @@ const GolarionCalendar: React.FC = () => {
                     <>
                         <Divider sx={{my: 2}}/>
                         <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 1}}>
-                            <Typography variant="body2" color="text.secondary" sx={{mr: 1}}>
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    color: "text.secondary",
+                                    mr: 1
+                                }}>
                                 DM weather forecast:
                             </Typography>
                             <TextField
@@ -1157,7 +1177,7 @@ const GolarionCalendar: React.FC = () => {
                                 onChange={(e) => setForecastDays(e.target.value)}
                                 size="small"
                                 sx={{width: '110px'}}
-                                InputProps={{inputProps: {min: 0, max: 60}}}
+                                slotProps={{ input: {inputProps: {min: 0, max: 60}} }}
                             />
                             <Button
                                 variant="outlined"
@@ -1177,8 +1197,14 @@ const GolarionCalendar: React.FC = () => {
                                 Regenerate Forecast
                             </Button>
                         </Box>
-                        <Typography variant="caption" color="text.secondary"
-                                    sx={{display: 'block', textAlign: 'center', mt: 1}}>
+                        <Typography
+                            variant="caption"
+                            sx={{
+                                color: "text.secondary",
+                                display: 'block',
+                                textAlign: 'center',
+                                mt: 1
+                            }}>
                             Forecast days are visible only to DMs. 🔒 marks manually set (locked) weather.
                         </Typography>
                     </>
@@ -1255,13 +1281,21 @@ const GolarionCalendar: React.FC = () => {
                                                                 </Typography>
                                                             )}
                                                             {selectedWeather.description && (
-                                                                <Typography variant="caption" component="span" color="text.secondary" sx={{display: 'block'}}>
+                                                                <Typography
+                                                                    variant="caption"
+                                                                    component="span"
+                                                                    sx={{
+                                                                        color: "text.secondary",
+                                                                        display: 'block'
+                                                                    }}>
                                                                     {selectedWeather.description}
                                                                 </Typography>
                                                             )}
                                                         </Box>
                                                     ) : (
-                                                        <Typography variant="body2" component="span" color="text.secondary">
+                                                        <Typography variant="body2" component="span" sx={{
+                                                            color: "text.secondary"
+                                                        }}>
                                                             Weather information not available
                                                         </Typography>
                                                     )
@@ -1283,8 +1317,13 @@ const GolarionCalendar: React.FC = () => {
                                                                         {h.deity ? ` — ${h.deity}` : ''}
                                                                     </Typography>
                                                                     {h.description && (
-                                                                        <Typography variant="caption" component="span"
-                                                                                    color="text.secondary" sx={{display: 'block'}}>
+                                                                        <Typography
+                                                                            variant="caption"
+                                                                            component="span"
+                                                                            sx={{
+                                                                                color: "text.secondary",
+                                                                                display: 'block'
+                                                                            }}>
                                                                             {h.description}
                                                                         </Typography>
                                                                     )}
@@ -1292,7 +1331,9 @@ const GolarionCalendar: React.FC = () => {
                                                             ))}
                                                         </Box>
                                                     ) : (
-                                                        <Typography variant="body2" component="span" color="text.secondary">
+                                                        <Typography variant="body2" component="span" sx={{
+                                                            color: "text.secondary"
+                                                        }}>
                                                             No holidays on this day
                                                         </Typography>
                                                     )
@@ -1332,7 +1373,7 @@ const GolarionCalendar: React.FC = () => {
                                                 }
                                             >
                                                 <ListItemText
-                                                    primaryTypographyProps={{component: 'span'}}
+                                                    slotProps={{ primary: {component: 'span'} }}
                                                     primary={
                                                         <Box component="span" sx={{display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 0.5}}>
                                                             {n.dmOnly && (
@@ -1354,7 +1395,12 @@ const GolarionCalendar: React.FC = () => {
                                         ))}
                                     </List>
                                 ) : (
-                                    <Typography variant="body2" color="text.secondary" sx={{mb: 1}}>
+                                    <Typography
+                                        variant="body2"
+                                        sx={{
+                                            color: "text.secondary",
+                                            mb: 1
+                                        }}>
                                         No notes on this day yet.
                                     </Typography>
                                 )}
@@ -1385,7 +1431,7 @@ const GolarionCalendar: React.FC = () => {
                                         value={noteDays}
                                         onChange={(e) => setNoteDays(e.target.value)}
                                         sx={{width: '120px'}}
-                                        InputProps={{inputProps: {min: 1}}}
+                                        slotProps={{ input: {inputProps: {min: 1}} }}
                                     />
                                     {!editingNote && parseInt(noteDays, 10) > 1 && (
                                         <FormControlLabel
@@ -1403,7 +1449,12 @@ const GolarionCalendar: React.FC = () => {
                                     )}
                                 </Box>
 
-                                <Box display="flex" justifyContent="flex-end" gap={1}>
+                                <Box
+                                    sx={{
+                                        display: "flex",
+                                        justifyContent: "flex-end",
+                                        gap: 1
+                                    }}>
                                     {editingNote && (
                                         <Button onClick={resetNoteForm} sx={{fontWeight: 500, textTransform: 'none'}}>
                                             Cancel
@@ -1426,7 +1477,6 @@ const GolarionCalendar: React.FC = () => {
             )}
             </>
             )}
-
             {/* Notes tab: agenda of every dated note */}
             {activeTab === 1 && (notes.length > 0 ? (
                 <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
@@ -1455,7 +1505,7 @@ const GolarionCalendar: React.FC = () => {
                                 }
                             >
                                 <ListItemText
-                                    primaryTypographyProps={{component: 'span'}}
+                                    slotProps={{ primary: {component: 'span'} }}
                                     primary={
                                         <Box component="span" sx={{display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap'}}>
                                             <Typography variant="subtitle2" component="span">
@@ -1479,12 +1529,13 @@ const GolarionCalendar: React.FC = () => {
                 </Paper>
             ) : (
                 <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                        color: "text.secondary"
+                    }}>
                         No notes yet. Add notes from a day on the Calendar tab.
                     </Typography>
                 </Paper>
             ))}
-
             {/* Holidays tab: per-category visibility + reference list + DM management */}
             {activeTab === 2 && (holidays.length > 0 ? (
                 <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
@@ -1503,7 +1554,12 @@ const GolarionCalendar: React.FC = () => {
                     </Box>
 
                     <Box sx={{display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 1}}>
-                        <Typography variant="caption" color="text.secondary" sx={{mr: 1}}>
+                        <Typography
+                            variant="caption"
+                            sx={{
+                                color: "text.secondary",
+                                mr: 1
+                            }}>
                             Show on calendar:
                         </Typography>
                         {presentCategories.map(cat => (
@@ -1538,7 +1594,7 @@ const GolarionCalendar: React.FC = () => {
                                 ) : undefined}
                             >
                                 <ListItemText
-                                    primaryTypographyProps={{component: 'span'}}
+                                    slotProps={{ primary: {component: 'span'} }}
                                     primary={
                                         <Box component="span" sx={{display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap'}}>
                                             <Typography variant="subtitle2" component="span">
@@ -1552,7 +1608,14 @@ const GolarionCalendar: React.FC = () => {
                                         </Box>
                                     }
                                     secondary={
-                                        <Typography variant="caption" component="span" color="text.secondary" sx={{display: 'block', pr: 6}}>
+                                        <Typography
+                                            variant="caption"
+                                            component="span"
+                                            sx={{
+                                                color: "text.secondary",
+                                                display: 'block',
+                                                pr: 6
+                                            }}>
                                             {[h.deity, h.region].filter(Boolean).join(' · ')}
                                             {(h.deity || h.region) && h.description ? ' — ' : ''}
                                             {h.description}
@@ -1563,24 +1626,31 @@ const GolarionCalendar: React.FC = () => {
                         ))}
                     </List>
                     {movableHolidays.length > 0 && (
-                        <Typography variant="caption" color="text.secondary" sx={{display: 'block', mt: 1}}>
+                        <Typography
+                            variant="caption"
+                            sx={{
+                                color: "text.secondary",
+                                display: 'block',
+                                mt: 1
+                            }}>
                             Movable holidays (solstices, weekday-based, etc.) have no fixed day and aren't shown on the grid.
                         </Typography>
                     )}
                 </Paper>
             ) : (
                 <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
-                    <Typography variant="body2" color="text.secondary">No holidays defined.</Typography>
+                    <Typography variant="body2" sx={{
+                        color: "text.secondary"
+                    }}>No holidays defined.</Typography>
                 </Paper>
             ))}
-
             <Dialog
                 open={confirmDialogOpen}
                 onClose={() => setConfirmDialogOpen(false)}
-                PaperProps={{
+                slotProps={{ paper: {
                     elevation: 3,
                     sx: {borderRadius: 2}
-                }}
+                } }}
             >
                 <DialogTitle>Confirm Date Change</DialogTitle>
                 <DialogContent>
@@ -1608,14 +1678,13 @@ const GolarionCalendar: React.FC = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
-
             {/* DM-only: manually set (story) weather for a date */}
             <Dialog
                 open={weatherDialogOpen}
                 onClose={() => setWeatherDialogOpen(false)}
                 fullWidth
                 maxWidth="sm"
-                PaperProps={{elevation: 3, sx: {borderRadius: 2}}}
+                slotProps={{ paper: {elevation: 3, sx: {borderRadius: 2}} }}
             >
                 <DialogTitle>
                     {weatherEditDate
@@ -1673,17 +1742,19 @@ const GolarionCalendar: React.FC = () => {
                         <Grid size={{xs: 6, sm: 3}}>
                             <TextField label="Wind mph" type="number" size="small" fullWidth
                                        value={weatherForm.windSpeed}
-                                       InputProps={{inputProps: {min: 0}}}
+                                       slotProps={{ input: {inputProps: {min: 0}} }}
                                        onChange={(e) => setWeatherForm({...weatherForm, windSpeed: e.target.value})}/>
                         </Grid>
                         <Grid size={{xs: 6, sm: 3}}>
                             <TextField label="Humidity %" type="number" size="small" fullWidth
                                        value={weatherForm.humidity}
-                                       InputProps={{inputProps: {min: 0, max: 100}}}
+                                       slotProps={{ input: {inputProps: {min: 0, max: 100}} }}
                                        onChange={(e) => setWeatherForm({...weatherForm, humidity: e.target.value})}/>
                         </Grid>
                         <Grid size={12}>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{
+                                color: "text.secondary"
+                            }}>
                                 Description (auto-generated): {buildWeatherDescription(weatherForm)}
                             </Typography>
                         </Grid>
@@ -1699,14 +1770,13 @@ const GolarionCalendar: React.FC = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
-
             {/* DM-only: add / edit a custom holiday */}
             <Dialog
                 open={holidayDialogOpen}
                 onClose={() => setHolidayDialogOpen(false)}
                 fullWidth
                 maxWidth="sm"
-                PaperProps={{elevation: 3, sx: {borderRadius: 2}}}
+                slotProps={{ paper: {elevation: 3, sx: {borderRadius: 2}} }}
             >
                 <DialogTitle>{editingHoliday ? 'Edit Holiday' : 'Add Custom Holiday'}</DialogTitle>
                 <DialogContent>
@@ -1740,7 +1810,7 @@ const GolarionCalendar: React.FC = () => {
                         <Grid size={{xs: 6, sm: 3}}>
                             <TextField label="Day" type="number" size="small" fullWidth
                                        value={holidayForm.day}
-                                       InputProps={{inputProps: {min: 1, max: 31}}}
+                                       slotProps={{ input: {inputProps: {min: 1, max: 31}} }}
                                        onChange={(e) => setHolidayForm({...holidayForm, day: e.target.value})}/>
                         </Grid>
                         <Grid size={{xs: 12, sm: 6}}>

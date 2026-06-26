@@ -510,14 +510,22 @@ const CrewManagement: React.FC = () => {
                 {paginatedCrew.map((crewMember) => (
                   <TableRow key={crewMember.id}>
                     <TableCell>
-                      <Box display="flex" alignItems="center">
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center"
+                        }}>
                         <PersonIcon sx={{ mr: 1 }} />
                         <Box>
-                          <Typography variant="body1" fontWeight="bold">
+                          <Typography variant="body1" sx={{
+                            fontWeight: "bold"
+                          }}>
                             {crewMember.name}
                           </Typography>
                           {crewMember.age && (
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{
+                              color: "text.secondary"
+                            }}>
                               Age: {crewMember.age}
                             </Typography>
                           )}
@@ -526,7 +534,11 @@ const CrewManagement: React.FC = () => {
                     </TableCell>
                     <TableCell>{crewMember.race || 'Unknown'}</TableCell>
                     <TableCell>
-                      <Box display="flex" alignItems="center">
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center"
+                        }}>
                         {crewMember.location_type === 'ship' ? <ShipIcon sx={{ mr: 1, fontSize: 16 }} /> : <OutpostIcon sx={{ mr: 1, fontSize: 16 }} />}
                         {getLocationName(crewMember)}
                       </Box>
@@ -535,7 +547,9 @@ const CrewManagement: React.FC = () => {
                       {crewMember.ship_position ? (
                         <Chip label={crewMember.ship_position} size="small" />
                       ) : (
-                        <Typography color="text.secondary">-</Typography>
+                        <Typography sx={{
+                          color: "text.secondary"
+                        }}>-</Typography>
                       )}
                     </TableCell>
                     <TableCell>
@@ -626,7 +640,6 @@ const CrewManagement: React.FC = () => {
           </TableContainer>
         </TabPanel>
       </Paper>
-
       {/* Crew Dialog */}
       <Dialog open={crewDialogOpen} onClose={() => setCrewDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
@@ -687,7 +700,7 @@ const CrewManagement: React.FC = () => {
                 type="date"
                 value={editingCrew.hire_date}
                 onChange={(e) => setEditingCrew({ ...editingCrew, hire_date: e.target.value })}
-                InputLabelProps={{ shrink: true }}
+                slotProps={{ inputLabel: { shrink: true } }}
               />
             </Grid>
 
@@ -746,7 +759,6 @@ const CrewManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Move Dialog */}
       <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Move Crew Member</DialogTitle>
@@ -810,7 +822,6 @@ const CrewManagement: React.FC = () => {
           <Button onClick={handleMoveCrew} variant="contained">Move</Button>
         </DialogActions>
       </Dialog>
-
       {/* Status Dialog */}
       <Dialog open={statusDialogOpen} onClose={() => setStatusDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Update Crew Status</DialogTitle>
@@ -836,7 +847,7 @@ const CrewManagement: React.FC = () => {
                 type="date"
                 value={statusData.date}
                 onChange={(e) => setStatusData({ ...statusData, date: e.target.value })}
-                InputLabelProps={{ shrink: true }}
+                slotProps={{ inputLabel: { shrink: true } }}
               />
             </Grid>
             {statusData.type === 'departed' && (
@@ -858,7 +869,6 @@ const CrewManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
         <DialogTitle>Delete Crew Member</DialogTitle>
@@ -874,7 +884,6 @@ const CrewManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Recruitment Dialog */}
       <Dialog open={recruitmentDialogOpen} onClose={() => setRecruitmentDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Recruit Crew Members - Skull & Shackles Rules</DialogTitle>
@@ -883,10 +892,18 @@ const CrewManagement: React.FC = () => {
             <Typography variant="h6" gutterBottom>
               Official Recruitment Rules
             </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph>
+            <Typography variant="body2" sx={{
+              color: "text.secondary",
+              mb: 2
+            }}>
               Make a DC 20 skill check. Success recruits 1d4+2 crew members (3-6 total). Each attempt takes 1 full day.
             </Typography>
-            <Typography variant="body2" color="warning.main" sx={{ fontWeight: 'bold' }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "warning.main",
+                fontWeight: 'bold'
+              }}>
               Remember: Crew expect plunder shares, not daily wages. Deduct 1 plunder point when selling.
             </Typography>
           </Box>

@@ -130,7 +130,7 @@ const SpellbookGenerator: React.FC = () => {
                         </Select>
                     </FormControl>
                     <TextField size="small" type="number" label="Caster level" value={casterLevel}
-                               sx={{width: 120}} InputProps={{inputProps: {min: 1, max: 20}}}
+                               sx={{width: 120}} slotProps={{ input: {inputProps: {min: 1, max: 20}} }}
                                onChange={(e) => setCasterLevel(e.target.value)}/>
                     <FormControl size="small" sx={{minWidth: 170}} disabled={!specialist}>
                         <InputLabel id="school-label">Specialty (optional)</InputLabel>

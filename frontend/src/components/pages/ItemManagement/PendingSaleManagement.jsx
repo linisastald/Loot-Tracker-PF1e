@@ -383,20 +383,26 @@ const PendingSaleManagement = () => {
     return (
         <>
             <Typography variant="h6" gutterBottom>Pending Sale Items</Typography>
-
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}
-
             <Card sx={{mb: 3}}>
                 <CardContent>
                     <Typography variant="h6" gutterBottom>Pending Sale Summary</Typography>
-                    <Grid container spacing={2} alignItems="center">
+                    <Grid container spacing={2} sx={{
+                        alignItems: "center"
+                    }}>
                         <Grid size={{xs: 12, md: 4}}>
                             <Typography>Number of Items: {pendingSaleCount}</Typography>
                             <Typography>Total Value: {pendingSaleTotal.toFixed(2)} gold</Typography>
                         </Grid>
                         <Grid size={{xs: 12, md: 8}}>
-                            <Box display="flex" alignItems="center" flexWrap="wrap" gap={2}>
+                            <Box
+                                sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    flexWrap: "wrap",
+                                    gap: 2
+                                }}>
                                 <TextField
                                     label="Sell up to amount"
                                     type="number"
@@ -441,9 +447,13 @@ const PendingSaleManagement = () => {
                     </Grid>
                 </CardContent>
             </Card>
-
             {loading ? (
-                <Box display="flex" justifyContent="center" my={4}>
+                <Box
+                    sx={{
+                        display: "flex",
+                        justifyContent: "center",
+                        my: 4
+                    }}>
                     <CircularProgress/>
                 </Box>
             ) : (
@@ -499,7 +509,6 @@ const PendingSaleManagement = () => {
                     </Table>
                 </TableContainer>
             )}
-
             <ItemManagementDialog
                 open={updateDialogOpen}
                 onClose={() => setUpdateDialogOpen(false)}

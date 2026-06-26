@@ -81,12 +81,15 @@ const ImpositionDialog: React.FC<ImpositionDialogProps> = ({open, onClose, onPur
             {imposition && (
                 <>
                     <Typography variant="h6">{imposition.name}</Typography>
-                    <Typography variant="body2" paragraph>
+                    <Typography variant="body2" sx={{ mb: 2 }}>
                         Cost: <strong>{imposition.displayCost} Disrepute</strong>
                     </Typography>
-                    <Typography variant="body1" paragraph>{imposition.effect}</Typography>
+                    <Typography variant="body1" sx={{ mb: 2 }}>{imposition.effect}</Typography>
                     {imposition.description && (
-                        <Typography variant="body2" color="text.secondary" paragraph>
+                        <Typography variant="body2" sx={{
+                            color: "text.secondary",
+                            mb: 2
+                        }}>
                             {imposition.description}
                         </Typography>
                     )}
@@ -611,12 +614,17 @@ const Infamy: React.FC = () => {
                 </Typography>
             </AccordionSummary>
             <AccordionDetails>
-                <Typography variant="body2" paragraph color="text.secondary">
+                <Typography variant="body2" sx={{
+                    color: "text.secondary",
+                    mb: 2
+                }}>
                     Requires {threshold}+ Infamy ({title} threshold)
                 </Typography>
 
                 {impositionsList.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">No {title.toLowerCase()} impositions available</Typography>
+                    <Typography variant="body2" sx={{
+                        color: "text.secondary"
+                    }}>No {title.toLowerCase()} impositions available</Typography>
                 ) : (
                     <ImpositionsTable
                         impositions={impositionsList}
@@ -632,7 +640,12 @@ const Infamy: React.FC = () => {
     return (
         <Container maxWidth="lg">
             <Paper sx={{ p: 3, mb: 3 }}>
-                <Box display="flex" justifyContent="end" alignItems="center">
+                <Box
+                    sx={{
+                        display: "flex",
+                        justifyContent: "end",
+                        alignItems: "center"
+                    }}>
                     <Chip
                         label={infamyStatus.threshold}
                         color={infamyStatus.infamy < 10 ? "default" : "primary"}
@@ -655,7 +668,9 @@ const Infamy: React.FC = () => {
                                 <Box sx={{ mb: 2 }}>
                                     <Typography variant="subtitle1">Infamy</Typography>
                                     <Typography variant="h3">{infamyStatus.infamy}</Typography>
-                                    <Typography variant="body2" color="text.secondary">
+                                    <Typography variant="body2" sx={{
+                                        color: "text.secondary"
+                                    }}>
                                         Your ship's legends and stories throughout the Shackles
                                     </Typography>
                                 </Box>
@@ -665,7 +680,9 @@ const Infamy: React.FC = () => {
                                 <Box sx={{ mb: 2 }}>
                                     <Typography variant="subtitle1">Disrepute</Typography>
                                     <Typography variant="h3">{infamyStatus.disrepute}</Typography>
-                                    <Typography variant="body2" color="text.secondary">
+                                    <Typography variant="body2" sx={{
+                                        color: "text.secondary"
+                                    }}>
                                         Spendable points used to purchase impositions and benefits
                                     </Typography>
                                 </Box>
@@ -675,7 +692,9 @@ const Infamy: React.FC = () => {
                                 <Box>
                                     <Typography variant="subtitle1">Sphere of Influence</Typography>
                                     <Typography variant="h5">{getSphereOfInfluence()} miles</Typography>
-                                    <Typography variant="body2" color="text.secondary">
+                                    <Typography variant="body2" sx={{
+                                        color: "text.secondary"
+                                    }}>
                                         The range in which your reputation holds sway
                                     </Typography>
                                 </Box>
@@ -706,7 +725,9 @@ const Infamy: React.FC = () => {
                             />
                             <CardContent>
                                 {infamyStatus.favored_ports.length === 0 ? (
-                                    <Typography variant="body2" color="text.secondary" align="center">
+                                    <Typography variant="body2" align="center" sx={{
+                                        color: "text.secondary"
+                                    }}>
                                         {infamyStatus.infamy < 10
                                             ? "Reach Disgraceful threshold (10+ Infamy) to designate favored ports"
                                             : "No favored ports designated yet"}
@@ -731,7 +752,6 @@ const Infamy: React.FC = () => {
                     </Grid>
                 </Grid>
             </Paper>
-
             <Box sx={{ width: '100%' }}>
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
                     <Tabs value={tabValue} onChange={handleTabChange} aria-label="infamy tabs">
@@ -745,7 +765,7 @@ const Infamy: React.FC = () => {
                 {/* Gain Infamy Tab */}
                 <TabPanel value={tabValue} index={0}>
                     <Typography variant="h6" gutterBottom>Boast at Port</Typography>
-                    <Typography variant="body2" paragraph>
+                    <Typography variant="body2" sx={{ mb: 2 }}>
                         When your ship is moored at a port for 1 full day, you can boast about your infamous deeds to gain Infamy.
                         The DC for the Infamy check is 15 + 2 × your APL (Average Party Level).
                     </Typography>
@@ -774,7 +794,9 @@ const Infamy: React.FC = () => {
                                             );
                                         })}
                                     </Select>
-                                    <Typography variant="caption" color="text.secondary">
+                                    <Typography variant="caption" sx={{
+                                        color: "text.secondary"
+                                    }}>
                                         Each port can provide a maximum of 5 Infamy points per threshold.
                                     </Typography>
                                 </FormControl>
@@ -795,7 +817,7 @@ const Infamy: React.FC = () => {
                             <Grid size={{xs: 12, md: 6}}>
                                 <Box sx={{ p: 2, border: '1px dashed gray', borderRadius: 1, mt: 2 }}>
                                     <Typography variant="subtitle2" gutterBottom>Spend Plunder for Bonus</Typography>
-                                    <Typography variant="body2" paragraph>
+                                    <Typography variant="body2" sx={{ mb: 2 }}>
                                         Every point of plunder spent adds a +2 bonus to your skill check.
                                         Available plunder: <strong>{availablePlunder}</strong>
                                     </Typography>
@@ -872,7 +894,7 @@ const Infamy: React.FC = () => {
                                         type="number"
                                         value={infamyChange}
                                         onChange={(e) => setInfamyChange(parseInt(e.target.value) || 0)}
-                                        InputProps={{
+                                        slotProps={{ input: {
                                             startAdornment: (
                                                 <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
                                                     <IconButton size="small" onClick={() => setInfamyChange(prev => prev - 1)}>
@@ -883,7 +905,7 @@ const Infamy: React.FC = () => {
                                                     </IconButton>
                                                 </Box>
                                             )
-                                        }}
+                                        } }}
                                     />
                                 </Grid>
 
@@ -894,7 +916,7 @@ const Infamy: React.FC = () => {
                                         type="number"
                                         value={disreputeChange}
                                         onChange={(e) => setDisreputeChange(parseInt(e.target.value) || 0)}
-                                        InputProps={{
+                                        slotProps={{ input: {
                                             startAdornment: (
                                                 <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
                                                     <IconButton size="small" onClick={() => setDisreputeChange(prev => prev - 1)}>
@@ -905,7 +927,7 @@ const Infamy: React.FC = () => {
                                                     </IconButton>
                                                 </Box>
                                             )
-                                        }}
+                                        } }}
                                     />
                                 </Grid>
 
@@ -936,7 +958,9 @@ const Infamy: React.FC = () => {
 
                     {infamyStatus.infamy >= 20 && (
                         <Paper sx={{ p: 3, mt: 3 }}>
-                            <Grid container spacing={2} size={12} alignItems="center">
+                            <Grid container spacing={2} size={12} sx={{
+                                alignItems: "center"
+                            }}>
                                 <Grid size={{xs: 12, md: 8}}>
                                     <Typography variant="h6" color="error">Sacrifice Crew Member</Typography>
                                     <Typography variant="body2">
@@ -963,7 +987,7 @@ const Infamy: React.FC = () => {
                 {/* Impositions Tab */}
                 <TabPanel value={tabValue} index={1}>
                     <Typography variant="h6" gutterBottom>Available Impositions</Typography>
-                    <Typography variant="body2" paragraph>
+                    <Typography variant="body2" sx={{ mb: 2 }}>
                         Impositions are benefits you can purchase using your Disrepute. Your current Disrepute: <strong>{infamyStatus.disrepute}</strong>
                     </Typography>
 
@@ -1026,27 +1050,27 @@ const Infamy: React.FC = () => {
                     <Typography variant="h6" gutterBottom>Infamy System Rules</Typography>
 
                     <Paper sx={{ p: 3 }}>
-                        <Typography variant="body1" paragraph>
+                        <Typography variant="body1" sx={{ mb: 2 }}>
                             Some pirates only do what they do for the promise of wealth, being little more than brigands of the waves.
                             Others do it for the reputation, fearsomeness, and power that comes with numbering among the most notorious
                             scallywags on the seas. That's where Infamy comes in.
                         </Typography>
 
                         <Typography variant="h6" gutterBottom>Infamy and Disrepute Scores</Typography>
-                        <Typography variant="body1" paragraph>
+                        <Typography variant="body1" sx={{ mb: 2 }}>
                             A party has two related scores, Infamy and Disrepute. Infamy tracks how many points the crew has gained over
                             its career—think of this as the sum of all the outlandish stories and rumors about the PCs being told throughout
                             the Shackles. Infamy rarely, if ever, decreases, and reaching certain Infamy thresholds provides useful benefits.
                         </Typography>
 
-                        <Typography variant="body1" paragraph>
+                        <Typography variant="body1" sx={{ mb: 2 }}>
                             Disrepute is a spendable resource—a group's actual ability to cash in on its reputation. This currency is used to
                             purchase impositions, deeds others might not want to do for the group, but that they perform either to curry the
                             group's favor or to avoid its disfavor.
                         </Typography>
 
                         <Typography variant="h6" gutterBottom>Winning Infamy and Disrepute</Typography>
-                        <Typography variant="body1" paragraph>
+                        <Typography variant="body1" sx={{ mb: 2 }}>
                             To gain Infamy, the PCs must moor their ship at a port for 1 full day, and the PC determined by the
                             group to be its main storyteller must spend this time on shore carousing and boasting of infamous deeds.
                             This PC must make either a Bluff, Intimidate, or Perform check. The DC of this check is equal to 15 + twice
@@ -1136,7 +1160,6 @@ const Infamy: React.FC = () => {
                     </Paper>
                 </TabPanel>
             </Box>
-
             {/* Dialogs */}
             <ImpositionDialog
                 open={impositionDialogOpen}
@@ -1145,7 +1168,6 @@ const Infamy: React.FC = () => {
                 imposition={selectedImposition}
                 disrepute={infamyStatus.disrepute}
             />
-
             <PortDialog
                 open={favoredPortDialogOpen}
                 onClose={() => setFavoredPortDialogOpen(false)}
@@ -1155,7 +1177,6 @@ const Infamy: React.FC = () => {
                 availablePorts={availablePorts}
                 favoredPorts={infamyStatus.favored_ports}
             />
-
             <SacrificeDialog
                 open={sacrificeDialogOpen}
                 onClose={() => setSacrificeDialogOpen(false)}

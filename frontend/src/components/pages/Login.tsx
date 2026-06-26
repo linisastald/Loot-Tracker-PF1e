@@ -120,7 +120,7 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
                     onKeyDown={handleKeyDown}
                     aria-describedby={error ? "login-error" : undefined}
                     error={!!error}
-                    InputProps={{
+                    slotProps={{ input: {
                         // Add eye icon to toggle password visibility
                         endAdornment: (
                             <InputAdornment position="end">
@@ -133,7 +133,7 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
                                 </IconButton>
                             </InputAdornment>
                         ),
-                    }}
+                    } }}
                 />
 
                 {error && <Typography color="error" sx={{mt: 1}} id="login-error" role="alert">{error}</Typography>}
@@ -148,7 +148,11 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
                     Login
                 </Button>
 
-                <Box textAlign="center" mt={2}>
+                <Box
+                    sx={{
+                        textAlign: "center",
+                        mt: 2
+                    }}>
                     <Typography variant="body2">
                         <Link
                             component="button"
@@ -158,7 +162,9 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
                             Forgot Password?
                         </Link>
                     </Typography>
-                    <Typography variant="body2" mt={1}>
+                    <Typography variant="body2" sx={{
+                        mt: 1
+                    }}>
                         Don't have an account?{' '}
                         <Link
                             component="button"

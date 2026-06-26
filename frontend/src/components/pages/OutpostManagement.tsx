@@ -217,31 +217,51 @@ const OutpostManagement: React.FC = () => {
                   .map((outpost) => (
                   <TableRow key={outpost.id}>
                     <TableCell>
-                      <Box display="flex" alignItems="center">
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center"
+                        }}>
                         <OutpostIcon sx={{ mr: 1 }} />
-                        <Typography variant="body1" fontWeight="bold">
+                        <Typography variant="body1" sx={{
+                          fontWeight: "bold"
+                        }}>
                           {outpost.name}
                         </Typography>
                       </Box>
                     </TableCell>
                     <TableCell>
                       {outpost.location ? (
-                        <Box display="flex" alignItems="center">
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center"
+                          }}>
                           <LocationIcon sx={{ mr: 1, fontSize: 16 }} />
                           {outpost.location}
                         </Box>
                       ) : (
-                        <Typography color="text.secondary">Unknown</Typography>
+                        <Typography sx={{
+                          color: "text.secondary"
+                        }}>Unknown</Typography>
                       )}
                     </TableCell>
                     <TableCell>
-                      <Box display="flex" alignItems="center">
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center"
+                        }}>
                         <DateIcon sx={{ mr: 1, fontSize: 16 }} />
                         {timezone ? formatInCampaignTimezone(outpost.access_date, timezone, 'PP') : 'Unknown'}
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <Box display="flex" alignItems="center">
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center"
+                        }}>
                         <PeopleIcon sx={{ mr: 1, fontSize: 16 }} />
                         {outpost.crew_count || 0}
                       </Box>
@@ -286,10 +306,14 @@ const OutpostManagement: React.FC = () => {
                   <CardHeader title="Outpost Information" />
                   <CardContent>
                     <Typography variant="h6">{selectedOutpost.name}</Typography>
-                    <Typography color="text.secondary" gutterBottom>
+                    <Typography gutterBottom sx={{
+                      color: "text.secondary"
+                    }}>
                       Location: {selectedOutpost.location || 'Unknown'}
                     </Typography>
-                    <Typography color="text.secondary">
+                    <Typography sx={{
+                      color: "text.secondary"
+                    }}>
                       Access Date: {timezone ? formatInCampaignTimezone(selectedOutpost.access_date, timezone, 'PP') : 'Unknown'}
                     </Typography>
                   </CardContent>
@@ -308,18 +332,24 @@ const OutpostManagement: React.FC = () => {
                     ) : selectedOutpostCrew.length > 0 ? (
                       selectedOutpostCrew.map((crew) => (
                         <Box key={crew.id} sx={{ mb: 1, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
-                          <Typography variant="body2" fontWeight="bold">
+                          <Typography variant="body2" sx={{
+                            fontWeight: "bold"
+                          }}>
                             {crew.name}
                           </Typography>
                           {crew.race && (
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" sx={{
+                              color: "text.secondary"
+                            }}>
                               {crew.race}
                             </Typography>
                           )}
                         </Box>
                       ))
                     ) : (
-                      <Typography color="text.secondary">No crew members stationed</Typography>
+                      <Typography sx={{
+                        color: "text.secondary"
+                      }}>No crew members stationed</Typography>
                     )}
                   </CardContent>
                 </Card>
@@ -328,7 +358,6 @@ const OutpostManagement: React.FC = () => {
           )}
         </TabPanel>
       </Paper>
-
       {/* Outpost Dialog */}
       <Dialog open={outpostDialogOpen} onClose={() => setOutpostDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
@@ -360,7 +389,7 @@ const OutpostManagement: React.FC = () => {
                 type="date"
                 value={editingOutpost.access_date}
                 onChange={(e) => setEditingOutpost({ ...editingOutpost, access_date: e.target.value })}
-                InputLabelProps={{ shrink: true }}
+                slotProps={{ inputLabel: { shrink: true } }}
               />
             </Grid>
           </Grid>
@@ -372,7 +401,6 @@ const OutpostManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
         <DialogTitle>Delete Outpost</DialogTitle>

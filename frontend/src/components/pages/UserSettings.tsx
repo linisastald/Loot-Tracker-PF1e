@@ -28,7 +28,9 @@ function TabPanel(props) {
             aria-labelledby={`simple-tab-${index}`}
             {...other}
         >
-            {value === index && <Box p={3}>{children}</Box>}
+            {value === index && <Box sx={{
+                p: 3
+            }}>{children}</Box>}
         </div>
     );
 }
@@ -218,7 +220,7 @@ const UserSettings = () => {
                                         type={showOldPassword ? 'text' : 'password'}
                                         value={oldPassword}
                                         onChange={(e) => setOldPassword(e.target.value)}
-                                        InputProps={{
+                                        slotProps={{ input: {
                                             endAdornment: (
                                                 <InputAdornment position="end">
                                                     <IconButton
@@ -230,7 +232,7 @@ const UserSettings = () => {
                                                     </IconButton>
                                                 </InputAdornment>
                                             ),
-                                        }}
+                                        } }}
                                     />
                                     <TextField
                                         margin="normal"
@@ -240,7 +242,7 @@ const UserSettings = () => {
                                         type={showNewPassword ? 'text' : 'password'}
                                         value={newPassword}
                                         onChange={(e) => setNewPassword(e.target.value)}
-                                        InputProps={{
+                                        slotProps={{ input: {
                                             endAdornment: (
                                                 <InputAdornment position="end">
                                                     <IconButton
@@ -252,7 +254,7 @@ const UserSettings = () => {
                                                     </IconButton>
                                                 </InputAdornment>
                                             ),
-                                        }}
+                                        } }}
                                     />
                                     <TextField
                                         margin="normal"
@@ -262,7 +264,7 @@ const UserSettings = () => {
                                         type={showConfirmPassword ? 'text' : 'password'}
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
-                                        InputProps={{
+                                        slotProps={{ input: {
                                             endAdornment: (
                                                 <InputAdornment position="end">
                                                     <IconButton
@@ -274,7 +276,7 @@ const UserSettings = () => {
                                                     </IconButton>
                                                 </InputAdornment>
                                             ),
-                                        }}
+                                        } }}
                                     />
                                     <Button
                                         type="submit"
@@ -321,7 +323,7 @@ const UserSettings = () => {
                                         type={showEmailPassword ? 'text' : 'password'}
                                         value={emailPassword}
                                         onChange={(e) => setEmailPassword(e.target.value)}
-                                        InputProps={{
+                                        slotProps={{ input: {
                                             endAdornment: (
                                                 <InputAdornment position="end">
                                                     <IconButton
@@ -333,7 +335,7 @@ const UserSettings = () => {
                                                     </IconButton>
                                                 </InputAdornment>
                                             ),
-                                        }}
+                                        } }}
                                     />
                                     <Button
                                         type="submit"
@@ -353,7 +355,12 @@ const UserSettings = () => {
                                 <Typography variant="h6" gutterBottom>
                                     Discord Integration
                                 </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
+                                <Typography
+                                    variant="body2"
+                                    sx={{
+                                        color: "text.secondary",
+                                        mb: 2
+                                    }}>
                                     Link your Discord account to track session attendance via Discord buttons.
                                 </Typography>
                                 {discordError && <Alert severity="error" sx={{mb: 2}}>{discordError}</Alert>}

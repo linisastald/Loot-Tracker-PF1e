@@ -226,7 +226,9 @@ const Consumables: React.FC = () => {
           />
         </Box>
         <Box sx={{ minWidth: 35 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             {charges}/{MAX_WAND_CHARGES}
           </Typography>
         </Box>
@@ -261,12 +263,14 @@ const Consumables: React.FC = () => {
           placeholder="Search consumables..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            },
           }}
           sx={{ mb: 2 }}
         />
@@ -445,7 +449,7 @@ const Consumables: React.FC = () => {
             fullWidth
             value={newCharges}
             onChange={(e) => setNewCharges(e.target.value)}
-            inputProps={{min: 1, max: MAX_WAND_CHARGES}}
+            slotProps={{ htmlInput: {min: 1, max: MAX_WAND_CHARGES} }}
             helperText={`Max ${MAX_WAND_CHARGES} charges`}
           />
         </DialogContent>

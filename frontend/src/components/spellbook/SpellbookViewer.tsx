@@ -44,11 +44,11 @@ const SpellbookViewer: React.FC<Props> = ({book}) => {
                 <Chip size="small" label={`${count} spells`} variant="outlined"/>
                 {book.value !== undefined && <Chip size="small" label={`${book.value.toLocaleString()} gp`} variant="outlined"/>}
             </Box>
-
             {count === 0 && (
-                <Typography variant="body2" color="text.secondary">No spells.</Typography>
+                <Typography variant="body2" sx={{
+                    color: "text.secondary"
+                }}>No spells.</Typography>
             )}
-
             {Array.from({length: maxLevel + 1}, (_, lvl) => {
                 const spells = book.spells
                     .filter(s => s.level === lvl)
@@ -57,11 +57,18 @@ const SpellbookViewer: React.FC<Props> = ({book}) => {
                 return (
                     <Box key={lvl} sx={{mb: 1.5}}>
                         <Divider textAlign="left" sx={{mb: 0.5}}>
-                            <Typography variant="overline" color="text.secondary">
+                            <Typography variant="overline" sx={{
+                                color: "text.secondary"
+                            }}>
                                 {levelLabel(lvl)} ({spells.length})
                             </Typography>
                         </Divider>
-                        <Stack direction="row" flexWrap="wrap" gap={0.5}>
+                        <Stack
+                            direction="row"
+                            sx={{
+                                flexWrap: "wrap",
+                                gap: 0.5
+                            }}>
                             {spells.map((s, i) => (
                                 <Chip
                                     key={`${s.id ?? s.name}-${i}`}

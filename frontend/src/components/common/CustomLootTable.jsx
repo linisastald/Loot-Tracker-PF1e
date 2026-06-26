@@ -356,6 +356,7 @@ const CustomLootTable = ({
       // Apply all active filters
       return (
         // Unidentified filter
+        (// Pending sale filter
         (!showOnlyUnidentified || item.unidentified === true) &&
 
         // Type filter - if all filters are checked, show all items
@@ -411,10 +412,7 @@ const CustomLootTable = ({
 
             return false;
           })
-        ) &&
-
-        // Pending sale filter
-        (showPendingSales || item.statuspage !== 'Pending Sale')
+        ) && (showPendingSales || item.statuspage !== 'Pending Sale'))
       );
     });
   }, [

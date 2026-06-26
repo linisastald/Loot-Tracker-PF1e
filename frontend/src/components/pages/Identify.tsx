@@ -333,14 +333,15 @@ const Identify: React.FC = () => {
   const filteredLoot = {
     summary: loot.individual.map(
       item =>
-        ({
+        (({
           ...item,
           row_type: 'summary' as const,
           quantity: item.quantity || 1,
+
           character_names: item.character_name
             ? [item.character_name]
-            : ([] as string[]),
-        }) as any
+            : ([] as string[])
+        }) as any)
     ), // Type assertion to handle CustomLootTable expectations
     individual: loot.individual,
   };

@@ -75,9 +75,7 @@ const SearchHistoryManagement = () => {
       <Typography variant="h6" gutterBottom>
         Search History
       </Typography>
-
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
       <Box sx={{ mb: 3 }}>
         <Grid container spacing={2}>
           <Grid size={{xs: 12, md: 4}}>
@@ -94,7 +92,6 @@ const SearchHistoryManagement = () => {
           </Grid>
         </Grid>
       </Box>
-
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
           <CircularProgress />
@@ -139,7 +136,12 @@ const SearchHistoryManagement = () => {
                   <TableCell>
                     {search.item_name || 'Custom Item'}
                     {search.item_type && (
-                      <Typography variant="caption" display="block" color="text.secondary">
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          display: "block",
+                          color: "text.secondary"
+                        }}>
                         {search.item_type}
                       </Typography>
                     )}
@@ -214,7 +216,12 @@ const SearchHistoryManagement = () => {
                   <TableCell>{service.city_name}</TableCell>
                   <TableCell>
                     {service.city_size}
-                    <Typography variant="caption" display="block" color="text.secondary">
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: "block",
+                        color: "text.secondary"
+                      }}>
                       Max: {service.city_max_spell_level}th
                     </Typography>
                   </TableCell>

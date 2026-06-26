@@ -436,7 +436,13 @@ const SystemSettings = () => {
 
     if (isLoading) {
         return (
-            <Box display="flex" justifyContent="center" alignItems="center" height="300px">
+            <Box
+                sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    height: "300px"
+                }}>
                 <CircularProgress/>
                 <Typography variant="body1" sx={{ml: 2}}>Loading settings...</Typography>
             </Box>
@@ -446,10 +452,8 @@ const SystemSettings = () => {
     return (
         <div>
             <Typography variant="h6" gutterBottom>System Settings</Typography>
-
             {success && <Alert severity="success" sx={{mt: 2, mb: 2}}>{success}</Alert>}
             {error && <Alert severity="error" sx={{mt: 2, mb: 2}}>{error}</Alert>}
-
             <Grid container spacing={3}>
                 {/* Discord Integration Settings */}
                 <Grid size={{xs: 12, md: 6}}>
@@ -667,10 +671,14 @@ const SystemSettings = () => {
                                         textAlign: 'center'
                                     }}
                                 >
-                                    <Typography variant="body2" color="text.secondary">
+                                    <Typography variant="body2" sx={{
+                                        color: "text.secondary"
+                                    }}>
                                         Current timezone:
                                     </Typography>
-                                    <Typography variant="body1" fontWeight="medium">
+                                    <Typography variant="body1" sx={{
+                                        fontWeight: "medium"
+                                    }}>
                                         {timezoneOptions.find(opt => opt.value === currentTimezone)?.label || currentTimezone}
                                     </Typography>
                                 </Box>
@@ -689,7 +697,9 @@ const SystemSettings = () => {
                     <Card variant="outlined">
                         <CardHeader title="Database Backup & Restore"/>
                         <CardContent>
-                            <Typography variant="body2" gutterBottom color="text.secondary">
+                            <Typography variant="body2" gutterBottom sx={{
+                                color: "text.secondary"
+                            }}>
                                 Backup and restore your database. The backup will exclude the following system tables:
                                 min_caster_levels, min_costs, mod, spells, and item.
                             </Typography>
@@ -756,10 +766,18 @@ const SystemSettings = () => {
                                 sx={{ backgroundColor: 'rgba(255, 152, 0, 0.1)' }}
                             />
                             <CardContent>
-                                <Typography variant="body2" gutterBottom color="text.secondary">
+                                <Typography variant="body2" gutterBottom sx={{
+                                    color: "text.secondary"
+                                }}>
                                     ⚠️ This feature is only available on the test environment. Generate sample data for testing purposes including users, characters, loot items, gold transactions, ships, and crew.
                                 </Typography>
-                                <Typography variant="body2" gutterBottom color="text.secondary" sx={{ mb: 2 }}>
+                                <Typography
+                                    variant="body2"
+                                    gutterBottom
+                                    sx={{
+                                        color: "text.secondary",
+                                        mb: 2
+                                    }}>
                                     Creates: 4 test users (testplayer1-4, password: testpass123), 4 characters, ~50 loot items, ~40 gold transactions, 5 ships, 4 outposts, and 13 crew members.
                                 </Typography>
                                 

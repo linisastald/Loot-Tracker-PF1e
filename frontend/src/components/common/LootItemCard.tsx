@@ -76,29 +76,41 @@ const LootItemCard: React.FC<LootItemCardProps> = ({
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.75 }}>
               {showColumns.type && item.type && (
-                <Typography variant="caption" color="text.secondary">{item.type}</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>{item.type}</Typography>
               )}
               {showColumns.size && item.size && (
-                <Typography variant="caption" color="text.secondary">{item.size}</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>{item.size}</Typography>
               )}
               {showColumns.whoHasIt && item.character_name && (
-                <Typography variant="caption" color="text.secondary">{item.character_name}</Typography>
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>{item.character_name}</Typography>
               )}
             </Box>
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 0.5 }}>
               {showColumns.believedValue && (
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   Value: <FormatBelievedValue item={item} />
                 </Typography>
               )}
               {showColumns.averageAppraisal && item.average_appraisal != null && (
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   Avg: <FormatAverageAppraisal item={item} />
                 </Typography>
               )}
               {showColumns.sessionDate && item.session_date && (
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{
+                  color: "text.secondary"
+                }}>
                   {formatDateOnly(item.session_date)}
                 </Typography>
               )}
@@ -133,7 +145,12 @@ const LootItemCard: React.FC<LootItemCardProps> = ({
                     </Typography>
                     {subItem.notes && (
                       <Tooltip title={subItem.notes} arrow>
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "text.secondary",
+                            ml: 1
+                          }}>
                           (notes)
                         </Typography>
                       </Tooltip>

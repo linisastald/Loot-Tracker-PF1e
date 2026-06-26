@@ -376,10 +376,8 @@ const AddItemMod = () => {
     return (
         <>
             <Typography variant="h6" gutterBottom>Add or Edit Items & Mods</Typography>
-
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}
-
             <Paper sx={{p: 2, mb: 2}}>
                 <Tabs value={activeTab} onChange={handleTabChange} aria-label="item and mod tabs">
                     <Tab label="Items"/>
@@ -393,7 +391,9 @@ const AddItemMod = () => {
                                 {itemForm.id ? 'Edit Item' : 'Add New Item'}
                             </Typography>
 
-                            <Box mb={2}>
+                            <Box sx={{
+                                mb: 2
+                            }}>
                                 <Autocomplete
                                     options={itemOptions}
                                     getOptionLabel={(option) => option.name || ''}
@@ -502,7 +502,12 @@ const AddItemMod = () => {
                                     />
                                 </Grid>
                                 <Grid size={12}>
-                                    <Box display="flex" justifyContent="space-between" mt={2}>
+                                    <Box
+                                        sx={{
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            mt: 2
+                                        }}>
                                         <Button
                                             variant="outlined"
                                             color="secondary"
@@ -534,7 +539,9 @@ const AddItemMod = () => {
                                 {modForm.id ? 'Edit Mod' : 'Add New Mod'}
                             </Typography>
 
-                            <Box mb={2}>
+                            <Box sx={{
+                                mb: 2
+                            }}>
                                 <Autocomplete
                                     options={modOptions}
                                     getOptionLabel={(option) => option.name || ''}
@@ -652,7 +659,12 @@ const AddItemMod = () => {
                                     </FormControl>
                                 </Grid>
                                 <Grid size={12}>
-                                    <Box display="flex" justifyContent="space-between" mt={2}>
+                                    <Box
+                                        sx={{
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            mt: 2
+                                        }}>
                                         <Button
                                             variant="outlined"
                                             color="secondary"

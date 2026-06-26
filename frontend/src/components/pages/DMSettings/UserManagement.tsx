@@ -122,18 +122,24 @@ const UserManagement: React.FC = () => {
       <Typography variant="h6" gutterBottom>
         Campaign Members
       </Typography>
-      <Typography variant="body2" color="text.secondary" gutterBottom>
+      <Typography variant="body2" gutterBottom sx={{
+        color: "text.secondary"
+      }}>
         {`Members of "${campaignName}". Removing a member only affects this campaign — their account and other campaigns are unaffected.`}
       </Typography>
-
       {loadError && (
         <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
           {loadError}
         </Alert>
       )}
-
       {loading ? (
-        <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            py: 4
+          }}>
           <CircularProgress size={28} />
         </Box>
       ) : (
@@ -165,7 +171,9 @@ const UserManagement: React.FC = () => {
                     <TableCell>{formatJoined(member.joined_at)}</TableCell>
                     <TableCell align="right">
                       {isSelf ? (
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="caption" sx={{
+                          color: "text.secondary"
+                        }}>
                           You
                         </Typography>
                       ) : canRemove(member) ? (
@@ -193,7 +201,9 @@ const UserManagement: React.FC = () => {
               {members.length === 0 && !loadError && (
                 <TableRow>
                   <TableCell colSpan={5}>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: "text.secondary"
+                    }}>
                       No members found.
                     </Typography>
                   </TableCell>
@@ -203,12 +213,10 @@ const UserManagement: React.FC = () => {
           </Table>
         </TableContainer>
       )}
-
       {/* Invite Management Section */}
       <Box sx={{ mt: 4 }}>
         <InviteManagement />
       </Box>
-
       {/* Remove member confirmation dialog */}
       <Dialog open={memberToRemove !== null} onClose={closeRemoveDialog}>
         <DialogTitle>Remove from campaign?</DialogTitle>

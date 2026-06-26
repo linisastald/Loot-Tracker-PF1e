@@ -492,7 +492,6 @@ const GoldTransactions: React.FC = () => {
         <Container maxWidth={false} component="main">
             {error && <Alert severity="error" sx={{mb: 2}}>{error}</Alert>}
             {success && <Alert severity="success" sx={{mb: 2}}>{success}</Alert>}
-
             <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
                 <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
                     <Tabs value={activeTab} onChange={handleTabChange} aria-label="gold management tabs">
@@ -517,7 +516,9 @@ const GoldTransactions: React.FC = () => {
                                         bgcolor: 'background.default',
                                         borderLeft: '5px solid #E5E4E2'
                                     }}>
-                                        <Typography variant="subtitle2" color="text.secondary">Platinum</Typography>
+                                        <Typography variant="subtitle2" sx={{
+                                            color: "text.secondary"
+                                        }}>Platinum</Typography>
                                         <Typography variant="h4" sx={{color: '#E5E4E2'}}>{overviewTotals.platinum}</Typography>
                                     </Paper>
                                 </Grid>
@@ -528,7 +529,9 @@ const GoldTransactions: React.FC = () => {
                                         bgcolor: 'background.default',
                                         borderLeft: '5px solid #FFD700'
                                     }}>
-                                        <Typography variant="subtitle2" color="text.secondary">Gold</Typography>
+                                        <Typography variant="subtitle2" sx={{
+                                            color: "text.secondary"
+                                        }}>Gold</Typography>
                                         <Typography variant="h4" sx={{color: '#FFD700'}}>{overviewTotals.gold}</Typography>
                                     </Paper>
                                 </Grid>
@@ -539,7 +542,9 @@ const GoldTransactions: React.FC = () => {
                                         bgcolor: 'background.default',
                                         borderLeft: '5px solid #C0C0C0'
                                     }}>
-                                        <Typography variant="subtitle2" color="text.secondary">Silver</Typography>
+                                        <Typography variant="subtitle2" sx={{
+                                            color: "text.secondary"
+                                        }}>Silver</Typography>
                                         <Typography variant="h4" sx={{color: '#C0C0C0'}}>{overviewTotals.silver}</Typography>
                                     </Paper>
                                 </Grid>
@@ -550,13 +555,17 @@ const GoldTransactions: React.FC = () => {
                                         bgcolor: 'background.default',
                                         borderLeft: '5px solid #B87333'
                                     }}>
-                                        <Typography variant="subtitle2" color="text.secondary">Copper</Typography>
+                                        <Typography variant="subtitle2" sx={{
+                                            color: "text.secondary"
+                                        }}>Copper</Typography>
                                         <Typography variant="h4" sx={{color: '#B87333'}}>{overviewTotals.copper}</Typography>
                                     </Paper>
                                 </Grid>
                             </Grid>
                             <Paper sx={{p: 3, mt: 3, textAlign: 'center', bgcolor: 'background.default'}}>
-                                <Typography variant="subtitle1" color="text.secondary">Total Value (in
+                                <Typography variant="subtitle1" sx={{
+                                    color: "text.secondary"
+                                }}>Total Value (in
                                     Gold)</Typography>
                                 <Typography variant="h3" color="primary">{overviewTotals.fullTotal.toFixed(2)} GP</Typography>
                             </Paper>
@@ -638,8 +647,7 @@ const GoldTransactions: React.FC = () => {
                                                 label="Session Date"
                                                 value={newEntry.sessionDate}
                                                 onChange={(date) => handleEntryChange('sessionDate', date)}
-                                                enableAccessibleFieldDOMStructure={false}
-                                                slots={{
+                                                    slots={{
                                                     textField: TextField
                                                 }}
                                                 slotProps={{
@@ -694,7 +702,9 @@ const GoldTransactions: React.FC = () => {
                                         </Grid>
                                     ) : (
                                         <Grid size={{xs: 12}}>
-                                            <Typography variant="body2" color="text.secondary">
+                                            <Typography variant="body2" sx={{
+                                                color: "text.secondary"
+                                            }}>
                                                 This transaction will be recorded under your active character.
                                             </Typography>
                                         </Grid>
@@ -709,7 +719,7 @@ const GoldTransactions: React.FC = () => {
                                             label="Platinum"
                                             type="number"
                                             fullWidth
-                                            inputProps={{min: 0}}
+                                            slotProps={{ htmlInput: {min: 0} }}
                                             value={newEntry.platinum}
                                             onChange={(e) => handleEntryChange('platinum', e.target.value)}
                                         />
@@ -719,7 +729,7 @@ const GoldTransactions: React.FC = () => {
                                             label="Gold"
                                             type="number"
                                             fullWidth
-                                            inputProps={{min: 0}}
+                                            slotProps={{ htmlInput: {min: 0} }}
                                             value={newEntry.gold}
                                             onChange={(e) => handleEntryChange('gold', e.target.value)}
                                         />
@@ -729,7 +739,7 @@ const GoldTransactions: React.FC = () => {
                                             label="Silver"
                                             type="number"
                                             fullWidth
-                                            inputProps={{min: 0}}
+                                            slotProps={{ htmlInput: {min: 0} }}
                                             value={newEntry.silver}
                                             onChange={(e) => handleEntryChange('silver', e.target.value)}
                                         />
@@ -739,7 +749,7 @@ const GoldTransactions: React.FC = () => {
                                             label="Copper"
                                             type="number"
                                             fullWidth
-                                            inputProps={{min: 0}}
+                                            slotProps={{ htmlInput: {min: 0} }}
                                             value={newEntry.copper}
                                             onChange={(e) => handleEntryChange('copper', e.target.value)}
                                         />
@@ -790,7 +800,6 @@ const GoldTransactions: React.FC = () => {
                                             label="Start Date"
                                             value={startDate}
                                             onChange={(date) => setStartDate(date)}
-                                            enableAccessibleFieldDOMStructure={false}
                                             slots={{
                                                 textField: TextField
                                             }}
@@ -804,7 +813,6 @@ const GoldTransactions: React.FC = () => {
                                             label="End Date"
                                             value={endDate}
                                             onChange={(date) => setEndDate(date)}
-                                            enableAccessibleFieldDOMStructure={false}
                                             slots={{
                                                 textField: TextField
                                             }}
@@ -1051,7 +1059,7 @@ const GoldTransactions: React.FC = () => {
                     <Card>
                         <CardContent>
                             <Typography variant="h6" gutterBottom>Character Loot Ledger</Typography>
-                            <Typography variant="body2" paragraph>
+                            <Typography variant="body2" sx={{ mb: 2 }}>
                                 This table shows the value of items kept by each character, payments made to them,
                                 and gold withdrawn (including distributions). The balance column shows the
                                 difference between loot value and payments.
@@ -1129,7 +1137,12 @@ const GoldTransactions: React.FC = () => {
                                 </TableContainer>
                             )}
 
-                            <Box mt={3} display="flex" justifyContent="center">
+                            <Box
+                                sx={{
+                                    mt: 3,
+                                    display: "flex",
+                                    justifyContent: "center"
+                                }}>
                                 <Button
                                     variant="outlined"
                                     color="primary"

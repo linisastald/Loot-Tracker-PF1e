@@ -535,21 +535,33 @@ const ShipManagement: React.FC = () => {
                   .map((ship) => (
                   <TableRow key={ship.id}>
                     <TableCell>
-                      <Box display="flex" alignItems="center">
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center"
+                        }}>
                         <ShipIcon sx={{ mr: 1 }} />
-                        <Typography variant="body1" fontWeight="bold">
+                        <Typography variant="body1" sx={{
+                          fontWeight: "bold"
+                        }}>
                           {ship.name}
                         </Typography>
                       </Box>
                     </TableCell>
                     <TableCell>
                       {ship.location ? (
-                        <Box display="flex" alignItems="center">
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center"
+                          }}>
                           <LocationIcon sx={{ mr: 1, fontSize: 16 }} />
                           {ship.location}
                         </Box>
                       ) : (
-                        <Typography color="text.secondary">Unknown</Typography>
+                        <Typography sx={{
+                          color: "text.secondary"
+                        }}>Unknown</Typography>
                       )}
                     </TableCell>
                     <TableCell>
@@ -566,13 +578,22 @@ const ShipManagement: React.FC = () => {
                       />
                     </TableCell>
                     <TableCell>
-                      <Box display="flex" alignItems="center">
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center"
+                        }}>
                         <PeopleIcon sx={{ mr: 1, fontSize: 16 }} />
                         {ship.crew_count || 0}
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <Box display="flex" alignItems="center" gap={1}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1
+                        }}>
                         <Typography variant="body2">
                           {ship.current_hp || 0}/{ship.max_hp || 100}
                         </Typography>
@@ -585,7 +606,12 @@ const ShipManagement: React.FC = () => {
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <Box display="flex" alignItems="center" gap={1}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1
+                        }}>
                         <Chip label={`AC ${ship.base_ac || 10}`} size="small" icon={<ShieldIcon />} />
                         <Chip label={`Init ${ship.initiative >= 0 ? '+' : ''}${ship.initiative || 0}`} size="small" icon={<InitiativeIcon />} />
                       </Box>
@@ -882,11 +908,15 @@ const ShipManagement: React.FC = () => {
                         <Typography variant="subtitle2" color="primary" sx={{ mb: 1 }}>Detailed Weapons</Typography>
                         {selectedShip.weapons.map((weapon, index) => (
                           <Box key={index} sx={{ mb: 1, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
-                            <Typography variant="body2" fontWeight="bold">
+                            <Typography variant="body2" sx={{
+                              fontWeight: "bold"
+                            }}>
                               {weapon.name || `Weapon ${index + 1}`}
                             </Typography>
                             {weapon.type && (
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography variant="caption" sx={{
+                                color: "text.secondary"
+                              }}>
                                 {weapon.type} | {weapon.damage} | {weapon.range}
                               </Typography>
                             )}
@@ -897,7 +927,9 @@ const ShipManagement: React.FC = () => {
                     
                     {(!selectedShip.weapon_types || selectedShip.weapon_types.length === 0) && 
                      (!selectedShip.weapons || selectedShip.weapons.length === 0) && (
-                      <Typography color="text.secondary">No weapons installed</Typography>
+                      <Typography sx={{
+                        color: "text.secondary"
+                      }}>No weapons installed</Typography>
                     )}
                   </CardContent>
                 </Card>
@@ -938,13 +970,23 @@ const ShipManagement: React.FC = () => {
                               </AccordionSummary>
                               <AccordionDetails>
                                 <Box>
-                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      color: "text.secondary",
+                                      mb: 2
+                                    }}>
                                     {improvement.description}
                                   </Typography>
                                   {Object.keys(improvement.effects).length > 0 && (
                                     <Box>
                                       <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>Effects:</Typography>
-                                      <Box display="flex" flexWrap="wrap" gap={1}>
+                                      <Box
+                                        sx={{
+                                          display: "flex",
+                                          flexWrap: "wrap",
+                                          gap: 1
+                                        }}>
                                         {Object.entries(improvement.effects).map(([effect, value]) => (
                                           <Chip
                                             key={effect}
@@ -964,7 +1006,9 @@ const ShipManagement: React.FC = () => {
                         })}
                       </Box>
                     ) : (
-                      <Typography color="text.secondary">No improvements installed</Typography>
+                      <Typography sx={{
+                        color: "text.secondary"
+                      }}>No improvements installed</Typography>
                     )}
                   </CardContent>
                 </Card>
@@ -978,10 +1022,14 @@ const ShipManagement: React.FC = () => {
                     <CardContent>
                       {selectedShip.officers.map((officer, index) => (
                         <Box key={index} sx={{ mb: 1, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
-                          <Typography variant="body2" fontWeight="bold">
+                          <Typography variant="body2" sx={{
+                            fontWeight: "bold"
+                          }}>
                             {officer.position}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant="body2" sx={{
+                            color: "text.secondary"
+                          }}>
                             {officer.name}
                           </Typography>
                         </Box>
@@ -1047,7 +1095,9 @@ const ShipManagement: React.FC = () => {
                         {selectedShipCrew.map((crew) => (
                           <Grid size={{xs: 12, sm: 6, md: 4}} key={crew.id}>
                             <Box sx={{ p: 2, border: '1px solid #eee', borderRadius: 1 }}>
-                              <Typography variant="body2" fontWeight="bold">
+                              <Typography variant="body2" sx={{
+                                fontWeight: "bold"
+                              }}>
                                 {crew.name}
                                 {crew.ship_position && (
                                   <Chip 
@@ -1059,17 +1109,33 @@ const ShipManagement: React.FC = () => {
                                 )}
                               </Typography>
                               {crew.race && (
-                                <Typography variant="caption" color="text.secondary" display="block">
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    color: "text.secondary",
+                                    display: "block"
+                                  }}>
                                   {crew.race}
                                 </Typography>
                               )}
                               {crew.age && (
-                                <Typography variant="caption" color="text.secondary" display="block">
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    color: "text.secondary",
+                                    display: "block"
+                                  }}>
                                   Age: {crew.age}
                                 </Typography>
                               )}
                               {crew.description && (
-                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    color: "text.secondary",
+                                    display: "block",
+                                    mt: 0.5
+                                  }}>
                                   {crew.description}
                                 </Typography>
                               )}
@@ -1078,7 +1144,9 @@ const ShipManagement: React.FC = () => {
                         ))}
                       </Grid>
                     ) : (
-                      <Typography color="text.secondary">No crew members assigned</Typography>
+                      <Typography sx={{
+                        color: "text.secondary"
+                      }}>No crew members assigned</Typography>
                     )}
                   </CardContent>
                 </Card>
@@ -1088,7 +1156,6 @@ const ShipManagement: React.FC = () => {
           )}
         </TabPanel>
       </Paper>
-
       {/* Ship Dialog */}
       <ShipDialog
         open={shipDialogOpen}
@@ -1102,7 +1169,6 @@ const ShipManagement: React.FC = () => {
         onSave={handleSaveShip}
         fullScreen={isMobile}
       />
-
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
         <DialogTitle>Delete Ship</DialogTitle>
@@ -1118,7 +1184,6 @@ const ShipManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
       {/* Damage/Repair Dialog */}
       <Dialog open={damageRepairDialogOpen} onClose={() => setDamageRepairDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
@@ -1126,10 +1191,14 @@ const ShipManagement: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
+            <Typography variant="body2" gutterBottom sx={{
+              color: "text.secondary"
+            }}>
               Current HP: {selectedShip?.current_hp || 0} / {selectedShip?.max_hp || 100}
             </Typography>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
+            <Typography variant="body2" gutterBottom sx={{
+              color: "text.secondary"
+            }}>
               Status: {selectedShip ? getShipStatusLabel(selectedShip) : 'Unknown'}
             </Typography>
             
@@ -1137,12 +1206,12 @@ const ShipManagement: React.FC = () => {
               fullWidth
               label={damageRepairData.type === 'damage' ? 'Damage Amount' : 'Repair Amount'}
               type="number"
-              inputProps={{ 
-                min: 1, 
-                max: damageRepairData.type === 'damage' 
+              slotProps={{ htmlInput: {
+                min: 1,
+                max: damageRepairData.type === 'damage'
                   ? selectedShip?.current_hp || 0
                   : (selectedShip?.max_hp || 100) - (selectedShip?.current_hp || 0)
-              }}
+              } }}
               value={damageRepairData.amount}
               onChange={(e) => setDamageRepairData({ 
                 ...damageRepairData, 

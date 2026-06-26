@@ -23,7 +23,7 @@ import {
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import CheckIcon from '@mui/icons-material/Check';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutlined';
 import CasinoIcon from '@mui/icons-material/Casino';
 import { useSnackbar } from 'notistack';
 import api from '../../utils/api';
@@ -228,7 +228,7 @@ const CampaignSelector: React.FC = () => {
             label="Invite Code"
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-            inputProps={{ maxLength: 8, style: { textTransform: 'uppercase' } }}
+            slotProps={{ htmlInput: { maxLength: 8, style: { textTransform: 'uppercase' } } }}
             placeholder="e.g. ABCD1234"
             disabled={joining}
             onKeyDown={(e) => {

@@ -509,13 +509,17 @@ const SessionManagement = () => {
                 <CardContent>
                     <Grid container spacing={2}>
                         <Grid size={{ xs: 12, md: 6 }}>
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant="body2" sx={{
+                                color: "text.secondary"
+                            }}>
                                 Description: {session.description || 'No description'}
                             </Typography>
                             <Typography variant="body2" sx={{ mt: 1 }}>
                                 Min Players: {session.minimum_players || 3}
                             </Typography>
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant="body2" sx={{
+                                color: "text.secondary"
+                            }}>
                                 Responses: {attendanceTotal} total
                             </Typography>
                         </Grid>
@@ -639,7 +643,9 @@ const SessionManagement = () => {
                         )}
                         {!session.confirmed_names && !session.maybe_names && !session.declined_names &&
                          (session.confirmed_count || 0) === 0 && (session.maybe_count || 0) === 0 && (session.declined_count || 0) === 0 && (
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant="body2" sx={{
+                                color: "text.secondary"
+                            }}>
                                 No responses yet
                             </Typography>
                         )}
@@ -661,7 +667,13 @@ const SessionManagement = () => {
 
     if (loading) {
         return (
-            <Box display="flex" justifyContent="center" alignItems="center" height="300px">
+            <Box
+                sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    height: "300px"
+                }}>
                 <CircularProgress />
                 <Typography variant="body1" sx={{ ml: 2 }}>Loading sessions...</Typography>
             </Box>
@@ -670,9 +682,20 @@ const SessionManagement = () => {
 
     return (
         <Box>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Box
+                sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    mb: 2
+                }}>
                 <Typography variant="h6">Session Management</Typography>
-                <Box display="flex" gap={2} flexWrap="wrap">
+                <Box
+                    sx={{
+                        display: "flex",
+                        gap: 2,
+                        flexWrap: "wrap"
+                    }}>
                     <Button
                         variant="outlined"
                         startIcon={<SettingsIcon />}
@@ -715,7 +738,6 @@ const SessionManagement = () => {
                     </Button>
                 </Box>
             </Box>
-
             {/* Timezone Display */}
             {currentTimezone && (
                 <Alert severity="info" sx={{ mb: 3 }}>
@@ -723,16 +745,22 @@ const SessionManagement = () => {
                     You can change this in Campaign Settings.
                 </Alert>
             )}
-
             {/* Filters Panel */}
             <Collapse in={showFilters}>
                 <Paper sx={{ p: 2, mb: 3 }}>
-                    <Grid container spacing={2} alignItems="center">
+                    <Grid container spacing={2} sx={{
+                        alignItems: "center"
+                    }}>
                         <Grid size={12}>
                             <Typography variant="subtitle1" gutterBottom>
                                 Session Status
                             </Typography>
-                            <Box display="flex" gap={2} flexWrap="wrap">
+                            <Box
+                                sx={{
+                                    display: "flex",
+                                    gap: 2,
+                                    flexWrap: "wrap"
+                                }}>
                                 <FormControlLabel
                                     control={
                                         <Checkbox
@@ -778,7 +806,7 @@ const SessionManagement = () => {
                                 fullWidth
                                 value={dateFrom}
                                 onChange={(e) => setDateFrom(e.target.value)}
-                                InputLabelProps={{ shrink: true }}
+                                slotProps={{ inputLabel: { shrink: true } }}
                             />
                         </Grid>
                         <Grid size={{xs: 12, sm: 5}}>
@@ -788,7 +816,7 @@ const SessionManagement = () => {
                                 fullWidth
                                 value={dateTo}
                                 onChange={(e) => setDateTo(e.target.value)}
-                                InputLabelProps={{ shrink: true }}
+                                slotProps={{ inputLabel: { shrink: true } }}
                             />
                         </Grid>
                         <Grid size={{xs: 12, sm: 2}}>
@@ -803,40 +831,56 @@ const SessionManagement = () => {
                     </Grid>
                 </Paper>
             </Collapse>
-
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }}>
                     {error}
                 </Alert>
             )}
-
             {sessions.length === 0 ? (
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
-                    <Typography variant="h6" color="text.secondary">
+                    <Typography variant="h6" sx={{
+                        color: "text.secondary"
+                    }}>
                         No sessions found
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" mt={1}>
+                    <Typography
+                        variant="body1"
+                        sx={{
+                            color: "text.secondary",
+                            mt: 1
+                        }}>
                         Create a session from the Sessions page to see it here.
                     </Typography>
                 </Paper>
             ) : filteredSessions.length === 0 ? (
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
-                    <Typography variant="h6" color="text.secondary">
+                    <Typography variant="h6" sx={{
+                        color: "text.secondary"
+                    }}>
                         No sessions match your filters
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" mt={1}>
+                    <Typography
+                        variant="body1"
+                        sx={{
+                            color: "text.secondary",
+                            mt: 1
+                        }}>
                         Try adjusting your filter settings to see more sessions.
                     </Typography>
                 </Paper>
             ) : (
                 <Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    <Typography
+                        variant="body2"
+                        sx={{
+                            color: "text.secondary",
+                            mb: 2
+                        }}>
                         Showing {filteredSessions.length} of {sessions.length} sessions
                     </Typography>
                     {filteredSessions.map(renderSessionCard)}
                 </Box>
             )}
-
             {/* Attendance Details Dialog */}
             <Dialog
                 open={attendanceDialog}
@@ -845,7 +889,12 @@ const SessionManagement = () => {
                 fullWidth
             >
                 <DialogTitle>
-                    <Box display="flex" alignItems="center" gap={1}>
+                    <Box
+                        sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1
+                        }}>
                         <GroupIcon />
                         Attendance Details: {selectedSession?.title}
                     </Box>
@@ -877,7 +926,9 @@ const SessionManagement = () => {
                                                         Notes: {attendee.notes}
                                                     </Typography>
                                                 )}
-                                                <Typography variant="caption" color="text.secondary">
+                                                <Typography variant="caption" sx={{
+                                                    color: "text.secondary"
+                                                }}>
                                                     Responded: {currentTimezone && formatInCampaignTimezone(attendee.response_timestamp, currentTimezone, 'PPp')}
                                                 </Typography>
                                             </Box>
@@ -892,7 +943,6 @@ const SessionManagement = () => {
                     <Button onClick={() => setAttendanceDialog(false)}>Close</Button>
                 </DialogActions>
             </Dialog>
-
             {/* Send Reminder Dialog */}
             <Dialog open={reminderDialog} onClose={() => setReminderDialog(false)}>
                 <DialogTitle>Send Session Reminder</DialogTitle>
@@ -900,7 +950,9 @@ const SessionManagement = () => {
                     <Typography variant="body1" gutterBottom>
                         Send a reminder for: {selectedSession?.title}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                    <Typography variant="body2" gutterBottom sx={{
+                        color: "text.secondary"
+                    }}>
                         {selectedSession?.start_time && currentTimezone &&
                             formatInCampaignTimezone(selectedSession.start_time, currentTimezone, 'PPpp z')}
                     </Typography>
@@ -943,7 +995,6 @@ const SessionManagement = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
-
             {/* Cancel Session Dialog */}
             <Dialog open={cancelDialog} onClose={() => setCancelDialog(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>Cancel Session</DialogTitle>
@@ -977,7 +1028,6 @@ const SessionManagement = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
-
             {/* Create Session Dialog */}
             <LocalizationProvider dateAdapter={AdapterDateFns}>
                 <Dialog open={createSessionDialog} onClose={() => setCreateSessionDialog(false)} maxWidth="md" fullWidth>
@@ -1039,7 +1089,7 @@ const SessionManagement = () => {
                                     fullWidth
                                     value={minimumPlayers}
                                     onChange={(e) => setMinimumPlayers(Math.max(1, parseInt(e.target.value) || 3))}
-                                    inputProps={{ min: 1, max: 10 }}
+                                    slotProps={{ htmlInput: { min: 1, max: 10 } }}
                                 />
                             </Grid>
                             <Grid size={{xs: 12, md: 4}}>
@@ -1049,7 +1099,7 @@ const SessionManagement = () => {
                                     fullWidth
                                     value={autoAnnounceHours}
                                     onChange={(e) => setAutoAnnounceHours(Math.max(1, parseInt(e.target.value) || 168))}
-                                    inputProps={{ min: 1, max: 720 }}
+                                    slotProps={{ htmlInput: { min: 1, max: 720 } }}
                                     helperText="Hours before session to post announcement (168 = 1 week)"
                                 />
                             </Grid>
@@ -1060,7 +1110,7 @@ const SessionManagement = () => {
                                     fullWidth
                                     value={reminderHours}
                                     onChange={(e) => setReminderHours(Math.max(1, parseInt(e.target.value) || 48))}
-                                    inputProps={{ min: 1, max: 336 }}
+                                    slotProps={{ htmlInput: { min: 1, max: 336 } }}
                                     helperText="Hours before session to send reminder (48 = 2 days)"
                                 />
                             </Grid>
@@ -1073,7 +1123,7 @@ const SessionManagement = () => {
                                     fullWidth
                                     value={confirmationHours}
                                     onChange={(e) => setConfirmationHours(Math.max(1, parseInt(e.target.value) || 48))}
-                                    inputProps={{ min: 1, max: 336 }}
+                                    slotProps={{ htmlInput: { min: 1, max: 336 } }}
                                     helperText="Hours before session to check attendance. Will confirm if enough players, cancel if not (48 = 2 days)"
                                 />
                             </Grid>
@@ -1082,7 +1132,9 @@ const SessionManagement = () => {
                         <Divider sx={{ my: 3 }} />
 
                         {/* Recurring Session Options */}
-                        <Box mb={3}>
+                        <Box sx={{
+                            mb: 3
+                        }}>
                             <FormControlLabel
                                 control={
                                     <Checkbox
@@ -1148,7 +1200,7 @@ const SessionManagement = () => {
                                                 fullWidth
                                                 value={recurringInterval}
                                                 onChange={(e) => setRecurringInterval(Math.max(1, parseInt(e.target.value) || 1))}
-                                                inputProps={{ min: 1, max: 52 }}
+                                                slotProps={{ htmlInput: { min: 1, max: 52 } }}
                                                 helperText="Number of weeks between sessions"
                                             />
                                         </Grid>
@@ -1163,7 +1215,7 @@ const SessionManagement = () => {
                                             fullWidth
                                             value={recurringEndCount}
                                             onChange={(e) => setRecurringEndCount(Math.max(1, parseInt(e.target.value) || 12))}
-                                            inputProps={{ min: 1, max: 100 }}
+                                            slotProps={{ htmlInput: { min: 1, max: 100 } }}
                                             helperText="How many sessions to create"
                                         />
                                     </Grid>
@@ -1183,7 +1235,12 @@ const SessionManagement = () => {
                                     </Grid>
                                 </Grid>
 
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                                <Typography
+                                    variant="body2"
+                                    sx={{
+                                        color: "text.secondary",
+                                        mt: 2
+                                    }}>
                                     {isRecurring && (
                                         <>
                                             This will create {recurringEndCount} sessions occurring
@@ -1214,7 +1271,13 @@ const SessionManagement = () => {
                 <Dialog open={settingsDialog} onClose={() => setSettingsDialog(false)} maxWidth="md" fullWidth>
                     <DialogTitle>Default Session Settings</DialogTitle>
                     <DialogContent>
-                        <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
+                        <Typography
+                            variant="body2"
+                            gutterBottom
+                            sx={{
+                                color: "text.secondary",
+                                mb: 3
+                            }}>
                             These defaults will pre-fill when creating new sessions
                         </Typography>
 
@@ -1226,7 +1289,7 @@ const SessionManagement = () => {
                                     fullWidth
                                     value={defaultSettings.minimumPlayers}
                                     onChange={(e) => setDefaultSettings({ ...defaultSettings, minimumPlayers: Math.max(1, parseInt(e.target.value) || 3) })}
-                                    inputProps={{ min: 1, max: 10 }}
+                                    slotProps={{ htmlInput: { min: 1, max: 10 } }}
                                 />
                             </Grid>
                             <Grid size={{ xs: 12, md: 6 }}>
@@ -1236,7 +1299,7 @@ const SessionManagement = () => {
                                     fullWidth
                                     value={defaultSettings.autoAnnounceHours}
                                     onChange={(e) => setDefaultSettings({ ...defaultSettings, autoAnnounceHours: Math.max(1, parseInt(e.target.value) || 168) })}
-                                    inputProps={{ min: 1, max: 720 }}
+                                    slotProps={{ htmlInput: { min: 1, max: 720 } }}
                                     helperText="168 hours = 1 week"
                                 />
                             </Grid>
@@ -1247,7 +1310,7 @@ const SessionManagement = () => {
                                     fullWidth
                                     value={defaultSettings.reminderHours}
                                     onChange={(e) => setDefaultSettings({ ...defaultSettings, reminderHours: Math.max(1, parseInt(e.target.value) || 48) })}
-                                    inputProps={{ min: 1, max: 336 }}
+                                    slotProps={{ htmlInput: { min: 1, max: 336 } }}
                                     helperText="48 hours = 2 days"
                                 />
                             </Grid>
@@ -1258,7 +1321,7 @@ const SessionManagement = () => {
                                     fullWidth
                                     value={defaultSettings.confirmationHours}
                                     onChange={(e) => setDefaultSettings({ ...defaultSettings, confirmationHours: Math.max(1, parseInt(e.target.value) || 48) })}
-                                    inputProps={{ min: 1, max: 336 }}
+                                    slotProps={{ htmlInput: { min: 1, max: 336 } }}
                                     helperText="48 hours = 2 days. Checks attendance and auto-confirms or auto-cancels."
                                 />
                             </Grid>

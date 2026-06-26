@@ -195,8 +195,12 @@ const SessionsPage = () => {
     const renderAttendanceList = (attendees, label) => {
         if (!attendees || attendees.length === 0) {
             return (
-                <Box mt={1}>
-                    <Typography variant="subtitle2" color="text.secondary">
+                <Box sx={{
+                    mt: 1
+                }}>
+                    <Typography variant="subtitle2" sx={{
+                        color: "text.secondary"
+                    }}>
                         {label} (0)
                     </Typography>
                     <Typography variant="body2">-</Typography>
@@ -205,15 +209,24 @@ const SessionsPage = () => {
         }
 
         return (
-            <Box mt={1}>
-                <Typography variant="subtitle2" color="text.secondary">
+            <Box sx={{
+                mt: 1
+            }}>
+                <Typography variant="subtitle2" sx={{
+                    color: "text.secondary"
+                }}>
                     {label} ({attendees.length})
                 </Typography>
                 {attendees.map((attendee, index) => (
                     <Typography key={index} variant="body2">
                         {attendee.character_name ? `${attendee.character_name} - ${attendee.username}` : attendee.username}
                         {attendee.notes && (
-                            <Typography variant="caption" display="block" color="text.secondary">
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    display: "block",
+                                    color: "text.secondary"
+                                }}>
                                 {attendee.notes}
                             </Typography>
                         )}
@@ -269,12 +282,21 @@ const SessionsPage = () => {
         // Don't show attendance details for cancelled sessions
         if (session.status === 'cancelled') {
             return (
-                <Box mt={1}>
-                    <Typography variant="body2" color="error.main">
+                <Box sx={{
+                    mt: 1
+                }}>
+                    <Typography variant="body2" sx={{
+                        color: "error.main"
+                    }}>
                         This session has been cancelled
                     </Typography>
                     {session.cancel_reason && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        <Typography
+                            variant="body2"
+                            sx={{
+                                color: "text.secondary",
+                                mt: 1
+                            }}>
                             Reason: {session.cancel_reason}
                         </Typography>
                     )}
@@ -318,7 +340,9 @@ const SessionsPage = () => {
                     )}
                     {!session.confirmed_names && !session.maybe_names && !session.declined_names &&
                      (session.confirmed_count || 0) === 0 && (session.maybe_count || 0) === 0 && (session.declined_count || 0) === 0 && (
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" sx={{
+                            color: "text.secondary"
+                        }}>
                             No responses yet
                         </Typography>
                     )}
@@ -370,12 +394,23 @@ const SessionsPage = () => {
         return (
             <Card key={session.id} sx={{ mb: 3, border: 1, borderColor: 'divider' }}>
                 <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                    <Box
+                        sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            mb: 2
+                        }}>
                         <Typography variant="h5" component="div">
                             {session.title || 'Game Session'}
                         </Typography>
 
-                        <Box display="flex" gap={1} flexWrap="wrap">
+                        <Box
+                            sx={{
+                                display: "flex",
+                                gap: 1,
+                                flexWrap: "wrap"
+                            }}>
                             {session.is_recurring && (
                                 <Chip
                                     label="Recurring Template"
@@ -407,27 +442,43 @@ const SessionsPage = () => {
                         </Box>
                     </Box>
 
-                    <Box mt={2} mb={2}>
+                    <Box
+                        sx={{
+                            mt: 2,
+                            mb: 2
+                        }}>
                         <Typography variant="subtitle1" gutterBottom>
                             <strong>{formattedDate}</strong>
                         </Typography>
                         <Typography variant="body1">
                             {formattedStartTime} - {formattedEndTime}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" sx={{
+                            color: "text.secondary"
+                        }}>
                             {timeUntil}
                         </Typography>
                     </Box>
 
                     {session.description && (
-                        <Box mt={2} mb={2}>
+                        <Box
+                            sx={{
+                                mt: 2,
+                                mb: 2
+                            }}>
                             <Typography variant="body1">{session.description}</Typography>
                         </Box>
                     )}
 
                     {session.recurring_pattern && session.is_recurring && (
-                        <Box mt={2} mb={2}>
-                            <Typography variant="body2" color="text.secondary">
+                        <Box
+                            sx={{
+                                mt: 2,
+                                mb: 2
+                            }}>
+                            <Typography variant="body2" sx={{
+                                color: "text.secondary"
+                            }}>
                                 <strong>Recurrence:</strong> {session.recurring_pattern}
                                 {session.recurring_day_of_week !== null && (
                                     ` on ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][session.recurring_day_of_week]}`
@@ -444,7 +495,14 @@ const SessionsPage = () => {
                             {renderEnhancedAttendance(session)}
                         </Grid>
                         <Grid size={{xs: 12, md: 4}}>
-                            <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" height="100%">
+                            <Box
+                                sx={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    height: "100%"
+                                }}>
                                 {session.status !== 'cancelled' && (
                                     <Typography variant="body2" sx={{ color: attendanceStatusColor, mb: 1 }}>
                                         Your Status: <strong>{attendanceStatusText}</strong>
@@ -469,7 +527,13 @@ const SessionsPage = () => {
     
     return (
         <Container maxWidth="lg">
-            <Box mb={4} display="flex" justifyContent="space-between" alignItems="center">
+            <Box
+                sx={{
+                    mb: 4,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                }}>
                 <Typography variant="h4" component="h1" gutterBottom>
                     Game Sessions
                 </Typography>
@@ -482,16 +546,22 @@ const SessionsPage = () => {
                     Filters
                 </Button>
             </Box>
-
             {/* Filters Panel */}
             <Collapse in={showFilters}>
                 <Paper sx={{ p: 2, mb: 3 }}>
-                    <Grid container spacing={2} alignItems="center">
+                    <Grid container spacing={2} sx={{
+                        alignItems: "center"
+                    }}>
                         <Grid size={12}>
                             <Typography variant="subtitle1" gutterBottom>
                                 Session Status
                             </Typography>
-                            <Box display="flex" gap={2} flexWrap="wrap">
+                            <Box
+                                sx={{
+                                    display: "flex",
+                                    gap: 2,
+                                    flexWrap: "wrap"
+                                }}>
                                 <FormControlLabel
                                     control={
                                         <Checkbox
@@ -562,44 +632,65 @@ const SessionsPage = () => {
                     </Grid>
                 </Paper>
             </Collapse>
-
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }}>
                     {error}
                 </Alert>
             )}
-
             {loading ? (
-                <Box display="flex" justifyContent="center" my={4}>
+                <Box
+                    sx={{
+                        display: "flex",
+                        justifyContent: "center",
+                        my: 4
+                    }}>
                     <CircularProgress />
                 </Box>
             ) : sessions.length === 0 ? (
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
-                    <Typography variant="h6" color="text.secondary">
+                    <Typography variant="h6" sx={{
+                        color: "text.secondary"
+                    }}>
                         No sessions found
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" mt={1}>
+                    <Typography
+                        variant="body1"
+                        sx={{
+                            color: "text.secondary",
+                            mt: 1
+                        }}>
                         No sessions have been scheduled yet.
                     </Typography>
                 </Paper>
             ) : filteredSessions.length === 0 ? (
                 <Paper sx={{ p: 3, textAlign: 'center' }}>
-                    <Typography variant="h6" color="text.secondary">
+                    <Typography variant="h6" sx={{
+                        color: "text.secondary"
+                    }}>
                         No sessions match your filters
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" mt={1}>
+                    <Typography
+                        variant="body1"
+                        sx={{
+                            color: "text.secondary",
+                            mt: 1
+                        }}>
                         Try adjusting your filter settings to see more sessions.
                     </Typography>
                 </Paper>
             ) : (
                 <Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    <Typography
+                        variant="body2"
+                        sx={{
+                            color: "text.secondary",
+                            mb: 2
+                        }}>
                         Showing {filteredSessions.length} of {sessions.length} sessions
                     </Typography>
                     {filteredSessions.map(session => renderSession(session))}
                 </Box>
             )}
-
             {/* Attendance Dialog */}
             <Dialog open={openAttendanceDialog} onClose={() => setOpenAttendanceDialog(false)}>
                 <DialogTitle>Update Attendance</DialogTitle>
@@ -608,7 +699,11 @@ const SessionsPage = () => {
                         {currentSession?.title || 'Game Session'}
                     </Typography>
                     
-                    <Box mt={2} mb={3}>
+                    <Box
+                        sx={{
+                            mt: 2,
+                            mb: 3
+                        }}>
                         <FormControl component="fieldset">
                             <Typography variant="subtitle2" gutterBottom>
                                 Your Response:
