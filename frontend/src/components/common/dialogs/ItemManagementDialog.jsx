@@ -281,9 +281,9 @@ const ItemManagementDialog = ({
                     value={updatedItem.session_date ? updatedItem.session_date.split('T')[0] : ''}
                     onChange={(e) => handleItemUpdateChange('session_date', e.target.value)}
                     margin="normal"
-                    InputLabelProps={{
+                    slotProps={{ inputLabel: {
                         shrink: true,
-                    }}
+                    } }}
                 />
                 <TextField
                     label="Quantity"

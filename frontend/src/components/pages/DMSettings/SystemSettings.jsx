@@ -560,7 +560,7 @@ const SystemSettings = () => {
                                             ...defaultSettings,
                                             defaultBrowserQuantity: parseInt(e.target.value) || 1
                                         })}
-                                        inputProps={{min: 1}}
+                                        slotProps={{ htmlInput: {min: 1} }}
                                         fullWidth
                                         size="small"
                                         sx={{mt: 1}}

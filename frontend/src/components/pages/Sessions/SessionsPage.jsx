@@ -607,7 +607,7 @@ const SessionsPage = () => {
                                 fullWidth
                                 value={dateFrom}
                                 onChange={(e) => setDateFrom(e.target.value)}
-                                InputLabelProps={{ shrink: true }}
+                                slotProps={{ inputLabel: { shrink: true } }}
                             />
                         </Grid>
                         <Grid size={{xs: 12, sm: 5}}>
@@ -617,7 +617,7 @@ const SessionsPage = () => {
                                 fullWidth
                                 value={dateTo}
                                 onChange={(e) => setDateTo(e.target.value)}
-                                InputLabelProps={{ shrink: true }}
+                                slotProps={{ inputLabel: { shrink: true } }}
                             />
                         </Grid>
                         <Grid size={{xs: 12, sm: 2}}>

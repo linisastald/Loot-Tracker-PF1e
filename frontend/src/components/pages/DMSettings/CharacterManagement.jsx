@@ -276,7 +276,7 @@ const CharacterManagement = () => {
                         value={updateCharacter.birthday || ''}
                         onChange={(e) => setUpdateCharacter({...updateCharacter, birthday: e.target.value})}
                         margin="normal"
-                        InputLabelProps={{shrink: true}}
+                        slotProps={{ inputLabel: {shrink: true} }}
                     />
                     <TextField
                         label="Deathday"
@@ -285,7 +285,7 @@ const CharacterManagement = () => {
                         value={updateCharacter.deathday || ''}
                         onChange={(e) => setUpdateCharacter({...updateCharacter, deathday: e.target.value})}
                         margin="normal"
-                        InputLabelProps={{shrink: true}}
+                        slotProps={{ inputLabel: {shrink: true} }}
                     />
                     <FormControl margin="normal" fullWidth>
                         <InputLabel id="user-select-label">User</InputLabel>

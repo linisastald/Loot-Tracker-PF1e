@@ -85,9 +85,9 @@ const SearchHistoryManagement = () => {
               value={selectedDate}
               onChange={handleDateChange}
               fullWidth
-              InputLabelProps={{
+              slotProps={{ inputLabel: {
                 shrink: true,
-              }}
+              } }}
             />
           </Grid>
         </Grid>

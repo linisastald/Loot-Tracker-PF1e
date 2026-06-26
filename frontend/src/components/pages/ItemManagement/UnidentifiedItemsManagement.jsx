@@ -264,7 +264,7 @@ const UnidentifiedItemsManagement = () => {
     return (
         <>
             <Typography variant="h6" gutterBottom>Unidentified Items</Typography>
-            <Typography variant="body1" paragraph>
+            <Typography variant="body1" sx={{ mb: 2 }}>
                 Manage items that have been marked as unidentified. Link them to the actual items they represent and set
                 spellcraft DCs.
             </Typography>

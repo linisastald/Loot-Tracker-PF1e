@@ -329,7 +329,7 @@ const CharacterTab = () => {
                                 fullWidth
                                 value={characterForm.appraisal_bonus}
                                 onChange={handleFormChange}
-                                inputProps={{min: 0}}
+                                slotProps={{ htmlInput: {min: 0} }}
                             />
                         </Grid>
                         <Grid size={{xs: 12, md: 6}}>
@@ -353,7 +353,7 @@ const CharacterTab = () => {
                                 fullWidth
                                 value={characterForm.birthday}
                                 onChange={handleFormChange}
-                                InputLabelProps={{shrink: true}}
+                                slotProps={{ inputLabel: {shrink: true} }}
                             />
                         </Grid>
                         <Grid size={{xs: 12, md: 6}}>
@@ -364,7 +364,7 @@ const CharacterTab = () => {
                                 fullWidth
                                 value={characterForm.deathday}
                                 onChange={handleFormChange}
-                                InputLabelProps={{shrink: true}}
+                                slotProps={{ inputLabel: {shrink: true} }}
                             />
                         </Grid>
                     </Grid>

@@ -126,7 +126,7 @@ const ShipDialog = ({
               fullWidth
               label="Max HP"
               type="number"
-              inputProps={{ min: 1 }}
+              slotProps={{ htmlInput: { min: 1 } }}
               value={editingShip.max_hp}
               onChange={(e) => {
                 const maxHp = parseInt(e.target.value) || 100;
@@ -144,7 +144,7 @@ const ShipDialog = ({
               fullWidth
               label="Current HP"
               type="number"
-              inputProps={{ min: 0, max: editingShip.max_hp }}
+              slotProps={{ htmlInput: { min: 0, max: editingShip.max_hp } }}
               value={editingShip.current_hp}
               onChange={(e) => setEditingShip({ ...editingShip, current_hp: parseInt(e.target.value) || 0 })}
             />
@@ -155,7 +155,7 @@ const ShipDialog = ({
               fullWidth
               label="Base AC"
               type="number"
-              inputProps={{ min: 0, max: 50 }}
+              slotProps={{ htmlInput: { min: 0, max: 50 } }}
               value={editingShip.base_ac}
               onChange={(e) => setEditingShip({ ...editingShip, base_ac: parseInt(e.target.value) || 10 })}
             />
@@ -166,7 +166,7 @@ const ShipDialog = ({
               fullWidth
               label="Touch AC"
               type="number"
-              inputProps={{ min: 0, max: 50 }}
+              slotProps={{ htmlInput: { min: 0, max: 50 } }}
               value={editingShip.touch_ac}
               onChange={(e) => setEditingShip({ ...editingShip, touch_ac: parseInt(e.target.value) || 10 })}
             />
@@ -234,7 +234,7 @@ const ShipDialog = ({
                         label="Quantity"
                         type="number"
                         size="small"
-                        inputProps={{ min: 1, max: 20 }}
+                        slotProps={{ htmlInput: { min: 1, max: 20 } }}
                         value={weaponType.quantity}
                         onChange={(e) => {
                           const newWeaponTypes = [...editingShip.weapon_types];

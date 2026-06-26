@@ -262,8 +262,9 @@ const CampaignSettings = () => {
             <Typography variant="h6" gutterBottom>
                 {currentCampaign ? `Campaign Settings — ${currentCampaign.name}` : 'Campaign Settings'}
             </Typography>
-            <Typography variant="body2" paragraph sx={{
-                color: "text.secondary"
+            <Typography variant="body2" sx={{
+                color: "text.secondary",
+                mb: 2
             }}>
                 These settings apply only to the current campaign.
             </Typography>
@@ -291,8 +292,9 @@ const CampaignSettings = () => {
             </Box>
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Campaign Region</Typography>
-                <Typography variant="body2" paragraph sx={{
-                    color: "text.secondary"
+                <Typography variant="body2" sx={{
+                    color: "text.secondary",
+                    mb: 2
                 }}>
                     The region affects weather patterns and conditions in your campaign.
                 </Typography>
@@ -323,8 +325,9 @@ const CampaignSettings = () => {
             </Paper>
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Party Level</Typography>
-                <Typography variant="body2" paragraph sx={{
-                    color: "text.secondary"
+                <Typography variant="body2" sx={{
+                    color: "text.secondary",
+                    mb: 2
                 }}>
                     The level every character in the party is at. "Level Up" raises it by one
                     and, when Discord integration is enabled, announces the new level to your
@@ -383,8 +386,9 @@ const CampaignSettings = () => {
                         mt: 3
                     }}>
                         <Typography variant="subtitle1" gutterBottom>Character Level</Typography>
-                        <Typography variant="body2" paragraph sx={{
-                            color: "text.secondary"
+                        <Typography variant="body2" sx={{
+                            color: "text.secondary",
+                            mb: 2
                         }}>
                             The shared character level (same value the "Level Up" button raises).
                             Infamy check DC = 15 + (2 × APL), where the APL is derived from this
@@ -394,7 +398,7 @@ const CampaignSettings = () => {
                         <TextField
                             label="Character Level"
                             type="number"
-                            InputProps={{ inputProps: { min: 1, max: 30 } }}
+                            slotProps={{ input: { inputProps: { min: 1, max: 30 } } }}
                             value={averagePartyLevel}
                             onChange={(e) => setAveragePartyLevel(e.target.value)}
                             fullWidth
@@ -429,8 +433,9 @@ const CampaignSettings = () => {
             </Paper>
             <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
                 <Typography variant="h6" gutterBottom>Harrow Point Tracker</Typography>
-                <Typography variant="body2" paragraph sx={{
-                    color: "text.secondary"
+                <Typography variant="body2" sx={{
+                    color: "text.secondary",
+                    mb: 2
                 }}>
                     Curse of the Crimson Throne flavor module. Tracks each PC's Harrow Point
                     balance for the current chapter.
