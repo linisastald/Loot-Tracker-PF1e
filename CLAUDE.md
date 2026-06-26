@@ -10,8 +10,8 @@ This is a Pathfinder 1st Edition (PF1e) Loot and Gold Management System, a full-
 
 ### Frontend
 - **React 19** with TypeScript
-- **Material-UI v7** (MUI) - Component library
-  - **IMPORTANT**: MUI v7 uses `size={{xs, md}}` instead of `item xs={} md={}`
+- **Material-UI v9** (MUI) - Component library
+  - **IMPORTANT**: MUI v9 uses `size={{xs, md}}` instead of `item xs={} md={}`
   - Always check existing components for current API patterns
 - **React Router v6** - Routing
 - **Axios** - HTTP client
@@ -50,7 +50,7 @@ The application follows a three-tier architecture:
 - Location: `/frontend`
 - Entry point: `frontend/src/App.tsx`
 - React SPA with TypeScript
-- Material-UI v7 components
+- Material-UI v9 components
 - Protected routes with authentication HOC
 - Key features:
   - Item and loot management
@@ -89,7 +89,7 @@ This project uses a domain-specific agent architecture for efficient development
 **Responsibilities**:
 - Create and modify React components (`.tsx` files in `/frontend/src/components/`)
 - Update routing in `App.tsx`
-- Implement UI/UX designs with Material-UI v7
+- Implement UI/UX designs with Material-UI v9
 - Manage component state and hooks
 - Client-side form validation
 - Frontend service layer (`/frontend/src/services/`)
@@ -102,7 +102,7 @@ This project uses a domain-specific agent architecture for efficient development
 
 **Code Standards**:
 - Use TypeScript for all new components
-- Follow Material-UI v7 API (Grid uses `size={{xs, md}}`, not `item xs md`)
+- Follow Material-UI v9 API (Grid uses `size={{xs, md}}`, not `item xs md`)
 - Use functional components with hooks
 - Implement proper TypeScript interfaces
 - Use ErrorBoundary wrappers for page components
@@ -270,7 +270,7 @@ This project uses a domain-specific agent architecture for efficient development
 **Review Checklist**:
 - **CSRF Protection**: All API calls use `api` utility from `utils/api.ts`, not raw `axios`
 - TypeScript types are properly defined (no `any` unless justified)
-- Material-UI v7 API is used correctly (Grid uses `size={{}}`)
+- Material-UI v9 API is used correctly (Grid uses `size={{}}`)
 - Components are properly memoized where needed
 - Error boundaries are in place
 - Accessibility attributes are present
@@ -429,7 +429,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 feat: Add City Services feature for item availability
 
-fix: Update Grid component to MUI v7 API
+fix: Update Grid component to MUI v9 API
 
 refactor: Extract duplicate logic into utility function
 ```
@@ -822,7 +822,7 @@ When work requires multiple domains:
 
 ### Proactive Actions
 Agents should proactively:
-- **Frontend Review Agent**: Check MUI v7 API compliance when Grid components are modified
+- **Frontend Review Agent**: Check MUI v9 API compliance when Grid components are modified
 - **Backend Review Agent**: Verify logger usage when new files are created
 - **Database Review Agent**: Check for column name changes in migrations
 - **QA Agent**: Suggest test cases when new features are implemented
@@ -849,7 +849,7 @@ A complete full-stack feature demonstrating proper patterns:
 
 **Frontend** (`CityServices.tsx`):
 - Tabbed interface (item search + spellcasting)
-- Material-UI v7 components with proper types
+- Material-UI v9 components with proper types
 - Error handling and user feedback
 - Integrated into App.tsx routing and Sidebar navigation
 - Uses `api` utility for proper CSRF token handling
@@ -857,7 +857,7 @@ A complete full-stack feature demonstrating proper patterns:
 This feature demonstrates:
 - Complete vertical slice from database to UI
 - Proper agent coordination
-- MUI v7 API compliance
+- MUI v9 API compliance
 - TypeScript best practices
 - CSRF token handling with api utility
 - Accurate Pathfinder 1e game mechanics implementation (validated by PF1e Expert)
