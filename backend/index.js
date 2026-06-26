@@ -220,7 +220,7 @@ app.use((req, res, next) => {
 
 // CSRF configuration using csrf-csrf (double submit cookie pattern)
 const csrfSecret = process.env.CSRF_SECRET || require('crypto').randomBytes(32).toString('hex');
-const { generateToken, doubleCsrfProtection } = doubleCsrf({
+const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
   getSecret: () => csrfSecret,
   getSessionIdentifier: (req) => req.cookies?._csrf_sid || '',
   cookieName: '_csrf',
@@ -230,7 +230,8 @@ const { generateToken, doubleCsrfProtection } = doubleCsrf({
     secure: COOKIES.SECURE,
     path: '/',
   },
-  getTokenFromRequest: (req) => req.headers['x-csrf-token'],
+  // csrf-csrf v4 renamed getTokenFromRequest -> getCsrfTokenFromRequest
+  getCsrfTokenFromRequest: (req) => req.headers['x-csrf-token'],
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
 });
 const csrfProtection = doubleCsrfProtection;
@@ -281,7 +282,8 @@ app.get('/api/health', (req, res) => {
 // overwrite=true forces a new token, skipping validation of any existing token
 app.get('/api/csrf-token', (req, res) => {
   try {
-    const csrfToken = generateToken(req, res, true, false);
+    // v4 takes an options object instead of positional (overwrite, validateOnReuse) booleans
+    const csrfToken = generateCsrfToken(req, res, { overwrite: true, validateOnReuse: false });
     res.success({ csrfToken }, 'CSRF token generated');
   } catch (err) {
     logger.error('Failed to generate CSRF token', { error: err.message });
