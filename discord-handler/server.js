@@ -1,6 +1,9 @@
 // Discord Interaction Handler Server
 // Routes Discord interactions to the appropriate campaign instance
 
+// Silence dotenv 17's promotional startup banner (must precede require('dotenv')).
+process.env.DOTENV_CONFIG_QUIET = 'true';
+
 const express = require('express');
 const axios = require('axios');
 const { verifyKey } = require('discord-interactions');
@@ -58,7 +61,11 @@ const getCampaignConfig = () => {
 };
 
 // Discord signature verification middleware
-const verifyDiscordRequest = (req, res, next) => {
+// NOTE: verifyKey is ASYNC as of discord-interactions v4 (it now uses
+// SubtleCrypto's Ed25519), so this middleware must await it. Without the await,
+// the returned Promise is always truthy and EVERY request would pass
+// verification — a security hole. Keep this async.
+const verifyDiscordRequest = async (req, res, next) => {
   const signature = req.get('X-Signature-Ed25519');
   const timestamp = req.get('X-Signature-Timestamp');
   const rawBody = req.body;
@@ -69,7 +76,7 @@ const verifyDiscordRequest = (req, res, next) => {
   }
 
   try {
-    const isValidRequest = verifyKey(rawBody, signature, timestamp, process.env.DISCORD_PUBLIC_KEY);
+    const isValidRequest = await verifyKey(rawBody, signature, timestamp, process.env.DISCORD_PUBLIC_KEY);
     if (!isValidRequest) {
       console.error('Invalid Discord signature');
       return res.status(401).send('Unauthorized');
