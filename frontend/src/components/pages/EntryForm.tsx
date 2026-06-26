@@ -17,8 +17,23 @@ import {
   Button,
 } from '@mui/material';
 import { Delete as DeleteIcon } from '@mui/icons-material';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { parseISO, format } from 'date-fns';
 import { fetchItemNames } from '../../utils/lootEntryUtils';
 import api from '../../utils/api';
+
+// sessionDate is stored as a 'yyyy-MM-dd' string. Convert to/from a Date for the
+// MUI DatePicker without shifting the day across timezones (parse only the date
+// part; format in local time).
+const parseStoredDate = (v) => {
+  if (!v) return new Date();
+  const d = typeof v === 'string' ? parseISO(v.split('T')[0]) : new Date(v);
+  return isNaN(d.getTime()) ? new Date() : d;
+};
+const formatStoredDate = (date) =>
+  date && !isNaN(date.getTime()) ? format(date, 'yyyy-MM-dd') : null;
 
 const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters = [] }) => {
   const [localEntry, setLocalEntry] = useState(entry.data);
@@ -110,20 +125,14 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
     <Grid container spacing={2}>
       {/* First Line: Session Date, Quantity (same size as Type/Size), Item Name (remaining) */}
       <Grid size={{ xs: 12, sm: 1.5 }}>
-        <TextField
-          label="Session Date"
-          type="date"
-          fullWidth
-          slotProps={{ inputLabel: { shrink: true } }}
-          value={
-            localEntry.sessionDate
-              ? typeof localEntry.sessionDate === 'string'
-                ? localEntry.sessionDate.split('T')[0]
-                : new Date(localEntry.sessionDate).toISOString().split('T')[0]
-              : new Date().toISOString().split('T')[0]
-          }
-          onChange={e => handleChange('sessionDate', e.target.value)}
-        />
+        <LocalizationProvider dateAdapter={AdapterDateFns}>
+          <DatePicker
+            label="Session Date"
+            value={parseStoredDate(localEntry.sessionDate)}
+            onChange={date => handleChange('sessionDate', formatStoredDate(date))}
+            slotProps={{ textField: { fullWidth: true } }}
+          />
+        </LocalizationProvider>
       </Grid>
       <Grid size={{ xs: 12, sm: 1.5 }}>
         <TextField
@@ -338,20 +347,14 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
     <Grid container spacing={2}>
       {/* First Line: Session Date, Platinum, Gold, Silver, Copper */}
       <Grid size={{ xs: 12, sm: 1.5 }}>
-        <TextField
-          label="Session Date"
-          type="date"
-          fullWidth
-          slotProps={{ inputLabel: { shrink: true } }}
-          value={
-            localEntry.sessionDate
-              ? typeof localEntry.sessionDate === 'string'
-                ? localEntry.sessionDate.split('T')[0]
-                : new Date(localEntry.sessionDate).toISOString().split('T')[0]
-              : new Date().toISOString().split('T')[0]
-          }
-          onChange={e => handleChange('sessionDate', e.target.value)}
-        />
+        <LocalizationProvider dateAdapter={AdapterDateFns}>
+          <DatePicker
+            label="Session Date"
+            value={parseStoredDate(localEntry.sessionDate)}
+            onChange={date => handleChange('sessionDate', formatStoredDate(date))}
+            slotProps={{ textField: { fullWidth: true } }}
+          />
+        </LocalizationProvider>
       </Grid>
       <Grid size={{ xs: 12, sm: 2.625 }}>
         <TextField

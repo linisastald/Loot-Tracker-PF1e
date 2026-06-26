@@ -67,7 +67,9 @@ describe('EntryForm', () => {
   describe('item form', () => {
     it('renders the item form fields', () => {
       renderComponent();
-      expect(screen.getByLabelText(/session date/i)).toBeInTheDocument();
+      // MUI X DatePicker's accessible field labels both a section group and a
+      // hidden input, so scope to the input to get a single match.
+      expect(screen.getByLabelText(/session date/i, { selector: 'input' })).toBeInTheDocument();
       expect(screen.getByLabelText(/quantity/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/item name/i)).toBeInTheDocument();
     });
