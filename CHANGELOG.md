@@ -4,11 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Date fields use a consistent calendar picker.** The Session Date fields on the Loot Entry and Gold pages now use the same date picker as the rest of the app — a calendar field you fill in section by section (month / day / year) — instead of the browser's built-in date box, so entering dates looks and behaves the same everywhere.
+
 ### Fixed
 - **Discord session buttons keep working after the Discord broker restarts.** If the Discord broker service restarted (for example, during an update), the app could permanently lose its registration with it — anyone clicking a session attendance button then got "This channel is not configured for session attendance tracking" until the app itself was restarted. The app now detects the lost registration and re-registers automatically within about 30 seconds, so attendance buttons recover on their own.
 
 ### Security
-- **Dependency security updates.** Cleared all 82 outstanding dependency security advisories (1 critical, 38 high, 38 moderate, 5 low) across the app, the frontend, and the Discord broker, and brought a number of dependencies up to current major versions (including the Discord broker's web framework and signature-verification library). No functional or behavioral changes for players or DMs.
+- **Dependency security updates and library modernization.** Cleared all 82 outstanding dependency security advisories (1 critical, 38 high, 38 moderate, 5 low) across the app, the frontend, and the Discord broker, and brought the whole stack up to current major versions — including the web framework, UI component library, build tooling, password hashing, and the Discord signature-verification library. These are internal upgrades with no intended change to how the app works for players or DMs.
 
 ### Notes
 - The Discord broker runs as a separate service; its container must be rebuilt to pick up the broker-side updates above.
