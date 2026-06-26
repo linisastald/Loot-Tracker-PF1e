@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Discord session buttons keep working after the Discord broker restarts.** If the Discord broker service restarted (for example, during an update), the app could permanently lose its registration with it — anyone clicking a session attendance button then got "This channel is not configured for session attendance tracking" until the app itself was restarted. The app now detects the lost registration and re-registers automatically within about 30 seconds, so attendance buttons recover on their own.
+
+### Security
+- **Dependency security updates.** Cleared all 82 outstanding dependency security advisories (1 critical, 38 high, 38 moderate, 5 low) across the app, the frontend, and the Discord broker, and brought a number of dependencies up to current major versions (including the Discord broker's web framework and signature-verification library). No functional or behavioral changes for players or DMs.
+
+### Notes
+- The Discord broker runs as a separate service; its container must be rebuilt to pick up the broker-side updates above.
+
 ## [0.14.0]
 
 ### Added
