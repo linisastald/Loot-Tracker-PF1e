@@ -9,7 +9,7 @@ const { AUTH } = require('../../config/constants');
 // Rate limiter specifically for auth routes
 const authLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 15 minutes
-  max: 20, // limit each IP to 5 requests per windowMs
+  limit: 20, // 'limit' is the v8-preferred spelling of 'max'
   message: 'Too many login attempts, please try again later.'
 });
 

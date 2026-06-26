@@ -1,4 +1,8 @@
 // backend/index.js
+// Silence dotenv 17's promotional startup tip across every config() call in the
+// require tree (we log via Winston, not dotenv's stdout banner). Must run before
+// any require that loads dotenv. dotenv honors this env var natively.
+process.env.DOTENV_CONFIG_QUIET = 'true';
 const express = require('express');
 const bodyParser = require('body-parser');
 const compression = require('compression');
@@ -157,7 +161,7 @@ app.use(helmet({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: RATE_LIMIT.WINDOW_MS,
-  max: RATE_LIMIT.MAX_REQUESTS,
+  limit: RATE_LIMIT.MAX_REQUESTS, // 'limit' is the v8-preferred spelling of 'max'
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {

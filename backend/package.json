@@ -17,8 +17,8 @@
     "test:unit": "jest --config=jest.unit.config.js",
     "test:unit:watch": "jest --config=jest.unit.config.js --watch",
     "test:unit:coverage": "jest --config=jest.unit.config.js --coverage",
-    "test:integration": "USE_REAL_DB_FOR_TESTS=true jest --testPathPattern=integration",
-    "test:api": "USE_REAL_DB_FOR_TESTS=true jest --testPathPattern=tests/api",
+    "test:integration": "USE_REAL_DB_FOR_TESTS=true jest --testPathPatterns=integration",
+    "test:api": "USE_REAL_DB_FOR_TESTS=true jest --testPathPatterns=tests/api",
     "test:setup": "node scripts/test-setup.js setup",
     "test:teardown": "node scripts/test-setup.js teardown",
     "test:reset": "npm run test:teardown && npm run test:setup"
@@ -35,9 +35,9 @@
     "cors": "^2.8.5",
     "csrf-csrf": "^3.1.0",
     "date-fns": "^4.1.0",
-    "dotenv": "^16.4.5",
+    "dotenv": "^17.4.2",
     "express": "^4.19.2",
-    "express-rate-limit": "^7.5.0",
+    "express-rate-limit": "^8.5.2",
     "express-validator": "^7.3.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
-    "jest": "^29.7.0",
+    "jest": "^30.4.2",
     "nodemon": "^3.1.10",
     "supertest": "^7.0.0"
   },
