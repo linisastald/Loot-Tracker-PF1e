@@ -88,6 +88,12 @@ const logger = require('../../../utils/logger');
 function createApp() {
   const app = express();
   app.use(express.json());
+  // Mirror the real app: Express 5 leaves req.body undefined on bodyless
+  // requests, so default it to {} (index.js does the same).
+  app.use((req, res, next) => {
+    if (req.body === undefined) req.body = {};
+    next();
+  });
   // Mount the router at /sessions to mirror the real app
   const sessionsRouter = require('../sessions');
   app.use('/sessions', sessionsRouter);

@@ -181,10 +181,20 @@ app.use(bodyParser.json({
   limit: '10mb',  // Limit JSON body size
   strict: true    // Only accept arrays and objects
 }));
-app.use(bodyParser.urlencoded({ 
-  extended: true, 
+app.use(bodyParser.urlencoded({
+  extended: true,
   limit: '10mb'   // Limit URL-encoded body size
 }));
+
+// Express 5 leaves req.body undefined when no body was parsed (Express 4
+// defaulted it to {}). Restore that invariant so handlers that read
+// req.body.<field> on a bodyless request (e.g. a POST with no payload) don't
+// throw and 500.
+app.use((req, res, next) => {
+  if (req.body === undefined) req.body = {};
+  next();
+});
+
 app.use(cookieParser());
 
 // Add API response middleware
@@ -417,8 +427,10 @@ if (process.env.NODE_ENV === 'production') {
     immutable: true,
   }));
   
-  // Handle React routing - serve index.html for non-API routes
-  app.get('*', (req, res) => {
+  // Handle React routing - serve index.html for non-API routes.
+  // Express 5 / path-to-regexp v8 rejects the bare '*' wildcard; '/{*splat}' is
+  // the equivalent optional named catch-all (matches '/' and every sub-path).
+  app.get('/{*splat}', (req, res) => {
     // Skip API routes
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ 
