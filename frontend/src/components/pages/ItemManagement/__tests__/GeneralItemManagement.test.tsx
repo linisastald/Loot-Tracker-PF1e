@@ -234,20 +234,11 @@ describe('GeneralItemManagement', () => {
     // results from earlier tests don't leak into later tests.
     vi.resetAllMocks();
 
-    // resetAllMocks also resets the global ResizeObserver / IntersectionObserver
-    // implementations set up in src/setupTests.ts. MUI's Select uses
-    // `new ResizeObserver(...)` and crashes if the constructor returns an
-    // object without an `observe` method. Re-establish the mocks here.
-    (global as any).ResizeObserver = vi.fn().mockImplementation(() => ({
-      observe: vi.fn(),
-      unobserve: vi.fn(),
-      disconnect: vi.fn(),
-    }));
-    (global as any).IntersectionObserver = vi.fn().mockImplementation(() => ({
-      observe: vi.fn(),
-      unobserve: vi.fn(),
-      disconnect: vi.fn(),
-    }));
+    // NOTE: the global ResizeObserver / IntersectionObserver mocks in
+    // src/setupTests.ts are real classes, so vi.resetAllMocks() does not wipe
+    // them (it only resets vi.fn()/spies) — no re-establishment needed here.
+    // MUI's Select uses `new ResizeObserver(...)`, which requires a real
+    // constructor (Vitest 4 rejects `new` on an arrow-backed vi.fn()).
 
     setupDefaultMocks();
   });
