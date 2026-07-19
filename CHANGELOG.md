@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Task assignments are listed alphabetically by character.** The Tasks page (both the Assign output and the History tab) and the Discord task announcement now list characters in alphabetical order instead of the random order they were assigned in, so the same person is easy to find in the list every time.
+
+### Fixed
+- **Appraisals save again, and believed values show.** Appraising loot from the Unprocessed list silently did nothing — the request was sent to the wrong address and no appraisal was ever recorded, so items showed no average appraisal and players saw no believed value. Appraisals are now saved correctly, and each player's own believed value appears alongside the party average. Items you tried to appraise before this fix were not recorded and need to be appraised again.
+- **"Who Has It" is filled in for players who are in more than one campaign.** Items kept by a character could show a blank owner if that player also has a character in another campaign, because the item had been tied to the player's character from the *other* campaign. Affected items are automatically re-linked to the correct character in this campaign.
+
+### Notes
+- Includes database migrations (056, 057) that run automatically on server start.
+
 ## [0.14.1]
 
 ### Changed
