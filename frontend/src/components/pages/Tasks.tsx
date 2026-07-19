@@ -255,11 +255,13 @@ const Tasks: React.FC = () => {
     });
 
     const formatTasksForEmbed = (tasks: Record<string, string[]>) => {
-        return Object.entries(tasks).map(([character, characterTasks]) => ({
-            name: character,
-            value: characterTasks.map(task => `• ${task}`).join('\n'),
-            inline: false
-        }));
+        return Object.entries(tasks)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([character, characterTasks]) => ({
+                name: character,
+                value: characterTasks.map(task => `• ${task}`).join('\n'),
+                inline: false
+            }));
     };
 
     const shuffleArray = (array: any[]) => {
@@ -493,7 +495,9 @@ const Tasks: React.FC = () => {
 
     const renderTaskList = (tasks: Record<string, string[]>) => (
         <List disablePadding>
-            {Object.entries(tasks).map(([character, characterTasks]) => (
+            {Object.entries(tasks)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([character, characterTasks]) => (
                 <CompactListItem key={character}>
                     <CompactListItemText
                         primary={
