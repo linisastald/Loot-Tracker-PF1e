@@ -396,6 +396,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
               <MenuItem to="/character-user-management" primary="Gen Management" icon={<Groups2 />} />
               <MenuItem to="/item-management" primary="Item Management" icon={<Inventory />} />
               <MenuItem to="/session-management" primary="Session Management" icon={<EmojiEvents />} />
+              <MenuItem to="/task-management" primary="Task Management" icon={<AssignmentIcon />} />
               <MenuItem to="/loot-generator" primary="Loot Generator" icon={<CasinoIcon />} />
               <MenuItem to="/spellbook-generator" primary="Spellbook Generator" icon={<AutoStoriesIcon />} />
             </MenuItem>

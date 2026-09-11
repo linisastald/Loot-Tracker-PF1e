@@ -13,6 +13,27 @@ vi.mock('../../../utils/api', () => ({
 import Tasks from '../Tasks';
 import api from '../../../utils/api';
 
+// Stock task definitions as served by GET /session-tasks
+const TASK_DEFINITIONS = [
+  { id: 1, phase: 'pre', name: 'Get Dice Trays', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 1 },
+  { id: 2, phase: 'pre', name: 'Recap', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 2 },
+  { id: 3, phase: 'pre', name: 'Bring in extra chairs if needed', quantity: 1, min_characters: 6, is_snack_master: false, sort_order: 3 },
+  { id: 4, phase: 'during', name: 'Calendar Master', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 1 },
+  { id: 5, phase: 'during', name: 'Loot Master', quantity: 2, min_characters: null, is_snack_master: false, sort_order: 2 },
+  { id: 6, phase: 'during', name: 'Lore Master', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 3 },
+  { id: 7, phase: 'post', name: 'TV(s) wiped and turned off', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 1 },
+  { id: 8, phase: 'post', name: 'Ensure no duplicate snacks for next session', quantity: 1, min_characters: null, is_snack_master: true, sort_order: 2 },
+];
+
+// Route api.get by URL: task definitions, characters, and everything else empty.
+const mockGetWithCharacters = (characters: Array<{ id: number; name: string; player_name: string }>) => {
+  vi.mocked(api.get).mockImplementation((url: string) => {
+    if (url === '/session-tasks') return Promise.resolve({ data: { data: TASK_DEFINITIONS } });
+    if (url === '/user/active-characters') return Promise.resolve({ data: characters });
+    return Promise.resolve({ data: [] });
+  });
+};
+
 const renderComponent = () =>
   render(
     <BrowserRouter>
@@ -129,10 +150,31 @@ describe('Tasks', () => {
     expect(await screen.findByText('Session 12')).toBeInTheDocument();
   });
 
-  it('saves the assignment to history when tasks are assigned', async () => {
-    vi.mocked(api.get).mockResolvedValue({
-      data: [{ id: 1, name: 'Fighter Bob', player_name: 'Bob' }],
+  it('fetches the DM-defined task list on mount', () => {
+    renderComponent();
+    expect(api.get).toHaveBeenCalledWith('/session-tasks');
+  });
+
+  it('warns instead of assigning when no tasks are defined', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/user/active-characters') {
+        return Promise.resolve({ data: [{ id: 1, name: 'Fighter Bob', player_name: 'Bob' }] });
+      }
+      return Promise.resolve({ data: [] });
     });
+    renderComponent();
+
+    fireEvent.click(await screen.findByText('Fighter Bob'));
+    fireEvent.click(
+      screen.getByRole('button', { name: /assign tasks and send to discord/i })
+    );
+
+    expect(await screen.findByText(/no tasks are defined for this campaign/i)).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('saves the assignment to history when tasks are assigned', async () => {
+    mockGetWithCharacters([{ id: 1, name: 'Fighter Bob', player_name: 'Bob' }]);
     renderComponent();
 
     // Select the character, then assign.
@@ -153,14 +195,12 @@ describe('Tasks', () => {
   });
 
   it('assigns two Loot Masters but never both to the same person', async () => {
-    vi.mocked(api.get).mockResolvedValue({
-      data: [
-        { id: 1, name: 'Fighter Bob', player_name: 'Bob' },
-        { id: 2, name: 'Wizard Alice', player_name: 'Alice' },
-        { id: 3, name: 'Rogue Cat', player_name: 'Cat' },
-        { id: 4, name: 'Cleric Dan', player_name: 'Dan' },
-      ],
-    });
+    mockGetWithCharacters([
+      { id: 1, name: 'Fighter Bob', player_name: 'Bob' },
+      { id: 2, name: 'Wizard Alice', player_name: 'Alice' },
+      { id: 3, name: 'Rogue Cat', player_name: 'Cat' },
+      { id: 4, name: 'Cleric Dan', player_name: 'Dan' },
+    ]);
     renderComponent();
 
     // Select all four characters.
@@ -191,6 +231,9 @@ describe('Tasks', () => {
     for (const tasks of Object.values(during)) {
       expect(tasks.filter(t => t === 'Loot Master').length).toBeLessThanOrEqual(1);
     }
+
+    // A task with min_characters 6 stays out of the pool with only 4 selected.
+    expect(Object.values(assignments.pre).flat()).not.toContain('Bring in extra chairs if needed');
 
     // No one should ever receive the same task twice - including Free Space -
     // across any of the three task groups (4 characters is plenty of room).

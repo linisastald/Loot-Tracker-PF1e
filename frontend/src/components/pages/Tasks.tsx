@@ -43,6 +43,19 @@ interface Character {
 
 type TaskMap = Record<string, string[]>;
 
+type TaskPhase = 'pre' | 'during' | 'post';
+
+// A DM-defined task (DM Settings -> Task Management)
+interface TaskDefinition {
+    id: number;
+    phase: TaskPhase;
+    name: string;
+    quantity: number;
+    min_characters: number | null;
+    is_snack_master: boolean;
+    sort_order: number;
+}
+
 interface TaskAssignment {
     pre: TaskMap;
     during: TaskMap;
@@ -155,6 +168,7 @@ const Tasks: React.FC = () => {
     const [upcomingSession, setUpcomingSession] = useState<{id: number; title: string} | null>(null);
     const [history, setHistory] = useState<TaskHistoryRecord[]>([]);
     const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+    const [taskDefinitions, setTaskDefinitions] = useState<TaskDefinition[]>([]);
     const {timezone} = useCampaignTimezone();
 
     useEffect(() => {
@@ -162,10 +176,25 @@ const Tasks: React.FC = () => {
     }, []);
 
     useEffect(() => {
+        loadTaskDefinitions();
+    }, []);
+
+    useEffect(() => {
         if (activeTab === 1) {
             fetchHistory();
         }
     }, [activeTab]);
+
+    const loadTaskDefinitions = async () => {
+        try {
+            const response: any = await api.get('/session-tasks');
+            const definitions = response.data?.data || response.data || [];
+            setTaskDefinitions(Array.isArray(definitions) ? definitions : []);
+        } catch (error) {
+            console.error('Error loading task definitions:', error);
+            showSnackbar('Failed to load the task list. Check DM Settings > Task Management.');
+        }
+    };
 
     const loadInitialState = async () => {
         try {
@@ -320,37 +349,37 @@ const Tasks: React.FC = () => {
                 return;
             }
 
+            if (taskDefinitions.length === 0) {
+                setAlert({
+                    show: true,
+                    severity: 'warning',
+                    message: 'No tasks are defined for this campaign. Add some under DM Settings > Task Management.'
+                });
+                return;
+            }
+
             // Get non-late arrivals for pre-session tasks
             const onTimeChars = selectedChars.filter(char => !lateArrivals[char.id]);
 
-            const preTasks = [
-                'Get Dice Trays',
-                'Put Initiative name tags on tracker',
-                'Wipe TV',
-                'Recap'
-            ];
-            if (selectedChars.length >= 6) {
-                preTasks.push('Bring in extra chairs if needed');
-            }
+            // Task pools come from DM Settings -> Task Management. A task with
+            // min_characters only joins the pool when enough characters are
+            // selected; quantity controls how many copies go in.
+            const buildPool = (phase: TaskPhase): string[] => {
+                const pool: string[] = [];
+                taskDefinitions
+                    .filter(def => def.phase === phase)
+                    .filter(def => !def.min_characters || selectedChars.length >= def.min_characters)
+                    .forEach(def => {
+                        for (let i = 0; i < Math.max(1, def.quantity); i++) {
+                            pool.push(def.name);
+                        }
+                    });
+                return pool;
+            };
 
-            const duringTasks = [
-                'Calendar Master',
-                'Loot Master',
-                'Loot Master',
-                'Lore Master',
-                'Rule & Battle Master',
-                'Inspiration Master'
-            ];
-
-            const postTasks = [
-                'Food, Drink, and Trash Clear Check',
-                'TV(s) wiped and turned off',
-                'Dice Trays and Books put away',
-                'Clean Initiative tracker and put away name labels',
-                'Chairs pushed in and extra chairs put back',
-                'Windows shut and locked and Post Discord Reminders',
-                'Ensure no duplicate snacks for next session'
-            ];
+            const preTasks = buildPool('pre');
+            const duringTasks = buildPool('during');
+            const postTasks = buildPool('post');
 
             const assignTasksToChars = (tasks, chars) => {
                 if (chars.length === 0) return {};

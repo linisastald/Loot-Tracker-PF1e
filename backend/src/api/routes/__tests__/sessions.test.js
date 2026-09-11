@@ -57,6 +57,12 @@ jest.mock('../../../utils/dbUtils', () => ({
   executeTransaction: jest.fn(),
 }));
 
+// Task definitions (DM Settings -> Task Management); default: none flagged,
+// so the legacy snack-master label fallback applies.
+jest.mock('../../../models/SessionTask', () => ({
+  getAll: jest.fn().mockResolvedValue([]),
+}));
+
 // Mock sessionService
 jest.mock('../../../services/sessionService', () => ({
   createRecurringSession: jest.fn(),
@@ -597,6 +603,31 @@ describe('POST /sessions/task-history', () => {
     // snack_master_name is the 6th positional arg (index 5)
     const callArgs = dbUtils.executeQuery.mock.calls[0][1];
     expect(callArgs[5]).toBe('Imogen');
+  });
+
+  it('uses the task definition flagged is_snack_master instead of the legacy label', async () => {
+    const SessionTask = require('../../../models/SessionTask');
+    SessionTask.getAll.mockResolvedValueOnce([
+      { id: 1, phase: 'post', name: 'Bring snacks next week', is_snack_master: true },
+      { id: 2, phase: 'post', name: 'Ensure no duplicate snacks for next session', is_snack_master: false },
+    ]);
+    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 9 }] });
+
+    await request(app)
+      .post('/sessions/task-history')
+      .send({
+        assignments: {
+          pre: {},
+          during: {},
+          post: {
+            Imogen: ['Ensure no duplicate snacks for next session'],
+            Wokwok: ['Bring snacks next week'],
+          },
+        },
+      });
+
+    const callArgs = dbUtils.executeQuery.mock.calls[0][1];
+    expect(callArgs[5]).toBe('Wokwok');
   });
 
   it('stores null snack_master_name when no one got the snacks task', async () => {
