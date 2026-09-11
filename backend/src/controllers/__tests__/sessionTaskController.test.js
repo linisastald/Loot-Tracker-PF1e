@@ -57,13 +57,14 @@ beforeEach(() => {
 });
 
 describe('getAll', () => {
-  it('returns every task definition', async () => {
+  it('returns every task definition scoped to the active campaign', async () => {
     SessionTask.getAll.mockResolvedValue([task()]);
-    const req = createMockReq();
+    const req = createMockReq({ campaignId: 3 });
     const res = createMockRes();
 
     await controller.getAll(req, res);
 
+    expect(SessionTask.getAll).toHaveBeenCalledWith(3);
     expect(res.success).toHaveBeenCalled();
     expect(res.success.mock.calls[0][0]).toEqual([task()]);
   });
@@ -79,7 +80,7 @@ describe('create', () => {
 
     await controller.create(req, res);
 
-    expect(SessionTask.create).toHaveBeenCalledWith({
+    expect(SessionTask.create).toHaveBeenCalledWith(1, {
       phase: 'post',
       name: 'Snack Run',
       quantity: 1,
@@ -99,7 +100,7 @@ describe('create', () => {
 
     await controller.create(req, res);
 
-    expect(SessionTask.clearSnackMasterExcept).toHaveBeenCalledWith(12);
+    expect(SessionTask.clearSnackMasterExcept).toHaveBeenCalledWith(1, 12);
   });
 
   it('rejects an unknown phase', async () => {
@@ -154,7 +155,7 @@ describe('update', () => {
 
     await controller.update(req, res);
 
-    expect(SessionTask.update).toHaveBeenCalledWith(10, {
+    expect(SessionTask.update).toHaveBeenCalledWith(1, 10, {
       phase: 'during',
       name: 'Renamed',
       quantity: 2,
@@ -193,7 +194,7 @@ describe('remove', () => {
 
     await controller.remove(req, res);
 
-    expect(SessionTask.remove).toHaveBeenCalledWith(10);
+    expect(SessionTask.remove).toHaveBeenCalledWith(1, 10);
     expect(res.success).toHaveBeenCalled();
   });
 
@@ -217,7 +218,7 @@ describe('reorder', () => {
 
     await controller.reorder(req, res);
 
-    expect(SessionTask.reorder).toHaveBeenCalledWith('during', [3, 1, 2]);
+    expect(SessionTask.reorder).toHaveBeenCalledWith(1, 'during', [3, 1, 2]);
     expect(res.success).toHaveBeenCalled();
   });
 

@@ -74,7 +74,7 @@ INSERT INTO session_task_definition (campaign_id, phase, name, quantity, min_cha
 SELECT c.id, d.phase, d.name, d.quantity, d.min_characters, d.is_snack_master, d.sort_order
 FROM campaigns c
 CROSS JOIN (VALUES
-    ('pre',    'Get Dice Trays',                                          1, NULL, false, 1),
+    ('pre',    'Get Dice Trays',                                          1, NULL::smallint, false, 1),
     ('pre',    'Put Initiative name tags on tracker',                     1, NULL, false, 2),
     ('pre',    'Wipe TV',                                                 1, NULL, false, 3),
     ('pre',    'Recap',                                                   1, NULL, false, 4),

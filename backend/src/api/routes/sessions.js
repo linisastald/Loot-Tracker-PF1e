@@ -222,7 +222,7 @@ router.post('/task-history', verifyToken, [
         // no definition carries the flag.
         let snackMasterLabels = [];
         try {
-            const definitions = await SessionTask.getAll();
+            const definitions = await SessionTask.getAll(req.campaignId);
             snackMasterLabels = definitions
                 .filter(task => task.is_snack_master)
                 .map(task => task.name);

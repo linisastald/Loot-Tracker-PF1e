@@ -169,6 +169,7 @@ const Tasks: React.FC = () => {
     const [history, setHistory] = useState<TaskHistoryRecord[]>([]);
     const [historyLoading, setHistoryLoading] = useState<boolean>(false);
     const [taskDefinitions, setTaskDefinitions] = useState<TaskDefinition[]>([]);
+    const [taskDefinitionsStatus, setTaskDefinitionsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     const {timezone} = useCampaignTimezone();
 
     useEffect(() => {
@@ -190,8 +191,10 @@ const Tasks: React.FC = () => {
             const response: any = await api.get('/session-tasks');
             const definitions = response.data?.data || response.data || [];
             setTaskDefinitions(Array.isArray(definitions) ? definitions : []);
+            setTaskDefinitionsStatus('ready');
         } catch (error) {
             console.error('Error loading task definitions:', error);
+            setTaskDefinitionsStatus('error');
             showSnackbar('Failed to load the task list. Check DM Settings > Task Management.');
         }
     };
@@ -349,6 +352,22 @@ const Tasks: React.FC = () => {
                 return;
             }
 
+            if (taskDefinitionsStatus === 'loading') {
+                setAlert({
+                    show: true,
+                    severity: 'info',
+                    message: 'The task list is still loading. Try again in a moment.'
+                });
+                return;
+            }
+            if (taskDefinitionsStatus === 'error') {
+                setAlert({
+                    show: true,
+                    severity: 'error',
+                    message: 'The task list could not be loaded. Reload the page and try again.'
+                });
+                return;
+            }
             if (taskDefinitions.length === 0) {
                 setAlert({
                     show: true,
@@ -360,26 +379,29 @@ const Tasks: React.FC = () => {
 
             // Get non-late arrivals for pre-session tasks
             const onTimeChars = selectedChars.filter(char => !lateArrivals[char.id]);
+            const postChars = [...selectedChars, {id: 'DM', name: 'DM'}];
 
             // Task pools come from DM Settings -> Task Management. A task with
             // min_characters only joins the pool when enough characters are
-            // selected; quantity controls how many copies go in.
-            const buildPool = (phase: TaskPhase): string[] => {
+            // selected; quantity controls how many copies go in, clamped to the
+            // number of people in the phase so nobody draws the same task twice.
+            const buildPool = (phase: TaskPhase, phaseHeadcount: number): string[] => {
                 const pool: string[] = [];
                 taskDefinitions
                     .filter(def => def.phase === phase)
                     .filter(def => !def.min_characters || selectedChars.length >= def.min_characters)
                     .forEach(def => {
-                        for (let i = 0; i < Math.max(1, def.quantity); i++) {
+                        const copies = Math.max(1, Math.min(def.quantity, phaseHeadcount));
+                        for (let i = 0; i < copies; i++) {
                             pool.push(def.name);
                         }
                     });
                 return pool;
             };
 
-            const preTasks = buildPool('pre');
-            const duringTasks = buildPool('during');
-            const postTasks = buildPool('post');
+            const preTasks = buildPool('pre', onTimeChars.length);
+            const duringTasks = buildPool('during', selectedChars.length);
+            const postTasks = buildPool('post', postChars.length);
 
             const assignTasksToChars = (tasks, chars) => {
                 if (chars.length === 0) return {};
@@ -423,7 +445,6 @@ const Tasks: React.FC = () => {
                 return assigned;
             };
 
-            const postChars = [...selectedChars, {id: 'DM', name: 'DM'}];
 
             const newAssignedTasks = {
                 pre: assignTasksToChars(preTasks, onTimeChars),

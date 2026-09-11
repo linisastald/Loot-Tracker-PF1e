@@ -15,6 +15,15 @@ const MAX_NAME_LENGTH = 255;
 const MAX_QUANTITY = 20;
 const MAX_MIN_CHARACTERS = 50;
 
+/** The active campaign id resolved by verifyToken; every query is scoped to it. */
+const requireCampaignId = (req) => {
+  const campaignId = req.campaignId;
+  if (!Number.isInteger(campaignId) || campaignId < 1) {
+    throw controllerFactory.createValidationError('Select a campaign first');
+  }
+  return campaignId;
+};
+
 /**
  * Validate and normalise a task payload. Throws a validation error on bad
  * input; returns the clean fields ready for the model.
@@ -63,16 +72,17 @@ const parseTaskInput = (body = {}) => {
 
 /** List every task definition for the active campaign (all members). */
 const getAll = async (req, res) => {
-  const tasks = await SessionTask.getAll();
+  const tasks = await SessionTask.getAll(requireCampaignId(req));
   controllerFactory.sendSuccessResponse(res, tasks, 'Session tasks retrieved');
 };
 
 /** Create a task at the end of its phase (DM only). */
 const create = async (req, res) => {
+  const campaignId = requireCampaignId(req);
   const input = parseTaskInput(req.body);
-  const task = await SessionTask.create(input);
+  const task = await SessionTask.create(campaignId, input);
   if (task.is_snack_master) {
-    await SessionTask.clearSnackMasterExcept(task.id);
+    await SessionTask.clearSnackMasterExcept(campaignId, task.id);
   }
   controllerFactory.sendCreatedResponse(res, task, 'Session task created');
 };
@@ -83,13 +93,14 @@ const update = async (req, res) => {
   if (!Number.isInteger(id) || id < 1) {
     throw controllerFactory.createValidationError('Invalid task id');
   }
+  const campaignId = requireCampaignId(req);
   const input = parseTaskInput(req.body);
-  const task = await SessionTask.update(id, input);
+  const task = await SessionTask.update(campaignId, id, input);
   if (!task) {
     throw controllerFactory.createNotFoundError('Session task not found');
   }
   if (task.is_snack_master) {
-    await SessionTask.clearSnackMasterExcept(task.id);
+    await SessionTask.clearSnackMasterExcept(campaignId, task.id);
   }
   controllerFactory.sendSuccessResponse(res, task, 'Session task updated');
 };
@@ -100,7 +111,7 @@ const remove = async (req, res) => {
   if (!Number.isInteger(id) || id < 1) {
     throw controllerFactory.createValidationError('Invalid task id');
   }
-  const deleted = await SessionTask.remove(id);
+  const deleted = await SessionTask.remove(requireCampaignId(req), id);
   if (!deleted) {
     throw controllerFactory.createNotFoundError('Session task not found');
   }
@@ -130,18 +141,15 @@ const reorder = async (req, res) => {
     throw controllerFactory.createValidationError('ids must not contain duplicates');
   }
 
-  await SessionTask.reorder(phase, orderedIds);
-  const tasks = await SessionTask.getAll();
+  const campaignId = requireCampaignId(req);
+  await SessionTask.reorder(campaignId, phase, orderedIds);
+  const tasks = await SessionTask.getAll(campaignId);
   controllerFactory.sendSuccessResponse(res, tasks, 'Session tasks reordered');
 };
 
 /** Replace the campaign's task list with the stock defaults (DM only). */
 const resetDefaults = async (req, res) => {
-  const campaignId = req.campaignId;
-  if (!Number.isInteger(campaignId) || campaignId < 1) {
-    throw controllerFactory.createValidationError('Select a campaign before resetting tasks');
-  }
-  const tasks = await SessionTask.resetDefaults(campaignId);
+  const tasks = await SessionTask.resetDefaults(requireCampaignId(req));
   controllerFactory.sendSuccessResponse(
     res,
     tasks,
