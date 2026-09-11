@@ -51,10 +51,10 @@ exports.getById = async (campaignId, id) => {
 exports.create = async (campaignId, { phase, name, quantity, min_characters, is_snack_master }) => {
   const result = await dbUtils.executeQuery(
     `INSERT INTO session_task_definition (campaign_id, phase, name, quantity, min_characters, is_snack_master, sort_order)
-     VALUES ($1, $2, $3, $4, $5, $6,
+     VALUES ($1::int, $2::text, $3, $4, $5, $6,
              (SELECT COALESCE(MAX(sort_order), 0) + 1
               FROM session_task_definition
-              WHERE campaign_id = $1 AND phase = $2))
+              WHERE campaign_id = $1::int AND phase = $2::text))
      RETURNING ${COLUMNS}`,
     [campaignId, phase, name, quantity, min_characters, is_snack_master]
   );
@@ -102,7 +102,7 @@ exports.clearSnackMasterExcept = async (campaignId, keepId) => {
   await dbUtils.executeQuery(
     `UPDATE session_task_definition
      SET is_snack_master = false, updated_at = NOW()
-     WHERE campaign_id = $1 AND is_snack_master = true AND ($2::int IS NULL OR id <> $2)`,
+     WHERE campaign_id = $1 AND is_snack_master = true AND ($2::int IS NULL OR id <> $2::int)`,
     [campaignId, keepId]
   );
 };
