@@ -12,7 +12,7 @@
 const dbUtils = require('../utils/dbUtils');
 const { DEFAULT_SESSION_TASKS } = require('../constants/sessionTaskDefaults');
 
-const COLUMNS = 'id, phase, name, quantity, min_characters, is_snack_master, sort_order, created_at, updated_at';
+const COLUMNS = 'id, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance, sort_order, created_at, updated_at';
 
 /**
  * All task definitions for a campaign, ordered by phase then sort order.
@@ -46,17 +46,17 @@ exports.getById = async (campaignId, id) => {
 /**
  * Create a task at the end of its phase's list.
  * @param {number} campaignId
- * @param {{phase:string, name:string, quantity:number, min_characters:number|null, is_snack_master:boolean}} data
+ * @param {{phase:string, name:string, quantity:number, min_characters:number|null, is_snack_master:boolean, requires_previous_attendance:boolean}} data
  */
-exports.create = async (campaignId, { phase, name, quantity, min_characters, is_snack_master }) => {
+exports.create = async (campaignId, { phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance = false }) => {
   const result = await dbUtils.executeQuery(
-    `INSERT INTO session_task_definition (campaign_id, phase, name, quantity, min_characters, is_snack_master, sort_order)
-     VALUES ($1::int, $2::text, $3, $4, $5, $6,
+    `INSERT INTO session_task_definition (campaign_id, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance, sort_order)
+     VALUES ($1::int, $2::text, $3, $4, $5, $6, $7,
              (SELECT COALESCE(MAX(sort_order), 0) + 1
               FROM session_task_definition
               WHERE campaign_id = $1::int AND phase = $2::text))
      RETURNING ${COLUMNS}`,
-    [campaignId, phase, name, quantity, min_characters, is_snack_master]
+    [campaignId, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance]
   );
   return result.rows[0];
 };
@@ -66,15 +66,16 @@ exports.create = async (campaignId, { phase, name, quantity, min_characters, is_
  * is not in the campaign.
  * @param {number} campaignId
  * @param {number} id
- * @param {{phase:string, name:string, quantity:number, min_characters:number|null, is_snack_master:boolean}} data
+ * @param {{phase:string, name:string, quantity:number, min_characters:number|null, is_snack_master:boolean, requires_previous_attendance:boolean}} data
  */
-exports.update = async (campaignId, id, { phase, name, quantity, min_characters, is_snack_master }) => {
+exports.update = async (campaignId, id, { phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance = false }) => {
   const result = await dbUtils.executeQuery(
     `UPDATE session_task_definition
-     SET phase = $3, name = $4, quantity = $5, min_characters = $6, is_snack_master = $7, updated_at = NOW()
+     SET phase = $3, name = $4, quantity = $5, min_characters = $6, is_snack_master = $7,
+         requires_previous_attendance = $8, updated_at = NOW()
      WHERE campaign_id = $1 AND id = $2
      RETURNING ${COLUMNS}`,
-    [campaignId, id, phase, name, quantity, min_characters, is_snack_master]
+    [campaignId, id, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance]
   );
   return result.rows.length > 0 ? result.rows[0] : null;
 };
@@ -137,9 +138,10 @@ exports.reorder = async (campaignId, phase, orderedIds) => {
 exports.seedDefaults = async (client, campaignId) => {
   for (const task of DEFAULT_SESSION_TASKS) {
     await client.query(
-      `INSERT INTO session_task_definition (campaign_id, phase, name, quantity, min_characters, is_snack_master, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [campaignId, task.phase, task.name, task.quantity, task.min_characters, task.is_snack_master, task.sort_order]
+      `INSERT INTO session_task_definition (campaign_id, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [campaignId, task.phase, task.name, task.quantity, task.min_characters, task.is_snack_master,
+        task.requires_previous_attendance === true, task.sort_order]
     );
   }
 };

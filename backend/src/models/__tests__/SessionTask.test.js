@@ -18,6 +18,7 @@ const row = (over = {}) => ({
   quantity: 1,
   min_characters: null,
   is_snack_master: false,
+  requires_previous_attendance: false,
   sort_order: 1,
   ...over,
 });
@@ -53,8 +54,21 @@ describe('SessionTask model', () => {
 
     const [sql, params] = dbUtils.executeQuery.mock.calls[0];
     expect(sql).toContain('COALESCE(MAX(sort_order), 0) + 1');
-    expect(params).toEqual([42, 'pre', 'New', 1, null, false]);
+    expect(sql).toContain('requires_previous_attendance');
+    // requires_previous_attendance defaults to false when omitted
+    expect(params).toEqual([42, 'pre', 'New', 1, null, false, false]);
     expect(result.id).toBe(9);
+  });
+
+  it('create passes requires_previous_attendance through', async () => {
+    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [row({ id: 10, name: 'Recap', requires_previous_attendance: true })] });
+
+    await SessionTask.create(42, {
+      phase: 'pre', name: 'Recap', quantity: 1, min_characters: null, is_snack_master: false,
+      requires_previous_attendance: true,
+    });
+
+    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([42, 'pre', 'Recap', 1, null, false, true]);
   });
 
   it('update returns null when the row is not visible', async () => {
@@ -62,9 +76,12 @@ describe('SessionTask model', () => {
 
     const result = await SessionTask.update(42, 3, {
       phase: 'post', name: 'X', quantity: 1, min_characters: 6, is_snack_master: true,
+      requires_previous_attendance: true,
     });
 
-    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([42, 3, 'post', 'X', 1, 6, true]);
+    const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+    expect(sql).toContain('requires_previous_attendance = $8');
+    expect(params).toEqual([42, 3, 'post', 'X', 1, 6, true, true]);
     expect(result).toBeNull();
   });
 
@@ -112,6 +129,9 @@ describe('SessionTask model', () => {
     }
     const snackCall = client.query.mock.calls.find((c) => c[1][5] === true);
     expect(snackCall[1][2]).toBe('Ensure no duplicate snacks for next session');
+    // Only the stock Recap task requires attendance at the previous session
+    const attendanceCalls = client.query.mock.calls.filter((c) => c[1][6] === true);
+    expect(attendanceCalls.map((c) => c[1][2])).toEqual(['Recap']);
   });
 
   it('resetDefaults wipes the campaign list, reseeds, and returns the fresh list', async () => {

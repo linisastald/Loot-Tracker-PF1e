@@ -9,7 +9,12 @@ const { body, param, query, validationResult } = require('express-validator');
 const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
 const ApiResponse = require('../../utils/apiResponse');
-const { VALID_SESSION_STATUSES, VALID_RECURRING_PATTERNS } = require('../../constants/sessionConstants');
+const {
+    VALID_SESSION_STATUSES,
+    VALID_RECURRING_PATTERNS,
+    RESPONSE_TYPE_MAP,
+    ATTENDANCE_STATUS
+} = require('../../constants/sessionConstants');
 const SessionTask = require('../../models/SessionTask');
 const { LEGACY_SNACK_MASTER_TASK } = require('../../constants/sessionTaskDefaults');
 
@@ -152,6 +157,122 @@ router.get('/next-with-attendance', verifyToken, async (req, res) => {
     } catch (error) {
         logger.error('Failed to fetch next session with attendance:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch next session' });
+    }
+});
+
+// Who was at the previous session - used by the Tasks page to pre-mark
+// "Was at last session" so tasks flagged requires_previous_attendance (Recap)
+// only go to people who can actually do them.
+//
+// The primary source is the most recent task-assignment record: the Tasks page
+// selection at the last session IS the real attendance, whereas RSVPs are only
+// intentions. A record only counts once its session started more than 12 hours
+// ago (or, for records with no session, once the record itself is that old),
+// so a deal made for the current session - whether the night before or as a
+// re-deal mid-session - still points at the previous one. With no usable
+// history (new campaign), falls back to attending RSVPs on the most recent
+// past session.
+
+// Discord response types that mean "attending" (yes / late / early / ...)
+const ATTENDING_RESPONSES = Object.entries(RESPONSE_TYPE_MAP)
+    .filter(([, status]) => status === ATTENDANCE_STATUS.ACCEPTED)
+    .map(([responseType]) => responseType);
+
+router.get('/last-session-attendees', verifyToken, async (req, res) => {
+    try {
+        const upcomingResult = await dbUtils.executeQuery(`
+            SELECT id
+            FROM game_sessions
+            WHERE start_time > NOW()
+              AND (status IS NULL OR status != 'cancelled')
+            ORDER BY start_time ASC
+            LIMIT 1
+        `);
+        const upcomingId = upcomingResult.rows.length > 0 ? upcomingResult.rows[0].id : null;
+
+        const historyResult = await dbUtils.executeQuery(`
+            SELECT sth.session_title, sth.assignments, sth.created_at
+            FROM session_task_history sth
+            LEFT JOIN game_sessions gs ON gs.id = sth.session_id
+            WHERE ($1::int IS NULL OR sth.session_id IS DISTINCT FROM $1::int)
+              AND (
+                    (sth.session_id IS NOT NULL AND gs.start_time < NOW() - INTERVAL '12 hours')
+                 OR (sth.session_id IS NULL AND sth.created_at < NOW() - INTERVAL '12 hours')
+              )
+            ORDER BY sth.created_at DESC
+            LIMIT 1
+        `, [upcomingId]);
+
+        if (historyResult.rows.length > 0) {
+            const record = historyResult.rows[0];
+            const assignments = record.assignments || {};
+            const names = new Set();
+            for (const phase of ['pre', 'during', 'post']) {
+                for (const name of Object.keys(assignments[phase] || {})) {
+                    if (name !== 'DM') names.add(name);
+                }
+            }
+            let characterIds = [];
+            if (names.size > 0) {
+                const charResult = await dbUtils.executeQuery(
+                    'SELECT id FROM characters WHERE active = true AND name = ANY($1::text[])',
+                    [Array.from(names)]
+                );
+                characterIds = charResult.rows.map(row => row.id);
+            }
+            return res.json({
+                success: true,
+                data: {
+                    source: 'task_history',
+                    session_title: record.session_title,
+                    recorded_at: record.created_at,
+                    character_ids: characterIds
+                }
+            });
+        }
+
+        const pastSessionResult = await dbUtils.executeQuery(`
+            SELECT id, title, start_time
+            FROM game_sessions
+            WHERE start_time <= NOW()
+              AND (status IS NULL OR status != 'cancelled')
+              AND ($1::int IS NULL OR id <> $1::int)
+            ORDER BY start_time DESC
+            LIMIT 1
+        `, [upcomingId]);
+
+        if (pastSessionResult.rows.length === 0) {
+            return res.json({ success: true, data: null });
+        }
+
+        // In-app RSVPs set only status; Discord RSVPs set response_type too.
+        const pastSession = pastSessionResult.rows[0];
+        const rsvpResult = await dbUtils.executeQuery(`
+            SELECT DISTINCT COALESCE(sa.character_id, ac.id) AS character_id
+            FROM session_attendance sa
+            LEFT JOIN LATERAL (
+                SELECT id FROM characters
+                WHERE user_id = sa.user_id AND active = true
+                ORDER BY id LIMIT 1
+            ) ac ON true
+            WHERE sa.session_id = $1
+              AND (sa.response_type = ANY($2::text[]) OR sa.status = $3)
+        `, [pastSession.id, ATTENDING_RESPONSES, ATTENDANCE_STATUS.ACCEPTED]);
+
+        res.json({
+            success: true,
+            data: {
+                source: 'rsvp',
+                session_title: pastSession.title,
+                recorded_at: pastSession.start_time,
+                character_ids: rsvpResult.rows
+                    .map(row => row.character_id)
+                    .filter(id => id !== null)
+            }
+        });
+    } catch (error) {
+        logger.error('Failed to fetch last session attendees:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch last session attendees' });
     }
 });
 

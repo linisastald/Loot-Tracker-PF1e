@@ -29,6 +29,7 @@ import api from '../../utils/api';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
+import HistoryIcon from '@mui/icons-material/History';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {grey} from '@mui/material/colors';
@@ -53,7 +54,29 @@ interface TaskDefinition {
     quantity: number;
     min_characters: number | null;
     is_snack_master: boolean;
+    // Only dealt to characters marked "Was at last session" (e.g. Recap)
+    requires_previous_attendance: boolean;
     sort_order: number;
+}
+
+// One slot in a phase's deal pool
+interface PoolTask {
+    name: string;
+    requiresPreviousAttendance: boolean;
+}
+
+// Someone who can be dealt a task: a character, or the DM for post-session
+interface Dealee {
+    id: number | 'DM';
+    name: string;
+}
+
+// Where the "Was at last session" pre-fill came from
+interface LastSessionInfo {
+    source: 'task_history' | 'rsvp';
+    session_title: string | null;
+    recorded_at: string;
+    character_ids: number[];
 }
 
 interface TaskAssignment {
@@ -158,6 +181,8 @@ const Tasks: React.FC = () => {
     const [activeCharacters, setActiveCharacters] = useState<Character[]>([]);
     const [selectedCharacters, setSelectedCharacters] = useState<Record<number, boolean>>({});
     const [lateArrivals, setLateArrivals] = useState<Record<number, boolean>>({});
+    const [attendedLastSession, setAttendedLastSession] = useState<Record<number, boolean>>({});
+    const [lastSessionInfo, setLastSessionInfo] = useState<LastSessionInfo | null>(null);
     const [assignedTasks, setAssignedTasks] = useState<TaskAssignment | null>(null);
     const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
     const [snackbarMessage, setSnackbarMessage] = useState<string>('');
@@ -215,6 +240,10 @@ const Tasks: React.FC = () => {
                 acc[char.id] = false;
                 return acc;
             }, {});
+            const initialAttendedState = characters.reduce((acc, char) => {
+                acc[char.id] = false;
+                return acc;
+            }, {});
 
             // Try to pre-populate from the next upcoming session's attendance
             try {
@@ -258,8 +287,27 @@ const Tasks: React.FC = () => {
                 console.warn('Could not pre-populate from session attendance:', sessionErr);
             }
 
+            // Pre-mark who was at the previous session (from the last task
+            // assignment, or last session's RSVPs) for tasks that require it.
+            try {
+                const lastResponse: any = await api.get('/sessions/last-session-attendees');
+                const lastData: LastSessionInfo | null = lastResponse.data?.data ?? lastResponse.data ?? null;
+                if (lastData && Array.isArray(lastData.character_ids)) {
+                    setLastSessionInfo(lastData);
+                    lastData.character_ids.forEach((id) => {
+                        if (id in initialAttendedState) {
+                            initialAttendedState[id] = true;
+                        }
+                    });
+                }
+            } catch (lastErr) {
+                // Non-fatal - the DM can mark attendance by hand
+                console.warn('Could not load last session attendees:', lastErr);
+            }
+
             setSelectedCharacters(initialSelectedState);
             setLateArrivals(initialLateState);
+            setAttendedLastSession(initialAttendedState);
         } catch (error) {
             console.error('Error loading initial task state:', error);
             showSnackbar('Error fetching active characters');
@@ -273,6 +321,16 @@ const Tasks: React.FC = () => {
     const handleToggleLateArrival = (id) => {
         setLateArrivals(prev => ({...prev, [id]: !prev[id]}));
     };
+
+    const handleToggleAttendedLastSession = (id: number) => {
+        setAttendedLastSession(prev => ({...prev, [id]: !prev[id]}));
+    };
+
+    // Whether any task in the campaign is restricted to last session's attendees
+    const hasPreviousAttendanceTasks = taskDefinitions.some(def => def.requires_previous_attendance);
+
+    // The DM is always treated as having been at the last session.
+    const wasAtLastSession = (person: Dealee) => person.id === 'DM' || attendedLastSession[person.id] === true;
 
     const createEmbed = (title, description, fields, color) => ({
         embeds: [{
@@ -378,32 +436,43 @@ const Tasks: React.FC = () => {
             }
 
             // Get non-late arrivals for pre-session tasks
-            const onTimeChars = selectedChars.filter(char => !lateArrivals[char.id]);
-            const postChars = [...selectedChars, {id: 'DM', name: 'DM'}];
+            const onTimeChars: Dealee[] = selectedChars.filter(char => !lateArrivals[char.id]);
+            const postChars: Dealee[] = [...selectedChars, {id: 'DM', name: 'DM'}];
 
             // Task pools come from DM Settings -> Task Management. A task with
             // min_characters only joins the pool when enough characters are
             // selected; quantity controls how many copies go in, clamped to the
             // number of people in the phase so nobody draws the same task twice.
-            const buildPool = (phase: TaskPhase, phaseHeadcount: number): string[] => {
-                const pool: string[] = [];
+            // A task that requires attendance at the last session is clamped to
+            // (and later dealt only among) the people who were there, and is
+            // skipped entirely when none of them are.
+            const skippedTasks: string[] = [];
+            const buildPool = (phase: TaskPhase, phaseChars: Dealee[]): PoolTask[] => {
+                const pool: PoolTask[] = [];
+                const eligibleCount = phaseChars.filter(wasAtLastSession).length;
                 taskDefinitions
                     .filter(def => def.phase === phase)
                     .filter(def => !def.min_characters || selectedChars.length >= def.min_characters)
                     .forEach(def => {
-                        const copies = Math.max(1, Math.min(def.quantity, phaseHeadcount));
+                        const requiresPreviousAttendance = def.requires_previous_attendance === true;
+                        if (requiresPreviousAttendance && eligibleCount === 0) {
+                            skippedTasks.push(def.name);
+                            return;
+                        }
+                        const headcount = requiresPreviousAttendance ? eligibleCount : phaseChars.length;
+                        const copies = Math.max(1, Math.min(def.quantity, headcount));
                         for (let i = 0; i < copies; i++) {
-                            pool.push(def.name);
+                            pool.push({name: def.name, requiresPreviousAttendance});
                         }
                     });
                 return pool;
             };
 
-            const preTasks = buildPool('pre', onTimeChars.length);
-            const duringTasks = buildPool('during', selectedChars.length);
-            const postTasks = buildPool('post', postChars.length);
+            const preTasks = buildPool('pre', onTimeChars);
+            const duringTasks = buildPool('during', selectedChars);
+            const postTasks = buildPool('post', postChars);
 
-            const assignTasksToChars = (tasks, chars) => {
+            const assignTasksToChars = (tasks: PoolTask[], chars: Dealee[]): TaskMap => {
                 if (chars.length === 0) return {};
 
                 const charCount = chars.length;
@@ -411,10 +480,11 @@ const Tasks: React.FC = () => {
                 // Build the task pool with the same Free Space padding as before
                 // so each character ends up with the usual number of slots.
                 const pool = [...tasks];
+                const freeSpace: PoolTask = {name: 'Free Space', requiresPreviousAttendance: false};
                 if (tasks.length > charCount) {
-                    while (pool.length < charCount * 2) pool.push('Free Space');
+                    while (pool.length < charCount * 2) pool.push(freeSpace);
                 } else if (tasks.length < charCount) {
-                    while (pool.length < charCount) pool.push('Free Space');
+                    while (pool.length < charCount) pool.push(freeSpace);
                 }
 
                 // Group identical tasks together, then deal with a single
@@ -423,23 +493,49 @@ const Tasks: React.FC = () => {
                 // people - so the two Loot Masters can never go to one person,
                 // and the Free Space padding spreads out too. (Holds as long as
                 // no single task has more copies than there are characters.)
-                const groups = {};
-                pool.forEach(task => {
-                    (groups[task] = groups[task] || []).push(task);
+                // The group order is shuffled so it isn't always alphabetical.
+                const groupByName = (items: PoolTask[]): PoolTask[] => {
+                    const groups: Record<string, PoolTask[]> = {};
+                    items.forEach(task => {
+                        (groups[task.name] = groups[task.name] || []).push(task);
+                    });
+                    return shuffleArray(Object.keys(groups)).flatMap(key => groups[key]);
+                };
+
+                const order: Dealee[] = shuffleArray([...chars]);
+                const assigned: TaskMap = {};
+                order.forEach(person => {
+                    assigned[person.name] = [];
                 });
-                // Shuffle the group order so it isn't always alphabetical, while
-                // keeping each group's copies contiguous.
-                const grouped = shuffleArray(Object.keys(groups)).flatMap(key => groups[key]);
 
-                const order = shuffleArray(chars.map(char => char.name));
+                // Pass 1: tasks that need last session's attendees are dealt
+                // only among those people (buildPool guarantees at least one).
+                const eligibleOrder = order.filter(wasAtLastSession);
+                const restricted = groupByName(pool.filter(task => task.requiresPreviousAttendance));
+                const open = groupByName(pool.filter(task => !task.requiresPreviousAttendance));
+                if (eligibleOrder.length > 0) {
+                    restricted.forEach((task, index) => {
+                        assigned[eligibleOrder[index % eligibleOrder.length].name].push(task.name);
+                    });
+                } else {
+                    // Unreachable (buildPool already skipped these) but never
+                    // let a restricted task fall through to the open deal.
+                    restricted.forEach(task => skippedTasks.push(task.name));
+                }
 
-                const assigned = {};
-                order.forEach(name => {
-                    assigned[name] = [];
-                });
-
-                grouped.forEach((task, index) => {
-                    assigned[order[index % charCount]].push(task);
+                // Pass 2: everything else. Each copy goes to whoever currently
+                // holds the fewest tasks (first in shuffled order on ties), so
+                // totals stay even no matter how pass 1 landed. Copies of one
+                // task still can't collide: taking a copy lifts that person
+                // above the others until everyone has caught up.
+                open.forEach(task => {
+                    let target = order[0];
+                    for (const person of order) {
+                        if (assigned[person.name].length < assigned[target.name].length) {
+                            target = person;
+                        }
+                    }
+                    assigned[target.name].push(task.name);
                 });
 
                 return assigned;
@@ -454,6 +550,14 @@ const Tasks: React.FC = () => {
 
             setAssignedTasks(newAssignedTasks);
             setLastTaskAssignment(newAssignedTasks);
+
+            if (skippedTasks.length > 0) {
+                setAlert({
+                    show: true,
+                    severity: 'info',
+                    message: `Skipped ${skippedTasks.join(', ')}: nobody selected is marked as having been at the last session.`
+                });
+            }
 
             // Persist the assignment to history (independent of the Discord send,
             // so a Discord failure doesn't lose the record).
@@ -618,6 +722,18 @@ const Tasks: React.FC = () => {
                     Characters who have RSVP'd "yes" to the next session are pre-selected automatically, and those who
                     responded "late" are pre-marked as arriving late. Adjust selections as needed, then click Assign
                     Tasks. Late arrivals will be excluded from pre-session tasks.
+                    {hasPreviousAttendanceTasks && (
+                        <>
+                            {' '}Some tasks (like Recap) only go to characters who were at the last session;
+                            {lastSessionInfo
+                                ? ` that is pre-filled from ${lastSessionInfo.source === 'task_history'
+                                    ? 'the last task assignment'
+                                    : "the last session's RSVPs"}${lastSessionInfo.session_title
+                                    ? ` (${lastSessionInfo.session_title})`
+                                    : ''}. Adjust if needed.`
+                                : ' mark them with "Was at last session".'}
+                        </>
+                    )}
                 </Typography>
 
                 <Grid container spacing={3} size={12}>
@@ -660,25 +776,56 @@ const Tasks: React.FC = () => {
                                                 color="warning"
                                             />
                                         )}
+                                        {hasPreviousAttendanceTasks && selectedCharacters[char.id] && !attendedLastSession[char.id] && (
+                                            <Chip
+                                                size="small"
+                                                icon={<HistoryIcon/>}
+                                                label="Missed last session"
+                                                sx={{ml: 1}}
+                                                variant="outlined"
+                                                color="info"
+                                            />
+                                        )}
                                     </Box>
                                     {selectedCharacters[char.id] && (
-                                        <Tooltip title="Mark as arriving late">
-                                            <FormControlLabel
-                                                control={
-                                                    <Checkbox
-                                                        size="small"
-                                                        checked={lateArrivals[char.id] || false}
-                                                        onChange={(e) => {
-                                                            e.stopPropagation();
-                                                            handleToggleLateArrival(char.id);
-                                                        }}
-                                                        onClick={(e) => e.stopPropagation()}
+                                        <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+                                            {hasPreviousAttendanceTasks && (
+                                                <Tooltip title="Was at the last session (needed for tasks like Recap)">
+                                                    <FormControlLabel
+                                                        control={
+                                                            <Checkbox
+                                                                size="small"
+                                                                checked={attendedLastSession[char.id] || false}
+                                                                onChange={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleToggleAttendedLastSession(char.id);
+                                                                }}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            />
+                                                        }
+                                                        label={<Typography variant="caption">Was at last session</Typography>}
+                                                        sx={{m: 0}}
                                                     />
-                                                }
-                                                label={<Typography variant="caption">Late</Typography>}
-                                                sx={{m: 0}}
-                                            />
-                                        </Tooltip>
+                                                </Tooltip>
+                                            )}
+                                            <Tooltip title="Mark as arriving late">
+                                                <FormControlLabel
+                                                    control={
+                                                        <Checkbox
+                                                            size="small"
+                                                            checked={lateArrivals[char.id] || false}
+                                                            onChange={(e) => {
+                                                                e.stopPropagation();
+                                                                handleToggleLateArrival(char.id);
+                                                            }}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        />
+                                                    }
+                                                    label={<Typography variant="caption">Late</Typography>}
+                                                    sx={{m: 0}}
+                                                />
+                                            </Tooltip>
+                                        </Box>
                                     )}
                                 </CharacterChip>
                             ))}

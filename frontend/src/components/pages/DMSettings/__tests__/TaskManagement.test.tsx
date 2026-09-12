@@ -121,6 +121,7 @@ describe('TaskManagement', () => {
         quantity: 2,
         min_characters: null,
         is_snack_master: false,
+        requires_previous_attendance: false,
       });
     });
     // List is reloaded after a save.
@@ -167,6 +168,7 @@ describe('TaskManagement', () => {
         quantity: 1,
         min_characters: null,
         is_snack_master: true,
+        requires_previous_attendance: false,
       });
     });
   });

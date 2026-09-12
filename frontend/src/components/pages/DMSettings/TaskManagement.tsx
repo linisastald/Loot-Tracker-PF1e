@@ -40,6 +40,7 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import FastfoodIcon from '@mui/icons-material/Fastfood';
+import HistoryIcon from '@mui/icons-material/History';
 import { useSnackbar } from 'notistack';
 import api from '../../../utils/api';
 
@@ -52,6 +53,7 @@ interface TaskDefinition {
   quantity: number;
   min_characters: number | null;
   is_snack_master: boolean;
+  requires_previous_attendance: boolean;
   sort_order: number;
 }
 
@@ -61,6 +63,7 @@ interface TaskFormState {
   quantity: string;
   min_characters: string;
   is_snack_master: boolean;
+  requires_previous_attendance: boolean;
 }
 
 const PHASES: Array<{ key: TaskPhase; label: string; description: string }> = [
@@ -89,6 +92,7 @@ const emptyForm = (phase: TaskPhase = 'pre'): TaskFormState => ({
   quantity: '1',
   min_characters: '',
   is_snack_master: false,
+  requires_previous_attendance: false,
 });
 
 const formFromTask = (task: TaskDefinition): TaskFormState => ({
@@ -98,6 +102,7 @@ const formFromTask = (task: TaskDefinition): TaskFormState => ({
   min_characters:
     task.min_characters === null ? '' : String(task.min_characters),
   is_snack_master: task.is_snack_master,
+  requires_previous_attendance: task.requires_previous_attendance === true,
 });
 
 const unwrapList = (response: any): TaskDefinition[] => {
@@ -206,6 +211,7 @@ const TaskManagement: React.FC = () => {
           ? null
           : parseInt(form.min_characters, 10),
       is_snack_master: form.is_snack_master,
+      requires_previous_attendance: form.requires_previous_attendance,
     };
 
     try {
@@ -318,6 +324,17 @@ const TaskManagement: React.FC = () => {
             color="secondary"
             icon={<FastfoodIcon />}
             label="Snack Master"
+          />
+        </Tooltip>
+      )}
+      {task.requires_previous_attendance && (
+        <Tooltip title="Only dealt to characters who were at the last session">
+          <Chip
+            size="small"
+            color="info"
+            variant="outlined"
+            icon={<HistoryIcon />}
+            label="Was at last session"
           />
         </Tooltip>
       )}
@@ -549,6 +566,26 @@ const TaskManagement: React.FC = () => {
             Whoever draws this task is named Snack Master in the next
             session&apos;s Discord announcement. Only one task can carry this
             flag.
+          </FormHelperText>
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={
+              <Checkbox
+                checked={form.requires_previous_attendance}
+                onChange={e =>
+                  setForm(prev => ({
+                    ...prev,
+                    requires_previous_attendance: e.target.checked,
+                  }))
+                }
+              />
+            }
+            label="Requires attendance at the last session"
+          />
+          <FormHelperText sx={{ ml: 4, mt: -0.5 }}>
+            Only dealt to characters marked &quot;Was at last session&quot; on
+            the Tasks page (for example Recap). Skipped when nobody selected
+            was there.
           </FormHelperText>
         </DialogContent>
         <DialogActions>

@@ -66,8 +66,17 @@ const parseTaskInput = (body = {}) => {
   }
 
   const isSnackMaster = body.is_snack_master === true || body.is_snack_master === 'true';
+  const requiresPreviousAttendance =
+    body.requires_previous_attendance === true || body.requires_previous_attendance === 'true';
 
-  return { phase, name, quantity, min_characters: minCharacters, is_snack_master: isSnackMaster };
+  return {
+    phase,
+    name,
+    quantity,
+    min_characters: minCharacters,
+    is_snack_master: isSnackMaster,
+    requires_previous_attendance: requiresPreviousAttendance,
+  };
 };
 
 /** List every task definition for the active campaign (all members). */

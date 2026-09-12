@@ -48,6 +48,7 @@ const task = (over = {}) => ({
   quantity: 2,
   min_characters: null,
   is_snack_master: false,
+  requires_previous_attendance: false,
   sort_order: 2,
   ...over,
 });
@@ -86,7 +87,25 @@ describe('create', () => {
       quantity: 1,
       min_characters: null,
       is_snack_master: false,
+      requires_previous_attendance: false,
     });
+    expect(SessionTask.clearSnackMasterExcept).not.toHaveBeenCalled();
+    expect(res.created).toHaveBeenCalled();
+  });
+
+  it('accepts requires_previous_attendance as a boolean or "true" string', async () => {
+    SessionTask.create.mockResolvedValue(task({ id: 13, name: 'Recap', requires_previous_attendance: true }));
+    const req = createMockReq({
+      body: { phase: 'pre', name: 'Recap', requires_previous_attendance: 'true' },
+    });
+    const res = createMockRes();
+
+    await controller.create(req, res);
+
+    expect(SessionTask.create).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ name: 'Recap', requires_previous_attendance: true })
+    );
     expect(SessionTask.clearSnackMasterExcept).not.toHaveBeenCalled();
     expect(res.created).toHaveBeenCalled();
   });
@@ -161,6 +180,7 @@ describe('update', () => {
       quantity: 2,
       min_characters: null,
       is_snack_master: false,
+      requires_previous_attendance: false,
     });
     expect(res.success).toHaveBeenCalled();
   });

@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Session tasks can require attendance at the last session.** Each task in DM Settings > Task Management has a new "Requires attendance at the last session" option. When it is on, the Tasks page only deals that task to characters marked "Was at last session", and skips it (with a note) if nobody selected was there. The stock Recap task gets the flag automatically. The Tasks page pre-fills who was at the last session from the previous task assignment (or from that session's RSVPs when there is no assignment yet), and the DM can adjust it per character before dealing.
+
+### Notes
+- Includes database migration 059, which runs automatically on server start.
+
 ## [0.15.1]
 
 ### Security

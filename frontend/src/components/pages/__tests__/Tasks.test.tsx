@@ -16,7 +16,7 @@ import api from '../../../utils/api';
 // Stock task definitions as served by GET /session-tasks
 const TASK_DEFINITIONS = [
   { id: 1, phase: 'pre', name: 'Get Dice Trays', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 1 },
-  { id: 2, phase: 'pre', name: 'Recap', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 2 },
+  { id: 2, phase: 'pre', name: 'Recap', quantity: 1, min_characters: null, is_snack_master: false, requires_previous_attendance: true, sort_order: 2 },
   { id: 3, phase: 'pre', name: 'Bring in extra chairs if needed', quantity: 1, min_characters: 6, is_snack_master: false, sort_order: 3 },
   { id: 4, phase: 'during', name: 'Calendar Master', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 1 },
   { id: 5, phase: 'during', name: 'Loot Master', quantity: 2, min_characters: null, is_snack_master: false, sort_order: 2 },
@@ -25,13 +25,52 @@ const TASK_DEFINITIONS = [
   { id: 8, phase: 'post', name: 'Ensure no duplicate snacks for next session', quantity: 1, min_characters: null, is_snack_master: true, sort_order: 2 },
 ];
 
-// Route api.get by URL: task definitions, characters, and everything else empty.
-const mockGetWithCharacters = (characters: Array<{ id: number; name: string; player_name: string }>) => {
+// Route api.get by URL: task definitions, characters, optionally who was at
+// the last session, and everything else empty.
+const mockGetWithCharacters = (
+  characters: Array<{ id: number; name: string; player_name: string }>,
+  lastSessionCharacterIds: number[] | null = null
+) => {
   vi.mocked(api.get).mockImplementation((url: string) => {
     if (url === '/session-tasks') return Promise.resolve({ data: { data: TASK_DEFINITIONS } });
     if (url === '/user/active-characters') return Promise.resolve({ data: characters });
+    if (url === '/sessions/last-session-attendees') {
+      return Promise.resolve({
+        data: {
+          data: lastSessionCharacterIds === null
+            ? null
+            : { source: 'task_history', session_title: 'Session 12', recorded_at: '2026-09-04T00:00:00Z', character_ids: lastSessionCharacterIds },
+        },
+      });
+    }
     return Promise.resolve({ data: [] });
   });
+};
+
+const FOUR_CHARACTERS = [
+  { id: 1, name: 'Fighter Bob', player_name: 'Bob' },
+  { id: 2, name: 'Wizard Alice', player_name: 'Alice' },
+  { id: 3, name: 'Rogue Cat', player_name: 'Cat' },
+  { id: 4, name: 'Cleric Dan', player_name: 'Dan' },
+];
+
+type Assignments = { pre: Record<string, string[]>; during: Record<string, string[]>; post: Record<string, string[]> };
+
+// Click Assign and return what was saved to history.
+const assignAndReadHistory = async (): Promise<Assignments> => {
+  fireEvent.click(
+    screen.getByRole('button', { name: /assign tasks and send to discord/i })
+  );
+
+  let assignments: Assignments = { pre: {}, during: {}, post: {} };
+  await waitFor(() => {
+    const call = (api.post as any).mock.calls.find(
+      (c: any[]) => c[0] === '/sessions/task-history'
+    );
+    expect(call).toBeTruthy();
+    assignments = call[1].assignments;
+  });
+  return assignments;
 };
 
 const renderComponent = () =>
@@ -235,6 +274,9 @@ describe('Tasks', () => {
     // A task with min_characters 6 stays out of the pool with only 4 selected.
     expect(Object.values(assignments.pre).flat()).not.toContain('Bring in extra chairs if needed');
 
+    // Nobody is marked as having been at the last session, so Recap is skipped.
+    expect(Object.values(assignments.pre).flat()).not.toContain('Recap');
+
     // No one should ever receive the same task twice - including Free Space -
     // across any of the three task groups (4 characters is plenty of room).
     for (const group of [assignments.pre, assignments.during, assignments.post]) {
@@ -246,5 +288,69 @@ describe('Tasks', () => {
         }
       }
     }
+  });
+
+  it('only deals a task that requires previous attendance to characters who were at the last session', async () => {
+    // Only Bob and Alice were at the last session.
+    mockGetWithCharacters(FOUR_CHARACTERS, [1, 2]);
+    renderComponent();
+
+    await screen.findByText('Fighter Bob');
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/sessions/last-session-attendees');
+    });
+
+    fireEvent.click(screen.getByText('Fighter Bob'));
+    fireEvent.click(screen.getByText('Wizard Alice'));
+    fireEvent.click(screen.getByText('Rogue Cat'));
+    fireEvent.click(screen.getByText('Cleric Dan'));
+
+    // Run the deal several times: the Recap must always land on Bob or Alice
+    // and each person must still end up with the same number of pre-session slots.
+    for (let round = 0; round < 8; round++) {
+      vi.mocked(api.post).mockClear();
+      const assignments = await assignAndReadHistory();
+
+      const holders = Object.entries(assignments.pre)
+        .filter(([, tasks]) => tasks.includes('Recap'))
+        .map(([name]) => name);
+      expect(holders).toHaveLength(1);
+      expect(['Fighter Bob', 'Wizard Alice']).toContain(holders[0]);
+
+      const slotCounts = Object.values(assignments.pre).map(tasks => tasks.length);
+      expect(new Set(slotCounts).size).toBe(1);
+      for (const tasks of Object.values(assignments.pre)) {
+        expect(new Set(tasks).size).toBe(tasks.length);
+      }
+    }
+  });
+
+  it('lets the DM override who was at the last session and explains a skipped task', async () => {
+    mockGetWithCharacters(FOUR_CHARACTERS, [1]);
+    renderComponent();
+
+    fireEvent.click(await screen.findByText('Fighter Bob'));
+    // Bob is pre-marked from the last session; untick him. (The accessible
+    // name comes from the wrapping tooltip.)
+    const attendedBoxes = await screen.findAllByRole('checkbox', { name: /was at the last session/i });
+    expect(attendedBoxes).toHaveLength(1);
+    expect(attendedBoxes[0]).toBeChecked();
+    fireEvent.click(attendedBoxes[0]);
+    expect(attendedBoxes[0]).not.toBeChecked();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /assign tasks and send to discord/i })
+    );
+
+    await waitFor(() => {
+      const call = (api.post as any).mock.calls.find(
+        (c: any[]) => c[0] === '/sessions/task-history'
+      );
+      expect(call).toBeTruthy();
+      expect(Object.values(call[1].assignments.pre).flat()).not.toContain('Recap');
+    });
+    expect(
+      await screen.findByText(/skipped recap: nobody selected is marked as having been at the last session/i)
+    ).toBeInTheDocument();
   });
 });

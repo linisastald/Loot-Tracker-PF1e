@@ -714,6 +714,104 @@ describe('GET /sessions/task-history', () => {
 });
 
 // ===========================================================================
+// GET /sessions/last-session-attendees
+// ===========================================================================
+describe('GET /sessions/last-session-attendees', () => {
+  // Query order in the route: upcoming session -> task history ->
+  // (history hit: character lookup) | (miss: past session -> RSVPs)
+
+  it('uses the most recent qualifying task assignment and maps names to active character ids', async () => {
+    dbUtils.executeQuery
+      .mockResolvedValueOnce({ rows: [{ id: 30 }] }) // next upcoming session
+      .mockResolvedValueOnce({
+        rows: [{
+          session_title: 'Session 12',
+          created_at: '2026-09-04T01:00:00Z',
+          assignments: {
+            pre: { 'Fighter Bob': ['Recap'] },
+            during: { 'Fighter Bob': ['Loot Master'], 'Wizard Alice': ['Lore Master'] },
+            post: { 'Wizard Alice': ['Trash'], DM: ['Snacks'] },
+          },
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] }); // character lookup
+
+    const res = await request(app).get('/sessions/last-session-attendees');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      source: 'task_history',
+      session_title: 'Session 12',
+      recorded_at: '2026-09-04T01:00:00Z',
+      character_ids: [1, 2],
+    });
+
+    // History query excludes the upcoming session and keys the age check on
+    // the session's start time, not on when the deal was clicked.
+    const [historySql, historyParams] = dbUtils.executeQuery.mock.calls[1];
+    expect(historySql).toContain('sth.session_id IS DISTINCT FROM $1::int');
+    expect(historySql).toContain("gs.start_time < NOW() - INTERVAL '12 hours'");
+    expect(historyParams).toEqual([30]);
+
+    // The DM pseudo-entry is never looked up; only active characters count.
+    const [charSql, charParams] = dbUtils.executeQuery.mock.calls[2];
+    expect(charSql).toContain('active = true');
+    expect(charParams[0].sort()).toEqual(['Fighter Bob', 'Wizard Alice']);
+  });
+
+  it('falls back to attending RSVPs on the most recent past session when there is no usable history', async () => {
+    dbUtils.executeQuery
+      .mockResolvedValueOnce({ rows: [] }) // no upcoming session
+      .mockResolvedValueOnce({ rows: [] }) // no history
+      .mockResolvedValueOnce({ rows: [{ id: 12, title: 'Session 12', start_time: '2026-09-03T23:00:00Z' }] })
+      .mockResolvedValueOnce({ rows: [{ character_id: 5 }, { character_id: null }, { character_id: 7 }] });
+
+    const res = await request(app).get('/sessions/last-session-attendees');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      source: 'rsvp',
+      session_title: 'Session 12',
+      recorded_at: '2026-09-03T23:00:00Z',
+      character_ids: [5, 7],
+    });
+
+    // Null upcoming id is bound (not interpolated) and the RSVP match accepts
+    // either a Discord response_type or an in-app accepted status.
+    expect(dbUtils.executeQuery.mock.calls[1][1]).toEqual([null]);
+    const [rsvpSql, rsvpParams] = dbUtils.executeQuery.mock.calls[3];
+    expect(rsvpSql).toContain('sa.response_type = ANY($2::text[]) OR sa.status = $3');
+    expect(rsvpParams[0]).toBe(12);
+    expect(rsvpParams[1]).toEqual(expect.arrayContaining(['yes', 'late', 'early', 'late_and_early']));
+    expect(rsvpParams[1]).not.toContain('no');
+    expect(rsvpParams[2]).toBe('accepted');
+  });
+
+  it('returns null data when there is neither history nor a past session', async () => {
+    dbUtils.executeQuery
+      .mockResolvedValueOnce({ rows: [{ id: 30 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app).get('/sessions/last-session-attendees');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, data: null });
+    expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns 500 on database error', async () => {
+    dbUtils.executeQuery.mockRejectedValue(new Error('fail'));
+
+    const res = await request(app).get('/sessions/last-session-attendees');
+
+    expect(res.status).toBe(500);
+    expect(res.body.success).toBe(false);
+    expect(logger.error).toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
 // POST /sessions/:id/announce
 // ===========================================================================
 describe('POST /sessions/:id/announce', () => {
