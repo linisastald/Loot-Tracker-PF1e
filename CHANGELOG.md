@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.15.0]
 
 ### Added
 - **DMs can edit the session task lists.** A new DM Settings > Task Management page lets the DM add, edit, delete, and reorder the pre-session, during-session, and post-session tasks the Tasks page deals out, per campaign. Each task can be dealt to more than one person ("copies", like the two Loot Masters), can be held back until a minimum number of characters are present (like the extra-chairs task at 6+), and one task can be flagged as the one that names next session's Snack Master. A "Restore defaults" button puts the stock list back. Existing campaigns start with the same tasks they had before.
