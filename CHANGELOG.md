@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.15.1]
+
+### Security
+- **Dependency security updates.** Cleared all 33 open Dependabot alerts (16 high, 17 moderate) across the app, the frontend, and the Discord broker. Notable runtime packages: the email library (nodemailer 9.1.1), the client-side router (react-router 7.18.3), and query-string parsing (qs 6.16.0); the rest are build and test tooling. No intended change to how the app works.
+
 ## [0.15.0]
 
 ### Added
