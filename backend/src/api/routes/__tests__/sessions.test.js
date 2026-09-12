@@ -57,8 +57,8 @@ jest.mock('../../../utils/dbUtils', () => ({
   executeTransaction: jest.fn(),
 }));
 
-// Task definitions (DM Settings -> Task Management); default: none flagged,
-// so the legacy snack-master label fallback applies.
+// Task definitions (DM Settings -> Task Management); default: none carry an
+// announce label, so nothing is announced.
 jest.mock('../../../models/SessionTask', () => ({
   getAll: jest.fn().mockResolvedValue([]),
 }));
@@ -584,32 +584,13 @@ describe('POST /sessions/task-history', () => {
     expect(callArgs[1]).toBeNull(); // session_title
   });
 
-  it('derives snack_master_name from whoever got the snacks post-task', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 3 }] });
-
-    await request(app)
-      .post('/sessions/task-history')
-      .send({
-        assignments: {
-          pre: {},
-          during: {},
-          post: {
-            Imogen: ['Ensure no duplicate snacks for next session', 'Free Space'],
-            Wokwok: ['Food, Drink, and Trash Clear Check'],
-          },
-        },
-      });
-
-    // snack_master_name is the 6th positional arg (index 5)
-    const callArgs = dbUtils.executeQuery.mock.calls[0][1];
-    expect(callArgs[5]).toBe('Imogen');
-  });
-
-  it('uses the task definition flagged is_snack_master instead of the legacy label', async () => {
+  it('records an announcement for every task with an announce label, across phases', async () => {
     const SessionTask = require('../../../models/SessionTask');
     SessionTask.getAll.mockResolvedValueOnce([
-      { id: 1, phase: 'post', name: 'Bring snacks next week', is_snack_master: true },
-      { id: 2, phase: 'post', name: 'Ensure no duplicate snacks for next session', is_snack_master: false },
+      { id: 1, phase: 'post', name: 'Bring snacks next week', announce_label: 'Snack Master' },
+      { id: 2, phase: 'pre', name: 'Recap', announce_label: 'Recap by' },
+      { id: 3, phase: 'during', name: 'Loot Master', announce_label: 'Loot Masters' },
+      { id: 4, phase: 'post', name: 'Trash', announce_label: null },
     ]);
     dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 9 }] });
 
@@ -617,20 +598,44 @@ describe('POST /sessions/task-history', () => {
       .post('/sessions/task-history')
       .send({
         assignments: {
-          pre: {},
-          during: {},
-          post: {
-            Imogen: ['Ensure no duplicate snacks for next session'],
-            Wokwok: ['Bring snacks next week'],
-          },
+          pre: { Imogen: ['Recap'] },
+          during: { Imogen: ['Loot Master'], Wokwok: ['Loot Master'], Zolgrak: ['Lore Master'] },
+          post: { Wokwok: ['Bring snacks next week'], Zolgrak: ['Trash'] },
         },
       });
 
-    const callArgs = dbUtils.executeQuery.mock.calls[0][1];
+    const [sql, callArgs] = dbUtils.executeQuery.mock.calls[0];
+    expect(sql).toContain('snack_master_name, announcements, created_by');
+    // The legacy column still carries whoever holds the "Snack Master" label.
     expect(callArgs[5]).toBe('Wokwok');
+    expect(JSON.parse(callArgs[6])).toEqual({
+      'Snack Master': 'Wokwok',
+      'Recap by': 'Imogen',
+      'Loot Masters': 'Imogen, Wokwok',
+    });
   });
 
-  it('stores null snack_master_name when no one got the snacks task', async () => {
+  it('matches the Snack Master label case-insensitively for the legacy column', async () => {
+    const SessionTask = require('../../../models/SessionTask');
+    SessionTask.getAll.mockResolvedValueOnce([
+      { id: 1, phase: 'post', name: 'Snacks', announce_label: 'snack master' },
+    ]);
+    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 9 }] });
+
+    await request(app)
+      .post('/sessions/task-history')
+      .send({ assignments: { pre: {}, during: {}, post: { Imogen: ['Snacks'] } } });
+
+    const callArgs = dbUtils.executeQuery.mock.calls[0][1];
+    expect(callArgs[5]).toBe('Imogen');
+    expect(JSON.parse(callArgs[6])).toEqual({ 'snack master': 'Imogen' });
+  });
+
+  it('stores null snack_master_name and null announcements when nothing announced was dealt', async () => {
+    const SessionTask = require('../../../models/SessionTask');
+    SessionTask.getAll.mockResolvedValueOnce([
+      { id: 1, phase: 'post', name: 'Snacks', announce_label: 'Snack Master' },
+    ]);
     dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 4 }] });
 
     await request(app)
@@ -645,6 +650,7 @@ describe('POST /sessions/task-history', () => {
 
     const callArgs = dbUtils.executeQuery.mock.calls[0][1];
     expect(callArgs[5]).toBeNull();
+    expect(callArgs[6]).toBeNull();
   });
 
   it('should return 400 when assignments are missing', async () => {
@@ -720,19 +726,16 @@ describe('GET /sessions/last-session-attendees', () => {
   // Query order in the route: upcoming session -> task history ->
   // (history hit: character lookup) | (miss: past session -> RSVPs)
 
-  it('uses the most recent qualifying task assignment and maps names to active character ids', async () => {
+  it('uses the most recent assignment dealt for a different session and maps names to active character ids', async () => {
+    const assignments = {
+      pre: { 'Fighter Bob': ['Recap'] },
+      during: { 'Fighter Bob': ['Loot Master'], 'Wizard Alice': ['Lore Master'] },
+      post: { 'Wizard Alice': ['Trash'], DM: ['Snacks'] },
+    };
     dbUtils.executeQuery
-      .mockResolvedValueOnce({ rows: [{ id: 30 }] }) // next upcoming session
+      .mockResolvedValueOnce({ rows: [{ id: 30 }] }) // session being dealt for
       .mockResolvedValueOnce({
-        rows: [{
-          session_title: 'Session 12',
-          created_at: '2026-09-04T01:00:00Z',
-          assignments: {
-            pre: { 'Fighter Bob': ['Recap'] },
-            during: { 'Fighter Bob': ['Loot Master'], 'Wizard Alice': ['Lore Master'] },
-            post: { 'Wizard Alice': ['Trash'], DM: ['Snacks'] },
-          },
-        }],
+        rows: [{ session_title: 'Session 12', created_at: '2026-09-04T01:00:00Z', assignments }],
       })
       .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] }); // character lookup
 
@@ -744,13 +747,19 @@ describe('GET /sessions/last-session-attendees', () => {
       session_title: 'Session 12',
       recorded_at: '2026-09-04T01:00:00Z',
       character_ids: [1, 2],
+      assignments,
     });
 
-    // History query excludes the upcoming session and keys the age check on
-    // the session's start time, not on when the deal was clicked.
+    // "Current" = first session that started < 12h ago or is still to come;
+    // each record is attributed to a session the same way from its created_at,
+    // and the stored session_id is deliberately ignored.
+    const [currentSql] = dbUtils.executeQuery.mock.calls[0];
+    expect(currentSql).toContain("start_time > NOW() - INTERVAL '12 hours'");
+    expect(currentSql).toContain('ORDER BY start_time ASC');
     const [historySql, historyParams] = dbUtils.executeQuery.mock.calls[1];
-    expect(historySql).toContain('sth.session_id IS DISTINCT FROM $1::int');
-    expect(historySql).toContain("gs.start_time < NOW() - INTERVAL '12 hours'");
+    expect(historySql).toContain("gs.start_time > sth.created_at - INTERVAL '12 hours'");
+    expect(historySql).toContain('dealt_for_session_id IS DISTINCT FROM $1::int');
+    expect(historySql).not.toContain('sth.session_id');
     expect(historyParams).toEqual([30]);
 
     // The DM pseudo-entry is never looked up; only active characters count.
@@ -774,6 +783,7 @@ describe('GET /sessions/last-session-attendees', () => {
       session_title: 'Session 12',
       recorded_at: '2026-09-03T23:00:00Z',
       character_ids: [5, 7],
+      assignments: null,
     });
 
     // Null upcoming id is bound (not interpolated) and the RSVP match accepts

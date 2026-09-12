@@ -1,7 +1,7 @@
 // backend/src/models/SessionTask.js
 //
 // Data access for DM-editable session task definitions (the pre/during/post
-// task pools dealt out by the Tasks page).
+// task pools dealt out by the Tasks page) and their per-task options.
 //
 // Row-Level Security on session_task_definition scopes every query to the
 // request's campaign (dbUtils sets the app.current_campaign GUC). Every query
@@ -10,9 +10,25 @@
 // on an owner/admin connection would deal out every campaign's tasks at once.
 
 const dbUtils = require('../utils/dbUtils');
-const { DEFAULT_SESSION_TASKS } = require('../constants/sessionTaskDefaults');
+const {
+  DEFAULT_SESSION_TASKS,
+  TASK_OPTION_DEFAULTS,
+  TASK_OPTION_FIELDS,
+} = require('../constants/sessionTaskDefaults');
 
-const COLUMNS = 'id, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance, sort_order, created_at, updated_at';
+// Everything the DM can edit: phase, name, then every option column.
+const EDITABLE_FIELDS = ['phase', 'name', ...TASK_OPTION_FIELDS];
+
+const COLUMNS = ['id', ...EDITABLE_FIELDS, 'sort_order', 'created_at', 'updated_at'].join(', ');
+
+/** Fill in defaults so callers can pass a partial option set. */
+const withDefaults = (data) => ({ ...TASK_OPTION_DEFAULTS, ...data });
+
+/** Values for EDITABLE_FIELDS in order. */
+const editableValues = (data) => {
+  const full = withDefaults(data);
+  return EDITABLE_FIELDS.map((field) => full[field]);
+};
 
 /**
  * All task definitions for a campaign, ordered by phase then sort order.
@@ -44,19 +60,23 @@ exports.getById = async (campaignId, id) => {
 };
 
 /**
- * Create a task at the end of its phase's list.
+ * Create a task at the end of its phase's list. Any option left out of
+ * `data` takes its default from TASK_OPTION_DEFAULTS.
  * @param {number} campaignId
- * @param {{phase:string, name:string, quantity:number, min_characters:number|null, is_snack_master:boolean, requires_previous_attendance:boolean}} data
+ * @param {Object} data - { phase, name, ...options }
  */
-exports.create = async (campaignId, { phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance = false }) => {
+exports.create = async (campaignId, data) => {
+  const values = editableValues(data);
+  // $1 campaign, $2 phase, $3 name, $4.. options, then the sort_order subquery
+  const placeholders = values.map((_, i) => `$${i + 2}`).join(', ');
   const result = await dbUtils.executeQuery(
-    `INSERT INTO session_task_definition (campaign_id, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance, sort_order)
-     VALUES ($1::int, $2::text, $3, $4, $5, $6, $7,
+    `INSERT INTO session_task_definition (campaign_id, ${EDITABLE_FIELDS.join(', ')}, sort_order)
+     VALUES ($1::int, ${placeholders},
              (SELECT COALESCE(MAX(sort_order), 0) + 1
               FROM session_task_definition
               WHERE campaign_id = $1::int AND phase = $2::text))
      RETURNING ${COLUMNS}`,
-    [campaignId, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance]
+    [campaignId, ...values]
   );
   return result.rows[0];
 };
@@ -66,16 +86,17 @@ exports.create = async (campaignId, { phase, name, quantity, min_characters, is_
  * is not in the campaign.
  * @param {number} campaignId
  * @param {number} id
- * @param {{phase:string, name:string, quantity:number, min_characters:number|null, is_snack_master:boolean, requires_previous_attendance:boolean}} data
+ * @param {Object} data - { phase, name, ...options }
  */
-exports.update = async (campaignId, id, { phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance = false }) => {
+exports.update = async (campaignId, id, data) => {
+  const values = editableValues(data);
+  const assignments = EDITABLE_FIELDS.map((field, i) => `${field} = $${i + 3}`).join(', ');
   const result = await dbUtils.executeQuery(
     `UPDATE session_task_definition
-     SET phase = $3, name = $4, quantity = $5, min_characters = $6, is_snack_master = $7,
-         requires_previous_attendance = $8, updated_at = NOW()
+     SET ${assignments}, updated_at = NOW()
      WHERE campaign_id = $1 AND id = $2
      RETURNING ${COLUMNS}`,
-    [campaignId, id, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance]
+    [campaignId, id, ...values]
   );
   return result.rows.length > 0 ? result.rows[0] : null;
 };
@@ -94,18 +115,16 @@ exports.remove = async (campaignId, id) => {
 };
 
 /**
- * Clear the snack-master flag from every task in the campaign except the
- * given id, so at most one task designates the Snack Master.
- * @param {number} campaignId
- * @param {number|null} keepId - id to leave flagged (null = clear all)
+ * Whether a character id belongs to the campaign (for fixed_character_id).
+ * The characters table is RLS-scoped, so a foreign campaign's id is invisible.
+ * @param {number} characterId
  */
-exports.clearSnackMasterExcept = async (campaignId, keepId) => {
-  await dbUtils.executeQuery(
-    `UPDATE session_task_definition
-     SET is_snack_master = false, updated_at = NOW()
-     WHERE campaign_id = $1 AND is_snack_master = true AND ($2::int IS NULL OR id <> $2::int)`,
-    [campaignId, keepId]
+exports.characterExists = async (characterId) => {
+  const result = await dbUtils.executeQuery(
+    'SELECT id FROM characters WHERE id = $1',
+    [characterId]
   );
+  return result.rows.length > 0;
 };
 
 /**
@@ -136,12 +155,12 @@ exports.reorder = async (campaignId, phase, orderedIds) => {
  * @param {number} campaignId
  */
 exports.seedDefaults = async (client, campaignId) => {
+  const placeholders = EDITABLE_FIELDS.map((_, i) => `$${i + 2}`).join(', ');
   for (const task of DEFAULT_SESSION_TASKS) {
     await client.query(
-      `INSERT INTO session_task_definition (campaign_id, phase, name, quantity, min_characters, is_snack_master, requires_previous_attendance, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [campaignId, task.phase, task.name, task.quantity, task.min_characters, task.is_snack_master,
-        task.requires_previous_attendance === true, task.sort_order]
+      `INSERT INTO session_task_definition (campaign_id, ${EDITABLE_FIELDS.join(', ')}, sort_order)
+       VALUES ($1, ${placeholders}, $${EDITABLE_FIELDS.length + 2})`,
+      [campaignId, ...editableValues(task), task.sort_order]
     );
   }
 };
@@ -157,3 +176,5 @@ exports.resetDefaults = async (campaignId) => {
   });
   return exports.getAll(campaignId);
 };
+
+exports.EDITABLE_FIELDS = EDITABLE_FIELDS;

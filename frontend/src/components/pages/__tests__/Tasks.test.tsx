@@ -13,39 +13,86 @@ vi.mock('../../../utils/api', () => ({
 import Tasks from '../Tasks';
 import api from '../../../utils/api';
 
-// Stock task definitions as served by GET /session-tasks
+// Every task option at its default, as served by GET /session-tasks
+const OPTION_DEFAULTS = {
+  quantity: 1,
+  min_characters: null,
+  max_characters: null,
+  is_snack_master: false,
+  requires_previous_attendance: false,
+  exclude_late: false,
+  exclude_early: false,
+  dm_eligible: false,
+  announce_label: null,
+  sticky: false,
+  avoid_repeat: false,
+  priority: 0,
+  is_active: true,
+  description: null,
+  fixed_character_id: null,
+};
+
+let nextId = 1;
+const def = (phase: string, name: string, over: Record<string, unknown> = {}) => ({
+  id: nextId++,
+  phase,
+  name,
+  sort_order: nextId,
+  ...OPTION_DEFAULTS,
+  ...over,
+});
+
+// Stock task definitions: pre tasks skip late arrivals, post tasks let the DM draw.
 const TASK_DEFINITIONS = [
-  { id: 1, phase: 'pre', name: 'Get Dice Trays', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 1 },
-  { id: 2, phase: 'pre', name: 'Recap', quantity: 1, min_characters: null, is_snack_master: false, requires_previous_attendance: true, sort_order: 2 },
-  { id: 3, phase: 'pre', name: 'Bring in extra chairs if needed', quantity: 1, min_characters: 6, is_snack_master: false, sort_order: 3 },
-  { id: 4, phase: 'during', name: 'Calendar Master', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 1 },
-  { id: 5, phase: 'during', name: 'Loot Master', quantity: 2, min_characters: null, is_snack_master: false, sort_order: 2 },
-  { id: 6, phase: 'during', name: 'Lore Master', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 3 },
-  { id: 7, phase: 'post', name: 'TV(s) wiped and turned off', quantity: 1, min_characters: null, is_snack_master: false, sort_order: 1 },
-  { id: 8, phase: 'post', name: 'Ensure no duplicate snacks for next session', quantity: 1, min_characters: null, is_snack_master: true, sort_order: 2 },
+  def('pre', 'Get Dice Trays', { exclude_late: true }),
+  def('pre', 'Recap', { exclude_late: true, requires_previous_attendance: true }),
+  def('pre', 'Bring in extra chairs if needed', { exclude_late: true, min_characters: 6 }),
+  def('during', 'Calendar Master'),
+  def('during', 'Loot Master', { quantity: 2 }),
+  def('during', 'Lore Master'),
+  def('post', 'TV(s) wiped and turned off', { dm_eligible: true }),
+  def('post', 'Ensure no duplicate snacks for next session', { dm_eligible: true, announce_label: 'Snack Master' }),
 ];
 
 // Route api.get by URL: task definitions, characters, optionally who was at
 // the last session, and everything else empty.
 const mockGetWithCharacters = (
   characters: Array<{ id: number; name: string; player_name: string }>,
-  lastSessionCharacterIds: number[] | null = null
+  lastSessionCharacterIds: number[] | null = null,
+  definitions: unknown[] = TASK_DEFINITIONS,
+  lastAssignments: Record<string, Record<string, string[]>> | null = null
 ) => {
   vi.mocked(api.get).mockImplementation((url: string) => {
-    if (url === '/session-tasks') return Promise.resolve({ data: { data: TASK_DEFINITIONS } });
+    if (url === '/session-tasks') return Promise.resolve({ data: { data: definitions } });
     if (url === '/user/active-characters') return Promise.resolve({ data: characters });
     if (url === '/sessions/last-session-attendees') {
       return Promise.resolve({
         data: {
           data: lastSessionCharacterIds === null
             ? null
-            : { source: 'task_history', session_title: 'Session 12', recorded_at: '2026-09-04T00:00:00Z', character_ids: lastSessionCharacterIds },
+            : {
+              source: 'task_history',
+              session_title: 'Session 12',
+              recorded_at: '2026-09-04T00:00:00Z',
+              character_ids: lastSessionCharacterIds,
+              assignments: lastAssignments,
+            },
         },
       });
     }
     return Promise.resolve({ data: [] });
   });
 };
+
+const selectAll = async () => {
+  fireEvent.click(await screen.findByText('Fighter Bob'));
+  fireEvent.click(screen.getByText('Wizard Alice'));
+  fireEvent.click(screen.getByText('Rogue Cat'));
+  fireEvent.click(screen.getByText('Cleric Dan'));
+};
+
+const holdersOf = (group: Record<string, string[]>, taskName: string) =>
+  Object.entries(group).filter(([, tasks]) => tasks.includes(taskName)).map(([name]) => name);
 
 const FOUR_CHARACTERS = [
   { id: 1, name: 'Fighter Bob', player_name: 'Bob' },
@@ -350,7 +397,136 @@ describe('Tasks', () => {
       expect(Object.values(call[1].assignments.pre).flat()).not.toContain('Recap');
     });
     expect(
-      await screen.findByText(/skipped recap: nobody selected is marked as having been at the last session/i)
+      await screen.findByText(/not dealt: recap \(nobody selected can take it\)/i)
+    ).toBeInTheDocument();
+  });
+
+  it('gives a fixed-assignee task to that character and keeps a sticky task with last session\'s holder', async () => {
+    mockGetWithCharacters(
+      FOUR_CHARACTERS,
+      [1, 2, 3, 4],
+      [
+        def('during', 'Calendar Master', { fixed_character_id: 3 }),
+        def('during', 'Loot Master', { quantity: 2, sticky: true }),
+        def('during', 'Lore Master'),
+      ],
+      { pre: {}, during: { 'Wizard Alice': ['Loot Master'], 'Cleric Dan': ['Loot Master', 'Lore Master'] }, post: {} }
+    );
+    renderComponent();
+    await selectAll();
+
+    for (let round = 0; round < 6; round++) {
+      vi.mocked(api.post).mockClear();
+      const assignments = await assignAndReadHistory();
+      expect(holdersOf(assignments.during, 'Calendar Master')).toEqual(['Rogue Cat']);
+      expect(holdersOf(assignments.during, 'Loot Master').sort()).toEqual(['Cleric Dan', 'Wizard Alice']);
+      // Everyone still has exactly one task and nobody has a duplicate.
+      for (const tasks of Object.values(assignments.during)) {
+        expect(tasks).toHaveLength(1);
+      }
+    }
+  });
+
+  it('never repeats a rotating task on last session\'s holder while someone else can take it', async () => {
+    mockGetWithCharacters(
+      FOUR_CHARACTERS,
+      [1, 2, 3, 4],
+      [def('post', 'Trash run', { avoid_repeat: true, dm_eligible: false }), def('post', 'Wipe TV')],
+      { pre: {}, during: {}, post: { 'Fighter Bob': ['Trash run'] } }
+    );
+    renderComponent();
+    await selectAll();
+
+    for (let round = 0; round < 8; round++) {
+      vi.mocked(api.post).mockClear();
+      const assignments = await assignAndReadHistory();
+      expect(holdersOf(assignments.post, 'Trash run')).not.toContain('Fighter Bob');
+      // No task lets the DM draw, so the DM is not in the post deal.
+      expect(assignments.post.DM).toBeUndefined();
+    }
+  });
+
+  it('skips inactive tasks, tasks over their maximum, and early leavers for tasks that exclude them', async () => {
+    mockGetWithCharacters(
+      FOUR_CHARACTERS,
+      null,
+      [
+        def('during', 'Retired job', { is_active: false }),
+        def('during', 'Small table only', { max_characters: 3 }),
+        def('during', 'Lock up', { exclude_early: true }),
+        def('during', 'Lore Master'),
+      ]
+    );
+    renderComponent();
+    await selectAll();
+
+    // Mark Bob as leaving early (the toggle only appears because a task excludes early leavers).
+    const earlyBoxes = await screen.findAllByRole('checkbox', { name: /mark as leaving early/i });
+    fireEvent.click(earlyBoxes[0]);
+    expect(screen.getByText(/1 leaving early/)).toBeInTheDocument();
+
+    for (let round = 0; round < 6; round++) {
+      vi.mocked(api.post).mockClear();
+      const assignments = await assignAndReadHistory();
+      const all = Object.values(assignments.during).flat();
+      expect(all).not.toContain('Retired job');
+      expect(all).not.toContain('Small table only');
+      expect(holdersOf(assignments.during, 'Lock up')).toHaveLength(1);
+      expect(holdersOf(assignments.during, 'Lock up')).not.toContain('Fighter Bob');
+    }
+  });
+
+  it('never crowds out a constrained task while someone else still has a free slot', async () => {
+    // Four people, four pre tasks (one slot each); only Bob was at the last
+    // session, so Recap can only go to him. Dealing the other tasks first
+    // could fill Bob's slot and leave Recap undealt - it must go first.
+    mockGetWithCharacters(
+      FOUR_CHARACTERS,
+      [1],
+      [
+        def('pre', 'Get Dice Trays'),
+        def('pre', 'Wipe TV'),
+        def('pre', 'Recap', { requires_previous_attendance: true }),
+        def('pre', 'Name tags'),
+      ]
+    );
+    renderComponent();
+    await selectAll();
+
+    for (let round = 0; round < 12; round++) {
+      vi.mocked(api.post).mockClear();
+      const assignments = await assignAndReadHistory();
+      expect(assignments.pre['Fighter Bob']).toEqual(['Recap']);
+      expect(Object.values(assignments.pre).flat()).not.toContain('Free Space');
+    }
+    expect(screen.queryByText(/not dealt/i)).not.toBeInTheDocument();
+  });
+
+  it('always deals a must-deal task even when the only eligible person is already full', async () => {
+    // Only Bob attended last session. Four tasks for four people means one
+    // slot each; three of the tasks can only go to Bob. The two must-deal
+    // ones still go out (Bob ends up with three), the normal one is reported
+    // as not dealt.
+    mockGetWithCharacters(
+      FOUR_CHARACTERS,
+      [1],
+      [
+        def('pre', 'Get Dice Trays'),
+        def('pre', 'Recap', { requires_previous_attendance: true, priority: 2 }),
+        def('pre', 'Continue the cliffhanger', { requires_previous_attendance: true, priority: 2 }),
+        def('pre', 'Remind everyone of the NPC names', { requires_previous_attendance: true }),
+      ]
+    );
+    renderComponent();
+    await selectAll();
+
+    const assignments = await assignAndReadHistory();
+    expect(assignments.pre['Fighter Bob']).toEqual(
+      expect.arrayContaining(['Recap', 'Continue the cliffhanger'])
+    );
+    expect(Object.values(assignments.pre).flat()).not.toContain('Remind everyone of the NPC names');
+    expect(
+      await screen.findByText(/remind everyone of the npc names \(everyone is full/i)
     ).toBeInTheDocument();
   });
 });

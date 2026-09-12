@@ -378,10 +378,10 @@ class SessionDiscordService {
             attendance = await attendanceService.getSessionAttendance(session.id);
         }
 
-        // Look up the snack master designated in the most recent task
-        // assignment made before this session begins. Whoever was given the
-        // post-session "snacks for next session" task is responsible for
-        // snacks at THIS (the next) session.
+        // Look up the announcements recorded with the most recent task
+        // assignment made before this session begins: every task with an
+        // announce label (Snack Master, Recap, ...) names its assignee for
+        // THIS (the next) session. Older rows only carry snack_master_name.
         //
         // We key off the assignment's own created_at rather than its linked
         // session_id: the DM usually runs the Tasks page at the table once a
@@ -390,18 +390,23 @@ class SessionDiscordService {
         // not the session just played. Trusting session_id therefore lags one
         // session behind. created_at is reliable because each task run is
         // created at the previous session, before this one's start_time.
-        let snackMasterName = null;
+        let announcements = {};
         try {
-            const snackResult = await dbUtils.executeQuery(`
-                SELECT snack_master_name
+            const announceResult = await dbUtils.executeQuery(`
+                SELECT announcements, snack_master_name
                 FROM session_task_history
-                WHERE snack_master_name IS NOT NULL
+                WHERE (announcements IS NOT NULL OR snack_master_name IS NOT NULL)
                   AND created_at < $1
                 ORDER BY created_at DESC
                 LIMIT 1
             `, [session.start_time]);
-            if (snackResult.rows.length > 0) {
-                snackMasterName = snackResult.rows[0].snack_master_name;
+            if (announceResult.rows.length > 0) {
+                const row = announceResult.rows[0];
+                if (row.announcements && typeof row.announcements === 'object') {
+                    announcements = row.announcements;
+                } else if (row.snack_master_name) {
+                    announcements = { 'Snack Master': row.snack_master_name };
+                }
             }
         } catch (err) {
             logger.warn('Failed to look up snack master name', { error: err.message });
@@ -470,11 +475,14 @@ class SessionDiscordService {
             }
         ];
 
-        // Add snack master field if assigned
-        if (snackMasterName) {
+        // One field per announced task (Snack Master keeps its popcorn).
+        // Discord allows 25 fields per embed; leave room for the base ones.
+        for (const [label, assignee] of Object.entries(announcements).slice(0, 15)) {
+            if (!assignee) continue;
+            const emoji = /snack/i.test(label) ? '🍿' : '📌';
             fields.push({
-                name: '🍿 Snack Master',
-                value: snackMasterName,
+                name: `${emoji} ${label}`,
+                value: String(assignee),
                 inline: false
             });
         }

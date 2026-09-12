@@ -16,7 +16,7 @@ const {
     ATTENDANCE_STATUS
 } = require('../../constants/sessionConstants');
 const SessionTask = require('../../models/SessionTask');
-const { LEGACY_SNACK_MASTER_TASK } = require('../../constants/sessionTaskDefaults');
+const { SNACK_MASTER_LABEL } = require('../../constants/sessionTaskDefaults');
 
 // Middleware to check express-validator validation results
 const validateRequest = (req, res, next) => {
@@ -166,12 +166,18 @@ router.get('/next-with-attendance', verifyToken, async (req, res) => {
 //
 // The primary source is the most recent task-assignment record: the Tasks page
 // selection at the last session IS the real attendance, whereas RSVPs are only
-// intentions. A record only counts once its session started more than 12 hours
-// ago (or, for records with no session, once the record itself is that old),
-// so a deal made for the current session - whether the night before or as a
-// re-deal mid-session - still points at the previous one. With no usable
-// history (new campaign), falls back to attending RSVPs on the most recent
-// past session.
+// intentions. It also returns that record's assignments so the Tasks page can
+// apply the sticky / avoid-repeat task options.
+//
+// "The session being dealt for" is the first non-cancelled session that
+// started less than 12 hours ago or is still to come - so it is tonight's
+// session whether the DM deals the night before, at the table, or two hours
+// in. Each history record is attributed to a session the same way (from its
+// created_at), and the previous session is the newest record attributed to a
+// different session. This deliberately ignores the record's stored session_id,
+// which lags one session behind when the deal happens after start time. With
+// no usable history (new campaign), falls back to attending RSVPs on the most
+// recent past session.
 
 // Discord response types that mean "attending" (yes / late / early / ...)
 const ATTENDING_RESPONSES = Object.entries(RESPONSE_TYPE_MAP)
@@ -180,28 +186,33 @@ const ATTENDING_RESPONSES = Object.entries(RESPONSE_TYPE_MAP)
 
 router.get('/last-session-attendees', verifyToken, async (req, res) => {
     try {
-        const upcomingResult = await dbUtils.executeQuery(`
+        const currentResult = await dbUtils.executeQuery(`
             SELECT id
             FROM game_sessions
-            WHERE start_time > NOW()
+            WHERE start_time > NOW() - INTERVAL '12 hours'
               AND (status IS NULL OR status != 'cancelled')
             ORDER BY start_time ASC
             LIMIT 1
         `);
-        const upcomingId = upcomingResult.rows.length > 0 ? upcomingResult.rows[0].id : null;
+        const currentId = currentResult.rows.length > 0 ? currentResult.rows[0].id : null;
 
         const historyResult = await dbUtils.executeQuery(`
-            SELECT sth.session_title, sth.assignments, sth.created_at
-            FROM session_task_history sth
-            LEFT JOIN game_sessions gs ON gs.id = sth.session_id
-            WHERE ($1::int IS NULL OR sth.session_id IS DISTINCT FROM $1::int)
-              AND (
-                    (sth.session_id IS NOT NULL AND gs.start_time < NOW() - INTERVAL '12 hours')
-                 OR (sth.session_id IS NULL AND sth.created_at < NOW() - INTERVAL '12 hours')
-              )
-            ORDER BY sth.created_at DESC
+            SELECT session_title, assignments, created_at
+            FROM (
+                SELECT sth.session_title, sth.assignments, sth.created_at,
+                       (SELECT gs.id
+                        FROM game_sessions gs
+                        WHERE gs.start_time > sth.created_at - INTERVAL '12 hours'
+                          AND (gs.status IS NULL OR gs.status != 'cancelled')
+                        ORDER BY gs.start_time ASC
+                        LIMIT 1) AS dealt_for_session_id
+                FROM session_task_history sth
+            ) h
+            WHERE h.dealt_for_session_id IS DISTINCT FROM $1::int
+               OR ($1::int IS NULL AND h.created_at < NOW() - INTERVAL '12 hours')
+            ORDER BY h.created_at DESC
             LIMIT 1
-        `, [upcomingId]);
+        `, [currentId]);
 
         if (historyResult.rows.length > 0) {
             const record = historyResult.rows[0];
@@ -226,7 +237,8 @@ router.get('/last-session-attendees', verifyToken, async (req, res) => {
                     source: 'task_history',
                     session_title: record.session_title,
                     recorded_at: record.created_at,
-                    character_ids: characterIds
+                    character_ids: characterIds,
+                    assignments
                 }
             });
         }
@@ -239,7 +251,7 @@ router.get('/last-session-attendees', verifyToken, async (req, res) => {
               AND ($1::int IS NULL OR id <> $1::int)
             ORDER BY start_time DESC
             LIMIT 1
-        `, [upcomingId]);
+        `, [currentId]);
 
         if (pastSessionResult.rows.length === 0) {
             return res.json({ success: true, data: null });
@@ -267,7 +279,8 @@ router.get('/last-session-attendees', verifyToken, async (req, res) => {
                 recorded_at: pastSession.start_time,
                 character_ids: rsvpResult.rows
                     .map(row => row.character_id)
-                    .filter(id => id !== null)
+                    .filter(id => id !== null),
+                assignments: null
             }
         });
     } catch (error) {
@@ -336,36 +349,44 @@ router.post('/task-history', verifyToken, [
             late_count = 0
         } = req.body;
 
-        // Whoever draws the task flagged is_snack_master (DM Settings -> Task
-        // Management) is snack master for the FOLLOWING session. Derive it
-        // server-side from the saved assignments so the next session's
-        // announcement can show it. Falls back to the legacy fixed label when
-        // no definition carries the flag.
-        let snackMasterLabels = [];
+        // Tasks with an announce label (DM Settings -> Task Management) name
+        // their assignee in the FOLLOWING session's announcement, e.g.
+        // { "Snack Master": "Bob" }. Derive that server-side from the saved
+        // assignments. The legacy snack_master_name column is still filled
+        // from the "Snack Master" label so older readers keep working.
+        let announcedTasks = [];
         try {
             const definitions = await SessionTask.getAll(req.campaignId);
-            snackMasterLabels = definitions
-                .filter(task => task.is_snack_master)
-                .map(task => task.name);
+            announcedTasks = definitions.filter(task => task.announce_label);
         } catch (lookupError) {
-            logger.warn('Failed to load session task definitions for snack master lookup', { error: lookupError.message });
+            logger.warn('Failed to load session task definitions for announcement lookup', { error: lookupError.message });
         }
-        if (snackMasterLabels.length === 0) {
-            snackMasterLabels = [LEGACY_SNACK_MASTER_TASK];
-        }
-        let snack_master_name = null;
-        const postAssignments = (assignments && assignments.post) || {};
-        for (const [name, tasks] of Object.entries(postAssignments)) {
-            if (Array.isArray(tasks) && tasks.some(task => snackMasterLabels.includes(task))) {
-                snack_master_name = name;
-                break;
+        // Task names are only unique within a phase, so match holders in the
+        // definition's own phase.
+        const announcements = {};
+        for (const definition of announcedTasks) {
+            const holders = [];
+            const phaseAssignments = (assignments && assignments[definition.phase]) || {};
+            for (const [name, tasks] of Object.entries(phaseAssignments)) {
+                if (Array.isArray(tasks) && tasks.includes(definition.name) && !holders.includes(name)) {
+                    holders.push(name);
+                }
+            }
+            if (holders.length > 0) {
+                const label = definition.announce_label;
+                announcements[label] = announcements[label]
+                    ? `${announcements[label]}, ${holders.join(', ')}`
+                    : holders.join(', ');
             }
         }
+        const snackKey = Object.keys(announcements)
+            .find(label => label.toLowerCase() === SNACK_MASTER_LABEL.toLowerCase());
+        const snack_master_name = snackKey ? announcements[snackKey] : null;
 
         const result = await dbUtils.executeQuery(`
             INSERT INTO session_task_history
-                (session_id, session_title, assignments, character_count, late_count, snack_master_name, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (session_id, session_title, assignments, character_count, late_count, snack_master_name, announcements, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING *
         `, [
             session_id,
@@ -374,6 +395,7 @@ router.post('/task-history', verifyToken, [
             character_count,
             late_count,
             snack_master_name,
+            Object.keys(announcements).length > 0 ? JSON.stringify(announcements) : null,
             req.user.id
         ]);
 

@@ -5,10 +5,15 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Session tasks can require attendance at the last session.** Each task in DM Settings > Task Management has a new "Requires attendance at the last session" option. When it is on, the Tasks page only deals that task to characters marked "Was at last session", and skips it (with a note) if nobody selected was there. The stock Recap task gets the flag automatically. The Tasks page pre-fills who was at the last session from the previous task assignment (or from that session's RSVPs when there is no assignment yet), and the DM can adjust it per character before dealing.
+- **Every session task now carries its own options; nothing about a phase is hardcoded any more.** In DM Settings > Task Management each task can set who can draw it (skip late arrivals, skip early leavers, let the DM draw, require attendance at the last session, or always give it to one named character), how it rotates (stay with last session's holder, or never the same person two sessions running), a priority (normal, high, or must-deal, which is handed out even if someone ends up with an extra task), a character-count range (minimum and maximum), an active switch to park a task without deleting it, a description shown under the task on the Tasks page and in Discord, and an "Announce as" label. Any task with a label is named in the next session's Discord announcement ("Snack Master: Bob", "Recap by: Alice"), which replaces the single fixed Snack Master flag. Existing tasks keep the behaviour they had: pre-session tasks skip late arrivals, post-session tasks let the DM draw, and the snacks task announces "Snack Master".
+- **Session tasks can require attendance at the last session.** With that option on, the Tasks page only deals the task to characters marked "Was at last session", and reports it as not dealt if nobody selected was there. The stock Recap task gets the flag automatically. The Tasks page pre-fills who was at the last session from the previous task assignment (or from that session's RSVPs when there is no assignment yet), and the DM can adjust it per character before dealing.
+- **Leaving-early marker on the Tasks page.** When a task skips early leavers, each selected character gets an "Early" toggle, pre-filled from their RSVP, alongside the existing "Late" one.
+
+### Changed
+- **The Tasks page explains what it could not deal.** After assigning, an info note lists any task that had nobody eligible, or that was left out because everyone was already full, with a hint to mark it "Must deal" if it has to go out.
 
 ### Notes
-- Includes database migration 059, which runs automatically on server start.
+- Includes database migrations 059 and 060, which run automatically on server start.
 
 ## [0.15.1]
 

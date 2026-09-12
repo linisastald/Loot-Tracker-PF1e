@@ -30,6 +30,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PersonIcon from '@mui/icons-material/Person';
 import HistoryIcon from '@mui/icons-material/History';
+import DirectionsRunIcon from '@mui/icons-material/DirectionsRun';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {grey} from '@mui/material/colors';
@@ -53,16 +54,27 @@ interface TaskDefinition {
     name: string;
     quantity: number;
     min_characters: number | null;
+    max_characters: number | null;
     is_snack_master: boolean;
     // Only dealt to characters marked "Was at last session" (e.g. Recap)
     requires_previous_attendance: boolean;
+    exclude_late: boolean;
+    exclude_early: boolean;
+    dm_eligible: boolean;
+    announce_label: string | null;
+    sticky: boolean;
+    avoid_repeat: boolean;
+    priority: 0 | 1 | 2;
+    is_active: boolean;
+    description: string | null;
+    fixed_character_id: number | null;
     sort_order: number;
 }
 
-// One slot in a phase's deal pool
+// One copy of a task in a phase's deal pool
 interface PoolTask {
+    def: TaskDefinition;
     name: string;
-    requiresPreviousAttendance: boolean;
 }
 
 // Someone who can be dealt a task: a character, or the DM for post-session
@@ -77,6 +89,8 @@ interface LastSessionInfo {
     session_title: string | null;
     recorded_at: string;
     character_ids: number[];
+    // Last session's deal (null when the source is RSVPs)
+    assignments?: TaskAssignment | null;
 }
 
 interface TaskAssignment {
@@ -181,6 +195,7 @@ const Tasks: React.FC = () => {
     const [activeCharacters, setActiveCharacters] = useState<Character[]>([]);
     const [selectedCharacters, setSelectedCharacters] = useState<Record<number, boolean>>({});
     const [lateArrivals, setLateArrivals] = useState<Record<number, boolean>>({});
+    const [earlyLeavers, setEarlyLeavers] = useState<Record<number, boolean>>({});
     const [attendedLastSession, setAttendedLastSession] = useState<Record<number, boolean>>({});
     const [lastSessionInfo, setLastSessionInfo] = useState<LastSessionInfo | null>(null);
     const [assignedTasks, setAssignedTasks] = useState<TaskAssignment | null>(null);
@@ -240,6 +255,10 @@ const Tasks: React.FC = () => {
                 acc[char.id] = false;
                 return acc;
             }, {});
+            const initialEarlyState = characters.reduce((acc, char) => {
+                acc[char.id] = false;
+                return acc;
+            }, {});
             const initialAttendedState = characters.reduce((acc, char) => {
                 acc[char.id] = false;
                 return acc;
@@ -275,6 +294,9 @@ const Tasks: React.FC = () => {
                             if (response === 'late' || response === 'late_and_early') {
                                 initialLateState[char.id] = true;
                             }
+                            if (response === 'early' || response === 'late_and_early') {
+                                initialEarlyState[char.id] = true;
+                            }
                         }
                     });
 
@@ -307,6 +329,7 @@ const Tasks: React.FC = () => {
 
             setSelectedCharacters(initialSelectedState);
             setLateArrivals(initialLateState);
+            setEarlyLeavers(initialEarlyState);
             setAttendedLastSession(initialAttendedState);
         } catch (error) {
             console.error('Error loading initial task state:', error);
@@ -326,11 +349,17 @@ const Tasks: React.FC = () => {
         setAttendedLastSession(prev => ({...prev, [id]: !prev[id]}));
     };
 
-    // Whether any task in the campaign is restricted to last session's attendees
-    const hasPreviousAttendanceTasks = taskDefinitions.some(def => def.requires_previous_attendance);
+    const handleToggleEarlyLeaver = (id: number) => {
+        setEarlyLeavers(prev => ({...prev, [id]: !prev[id]}));
+    };
 
-    // The DM is always treated as having been at the last session.
-    const wasAtLastSession = (person: Dealee) => person.id === 'DM' || attendedLastSession[person.id] === true;
+    // Which per-character toggles matter for this campaign's task list
+    const hasPreviousAttendanceTasks = taskDefinitions.some(def => def.requires_previous_attendance);
+    const hasEarlyLeaverTasks = taskDefinitions.some(def => def.exclude_early);
+
+    // Description for a dealt task in a phase, if the DM wrote one
+    const descriptionFor = (phase: TaskPhase, taskName: string): string | null =>
+        taskDefinitions.find(def => def.phase === phase && def.name === taskName)?.description || null;
 
     const createEmbed = (title, description, fields, color) => ({
         embeds: [{
@@ -344,14 +373,25 @@ const Tasks: React.FC = () => {
         }]
     });
 
-    const formatTasksForEmbed = (tasks: Record<string, string[]>) => {
+    // Discord caps an embed field value at 1024 characters
+    const DISCORD_FIELD_LIMIT = 1024;
+
+    const formatTasksForEmbed = (phase: TaskPhase, tasks: Record<string, string[]>) => {
         return Object.entries(tasks)
             .sort(([a], [b]) => a.localeCompare(b))
-            .map(([character, characterTasks]) => ({
-                name: character,
-                value: characterTasks.map(task => `• ${task}`).join('\n'),
-                inline: false
-            }));
+            .map(([character, characterTasks]) => {
+                const plain = characterTasks.map(task => `• ${task}`).join('\n');
+                const described = characterTasks.map(task => {
+                    const description = descriptionFor(phase, task);
+                    return description ? `• ${task}\n  _${description}_` : `• ${task}`;
+                }).join('\n');
+                return {
+                    name: character,
+                    // Drop the descriptions rather than have Discord reject the send
+                    value: described.length <= DISCORD_FIELD_LIMIT ? described : plain.slice(0, DISCORD_FIELD_LIMIT),
+                    inline: false
+                };
+            });
     };
 
     const shuffleArray = (array: any[]) => {
@@ -435,133 +475,179 @@ const Tasks: React.FC = () => {
                 return;
             }
 
-            // Get non-late arrivals for pre-session tasks
-            const onTimeChars: Dealee[] = selectedChars.filter(char => !lateArrivals[char.id]);
-            const postChars: Dealee[] = [...selectedChars, {id: 'DM', name: 'DM'}];
+            const dm: Dealee = {id: 'DM', name: 'DM'};
+            // Why a task could not be dealt, shown to the DM afterwards
+            const notes: string[] = [];
 
-            // Task pools come from DM Settings -> Task Management. A task with
-            // min_characters only joins the pool when enough characters are
-            // selected; quantity controls how many copies go in, clamped to the
-            // number of people in the phase so nobody draws the same task twice.
-            // A task that requires attendance at the last session is clamped to
-            // (and later dealt only among) the people who were there, and is
-            // skipped entirely when none of them are.
-            const skippedTasks: string[] = [];
-            const buildPool = (phase: TaskPhase, phaseChars: Dealee[]): PoolTask[] => {
-                const pool: PoolTask[] = [];
-                const eligibleCount = phaseChars.filter(wasAtLastSession).length;
-                taskDefinitions
-                    .filter(def => def.phase === phase)
-                    .filter(def => !def.min_characters || selectedChars.length >= def.min_characters)
-                    .forEach(def => {
-                        const requiresPreviousAttendance = def.requires_previous_attendance === true;
-                        if (requiresPreviousAttendance && eligibleCount === 0) {
-                            skippedTasks.push(def.name);
-                            return;
-                        }
-                        const headcount = requiresPreviousAttendance ? eligibleCount : phaseChars.length;
-                        const copies = Math.max(1, Math.min(def.quantity, headcount));
-                        for (let i = 0; i < copies; i++) {
-                            pool.push({name: def.name, requiresPreviousAttendance});
-                        }
-                    });
-                return pool;
+            // Task pools come from DM Settings -> Task Management, and every
+            // rule of the deal comes from the options on each task: inactive
+            // tasks and ones outside their character-count range stay out;
+            // eligibility (late / early / DM / last session) is per task.
+            const activeDefs = taskDefinitions.filter(def =>
+                def.is_active !== false
+                && (!def.min_characters || selectedChars.length >= def.min_characters)
+                && (!def.max_characters || selectedChars.length <= def.max_characters)
+            );
+
+            const isEligible = (def: TaskDefinition, person: Dealee): boolean => {
+                if (person.id === 'DM') return def.dm_eligible === true;
+                if (def.exclude_late && lateArrivals[person.id]) return false;
+                if (def.exclude_early && earlyLeavers[person.id]) return false;
+                if (def.requires_previous_attendance && !attendedLastSession[person.id]) return false;
+                return true;
             };
 
-            const preTasks = buildPool('pre', onTimeChars);
-            const duringTasks = buildPool('during', selectedChars);
-            const postTasks = buildPool('post', postChars);
-
-            const assignTasksToChars = (tasks: PoolTask[], chars: Dealee[]): TaskMap => {
-                if (chars.length === 0) return {};
-
-                const charCount = chars.length;
-
-                // Build the task pool with the same Free Space padding as before
-                // so each character ends up with the usual number of slots.
-                const pool = [...tasks];
-                const freeSpace: PoolTask = {name: 'Free Space', requiresPreviousAttendance: false};
-                if (tasks.length > charCount) {
-                    while (pool.length < charCount * 2) pool.push(freeSpace);
-                } else if (tasks.length < charCount) {
-                    while (pool.length < charCount) pool.push(freeSpace);
-                }
-
-                // Group identical tasks together, then deal with a single
-                // continuously-advancing pointer. Because copies of the same
-                // task are consecutive, they always land on adjacent (different)
-                // people - so the two Loot Masters can never go to one person,
-                // and the Free Space padding spreads out too. (Holds as long as
-                // no single task has more copies than there are characters.)
-                // The group order is shuffled so it isn't always alphabetical.
-                const groupByName = (items: PoolTask[]): PoolTask[] => {
-                    const groups: Record<string, PoolTask[]> = {};
-                    items.forEach(task => {
-                        (groups[task.name] = groups[task.name] || []).push(task);
+            // Who held each task last session, per phase (task names are
+            // only unique within a phase), for sticky / avoid-repeat.
+            const lastHolders: Record<TaskPhase, Record<string, string[]>> = {pre: {}, during: {}, post: {}};
+            if (lastSessionInfo?.assignments) {
+                (['pre', 'during', 'post'] as TaskPhase[]).forEach(phase => {
+                    Object.entries(lastSessionInfo.assignments?.[phase] ?? {}).forEach(([holder, tasks]) => {
+                        (tasks || []).forEach(taskName => {
+                            (lastHolders[phase][taskName] = lastHolders[phase][taskName] || []).push(holder);
+                        });
                     });
-                    return shuffleArray(Object.keys(groups)).flatMap(key => groups[key]);
-                };
+                });
+            }
 
-                const order: Dealee[] = shuffleArray([...chars]);
+            const priorityOf = (def: TaskDefinition) => (def.priority === 1 || def.priority === 2 ? def.priority : 0);
+
+            const dealPhase = (phase: TaskPhase): TaskMap => {
+                const defs = activeDefs.filter(def => def.phase === phase);
+
+                // People in this phase: every selected character who can take
+                // at least one of its tasks, plus the DM when a task allows it.
+                // (So late arrivals drop out of a phase whose tasks all skip
+                // them, exactly as pre-session used to.)
+                const candidates: Dealee[] = defs.some(def => def.dm_eligible)
+                    ? [...selectedChars, dm]
+                    : [...selectedChars];
+                const people = candidates.filter(person => defs.some(def => isEligible(def, person)));
+                if (people.length === 0) return {};
+
+                // Pool: one entry per copy, clamped to how many people can
+                // take the task so nobody draws the same task twice.
+                const pool: PoolTask[] = [];
+                defs.forEach(def => {
+                    const eligibleCount = people.filter(person => isEligible(def, person)).length;
+                    if (eligibleCount === 0) {
+                        notes.push(`${def.name} (nobody selected can take it)`);
+                        return;
+                    }
+                    const copies = Math.max(1, Math.min(def.quantity, eligibleCount));
+                    for (let i = 0; i < copies; i++) {
+                        pool.push({def, name: def.name});
+                    }
+                });
+
+                const order: Dealee[] = shuffleArray([...people]);
                 const assigned: TaskMap = {};
                 order.forEach(person => {
                     assigned[person.name] = [];
                 });
+                const count = (person: Dealee) => assigned[person.name].length;
+                const holds = (person: Dealee, taskName: string) => assigned[person.name].includes(taskName);
 
-                // Pass 1: tasks that need last session's attendees are dealt
-                // only among those people (buildPool guarantees at least one).
-                const eligibleOrder = order.filter(wasAtLastSession);
-                const restricted = groupByName(pool.filter(task => task.requiresPreviousAttendance));
-                const open = groupByName(pool.filter(task => !task.requiresPreviousAttendance));
-                if (eligibleOrder.length > 0) {
-                    restricted.forEach((task, index) => {
-                        assigned[eligibleOrder[index % eligibleOrder.length].name].push(task.name);
+                // Everyone gets the same number of slots: 1, or 2 once there
+                // are more tasks than people, and so on. Free Space fills the
+                // gaps at the end.
+                const cap = Math.max(1, Math.ceil(pool.length / people.length));
+
+                // Pass 1: a fixed assignee, or last session's holder for a
+                // sticky task, keeps the task when present and eligible.
+                const remaining: PoolTask[] = [];
+                pool.forEach(item => {
+                    const {def} = item;
+                    let keeper: Dealee | undefined;
+                    if (def.fixed_character_id) {
+                        keeper = order.find(person =>
+                            person.id === def.fixed_character_id && isEligible(def, person) && !holds(person, def.name));
+                    }
+                    if (!keeper && def.sticky) {
+                        const previous = lastHolders[phase][def.name] || [];
+                        keeper = order.find(person =>
+                            previous.includes(person.name) && isEligible(def, person) && !holds(person, def.name));
+                    }
+                    if (keeper) {
+                        assigned[keeper.name].push(def.name);
+                    } else {
+                        remaining.push(item);
+                    }
+                });
+
+                // Pass 2: deal the rest to whoever holds the fewest tasks.
+                // "Must deal" first, then "High", then normal, so the ones
+                // squeezed out (if any) are always normal-priority. Within a
+                // priority the most constrained tasks (fewest eligible
+                // people, e.g. Recap) go first so they are never crowded out
+                // while someone else still has a free slot; ties are shuffled
+                // so the order isn't always alphabetical. Copies of one task
+                // are dealt together and never to the same person.
+                const eligibleCountFor = (def: TaskDefinition) => people.filter(person => isEligible(def, person)).length;
+                const groupByName = (items: PoolTask[]): PoolTask[] => {
+                    const groups: Record<string, PoolTask[]> = {};
+                    items.forEach(item => {
+                        (groups[item.name] = groups[item.name] || []).push(item);
                     });
-                } else {
-                    // Unreachable (buildPool already skipped these) but never
-                    // let a restricted task fall through to the open deal.
-                    restricted.forEach(task => skippedTasks.push(task.name));
-                }
+                    return shuffleArray(Object.keys(groups))
+                        .sort((a, b) => eligibleCountFor(groups[a][0].def) - eligibleCountFor(groups[b][0].def))
+                        .flatMap(key => groups[key]);
+                };
+                const ordered = [2, 1, 0].flatMap(priority =>
+                    groupByName(remaining.filter(item => priorityOf(item.def) === priority)));
 
-                // Pass 2: everything else. Each copy goes to whoever currently
-                // holds the fewest tasks (first in shuffled order on ties), so
-                // totals stay even no matter how pass 1 landed. Copies of one
-                // task still can't collide: taking a copy lifts that person
-                // above the others until everyone has caught up.
-                open.forEach(task => {
-                    let target = order[0];
-                    for (const person of order) {
-                        if (assigned[person.name].length < assigned[target.name].length) {
-                            target = person;
+                ordered.forEach(({def}) => {
+                    let candidatesFor = order.filter(person => isEligible(def, person) && !holds(person, def.name));
+                    if (def.avoid_repeat) {
+                        const previous = lastHolders[phase][def.name] || [];
+                        const fresh = candidatesFor.filter(person => !previous.includes(person.name));
+                        if (fresh.length > 0) candidatesFor = fresh;
+                    }
+                    if (candidatesFor.length === 0) {
+                        notes.push(`${def.name} (nobody left who can take it)`);
+                        return;
+                    }
+                    let open = candidatesFor.filter(person => count(person) < cap);
+                    if (open.length === 0) {
+                        if (priorityOf(def) === 2) {
+                            open = candidatesFor;
+                        } else {
+                            notes.push(`${def.name} (everyone is full - set it to "Must deal" to force it)`);
+                            return;
                         }
                     }
-                    assigned[target.name].push(task.name);
+                    const target = open.reduce((best, person) => (count(person) < count(best) ? person : best), open[0]);
+                    assigned[target.name].push(def.name);
+                });
+
+                // Free Space padding up to the slot count
+                order.forEach(person => {
+                    while (count(person) < cap) assigned[person.name].push('Free Space');
                 });
 
                 return assigned;
             };
 
-
-            const newAssignedTasks = {
-                pre: assignTasksToChars(preTasks, onTimeChars),
-                during: assignTasksToChars(duringTasks, selectedChars),
-                post: assignTasksToChars(postTasks, postChars)
+            const newAssignedTasks: TaskAssignment = {
+                pre: dealPhase('pre'),
+                during: dealPhase('during'),
+                post: dealPhase('post')
             };
 
             setAssignedTasks(newAssignedTasks);
             setLastTaskAssignment(newAssignedTasks);
 
-            if (skippedTasks.length > 0) {
+            if (notes.length > 0) {
                 setAlert({
                     show: true,
                     severity: 'info',
-                    message: `Skipped ${skippedTasks.join(', ')}: nobody selected is marked as having been at the last session.`
+                    message: `Not dealt: ${notes.join('; ')}.`
                 });
             }
 
             // Persist the assignment to history (independent of the Discord send,
             // so a Discord failure doesn't lose the record).
-            const lateCount = selectedChars.length - onTimeChars.length;
+            const lateCount = selectedChars.filter(char => lateArrivals[char.id]).length;
             await saveAssignmentToHistory(newAssignedTasks, selectedChars.length, lateCount);
 
             // Send tasks to Discord
@@ -569,21 +655,21 @@ const Tasks: React.FC = () => {
                 const preSessionEmbed = createEmbed(
                     "Pre-Session Tasks:",
                     "",
-                    formatTasksForEmbed(newAssignedTasks.pre),
+                    formatTasksForEmbed('pre', newAssignedTasks.pre),
                     COLORS.PRE_SESSION
                 );
 
                 const duringSessionEmbed = createEmbed(
                     "During Session Tasks:",
                     "",
-                    formatTasksForEmbed(newAssignedTasks.during),
+                    formatTasksForEmbed('during', newAssignedTasks.during),
                     COLORS.DURING_SESSION
                 );
 
                 const postSessionEmbed = createEmbed(
                     "Post-Session Tasks:",
                     "",
-                    formatTasksForEmbed(newAssignedTasks.post),
+                    formatTasksForEmbed('post', newAssignedTasks.post),
                     COLORS.POST_SESSION
                 );
 
@@ -617,21 +703,21 @@ const Tasks: React.FC = () => {
             const preSessionEmbed = createEmbed(
                 "Pre-Session Tasks:",
                 "",
-                formatTasksForEmbed(lastTaskAssignment.pre),
+                formatTasksForEmbed('pre', lastTaskAssignment.pre),
                 COLORS.PRE_SESSION
             );
 
             const duringSessionEmbed = createEmbed(
                 "During Session Tasks:",
                 "",
-                formatTasksForEmbed(lastTaskAssignment.during),
+                formatTasksForEmbed('during', lastTaskAssignment.during),
                 COLORS.DURING_SESSION
             );
 
             const postSessionEmbed = createEmbed(
                 "Post-Session Tasks:",
                 "",
-                formatTasksForEmbed(lastTaskAssignment.post),
+                formatTasksForEmbed('post', lastTaskAssignment.post),
                 COLORS.POST_SESSION
             );
 
@@ -647,7 +733,8 @@ const Tasks: React.FC = () => {
         }
     };
 
-    const renderTaskList = (tasks: Record<string, string[]>) => (
+    // phase = null for history rows: today's descriptions may not match what was dealt then
+    const renderTaskList = (tasks: Record<string, string[]>, phase: TaskPhase | null = null) => (
         <List disablePadding>
             {Object.entries(tasks)
                 .sort(([a], [b]) => a.localeCompare(b))
@@ -660,7 +747,10 @@ const Tasks: React.FC = () => {
                                 <List disablePadding>
                                     {characterTasks.map((task, index) => (
                                         <CompactListItem key={index}>
-                                            <CompactListItemText primary={`• ${task}`}/>
+                                            <CompactListItemText
+                                                primary={`• ${task}`}
+                                                secondary={phase ? descriptionFor(phase, task) : null}
+                                            />
                                         </CompactListItem>
                                     ))}
                                 </List>
@@ -696,6 +786,10 @@ const Tasks: React.FC = () => {
         return activeCharacters.filter(char => selectedCharacters[char.id] && lateArrivals[char.id]).length;
     };
 
+    const getEarlyLeaversCount = () => {
+        return activeCharacters.filter(char => selectedCharacters[char.id] && earlyLeavers[char.id]).length;
+    };
+
     return (
         <Container maxWidth="lg" component="main">
             <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 3}}>
@@ -720,8 +814,9 @@ const Tasks: React.FC = () => {
 
                 <Typography variant="body1" sx={{ mb: 2 }}>
                     Characters who have RSVP'd "yes" to the next session are pre-selected automatically, and those who
-                    responded "late" are pre-marked as arriving late. Adjust selections as needed, then click Assign
-                    Tasks. Late arrivals will be excluded from pre-session tasks.
+                    responded "late" or "early" are pre-marked as arriving late or leaving early. Adjust selections as
+                    needed, then click Assign Tasks. Each task's own options (DM Settings &gt; Task Management) decide
+                    who can draw it.
                     {hasPreviousAttendanceTasks && (
                         <>
                             {' '}Some tasks (like Recap) only go to characters who were at the last session;
@@ -741,7 +836,8 @@ const Tasks: React.FC = () => {
                         <CharacterSelector>
                             <Typography variant="subtitle1" gutterBottom sx={{display: 'flex', alignItems: 'center'}}>
                                 <PersonIcon sx={{mr: 1}} color="primary"/>
-                                Characters ({getCharacterCount()} selected, {getLateArrivalsCount()} arriving late)
+                                Characters ({getCharacterCount()} selected, {getLateArrivalsCount()} arriving late
+                                {hasEarlyLeaverTasks ? `, ${getEarlyLeaversCount()} leaving early` : ''})
                             </Typography>
 
                             {activeCharacters.map((char) => (
@@ -772,6 +868,16 @@ const Tasks: React.FC = () => {
                                                 icon={<AccessTimeIcon/>}
                                                 label="Late"
                                                 sx={{ml: 1, borderColor: theme => theme.palette.warning.main}}
+                                                variant="outlined"
+                                                color="warning"
+                                            />
+                                        )}
+                                        {hasEarlyLeaverTasks && selectedCharacters[char.id] && earlyLeavers[char.id] && (
+                                            <Chip
+                                                size="small"
+                                                icon={<DirectionsRunIcon/>}
+                                                label="Early"
+                                                sx={{ml: 1}}
                                                 variant="outlined"
                                                 color="warning"
                                             />
@@ -825,6 +931,25 @@ const Tasks: React.FC = () => {
                                                     sx={{m: 0}}
                                                 />
                                             </Tooltip>
+                                            {hasEarlyLeaverTasks && (
+                                                <Tooltip title="Mark as leaving early">
+                                                    <FormControlLabel
+                                                        control={
+                                                            <Checkbox
+                                                                size="small"
+                                                                checked={earlyLeavers[char.id] || false}
+                                                                onChange={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleToggleEarlyLeaver(char.id);
+                                                                }}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            />
+                                                        }
+                                                        label={<Typography variant="caption">Early</Typography>}
+                                                        sx={{m: 0}}
+                                                    />
+                                                </Tooltip>
+                                            )}
                                         </Box>
                                     )}
                                 </CharacterChip>
@@ -856,8 +981,8 @@ const Tasks: React.FC = () => {
                                     textAlign: 'center',
                                     mb: 2
                                 }}>
-                                Tasks will be randomly assigned to selected characters.
-                                Late arrivals will not receive pre-session tasks.
+                                Tasks will be randomly assigned to selected characters
+                                according to each task's options.
                             </Typography>
 
                             <Button
@@ -898,7 +1023,7 @@ const Tasks: React.FC = () => {
                             </StyledCardHeader>
                             <CardContent>
                                 {Object.keys(assignedTasks.pre).length > 0 ? (
-                                    renderTaskList(assignedTasks.pre)
+                                    renderTaskList(assignedTasks.pre, 'pre')
                                 ) : (
                                     <Typography
                                         variant="body2"
@@ -907,7 +1032,7 @@ const Tasks: React.FC = () => {
                                             py: 2,
                                             textAlign: 'center'
                                         }}>
-                                        No pre-session tasks assigned. All selected players are marked as arriving late.
+                                        No pre-session tasks assigned. Nobody selected can take any of them.
                                     </Typography>
                                 )}
                             </CardContent>
@@ -920,7 +1045,7 @@ const Tasks: React.FC = () => {
                                 <Typography variant="h6">During Session Tasks</Typography>
                             </StyledCardHeader>
                             <CardContent>
-                                {renderTaskList(assignedTasks.during)}
+                                {renderTaskList(assignedTasks.during, 'during')}
                             </CardContent>
                         </StyledCard>
                     </Grid>
@@ -931,7 +1056,7 @@ const Tasks: React.FC = () => {
                                 <Typography variant="h6">Post-Session Tasks</Typography>
                             </StyledCardHeader>
                             <CardContent>
-                                {renderTaskList(assignedTasks.post)}
+                                {renderTaskList(assignedTasks.post, 'post')}
                             </CardContent>
                         </StyledCard>
                     </Grid>
