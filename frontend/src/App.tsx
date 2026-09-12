@@ -35,6 +35,7 @@ const CrewManagement = React.lazy(() => import('./components/pages/CrewManagemen
 const HarrowTracker = React.lazy(() => import('./components/pages/HarrowTracker'));
 const SessionsPage = React.lazy(() => import('./components/pages/Sessions/SessionsPage'));
 const SessionManagement = React.lazy(() => import('./components/pages/DMSettings/SessionManagement'));
+const TaskManagement = React.lazy(() => import('./components/pages/DMSettings/TaskManagement'));
 const CityServices = React.lazy(() => import('./components/pages/CityServices'));
 const SystemAdmin = React.lazy(() => import('./components/pages/SystemAdmin'));
 
@@ -228,6 +229,7 @@ function App() {
               <Route path="harrow" element={<ErrorBoundary><HarrowTracker /></ErrorBoundary>} />
               <Route path="sessions" element={<ErrorBoundary><SessionsPage /></ErrorBoundary>} />
               <Route path="session-management" element={<ErrorBoundary><SessionManagement /></ErrorBoundary>} />
+              <Route path="task-management" element={<ErrorBoundary><TaskManagement /></ErrorBoundary>} />
               <Route path="city-services" element={<ErrorBoundary><CityServices /></ErrorBoundary>} />
               <Route path="system-admin" element={<ErrorBoundary><SystemAdmin /></ErrorBoundary>} />
             </Route>

@@ -316,7 +316,7 @@ describe('lootService', () => {
   // ===== Appraisal & Identification =====
 
   describe('appraiseLoot', () => {
-    it('should POST to /appraisal with appraisal data', async () => {
+    it('should POST to /appraisal/appraise with appraisal data', async () => {
       const data = {
         lootIds: [1, 2],
         characterId: 5,
@@ -326,7 +326,7 @@ describe('lootService', () => {
         ],
       };
       await lootService.appraiseLoot(data);
-      expect(api.post).toHaveBeenCalledWith('/appraisal', data);
+      expect(api.post).toHaveBeenCalledWith('/appraisal/appraise', data);
     });
   });
 

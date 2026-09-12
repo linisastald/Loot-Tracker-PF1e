@@ -36,7 +36,9 @@ import {
     Add as AddIcon,
     Announcement as AnnouncementIcon,
     Cancel as CancelIcon,
+    Delete as DeleteIcon,
     CheckCircle as ConfirmIcon,
+    Edit as EditIcon,
     Event as EventIcon,
     ExpandLess as ExpandLessIcon,
     ExpandMore as ExpandMoreIcon,
@@ -121,6 +123,15 @@ const SessionManagement = () => {
     const [reminderHours, setReminderHours] = useState(defaultSettings.reminderHours);
     const [confirmationHours, setConfirmationHours] = useState(defaultSettings.confirmationHours);
 
+    // Edit session dialog state
+    const [editSessionDialog, setEditSessionDialog] = useState(false);
+    const [editingSession, setEditingSession] = useState(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editStartTime, setEditStartTime] = useState(new Date());
+    const [editEndTime, setEditEndTime] = useState(new Date());
+    const [editDescription, setEditDescription] = useState('');
+    const [savingEdit, setSavingEdit] = useState(false);
+
     // Recurring session state
     const [isRecurring, setIsRecurring] = useState(false);
     const [recurringPattern, setRecurringPattern] = useState('weekly');
@@ -138,6 +149,11 @@ const SessionManagement = () => {
     const [cancelingSession, setCancelingSession] = useState(null);
     const [confirmingSession, setConfirmingSession] = useState(null);
     const [uncancelingSession, setUncancelingSession] = useState(null);
+
+    // Bulk delete state
+    const [selectedSessionIds, setSelectedSessionIds] = useState<number[]>([]);
+    const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
+    const [deletingSessions, setDeletingSessions] = useState(false);
     const [checkingNotifications, setCheckingNotifications] = useState(false);
 
     // Filter state
@@ -400,6 +416,51 @@ const SessionManagement = () => {
         setCancelDialog(true);
     };
 
+    const openEditDialog = (session) => {
+        setEditingSession(session);
+        setEditTitle(session.title || '');
+        setEditStartTime(session.start_time ? new Date(session.start_time) : new Date());
+        setEditEndTime(session.end_time ? new Date(session.end_time) : new Date());
+        setEditDescription(session.description || '');
+        setEditSessionDialog(true);
+    };
+
+    const handleUpdateSession = async () => {
+        try {
+            if (!editingSession) return;
+
+            if (!editTitle || !editStartTime || !editEndTime) {
+                enqueueSnackbar('Please fill in all required fields', { variant: 'error' });
+                return;
+            }
+
+            if (editEndTime <= editStartTime) {
+                enqueueSnackbar('End time must be after start time', { variant: 'error' });
+                return;
+            }
+
+            setSavingEdit(true);
+            // Backend updates the linked Discord announcement automatically
+            await api.put(`/sessions/${editingSession.id}`, {
+                title: editTitle,
+                start_time: editStartTime.toISOString(),
+                end_time: editEndTime.toISOString(),
+                description: editDescription
+            });
+
+            enqueueSnackbar('Session updated successfully', { variant: 'success' });
+            setEditSessionDialog(false);
+            setEditingSession(null);
+            fetchSessions();
+        } catch (err) {
+            const error = err as { response?: { data?: { message?: string } } };
+            const errorMessage = error.response?.data?.message || 'Failed to update session';
+            enqueueSnackbar(errorMessage, { variant: 'error' });
+        } finally {
+            setSavingEdit(false);
+        }
+    };
+
     const handleUncancelSession = async (sessionId) => {
         try {
             setUncancelingSession(sessionId);
@@ -489,6 +550,45 @@ const SessionManagement = () => {
         setDateTo(format(addMonths(new Date(), 2), 'yyyy-MM-dd'));
     };
 
+    const toggleSessionSelected = (sessionId: number) => {
+        setSelectedSessionIds(prev =>
+            prev.includes(sessionId) ? prev.filter(id => id !== sessionId) : [...prev, sessionId]
+        );
+    };
+
+    const visibleIds: number[] = filteredSessions.map(session => session.id);
+    const visibleSelectedCount = visibleIds.filter(id => selectedSessionIds.includes(id)).length;
+    const allVisibleSelected = visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
+
+    const toggleSelectAllVisible = () => {
+        setSelectedSessionIds(prev =>
+            allVisibleSelected
+                ? prev.filter(id => !visibleIds.includes(id))
+                : Array.from(new Set([...prev, ...visibleIds]))
+        );
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedSessionIds.length === 0) return;
+        setDeletingSessions(true);
+        const results = await Promise.allSettled(
+            selectedSessionIds.map(id => api.delete(`/sessions/${id}`))
+        );
+        const failed = selectedSessionIds.filter((_, i) => results[i].status === 'rejected');
+        const deletedCount = selectedSessionIds.length - failed.length;
+        setDeletingSessions(false);
+        setBulkDeleteDialog(false);
+        setSelectedSessionIds(failed);
+
+        if (deletedCount > 0) {
+            enqueueSnackbar(`Deleted ${deletedCount} session${deletedCount === 1 ? '' : 's'}`, { variant: 'success' });
+        }
+        if (failed.length > 0) {
+            enqueueSnackbar(`Failed to delete ${failed.length} session${failed.length === 1 ? '' : 's'}`, { variant: 'error' });
+        }
+        fetchSessions();
+    };
+
     const renderSessionCard = (session) => {
         const isUpcoming = new Date(session.start_time) > new Date();
         const attendanceTotal = (session.confirmed_count || 0) + (session.declined_count || 0) + (session.maybe_count || 0);
@@ -496,6 +596,13 @@ const SessionManagement = () => {
         return (
             <Card key={session.id} variant="outlined" sx={{ mb: 2 }}>
                 <CardHeader
+                    avatar={
+                        <Checkbox
+                            checked={selectedSessionIds.includes(session.id)}
+                            onChange={() => toggleSessionSelected(session.id)}
+                            slotProps={{ input: { 'aria-label': `Select session ${session.title || 'Game Session'}` } }}
+                        />
+                    }
                     title={session.title || 'Game Session'}
                     subtitle={currentTimezone && formatInCampaignTimezone(session.start_time, currentTimezone, 'PPpp z')}
                     action={
@@ -525,6 +632,18 @@ const SessionManagement = () => {
                         </Grid>
                         <Grid size={{ xs: 12, md: 6 }}>
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                {/* Edit Session */}
+                                {session.status !== 'cancelled' && session.status !== 'completed' && (
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => openEditDialog(session)}
+                                        title="Edit Session Details"
+                                        color="primary"
+                                    >
+                                        <EditIcon />
+                                    </IconButton>
+                                )}
+
                                 {/* View Attendance */}
                                 <IconButton
                                     size="small"
@@ -870,14 +989,30 @@ const SessionManagement = () => {
                 </Paper>
             ) : (
                 <Box>
-                    <Typography
-                        variant="body2"
-                        sx={{
-                            color: "text.secondary",
-                            mb: 2
-                        }}>
-                        Showing {filteredSessions.length} of {sessions.length} sessions
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                        <Checkbox
+                            checked={allVisibleSelected}
+                            indeterminate={visibleSelectedCount > 0 && !allVisibleSelected}
+                            onChange={toggleSelectAllVisible}
+                            slotProps={{ input: { 'aria-label': 'Select all visible sessions' } }}
+                        />
+                        <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                            Showing {filteredSessions.length} of {sessions.length} sessions
+                            {selectedSessionIds.length > 0 && ` · ${selectedSessionIds.length} selected`}
+                        </Typography>
+                        {selectedSessionIds.length > 0 && (
+                            <Button
+                                variant="outlined"
+                                color="error"
+                                size="small"
+                                startIcon={<DeleteIcon />}
+                                onClick={() => setBulkDeleteDialog(true)}
+                                sx={{ ml: 'auto' }}
+                            >
+                                Delete Selected ({selectedSessionIds.length})
+                            </Button>
+                        )}
+                    </Box>
                     {filteredSessions.map(renderSessionCard)}
                 </Box>
             )}
@@ -1263,6 +1398,110 @@ const SessionManagement = () => {
                         <Button onClick={resetSessionForm}>Cancel</Button>
                         <Button onClick={handleCreateSession} color="primary" variant="contained">
                             {isRecurring ? `Create ${recurringEndCount} Recurring Sessions` : 'Create Session'}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Bulk Delete Confirmation Dialog */}
+                <Dialog open={bulkDeleteDialog} onClose={() => !deletingSessions && setBulkDeleteDialog(false)} maxWidth="sm" fullWidth>
+                    <DialogTitle>Delete {selectedSessionIds.length} Session{selectedSessionIds.length === 1 ? '' : 's'}?</DialogTitle>
+                    <DialogContent>
+                        <Alert severity="warning" sx={{ mb: 2 }}>
+                            This permanently deletes the selected sessions, their attendance records, and any linked Discord announcements. This cannot be undone.
+                        </Alert>
+                        <List dense>
+                            {sessions
+                                .filter(session => selectedSessionIds.includes(session.id))
+                                .map(session => (
+                                    <ListItem key={session.id}>
+                                        <ListItemText
+                                            primary={session.title || 'Game Session'}
+                                            secondary={currentTimezone && formatInCampaignTimezone(session.start_time, currentTimezone, 'PPpp z')}
+                                        />
+                                    </ListItem>
+                                ))}
+                        </List>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setBulkDeleteDialog(false)} disabled={deletingSessions}>Cancel</Button>
+                        <Button
+                            onClick={handleBulkDelete}
+                            color="error"
+                            variant="contained"
+                            disabled={deletingSessions}
+                            startIcon={deletingSessions ? <CircularProgress size={16} /> : <DeleteIcon />}
+                        >
+                            Delete
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Edit Session Dialog */}
+                <Dialog open={editSessionDialog} onClose={() => setEditSessionDialog(false)} maxWidth="md" fullWidth>
+                    <DialogTitle>Edit Session</DialogTitle>
+                    <DialogContent>
+                        {currentTimezone && (
+                            <Alert severity="info" sx={{ mt: 1, mb: 2 }}>
+                                Times are entered in your browser's local timezone. Sessions display in <strong>{currentTimezone}</strong>.
+                            </Alert>
+                        )}
+                        <TextField
+                            autoFocus
+                            margin="dense"
+                            label="Session Title"
+                            fullWidth
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            required
+                            sx={{ mb: 3 }}
+                        />
+
+                        <Grid container spacing={3} size={12} sx={{ mb: 3 }}>
+                            <Grid size={{xs: 12, md: 6}}>
+                                <DateTimePicker
+                                    label="Start Time"
+                                    value={editStartTime}
+                                    onChange={setEditStartTime}
+                                    slotProps={{ textField: { fullWidth: true } }}
+                                />
+                            </Grid>
+                            <Grid size={{xs: 12, md: 6}}>
+                                <DateTimePicker
+                                    label="End Time"
+                                    value={editEndTime}
+                                    onChange={setEditEndTime}
+                                    slotProps={{
+                                        textField: {
+                                            fullWidth: true,
+                                            error: !!(editStartTime && editEndTime && editEndTime <= editStartTime),
+                                            helperText: editStartTime && editEndTime && editEndTime <= editStartTime
+                                                ? 'End time must be after start time'
+                                                : undefined
+                                        }
+                                    }}
+                                />
+                            </Grid>
+                        </Grid>
+
+                        <TextField
+                            label="Description (Optional)"
+                            fullWidth
+                            multiline
+                            rows={4}
+                            value={editDescription}
+                            onChange={(e) => setEditDescription(e.target.value)}
+                        />
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setEditSessionDialog(false)}>Cancel</Button>
+                        <Button
+                            onClick={handleUpdateSession}
+                            color="primary"
+                            variant="contained"
+                            disabled={savingEdit}
+                            startIcon={savingEdit ? <CircularProgress size={16} /> : undefined}
+                        >
+                            Save Changes
                         </Button>
                     </DialogActions>
                 </Dialog>

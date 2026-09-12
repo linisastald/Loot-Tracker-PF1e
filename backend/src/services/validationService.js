@@ -59,7 +59,11 @@ class ValidationService {
   static validateRequiredNumber(value, fieldName, options = {}) {
     const { min, max, allowZero = true } = options;
     
-    if (value === null || value === undefined || isNaN(value)) {
+    // isNaN('') and isNaN('   ') are false (they coerce to 0) while
+    // parseFloat of either is NaN, so empty strings must be rejected
+    // explicitly or they slip through as NaN.
+    if (value === null || value === undefined || isNaN(value) ||
+        (typeof value === 'string' && value.trim() === '')) {
       throw controllerFactory.createValidationError(`${fieldName} is required and must be a valid number`);
     }
 

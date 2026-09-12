@@ -43,6 +43,19 @@ interface Character {
 
 type TaskMap = Record<string, string[]>;
 
+type TaskPhase = 'pre' | 'during' | 'post';
+
+// A DM-defined task (DM Settings -> Task Management)
+interface TaskDefinition {
+    id: number;
+    phase: TaskPhase;
+    name: string;
+    quantity: number;
+    min_characters: number | null;
+    is_snack_master: boolean;
+    sort_order: number;
+}
+
 interface TaskAssignment {
     pre: TaskMap;
     during: TaskMap;
@@ -155,6 +168,8 @@ const Tasks: React.FC = () => {
     const [upcomingSession, setUpcomingSession] = useState<{id: number; title: string} | null>(null);
     const [history, setHistory] = useState<TaskHistoryRecord[]>([]);
     const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+    const [taskDefinitions, setTaskDefinitions] = useState<TaskDefinition[]>([]);
+    const [taskDefinitionsStatus, setTaskDefinitionsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     const {timezone} = useCampaignTimezone();
 
     useEffect(() => {
@@ -162,10 +177,27 @@ const Tasks: React.FC = () => {
     }, []);
 
     useEffect(() => {
+        loadTaskDefinitions();
+    }, []);
+
+    useEffect(() => {
         if (activeTab === 1) {
             fetchHistory();
         }
     }, [activeTab]);
+
+    const loadTaskDefinitions = async () => {
+        try {
+            const response: any = await api.get('/session-tasks');
+            const definitions = response.data?.data || response.data || [];
+            setTaskDefinitions(Array.isArray(definitions) ? definitions : []);
+            setTaskDefinitionsStatus('ready');
+        } catch (error) {
+            console.error('Error loading task definitions:', error);
+            setTaskDefinitionsStatus('error');
+            showSnackbar('Failed to load the task list. Check DM Settings > Task Management.');
+        }
+    };
 
     const loadInitialState = async () => {
         try {
@@ -255,11 +287,13 @@ const Tasks: React.FC = () => {
     });
 
     const formatTasksForEmbed = (tasks: Record<string, string[]>) => {
-        return Object.entries(tasks).map(([character, characterTasks]) => ({
-            name: character,
-            value: characterTasks.map(task => `• ${task}`).join('\n'),
-            inline: false
-        }));
+        return Object.entries(tasks)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([character, characterTasks]) => ({
+                name: character,
+                value: characterTasks.map(task => `• ${task}`).join('\n'),
+                inline: false
+            }));
     };
 
     const shuffleArray = (array: any[]) => {
@@ -318,37 +352,56 @@ const Tasks: React.FC = () => {
                 return;
             }
 
-            // Get non-late arrivals for pre-session tasks
-            const onTimeChars = selectedChars.filter(char => !lateArrivals[char.id]);
-
-            const preTasks = [
-                'Get Dice Trays',
-                'Put Initiative name tags on tracker',
-                'Wipe TV',
-                'Recap'
-            ];
-            if (selectedChars.length >= 6) {
-                preTasks.push('Bring in extra chairs if needed');
+            if (taskDefinitionsStatus === 'loading') {
+                setAlert({
+                    show: true,
+                    severity: 'info',
+                    message: 'The task list is still loading. Try again in a moment.'
+                });
+                return;
+            }
+            if (taskDefinitionsStatus === 'error') {
+                setAlert({
+                    show: true,
+                    severity: 'error',
+                    message: 'The task list could not be loaded. Reload the page and try again.'
+                });
+                return;
+            }
+            if (taskDefinitions.length === 0) {
+                setAlert({
+                    show: true,
+                    severity: 'warning',
+                    message: 'No tasks are defined for this campaign. Add some under DM Settings > Task Management.'
+                });
+                return;
             }
 
-            const duringTasks = [
-                'Calendar Master',
-                'Loot Master',
-                'Loot Master',
-                'Lore Master',
-                'Rule & Battle Master',
-                'Inspiration Master'
-            ];
+            // Get non-late arrivals for pre-session tasks
+            const onTimeChars = selectedChars.filter(char => !lateArrivals[char.id]);
+            const postChars = [...selectedChars, {id: 'DM', name: 'DM'}];
 
-            const postTasks = [
-                'Food, Drink, and Trash Clear Check',
-                'TV(s) wiped and turned off',
-                'Dice Trays and Books put away',
-                'Clean Initiative tracker and put away name labels',
-                'Chairs pushed in and extra chairs put back',
-                'Windows shut and locked and Post Discord Reminders',
-                'Ensure no duplicate snacks for next session'
-            ];
+            // Task pools come from DM Settings -> Task Management. A task with
+            // min_characters only joins the pool when enough characters are
+            // selected; quantity controls how many copies go in, clamped to the
+            // number of people in the phase so nobody draws the same task twice.
+            const buildPool = (phase: TaskPhase, phaseHeadcount: number): string[] => {
+                const pool: string[] = [];
+                taskDefinitions
+                    .filter(def => def.phase === phase)
+                    .filter(def => !def.min_characters || selectedChars.length >= def.min_characters)
+                    .forEach(def => {
+                        const copies = Math.max(1, Math.min(def.quantity, phaseHeadcount));
+                        for (let i = 0; i < copies; i++) {
+                            pool.push(def.name);
+                        }
+                    });
+                return pool;
+            };
+
+            const preTasks = buildPool('pre', onTimeChars.length);
+            const duringTasks = buildPool('during', selectedChars.length);
+            const postTasks = buildPool('post', postChars.length);
 
             const assignTasksToChars = (tasks, chars) => {
                 if (chars.length === 0) return {};
@@ -392,7 +445,6 @@ const Tasks: React.FC = () => {
                 return assigned;
             };
 
-            const postChars = [...selectedChars, {id: 'DM', name: 'DM'}];
 
             const newAssignedTasks = {
                 pre: assignTasksToChars(preTasks, onTimeChars),
@@ -493,7 +545,9 @@ const Tasks: React.FC = () => {
 
     const renderTaskList = (tasks: Record<string, string[]>) => (
         <List disablePadding>
-            {Object.entries(tasks).map(([character, characterTasks]) => (
+            {Object.entries(tasks)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([character, characterTasks]) => (
                 <CompactListItem key={character}>
                     <CompactListItemText
                         primary={

@@ -1,6 +1,7 @@
 // src/models/Campaign.js
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
+const SessionTask = require('./SessionTask');
 
 /**
  * Get all campaigns a user is a member of, with the user's per-campaign role.
@@ -260,6 +261,14 @@ exports.create = async ({ name, slug, world, createdById }) => {
        ON CONFLICT (campaign_id, name) DO NOTHING`,
       [campaign.id]
     );
+
+    // Seed the stock pre/during/post session task lists so the Tasks page
+    // works out of the box. session_task_definition is RLS-scoped, so point
+    // the transaction-local GUC at the NEW campaign before inserting (the
+    // request's GUC still names the creator's current campaign). set_config
+    // with is_local=true resets at COMMIT, so nothing leaks.
+    await client.query("SELECT set_config('app.current_campaign', $1, true)", [String(campaign.id)]);
+    await SessionTask.seedDefaults(client, campaign.id);
 
     return campaign;
   });

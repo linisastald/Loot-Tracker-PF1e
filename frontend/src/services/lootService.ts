@@ -270,7 +270,7 @@ const lootService = {
    * Appraise loot items
    */
   appraiseLoot: (data: AppraisalData): Promise<ApiResponse> =>
-    api.post('/appraisal', data),
+    api.post('/appraisal/appraise', data),
 
   /**
    * Get unidentified items

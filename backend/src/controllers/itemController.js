@@ -145,13 +145,18 @@ const getLootById = async (req, res) => {
   }
 };
 
-// Fields a player may update on any loot item.
-const PLAYER_ALLOWED_FIELDS = ['name', 'quantity', 'notes', 'unidentified', 'status'];
+// Fields a player may update on any loot item. Mirrors what players can
+// set when entering loot in the first place (EntryForm), so anything a
+// player can input they can also correct later.
+const PLAYER_ALLOWED_FIELDS = [
+  'name', 'quantity', 'notes', 'unidentified', 'masterwork',
+  'type', 'size', 'status'
+];
 
 // Additional fields only a DM may update (via the dm-update endpoint).
 const DM_ONLY_FIELDS = [
   'value', 'cursed', 'description',
-  'session_date', 'masterwork', 'type', 'size', 'itemid',
+  'session_date', 'itemid',
   'modids', 'charges', 'spellcraft_dc', 'dm_notes'
 ];
 
@@ -174,7 +179,7 @@ const buildValidatedUpdateData = (updateData, allowedFields) => {
   if (filteredData.name) {
     filteredData.name = ValidationService.validateRequiredString(filteredData.name, 'name');
   }
-  if (filteredData.quantity) {
+  if (filteredData.quantity !== undefined) {
     filteredData.quantity = ValidationService.validateQuantity(filteredData.quantity);
   }
   if (filteredData.value !== undefined) {
@@ -187,7 +192,11 @@ const buildValidatedUpdateData = (updateData, allowedFields) => {
     filteredData.cursed = ValidationService.validateBoolean(filteredData.cursed, 'cursed');
   }
   if (filteredData.unidentified !== undefined) {
-    filteredData.unidentified = ValidationService.validateBoolean(filteredData.unidentified, 'unidentified');
+    // NULL is meaningful here: it marks the item as non-magical, distinct
+    // from false ("identified magic item"), so it must not coerce to false.
+    filteredData.unidentified = filteredData.unidentified === null
+      ? null
+      : ValidationService.validateBoolean(filteredData.unidentified, 'unidentified');
   }
   if (filteredData.description) {
     filteredData.description = ValidationService.validateDescription(filteredData.description, 'description');
@@ -199,7 +208,10 @@ const buildValidatedUpdateData = (updateData, allowedFields) => {
     filteredData.session_date = ValidationService.validateDate(filteredData.session_date, 'session_date');
   }
   if (filteredData.masterwork !== undefined) {
-    filteredData.masterwork = ValidationService.validateBoolean(filteredData.masterwork, 'masterwork');
+    // Preserve NULL (unset) rather than coercing it to false.
+    filteredData.masterwork = filteredData.masterwork === null
+      ? null
+      : ValidationService.validateBoolean(filteredData.masterwork, 'masterwork');
   }
   if (filteredData.type !== undefined) {
     filteredData.type = filteredData.type ? ValidationService.validateRequiredString(filteredData.type, 'type') : null;

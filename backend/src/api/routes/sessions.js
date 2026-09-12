@@ -10,6 +10,8 @@ const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
 const ApiResponse = require('../../utils/apiResponse');
 const { VALID_SESSION_STATUSES, VALID_RECURRING_PATTERNS } = require('../../constants/sessionConstants');
+const SessionTask = require('../../models/SessionTask');
+const { LEGACY_SNACK_MASTER_TASK } = require('../../constants/sessionTaskDefaults');
 
 // Middleware to check express-validator validation results
 const validateRequest = (req, res, next) => {
@@ -213,15 +215,27 @@ router.post('/task-history', verifyToken, [
             late_count = 0
         } = req.body;
 
-        // The post-session "snacks for next session" task designates who is
-        // snack master for the FOLLOWING session. Derive it server-side from
-        // the saved assignments so the next session's announcement can show it.
-        // (Must match the task label used on the Tasks page.)
-        const SNACK_MASTER_TASK = 'Ensure no duplicate snacks for next session';
+        // Whoever draws the task flagged is_snack_master (DM Settings -> Task
+        // Management) is snack master for the FOLLOWING session. Derive it
+        // server-side from the saved assignments so the next session's
+        // announcement can show it. Falls back to the legacy fixed label when
+        // no definition carries the flag.
+        let snackMasterLabels = [];
+        try {
+            const definitions = await SessionTask.getAll(req.campaignId);
+            snackMasterLabels = definitions
+                .filter(task => task.is_snack_master)
+                .map(task => task.name);
+        } catch (lookupError) {
+            logger.warn('Failed to load session task definitions for snack master lookup', { error: lookupError.message });
+        }
+        if (snackMasterLabels.length === 0) {
+            snackMasterLabels = [LEGACY_SNACK_MASTER_TASK];
+        }
         let snack_master_name = null;
         const postAssignments = (assignments && assignments.post) || {};
         for (const [name, tasks] of Object.entries(postAssignments)) {
-            if (Array.isArray(tasks) && tasks.includes(SNACK_MASTER_TASK)) {
+            if (Array.isArray(tasks) && tasks.some(task => snackMasterLabels.includes(task))) {
                 snack_master_name = name;
                 break;
             }

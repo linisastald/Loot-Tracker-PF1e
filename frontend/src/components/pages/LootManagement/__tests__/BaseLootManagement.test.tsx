@@ -131,4 +131,32 @@ describe('BaseLootManagement.handleUpdateSubmit role branching', () => {
     expect(lootService.updateLootItem).toHaveBeenCalledTimes(1);
     expect(lootService.updateLootItemAsDM).not.toHaveBeenCalled();
   });
+
+  it('shows the server error and keeps the dialog open when the update fails', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player' } });
+    (lootService.updateLootItem as any).mockRejectedValueOnce({
+      response: { data: { message: 'quantity must be at least 1' } },
+    });
+
+    render(<BaseLootManagement config={config} />);
+    const updateButton = await screen.findByRole('button', { name: /^Update$/ });
+    fireEvent.click(updateButton);
+
+    expect(await screen.findByText('quantity must be at least 1')).toBeInTheDocument();
+    expect(setOpenUpdateDialog).not.toHaveBeenCalledWith(false);
+    expect(fetchLoot).not.toHaveBeenCalled();
+  });
+
+  it('shows a generic message when the failure has no server message', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player' } });
+    (lootService.updateLootItem as any).mockRejectedValueOnce(new Error('network down'));
+
+    render(<BaseLootManagement config={config} />);
+    const updateButton = await screen.findByRole('button', { name: /^Update$/ });
+    fireEvent.click(updateButton);
+
+    expect(
+      await screen.findByText('Failed to update item. Please try again.')
+    ).toBeInTheDocument();
+  });
 });

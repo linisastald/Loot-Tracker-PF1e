@@ -15,6 +15,7 @@ interface BaseLootManagementProps {
 
 const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
   const { user: authUser } = useAuth();
+  const [updateError, setUpdateError] = React.useState('');
   const {
     loot,
     selectedItems,
@@ -97,6 +98,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
     };
     const isDM = (authUser as any)?.role === 'DM';
     try {
+      setUpdateError('');
       if (isDM) {
         await lootService.updateLootItemAsDM(entry.id, payload);
       } else {
@@ -105,9 +107,14 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
       await fetchLoot();
       setOpenUpdateDialog(false);
       setSelectedItems([]);
-    } catch (error) {
+    } catch (error: any) {
       // eslint-disable-next-line no-console
       console.error('Error updating item:', error);
+      // Keep the dialog open and show why the update failed instead of
+      // failing silently (the previous behavior left users guessing).
+      setUpdateError(
+        error?.response?.data?.message || 'Failed to update item. Please try again.'
+      );
     }
   };
 
@@ -189,7 +196,10 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
             <Button
               variant="outlined"
               color="primary"
-              onClick={handleUpdateDialogWrapper}
+              onClick={() => {
+                setUpdateError('');
+                handleUpdateDialogWrapper();
+              }}
             >
               Update
             </Button>
@@ -209,10 +219,14 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
 
       <CustomUpdateDialog
         open={openUpdateDialog}
-        onClose={handleUpdateDialogClose}
+        onClose={() => {
+          setUpdateError('');
+          handleUpdateDialogClose();
+        }}
         updatedEntry={updatedEntry}
         onUpdateChange={handleUpdateChange}
         onUpdateSubmit={handleUpdateSubmit}
+        error={updateError}
       />
     </Container>
   );

@@ -475,10 +475,10 @@ describe('itemController', () => {
         body: {
           name: 'Sword',
           session_date: '2024-01-15',
-          masterwork: true,
           value: 999,
           cursed: true,
           description: 'lore',
+          dm_notes: 'secret',
         },
         user: { id: 1, role: 'player' },
       });
@@ -489,10 +489,63 @@ describe('itemController', () => {
       const filteredData = dbUtils.updateById.mock.calls[0][2];
       expect(filteredData.name).toBe('Sword');
       expect(filteredData.session_date).toBeUndefined();
-      expect(filteredData.masterwork).toBeUndefined();
       expect(filteredData.value).toBeUndefined();
       expect(filteredData.cursed).toBeUndefined();
       expect(filteredData.description).toBeUndefined();
+      expect(filteredData.dm_notes).toBeUndefined();
+    });
+
+    it('should allow players to update entry-form fields (masterwork, type, size)', async () => {
+      // Players can set these at loot entry, so they can correct them too.
+      const updatedItem = { id: 1, name: 'Sword' };
+      dbUtils.updateById.mockResolvedValue(updatedItem);
+
+      const req = mockReq({
+        params: { id: '1' },
+        body: { name: 'Sword', masterwork: true, type: 'Weapon', size: 'Medium' },
+        user: { id: 1, role: 'player' },
+      });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      const filteredData = dbUtils.updateById.mock.calls[0][2];
+      expect(filteredData.masterwork).toBe(true);
+      expect(filteredData.type).toBe('Weapon');
+      expect(filteredData.size).toBe('Medium');
+    });
+
+    it('should preserve null for unidentified and masterwork (not coerce to false)', async () => {
+      // unidentified NULL means "not magical", distinct from false
+      // ("identified magic item"); coercing it corrupted item state.
+      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Sword' });
+
+      const req = mockReq({
+        params: { id: '1' },
+        body: { name: 'Sword', unidentified: null, masterwork: null },
+        user: { id: 1, role: 'player' },
+      });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      const filteredData = dbUtils.updateById.mock.calls[0][2];
+      expect(filteredData.unidentified).toBeNull();
+      expect(filteredData.masterwork).toBeNull();
+    });
+
+    it('should reject an empty-string quantity instead of writing garbage', async () => {
+      const req = mockReq({
+        params: { id: '1' },
+        body: { name: 'Sword', quantity: '' },
+        user: { id: 1, role: 'player' },
+      });
+      const res = mockRes();
+
+      await itemController.updateLootItem(req, res);
+
+      expect(res.validationError).toHaveBeenCalledTimes(1);
+      expect(dbUtils.updateById).not.toHaveBeenCalled();
     });
 
     it('should also filter DM-only fields for DM users on player endpoint', async () => {
@@ -503,7 +556,7 @@ describe('itemController', () => {
 
       const req = mockReq({
         params: { id: '1' },
-        body: { name: 'Sword', masterwork: true, session_date: '2024-06-15' },
+        body: { name: 'Sword', value: 999, session_date: '2024-06-15' },
         user: { id: 1, role: 'DM' },
       });
       const res = mockRes();
@@ -512,7 +565,7 @@ describe('itemController', () => {
 
       const filteredData = dbUtils.updateById.mock.calls[0][2];
       expect(filteredData.name).toBe('Sword');
-      expect(filteredData.masterwork).toBeUndefined();
+      expect(filteredData.value).toBeUndefined();
       expect(filteredData.session_date).toBeUndefined();
     });
 

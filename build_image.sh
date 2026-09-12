@@ -81,6 +81,7 @@ require_arg() {
 PULL_ONLY=false
 CLEANUP_ONLY=false
 SHOW_STATUS=false
+ORIGINAL_ARGS="$*"   # kept for the "re-run with sudo" hint (parsing shifts $@ away)
 
 while [ $# -gt 0 ]; do
     case $1 in
@@ -410,9 +411,54 @@ fi
 # --- Pre-flight checks ---
 
 preflight_check_docker() {
-    if ! docker info >/dev/null 2>&1; then
+    local docker_err
+    if docker_err=$(docker info 2>&1 >/dev/null); then
+        return 0
+    fi
+    if echo "$docker_err" | grep -qi "permission denied"; then
+        echo "ERROR: Docker is running but this user cannot access the Docker socket."
+        echo "   Re-run with sudo:  sudo bash $0 $ORIGINAL_ARGS"
+        echo "   (or add yourself to the docker group: sudo usermod -aG docker $(id -un) and log in again)"
+    else
         echo "ERROR: Docker is not running or not accessible."
-        echo "Start Docker Desktop or the Docker daemon before building."
+        echo "   Start Docker Desktop or the Docker daemon before building."
+        echo "   docker info said: $(echo "$docker_err" | head -1)"
+    fi
+    exit 1
+}
+
+# Running under sudo/root: git refuses to touch a repo owned by another user
+# ("dubious ownership"). Detect it up front - otherwise every later git call
+# fails one at a time with confusing partial output. As root we add the
+# safe.directory exceptions ourselves (repo + worktrees dir); as a normal user
+# we print the exact command.
+preflight_check_git_ownership() {
+    local git_err
+    if git_err=$(git rev-parse --git-dir 2>&1 >/dev/null); then
+        return 0
+    fi
+    if ! echo "$git_err" | grep -q "dubious ownership"; then
+        echo "ERROR: Not a usable git repository: $git_err"
+        exit 1
+    fi
+    local repo_dir worktrees_dir
+    repo_dir="$SCRIPT_DIR"
+    worktrees_dir="$(cd "$SCRIPT_DIR/.." && pwd)/worktrees"
+    if [ "$(id -u)" -eq 0 ]; then
+        echo "Git refuses this repo because it is owned by another user; adding safe.directory exceptions for root..."
+        git config --global --add safe.directory "$repo_dir"
+        git config --global --add safe.directory "$worktrees_dir"
+        git config --global --add safe.directory "$worktrees_dir/*"
+        if ! git rev-parse --git-dir >/dev/null 2>&1; then
+            echo "ERROR: git still refuses the repository after adding safe.directory."
+            exit 1
+        fi
+    else
+        echo "ERROR: git refuses this repository (owned by a different user)."
+        echo "   Run once:"
+        echo "     git config --global --add safe.directory $repo_dir"
+        echo "     git config --global --add safe.directory $worktrees_dir"
+        echo "     git config --global --add safe.directory '$worktrees_dir/*'"
         exit 1
     fi
 }
@@ -488,6 +534,11 @@ setup_worktree() {
     echo "Setting up worktree for branch: $branch"
     mkdir -p "$worktree_dir"
 
+    # Drop registrations whose directories are gone (e.g. a previous failed
+    # run removed the folder) - otherwise `git worktree add` refuses with
+    # "missing but already registered worktree".
+    git worktree prune 2>/dev/null || true
+
     if [ -d "$worktree_path" ]; then
         echo "Worktree already exists at $worktree_path"
         if git worktree list | grep -q "$worktree_path"; then
@@ -505,6 +556,7 @@ setup_worktree() {
         else
             echo "Cleaning up invalid worktree directory"
             rm -rf "$worktree_path"
+            git worktree prune 2>/dev/null || true
             create_new_worktree "$branch" "$worktree_path"
         fi
     else
@@ -527,6 +579,8 @@ create_new_worktree() {
         echo "Worktree created successfully"
     elif git worktree add "$path" "$branch"; then
         echo "Worktree created from local branch"
+    elif git worktree prune && git worktree add "$path" "origin/$branch"; then
+        echo "Worktree created after pruning a stale registration"
     else
         echo "ERROR: Failed to create worktree for branch: $branch"
         echo "Available branches:"
@@ -596,6 +650,7 @@ trap handle_exit EXIT
 # --- Run pre-flight checks ---
 
 preflight_check_docker
+preflight_check_git_ownership
 preflight_check_disk_space
 preflight_check_dirty_tree
 preflight_check_lock
