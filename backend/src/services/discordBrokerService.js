@@ -36,15 +36,40 @@ class DiscordBrokerService {
   }
 
   /**
-   * Resolve the broker app identity from the static app name (deployment
-   * branding — the deprecated 'campaign_name' settings row is no longer
-   * read). The GROUP_NAME env var still overrides for deployments that pin
-   * a custom broker identity.
+   * Resolve the broker app identity.
+   *
+   * Every deployment (prod, dev/test, ...) shares ONE broker and its registry
+   * is keyed by appId, so the id MUST differ per deployment or the deployments
+   * overwrite / unregister each other. A single container now serves every
+   * campaign, so there is no campaign-flavoured GROUP_NAME to lean on by
+   * default; instead the id derives from the deployment's own callback URL
+   * (DISCORD_CALLBACK_URL host, or HOST_IP:PORT), which is unique per
+   * deployment by construction. GROUP_NAME remains an explicit override.
    */
   async resolveAppIdentity() {
     const { APP_NAME } = require('../config/constants');
-    this.groupName = process.env.GROUP_NAME || APP_NAME;
-    this.appId = `pathfinder-loot-tracker-${this.groupName.toLowerCase().replace(/\s+/g, '-')}`;
+    const slugify = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    if (process.env.GROUP_NAME) {
+      this.groupName = process.env.GROUP_NAME;
+    } else {
+      this.groupName = this.callbackHost() || APP_NAME;
+    }
+    this.appId = `pathfinder-loot-tracker-${slugify(this.groupName)}`;
+  }
+
+  /**
+   * Host (and non-default port) of this deployment's broker callback URL,
+   * e.g. "rotr.example.com" or "192.168.0.64:5000". Returns null if the URL
+   * cannot be parsed.
+   * @return {string|null}
+   */
+  callbackHost() {
+    try {
+      return new URL(this.buildCallbackUrl()).host || null;
+    } catch (error) {
+      return null;
+    }
   }
 
   async start() {

@@ -282,9 +282,29 @@ app.post('/register', (req, res) => {
     lastHeartbeat: new Date().toISOString()
   };
 
+  // Every deployment shares this registry, keyed by appId. Flag the two
+  // failure modes that silently break routing: a different app already owning
+  // one of these channels, and an existing appId being re-registered with a
+  // completely different channel set (a second deployment using the same id).
+  const claimedChannels = Object.keys(channels);
+  registeredApps.forEach((existing, existingId) => {
+    if (existingId === appId) return;
+    const overlap = claimedChannels.filter(ch => existing.channels[ch]);
+    if (overlap.length > 0) {
+      console.warn(`Channel conflict: ${appId} is claiming channels already owned by ${existingId}:`, overlap);
+    }
+  });
+  const previous = registeredApps.get(appId);
+  if (previous) {
+    const dropped = Object.keys(previous.channels).filter(ch => !channels[ch]);
+    if (dropped.length > 0) {
+      console.warn(`Re-registration of ${appId} drops previously registered channels (another deployment sharing this appId?):`, dropped);
+    }
+  }
+
   registeredApps.set(appId, appConfig);
 
-  console.log(`Registered app: ${name} (${appId}) with channels:`, Object.keys(channels));
+  console.log(`Registered app: ${name} (${appId}) with channels:`, claimedChannels);
 
   res.json({
     success: true,
