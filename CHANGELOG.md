@@ -5,10 +5,10 @@ All notable changes to this project are documented in this file.
 ## [0.15.2]
 
 ### Fixed
-- **Discord session buttons no longer break when a second copy of the app is running.** Every deployment (production, plus any test copy) registers with the same Discord broker, and since the app began serving all campaigns from one container they were all registering under the same name. A test copy starting up would replace production's registration, and clicking an attendance button in a production channel then got "This channel is not configured for session attendance tracking" until production was restarted. Each deployment now registers under a name derived from its own web address, so they can no longer overwrite each other. The broker also logs a warning if two deployments ever claim the same channel.
+- **Discord session buttons stopped working when a second copy of the app was running.** All deployments registered with the Discord broker under the same name, so a test copy starting up replaced production's registration. Each deployment now registers under a name derived from its own web address.
 
 ### Notes
-- The Discord broker runs as a separate service; its container must be rebuilt to pick up the broker-side warning above.
+- Rebuild the Discord broker container to pick up its side of the fix.
 
 ## [0.15.1]
 
