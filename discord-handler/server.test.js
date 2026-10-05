@@ -142,3 +142,134 @@ test('/status requires the secret; /health does not disclose endpoints', async (
   assert.equal(body.campaigns, undefined);
   assert.ok(!JSON.stringify(body).includes('backend.local'));
 });
+
+// ---------------------------------------------------------------------------
+// W07: interaction routing, input validation, bare /health
+// ---------------------------------------------------------------------------
+const crypto = require('node:crypto');
+const http = require('node:http');
+
+const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+const publicKeyHex = Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url').toString('hex');
+
+const signedInteraction = (interaction) => {
+  const body = JSON.stringify(interaction);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = crypto.sign(null, Buffer.from(timestamp + body), privateKey).toString('hex');
+  return fetch(`${base}/interactions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Signature-Ed25519': signature,
+      'X-Signature-Timestamp': timestamp
+    },
+    body
+  });
+};
+
+const startBackend = (handler) => new Promise((resolve) => {
+  const received = [];
+  const srv = http.createServer((req, res) => {
+    let data = '';
+    req.on('data', (c) => { data += c; });
+    req.on('end', () => {
+      received.push({ url: req.url, headers: req.headers, body: data });
+      handler(res);
+    });
+  });
+  srv.listen(0, '127.0.0.1', () => resolve({ srv, received, port: srv.address().port }));
+});
+
+const CHANNEL = '123456789012345678';
+const click = (channelId) => ({ type: 3, id: 'i1', channel_id: channelId, data: { custom_id: 'session_attend_yes' } });
+
+test('a button click is forwarded verbatim to the registered endpoint with the broker secret', async () => {
+  process.env.DISCORD_PUBLIC_KEY = publicKeyHex;
+  const backend = await startBackend((res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ type: 4, data: { content: 'recorded' } }));
+  });
+  try {
+    await post('/register', registration({ endpoint: `http://127.0.0.1:${backend.port}/api/discord/interactions` }), 'test-secret');
+
+    const res = await signedInteraction(click(CHANNEL));
+
+    assert.equal((await res.json()).data.content, 'recorded');
+    assert.equal(backend.received[0].url, '/api/discord/interactions');
+    assert.equal(backend.received[0].headers['x-broker-secret'], 'test-secret');
+    assert.equal(JSON.parse(backend.received[0].body).channel_id, CHANNEL);
+  } finally {
+    backend.srv.close();
+  }
+});
+
+test('an unknown channel, a missing channel id and prototype names are answered as not configured', async () => {
+  process.env.DISCORD_PUBLIC_KEY = publicKeyHex;
+  for (const channelId of ['999999999999999999', undefined, '__proto__', 'undefined']) {
+    const res = await signedInteraction(click(channelId));
+    const body = await res.json();
+    assert.equal(body.type, 4);
+    assert.equal(body.data.flags, 64);
+    assert.match(body.data.content, /not configured/);
+  }
+});
+
+test('an unreachable backend gets the ephemeral fallback reply', async () => {
+  process.env.DISCORD_PUBLIC_KEY = publicKeyHex;
+  const backend = await startBackend(() => {});
+  const { port } = backend;
+  backend.srv.close();
+  await post('/register', registration({ endpoint: `http://127.0.0.1:${port}/api/discord/interactions` }), 'test-secret');
+
+  const res = await signedInteraction(click(CHANNEL));
+
+  const body = await res.json();
+  assert.equal(body.data.flags, 64);
+  assert.match(body.data.content, /temporarily unavailable/);
+});
+
+test('a forged signature is rejected', async () => {
+  process.env.DISCORD_PUBLIC_KEY = publicKeyHex;
+  const res = await fetch(`${base}/interactions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Signature-Ed25519': 'ab'.repeat(32), 'X-Signature-Timestamp': '1' },
+    body: JSON.stringify(click(CHANNEL))
+  });
+  assert.equal(res.status, 401);
+});
+
+for (const path of ['/register', '/unregister', '/heartbeat']) {
+  test(`${path} answers 400, not 500, to a request without a JSON body`, async () => {
+    const res = await fetch(`${base}${path}`, { method: 'POST', headers: { 'X-Broker-Secret': 'test-secret' } });
+    assert.equal(res.status, 400);
+  });
+}
+
+test('register bounds the registry: field types, channel count and number of apps', async () => {
+  let res = await post('/register', registration({ name: 42 }), 'test-secret');
+  assert.equal(res.status, 400);
+  res = await post('/register', registration({ appId: 'x'.repeat(201) }), 'test-secret');
+  assert.equal(res.status, 400);
+
+  const manyChannels = Object.fromEntries(Array.from({ length: 51 }, (_, i) => ['10000000000000' + String(i).padStart(4, '0'), {}]));
+  res = await post('/register', registration({ channels: manyChannels }), 'test-secret');
+  assert.equal(res.status, 400);
+
+  for (let i = 0; i < 20; i += 1) {
+    res = await post('/register', registration({
+      appId: `app-${i}`, channels: { ['20000000000000' + String(i).padStart(4, '0')]: {} }
+    }), 'test-secret');
+    assert.equal(res.status, 200);
+  }
+  res = await post('/register', registration({ appId: 'one-too-many', channels: { '300000000000000000': {} } }), 'test-secret');
+  assert.equal(res.status, 429);
+  // an app that is already registered may still re-register
+  res = await post('/register', registration({ appId: 'app-0', channels: { '200000000000000000': {} } }), 'test-secret');
+  assert.equal(res.status, 200);
+});
+
+test('/health is a bare liveness answer', async () => {
+  await post('/register', registration(), 'test-secret');
+  const body = await (await fetch(`${base}/health`)).json();
+  assert.deepEqual(Object.keys(body).sort(), ['status', 'timestamp']);
+});

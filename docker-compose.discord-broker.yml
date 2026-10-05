@@ -7,25 +7,12 @@ services:
     restart: unless-stopped
 
     environment:
-      # Discord Bot Configuration (REQUIRED - Replace with your values)
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
-      - DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY}  # Required for signature verification
+      # Discord application public key (REQUIRED): verifies the signature on every interaction
+      - DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY}
 
-      # Broker Service Configuration
+      # Broker Service Configuration (the only settings discord-handler/server.js reads)
       - PORT=3000
-      - HOST=0.0.0.0
       - NODE_ENV=production
-      - LOG_LEVEL=info
-
-      # Database Configuration
-      - DATABASE_PATH=/data/registrations.db
-
-      # Registration Settings
-      - HEARTBEAT_INTERVAL=30000
-      - REGISTRATION_RETRY_INTERVAL=5000
-      - MAX_REGISTRATION_RETRIES=5
-      - CLEANUP_INTERVAL=300000  # Clean up dead apps every 5 minutes
 
       # Shared secret required on /register, /unregister, /heartbeat (REQUIRED in production)
       - DISCORD_BROKER_SECRET=${DISCORD_BROKER_SECRET:-}
@@ -38,7 +25,8 @@ services:
       - "3000:3000"  # Change the first port if 3000 is already in use
 
     volumes:
-      # Persistent storage for SQLite database
+      # NOTE: discord-handler keeps its registry in memory and never reads or
+      # writes /data, so this mount is currently unused.
       # Update this path to your desired TrueNAS dataset location
       - /mnt/pool/appdata/discord-broker:/data
 

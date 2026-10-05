@@ -20,8 +20,21 @@ const PORT = process.env.PORT || 3000;
 app.use('/interactions', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
-// Dynamic campaign registry - apps can register/unregister at runtime
+// Dynamic campaign registry - apps register/unregister at runtime. The registry
+// lives in memory and is bounded: a registration needs the broker secret, and
+// these limits cap what even a holder of the secret can make the process keep.
 const registeredApps = new Map();
+const MAX_REGISTERED_APPS = 20;
+const MAX_CHANNELS_PER_APP = 50;
+const MAX_TEXT_LENGTH = 200;
+const MAX_ENDPOINT_LENGTH = 2048;
+const MAX_CHANNEL_ID_LENGTH = 32;
+
+// Ephemeral (only the clicking user sees it) reply to a Discord interaction
+const ephemeral = (content) => ({
+  type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
+  data: { content, flags: 64 } // 64 = EPHEMERAL
+});
 
 // ---------------------------------------------------------------------------
 // Broker authentication (DISCORD_BROKER_SECRET)
@@ -107,44 +120,21 @@ const validateEndpoint = (endpoint) => {
   return null;
 };
 
-// Legacy static configuration for backward compatibility
-const STATIC_CONFIG = {
-  [process.env.ROTR_CHANNEL_ID]: {
-    name: 'ROTR',
-    endpoint: process.env.ROTR_API_ENDPOINT || 'http://localhost:5000/api',
-    channelId: process.env.ROTR_CHANNEL_ID
-  },
-  [process.env.SNS_CHANNEL_ID]: {
-    name: 'SNS',
-    endpoint: process.env.SNS_API_ENDPOINT || 'http://localhost:5001/api',
-    channelId: process.env.SNS_CHANNEL_ID
-  },
-  [process.env.TEST_CHANNEL_ID]: {
-    name: 'TEST',
-    endpoint: process.env.TEST_API_ENDPOINT || 'http://localhost:5002/api',
-    channelId: process.env.TEST_CHANNEL_ID
-  }
-};
-
-// Build campaign configuration from both static and dynamic sources
-const getCampaignConfig = () => {
-  const config = { ...STATIC_CONFIG };
-
-  // Add dynamically registered apps
+// Channel id -> registered app, built from the registry. A Map, so a channel id
+// such as "__proto__" or a missing one can never match anything.
+const getChannelRoutes = () => {
+  const routes = new Map();
   registeredApps.forEach((appConfig) => {
     Object.keys(appConfig.channels).forEach(channelId => {
-      // Statically configured channels cannot be taken over by a registration
-      if (STATIC_CONFIG[channelId] && channelId !== 'undefined') return;
-      config[channelId] = {
+      routes.set(channelId, {
         name: appConfig.name,
         endpoint: appConfig.endpoint,
-        channelId: channelId,
+        channelId,
         appId: appConfig.appId
-      };
+      });
     });
   });
-
-  return config;
+  return routes;
 };
 
 // Discord signature verification middleware
@@ -204,13 +194,7 @@ const routeToInstance = async (interaction, campaignConfig) => {
     console.error(`Failed to route to ${campaignConfig.name}:`, error.message);
 
     // Return a fallback response for Discord
-    return {
-      type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
-      data: {
-        content: `⚠️ Sorry, the ${campaignConfig.name} campaign system is temporarily unavailable. Please try again later.`,
-        flags: 64 // EPHEMERAL
-      }
-    };
+    return ephemeral(`⚠️ Sorry, the ${campaignConfig.name} campaign system is temporarily unavailable. Please try again later.`);
   }
 };
 
@@ -233,51 +217,39 @@ app.post('/interactions', verifyDiscordRequest, async (req, res) => {
 
   // Handle component interactions (button clicks) - type 3
   if (interaction.type === 3) {
-    const channelId = interaction.channel_id;
-    const CAMPAIGN_CONFIG = getCampaignConfig();
-    const campaignConfig = CAMPAIGN_CONFIG[channelId];
+    const campaignConfig = getChannelRoutes().get(interaction.channel_id);
 
     if (!campaignConfig) {
-      console.error(`No campaign configuration found for channel ${channelId}`);
-      return res.json({
-        type: 4,
-        data: {
-          content: '⚠️ This channel is not configured for session attendance tracking.',
-          flags: 64 // EPHEMERAL
-        }
-      });
+      console.error(`No campaign configuration found for channel ${interaction.channel_id}`);
+      return res.json(ephemeral('⚠️ This channel is not configured for session attendance tracking.'));
     }
 
-    // Route to appropriate campaign instance
-    try {
-      const response = await routeToInstance(interaction, campaignConfig);
-      return res.json(response);
-    } catch (error) {
-      console.error('Error routing interaction:', error);
-      return res.status(500).json({
-        type: 4,
-        data: {
-          content: '❌ An error occurred processing your response. Please try again.',
-          flags: 64 // EPHEMERAL
-        }
-      });
-    }
+    // routeToInstance never throws: it answers with a fallback reply instead
+    return res.json(await routeToInstance(interaction, campaignConfig));
   }
 
   // Handle other interaction types (application commands, etc.)
   console.log(`Unhandled interaction type: ${interaction.type}`);
-  return res.json({
-    type: 4,
-    data: {
-      content: '❓ Unknown interaction type.',
-      flags: 64 // EPHEMERAL
-    }
-  });
+  return res.json(ephemeral('❓ Unknown interaction type.'));
 });
+
+const isText = (value, maxLength) => typeof value === 'string' && value.length > 0 && value.length <= maxLength;
+
+// Control endpoints take a JSON body; without one req.body is undefined (Express 5)
+const requireAppId = (req, res, next) => {
+  req.body = req.body || {};
+  if (!req.body.appId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required field: appId'
+    });
+  }
+  return next();
+};
 
 // App registration endpoint
 app.post('/register', requireBrokerSecret, (req, res) => {
-  const { appId, name, description, endpoint, channels } = req.body;
+  const { appId, name, description, endpoint, channels } = req.body || {};
 
   if (!appId || !name || !endpoint || !channels) {
     return res.status(400).json({
@@ -286,8 +258,26 @@ app.post('/register', requireBrokerSecret, (req, res) => {
     });
   }
 
+  if (!isText(appId, MAX_TEXT_LENGTH) || !isText(name, MAX_TEXT_LENGTH)
+      || (description !== undefined && typeof description !== 'string')
+      || (typeof description === 'string' && description.length > MAX_TEXT_LENGTH)
+      || !isText(endpoint, MAX_ENDPOINT_LENGTH)) {
+    return res.status(400).json({
+      success: false,
+      message: `appId, name, description and endpoint must be strings of at most ${MAX_TEXT_LENGTH} characters (endpoint ${MAX_ENDPOINT_LENGTH})`
+    });
+  }
+
   if (typeof channels !== 'object' || Array.isArray(channels)) {
     return res.status(400).json({ success: false, message: 'channels must be an object keyed by channel id' });
+  }
+
+  const channelIds = Object.keys(channels);
+  if (channelIds.length > MAX_CHANNELS_PER_APP || channelIds.some(id => id.length > MAX_CHANNEL_ID_LENGTH)) {
+    return res.status(400).json({
+      success: false,
+      message: `channels may hold at most ${MAX_CHANNELS_PER_APP} channel ids of at most ${MAX_CHANNEL_ID_LENGTH} characters`
+    });
   }
 
   const endpointError = validateEndpoint(endpoint);
@@ -297,7 +287,7 @@ app.post('/register', requireBrokerSecret, (req, res) => {
   }
 
   // A channel already owned by a different app cannot be taken over
-  for (const channelId of Object.keys(channels)) {
+  for (const channelId of channelIds) {
     for (const [otherId, other] of registeredApps) {
       if (otherId !== appId && other.channels[channelId]) {
         return res.status(409).json({
@@ -306,6 +296,13 @@ app.post('/register', requireBrokerSecret, (req, res) => {
         });
       }
     }
+  }
+
+  if (!registeredApps.has(appId) && registeredApps.size >= MAX_REGISTERED_APPS) {
+    return res.status(429).json({
+      success: false,
+      message: `At most ${MAX_REGISTERED_APPS} apps may be registered`
+    });
   }
 
   const appConfig = {
@@ -320,26 +317,19 @@ app.post('/register', requireBrokerSecret, (req, res) => {
 
   registeredApps.set(appId, appConfig);
 
-  console.log(`Registered app: ${name} (${appId}) with channels:`, Object.keys(channels));
+  console.log(`Registered app: ${name} (${appId}) with channels:`, channelIds);
 
   res.json({
     success: true,
     message: 'App registered successfully',
     appId,
-    registeredChannels: Object.keys(channels)
+    registeredChannels: channelIds
   });
 });
 
 // App unregistration endpoint
-app.post('/unregister', requireBrokerSecret, (req, res) => {
+app.post('/unregister', requireBrokerSecret, requireAppId, (req, res) => {
   const { appId } = req.body;
-
-  if (!appId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Missing required field: appId'
-    });
-  }
 
   const wasRegistered = registeredApps.delete(appId);
 
@@ -360,18 +350,11 @@ app.post('/unregister', requireBrokerSecret, (req, res) => {
 });
 
 // Heartbeat endpoint
-app.post('/heartbeat', requireBrokerSecret, (req, res) => {
+app.post('/heartbeat', requireBrokerSecret, requireAppId, (req, res) => {
   const { appId } = req.body;
 
-  if (!appId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Missing required field: appId'
-    });
-  }
-
-  const app = registeredApps.get(appId);
-  if (!app) {
+  const registered = registeredApps.get(appId);
+  if (!registered) {
     return res.status(404).json({
       success: false,
       message: 'App not registered',
@@ -379,33 +362,27 @@ app.post('/heartbeat', requireBrokerSecret, (req, res) => {
     });
   }
 
-  app.lastHeartbeat = new Date().toISOString();
-  registeredApps.set(appId, app);
+  registered.lastHeartbeat = new Date().toISOString();
 
   res.json({
     success: true,
     message: 'Heartbeat received',
     appId,
-    lastHeartbeat: app.lastHeartbeat
+    lastHeartbeat: registered.lastHeartbeat
   });
 });
 
-// Health check endpoint
+// Health check endpoint: liveness only (it is unauthenticated and is what the
+// compose healthcheck calls; /status has the details behind the secret)
 app.get('/health', (req, res) => {
-  const CAMPAIGN_CONFIG = getCampaignConfig();
-  const configuredChannels = Object.keys(CAMPAIGN_CONFIG).filter(key => key && key !== 'undefined');
-
   res.json({
     status: 'healthy',
-    timestamp: new Date().toISOString(),
-    configuredCampaigns: configuredChannels.length,
-    registeredApps: registeredApps.size
+    timestamp: new Date().toISOString()
   });
 });
 
 // Status endpoint for debugging (authenticated: discloses endpoints and channel ids)
 app.get('/status', requireBrokerSecret, (req, res) => {
-  const CAMPAIGN_CONFIG = getCampaignConfig();
   res.json({
     service: 'Discord Interaction Handler',
     version: '1.0.0',
@@ -418,13 +395,7 @@ app.get('/status', requireBrokerSecret, (req, res) => {
       requestTimeout: process.env.REQUEST_TIMEOUT || '2500ms'
     },
     registeredApps: Array.from(registeredApps.values()),
-    campaigns: Object.entries(CAMPAIGN_CONFIG).map(([channelId, config]) => ({
-      name: config.name,
-      configured: !!channelId && channelId !== 'undefined',
-      channelId: channelId || 'NOT_CONFIGURED',
-      endpoint: config.endpoint,
-      appId: config.appId
-    }))
+    campaigns: Array.from(getChannelRoutes().values())
   });
 });
 
@@ -440,12 +411,7 @@ app.use((error, req, res, next) => {
 // Start server (only when run directly, so tests can import the app)
 const startServer = () => app.listen(PORT, () => {
   console.log(`Discord Interaction Handler running on port ${PORT}`);
-  const CAMPAIGN_CONFIG = getCampaignConfig();
-  console.log('Configured campaigns:', Object.entries(CAMPAIGN_CONFIG)
-    .filter(([channelId]) => channelId && channelId !== 'undefined')
-    .map(([channelId, config]) => `${config.name} (${channelId})`)
-    .join(', ') || 'None configured'
-  );
+  console.log('Channels are registered by the backends at runtime (POST /register)');
 
   if (!process.env.DISCORD_PUBLIC_KEY) {
     console.warn('⚠️  DISCORD_PUBLIC_KEY not configured - signature verification will fail');
