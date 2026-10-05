@@ -486,13 +486,13 @@ describe('IdentificationService', () => {
       expect(result.message).toContain('Already attempted');
     });
 
-    it('should skip attempt check for DM identification (roll 99)', async () => {
+    it('should skip attempt check for DM identification (dmIdentify flag)', async () => {
       const mockClient = buildMockClient();
 
       const result = await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 99,
+        dmIdentify: true,
         golarionDate: '4718-3-14',
       });
 
@@ -504,7 +504,27 @@ describe('IdentificationService', () => {
       expect(attemptCheckCalls).toHaveLength(0);
     });
 
-    it('should record attempt with null characterId for DM identification', async () => {
+    it('treats a client-sent roll of 99 as an ordinary roll (F-1294)', async () => {
+      const mockClient = buildMockClient({
+        attemptCheck: { rows: [{ id: 1 }] },
+      });
+
+      const result = await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10,
+        characterId: 2,
+        spellcraftRoll: 99,
+        golarionDate: '4718-3-14',
+      });
+
+      // Subject to the once-per-day rule like any other roll
+      expect(result.alreadyAttempted).toBe(true);
+      const attemptCheckCalls = mockClient.query.mock.calls.filter(
+        (call) => call[0].includes('FROM identify')
+      );
+      expect(attemptCheckCalls).toHaveLength(1);
+    });
+
+    it('records a roll of 99 against the character when no dmIdentify flag is set (F-1294)', async () => {
       const mockClient = buildMockClient();
 
       await IdentificationService.identifySingleItem(mockClient, {
@@ -517,18 +537,34 @@ describe('IdentificationService', () => {
       const insertCall = mockClient.query.mock.calls.find(
         (call) => call[0].includes('INSERT INTO identify')
       );
-      expect(insertCall).toBeDefined();
-      // characterId should be null for DM identification
-      expect(insertCall[1][1]).toBeNull();
+      expect(insertCall[1][1]).toBe(2);
     });
 
-    it('should NOT call roll validation for DM identification (roll 99)', async () => {
+    it('should record attempt with null characterId for DM identification', async () => {
       const mockClient = buildMockClient();
 
       await IdentificationService.identifySingleItem(mockClient, {
         itemId: 10,
         characterId: 2,
-        spellcraftRoll: 99,
+        dmIdentify: true,
+        golarionDate: '4718-3-14',
+      });
+
+      const insertCall = mockClient.query.mock.calls.find(
+        (call) => call[0].includes('INSERT INTO identify')
+      );
+      expect(insertCall).toBeDefined();
+      // characterId should be null for DM identification
+      expect(insertCall[1][1]).toBeNull();
+    });
+
+    it('should NOT call roll validation for DM identification (dmIdentify flag)', async () => {
+      const mockClient = buildMockClient();
+
+      await IdentificationService.identifySingleItem(mockClient, {
+        itemId: 10,
+        characterId: 2,
+        dmIdentify: true,
         golarionDate: '4718-3-14',
       });
 
@@ -708,6 +744,40 @@ describe('IdentificationService', () => {
       expect(result.failed).toHaveLength(1);
       expect(result.failed[0].id).toBe(10);
       expect(result.identified).toHaveLength(1);
+    });
+
+    it('requires a character for a non-DM identification (F-1294)', async () => {
+      await expect(
+        IdentificationService.identifyItems({
+          items: [10],
+          characterId: null,
+          spellcraftRolls: [99],
+        })
+      ).rejects.toThrow('character ID is required');
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('identifies without rolls or a character when dmIdentify is set', async () => {
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn().mockImplementation((query, params) => {
+            if (query.includes('golarion_current_date')) return { rows: [{ year: 4718, month: 3, day: 14 }] };
+            if (query.includes('FROM loot')) return { rows: [{ id: 10, name: 'Unknown Sword', itemid: 5, modids: [], cursed: false }] };
+            if (query.includes('FROM item')) return { rows: [{ id: 5, name: 'Longsword', type: 'weapon', casterlevel: 20 }] };
+            return { rows: [] };
+          }),
+        };
+        return await callback(mockClient);
+      });
+
+      const result = await IdentificationService.identifyItems({
+        items: [10],
+        characterId: null,
+        dmIdentify: true,
+      });
+
+      expect(result.identified).toHaveLength(1);
+      expect(result.count.failed).toBe(0);
     });
 
     it('should validate items array', async () => {

@@ -4,7 +4,10 @@ const logger = require('../utils/logger');
 const ValidationService = require('./validationService');
 
 /**
- * Sentinel roll value used for DM identification (auto-success, bypasses validation)
+ * Roll value recorded/used internally for a DM identification (auto-success).
+ * This is NOT a client-facing sentinel: DM identification is requested via the
+ * explicit dmIdentify flag, which the controller only honours for callers with
+ * DM rights. A client-sent roll of 99 is just an ordinary roll.
  */
 const DM_IDENTIFICATION_ROLL = 99;
 
@@ -161,15 +164,15 @@ class IdentificationService {
    * @returns {Promise<Object>} - Identification result
    */
   static async identifySingleItem(client, identificationData) {
-    const { itemId, characterId, spellcraftRoll, golarionDate } = identificationData;
+    const { itemId, characterId, golarionDate, dmIdentify = false } = identificationData;
+    const isDMIdentification = dmIdentify === true;
+    const spellcraftRoll = isDMIdentification ? DM_IDENTIFICATION_ROLL : identificationData.spellcraftRoll;
 
     // Validate inputs
     ValidationService.validateItemId(itemId);
 
-    // Check if this is a DM identification (sentinel roll value, auto-success)
-    const isDMIdentification = spellcraftRoll === DM_IDENTIFICATION_ROLL;
-
-    // Only validate roll for player identifications; DM uses sentinel value
+    // Only validate the roll for player identifications; a DM identification
+    // (explicit server-authorised flag) is an automatic success.
     // Note: spellcraftRoll is the total (d20 + bonus), so it can exceed 20
     if (!isDMIdentification) {
       ValidationService.validateRequiredNumber(spellcraftRoll, 'spellcraft roll', { min: 1 });
@@ -251,11 +254,16 @@ class IdentificationService {
    * @returns {Promise<Object>} - Identification results
    */
   static async identifyItems(identifyData) {
-    const { items, characterId, spellcraftRolls } = identifyData;
+    const { items, characterId, spellcraftRolls, dmIdentify = false } = identifyData;
 
     // Validate inputs
     ValidationService.validateItems(items);
-    if (characterId) ValidationService.validateCharacterId(characterId);
+    if (dmIdentify !== true) {
+      // Players must identify as a character: the once-per-day rule is keyed on it.
+      ValidationService.validateCharacterId(characterId);
+    } else if (characterId) {
+      ValidationService.validateCharacterId(characterId);
+    }
 
     return await dbUtils.executeTransaction(async (client) => {
       const golarionDate = await this.getCurrentGolarionDate(client);
@@ -269,8 +277,9 @@ class IdentificationService {
           const result = await this.identifySingleItem(client, {
             itemId: items[i],
             characterId,
-            spellcraftRoll: spellcraftRolls[i],
-            golarionDate
+            spellcraftRoll: Array.isArray(spellcraftRolls) ? spellcraftRolls[i] : undefined,
+            golarionDate,
+            dmIdentify
           });
 
           if (result.alreadyAttempted) {

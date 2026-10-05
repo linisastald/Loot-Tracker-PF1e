@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
 const AppraisalService = require('../services/appraisalService');
 const IdentificationService = require('../services/identificationService');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Appraise loot items
@@ -172,13 +173,16 @@ const getUnidentifiedItems = async (req, res) => {
  * Identify items
  */
 const identifyItems = async (req, res) => {
-  const { items, characterId, spellcraftRolls } = req.body;
+  const { items, characterId, spellcraftRolls, dmIdentify } = req.body;
 
   try {
     const result = await IdentificationService.identifyItems({
       items,
       characterId,
-      spellcraftRolls
+      spellcraftRolls,
+      // DM identification (no roll, auto-success) is decided server-side: the
+      // client intent only counts when the caller really has DM rights.
+      dmIdentify: dmIdentify === true && hasDmRights(req)
     });
 
     const message = `${result.count.success} items identified successfully` +

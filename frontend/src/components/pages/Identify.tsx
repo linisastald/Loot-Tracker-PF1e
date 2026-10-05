@@ -148,11 +148,12 @@ const Identify: React.FC = () => {
           const lootItem = loot.individual.find(i => i.id === itemId);
           if (!lootItem) return null;
 
-          // Handle DM identification (automatic success)
+          // DM identification (automatic success): no roll is sent; the
+          // server decides from the caller's DM rights.
           if (isDMUser) {
             return {
               itemId,
-              spellcraftRoll: 99,
+              spellcraftRoll: undefined,
             };
           }
 
@@ -186,7 +187,9 @@ const Identify: React.FC = () => {
         const response = await lootService.identifyItems({
           items: identifyData.map(item => item.itemId),
           characterId: isDMUser ? null : activeUser?.activeCharacterId,
-          spellcraftRolls: identifyData.map(item => item.spellcraftRoll),
+          ...(isDMUser
+            ? { dmIdentify: true }
+            : { spellcraftRolls: identifyData.map(item => item.spellcraftRoll as number) }),
         });
 
         // Handle response for already-attempted items

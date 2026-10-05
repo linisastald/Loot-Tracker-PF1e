@@ -55,7 +55,10 @@ export interface AppraisalData {
 export interface IdentificationData {
   items: number[];
   characterId: number | null;
-  spellcraftRolls: number[];
+  /** Omitted for a DM identification (the server ignores rolls in that case). */
+  spellcraftRolls?: number[];
+  /** DM intent: identify without a roll. Only honoured by the server for DMs. */
+  dmIdentify?: boolean;
 }
 
 // Matches the backend contract for POST /item-creation/calculate-value

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
@@ -29,6 +29,7 @@ vi.mock('../../common/CustomLootTable', () => ({
 }));
 
 import Identify from '../Identify';
+import lootService from '../../../services/lootService';
 
 const renderIdentify = (authOverrides = {}) => {
   const defaultAuth = {
@@ -99,5 +100,44 @@ describe('Identify', () => {
 
     const spellcraftInput = screen.getByLabelText(/Spellcraft/i) as HTMLInputElement;
     expect(spellcraftInput.value).toBe('15');
+  });
+
+  describe('identify request payload (F-1294)', () => {
+    const unidentified = {
+      id: 7, name: 'Unknown Ring', itemid: 3, unidentified: true, quantity: 1, value: 0, notes: '',
+    };
+
+    beforeEach(() => {
+      (lootService.getUnidentifiedItems as any).mockResolvedValue({
+        data: { items: [unidentified], pagination: {} },
+      });
+    });
+
+    it('a DM sends dmIdentify and no roll (never the old 99 sentinel)', async () => {
+      renderIdentify({ isDM: true, user: { id: 1, username: 'dm', role: 'DM' } });
+      const btn = await screen.findByRole('button', { name: /Identify All/i });
+      await waitFor(() => expect(btn).not.toBeDisabled());
+      fireEvent.click(btn);
+
+      await waitFor(() => expect(lootService.identifyItems).toHaveBeenCalled());
+      const payload = (lootService.identifyItems as any).mock.calls[0][0];
+      expect(payload.dmIdentify).toBe(true);
+      expect(payload.characterId).toBeNull();
+      expect(payload.spellcraftRolls).toBeUndefined();
+    });
+
+    it('a player sends rolls and no dmIdentify', async () => {
+      localStorage.setItem('spellcraftBonus', '5');
+      renderIdentify();
+      const btn = await screen.findByRole('button', { name: /Identify All/i });
+      await waitFor(() => expect(btn).not.toBeDisabled());
+      fireEvent.click(btn);
+
+      await waitFor(() => expect(lootService.identifyItems).toHaveBeenCalled());
+      const payload = (lootService.identifyItems as any).mock.calls[0][0];
+      expect(payload.dmIdentify).toBeUndefined();
+      expect(payload.characterId).toBe(10);
+      expect(payload.spellcraftRolls).toHaveLength(1);
+    });
   });
 });
