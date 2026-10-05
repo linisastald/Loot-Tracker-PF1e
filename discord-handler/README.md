@@ -91,6 +91,7 @@ Headers:
   Content-Type: application/json
   X-Forwarded-From: discord-handler
   X-Campaign-Instance: ROTR|SNS|TEST
+  X-Broker-Secret: <DISCORD_BROKER_SECRET>
 ```
 
 Campaign instances should respond with valid Discord interaction responses.
@@ -123,6 +124,8 @@ Health check response example:
 ## Security
 
 - All interactions are verified using Discord's Ed25519 signature verification
+- `/register`, `/unregister`, `/heartbeat` and `/status` require the shared `DISCORD_BROKER_SECRET` in an `X-Broker-Secret` header (fail closed in production when unset); the backend requires the same secret on `/api/discord/interactions`
+- Optional `BROKER_ALLOWED_ENDPOINT_HOSTS` (comma-separated) restricts which hosts a registered callback endpoint may use
 - No sensitive data is logged in production mode
 - Requests to campaign instances include identifying headers
 - Timeouts prevent hanging requests

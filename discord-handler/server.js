@@ -6,6 +6,7 @@ process.env.DOTENV_CONFIG_QUIET = 'true';
 
 const express = require('express');
 const axios = require('axios');
+const crypto = require('crypto');
 const { verifyKey } = require('discord-interactions');
 const dotenv = require('dotenv');
 
@@ -21,6 +22,78 @@ app.use(express.json());
 
 // Dynamic campaign registry - apps can register/unregister at runtime
 const registeredApps = new Map();
+
+// ---------------------------------------------------------------------------
+// Broker authentication (DISCORD_BROKER_SECRET)
+//
+// /register, /unregister, /heartbeat and /status are control endpoints for the
+// backend(s) and must not be callable by anyone else. The backend sends the
+// shared secret in X-Broker-Secret; this service sends the same header on every
+// forward to a backend. Fail closed: in production an unset secret rejects every
+// control request. Outside production an unset secret is allowed (local dev).
+// ---------------------------------------------------------------------------
+const BROKER_SECRET_HEADER = 'X-Broker-Secret';
+
+const secretsMatch = (provided, expected) => {
+  if (typeof provided !== 'string' || typeof expected !== 'string') return false;
+  const a = crypto.createHash('sha256').update(provided).digest();
+  const b = crypto.createHash('sha256').update(expected).digest();
+  return crypto.timingSafeEqual(a, b);
+};
+
+const requireBrokerSecret = (req, res, next) => {
+  const expected = process.env.DISCORD_BROKER_SECRET;
+
+  if (!expected) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('DISCORD_BROKER_SECRET is not set; rejecting control request');
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    return next();
+  }
+
+  if (!secretsMatch(req.get(BROKER_SECRET_HEADER), expected)) {
+    console.warn(`Rejected control request to ${req.path}: missing or invalid broker secret`);
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  return next();
+};
+
+// Allowlist of hosts a registered callback endpoint may point at.
+// BROKER_ALLOWED_ENDPOINT_HOSTS is a comma-separated list of hostnames (or
+// host:port). When unset the endpoint only has to be a valid http(s) URL.
+const getAllowedEndpointHosts = () =>
+  (process.env.BROKER_ALLOWED_ENDPOINT_HOSTS || '')
+    .split(',')
+    .map(h => h.trim().toLowerCase())
+    .filter(Boolean);
+
+/**
+ * Validate a registration callback endpoint.
+ * @param {*} endpoint - Value supplied to /register
+ * @return {string|null} Error message, or null when acceptable
+ */
+const validateEndpoint = (endpoint) => {
+  if (typeof endpoint !== 'string') return 'endpoint must be a URL string';
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return 'endpoint is not a valid URL';
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return 'endpoint must use http or https';
+  }
+  if (url.username || url.password) return 'endpoint must not contain credentials';
+  const allowed = getAllowedEndpointHosts();
+  if (allowed.length > 0
+      && !allowed.includes(url.host.toLowerCase())
+      && !allowed.includes(url.hostname.toLowerCase())) {
+    return 'endpoint host is not allowed';
+  }
+  return null;
+};
 
 // Legacy static configuration for backward compatibility
 const STATIC_CONFIG = {
@@ -48,6 +121,8 @@ const getCampaignConfig = () => {
   // Add dynamically registered apps
   registeredApps.forEach((appConfig) => {
     Object.keys(appConfig.channels).forEach(channelId => {
+      // Statically configured channels cannot be taken over by a registration
+      if (STATIC_CONFIG[channelId] && channelId !== 'undefined') return;
       config[channelId] = {
         name: appConfig.name,
         endpoint: appConfig.endpoint,
@@ -103,7 +178,10 @@ const routeToInstance = async (interaction, campaignConfig) => {
         headers: {
           'Content-Type': 'application/json',
           'X-Forwarded-From': 'discord-handler',
-          'X-Campaign-Instance': campaignConfig.name
+          'X-Campaign-Instance': campaignConfig.name,
+          ...(process.env.DISCORD_BROKER_SECRET
+            ? { [BROKER_SECRET_HEADER]: process.env.DISCORD_BROKER_SECRET }
+            : {})
         },
         timeout: parseInt(process.env.REQUEST_TIMEOUT) || 2500
       }
@@ -185,84 +263,8 @@ app.post('/interactions', verifyDiscordRequest, async (req, res) => {
   });
 });
 
-// Discord webhook endpoint for reaction events
-app.post('/webhook', express.json(), async (req, res) => {
-  const event = req.body;
-
-  console.log('Received Discord webhook event:', {
-    type: event.t,
-    eventId: event.s,
-    timestamp: new Date().toISOString()
-  });
-
-  // Handle reaction add/remove events
-  if (event.t === 'MESSAGE_REACTION_ADD' || event.t === 'MESSAGE_REACTION_REMOVE') {
-    const reaction = event.d;
-    const channelId = reaction.channel_id;
-    const messageId = reaction.message_id;
-    const userId = reaction.user_id;
-    const emoji = reaction.emoji.name || reaction.emoji.id;
-    const action = event.t === 'MESSAGE_REACTION_ADD' ? 'add' : 'remove';
-
-    console.log('Processing reaction event:', {
-      action,
-      emoji,
-      messageId,
-      userId,
-      channelId
-    });
-
-    const CAMPAIGN_CONFIG = getCampaignConfig();
-    const campaignConfig = CAMPAIGN_CONFIG[channelId];
-
-    if (!campaignConfig) {
-      console.log(`No campaign configuration found for channel ${channelId}, ignoring reaction`);
-      return res.status(200).send('OK');
-    }
-
-    // Route reaction event to appropriate campaign instance
-    try {
-      const reactionData = {
-        type: 'reaction_event',
-        action: action,
-        message_id: messageId,
-        user_id: userId,
-        emoji: emoji,
-        channel_id: channelId,
-        guild_id: reaction.guild_id,
-        timestamp: new Date().toISOString()
-      };
-
-      const response = await axios.post(
-        `${campaignConfig.endpoint}/discord/reactions`,
-        reactionData,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Forwarded-From': 'discord-handler',
-            'X-Campaign-Instance': campaignConfig.name,
-            'X-Event-Type': 'reaction'
-          },
-          timeout: parseInt(process.env.REQUEST_TIMEOUT) || 2500
-        }
-      );
-
-      console.log(`Successfully routed reaction event to ${campaignConfig.name}:`, response.status);
-      return res.status(200).send('OK');
-
-    } catch (error) {
-      console.error(`Failed to route reaction event to ${campaignConfig.name}:`, error.message);
-      return res.status(200).send('OK'); // Always return 200 to Discord to prevent retries
-    }
-  }
-
-  // Handle other webhook events
-  console.log(`Unhandled webhook event type: ${event.t}`);
-  return res.status(200).send('OK');
-});
-
 // App registration endpoint
-app.post('/register', (req, res) => {
+app.post('/register', requireBrokerSecret, (req, res) => {
   const { appId, name, description, endpoint, channels } = req.body;
 
   if (!appId || !name || !endpoint || !channels) {
@@ -270,6 +272,28 @@ app.post('/register', (req, res) => {
       success: false,
       message: 'Missing required fields: appId, name, endpoint, channels'
     });
+  }
+
+  if (typeof channels !== 'object' || Array.isArray(channels)) {
+    return res.status(400).json({ success: false, message: 'channels must be an object keyed by channel id' });
+  }
+
+  const endpointError = validateEndpoint(endpoint);
+  if (endpointError) {
+    console.warn(`Rejected registration from ${appId}: ${endpointError}`);
+    return res.status(400).json({ success: false, message: endpointError });
+  }
+
+  // A channel already owned by a different app cannot be taken over
+  for (const channelId of Object.keys(channels)) {
+    for (const [otherId, other] of registeredApps) {
+      if (otherId !== appId && other.channels[channelId]) {
+        return res.status(409).json({
+          success: false,
+          message: `Channel ${channelId} is already registered by another app`
+        });
+      }
+    }
   }
 
   const appConfig = {
@@ -295,7 +319,7 @@ app.post('/register', (req, res) => {
 });
 
 // App unregistration endpoint
-app.post('/unregister', (req, res) => {
+app.post('/unregister', requireBrokerSecret, (req, res) => {
   const { appId } = req.body;
 
   if (!appId) {
@@ -324,7 +348,7 @@ app.post('/unregister', (req, res) => {
 });
 
 // Heartbeat endpoint
-app.post('/heartbeat', (req, res) => {
+app.post('/heartbeat', requireBrokerSecret, (req, res) => {
   const { appId } = req.body;
 
   if (!appId) {
@@ -363,20 +387,12 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     configuredCampaigns: configuredChannels.length,
-    registeredApps: registeredApps.size,
-    campaigns: Object.entries(CAMPAIGN_CONFIG)
-      .filter(([channelId]) => channelId && channelId !== 'undefined')
-      .map(([channelId, config]) => ({
-        name: config.name,
-        channelId: channelId,
-        endpoint: config.endpoint,
-        appId: config.appId
-      }))
+    registeredApps: registeredApps.size
   });
 });
 
-// Status endpoint for debugging
-app.get('/status', (req, res) => {
+// Status endpoint for debugging (authenticated: discloses endpoints and channel ids)
+app.get('/status', requireBrokerSecret, (req, res) => {
   const CAMPAIGN_CONFIG = getCampaignConfig();
   res.json({
     service: 'Discord Interaction Handler',
@@ -409,8 +425,8 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Start server (only when run directly, so tests can import the app)
+const startServer = () => app.listen(PORT, () => {
   console.log(`Discord Interaction Handler running on port ${PORT}`);
   const CAMPAIGN_CONFIG = getCampaignConfig();
   console.log('Configured campaigns:', Object.entries(CAMPAIGN_CONFIG)
@@ -422,17 +438,29 @@ app.listen(PORT, () => {
   if (!process.env.DISCORD_PUBLIC_KEY) {
     console.warn('⚠️  DISCORD_PUBLIC_KEY not configured - signature verification will fail');
   }
+
+  if (!process.env.DISCORD_BROKER_SECRET) {
+    console.warn(process.env.NODE_ENV === 'production'
+      ? '⚠️  DISCORD_BROKER_SECRET not configured - /register, /unregister, /heartbeat and /status will reject all requests'
+      : '⚠️  DISCORD_BROKER_SECRET not configured - control endpoints are unauthenticated (non-production only)');
+  }
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, shutting down gracefully');
-  process.exit(0);
-});
+if (require.main === module) {
+  startServer();
 
-process.on('SIGINT', () => {
-  console.log('Received SIGINT, shutting down gracefully');
-  process.exit(0);
-});
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('Received SIGTERM, shutting down gracefully');
+    process.exit(0);
+  });
+
+  process.on('SIGINT', () => {
+    console.log('Received SIGINT, shutting down gracefully');
+    process.exit(0);
+  });
+}
 
 module.exports = app;
+module.exports.registeredApps = registeredApps;
+module.exports.validateEndpoint = validateEndpoint;

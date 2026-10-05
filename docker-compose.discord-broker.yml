@@ -27,8 +27,10 @@ services:
       - MAX_REGISTRATION_RETRIES=5
       - CLEANUP_INTERVAL=300000  # Clean up dead apps every 5 minutes
 
-      # Optional: Authentication (if you want to secure app registrations)
-      - BROKER_AUTH_TOKEN=${BROKER_AUTH_TOKEN:-}  # Optional auth token for app registration
+      # Shared secret required on /register, /unregister, /heartbeat (REQUIRED in production)
+      - DISCORD_BROKER_SECRET=${DISCORD_BROKER_SECRET:-}
+      # Optional: comma-separated hosts a registered callback endpoint may use
+      - BROKER_ALLOWED_ENDPOINT_HOSTS=${BROKER_ALLOWED_ENDPOINT_HOSTS:-}
 
     ports:
       - "3000:3000"  # Change the first port if 3000 is already in use
