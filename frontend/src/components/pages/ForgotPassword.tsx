@@ -39,7 +39,14 @@ const ForgotPassword = () => {
                 email
             });
 
-            setSuccess(response.data.message);
+            // The api interceptor already unwraps the axios response, so the body
+            // ({ success, message, data: null }) is the response itself.
+            const body = response as { message?: string; data?: { message?: string } | null };
+            setSuccess(
+                body?.message ??
+                body?.data?.message ??
+                'If an account matches those details, a password reset link has been sent.'
+            );
             setUsername('');
             setEmail('');
 

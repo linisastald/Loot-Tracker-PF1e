@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import React from 'react';
 
 vi.mock('../../../utils/api', () => ({
   default: {
-    post: vi.fn().mockResolvedValue({ data: { message: 'Reset link sent' } }),
+    // Real shape after the api response interceptor: the unwrapped body
+    post: vi.fn().mockResolvedValue({ success: true, message: 'Reset link sent', data: null }),
   },
 }));
 
 import ForgotPassword from '../ForgotPassword';
+import api from '../../../utils/api';
 
 const renderComponent = () =>
   render(
@@ -49,5 +51,27 @@ describe('ForgotPassword', () => {
   it('renders Back to Login link', () => {
     renderComponent();
     expect(screen.getByText(/back to login/i)).toBeInTheDocument();
+  });
+
+  it('shows the success message and clears the fields when the request succeeds', async () => {
+    renderComponent();
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'alice' } });
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
+
+    expect(await screen.findByText('Reset link sent')).toBeInTheDocument();
+    expect(screen.queryByText(/failed to process/i)).not.toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledWith('/auth/forgot-password', { username: 'alice', email: 'a@example.com' });
+    await waitFor(() => expect(screen.getByLabelText(/username/i)).toHaveValue(''));
+  });
+
+  it('shows a failure message when the request is rejected', async () => {
+    vi.mocked(api.post).mockRejectedValueOnce(new Error('network'));
+    renderComponent();
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'alice' } });
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
+
+    expect(await screen.findByText(/failed to process password reset request/i)).toBeInTheDocument();
   });
 });
