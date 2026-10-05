@@ -75,10 +75,10 @@ The service will start on port 3000 with auto-reload enabled.
 
 ## Docker Deployment
 
-The service is included in the main docker-compose.yml:
+The service image is built from `discord-handler/Dockerfile` by `build_image.sh --discord-broker`. `docker-compose.discord-broker.yml` (repository root) is the compose definition for the broker:
 
 ```bash
-docker-compose up discord-handler
+docker-compose -f docker-compose.discord-broker.yml up -d
 ```
 
 ## Campaign Instance Communication

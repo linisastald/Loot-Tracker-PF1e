@@ -4,14 +4,14 @@
 
 The database is PostgreSQL 16. A database is built in two layers:
 
-1. **Initial schema and seed data** - SQL files in `database/`, run once by the PostgreSQL container on first start of an empty data directory.
+1. **Initial schema and seed data** - SQL files in `database/`, loaded once into an empty database (see New Installation).
 2. **Migrations** - numbered SQL files in `backend/migrations/`, applied automatically by the backend on every start (`backend/src/utils/migrationRunner.js`, called from `startServer` in `backend/index.js`).
 
 Schema changes are made by adding a new migration. Never edit a migration that has been applied.
 
 ## Initial Schema Files
 
-Mounted into `/docker-entrypoint-initdb.d/` by `docker/docker-compose.yml` and run in this order on a brand-new database:
+Load these in this order into a brand-new database. The repository no longer ships a compose file that mounts them; they are only plain SQL files (with a PostgreSQL container you can mount them into `/docker-entrypoint-initdb.d/` with numeric prefixes to get the same order):
 
 | Order | File | Purpose |
 |---|---|---|
@@ -28,21 +28,21 @@ Mounted into `/docker-entrypoint-initdb.d/` by `docker/docker-compose.yml` and r
 
 Other files:
 
-- `init_complete.sql` - an old consolidated snapshot from v0.8.0. It is **not** used by Docker or the application and does not contain the schema added by later migrations (campaigns, row-level security, session task options, ...). Do not use it for new installs.
+- `init_complete.sql` - an old consolidated snapshot from v0.8.0. It is **not** used by the application and does not contain the schema added by later migrations (campaigns, row-level security, session task options, ...). Do not use it for new installs.
 - `setup_app_role.sql` - creates the non-owner `loot_app` role that the application connects as so that row-level security is enforced. Run it as the database owner.
 - `performance_indexes.sql`, `SCHEMA_ANALYSIS.md` - reference material.
 
 ## New Installation
 
-Use Docker Compose (`docker/docker-compose.yml`). On first start with an empty data volume PostgreSQL runs the `database/` files above; the backend then starts and applies every migration in `backend/migrations/` that is not yet recorded.
-
-Manual setup against an empty database is the same sequence:
+The repository does not ship a compose file that initialises the database. Load `database/00-extensions.sql`, then `database/init.sql`, then the `*_data.sql` seed files and `sessions.sql` in the order of the table above into an empty database; then start the backend, which applies every migration in `backend/migrations/` that is not yet recorded. For example:
 
 ```bash
 createdb -U postgres loot_tracking
 psql -U postgres -d loot_tracking -f database/00-extensions.sql
 psql -U postgres -d loot_tracking -f database/init.sql
-# ...then the seed files in the order listed above...
+for f in item_data mod_data min_caster_levels_data min_costs_data spells_data weather_regions_data impositions_data sessions; do
+  psql -U postgres -d loot_tracking -f database/$f.sql
+done
 # finally start the backend; it applies the migrations
 ```
 
@@ -95,7 +95,7 @@ See `CLAUDE.md` and `docker/` for the full list (including the separate admin co
    - The migration runner connects as the database owner; the app connects as `loot_app`. Run `setup_app_role.sql` as the owner if grants are missing.
 
 4. **Duplicate key errors on fresh install**
-   - Drop and recreate the database (and its Docker volume) to get a clean first-start initialisation.
+   - Drop and recreate the database (and its data volume, if any) and load the files again to get a clean initialisation.
 
 ## Main Table Categories
 

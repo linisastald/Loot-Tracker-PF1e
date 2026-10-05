@@ -62,7 +62,6 @@ pids/
 
 # Development scripts and utilities (keep build_image.sh as it's the main build script)
 update_containers.sh
-start.sh
 test-runner.js
 scripts/validate-migrations.sh
 update_sql_data.sh
@@ -103,7 +102,7 @@ temp/
 ehthumbs.db
 Thumbs.db
 
-# Package manager lock files (keep package.json and package.prod.json)
+# Package manager lock files (keep package.json)
 # Note: package-lock.json is needed for npm ci
 yarn.lock
 pnpm-lock.yaml
@@ -120,9 +119,8 @@ codecov.yml
 # Additional development files
 .claude/
 
-# Docker development files (keep Dockerfile.full and docker-compose.yml)
+# Docker development files
 docker-compose.secure.yml
 docker-compose.yml.template
-docker/Dockerfile.test
 docker/DOCKER_SECURITY_OPTIMIZATIONS.md
 docker/generate-secrets.sh

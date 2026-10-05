@@ -72,7 +72,7 @@ See `docs/build_image.md` for full build script documentation.
 
 ### Environment Variables
 
-The application requires the following environment variables (set in docker-compose or .env):
+The application requires the following environment variables (set in your container definition or .env):
 
 | Variable           | Description                                        |
 |--------------------|-----------------------------------------------------|
@@ -122,7 +122,7 @@ database/
   *_data.sql          # Seed data (items, mods, spells, weather)
 docker/
   Dockerfile.backend  # Production Docker image
-  docker-compose.yml  # Multi-campaign deployment
+  generate-secrets.sh # Random secret generator
 ```
 
 ## License

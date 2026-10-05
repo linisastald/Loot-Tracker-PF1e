@@ -37,12 +37,11 @@ This document outlines the security improvements made to the Pathfinder Loot Tra
 
 ### 4. Environment Variable Security
 
-**Issue**: Sensitive credentials hardcoded in docker-compose.yml
+**Issue**: Sensitive credentials hardcoded in a compose file
 
 **Fix**:
 - Created `.env.example` template files
-- Created secure `docker-compose.secure.yml` that uses environment variables
-- Added `generate-secrets.sh` script to generate secure random secrets
+- Added `docker/generate-secrets.sh` script to generate secure random secrets
 - Updated `.gitignore` to prevent committing sensitive files
 
 ## Security Best Practices
@@ -57,13 +56,9 @@ This document outlines the security improvements made to the Pathfinder Loot Tra
 
 2. **Create Environment Files**:
    - Copy `.env.example` to `.env`
-   - Copy `docker/.env.docker.example` to `docker/.env.docker`
+   - Use `docker/.env.docker.example` as the list of variables to set (for example in `docker/.env.docker`, which is gitignored)
    - Fill in all values with secure credentials
 
-3. **Use Secure Docker Compose**:
-   ```bash
-   docker-compose -f docker/docker-compose.secure.yml --env-file docker/.env.docker up -d
-   ```
 
 ### Database Security
 
