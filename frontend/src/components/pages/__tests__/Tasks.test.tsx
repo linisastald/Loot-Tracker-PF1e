@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import React from 'react';
+import { SnackbarProvider } from 'notistack';
 
 vi.mock('../../../utils/api', () => ({
   default: {
@@ -105,9 +106,10 @@ type Assignments = { pre: Record<string, string[]>; during: Record<string, strin
 
 // Click Assign and return what was saved to history.
 const assignAndReadHistory = async (): Promise<Assignments> => {
-  fireEvent.click(
-    screen.getByRole('button', { name: /assign tasks and send to discord/i })
-  );
+  // The button is disabled while a previous assignment is still being sent.
+  const button = screen.getByRole('button', { name: /assign tasks and send to discord/i });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
 
   let assignments: Assignments = { pre: {}, during: {}, post: {} };
   await waitFor(() => {
@@ -122,14 +124,19 @@ const assignAndReadHistory = async (): Promise<Assignments> => {
 
 const renderComponent = () =>
   render(
-    <BrowserRouter>
-      <Tasks />
-    </BrowserRouter>
+    <SnackbarProvider maxSnack={3}>
+      <BrowserRouter>
+        <Tasks />
+      </BrowserRouter>
+    </SnackbarProvider>
   );
 
 describe('Tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Tests install their own implementations; start each one from the defaults.
+    vi.mocked(api.get).mockReset().mockResolvedValue({ data: [] });
+    vi.mocked(api.post).mockReset().mockResolvedValue({ data: {} });
   });
 
   it('renders the character selection instructions', async () => {
@@ -352,9 +359,10 @@ describe('Tasks', () => {
     fireEvent.click(screen.getByText('Rogue Cat'));
     fireEvent.click(screen.getByText('Cleric Dan'));
 
-    // Run the deal several times: the Recap must always land on Bob or Alice
+    // Run the deal twice here (the page wiring); taskDealer.test.ts repeats it 100 times.
+    // The Recap must always land on Bob or Alice
     // and each person must still end up with the same number of pre-session slots.
-    for (let round = 0; round < 8; round++) {
+    for (let round = 0; round < 2; round++) {
       vi.mocked(api.post).mockClear();
       const assignments = await assignAndReadHistory();
 
@@ -415,7 +423,7 @@ describe('Tasks', () => {
     renderComponent();
     await selectAll();
 
-    for (let round = 0; round < 6; round++) {
+    for (let round = 0; round < 2; round++) {
       vi.mocked(api.post).mockClear();
       const assignments = await assignAndReadHistory();
       expect(holdersOf(assignments.during, 'Calendar Master')).toEqual(['Rogue Cat']);
@@ -437,13 +445,145 @@ describe('Tasks', () => {
     renderComponent();
     await selectAll();
 
-    for (let round = 0; round < 8; round++) {
+    for (let round = 0; round < 2; round++) {
       vi.mocked(api.post).mockClear();
       const assignments = await assignAndReadHistory();
       expect(holdersOf(assignments.post, 'Trash run')).not.toContain('Fighter Bob');
       // No task lets the DM draw, so the DM is not in the post deal.
       expect(assignments.post.DM).toBeUndefined();
     }
+  });
+
+  it('keeps two characters with the same name apart in the deal (F-1464)', async () => {
+    mockGetWithCharacters(
+      [
+        { id: 1, name: 'Sam', player_name: 'A' },
+        { id: 2, name: 'Sam', player_name: 'B' },
+      ],
+      null,
+      [def('during', 'Lore Master'), def('during', 'Calendar Master')]
+    );
+    renderComponent();
+    const names = await screen.findAllByText('Sam');
+    names.forEach(n => fireEvent.click(n));
+
+    const assignments = await assignAndReadHistory();
+    const entries = Object.entries(assignments.during);
+    expect(entries).toHaveLength(2);
+    for (const [, tasks] of entries) expect(tasks).toHaveLength(1);
+  });
+
+  describe('Discord send', () => {
+    const discordCalls = () =>
+      vi.mocked(api.post).mock.calls.filter(c => c[0] === '/discord/send-message');
+
+    it('posts three FLAT embeds (the backend no longer unwraps nested ones)', async () => {
+      mockGetWithCharacters(FOUR_CHARACTERS);
+      renderComponent();
+      await selectAll();
+      await assignAndReadHistory();
+
+      await waitFor(() => expect(discordCalls()).toHaveLength(1));
+      const embeds = (discordCalls()[0][1] as { embeds: Array<Record<string, unknown>> }).embeds;
+      expect(embeds.map(e => e.title)).toEqual([
+        'Pre-Session Tasks:', 'During Session Tasks:', 'Post-Session Tasks:',
+      ]);
+      embeds.forEach(e => {
+        expect(e).not.toHaveProperty('embeds');
+        expect(Array.isArray(e.fields)).toBe(true);
+        expect(typeof e.color).toBe('number');
+      });
+      const during = (embeds[1].fields as Array<{ name: string; value: string }>);
+      expect(during.map(f => f.name).sort()).toEqual(
+        ['Cleric Dan', 'Fighter Bob', 'Rogue Cat', 'Wizard Alice']
+      );
+    });
+
+    it('offers a retry when the send fails and re-sends the same assignment', async () => {
+      mockGetWithCharacters(FOUR_CHARACTERS);
+      vi.mocked(api.post).mockImplementation((url: string) =>
+        url === '/discord/send-message' ? Promise.reject(new Error('down')) : Promise.resolve({ data: {} })
+      );
+      renderComponent();
+      await selectAll();
+      await assignAndReadHistory();
+
+      const retry = await screen.findByRole('button', { name: /retry sending to discord/i });
+      const first = discordCalls()[0][1];
+
+      vi.mocked(api.post).mockResolvedValue({ data: {} });
+      fireEvent.click(retry);
+
+      await waitFor(() => expect(discordCalls()).toHaveLength(2));
+      expect(discordCalls()[1][1]).toEqual(first);
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: /retry sending to discord/i })).not.toBeInTheDocument()
+      );
+    });
+
+    it('ignores a second click while the first assignment is still being saved (F-1470)', async () => {
+      mockGetWithCharacters(FOUR_CHARACTERS);
+      let releaseHistory: () => void = () => {};
+      vi.mocked(api.post).mockImplementation((url: string) =>
+        url === '/sessions/task-history'
+          ? new Promise(resolve => { releaseHistory = () => resolve({ data: {} }); })
+          : Promise.resolve({ data: {} })
+      );
+      renderComponent();
+      await selectAll();
+
+      const button = screen.getByRole('button', { name: /assign tasks and send to discord/i });
+      fireEvent.click(button);
+      fireEvent.click(button);
+      releaseHistory();
+
+      await waitFor(() => expect(discordCalls()).toHaveLength(1));
+      const historyPosts = vi.mocked(api.post).mock.calls.filter(c => c[0] === '/sessions/task-history');
+      expect(historyPosts).toHaveLength(1);
+    });
+  });
+
+  it('clears an earlier "Not dealt" note after a clean re-deal (F-1465)', async () => {
+    mockGetWithCharacters(
+      FOUR_CHARACTERS,
+      [1],
+      [def('pre', 'Recap', { requires_previous_attendance: true }), def('pre', 'Wipe TV')]
+    );
+    renderComponent();
+    await selectAll();
+    // Bob is pre-marked as at the last session: untick him so Recap cannot be dealt.
+    const attended = await screen.findAllByRole('checkbox', { name: /was at the last session/i });
+    fireEvent.click(attended[0]);
+    await assignAndReadHistory();
+    expect(await screen.findByText(/not dealt: recap/i)).toBeInTheDocument();
+
+    fireEvent.click(attended[0]); // ticked again: now Recap can be dealt
+    vi.mocked(api.post).mockClear();
+    await assignAndReadHistory();
+    await waitFor(() => expect(screen.queryByText(/not dealt/i)).not.toBeInTheDocument());
+  });
+
+  it('reports how many characters were actually pre-selected from RSVPs (F-1460)', async () => {
+    mockGetWithCharacters(FOUR_CHARACTERS);
+    const original = vi.mocked(api.get).getMockImplementation() as (url: string) => Promise<unknown>;
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/sessions/next-with-attendance') {
+        return Promise.resolve({
+          data: {
+            session: { id: 5, title: 'Session 13' },
+            attendance: [
+              { character_id: 1, response_type: 'yes' },
+              // not an active character on this page
+              { character_id: 99, response_type: 'yes' },
+            ],
+          },
+        });
+      }
+      return original(url);
+    });
+    renderComponent();
+
+    expect(await screen.findByText(/pre-selected 1 characters/i)).toBeInTheDocument();
   });
 
   it('skips inactive tasks, tasks over their maximum, and early leavers for tasks that exclude them', async () => {
@@ -465,7 +605,7 @@ describe('Tasks', () => {
     fireEvent.click(earlyBoxes[0]);
     expect(screen.getByText(/1 leaving early/)).toBeInTheDocument();
 
-    for (let round = 0; round < 6; round++) {
+    for (let round = 0; round < 2; round++) {
       vi.mocked(api.post).mockClear();
       const assignments = await assignAndReadHistory();
       const all = Object.values(assignments.during).flat();
@@ -493,7 +633,7 @@ describe('Tasks', () => {
     renderComponent();
     await selectAll();
 
-    for (let round = 0; round < 12; round++) {
+    for (let round = 0; round < 2; round++) {
       vi.mocked(api.post).mockClear();
       const assignments = await assignAndReadHistory();
       expect(assignments.pre['Fighter Bob']).toEqual(['Recap']);

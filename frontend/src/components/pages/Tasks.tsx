@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {
   Accordion,
   AccordionDetails,
@@ -18,13 +18,13 @@ import {
   ListItem,
   ListItemText,
   Paper,
-  Snackbar,
   Tab,
   Tabs,
   Tooltip,
   Typography
 } from '@mui/material';
 import {styled} from '@mui/material/styles';
+import {useSnackbar} from 'notistack';
 import api from '../../utils/api';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
@@ -36,50 +36,12 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {grey} from '@mui/material/colors';
 import {formatInCampaignTimezone} from '../../utils/timezoneUtils';
 import {useCampaignTimezone} from '../../hooks/useCampaignTimezone';
+import {unwrapList} from '../../utils/apiResponse';
+import {dealTasks} from '../../utils/taskDealer';
+import type {TaskAssignment, TaskDefinition, TaskMap, TaskPhase} from '../../types/sessionTasks';
 
 interface Character {
     id: number;
-    name: string;
-    player_name: string;
-}
-
-type TaskMap = Record<string, string[]>;
-
-type TaskPhase = 'pre' | 'during' | 'post';
-
-// A DM-defined task (DM Settings -> Task Management)
-interface TaskDefinition {
-    id: number;
-    phase: TaskPhase;
-    name: string;
-    quantity: number;
-    min_characters: number | null;
-    max_characters: number | null;
-    is_snack_master: boolean;
-    // Only dealt to characters marked "Was at last session" (e.g. Recap)
-    requires_previous_attendance: boolean;
-    exclude_late: boolean;
-    exclude_early: boolean;
-    dm_eligible: boolean;
-    announce_label: string | null;
-    sticky: boolean;
-    avoid_repeat: boolean;
-    priority: 0 | 1 | 2;
-    is_active: boolean;
-    description: string | null;
-    fixed_character_id: number | null;
-    sort_order: number;
-}
-
-// One copy of a task in a phase's deal pool
-interface PoolTask {
-    def: TaskDefinition;
-    name: string;
-}
-
-// Someone who can be dealt a task: a character, or the DM for post-session
-interface Dealee {
-    id: number | 'DM';
     name: string;
 }
 
@@ -93,15 +55,8 @@ interface LastSessionInfo {
     assignments?: TaskAssignment | null;
 }
 
-interface TaskAssignment {
-    pre: TaskMap;
-    during: TaskMap;
-    post: TaskMap;
-}
-
 interface TaskHistoryRecord {
     id: number;
-    session_id: number | null;
     session_title: string | null;
     assignments: TaskAssignment;
     character_count: number;
@@ -110,28 +65,44 @@ interface TaskHistoryRecord {
     created_at: string;
 }
 
-interface Alert {
+interface AttendanceRecord {
+    character_id: number | null;
+    response_type: string;
+}
+
+interface NextSessionResponse {
+    session?: { id: number; title: string } | null;
+    attendance?: AttendanceRecord[] | null;
+}
+
+interface AlertState {
     show: boolean;
     severity: 'info' | 'warning' | 'error' | 'success';
     message: string;
 }
 
-const COLORS = {
-    PRE_SESSION: 8311585,  // Purple
-    DURING_SESSION: 16776960,  // Yellow
-    POST_SESSION: 16711680  // Red
-};
+type FlagMap = Record<number, boolean>;
+
+// One table drives the result cards, the history columns and the Discord embeds
+const PHASES: Array<{key: TaskPhase; title: string; color: string}> = [
+    {key: 'pre', title: 'Pre-Session', color: '#673AB7'},
+    {key: 'during', title: 'During Session', color: '#FFC107'},
+    {key: 'post', title: 'Post-Session', color: '#F44336'},
+];
+
+// Discord caps an embed field value at 1024 characters
+const DISCORD_FIELD_LIMIT = 1024;
 
 const CompactListItem = styled(ListItem)(({theme}) => ({
     padding: theme.spacing(0, 1),
 }));
 
-const CompactListItemText = styled(ListItemText)(({theme}) => ({
+const CompactListItemText = styled(ListItemText)({
     margin: 0,
     '& .MuiListItemText-primary': {
         fontSize: '0.9rem',
     },
-}));
+});
 
 const StyledCard = styled(Card)(({theme}) => ({
     marginBottom: theme.spacing(3),
@@ -191,19 +162,47 @@ const CharacterChip = styled(Box, {
     },
 }));
 
+// A small labelled checkbox inside a character row. The row itself toggles
+// selection on click, so the checkbox must not bubble.
+const CharacterFlagToggle: React.FC<{
+    title: string;
+    label: string;
+    checked: boolean;
+    onToggle: () => void;
+}> = ({title, label, checked, onToggle}) => (
+    <Tooltip title={title}>
+        <FormControlLabel
+            control={
+                <Checkbox
+                    size="small"
+                    checked={checked}
+                    onChange={(e) => {
+                        e.stopPropagation();
+                        onToggle();
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                />
+            }
+            label={<Typography variant="caption">{label}</Typography>}
+            sx={{m: 0}}
+        />
+    </Tooltip>
+);
+
 const Tasks: React.FC = () => {
+    const {enqueueSnackbar} = useSnackbar();
     const [activeCharacters, setActiveCharacters] = useState<Character[]>([]);
-    const [selectedCharacters, setSelectedCharacters] = useState<Record<number, boolean>>({});
-    const [lateArrivals, setLateArrivals] = useState<Record<number, boolean>>({});
-    const [earlyLeavers, setEarlyLeavers] = useState<Record<number, boolean>>({});
-    const [attendedLastSession, setAttendedLastSession] = useState<Record<number, boolean>>({});
+    const [selectedCharacters, setSelectedCharacters] = useState<FlagMap>({});
+    const [lateArrivals, setLateArrivals] = useState<FlagMap>({});
+    const [earlyLeavers, setEarlyLeavers] = useState<FlagMap>({});
+    const [attendedLastSession, setAttendedLastSession] = useState<FlagMap>({});
     const [lastSessionInfo, setLastSessionInfo] = useState<LastSessionInfo | null>(null);
     const [assignedTasks, setAssignedTasks] = useState<TaskAssignment | null>(null);
-    const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
-    const [snackbarMessage, setSnackbarMessage] = useState<string>('');
-    const [alert, setAlert] = useState<Alert>({show: false, severity: 'info', message: ''});
+    const [alert, setAlert] = useState<AlertState>({show: false, severity: 'info', message: ''});
     const [discordSendFailed, setDiscordSendFailed] = useState<boolean>(false);
-    const [lastTaskAssignment, setLastTaskAssignment] = useState<TaskAssignment | null>(null);
+    // The ref blocks a second click in the same tick; the state disables the buttons
+    const assigningRef = useRef<boolean>(false);
+    const [assigning, setAssigning] = useState<boolean>(false);
     const [activeTab, setActiveTab] = useState<number>(0);
     const [upcomingSession, setUpcomingSession] = useState<{id: number; title: string} | null>(null);
     const [history, setHistory] = useState<TaskHistoryRecord[]>([]);
@@ -212,30 +211,35 @@ const Tasks: React.FC = () => {
     const [taskDefinitionsStatus, setTaskDefinitionsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     const {timezone} = useCampaignTimezone();
 
-    useEffect(() => {
-        loadInitialState();
-    }, []);
+    const showSnackbar = (message: string, variant: 'default' | 'success' | 'error' | 'info' = 'default') => {
+        enqueueSnackbar(message, {variant});
+    };
+
+    const showAlert = (severity: AlertState['severity'], message: string) => {
+        setAlert({show: true, severity, message});
+    };
 
     useEffect(() => {
+        loadInitialState();
         loadTaskDefinitions();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
         if (activeTab === 1) {
             fetchHistory();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
 
     const loadTaskDefinitions = async () => {
         try {
-            const response: any = await api.get('/session-tasks');
-            const definitions = response.data?.data || response.data || [];
-            setTaskDefinitions(Array.isArray(definitions) ? definitions : []);
+            const response = await api.get('/session-tasks');
+            setTaskDefinitions(unwrapList<TaskDefinition>(response));
             setTaskDefinitionsStatus('ready');
-        } catch (error) {
-            console.error('Error loading task definitions:', error);
+        } catch {
             setTaskDefinitionsStatus('error');
-            showSnackbar('Failed to load the task list. Check DM Settings > Task Management.');
+            showSnackbar('Failed to load the task list. Check DM Settings > Task Management.', 'error');
         }
     };
 
@@ -243,53 +247,43 @@ const Tasks: React.FC = () => {
         try {
             // Fetch all active characters
             const charResponse = await api.get('/user/active-characters');
-            const characters = charResponse.data;
+            const characters: Character[] = charResponse.data;
             setActiveCharacters(characters);
 
             // Initialize everyone as unchecked
-            const initialSelectedState = characters.reduce((acc, char) => {
-                acc[char.id] = false;
-                return acc;
-            }, {});
-            const initialLateState = characters.reduce((acc, char) => {
-                acc[char.id] = false;
-                return acc;
-            }, {});
-            const initialEarlyState = characters.reduce((acc, char) => {
-                acc[char.id] = false;
-                return acc;
-            }, {});
-            const initialAttendedState = characters.reduce((acc, char) => {
-                acc[char.id] = false;
-                return acc;
-            }, {});
+            const allFalse = (): FlagMap => Object.fromEntries(characters.map(char => [char.id, false]));
+            const initialSelectedState = allFalse();
+            const initialLateState = allFalse();
+            const initialEarlyState = allFalse();
+            const initialAttendedState = allFalse();
 
             // Try to pre-populate from the next upcoming session's attendance
             try {
                 const sessionResponse = await api.get('/sessions/next-with-attendance');
-                const sessionData = sessionResponse.data;
+                const sessionData: NextSessionResponse | null = sessionResponse.data;
 
-                if (sessionData && sessionData.session) {
+                if (sessionData?.session) {
                     setUpcomingSession({
                         id: sessionData.session.id,
                         title: sessionData.session.title
                     });
                 }
 
-                if (sessionData && sessionData.attendance) {
-                    const attendance = sessionData.attendance;
+                if (sessionData?.attendance) {
                     // Build a map: character_id -> response_type
                     const responseByCharacter: Record<number, string> = {};
-                    attendance.forEach((record: any) => {
+                    sessionData.attendance.forEach((record) => {
                         if (record.character_id && ['yes', 'late', 'early', 'late_and_early'].includes(record.response_type)) {
                             responseByCharacter[record.character_id] = record.response_type;
                         }
                     });
 
                     // Pre-check characters that have an attending response
+                    let preSelected = 0;
                     characters.forEach(char => {
                         const response = responseByCharacter[char.id];
                         if (response) {
+                            preSelected++;
                             initialSelectedState[char.id] = true;
                             if (response === 'late' || response === 'late_and_early') {
                                 initialLateState[char.id] = true;
@@ -300,19 +294,18 @@ const Tasks: React.FC = () => {
                         }
                     });
 
-                    if (Object.keys(responseByCharacter).length > 0) {
-                        showSnackbar(`Pre-selected ${Object.keys(responseByCharacter).length} characters from next session's RSVPs`);
+                    if (preSelected > 0) {
+                        showSnackbar(`Pre-selected ${preSelected} characters from next session's RSVPs`);
                     }
                 }
-            } catch (sessionErr) {
+            } catch {
                 // Non-fatal - just means no session data to pre-populate from
-                console.warn('Could not pre-populate from session attendance:', sessionErr);
             }
 
             // Pre-mark who was at the previous session (from the last task
             // assignment, or last session's RSVPs) for tasks that require it.
             try {
-                const lastResponse: any = await api.get('/sessions/last-session-attendees');
+                const lastResponse = await api.get('/sessions/last-session-attendees');
                 const lastData: LastSessionInfo | null = lastResponse.data?.data ?? lastResponse.data ?? null;
                 if (lastData && Array.isArray(lastData.character_ids)) {
                     setLastSessionInfo(lastData);
@@ -322,36 +315,26 @@ const Tasks: React.FC = () => {
                         }
                     });
                 }
-            } catch (lastErr) {
+            } catch {
                 // Non-fatal - the DM can mark attendance by hand
-                console.warn('Could not load last session attendees:', lastErr);
             }
 
             setSelectedCharacters(initialSelectedState);
             setLateArrivals(initialLateState);
             setEarlyLeavers(initialEarlyState);
             setAttendedLastSession(initialAttendedState);
-        } catch (error) {
-            console.error('Error loading initial task state:', error);
-            showSnackbar('Error fetching active characters');
+        } catch {
+            showSnackbar('Error fetching active characters', 'error');
         }
     };
 
-    const handleToggle = (id) => {
-        setSelectedCharacters(prev => ({...prev, [id]: !prev[id]}));
+    const toggleIn = (setter: React.Dispatch<React.SetStateAction<FlagMap>>) => (id: number) => {
+        setter(prev => ({...prev, [id]: !prev[id]}));
     };
-
-    const handleToggleLateArrival = (id) => {
-        setLateArrivals(prev => ({...prev, [id]: !prev[id]}));
-    };
-
-    const handleToggleAttendedLastSession = (id: number) => {
-        setAttendedLastSession(prev => ({...prev, [id]: !prev[id]}));
-    };
-
-    const handleToggleEarlyLeaver = (id: number) => {
-        setEarlyLeavers(prev => ({...prev, [id]: !prev[id]}));
-    };
+    const handleToggle = toggleIn(setSelectedCharacters);
+    const handleToggleLateArrival = toggleIn(setLateArrivals);
+    const handleToggleAttendedLastSession = toggleIn(setAttendedLastSession);
+    const handleToggleEarlyLeaver = toggleIn(setEarlyLeavers);
 
     // Which per-character toggles matter for this campaign's task list
     const hasPreviousAttendanceTasks = taskDefinitions.some(def => def.requires_previous_attendance);
@@ -361,22 +344,18 @@ const Tasks: React.FC = () => {
     const descriptionFor = (phase: TaskPhase, taskName: string): string | null =>
         taskDefinitions.find(def => def.phase === phase && def.name === taskName)?.description || null;
 
-    const createEmbed = (title, description, fields, color) => ({
-        embeds: [{
-            title,
-            description,
-            fields,
-            color,
-            author: {
-                name: "Task Assignments"
-            }
-        }]
+    // One Discord embed per phase (a flat array of embeds goes to the API)
+    const createEmbed = (phase: TaskPhase, title: string, color: string, tasks: TaskMap) => ({
+        title: `${title} Tasks:`,
+        description: '',
+        fields: formatTasksForEmbed(phase, tasks),
+        color: parseInt(color.slice(1), 16),
+        author: {
+            name: 'Task Assignments'
+        }
     });
 
-    // Discord caps an embed field value at 1024 characters
-    const DISCORD_FIELD_LIMIT = 1024;
-
-    const formatTasksForEmbed = (phase: TaskPhase, tasks: Record<string, string[]>) => {
+    const formatTasksForEmbed = (phase: TaskPhase, tasks: TaskMap) => {
         return Object.entries(tasks)
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([character, characterTasks]) => {
@@ -394,14 +373,6 @@ const Tasks: React.FC = () => {
             });
     };
 
-    const shuffleArray = (array: any[]) => {
-        for (let i = array.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [array[i], array[j]] = [array[j], array[i]];
-        }
-        return array;
-    };
-
     const saveAssignmentToHistory = async (
         assignments: TaskAssignment,
         characterCount: number,
@@ -415,326 +386,117 @@ const Tasks: React.FC = () => {
                 character_count: characterCount,
                 late_count: lateCount
             });
-        } catch (error) {
-            console.error('Error saving task assignment to history:', error);
-            showSnackbar('Tasks assigned, but failed to save to history.');
+        } catch {
+            showSnackbar('Tasks assigned, but failed to save to history.', 'error');
         }
     };
 
     const fetchHistory = async () => {
         try {
             setHistoryLoading(true);
-            const response: any = await api.get('/sessions/task-history');
-            const records = response.data?.data || response.data || [];
-            setHistory(records);
-        } catch (error) {
-            console.error('Error fetching task assignment history:', error);
-            showSnackbar('Failed to load assignment history.');
+            const response = await api.get('/sessions/task-history');
+            setHistory(unwrapList<TaskHistoryRecord>(response));
+        } catch {
+            showSnackbar('Failed to load assignment history.', 'error');
         } finally {
             setHistoryLoading(false);
         }
     };
 
-    const assignTasks = async () => {
+    // Post the three phase embeds to the campaign's Discord channel. Returns
+    // whether it went through; the retry button shows when it did not.
+    const sendTasksToDiscord = async (assignment: TaskAssignment, successMessage: string, failureMessage: string) => {
         try {
+            const embeds = PHASES.map(({key, title, color}) => createEmbed(key, title, color, assignment[key]));
+            await api.post('/discord/send-message', {embeds});
+            showSnackbar(successMessage, 'success');
             setDiscordSendFailed(false);
+        } catch {
+            showSnackbar(failureMessage, 'error');
+            setDiscordSendFailed(true);
+        }
+    };
 
-            const selectedChars = activeCharacters.filter(char => selectedCharacters[char.id]);
+    const setBusy = (busy: boolean) => {
+        assigningRef.current = busy;
+        setAssigning(busy);
+    };
 
-            if (selectedChars.length === 0) {
-                setAlert({
-                    show: true,
-                    severity: 'warning',
-                    message: 'Please select at least one character to assign tasks'
-                });
-                return;
-            }
+    const assignTasks = async () => {
+        if (assigningRef.current) return;
+        setDiscordSendFailed(false);
+        setAlert(prev => ({...prev, show: false}));
 
-            if (taskDefinitionsStatus === 'loading') {
-                setAlert({
-                    show: true,
-                    severity: 'info',
-                    message: 'The task list is still loading. Try again in a moment.'
-                });
-                return;
-            }
-            if (taskDefinitionsStatus === 'error') {
-                setAlert({
-                    show: true,
-                    severity: 'error',
-                    message: 'The task list could not be loaded. Reload the page and try again.'
-                });
-                return;
-            }
-            if (taskDefinitions.length === 0) {
-                setAlert({
-                    show: true,
-                    severity: 'warning',
-                    message: 'No tasks are defined for this campaign. Add some under DM Settings > Task Management.'
-                });
-                return;
-            }
+        const selectedChars = activeCharacters.filter(char => selectedCharacters[char.id]);
 
-            const dm: Dealee = {id: 'DM', name: 'DM'};
-            // Why a task could not be dealt, shown to the DM afterwards
-            const notes: string[] = [];
+        if (selectedChars.length === 0) {
+            showAlert('warning', 'Please select at least one character to assign tasks');
+            return;
+        }
+        if (taskDefinitionsStatus === 'loading') {
+            showAlert('info', 'The task list is still loading. Try again in a moment.');
+            return;
+        }
+        if (taskDefinitionsStatus === 'error') {
+            showAlert('error', 'The task list could not be loaded. Reload the page and try again.');
+            return;
+        }
+        if (taskDefinitions.length === 0) {
+            showAlert('warning', 'No tasks are defined for this campaign. Add some under DM Settings > Task Management.');
+            return;
+        }
 
-            // Task pools come from DM Settings -> Task Management, and every
-            // rule of the deal comes from the options on each task: inactive
-            // tasks and ones outside their character-count range stay out;
-            // eligibility (late / early / DM / last session) is per task.
-            const activeDefs = taskDefinitions.filter(def =>
-                def.is_active !== false
-                && (!def.min_characters || selectedChars.length >= def.min_characters)
-                && (!def.max_characters || selectedChars.length <= def.max_characters)
-            );
+        setBusy(true);
+        try {
+            // Every rule of the deal comes from the options on each task.
+            const {assignments, notes} = dealTasks({
+                definitions: taskDefinitions,
+                characters: selectedChars,
+                lateArrivals,
+                earlyLeavers,
+                attendedLastSession,
+                lastAssignments: lastSessionInfo?.assignments,
+            });
 
-            const isEligible = (def: TaskDefinition, person: Dealee): boolean => {
-                if (person.id === 'DM') return def.dm_eligible === true;
-                if (def.exclude_late && lateArrivals[person.id]) return false;
-                if (def.exclude_early && earlyLeavers[person.id]) return false;
-                if (def.requires_previous_attendance && !attendedLastSession[person.id]) return false;
-                return true;
-            };
-
-            // Who held each task last session, per phase (task names are
-            // only unique within a phase), for sticky / avoid-repeat.
-            const lastHolders: Record<TaskPhase, Record<string, string[]>> = {pre: {}, during: {}, post: {}};
-            if (lastSessionInfo?.assignments) {
-                (['pre', 'during', 'post'] as TaskPhase[]).forEach(phase => {
-                    Object.entries(lastSessionInfo.assignments?.[phase] ?? {}).forEach(([holder, tasks]) => {
-                        (tasks || []).forEach(taskName => {
-                            (lastHolders[phase][taskName] = lastHolders[phase][taskName] || []).push(holder);
-                        });
-                    });
-                });
-            }
-
-            const priorityOf = (def: TaskDefinition) => (def.priority === 1 || def.priority === 2 ? def.priority : 0);
-
-            const dealPhase = (phase: TaskPhase): TaskMap => {
-                const defs = activeDefs.filter(def => def.phase === phase);
-
-                // People in this phase: every selected character who can take
-                // at least one of its tasks, plus the DM when a task allows it.
-                // (So late arrivals drop out of a phase whose tasks all skip
-                // them, exactly as pre-session used to.)
-                const candidates: Dealee[] = defs.some(def => def.dm_eligible)
-                    ? [...selectedChars, dm]
-                    : [...selectedChars];
-                const people = candidates.filter(person => defs.some(def => isEligible(def, person)));
-                if (people.length === 0) return {};
-
-                // Pool: one entry per copy, clamped to how many people can
-                // take the task so nobody draws the same task twice.
-                const pool: PoolTask[] = [];
-                defs.forEach(def => {
-                    const eligibleCount = people.filter(person => isEligible(def, person)).length;
-                    if (eligibleCount === 0) {
-                        notes.push(`${def.name} (nobody selected can take it)`);
-                        return;
-                    }
-                    const copies = Math.max(1, Math.min(def.quantity, eligibleCount));
-                    for (let i = 0; i < copies; i++) {
-                        pool.push({def, name: def.name});
-                    }
-                });
-
-                const order: Dealee[] = shuffleArray([...people]);
-                const assigned: TaskMap = {};
-                order.forEach(person => {
-                    assigned[person.name] = [];
-                });
-                const count = (person: Dealee) => assigned[person.name].length;
-                const holds = (person: Dealee, taskName: string) => assigned[person.name].includes(taskName);
-
-                // Everyone gets the same number of slots: 1, or 2 once there
-                // are more tasks than people, and so on. Free Space fills the
-                // gaps at the end.
-                const cap = Math.max(1, Math.ceil(pool.length / people.length));
-
-                // Pass 1: a fixed assignee, or last session's holder for a
-                // sticky task, keeps the task when present and eligible.
-                const remaining: PoolTask[] = [];
-                pool.forEach(item => {
-                    const {def} = item;
-                    let keeper: Dealee | undefined;
-                    if (def.fixed_character_id) {
-                        keeper = order.find(person =>
-                            person.id === def.fixed_character_id && isEligible(def, person) && !holds(person, def.name));
-                    }
-                    if (!keeper && def.sticky) {
-                        const previous = lastHolders[phase][def.name] || [];
-                        keeper = order.find(person =>
-                            previous.includes(person.name) && isEligible(def, person) && !holds(person, def.name));
-                    }
-                    if (keeper) {
-                        assigned[keeper.name].push(def.name);
-                    } else {
-                        remaining.push(item);
-                    }
-                });
-
-                // Pass 2: deal the rest to whoever holds the fewest tasks.
-                // "Must deal" first, then "High", then normal, so the ones
-                // squeezed out (if any) are always normal-priority. Within a
-                // priority the most constrained tasks (fewest eligible
-                // people, e.g. Recap) go first so they are never crowded out
-                // while someone else still has a free slot; ties are shuffled
-                // so the order isn't always alphabetical. Copies of one task
-                // are dealt together and never to the same person.
-                const eligibleCountFor = (def: TaskDefinition) => people.filter(person => isEligible(def, person)).length;
-                const groupByName = (items: PoolTask[]): PoolTask[] => {
-                    const groups: Record<string, PoolTask[]> = {};
-                    items.forEach(item => {
-                        (groups[item.name] = groups[item.name] || []).push(item);
-                    });
-                    return shuffleArray(Object.keys(groups))
-                        .sort((a, b) => eligibleCountFor(groups[a][0].def) - eligibleCountFor(groups[b][0].def))
-                        .flatMap(key => groups[key]);
-                };
-                const ordered = [2, 1, 0].flatMap(priority =>
-                    groupByName(remaining.filter(item => priorityOf(item.def) === priority)));
-
-                ordered.forEach(({def}) => {
-                    let candidatesFor = order.filter(person => isEligible(def, person) && !holds(person, def.name));
-                    if (def.avoid_repeat) {
-                        const previous = lastHolders[phase][def.name] || [];
-                        const fresh = candidatesFor.filter(person => !previous.includes(person.name));
-                        if (fresh.length > 0) candidatesFor = fresh;
-                    }
-                    if (candidatesFor.length === 0) {
-                        notes.push(`${def.name} (nobody left who can take it)`);
-                        return;
-                    }
-                    let open = candidatesFor.filter(person => count(person) < cap);
-                    if (open.length === 0) {
-                        if (priorityOf(def) === 2) {
-                            open = candidatesFor;
-                        } else {
-                            notes.push(`${def.name} (everyone is full - set it to "Must deal" to force it)`);
-                            return;
-                        }
-                    }
-                    const target = open.reduce((best, person) => (count(person) < count(best) ? person : best), open[0]);
-                    assigned[target.name].push(def.name);
-                });
-
-                // Free Space padding up to the slot count
-                order.forEach(person => {
-                    while (count(person) < cap) assigned[person.name].push('Free Space');
-                });
-
-                return assigned;
-            };
-
-            const newAssignedTasks: TaskAssignment = {
-                pre: dealPhase('pre'),
-                during: dealPhase('during'),
-                post: dealPhase('post')
-            };
-
-            setAssignedTasks(newAssignedTasks);
-            setLastTaskAssignment(newAssignedTasks);
+            setAssignedTasks(assignments);
 
             if (notes.length > 0) {
-                setAlert({
-                    show: true,
-                    severity: 'info',
-                    message: `Not dealt: ${notes.join('; ')}.`
-                });
+                showAlert('info', `Not dealt: ${notes.join('; ')}.`);
             }
 
             // Persist the assignment to history (independent of the Discord send,
             // so a Discord failure doesn't lose the record).
             const lateCount = selectedChars.filter(char => lateArrivals[char.id]).length;
-            await saveAssignmentToHistory(newAssignedTasks, selectedChars.length, lateCount);
+            await saveAssignmentToHistory(assignments, selectedChars.length, lateCount);
 
-            // Send tasks to Discord
-            try {
-                const preSessionEmbed = createEmbed(
-                    "Pre-Session Tasks:",
-                    "",
-                    formatTasksForEmbed('pre', newAssignedTasks.pre),
-                    COLORS.PRE_SESSION
-                );
-
-                const duringSessionEmbed = createEmbed(
-                    "During Session Tasks:",
-                    "",
-                    formatTasksForEmbed('during', newAssignedTasks.during),
-                    COLORS.DURING_SESSION
-                );
-
-                const postSessionEmbed = createEmbed(
-                    "Post-Session Tasks:",
-                    "",
-                    formatTasksForEmbed('post', newAssignedTasks.post),
-                    COLORS.POST_SESSION
-                );
-
-                const embeds = [preSessionEmbed, duringSessionEmbed, postSessionEmbed];
-
-                await api.post('/discord/send-message', {embeds});
-                showSnackbar('Tasks assigned and sent to Discord successfully!');
-                setDiscordSendFailed(false);
-            } catch (error) {
-                console.error('Error sending tasks to Discord:', error);
-                showSnackbar('Tasks assigned, but failed to send to Discord. You can try again.');
-                setDiscordSendFailed(true);
-            }
-        } catch (error) {
-            console.error('Error assigning tasks:', error);
-            setAlert({
-                show: true,
-                severity: 'error',
-                message: 'Error assigning tasks. Please try again.'
-            });
+            await sendTasksToDiscord(
+                assignments,
+                'Tasks assigned and sent to Discord successfully!',
+                'Tasks assigned, but failed to send to Discord. You can try again.'
+            );
+        } catch {
+            showAlert('error', 'Error assigning tasks. Please try again.');
+        } finally {
+            setBusy(false);
         }
     };
 
     const retrySendToDiscord = async () => {
-        if (!lastTaskAssignment) {
-            showSnackbar('No tasks to send to Discord');
-            return;
-        }
-
+        if (!assignedTasks || assigningRef.current) return;
+        setBusy(true);
         try {
-            const preSessionEmbed = createEmbed(
-                "Pre-Session Tasks:",
-                "",
-                formatTasksForEmbed('pre', lastTaskAssignment.pre),
-                COLORS.PRE_SESSION
+            await sendTasksToDiscord(
+                assignedTasks,
+                'Tasks sent to Discord successfully!',
+                'Failed to send to Discord. You can try again.'
             );
-
-            const duringSessionEmbed = createEmbed(
-                "During Session Tasks:",
-                "",
-                formatTasksForEmbed('during', lastTaskAssignment.during),
-                COLORS.DURING_SESSION
-            );
-
-            const postSessionEmbed = createEmbed(
-                "Post-Session Tasks:",
-                "",
-                formatTasksForEmbed('post', lastTaskAssignment.post),
-                COLORS.POST_SESSION
-            );
-
-            const embeds = [preSessionEmbed, duringSessionEmbed, postSessionEmbed];
-
-            await api.post('/discord/send-message', {embeds});
-            showSnackbar('Tasks sent to Discord successfully!');
-            setDiscordSendFailed(false);
-        } catch (error) {
-            console.error('Error sending tasks to Discord:', error);
-            showSnackbar('Failed to send to Discord. You can try again.');
-            setDiscordSendFailed(true);
+        } finally {
+            setBusy(false);
         }
     };
 
     // phase = null for history rows: today's descriptions may not match what was dealt then
-    const renderTaskList = (tasks: Record<string, string[]>, phase: TaskPhase | null = null) => (
+    const renderTaskList = (tasks: TaskMap, phase: TaskPhase | null = null) => (
         <List disablePadding>
             {Object.entries(tasks)
                 .sort(([a], [b]) => a.localeCompare(b))
@@ -762,33 +524,13 @@ const Tasks: React.FC = () => {
         </List>
     );
 
-    const showSnackbar = (message) => {
-        setSnackbarMessage(message);
-        setSnackbarOpen(true);
-    };
-
-    const handleSnackbarClose = (event, reason) => {
-        if (reason === 'clickaway') {
-            return;
-        }
-        setSnackbarOpen(false);
-    };
-
     const handleAlertClose = () => {
-        setAlert({...alert, show: false});
+        setAlert(prev => ({...prev, show: false}));
     };
 
-    const getCharacterCount = () => {
-        return activeCharacters.filter(char => selectedCharacters[char.id]).length;
-    };
-
-    const getLateArrivalsCount = () => {
-        return activeCharacters.filter(char => selectedCharacters[char.id] && lateArrivals[char.id]).length;
-    };
-
-    const getEarlyLeaversCount = () => {
-        return activeCharacters.filter(char => selectedCharacters[char.id] && earlyLeavers[char.id]).length;
-    };
+    // Selected characters, optionally narrowed to those with a flag set
+    const countSelected = (flags?: FlagMap) =>
+        activeCharacters.filter(char => selectedCharacters[char.id] && (!flags || flags[char.id])).length;
 
     return (
         <Container maxWidth="lg" component="main">
@@ -836,8 +578,8 @@ const Tasks: React.FC = () => {
                         <CharacterSelector>
                             <Typography variant="subtitle1" gutterBottom sx={{display: 'flex', alignItems: 'center'}}>
                                 <PersonIcon sx={{mr: 1}} color="primary"/>
-                                Characters ({getCharacterCount()} selected, {getLateArrivalsCount()} arriving late
-                                {hasEarlyLeaverTasks ? `, ${getEarlyLeaversCount()} leaving early` : ''})
+                                Characters ({countSelected()} selected, {countSelected(lateArrivals)} arriving late
+                                {hasEarlyLeaverTasks ? `, ${countSelected(earlyLeavers)} leaving early` : ''})
                             </Typography>
 
                             {activeCharacters.map((char) => (
@@ -896,59 +638,26 @@ const Tasks: React.FC = () => {
                                     {selectedCharacters[char.id] && (
                                         <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
                                             {hasPreviousAttendanceTasks && (
-                                                <Tooltip title="Was at the last session (needed for tasks like Recap)">
-                                                    <FormControlLabel
-                                                        control={
-                                                            <Checkbox
-                                                                size="small"
-                                                                checked={attendedLastSession[char.id] || false}
-                                                                onChange={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleToggleAttendedLastSession(char.id);
-                                                                }}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            />
-                                                        }
-                                                        label={<Typography variant="caption">Was at last session</Typography>}
-                                                        sx={{m: 0}}
-                                                    />
-                                                </Tooltip>
-                                            )}
-                                            <Tooltip title="Mark as arriving late">
-                                                <FormControlLabel
-                                                    control={
-                                                        <Checkbox
-                                                            size="small"
-                                                            checked={lateArrivals[char.id] || false}
-                                                            onChange={(e) => {
-                                                                e.stopPropagation();
-                                                                handleToggleLateArrival(char.id);
-                                                            }}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        />
-                                                    }
-                                                    label={<Typography variant="caption">Late</Typography>}
-                                                    sx={{m: 0}}
+                                                <CharacterFlagToggle
+                                                    title="Was at the last session (needed for tasks like Recap)"
+                                                    label="Was at last session"
+                                                    checked={attendedLastSession[char.id] || false}
+                                                    onToggle={() => handleToggleAttendedLastSession(char.id)}
                                                 />
-                                            </Tooltip>
+                                            )}
+                                            <CharacterFlagToggle
+                                                title="Mark as arriving late"
+                                                label="Late"
+                                                checked={lateArrivals[char.id] || false}
+                                                onToggle={() => handleToggleLateArrival(char.id)}
+                                            />
                                             {hasEarlyLeaverTasks && (
-                                                <Tooltip title="Mark as leaving early">
-                                                    <FormControlLabel
-                                                        control={
-                                                            <Checkbox
-                                                                size="small"
-                                                                checked={earlyLeavers[char.id] || false}
-                                                                onChange={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleToggleEarlyLeaver(char.id);
-                                                                }}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            />
-                                                        }
-                                                        label={<Typography variant="caption">Early</Typography>}
-                                                        sx={{m: 0}}
-                                                    />
-                                                </Tooltip>
+                                                <CharacterFlagToggle
+                                                    title="Mark as leaving early"
+                                                    label="Early"
+                                                    checked={earlyLeavers[char.id] || false}
+                                                    onToggle={() => handleToggleEarlyLeaver(char.id)}
+                                                />
                                             )}
                                         </Box>
                                     )}
@@ -991,6 +700,7 @@ const Tasks: React.FC = () => {
                                 fullWidth
                                 size="large"
                                 onClick={assignTasks}
+                                disabled={assigning}
                                 sx={{mt: 2, py: 1.5, fontWeight: 'bold'}}
                             >
                                 Assign Tasks and Send to Discord
@@ -1003,6 +713,7 @@ const Tasks: React.FC = () => {
                                     fullWidth
                                     size="large"
                                     onClick={retrySendToDiscord}
+                                    disabled={assigning}
                                     startIcon={<RefreshIcon/>}
                                     sx={{mt: 2}}
                                 >
@@ -1016,50 +727,30 @@ const Tasks: React.FC = () => {
 
             {assignedTasks && (
                 <Grid container spacing={3}>
-                    <Grid size={{xs: 12, md: 4}}>
-                        <StyledCard>
-                            <StyledCardHeader color="#673AB7">
-                                <Typography variant="h6">Pre-Session Tasks</Typography>
-                            </StyledCardHeader>
-                            <CardContent>
-                                {Object.keys(assignedTasks.pre).length > 0 ? (
-                                    renderTaskList(assignedTasks.pre, 'pre')
-                                ) : (
-                                    <Typography
-                                        variant="body2"
-                                        sx={{
-                                            color: "text.secondary",
-                                            py: 2,
-                                            textAlign: 'center'
-                                        }}>
-                                        No pre-session tasks assigned. Nobody selected can take any of them.
-                                    </Typography>
-                                )}
-                            </CardContent>
-                        </StyledCard>
-                    </Grid>
-
-                    <Grid size={{xs: 12, md: 4}}>
-                        <StyledCard>
-                            <StyledCardHeader color="#FFC107">
-                                <Typography variant="h6">During Session Tasks</Typography>
-                            </StyledCardHeader>
-                            <CardContent>
-                                {renderTaskList(assignedTasks.during, 'during')}
-                            </CardContent>
-                        </StyledCard>
-                    </Grid>
-
-                    <Grid size={{xs: 12, md: 4}}>
-                        <StyledCard>
-                            <StyledCardHeader color="#F44336">
-                                <Typography variant="h6">Post-Session Tasks</Typography>
-                            </StyledCardHeader>
-                            <CardContent>
-                                {renderTaskList(assignedTasks.post, 'post')}
-                            </CardContent>
-                        </StyledCard>
-                    </Grid>
+                    {PHASES.map(({key, title, color}) => (
+                        <Grid key={key} size={{xs: 12, md: 4}}>
+                            <StyledCard>
+                                <StyledCardHeader color={color}>
+                                    <Typography variant="h6">{title} Tasks</Typography>
+                                </StyledCardHeader>
+                                <CardContent>
+                                    {Object.keys(assignedTasks[key]).length > 0 ? (
+                                        renderTaskList(assignedTasks[key], key)
+                                    ) : (
+                                        <Typography
+                                            variant="body2"
+                                            sx={{
+                                                color: "text.secondary",
+                                                py: 2,
+                                                textAlign: 'center'
+                                            }}>
+                                            No {title.toLowerCase()} tasks assigned. Nobody selected can take any of them.
+                                        </Typography>
+                                    )}
+                                </CardContent>
+                            </StyledCard>
+                        </Grid>
+                    ))}
                 </Grid>
             )}
               </>
@@ -1104,18 +795,12 @@ const Tasks: React.FC = () => {
                             </AccordionSummary>
                             <AccordionDetails>
                                 <Grid container spacing={2}>
-                                    <Grid size={{xs: 12, md: 4}}>
-                                        <Typography variant="subtitle2" gutterBottom>Pre-Session</Typography>
-                                        {renderTaskList(record.assignments?.pre || {})}
-                                    </Grid>
-                                    <Grid size={{xs: 12, md: 4}}>
-                                        <Typography variant="subtitle2" gutterBottom>During Session</Typography>
-                                        {renderTaskList(record.assignments?.during || {})}
-                                    </Grid>
-                                    <Grid size={{xs: 12, md: 4}}>
-                                        <Typography variant="subtitle2" gutterBottom>Post-Session</Typography>
-                                        {renderTaskList(record.assignments?.post || {})}
-                                    </Grid>
+                                    {PHASES.map(({key, title}) => (
+                                        <Grid key={key} size={{xs: 12, md: 4}}>
+                                            <Typography variant="subtitle2" gutterBottom>{title}</Typography>
+                                            {renderTaskList(record.assignments?.[key] || {})}
+                                        </Grid>
+                                    ))}
                                 </Grid>
                             </AccordionDetails>
                         </Accordion>
@@ -1123,16 +808,6 @@ const Tasks: React.FC = () => {
                 )}
               </Paper>
             )}
-            <Snackbar
-                anchorOrigin={{
-                    vertical: 'bottom',
-                    horizontal: 'left',
-                }}
-                open={snackbarOpen}
-                autoHideDuration={6000}
-                onClose={handleSnackbarClose}
-                message={snackbarMessage}
-            />
         </Container>
     );
 };
