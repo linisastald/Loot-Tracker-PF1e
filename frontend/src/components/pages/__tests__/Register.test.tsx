@@ -31,10 +31,10 @@ const setupGetMock = (mode: RegistrationMode, dmExists = true) => {
   });
 };
 
-const renderComponent = () =>
+const renderComponent = (onLogin?: (user: any) => void) =>
   render(
     <BrowserRouter>
-      <Register />
+      <Register onLogin={onLogin} />
     </BrowserRouter>
   );
 
@@ -95,6 +95,58 @@ describe('Register', () => {
           role: 'Player',
           inviteCode: undefined,
         });
+      });
+    });
+
+    it('signs the new user in locally (App state + cached user) so the next page is not bounced to /login', async () => {
+      const onLogin = vi.fn();
+      const newUser = { id: 9, username: 'newplayer', role: 'Player' };
+      vi.mocked(api.post).mockResolvedValueOnce({ data: { user: newUser } } as any);
+      renderComponent(onLogin);
+      await fillBasicFields();
+
+      fireEvent.click(screen.getByRole('button', { name: /register/i }));
+
+      await waitFor(() => expect(onLogin).toHaveBeenCalledWith(newUser));
+    });
+
+    it('does not sign in when registration fails', async () => {
+      const onLogin = vi.fn();
+      vi.mocked(api.post).mockRejectedValueOnce({ response: { data: { message: 'Username already exists' } } });
+      renderComponent(onLogin);
+      await fillBasicFields();
+
+      fireEvent.click(screen.getByRole('button', { name: /register/i }));
+
+      expect(await screen.findByText('Username already exists')).toBeInTheDocument();
+      expect(onLogin).not.toHaveBeenCalled();
+    });
+
+    describe('role selector (DM bootstrap only on an empty install)', () => {
+      it('is locked when accounts already exist', async () => {
+        setupGetMock('open', true);
+        renderComponent();
+        const role = await screen.findByRole('combobox', { name: /role/i });
+        await waitFor(() => expect(role).toHaveAttribute('aria-disabled', 'true'));
+      });
+
+      it('is unlocked only when the server confirms no account exists yet', async () => {
+        setupGetMock('open', false);
+        renderComponent();
+        const role = await screen.findByRole('combobox', { name: /role/i });
+        await waitFor(() => expect(role).not.toHaveAttribute('aria-disabled', 'true'));
+      });
+
+      it('stays locked when the DM check fails', async () => {
+        vi.mocked(api.get).mockImplementation((url: string) =>
+          url.includes('check-dm')
+            ? Promise.reject(new Error('down'))
+            : Promise.resolve({ data: { mode: 'open' } } as any)
+        );
+        renderComponent();
+        const role = await screen.findByRole('combobox', { name: /role/i });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(role).toHaveAttribute('aria-disabled', 'true');
       });
     });
 

@@ -1,8 +1,9 @@
-// frontend/src/components/pages/ResetPassword.js
+// frontend/src/components/pages/ResetPassword.tsx
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../utils/api';
+import { getErrorMessage } from '../../utils/apiErrors';
 import {
     Box,
     Button,
@@ -17,7 +18,7 @@ import {
 } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 
-const ResetPassword = () => {
+const ResetPassword: React.FC = () => {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +37,8 @@ const ResetPassword = () => {
         }
     }, [token]);
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
         try {
             setError('');
             setSuccess('');
@@ -70,18 +72,10 @@ const ResetPassword = () => {
                 navigate('/login');
             }, 3000);
 
-        } catch (err) {
-            setError(err.response?.data?.error || 
-                    err.response?.data?.message || 
-                    'Failed to reset password');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Failed to reset password'));
         } finally {
             setLoading(false);
-        }
-    };
-
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            handleSubmit();
         }
     };
 
@@ -133,6 +127,7 @@ const ResetPassword = () => {
                     Enter your new password below.
                 </Typography>
 
+                <form onSubmit={handleSubmit} noValidate>
                 <TextField
                     variant="outlined"
                     margin="normal"
@@ -143,7 +138,6 @@ const ResetPassword = () => {
                     autoFocus
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    onKeyDown={handleKeyDown}
                     disabled={loading}
                     slotProps={{ input: {
                         endAdornment: (
@@ -169,7 +163,6 @@ const ResetPassword = () => {
                     type={showConfirmPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    onKeyDown={handleKeyDown}
                     disabled={loading}
                     slotProps={{ input: {
                         endAdornment: (
@@ -202,15 +195,16 @@ const ResetPassword = () => {
                 )}
 
                 <Button
+                    type="submit"
                     fullWidth
                     variant="outlined"
                     color="primary"
                     sx={{ mt: 3, mb: 2 }}
-                    onClick={handleSubmit}
                     disabled={Boolean(loading || success)}
                 >
                     {loading ? 'Resetting...' : 'Reset Password'}
                 </Button>
+                </form>
 
                 <Box
                     sx={{

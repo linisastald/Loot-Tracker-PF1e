@@ -192,7 +192,7 @@ function App() {
                 <Navigate to="/loot-entry" replace /> :
                 <Login onLogin={handleLogin} />
             } />
-            <Route path="/register" element={<Register />} />
+            <Route path="/register" element={<Register onLogin={handleLogin} />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
 

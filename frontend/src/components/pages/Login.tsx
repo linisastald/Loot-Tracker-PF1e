@@ -1,13 +1,15 @@
-// frontend/src/components/pages/Login.js
+// frontend/src/components/pages/Login.tsx
 
 import React, {useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import api from '../../utils/api';
+import {getErrorMessage} from '../../utils/apiErrors';
+import type {AuthUser} from '../../contexts/AuthContext';
 import {Alert, Box, Button, Container, IconButton, InputAdornment, Link, Paper, TextField, Typography} from '@mui/material';
 import {Visibility, VisibilityOff} from '@mui/icons-material';
 
 interface LoginProps {
-  onLogin: (user: any) => void;
+  onLogin: (user: AuthUser) => void;
 }
 
 const Login: React.FC<LoginProps> = ({onLogin}) => {
@@ -19,7 +21,8 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
     const [sessionExpired] = useState(() => sessionStorage.getItem('loginRedirectReason') === 'expired');
     const navigate = useNavigate();
 
-    const handleLogin = async () => {
+    const handleLogin = async (event: React.FormEvent) => {
+        event.preventDefault();
         try {
             if (!username || !password) {
                 setError('Username and password are required');
@@ -32,10 +35,7 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
             // Store user data in local storage (but not the password)
             localStorage.setItem('user', JSON.stringify(userData));
 
-            // Call the onLogin callback
-            if (onLogin) {
-                onLogin(userData);
-            }
+            onLogin(userData);
 
             // Return to the page the user was on before the session expired
             const returnTo = sessionStorage.getItem('loginReturnTo');
@@ -49,33 +49,8 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
                 navigate('/loot-entry');
             }
         } catch (err: unknown) {
-            // Display error message from API if available
-            if (err && typeof err === 'object' && 'response' in err) {
-                const axiosError = err as any;
-                setError(axiosError.response?.data?.error ||
-                    axiosError.response?.data?.message ||
-                    'Login failed. Please check your credentials.');
-            } else {
-                setError('Login failed. Please check your credentials.');
-            }
+            setError(getErrorMessage(err, 'Login failed. Please check your credentials.'));
         }
-    };
-
-    // Toggle password visibility
-    const handleTogglePasswordVisibility = () => {
-        setShowPassword(!showPassword);
-    };
-
-    // Handle Enter key press for form submission
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleLogin();
-        }
-    };
-
-    // Handle navigate to register page
-    const navigateToRegister = () => {
-        navigate('/register');
     };
 
     return (
@@ -94,59 +69,59 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
                     </Alert>
                 )}
 
-                <TextField
-                    variant="outlined"
-                    margin="normal"
-                    required
-                    fullWidth
-                    label="Username"
-                    autoFocus
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    aria-describedby={error ? "login-error" : undefined}
-                    error={!!error}
-                />
+                <form onSubmit={handleLogin} noValidate>
+                    <TextField
+                        variant="outlined"
+                        margin="normal"
+                        required
+                        fullWidth
+                        label="Username"
+                        autoFocus
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        aria-describedby={error ? "login-error" : undefined}
+                        error={!!error}
+                    />
 
-                <TextField
-                    variant="outlined"
-                    margin="normal"
-                    required
-                    fullWidth
-                    label="Password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    aria-describedby={error ? "login-error" : undefined}
-                    error={!!error}
-                    slotProps={{ input: {
-                        // Add eye icon to toggle password visibility
-                        endAdornment: (
-                            <InputAdornment position="end">
-                                <IconButton
-                                    aria-label={showPassword ? "Hide password" : "Show password"}
-                                    onClick={handleTogglePasswordVisibility}
-                                    edge="end"
-                                >
-                                    {showPassword ? <VisibilityOff/> : <Visibility/>}
-                                </IconButton>
-                            </InputAdornment>
-                        ),
-                    } }}
-                />
+                    <TextField
+                        variant="outlined"
+                        margin="normal"
+                        required
+                        fullWidth
+                        label="Password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        aria-describedby={error ? "login-error" : undefined}
+                        error={!!error}
+                        slotProps={{ input: {
+                            // Add eye icon to toggle password visibility
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <IconButton
+                                        aria-label={showPassword ? "Hide password" : "Show password"}
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        edge="end"
+                                    >
+                                        {showPassword ? <VisibilityOff/> : <Visibility/>}
+                                    </IconButton>
+                                </InputAdornment>
+                            ),
+                        } }}
+                    />
 
-                {error && <Typography color="error" sx={{mt: 1}} id="login-error" role="alert">{error}</Typography>}
+                    {error && <Typography color="error" sx={{mt: 1}} id="login-error" role="alert">{error}</Typography>}
 
-                <Button
-                    fullWidth
-                    variant="outlined"
-                    color="primary"
-                    sx={{mt: 3, mb: 2}}
-                    onClick={handleLogin}
-                >
-                    Login
-                </Button>
+                    <Button
+                        type="submit"
+                        fullWidth
+                        variant="outlined"
+                        color="primary"
+                        sx={{mt: 3, mb: 2}}
+                    >
+                        Login
+                    </Button>
+                </form>
 
                 <Box
                     sx={{
@@ -169,7 +144,7 @@ const Login: React.FC<LoginProps> = ({onLogin}) => {
                         <Link
                             component="button"
                             variant="body2"
-                            onClick={navigateToRegister}
+                            onClick={() => navigate('/register')}
                         >
                             Register here
                         </Link>

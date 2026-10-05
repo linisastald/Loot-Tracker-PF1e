@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
 
@@ -10,6 +10,13 @@ vi.mock('../../../utils/api', () => ({
 }));
 
 import ResetPassword from '../ResetPassword';
+import api from '../../../utils/api';
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => mockNavigate };
+});
 
 const renderWithToken = (token?: string) => {
   const searchParams = token ? `?token=${token}` : '';
@@ -63,6 +70,64 @@ describe('ResetPassword', () => {
   it('renders Back to Login link with token', () => {
     renderWithToken('valid-token-123');
     expect(screen.getByText(/back to login/i)).toBeInTheDocument();
+  });
+
+  describe('submitting', () => {
+    const fill = (newPassword: string, confirmPassword: string) => {
+      const [first, second] = screen.getAllByLabelText(/new password/i, { selector: 'input' });
+      fireEvent.change(first, { target: { value: newPassword } });
+      fireEvent.change(second, { target: { value: confirmPassword } });
+      fireEvent.click(screen.getByRole('button', { name: /^reset password$/i }));
+    };
+
+    it.each([
+      ['', '', 'Both password fields are required'],
+      ['longenough1', 'different123', 'Passwords do not match'],
+      ['short', 'short', 'Password must be at least 8 characters long'],
+    ])('rejects %j / %j without calling the API', async (a, b, message) => {
+      renderWithToken('valid-token-123');
+      fill(a, b);
+
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('posts the token and new password, shows the message and redirects to login', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        renderWithToken('valid-token-123');
+        fill('brandnewpass', 'brandnewpass');
+
+        expect(await screen.findByText('Password reset successfully')).toBeInTheDocument();
+        expect(api.post).toHaveBeenCalledWith('/auth/reset-password', {
+          token: 'valid-token-123',
+          newPassword: 'brandnewpass',
+        });
+        expect(mockNavigate).not.toHaveBeenCalled();
+        await act(async () => { vi.advanceTimersByTime(3000); });
+        expect(mockNavigate).toHaveBeenCalledWith('/login');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('shows the server message for an invalid or expired token and does not redirect', async () => {
+      vi.mocked(api.post).mockRejectedValueOnce({ response: { data: { message: 'Invalid or expired reset token' } } });
+      renderWithToken('stale-token');
+      fill('brandnewpass', 'brandnewpass');
+
+      expect(await screen.findByText('Invalid or expired reset token')).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('falls back to a generic message when the failure has no body', async () => {
+      vi.mocked(api.post).mockRejectedValueOnce(new Error('network'));
+      renderWithToken('valid-token-123');
+      fill('brandnewpass', 'brandnewpass');
+
+      expect(await screen.findByText('Failed to reset password')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('button', { name: /^reset password$/i })).toBeEnabled());
+    });
   });
 
   it('renders password visibility toggle buttons', () => {

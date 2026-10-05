@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import React from 'react';
 import Login from '../Login';
@@ -164,8 +165,7 @@ describe('Login', () => {
 
     fireEvent.change(screen.getByRole('textbox', { name: /username/i }), { target: { value: 'testuser' } });
     const passwordField = screen.getByLabelText(/password/i, { selector: 'input' });
-    fireEvent.change(passwordField, { target: { value: 'password123' } });
-    fireEvent.keyDown(passwordField, { key: 'Enter', code: 'Enter' });
+    await userEvent.type(passwordField, 'password123{Enter}');
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/auth/login', {

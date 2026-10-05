@@ -14,7 +14,6 @@ import configService from '../config.service';
 describe('configService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   describe('getConfig', () => {
@@ -54,25 +53,13 @@ describe('configService', () => {
       expect(result).toEqual({ groupName: 'Pathfinder Loot Tracker' });
     });
 
-    it('should log error to console on failure', async () => {
-      const error = new Error('Connection refused');
-      vi.mocked(api.get).mockRejectedValueOnce(error);
+    it('should not log to the console on failure', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.mocked(api.get).mockRejectedValueOnce(new Error('Connection refused'));
 
       await configService.getConfig();
-      expect(console.error).toHaveBeenCalledWith('Error fetching config:', error);
-    });
-
-    it('should not throw on API failure', async () => {
-      vi.mocked(api.get).mockRejectedValueOnce(new Error('500'));
-      await expect(configService.getConfig()).resolves.toBeDefined();
-    });
-
-    it('should return data property from successful response', async () => {
-      const configData = { groupName: 'Skulls and Shackles', theme: 'dark' };
-      vi.mocked(api.get).mockResolvedValueOnce({ success: true, data: configData });
-
-      const result = await configService.getConfig();
-      expect(result).toEqual(configData);
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
     });
   });
 });
