@@ -285,9 +285,9 @@ describe('SessionSchedulerService campaign context', () => {
       await scheduler.cleanupExpiredData();
 
       expect(campaignContext.runWithCampaign).toHaveBeenCalledWith('all', expect.any(Function));
-      // All five cleanup statements (users x2, invites, identify, appraisal)
+      // All cleanup statements (expired locks, invites, appraisals)
       // execute inside the 'all' context
-      expect(seenContexts.length).toBeGreaterThanOrEqual(5);
+      expect(seenContexts.length).toBeGreaterThanOrEqual(3);
       expect(seenContexts.every(ctx => ctx === 'all')).toBe(true);
     });
 
@@ -301,5 +301,143 @@ describe('SessionSchedulerService campaign context', () => {
         expect.objectContaining({ error: 'DB error' })
       );
     });
+  });
+});
+
+// ============================================================================
+// W12: job table, initialize/restart failure handling, cleanup rules
+// ============================================================================
+describe('SessionSchedulerService scheduling (W12)', () => {
+  const cron = require('node-cron');
+  const timezoneUtils = require('../../../utils/timezoneUtils');
+  const defaultSchedule = (...args) => ({ stop: jest.fn(), args });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockExecuteQuery.mockReset();
+    mockExecuteQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    cron.schedule.mockImplementation(defaultSchedule);
+    timezoneUtils.getCampaignTimezone.mockResolvedValue('America/New_York');
+    scheduler.scheduledJobs.clear();
+    scheduler.isInitialized = false;
+    scheduler.isRestarting = false;
+  });
+
+  afterEach(() => {
+    cron.schedule.mockImplementation(defaultSchedule);
+    scheduler.scheduledJobs.clear();
+    scheduler.isInitialized = false;
+  });
+
+  it('schedules exactly the seven expected jobs, all in the campaign timezone', async () => {
+    const ok = await scheduler.initialize();
+
+    expect(ok).toBe(true);
+    expect(cron.schedule.mock.calls.map(c => c[0])).toEqual([
+      '*/15 * * * *',   // announcements
+      '0 * * * *',      // reminders
+      '0 12 * * *',     // confirmations noon
+      '0 17 * * *',     // confirmations 5pm
+      '0 22 * * *',     // confirmations 10pm
+      '0 * * * *',      // completions
+      '0 * * * *',      // system cleanup
+    ]);
+    expect(cron.schedule.mock.calls.every(c => c[2].timezone === 'America/New_York')).toBe(true);
+    expect([...scheduler.scheduledJobs.keys()].sort()).toEqual([
+      'confirmationChecks10PM', 'confirmationChecks5PM', 'confirmationChecksNoon',
+      'reminderChecks', 'sessionAnnouncements', 'sessionCompletions', 'systemCleanup',
+    ].sort());
+  });
+
+  it('a throwing job callback is logged, not propagated', async () => {
+    await scheduler.initialize();
+    const reminderCb = cron.schedule.mock.calls[1][1];
+    mockExecuteQuery.mockRejectedValue(new Error('db down'));
+
+    await expect(reminderCb()).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('initialize reports failure, stops the partial job set and stays uninitialized', async () => {
+    let calls = 0;
+    const stops = [];
+    cron.schedule.mockImplementation(() => {
+      calls += 1;
+      if (calls === 3) throw new Error('invalid timezone');
+      const job = { stop: jest.fn() };
+      stops.push(job);
+      return job;
+    });
+
+    const ok = await scheduler.initialize();
+
+    expect(ok).toBe(false);
+    expect(scheduler.isInitialized).toBe(false);
+    expect(scheduler.scheduledJobs.size).toBe(0);
+    expect(stops).toHaveLength(2);
+    stops.forEach(job => expect(job.stop).toHaveBeenCalled());
+  });
+
+  it('restart falls back to the previous timezone when the new one cannot be scheduled', async () => {
+    await scheduler.initialize();
+    expect(scheduler.campaignTimezone).toBe('America/New_York');
+
+    timezoneUtils.getCampaignTimezone.mockResolvedValueOnce('Bad/Zone');
+    cron.schedule.mockImplementation((expr, fn, opts) => {
+      if (opts.timezone === 'Bad/Zone') throw new Error('invalid timezone');
+      return { stop: jest.fn() };
+    });
+
+    const ok = await scheduler.restart();
+
+    expect(ok).toBe(true);
+    expect(scheduler.isInitialized).toBe(true);
+    expect(scheduler.campaignTimezone).toBe('America/New_York');
+    expect(scheduler.scheduledJobs.size).toBe(7);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Failed to initialize'), expect.anything());
+  });
+
+  it('restart does not claim success when initialization fails completely', async () => {
+    await scheduler.initialize();
+    cron.schedule.mockImplementation(() => { throw new Error('nope'); });
+
+    const ok = await scheduler.restart();
+
+    expect(ok).toBe(false);
+    expect(scheduler.isInitialized).toBe(false);
+    expect(logger.info).not.toHaveBeenCalledWith('Session scheduler restarted successfully');
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('restart failed'));
+  });
+});
+
+describe('SessionSchedulerService cleanup rules (W12)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockExecuteQuery.mockReset();
+    mockExecuteQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+  });
+
+  const issuedSql = () => mockExecuteQuery.mock.calls.map(c => c[0].replace(/\s+/g, ' ').trim());
+
+  it('does not blanket-reset failed login counters of unlocked accounts (F-0756, F-0757)', async () => {
+    await scheduler.cleanupExpiredData();
+
+    const userUpdates = issuedSql().filter(sql => sql.startsWith('UPDATE users'));
+    expect(userUpdates).toHaveLength(1);
+    expect(userUpdates[0]).toContain('locked_until < NOW()');
+  });
+
+  it('never purges identify attempts by real-world age (F-0755)', async () => {
+    await scheduler.cleanupExpiredData();
+
+    expect(issuedSql().some(sql => /DELETE FROM identify/i.test(sql))).toBe(false);
+  });
+
+  it('still removes expired locks, expires invites and drops orphaned appraisals', async () => {
+    await scheduler.cleanupExpiredData();
+
+    const sql = issuedSql();
+    expect(sql.some(q => q.startsWith('UPDATE invites SET is_used = TRUE'))).toBe(true);
+    expect(sql.some(q => q.startsWith('DELETE FROM appraisal'))).toBe(true);
   });
 });
