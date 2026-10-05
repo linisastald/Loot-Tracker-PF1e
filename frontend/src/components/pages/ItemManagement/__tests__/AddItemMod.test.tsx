@@ -30,6 +30,7 @@ vi.mock('../../../../services/lootService', () => ({
     getAllLoot: vi.fn(),
     getMods: vi.fn(),
     suggestItems: vi.fn(),
+    getItemsByIds: vi.fn(),
   },
 }));
 
@@ -67,6 +68,16 @@ const mockExistingItem = {
   casterlevel: 5,
 };
 
+// The suggest endpoint returns ONLY these columns (no weight / casterlevel), which is
+// what made editing a catalog item null those two columns (F-1334).
+const mockSuggestion = {
+  id: 42,
+  name: 'Existing Sword',
+  type: 'weapon',
+  subtype: 'one handed',
+  value: 315,
+};
+
 const mockExistingMod = {
   id: 7,
   name: 'Flaming',
@@ -88,6 +99,10 @@ const setupDefaultMocks = () => {
   });
   (lootService.suggestItems as any).mockResolvedValue({
     data: { suggestions: [], count: 0 },
+  });
+  // Full catalog row lookup used when an item is picked for editing
+  (lootService.getItemsByIds as any).mockResolvedValue({
+    data: { items: [mockExistingItem], count: 1 },
   });
 };
 
@@ -367,7 +382,7 @@ describe('AddItemMod', () => {
   describe('Items tab - autocomplete + update', () => {
     it('populates the form when an item is selected from the Autocomplete', async () => {
       (lootService.suggestItems as any).mockResolvedValue({
-        data: { suggestions: [mockExistingItem], count: 1 },
+        data: { suggestions: [mockSuggestion], count: 1 },
       });
 
       renderAddItemMod();
@@ -405,9 +420,60 @@ describe('AddItemMod', () => {
       expect(screen.queryByRole('button', { name: /^add item$/i })).not.toBeInTheDocument();
     });
 
+    it('F-1334: loads the full catalog row so weight and casterlevel are not nulled on update', async () => {
+      (lootService.suggestItems as any).mockResolvedValue({
+        data: { suggestions: [mockSuggestion], count: 1 },
+      });
+      (api.put as any).mockResolvedValueOnce({ data: { id: 42 } });
+
+      renderAddItemMod();
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
+      });
+
+      fireEvent.change(getInputByLabelText(/^Search for an item to edit/), { target: { value: 'Exi' } });
+      fireEvent.click(await screen.findByRole('option', { name: 'Existing Sword' }));
+
+      await waitFor(() => {
+        expect(lootService.getItemsByIds).toHaveBeenCalledWith([42]);
+      });
+      await waitFor(() => {
+        expect((getInputByLabelText(/^Weight/) as HTMLInputElement).value).toBe('4');
+      });
+      expect((getInputByLabelText(/^Caster Level/) as HTMLInputElement).value).toBe('5');
+
+      fireEvent.click(screen.getByRole('button', { name: /^update item$/i }));
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith(
+          '/admin/items/42',
+          expect.objectContaining({ weight: 4, casterlevel: 5 }),
+        );
+      });
+    });
+
+    it('does not populate the form (so it cannot null columns) when the full row cannot be loaded', async () => {
+      (lootService.suggestItems as any).mockResolvedValue({
+        data: { suggestions: [mockSuggestion], count: 1 },
+      });
+      (lootService.getItemsByIds as any).mockRejectedValue(new Error('boom'));
+
+      renderAddItemMod();
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
+      });
+
+      fireEvent.change(getInputByLabelText(/^Search for an item to edit/), { target: { value: 'Exi' } });
+      fireEvent.click(await screen.findByRole('option', { name: 'Existing Sword' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/failed to load item details/i)).toBeInTheDocument();
+      });
+      expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
+    });
+
     it('PUTs /admin/items/:id when updating an existing selected item', async () => {
       (lootService.suggestItems as any).mockResolvedValue({
-        data: { suggestions: [mockExistingItem], count: 1 },
+        data: { suggestions: [mockSuggestion], count: 1 },
       });
       (api.put as any).mockResolvedValueOnce({ data: { id: 42 } });
 

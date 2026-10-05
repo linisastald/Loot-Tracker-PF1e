@@ -295,13 +295,28 @@ const AddItemMod = () => {
         }
     };
 
-    const handleItemSelect = (event, value) => {
+    const handleItemSelect = async (event, value) => {
         if (!value) {
             resetItemForm();
             return;
         }
 
         try {
+            // The suggest endpoint only returns id/name/type/subtype/value. Load the
+            // full catalog row first, otherwise weight and casterlevel stay blank and
+            // an update would overwrite both columns with null (F-1334).
+            let fullItem = value;
+            if (value.id !== undefined && value.id !== null) {
+                const response = await lootService.getItemsByIds([value.id]);
+                const rows = response?.data?.items || [];
+                const row = rows.find(item => item.id === value.id);
+                if (!row) {
+                    throw new Error('Item not found');
+                }
+                fullItem = {...value, ...row};
+            }
+            value = fullItem;
+
             // Create a safe object with default values
             const safeItem = {
                 id: '',
@@ -334,6 +349,7 @@ const AddItemMod = () => {
         } catch (error) {
             console.error('Error in handleItemSelect:', error);
             resetItemForm();
+            setError('Failed to load item details; the item was not loaded for editing.');
         }
     };
 
