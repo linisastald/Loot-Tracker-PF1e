@@ -68,7 +68,10 @@ exports.getById = async (campaignId, id) => {
 exports.create = async (campaignId, data) => {
   const values = editableValues(data);
   // $1 campaign, $2 phase, $3 name, $4.. options, then the sort_order subquery
-  const placeholders = values.map((_, i) => `$${i + 2}`).join(', ');
+  // $2 (phase) is reused in the sort_order subquery cast to text; the VALUES
+  // occurrence must carry the same cast or Postgres reports "inconsistent types
+  // deduced for parameter $2" (VARCHAR(10) column vs text).
+  const placeholders = values.map((_, i) => (i === 0 ? `$${i + 2}::text` : `$${i + 2}`)).join(', ');
   const result = await dbUtils.executeQuery(
     `INSERT INTO session_task_definition (campaign_id, ${EDITABLE_FIELDS.join(', ')}, sort_order)
      VALUES ($1::int, ${placeholders},

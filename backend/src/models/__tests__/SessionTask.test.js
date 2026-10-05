@@ -81,6 +81,22 @@ describe('SessionTask model', () => {
     expect(result.id).toBe(9);
   });
 
+  it('create casts every reused parameter so Postgres deduces one type (F-0602)', async () => {
+    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [row({ id: 9 })] });
+
+    await SessionTask.create(42, { phase: 'pre', name: 'New' });
+
+    const sql = dbUtils.executeQuery.mock.calls[0][0];
+    // $2 (phase) appears in VALUES and in the sort_order subquery: both must be ::text
+    const occurrences = sql.match(/\$2(::\w+)?(?!\d)/g);
+    expect(occurrences.length).toBeGreaterThan(1);
+    occurrences.forEach(o => expect(o).toBe('$2::text'));
+    // $1 (campaign) is reused too: both ::int
+    const campaign = sql.match(/\$1(::\w+)?(?!\d)/g);
+    expect(campaign.length).toBeGreaterThan(1);
+    campaign.forEach(o => expect(o).toBe('$1::int'));
+  });
+
   it('create passes every option through in field order', async () => {
     dbUtils.executeQuery.mockResolvedValueOnce({ rows: [row({ id: 10 })] });
 
