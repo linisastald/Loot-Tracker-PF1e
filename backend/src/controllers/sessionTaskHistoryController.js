@@ -1,11 +1,11 @@
 // src/controllers/sessionTaskHistoryController.js
 // Task assignment history: records the manual pre/during/post task
-// assignments made from the Tasks page.
+// assignments made from the Tasks page. Input is validated by the route
+// (validateRequest) before these handlers run.
 //
 // Each handler keeps its own try/catch and bare { success, message } error
 // responses (client-visible shapes that createHandler's generic error would
 // change); createHandler remains as the outer safety net.
-const { validationResult } = require('express-validator');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const SessionTask = require('../models/SessionTask');
@@ -14,11 +14,6 @@ const SessionTaskHistory = require('../models/SessionTaskHistory');
 // Save a task assignment to history
 const saveTaskHistory = async (req, res) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ success: false, message: errors.array()[0].msg });
-        }
-
         const {
             session_id = null,
             session_title = null,
@@ -66,11 +61,6 @@ const saveTaskHistory = async (req, res) => {
 // Get task assignment history (most recent first)
 const getTaskHistory = async (req, res) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ success: false, message: errors.array()[0].msg });
-        }
-
         const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
 
         const rows = await SessionTaskHistory.getRecent(limit);
