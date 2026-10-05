@@ -32,7 +32,6 @@ jest.mock('../../../controllers/authController', () => {
     logoutUser: handler('logoutUser'),
     checkForDm: handler('checkForDm'),
     checkRegistrationStatus: handler('checkRegistrationStatus'),
-    checkInviteRequired: handler('checkInviteRequired'),
     refreshToken: handler('refreshToken'),
     forgotPassword: handler('forgotPassword'),
     resetPassword: handler('resetPassword'),

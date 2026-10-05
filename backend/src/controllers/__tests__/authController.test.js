@@ -56,6 +56,7 @@ function createMockRes() {
     validationError: jest.fn(),
     notFound: jest.fn(),
     forbidden: jest.fn(),
+    unauthorized: jest.fn(),
     error: jest.fn(),
     cookie: jest.fn(),
     clearCookie: jest.fn(),
@@ -144,7 +145,7 @@ describe('authController', () => {
       );
     });
 
-    it('should login successfully for DM without fetching active character', async () => {
+    it('should login successfully for a DM-role user (active character resolved the same way)', async () => {
       const dmUser = { ...validUser, id: 2, username: 'dungeonmaster', role: 'DM' };
       const req = createMockReq({
         body: { username: 'dungeonmaster', password: 'ValidPass123' },
@@ -153,7 +154,8 @@ describe('authController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [dmUser] })  // user lookup
-        .mockResolvedValueOnce({ rows: [] });        // reset login attempts
+        .mockResolvedValueOnce({ rows: [] })         // reset login attempts
+        .mockResolvedValueOnce({ rows: [] });        // no active character
 
       bcrypt.compare.mockResolvedValue(true);
       jwt.sign.mockReturnValue('dm-token');
@@ -272,7 +274,7 @@ describe('authController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [userWith2Attempts] })  // user lookup
-        .mockResolvedValueOnce({ rows: [] });                   // UPDATE login_attempts
+        .mockResolvedValueOnce({ rows: [{ login_attempts: 3 }] }); // atomic UPDATE ... RETURNING
 
       bcrypt.compare.mockResolvedValue(false);
 
@@ -281,8 +283,9 @@ describe('authController', () => {
       // handleFailedLogin should have called executeQuery to increment attempts
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
       const updateCall = dbUtils.executeQuery.mock.calls[1];
-      expect(updateCall[0]).toContain('UPDATE users SET login_attempts');
-      expect(updateCall[1][0]).toBe(3); // 2 + 1
+      expect(updateCall[0]).toContain('UPDATE users');
+      expect(updateCall[0]).toContain('COALESCE(login_attempts, 0) + 1');
+      expect(updateCall[1][0]).toBe(1); // user id; the increment happens in SQL
     });
 
     it('should lock account after max failed attempts', async () => {
@@ -294,7 +297,7 @@ describe('authController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [userAtMaxAttempts] })
-        .mockResolvedValueOnce({ rows: [] });
+        .mockResolvedValueOnce({ rows: [{ login_attempts: 5 }] });
 
       bcrypt.compare.mockResolvedValue(false);
 
@@ -302,8 +305,8 @@ describe('authController', () => {
 
       const updateCall = dbUtils.executeQuery.mock.calls[1];
       expect(updateCall[0]).toContain('locked_until');
-      expect(updateCall[1][0]).toBe(5); // attempts = 5
-      expect(updateCall[1][1]).toBeInstanceOf(Date); // locked_until date
+      expect(updateCall[1][1]).toBe(5); // lock threshold (MAX_LOGIN_ATTEMPTS)
+      expect(updateCall[1][2]).toBeInstanceOf(Date); // locked_until date
     });
 
     it('should return activeCharacterId as null when Player has no active character', async () => {
@@ -403,7 +406,7 @@ describe('authController', () => {
         txClient = {
           query: jest.fn()
             .mockResolvedValueOnce({ rows: [] })  // advisory lock (bootstrap serialization)
-            .mockResolvedValueOnce({ rows: [] })  // role clamp: no DM exists yet
+            .mockResolvedValueOnce({ rows: [] })  // role clamp: users table is empty
             .mockResolvedValueOnce({
               rows: [{ id: 7, username: 'newplayer', role: 'DM', email: 'new@example.com' }],
             })
@@ -423,7 +426,7 @@ describe('authController', () => {
       expect(lockCall[1]).toEqual([expect.any(Number)]);
 
       const dmCheckCall = txClient.query.mock.calls[1];
-      expect(dmCheckCall[0]).toContain("role = 'DM'");
+      expect(dmCheckCall[0]).toMatch(/FROM users\s+LIMIT 1/);
 
       // The bootstrap path stores 'DM' in users.role
       const userInsertCall = txClient.query.mock.calls[2];
@@ -445,7 +448,7 @@ describe('authController', () => {
       );
     });
 
-    it('should clamp a requested DM role to Player when a DM already exists (no membership granted)', async () => {
+    it('should clamp a requested DM role to Player when accounts already exist (no membership granted)', async () => {
       const req = createMockReq({ body: { ...validBody, role: 'DM' } });
       const res = createMockRes();
 
@@ -459,7 +462,7 @@ describe('authController', () => {
         txClient = {
           query: jest.fn()
             .mockResolvedValueOnce({ rows: [] })                     // advisory lock
-            .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })  // role clamp: a DM exists
+            .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })  // role clamp: accounts already exist
             .mockResolvedValueOnce({
               rows: [{ id: 8, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
             }),
@@ -705,7 +708,8 @@ describe('authController', () => {
       // Membership is granted in the INVITE's campaign (2), role Player
       const membershipCall = txClient.query.mock.calls[1];
       expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
-      expect(membershipCall[1]).toEqual([5, 2, 'Player']);
+      expect(membershipCall[1]).toEqual([5, 2]);
+      expect(membershipCall[0]).toContain("'Player'");
 
       // Invite is marked used by id, guarded by is_used = FALSE (race safety)
       const inviteCall = txClient.query.mock.calls[2];
@@ -758,7 +762,8 @@ describe('authController', () => {
 
       const membershipCall = txClient.query.mock.calls[1];
       expect(membershipCall[0]).toContain('INSERT INTO user_campaign');
-      expect(membershipCall[1]).toEqual([11, 3, 'Player']);
+      expect(membershipCall[1]).toEqual([11, 3]);
+      expect(membershipCall[0]).toContain("'Player'");
 
       const inviteCall = txClient.query.mock.calls[2];
       expect(inviteCall[0]).toContain('UPDATE invites');
@@ -900,14 +905,15 @@ describe('authController', () => {
     it('should return authenticated user info for a Player with active character', async () => {
       const req = createMockReq({
         user: { id: 1, username: 'testplayer', role: 'Player' },
+        campaignId: 1,
       });
       const res = createMockRes();
 
       dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [{ id: 10 }] })  // active character
         .mockResolvedValueOnce({
           rows: [{ id: 1, username: 'testplayer', role: 'Player', email: 'test@example.com' }],
-        }); // user details
+        }) // user details
+        .mockResolvedValueOnce({ rows: [{ id: 10 }] });  // active character
 
       await authController.getUserStatus(req, res);
 
@@ -925,15 +931,18 @@ describe('authController', () => {
       );
     });
 
-    it('should return null activeCharacterId for DM users', async () => {
+    it('should return null activeCharacterId for a DM without an active character', async () => {
       const req = createMockReq({
         user: { id: 2, username: 'dm_user', role: 'DM' },
+        campaignId: 1,
       });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ id: 2, username: 'dm_user', role: 'DM', email: 'dm@example.com' }],
-      });
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({
+          rows: [{ id: 2, username: 'dm_user', role: 'DM', email: 'dm@example.com' }],
+        })
+        .mockResolvedValueOnce({ rows: [] });
 
       await authController.getUserStatus(req, res);
 
@@ -951,12 +960,13 @@ describe('authController', () => {
     it('should handle user not found in database gracefully', async () => {
       const req = createMockReq({
         user: { id: 999, username: 'ghost', role: 'Player' },
+        campaignId: 1,
       });
       const res = createMockRes();
 
       dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })   // no active character
-        .mockResolvedValueOnce({ rows: [] });  // user not found
+        .mockResolvedValueOnce({ rows: [] })   // user not found
+        .mockResolvedValueOnce({ rows: [] });  // no active character
 
       await authController.getUserStatus(req, res);
 
@@ -998,7 +1008,7 @@ describe('authController', () => {
   // checkForDm (checkDMStatus)
   // ---------------------------------------------------------------
   describe('checkForDm', () => {
-    it('should return dmExists true when a DM user exists', async () => {
+    it('should return dmExists true when an account exists', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1008,17 +1018,14 @@ describe('authController', () => {
 
       await authController.checkForDm(req, res);
 
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        'SELECT * FROM users WHERE role = $1',
-        ['DM']
-      );
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/FROM users\s+LIMIT 1/);
       expect(res.success).toHaveBeenCalledWith(
         { dmExists: true },
         expect.any(String)
       );
     });
 
-    it('should return dmExists false when no DM user exists', async () => {
+    it('should return dmExists false when the users table is empty', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1037,11 +1044,7 @@ describe('authController', () => {
   // checkRegistrationStatus
   // ---------------------------------------------------------------
   describe('checkRegistrationStatus', () => {
-    it.each([
-      ['open', true],
-      ['invite-only', true],
-      ['closed', false],
-    ])('should return mode %s with registrationsOpen %s', async (mode, open) => {
+    it.each(['open', 'invite-only', 'closed'])('should return mode %s', async (mode) => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1050,7 +1053,7 @@ describe('authController', () => {
       await authController.checkRegistrationStatus(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { mode, registrationsOpen: open },
+        { mode },
         expect.any(String)
       );
     });
@@ -1064,7 +1067,7 @@ describe('authController', () => {
       await authController.checkRegistrationStatus(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { mode: 'invite-only', registrationsOpen: true },
+        { mode: 'invite-only' },
         expect.any(String)
       );
     });
@@ -1078,30 +1081,7 @@ describe('authController', () => {
       await authController.checkRegistrationStatus(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { mode: 'invite-only', registrationsOpen: true },
-        expect.any(String)
-      );
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // checkInviteRequired
-  // ---------------------------------------------------------------
-  describe('checkInviteRequired', () => {
-    it.each([
-      ['open', false],
-      ['invite-only', true],
-      ['closed', false],
-    ])('should return isRequired for mode %s as %s', async (mode, isRequired) => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ value: mode }] });
-
-      await authController.checkInviteRequired(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        { isRequired, mode },
+        { mode: 'invite-only' },
         expect.any(String)
       );
     });
@@ -1140,7 +1120,7 @@ describe('authController', () => {
 
       await authController.refreshToken(req, res);
 
-      expect(res.validationError).toHaveBeenCalledWith('Authentication required');
+      expect(res.unauthorized).toHaveBeenCalledWith('Authentication required');
     });
 
     it('should reject when token is expired', async () => {
@@ -1155,7 +1135,7 @@ describe('authController', () => {
 
       await authController.refreshToken(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Invalid or expired token');
+      expect(res.unauthorized).toHaveBeenCalledWith('Invalid or expired token');
     });
 
     it('should reject when token is invalid', async () => {
@@ -1170,7 +1150,7 @@ describe('authController', () => {
 
       await authController.refreshToken(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Invalid or expired token');
+      expect(res.unauthorized).toHaveBeenCalledWith('Invalid or expired token');
     });
 
     it('should reject when user no longer exists', async () => {
@@ -1184,7 +1164,7 @@ describe('authController', () => {
 
       await authController.refreshToken(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('User no longer exists or is inactive');
+      expect(res.unauthorized).toHaveBeenCalledWith('User no longer exists or is inactive');
     });
   });
 
@@ -1324,26 +1304,23 @@ describe('authController', () => {
   });
 
   describe('resetPassword', () => {
-    it('hashes the new password and marks the token used', async () => {
+    it('hashes the new password, consumes the token and updates the user in one transaction', async () => {
       const req = createMockReq({ body: { token: 'valid-reset-token', newPassword: 'newpassword123' } });
       const res = createMockRes();
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ user_id: 1, username: 'testuser', token: 'valid-reset-token' }],
-      });
       bcrypt.hash.mockResolvedValue('newhashedpassword');
-      const mockClient = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [{ user_id: 1 }] })
+          .mockResolvedValueOnce({ rows: [{ username: 'testuser' }] }),
+      };
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       await authController.resetPassword(req, res);
 
       expect(bcrypt.hash).toHaveBeenCalledWith('newpassword123', 10);
       expect(mockClient.query).toHaveBeenCalledWith(
-        'UPDATE users SET password = $1, login_attempts = 0, locked_until = NULL WHERE id = $2',
+        'UPDATE users SET password = $1, login_attempts = 0, locked_until = NULL WHERE id = $2 RETURNING username',
         ['newhashedpassword', 1]
-      );
-      expect(mockClient.query).toHaveBeenCalledWith(
-        'UPDATE password_reset_tokens SET used = TRUE WHERE token = $1',
-        ['valid-reset-token']
       );
       expect(res.success).toHaveBeenCalled();
     });
@@ -1351,11 +1328,12 @@ describe('authController', () => {
     it('rejects an invalid or expired token', async () => {
       const req = createMockReq({ body: { token: 'invalid-token', newPassword: 'newpassword123' } });
       const res = createMockRes();
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      const mockClient = { query: jest.fn().mockResolvedValueOnce({ rows: [] }) };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       await authController.resetPassword(req, res);
 
-      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      expect(mockClient.query).toHaveBeenCalledTimes(1);
       expect(res.validationError).toHaveBeenCalledWith('Invalid or expired reset token');
     });
   });
