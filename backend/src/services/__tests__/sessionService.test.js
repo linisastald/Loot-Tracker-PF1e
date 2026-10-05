@@ -35,7 +35,6 @@ jest.mock('../discord/SessionDiscordService', () => ({
   postSessionAnnouncement: jest.fn(),
   sendSessionReminder: jest.fn(),
   updateSessionMessage: jest.fn(),
-  processDiscordReaction: jest.fn(),
   getDiscordSettings: jest.fn(),
   getReactionMap: jest.fn(),
 }));

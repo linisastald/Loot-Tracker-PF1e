@@ -5,7 +5,6 @@
 
 const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
-const campaignContext = require('../../utils/campaignContext');
 const campaignSettings = require('../../utils/campaignSettings');
 const discordService = require('../discordBrokerService');
 const { DISCORD_EMBED_COLORS } = require('../../constants/discordConstants');
@@ -255,113 +254,6 @@ class SessionDiscordService {
                 stack: error.stack,
                 sessionId
             });
-        }
-    }
-
-    /**
-     * Process Discord reaction (legacy - now using buttons)
-     * @param {string} messageId - Discord message ID
-     * @param {string} userId - Discord user ID
-     * @param {string} emoji - Reaction emoji
-     * @param {string} action - Action (add/remove)
-     */
-    async processDiscordReaction(messageId, userId, emoji, action) {
-        try {
-            // Inbound Discord events arrive over HTTP without verifyToken, so
-            // they carry no request campaign context (default '1'). Resolve the
-            // message to its session under hardcoded cross-campaign mode, then
-            // act under that session's campaign so every tenant-scoped
-            // read/write (session_config, attendance, reaction tracking)
-            // passes RLS. This is the primitive channel->campaign resolution;
-            // per-campaign Discord config via campaign_settings comes in a
-            // later phase.
-            const sessionResult = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(`
-                SELECT id, campaign_id FROM game_sessions
-                WHERE discord_message_id = $1 OR confirmation_message_id = $1
-            `, [messageId]));
-
-            if (sessionResult.rows.length === 0) {
-                logger.warn('Session not found for message:', { messageId });
-                return;
-            }
-
-            const sessionId = sessionResult.rows[0].id;
-            const sessionCampaignIdNum = sessionResult.rows[0].campaign_id;
-            const sessionCampaignId = String(sessionCampaignIdNum);
-
-            await campaignContext.runWithCampaign(sessionCampaignId, async () => {
-                // Map emoji to response type (session_config is campaign-scoped,
-                // so this read must happen inside the session's campaign context)
-                const reactionMap = await this.getReactionMap();
-                const responseType = reactionMap[emoji];
-
-                if (!responseType) {
-                    logger.warn('Unknown reaction emoji:', { emoji, messageId, userId });
-                    return;
-                }
-
-                // Find user by Discord ID (users is a global, non-RLS table)
-                const userResult = await dbUtils.executeQuery(`
-                    SELECT id FROM users WHERE discord_id = $1
-                `, [userId]);
-
-                if (userResult.rows.length === 0) {
-                    logger.warn('User not found for Discord ID:', { discordId: userId });
-                    return;
-                }
-
-                const dbUserId = userResult.rows[0].id;
-
-                // Lazy load to avoid circular dependency
-                const attendanceService = require('../attendance/AttendanceService');
-
-                if (action === 'add') {
-                    // Membership gate: only record if the user owns an active
-                    // character in this session's campaign. Otherwise a user
-                    // from another campaign would be recorded as attending and
-                    // later leak into this campaign's reminders.
-                    const characterId = await attendanceService.getActiveCharacterInCampaign(dbUserId, sessionCampaignIdNum);
-                    if (!characterId) {
-                        logger.warn('Ignoring Discord reaction - user has no active character in session campaign:', {
-                            dbUserId,
-                            sessionId,
-                            campaignId: sessionCampaignIdNum
-                        });
-                        return;
-                    }
-
-                    // Record attendance
-                    await attendanceService.recordAttendance(sessionId, dbUserId, responseType, { discord_id: userId, character_id: characterId });
-
-                    // Record reaction tracking
-                    await dbUtils.executeQuery(`
-                        INSERT INTO discord_reaction_tracking
-                        (message_id, user_discord_id, reaction_emoji, session_id)
-                        VALUES ($1, $2, $3, $4)
-                        ON CONFLICT (message_id, user_discord_id, reaction_emoji)
-                        DO UPDATE SET reaction_time = CURRENT_TIMESTAMP
-                    `, [messageId, userId, emoji, sessionId]);
-
-                } else if (action === 'remove') {
-                    // Remove attendance
-                    await dbUtils.executeQuery(`
-                        DELETE FROM session_attendance
-                        WHERE session_id = $1 AND user_id = $2
-                    `, [sessionId, dbUserId]);
-
-                    // Remove reaction tracking
-                    await dbUtils.executeQuery(`
-                        DELETE FROM discord_reaction_tracking
-                        WHERE message_id = $1 AND user_discord_id = $2 AND reaction_emoji = $3
-                    `, [messageId, userId, emoji]);
-                }
-
-                // Update the Discord message with new attendance counts
-                await this.updateSessionMessage(sessionId);
-            });
-
-        } catch (error) {
-            logger.error('Failed to process Discord reaction:', error);
         }
     }
 

@@ -321,4 +321,40 @@ describe('processSessionInteraction campaign context', () => {
       })
     );
   });
+
+  it('refuses to relink when the character owner already has a different Discord id', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) {
+        return { rows: [{ id: 50, campaign_id: 4 }] };
+      }
+      if (query.includes('FROM characters')) {
+        return { rows: [{ user_id: 7, name: 'Valeros' }] };
+      }
+      if (query.includes('SELECT discord_id FROM users WHERE id')) {
+        return { rows: [{ discord_id: '111111111111111111' }] };
+      }
+      if (query.includes('FROM users WHERE discord_id')) {
+        return { rows: [] };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const req = {
+      headers: {},
+      body: {
+        type: 3,
+        data: { custom_id: `link_character_${ENHANCED_MESSAGE_ID}_999888777666555444`, values: ['3'] },
+        member: { user: { id: '999888777666555444' } },
+      },
+    };
+    const res = makeRes();
+    await sessionController.processSessionInteraction(req, res);
+
+    expect(mockExecuteQuery.mock.calls.some(c => String(c[0]).includes('UPDATE users SET discord_id'))).toBe(false);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ content: expect.stringContaining('already linked') }),
+      })
+    );
+  });
 });

@@ -218,3 +218,27 @@ describe('DiscordBrokerService.startHeartbeat', () => {
     expect(svc.heartbeatInterval).toBe(firstInterval);
   });
 });
+
+describe('DiscordBrokerService.makeRequest broker secret', () => {
+  const axios = require('axios');
+  const origSecret = process.env.DISCORD_BROKER_SECRET;
+
+  afterEach(() => {
+    if (origSecret === undefined) delete process.env.DISCORD_BROKER_SECRET;
+    else process.env.DISCORD_BROKER_SECRET = origSecret;
+  });
+
+  it('sends the shared secret header to the broker when configured', async () => {
+    process.env.DISCORD_BROKER_SECRET = 'shared-secret';
+    axios.mockResolvedValueOnce({ data: { success: true } });
+    await discordBrokerService.makeRequest('/heartbeat', 'POST', { appId: 'x' });
+    expect(axios.mock.calls[0][0].headers['X-Broker-Secret']).toBe('shared-secret');
+  });
+
+  it('omits the header when no secret is configured', async () => {
+    delete process.env.DISCORD_BROKER_SECRET;
+    axios.mockResolvedValueOnce({ data: { success: true } });
+    await discordBrokerService.makeRequest('/heartbeat', 'POST', { appId: 'x' });
+    expect(axios.mock.calls[0][0].headers['X-Broker-Secret']).toBeUndefined();
+  });
+});

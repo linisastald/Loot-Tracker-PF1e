@@ -656,10 +656,6 @@ class SessionService {
         return sessionDiscordService.updateSessionMessage(sessionId);
     }
 
-    async processDiscordReaction(messageId, userId, emoji, action) {
-        return sessionDiscordService.processDiscordReaction(messageId, userId, emoji, action);
-    }
-
     async getDiscordSettings() {
         return sessionDiscordService.getDiscordSettings();
     }

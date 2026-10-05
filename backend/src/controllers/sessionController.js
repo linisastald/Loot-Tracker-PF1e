@@ -378,9 +378,7 @@ const processSessionInteraction = async (req, res) => {
         type: req.body.type,
         customId: req.body.data?.custom_id,
         userId: req.body.member?.user?.id || req.body.user?.id,
-        messageId: req.body.message?.id,
-        headers: req.headers,
-        body: JSON.stringify(req.body)
+        messageId: req.body.message?.id
     });
 
     const { type, data, member, message, user } = req.body;
@@ -436,6 +434,23 @@ const processSessionInteraction = async (req, res) => {
 
             const ownerId = characterResult.rows[0].user_id;
             const characterName = characterResult.rows[0].name;
+
+            // Never overwrite an existing link on the character owner's account
+            // (an unlink must be a deliberate account action, not a menu click).
+            const ownerLink = await dbUtils.executeQuery(
+                'SELECT discord_id FROM users WHERE id = $1',
+                [ownerId]
+            );
+            if (ownerLink.rows.length > 0 && ownerLink.rows[0].discord_id
+                && ownerLink.rows[0].discord_id !== discordUserId) {
+                return res.json({
+                    type: 4,
+                    data: {
+                        content: "⚠️ That character's account is already linked to a Discord account. Ask your DM to unlink it first.",
+                        flags: 64
+                    }
+                });
+            }
 
             // Check if this Discord ID is already linked to another account
             const existingLink = await dbUtils.executeQuery(

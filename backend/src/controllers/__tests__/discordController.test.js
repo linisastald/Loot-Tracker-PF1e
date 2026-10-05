@@ -124,8 +124,33 @@ describe('discordController', () => {
   // sendMessage
   // ---------------------------------------------------------------
   describe('sendMessage', () => {
+    // sendMessage requires DM rights; default every request here to a DM
+    // (the non-DM case is tested explicitly below)
+    const dmReq = (overrides = {}) => createMockReq({ user: { role: 'DM' }, ...overrides });
+
+    it('should reject a Player (no DM rights)', async () => {
+      const req = dmReq({ body: { content: 'hi' }, user: { role: 'Player' } });
+      const res = createMockRes();
+
+      await discordController.sendMessage(req, res);
+
+      expect(res.forbidden).toHaveBeenCalled();
+      expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    it('should set allowed_mentions to parse nothing', async () => {
+      const req = dmReq({ body: { content: '@everyone hi' } });
+      const res = createMockRes();
+
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
+      axios.post.mockResolvedValueOnce({ data: { id: 'msg-1' } });
+
+      await discordController.sendMessage(req, res);
+
+      expect(axios.post.mock.calls[0][1].allowed_mentions).toEqual({ parse: [] });
+    });
     it('should send a message with content successfully', async () => {
-      const req = createMockReq({ body: { content: 'Hello Discord!' } });
+      const req = dmReq({ body: { content: 'Hello Discord!' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -135,7 +160,7 @@ describe('discordController', () => {
 
       expect(axios.post).toHaveBeenCalledWith(
         'https://discord.com/api/channels/channel-456/messages',
-        { content: 'Hello Discord!' },
+        { content: 'Hello Discord!', allowed_mentions: { parse: [] } },
         expect.objectContaining({
           headers: expect.objectContaining({
             Authorization: 'Bot bot-token-123',
@@ -149,7 +174,7 @@ describe('discordController', () => {
     });
 
     it('should read the channel id from campaign_settings (per-campaign scope)', async () => {
-      const req = createMockReq({ body: { content: 'Hello!' } });
+      const req = dmReq({ body: { content: 'Hello!' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -167,7 +192,7 @@ describe('discordController', () => {
     });
 
     it('should fall back to the global channel row when the campaign has none', async () => {
-      const req = createMockReq({ body: { content: 'Hello!' } });
+      const req = dmReq({ body: { content: 'Hello!' } });
       const res = createMockRes();
 
       dbUtils.executeQuery
@@ -187,7 +212,7 @@ describe('discordController', () => {
 
     it('should send a message with embeds successfully', async () => {
       const embeds = [{ title: 'Test Embed', description: 'Desc' }];
-      const req = createMockReq({ body: { embeds } });
+      const req = dmReq({ body: { embeds } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -208,7 +233,7 @@ describe('discordController', () => {
         { embeds: [{ title: 'Embed A' }] },
         { embeds: [{ title: 'Embed B' }] },
       ];
-      const req = createMockReq({ body: { embeds } });
+      const req = dmReq({ body: { embeds } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -220,8 +245,8 @@ describe('discordController', () => {
       expect(postedPayload.embeds).toEqual([{ title: 'Embed A' }, { title: 'Embed B' }]);
     });
 
-    it('should use provided channel_id over default', async () => {
-      const req = createMockReq({
+    it('should ignore a client-supplied channel_id and use the campaign channel', async () => {
+      const req = dmReq({
         body: { content: 'Test', channel_id: 'custom-channel' },
       });
       const res = createMockRes();
@@ -232,14 +257,14 @@ describe('discordController', () => {
       await discordController.sendMessage(req, res);
 
       expect(axios.post).toHaveBeenCalledWith(
-        'https://discord.com/api/channels/custom-channel/messages',
+        'https://discord.com/api/channels/channel-456/messages',
         expect.any(Object),
         expect.any(Object)
       );
     });
 
     it('should return validation error when neither content nor embeds provided', async () => {
-      const req = createMockReq({ body: {} });
+      const req = dmReq({ body: {} });
       const res = createMockRes();
 
       await discordController.sendMessage(req, res);
@@ -250,7 +275,7 @@ describe('discordController', () => {
     });
 
     it('should return validation error when embeds is empty array and no content', async () => {
-      const req = createMockReq({ body: { embeds: [] } });
+      const req = dmReq({ body: { embeds: [] } });
       const res = createMockRes();
 
       await discordController.sendMessage(req, res);
@@ -261,7 +286,7 @@ describe('discordController', () => {
     });
 
     it('should return validation error when bot token not configured', async () => {
-      const req = createMockReq({ body: { content: 'Hello' } });
+      const req = dmReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ channel: 'channel-456' });
@@ -272,7 +297,7 @@ describe('discordController', () => {
     });
 
     it('should return validation error when channel ID not configured and not provided', async () => {
-      const req = createMockReq({ body: { content: 'Hello' } });
+      const req = dmReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123' });
@@ -283,7 +308,7 @@ describe('discordController', () => {
     });
 
     it('should return forbidden error on Discord 403 response', async () => {
-      const req = createMockReq({ body: { content: 'Hello' } });
+      const req = dmReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -300,7 +325,7 @@ describe('discordController', () => {
     });
 
     it('should return not found error on Discord 404 response', async () => {
-      const req = createMockReq({ body: { content: 'Hello' } });
+      const req = dmReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -315,7 +340,7 @@ describe('discordController', () => {
     });
 
     it('should return validation error on Discord 429 rate limit', async () => {
-      const req = createMockReq({ body: { content: 'Hello' } });
+      const req = dmReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -332,7 +357,7 @@ describe('discordController', () => {
     });
 
     it('should return validation error on Discord 400 bad request', async () => {
-      const req = createMockReq({ body: { content: 'Hello' } });
+      const req = dmReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -347,7 +372,7 @@ describe('discordController', () => {
     });
 
     it('should return generic error on unknown Discord error', async () => {
-      const req = createMockReq({ body: { content: 'Hello' } });
+      const req = dmReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -363,7 +388,7 @@ describe('discordController', () => {
     });
 
     it('should return generic error on network failure (no response)', async () => {
-      const req = createMockReq({ body: { content: 'Hello' } });
+      const req = dmReq({ body: { content: 'Hello' } });
       const res = createMockRes();
 
       mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
@@ -681,6 +706,7 @@ describe('discordController', () => {
       const req = createMockReq({
         body: { bot_token: 'new-token', channel_id: VALID_CHANNEL_ID, enabled: true },
         user: { role: 'DM' },
+        isSuperadmin: true,
       });
       const res = createMockRes();
 
@@ -727,6 +753,7 @@ describe('discordController', () => {
       const req = createMockReq({
         body: { bot_token: 'new-token' },
         user: { role: 'DM' },
+        isSuperadmin: true,
       });
       const res = createMockRes();
 
@@ -846,10 +873,40 @@ describe('discordController', () => {
       expect(res.success).toHaveBeenCalled();
     });
 
+    it('should forbid a per-campaign DM (non-superadmin) from changing the global bot token', async () => {
+      const req = createMockReq({
+        body: { bot_token: 'attacker-token' },
+        user: { role: 'DM' },
+        campaignRole: 'DM',
+      });
+      const res = createMockRes();
+
+      await discordController.updateSettings(req, res);
+
+      expect(res.forbidden).toHaveBeenCalled();
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should still let a per-campaign DM change channel and enabled flag', async () => {
+      const req = createMockReq({
+        body: { channel_id: VALID_CHANNEL_ID, enabled: true },
+        user: { role: 'DM' },
+        campaignRole: 'DM',
+      });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await discordController.updateSettings(req, res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalled();
+    });
+
     it('should save settings even when connection test fails', async () => {
       const req = createMockReq({
         body: { bot_token: 'bad-token', channel_id: VALID_CHANNEL_ID, enabled: true },
         user: { role: 'DM' },
+        isSuperadmin: true,
       });
       const res = createMockRes();
 

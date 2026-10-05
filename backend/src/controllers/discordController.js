@@ -4,7 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
-const { hasDmRights } = require('../utils/roleUtils');
+const { hasDmRights, isSuperadmin } = require('../utils/roleUtils');
 const Campaign = require('../models/Campaign');
 const { APP_NAME } = require('../config/constants');
 
@@ -12,7 +12,14 @@ const { APP_NAME } = require('../config/constants');
  * Send a message to Discord
  */
 const sendMessage = async (req, res) => {
-    const {embeds, content, channel_id} = req.body;
+    // Posting arbitrary content with the shared bot token is a DM action
+    if (!hasDmRights(req)) {
+        throw controllerFactory.createAuthorizationError('Only DMs can send Discord messages');
+    }
+
+    // A client-supplied channel_id is deliberately ignored: the message always
+    // goes to the requesting campaign's configured channel.
+    const {embeds, content} = req.body;
 
     // Validate that either embeds or content is provided
     if ((!embeds || !Array.isArray(embeds) || embeds.length === 0) && !content) {
@@ -33,8 +40,7 @@ const sendMessage = async (req, res) => {
         throw controllerFactory.createValidationError('Discord bot token is not configured');
     }
 
-    // Use provided channel ID or default from settings
-    const discord_channel_id = channel_id || default_channel_id;
+    const discord_channel_id = default_channel_id;
 
     if (!discord_channel_id) {
         throw controllerFactory.createValidationError('Discord channel ID is not configured');
@@ -42,7 +48,9 @@ const sendMessage = async (req, res) => {
 
     // Fix: Properly prepare the message payload
     // The issue is that tasks.js is sending an array of embed objects, but we need a single object with embeds array
-    const payload = {};
+    // allowed_mentions: parse nothing, so @everyone / @here / role / user pings
+    // in client-supplied text never notify anyone.
+    const payload = { allowed_mentions: { parse: [] } };
     if (content) {
         payload.content = content;
     }
@@ -376,6 +384,11 @@ const updateSettings = async (req, res) => {
     // autocommits, so the HTTP response is only sent after all writes are
     // visible to other pool clients.
     if (bot_token !== undefined) {
+        // The bot token is shared by every campaign, so changing it is a
+        // global-operator action, not a per-campaign DM one.
+        if (!isSuperadmin(req)) {
+            throw controllerFactory.createAuthorizationError('Only a superadmin can change the Discord bot token');
+        }
         await dbUtils.executeQuery(
             'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
             ['discord_bot_token', bot_token]

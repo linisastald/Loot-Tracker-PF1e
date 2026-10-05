@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const discordController = require('../../controllers/discordController');
 const sessionController = require('../../controllers/sessionController');
-const discordReactionRoutes = require('./discord/reactions');
 const verifyToken = require('../../middleware/auth');
+const { verifyBrokerSecret } = require('../../middleware/brokerAuth');
 const logger = require('../../utils/logger');
 
 // Debug logging
@@ -27,20 +27,8 @@ router.get('/interactions', (req, res) => {
     });
 });
 
-router.post('/interactions', (req, res, next) => {
-    logger.debug('Discord interaction routed from handler', {
-        forwardedFrom: req.headers['x-forwarded-from'],
-        contentType: req.headers['content-type'],
-        hasBody: !!req.body
-    });
-    
-    // Log detailed body only in development mode
-    if (process.env.NODE_ENV === 'development') {
-        logger.debug('Discord interaction body', { body: req.body });
-    }
-    
-    next();
-}, sessionController.processSessionInteraction);
+// Service-to-service: requires the shared broker secret (see middleware/brokerAuth)
+router.post('/interactions', verifyBrokerSecret, sessionController.processSessionInteraction);
 
 // Add a test endpoint to verify Discord can reach your server
 router.get('/interactions/test', (req, res) => {
@@ -48,7 +36,7 @@ router.get('/interactions/test', (req, res) => {
 });
 
 // Discord broker events endpoint (called by Discord broker service)
-router.post('/events', (req, res) => {
+router.post('/events', verifyBrokerSecret, (req, res) => {
     const { type, data } = req.body;
 
     logger.debug('Discord event received from broker', {
@@ -104,9 +92,5 @@ router.post('/events', (req, res) => {
         processed
     });
 });
-
-// Discord reaction events (routed from discord-handler service)
-// Note: This endpoint does not require CSRF protection as it's called by the discord-handler
-router.use('/reactions', discordReactionRoutes);
 
 module.exports = router;

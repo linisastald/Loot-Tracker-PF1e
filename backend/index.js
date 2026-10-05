@@ -356,10 +356,6 @@ const selectiveCSRFProtection = (req, res, next) => {
   if (req.path === '/interactions/test' && req.method === 'GET') {
     return next();
   }
-  // Skip CSRF protection for Discord reaction events endpoint
-  if (req.path === '/reactions' && req.method === 'POST') {
-    return next();
-  }
   // Apply CSRF protection for all other routes
   return csrfProtection(req, res, next);
 };

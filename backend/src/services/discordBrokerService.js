@@ -350,6 +350,11 @@ class DiscordBrokerService {
       timeout: 10000, // 10 second timeout
     };
 
+    // Shared secret the broker requires on /register, /unregister, /heartbeat
+    if (process.env.DISCORD_BROKER_SECRET) {
+      options.headers['X-Broker-Secret'] = process.env.DISCORD_BROKER_SECRET;
+    }
+
     if (data) {
       options.data = data;
     }

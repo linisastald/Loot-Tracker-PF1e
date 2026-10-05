@@ -1,10 +1,8 @@
 /**
- * Unit tests for SessionDiscordService.processDiscordReaction
- * (multi-campaign Phase 3c)
+ * Unit tests for SessionDiscordService (settings split, session embed).
  *
- * Inbound Discord reactions arrive over HTTP without verifyToken, so the
- * service must resolve the message to its session under the hardcoded
- * cross-campaign context ('all') and then act under the session's campaign.
+ * The legacy processDiscordReaction path (unauthenticated /api/discord/reactions)
+ * was removed in the S1 security fix; attendance now arrives only via buttons.
  */
 
 const mockExecuteQuery = jest.fn();
@@ -51,7 +49,7 @@ let activeCampaign;
 
 const contextIds = () => campaignContext.runWithCampaign.mock.calls.map(call => call[0]);
 
-describe('SessionDiscordService.processDiscordReaction campaign context', () => {
+describe('SessionDiscordService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockExecuteQuery.mockReset();
@@ -82,124 +80,6 @@ describe('SessionDiscordService.processDiscordReaction campaign context', () => 
 
     // Suppress the trailing embed refresh (separately tested behavior)
     jest.spyOn(sessionDiscordService, 'updateSessionMessage').mockResolvedValue();
-  });
-
-  it('resolves the session under "all" and records attendance under the session campaign', async () => {
-    const seenContexts = [];
-    mockExecuteQuery.mockImplementation(async (query) => {
-      seenContexts.push({ query, context: activeCampaign });
-      if (query.includes('FROM game_sessions')) {
-        return { rows: [{ id: 33, campaign_id: 4 }] };
-      }
-      if (query.includes('FROM session_config')) {
-        return { rows: [] }; // default reaction map
-      }
-      if (query.includes('FROM users')) {
-        return { rows: [{ id: 9 }] };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-    attendanceService.getActiveCharacterInCampaign.mockResolvedValue(77);
-    attendanceService.recordAttendance.mockImplementation(async () => {
-      expect(activeCampaign).toBe('4');
-    });
-
-    await sessionDiscordService.processDiscordReaction('111111111111111111', '222', '✅', 'add');
-
-    // Cross-campaign resolution first, then the session's campaign
-    expect(contextIds()).toEqual(['all', '4']);
-
-    // The session lookup selects campaign_id explicitly and runs under 'all'
-    const sessionLookup = seenContexts.find(c => c.query.includes('FROM game_sessions'));
-    expect(sessionLookup.query).toContain('campaign_id');
-    expect(sessionLookup.context).toBe('all');
-
-    // session_config (RLS campaign-scoped) and the reaction tracking insert
-    // run under the session's campaign
-    const configRead = seenContexts.find(c => c.query.includes('FROM session_config'));
-    expect(configRead.context).toBe('4');
-    const trackingInsert = seenContexts.find(c => c.query.includes('discord_reaction_tracking'));
-    expect(trackingInsert.context).toBe('4');
-
-    // The membership gate is checked under the session's campaign
-    expect(attendanceService.getActiveCharacterInCampaign).toHaveBeenCalledWith(9, 4);
-    expect(attendanceService.recordAttendance).toHaveBeenCalledWith(
-      33, 9, 'yes', { discord_id: '222', character_id: 77 }
-    );
-    expect(sessionDiscordService.updateSessionMessage).toHaveBeenCalledWith(33);
-  });
-
-  it('ignores a reaction from a user with no active character in the session campaign', async () => {
-    mockExecuteQuery.mockImplementation(async (query) => {
-      if (query.includes('FROM game_sessions')) {
-        return { rows: [{ id: 33, campaign_id: 4 }] };
-      }
-      if (query.includes('FROM session_config')) {
-        return { rows: [] };
-      }
-      if (query.includes('FROM users')) {
-        return { rows: [{ id: 9 }] };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-    // User belongs to no character in campaign 4 -> not a member
-    attendanceService.getActiveCharacterInCampaign.mockResolvedValue(null);
-
-    await sessionDiscordService.processDiscordReaction('111111111111111111', '222', '✅', 'add');
-
-    expect(attendanceService.getActiveCharacterInCampaign).toHaveBeenCalledWith(9, 4);
-    expect(attendanceService.recordAttendance).not.toHaveBeenCalled();
-    // No reaction-tracking row written for a rejected response
-    const trackingInsert = mockExecuteQuery.mock.calls.find(
-      ([q]) => typeof q === 'string' && q.includes('discord_reaction_tracking')
-    );
-    expect(trackingInsert).toBeUndefined();
-  });
-
-  it('removes attendance under the session campaign on reaction removal', async () => {
-    const removalContexts = [];
-    mockExecuteQuery.mockImplementation(async (query) => {
-      if (query.includes('FROM game_sessions')) {
-        return { rows: [{ id: 33, campaign_id: 2 }] };
-      }
-      if (query.includes('FROM session_config')) {
-        return { rows: [] };
-      }
-      if (query.includes('FROM users')) {
-        return { rows: [{ id: 9 }] };
-      }
-      if (query.includes('DELETE')) {
-        removalContexts.push(activeCampaign);
-      }
-      return { rows: [], rowCount: 0 };
-    });
-
-    await sessionDiscordService.processDiscordReaction('111111111111111111', '222', '❌', 'remove');
-
-    expect(contextIds()).toEqual(['all', '2']);
-    // Both DELETEs (session_attendance + discord_reaction_tracking) under campaign 2
-    expect(removalContexts).toEqual(['2', '2']);
-    expect(attendanceService.recordAttendance).not.toHaveBeenCalled();
-  });
-
-  it('does not establish a per-campaign context when no session matches', async () => {
-    mockExecuteQuery.mockResolvedValueOnce({ rows: [] });
-
-    await sessionDiscordService.processDiscordReaction('111111111111111111', '222', '✅', 'add');
-
-    expect(contextIds()).toEqual(['all']);
-    expect(logger.warn).toHaveBeenCalledWith('Session not found for message:', { messageId: '111111111111111111' });
-    expect(attendanceService.recordAttendance).not.toHaveBeenCalled();
-  });
-
-  it('swallows errors without throwing (Discord must always get a 200)', async () => {
-    mockExecuteQuery.mockRejectedValueOnce(new Error('DB down'));
-
-    await expect(
-      sessionDiscordService.processDiscordReaction('111111111111111111', '222', '✅', 'add')
-    ).resolves.toBeUndefined();
-
-    expect(logger.error).toHaveBeenCalledWith('Failed to process Discord reaction:', expect.any(Error));
   });
 
   // -----------------------------------------------------------------
