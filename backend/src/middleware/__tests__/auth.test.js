@@ -133,6 +133,41 @@ describe('verifyToken middleware', () => {
         message: 'Invalid token',
       });
     });
+
+    it('should not leak internal error details for a non-JWT verification failure', async () => {
+      req.headers.authorization = 'Bearer some-token';
+      const spy = jest.spyOn(jwt, 'verify').mockImplementation(() => {
+        throw new Error('Database connection failed');
+      });
+
+      try {
+        await verifyToken(req, res, next);
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid token' });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should log authentication failures for monitoring', async () => {
+      const logger = require('../../utils/logger');
+      req.headers.authorization = 'Bearer invalid.token.here';
+
+      await verifyToken(req, res, next);
+
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Authentication failed'));
+    });
+
+    it('should return 401 when the cookie jar is empty', async () => {
+      req.cookies = {};
+
+      await verifyToken(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Authentication required' });
+    });
   });
 
   describe('expired token', () => {
