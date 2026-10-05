@@ -4,7 +4,6 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignContext = require('../utils/campaignContext');
-const axios = require('axios');
 const sessionService = require('../services/sessionService');
 const discordService = require('../services/discordBrokerService');
 const attendanceService = require('../services/attendance/AttendanceService');
@@ -226,14 +225,14 @@ const deleteSession = async (req, res) => {
 
     // If session has Discord message, delete it
     if (session.discord_message_id && session.discord_channel_id) {
-        try {
-            await deleteDiscordMessage(session.discord_channel_id, session.discord_message_id);
-        } catch (error) {
-            logger.error('Failed to delete Discord message for session', {
-                error: error.message,
-                sessionId: sessionId
-            });
-            // Continue - we don't want to fail the session deletion if Discord fails
+        // Never fail the session deletion because Discord is unavailable; the
+        // service logs the failure.
+        const deleted = await discordService.deleteMessage({
+            channelId: session.discord_channel_id,
+            messageId: session.discord_message_id
+        });
+        if (!deleted.success) {
+            logger.warn('Discord message for deleted session was not removed', { sessionId });
         }
     }
 
@@ -606,49 +605,6 @@ const handleEnhancedSessionInteraction = async (res, sessionId, messageId, disco
             components: components
         }
     });
-};
-
-/**
- * Helper function to delete a Discord message
- */
-const deleteDiscordMessage = async (channelId, messageId) => {
-    // Fetch Discord settings
-    const settings = await dbUtils.executeQuery(
-        'SELECT value FROM settings WHERE name = \'discord_bot_token\''
-    );
-
-    if (settings.rows.length === 0) {
-        throw new Error('Discord bot token not configured');
-    }
-
-    const discord_bot_token = settings.rows[0].value;
-
-    try {
-        await axios.delete(
-            `https://discord.com/api/channels/${channelId}/messages/${messageId}`,
-            {
-                headers: {
-                    'Authorization': `Bot ${discord_bot_token}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        logger.info('Discord message deleted', {
-            channelId,
-            messageId
-        });
-
-        return true;
-    } catch (error) {
-        logger.error('Error deleting Discord message', {
-            error: error.message,
-            response: error.response?.data,
-            channelId,
-            messageId
-        });
-        throw error;
-    }
 };
 
 /**

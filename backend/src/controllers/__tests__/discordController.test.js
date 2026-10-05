@@ -1,15 +1,12 @@
 /**
- * Unit tests for discordController
- * Tests sendMessage, getIntegrationStatus, updateSettings
+ * Unit tests for discordController.sendMessage
  *
- * Phase 4c (campaign settings split): the bot token is read from the global
- * settings table; the channel/role ids and the integration-enabled flag are
- * per-campaign (campaign_settings via the campaignSettings helper, with a
- * global fallback when no per-campaign row exists). The tests below mock the
- * resulting query sequences.
+ * The controller posts to the requesting campaign's configured channel through
+ * discordBrokerService (bot token lookup, rate limiting and the REST call live
+ * there). The channel id is per-campaign (campaignSettings helper, with a
+ * global fallback when no per-campaign row exists).
  */
 
-// Mock dependencies before requiring the controller
 jest.mock('../../utils/dbUtils', () => ({
   executeQuery: jest.fn(),
   executeTransaction: jest.fn(),
@@ -22,16 +19,16 @@ jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
-jest.mock('axios');
+jest.mock('../../services/discordBrokerService', () => ({
+  getBotToken: jest.fn(),
+  sendMessage: jest.fn(),
+}));
 
 const dbUtils = require('../../utils/dbUtils');
-const axios = require('axios');
+const logger = require('../../utils/logger');
+const discordService = require('../../services/discordBrokerService');
 const discordController = require('../discordController');
 
-// A valid Discord snowflake for channel ids (17-19 digits)
-const VALID_CHANNEL_ID = '123456789012345678';
-
-// Helper to create a mock response object with all API response methods
 function createMockRes() {
   return {
     success: jest.fn(),
@@ -45,680 +42,202 @@ function createMockRes() {
   };
 }
 
-// Helper to create a mock request object
 function createMockReq(overrides = {}) {
   const req = {
     body: {},
     params: {},
     query: {},
     cookies: {},
-    user: null,
-    // Set by verifyToken on real requests
-    campaignId: 1,
+    user: { role: 'Player' },
     ...overrides,
   };
-  // Mirror verifyToken: the per-campaign role is what authorizes DM actions
   if (req.campaignRole === undefined && req.user) req.campaignRole = req.user.role;
   return req;
 }
 
-// Helper: return settings rows for given config map
-function makeSettingsRows(configMap) {
-  return {
-    rows: Object.entries(configMap).map(([name, value]) => ({ name, value })),
-  };
-}
-
-/**
- * Mock the sendMessage settings reads:
- *  1. global token (single-row SELECT value),
- *  2. per-campaign discord_channel_id (campaign_settings),
- *  3. global fallback for the channel when no per-campaign row exists.
- */
-function mockSendMessageSettings({ token, channel } = {}) {
-  dbUtils.executeQuery
-    .mockResolvedValueOnce({ rows: token !== undefined ? [{ value: token }] : [] })
-    .mockResolvedValueOnce({ rows: channel !== undefined ? [{ value: channel }] : [] });
+/** Per-campaign channel read: one campaign_settings row (or none, then no global row). */
+function mockChannel(channel) {
+  dbUtils.executeQuery.mockResolvedValueOnce({ rows: channel !== undefined ? [{ value: channel }] : [] });
   if (channel === undefined) {
     // Helper consults the deprecated global row when the campaign has none
     dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
   }
 }
 
-describe('discordController', () => {
+const failure = (status, data = {}) => ({
+  success: false,
+  message: 'discord said no',
+  error: { code: 'DISCORD_API_ERROR', originalError: { response: { status, data } } },
+});
+
+describe('discordController.sendMessage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    discordService.getBotToken.mockResolvedValue('bot-token-123');
   });
 
-  // ---------------------------------------------------------------
-  // sendMessage
-  // ---------------------------------------------------------------
-  describe('sendMessage', () => {
-    const dmReq = (overrides = {}) => createMockReq({ user: { role: 'DM' }, ...overrides });
-
-    it('should let a Player post to the campaign channel, ignoring a supplied channel_id', async () => {
-      const req = dmReq({ body: { content: 'hi', channel_id: 'other-channel' }, user: { role: 'Player' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockResolvedValueOnce({ data: { id: 'msg-1' } });
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.forbidden).not.toHaveBeenCalled();
-      expect(axios.post).toHaveBeenCalledWith(
-        'https://discord.com/api/channels/channel-456/messages',
-        expect.objectContaining({ allowed_mentions: { parse: [] } }),
-        expect.anything()
-      );
-    });
-
-    it('should set allowed_mentions to parse nothing', async () => {
-      const req = dmReq({ body: { content: '@everyone hi' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockResolvedValueOnce({ data: { id: 'msg-1' } });
-
-      await discordController.sendMessage(req, res);
-
-      expect(axios.post.mock.calls[0][1].allowed_mentions).toEqual({ parse: [] });
-    });
-    it('should send a message with content successfully', async () => {
-      const req = dmReq({ body: { content: 'Hello Discord!' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockResolvedValueOnce({ data: { id: 'msg-789' } });
-
-      await discordController.sendMessage(req, res);
-
-      expect(axios.post).toHaveBeenCalledWith(
-        'https://discord.com/api/channels/channel-456/messages',
-        { content: 'Hello Discord!', allowed_mentions: { parse: [] } },
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            Authorization: 'Bot bot-token-123',
-          }),
-        })
-      );
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({ message_id: 'msg-789', channel_id: 'channel-456' }),
-        'Message sent to Discord successfully'
-      );
-    });
-
-    it('should read the channel id from campaign_settings (per-campaign scope)', async () => {
-      const req = dmReq({ body: { content: 'Hello!' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockResolvedValueOnce({ data: { id: 'msg-1' } });
-
-      await discordController.sendMessage(req, res);
-
-      // Second query is the per-campaign channel read, scoped to the
-      // resolved campaign (default '1' with no request context)
-      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining('FROM campaign_settings'),
-        ['1', 'discord_channel_id']
-      );
-    });
-
-    it('should fall back to the global channel row when the campaign has none', async () => {
-      const req = dmReq({ body: { content: 'Hello!' } });
-      const res = createMockRes();
-
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [{ value: 'bot-token-123' }] }) // global token
-        .mockResolvedValueOnce({ rows: [] })                            // campaign_settings miss
-        .mockResolvedValueOnce({ rows: [{ value: 'legacy-channel' }] }); // global fallback hit
-      axios.post.mockResolvedValueOnce({ data: { id: 'msg-2' } });
-
-      await discordController.sendMessage(req, res);
-
-      expect(axios.post).toHaveBeenCalledWith(
-        'https://discord.com/api/channels/legacy-channel/messages',
-        expect.any(Object),
-        expect.any(Object)
-      );
-    });
-
-    it('should send a message with embeds successfully', async () => {
-      const embeds = [{ title: 'Test Embed', description: 'Desc' }];
-      const req = dmReq({ body: { embeds } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockResolvedValueOnce({ data: { id: 'msg-001' } });
-
-      await discordController.sendMessage(req, res);
-
-      expect(axios.post).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ embeds }),
-        expect.any(Object)
-      );
-      expect(res.success).toHaveBeenCalled();
-    });
-
-    it('should flatten nested embeds arrays', async () => {
-      const embeds = [
-        { embeds: [{ title: 'Embed A' }] },
-        { embeds: [{ title: 'Embed B' }] },
-      ];
-      const req = dmReq({ body: { embeds } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockResolvedValueOnce({ data: { id: 'msg-002' } });
-
-      await discordController.sendMessage(req, res);
-
-      const postedPayload = axios.post.mock.calls[0][1];
-      expect(postedPayload.embeds).toEqual([{ title: 'Embed A' }, { title: 'Embed B' }]);
-    });
-
-    it('should ignore a client-supplied channel_id and use the campaign channel', async () => {
-      const req = dmReq({
-        body: { content: 'Test', channel_id: 'custom-channel' },
-      });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockResolvedValueOnce({ data: { id: 'msg-003' } });
-
-      await discordController.sendMessage(req, res);
-
-      expect(axios.post).toHaveBeenCalledWith(
-        'https://discord.com/api/channels/channel-456/messages',
-        expect.any(Object),
-        expect.any(Object)
-      );
-    });
-
-    it('should return validation error when neither content nor embeds provided', async () => {
-      const req = dmReq({ body: {} });
-      const res = createMockRes();
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Either message content or embeds are required'
-      );
-    });
-
-    it('should return validation error when embeds is empty array and no content', async () => {
-      const req = dmReq({ body: { embeds: [] } });
-      const res = createMockRes();
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Either message content or embeds are required'
-      );
-    });
-
-    it('should return validation error when bot token not configured', async () => {
-      const req = dmReq({ body: { content: 'Hello' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ channel: 'channel-456' });
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith('Discord bot token is not configured');
-    });
-
-    it('should return validation error when channel ID not configured and not provided', async () => {
-      const req = dmReq({ body: { content: 'Hello' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123' });
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith('Discord channel ID is not configured');
-    });
-
-    it('should return forbidden error on Discord 403 response', async () => {
-      const req = dmReq({ body: { content: 'Hello' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockRejectedValueOnce({
-        response: { status: 403, data: { message: 'Missing Permissions' } },
-        message: 'Request failed with status 403',
-      });
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith(
-        'Bot lacks permission to send messages to this channel'
-      );
-    });
-
-    it('should return not found error on Discord 404 response', async () => {
-      const req = dmReq({ body: { content: 'Hello' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockRejectedValueOnce({
-        response: { status: 404, data: { message: 'Unknown Channel' } },
-        message: 'Request failed with status 404',
-      });
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.notFound).toHaveBeenCalledWith('Discord channel not found');
-    });
-
-    it('should return validation error on Discord 429 rate limit', async () => {
-      const req = dmReq({ body: { content: 'Hello' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockRejectedValueOnce({
-        response: { status: 429, data: { retry_after: 5 } },
-        message: 'Rate limited',
-      });
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Rate limited by Discord API, please try again later'
-      );
-    });
-
-    it('should return validation error on Discord 400 bad request', async () => {
-      const req = dmReq({ body: { content: 'Hello' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockRejectedValueOnce({
-        response: { status: 400, data: { code: 50006, message: 'Cannot send empty message' } },
-        message: 'Bad request',
-      });
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.validationError).toHaveBeenCalled();
-    });
-
-    it('should return generic error on unknown Discord error', async () => {
-      const req = dmReq({ body: { content: 'Hello' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockRejectedValueOnce({
-        response: { status: 500, data: { message: 'Internal Server Error' } },
-        message: 'Server error',
-      });
-
-      await discordController.sendMessage(req, res);
-
-      // createHandler catches the generic Error and calls res.error
-      expect(res.error).toHaveBeenCalledWith('Internal server error');
-    });
-
-    it('should return generic error on network failure (no response)', async () => {
-      const req = dmReq({ body: { content: 'Hello' } });
-      const res = createMockRes();
-
-      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      axios.post.mockRejectedValueOnce(new Error('Network Error'));
-
-      await discordController.sendMessage(req, res);
-
-      expect(res.error).toHaveBeenCalledWith('Internal server error');
-    });
+  it('lets a Player post to the campaign channel, ignoring a supplied channel_id', async () => {
+    const req = createMockReq({ body: { content: 'hi', channel_id: '999999999999999999' } });
+    const res = createMockRes();
+    mockChannel('123456789012345678');
+    discordService.sendMessage.mockResolvedValueOnce({ success: true, data: { id: 'msg-1' } });
+
+    await discordController.sendMessage(req, res);
+
+    expect(res.forbidden).not.toHaveBeenCalled();
+    expect(discordService.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: '123456789012345678', content: 'hi' })
+    );
+    expect(res.success).toHaveBeenCalledWith(
+      { message_id: 'msg-1', channel_id: '123456789012345678' },
+      'Message sent to Discord successfully'
+    );
   });
 
-  // ---------------------------------------------------------------
-  // getIntegrationStatus
-  // ---------------------------------------------------------------
-  describe('getIntegrationStatus', () => {
-    /**
-     * Mock the status reads: global token (single row), then the
-     * per-campaign batch, then the global fallback when names are missing.
-     */
-    function mockStatusSettings({ token, channel, enabled } = {}) {
-      const perCampaign = {};
-      if (channel !== undefined) perCampaign.discord_channel_id = channel;
-      if (enabled !== undefined) perCampaign.discord_integration_enabled = enabled;
+  it('sends with allowed_mentions that parse nothing', async () => {
+    const req = createMockReq({ body: { content: '@everyone hi' } });
+    mockChannel('123456789012345678');
+    discordService.sendMessage.mockResolvedValueOnce({ success: true, data: { id: 'msg-1' } });
 
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: token !== undefined ? [{ value: token }] : [] })
-        .mockResolvedValueOnce(makeSettingsRows(perCampaign));
-      if (channel === undefined || enabled === undefined) {
-        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-      }
-    }
+    await discordController.sendMessage(req, createMockRes());
 
-    it('should return fully configured and enabled status', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      mockStatusSettings({ token: 'token-123', channel: 'channel-456', enabled: '1' });
-
-      await discordController.getIntegrationStatus(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        {
-          enabled: true,
-          token_configured: true,
-          channel_configured: true,
-          ready: true,
-        },
-        'Discord integration status retrieved'
-      );
-    });
-
-    it('should return not ready when disabled', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      mockStatusSettings({ token: 'token-123', channel: 'channel-456', enabled: '0' });
-
-      await discordController.getIntegrationStatus(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          enabled: false,
-          token_configured: true,
-          channel_configured: true,
-          ready: false,
-        }),
-        expect.any(String)
-      );
-    });
-
-    it('should return not ready when token is missing', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      mockStatusSettings({ channel: 'channel-456', enabled: '1' });
-
-      await discordController.getIntegrationStatus(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          token_configured: false,
-          ready: false,
-        }),
-        expect.any(String)
-      );
-    });
-
-    it('should return not ready when channel is missing', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      mockStatusSettings({ token: 'token-123', enabled: '1' });
-
-      await discordController.getIntegrationStatus(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          channel_configured: false,
-          ready: false,
-        }),
-        expect.any(String)
-      );
-    });
-
-    it('should return all false when no settings exist', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      mockStatusSettings({});
-
-      await discordController.getIntegrationStatus(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        {
-          enabled: false,
-          token_configured: false,
-          channel_configured: false,
-          ready: false,
-        },
-        expect.any(String)
-      );
-    });
+    expect(discordService.sendMessage.mock.calls[0][0].allowedMentions).toEqual({ parse: [] });
   });
 
-  // ---------------------------------------------------------------
-  // updateSettings
-  // ---------------------------------------------------------------
-  describe('updateSettings', () => {
-    it('should update all settings and test connection successfully', async () => {
-      const req = createMockReq({
-        body: { bot_token: 'new-token', channel_id: VALID_CHANNEL_ID, enabled: true },
-        user: { role: 'DM' },
-        isSuperadmin: true,
-      });
-      const res = createMockRes();
+  it('reads the channel id from campaign_settings (per-campaign scope)', async () => {
+    const req = createMockReq({ body: { content: 'Hello!' } });
+    mockChannel('123456789012345678');
+    discordService.sendMessage.mockResolvedValueOnce({ success: true, data: { id: 'msg-1' } });
 
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-      axios.post.mockResolvedValueOnce({ data: { id: 'test-msg' } });
+    await discordController.sendMessage(req, createMockRes());
 
-      await discordController.updateSettings(req, res);
+    expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('FROM campaign_settings'),
+      ['1', 'discord_channel_id']
+    );
+  });
 
-      // bot token -> global settings; channel id + enabled -> campaign_settings
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
-      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
-        1,
-        expect.stringContaining('INSERT INTO settings'),
-        ['discord_bot_token', 'new-token']
-      );
-      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining('INSERT INTO campaign_settings'),
-        ['1', 'discord_channel_id', VALID_CHANNEL_ID, 'string']
-      );
-      expect(dbUtils.executeQuery).toHaveBeenNthCalledWith(
-        3,
-        expect.stringContaining('INSERT INTO campaign_settings'),
-        ['1', 'discord_integration_enabled', '1', 'boolean']
-      );
-      // Connection test should have been attempted
-      expect(axios.post).toHaveBeenCalledWith(
-        `https://discord.com/api/channels/${VALID_CHANNEL_ID}/messages`,
-        expect.objectContaining({ content: expect.stringContaining('test message') }),
-        expect.any(Object)
-      );
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bot_token: true,
-          channel_id: true,
-          enabled: true,
-          connection_test: { success: true, message: 'Connection test successful' },
-        }),
-        'Discord settings updated successfully'
-      );
+  it('falls back to the global channel row when the campaign has none', async () => {
+    const req = createMockReq({ body: { content: 'Hello!' } });
+    dbUtils.executeQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ value: '223456789012345678' }] });
+    discordService.sendMessage.mockResolvedValueOnce({ success: true, data: { id: 'msg-2' } });
+
+    await discordController.sendMessage(req, createMockRes());
+
+    expect(discordService.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ channelId: '223456789012345678' })
+    );
+  });
+
+  it('passes a flat array of embeds through', async () => {
+    const embeds = [{ title: 'Test Embed', description: 'Desc' }];
+    const req = createMockReq({ body: { embeds } });
+    const res = createMockRes();
+    mockChannel('123456789012345678');
+    discordService.sendMessage.mockResolvedValueOnce({ success: true, data: { id: 'msg-001' } });
+
+    await discordController.sendMessage(req, res);
+
+    expect(discordService.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ embeds }));
+    expect(res.success).toHaveBeenCalled();
+  });
+
+  it('returns a validation error when neither content nor embeds are provided', async () => {
+    const res = createMockRes();
+
+    await discordController.sendMessage(createMockReq({ body: {} }), res);
+
+    expect(res.validationError).toHaveBeenCalledWith('Either message content or embeds are required');
+    expect(discordService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('returns a validation error when embeds is an empty array and there is no content', async () => {
+    const res = createMockRes();
+
+    await discordController.sendMessage(createMockReq({ body: { embeds: [] } }), res);
+
+    expect(res.validationError).toHaveBeenCalledWith('Either message content or embeds are required');
+  });
+
+  it('returns a validation error when the bot token is not configured', async () => {
+    const res = createMockRes();
+    discordService.getBotToken.mockRejectedValueOnce(new Error('Discord bot token not configured'));
+
+    await discordController.sendMessage(createMockReq({ body: { content: 'Hello' } }), res);
+
+    expect(res.validationError).toHaveBeenCalledWith('Discord bot token is not configured');
+    expect(discordService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('returns a validation error when no channel is configured', async () => {
+    const res = createMockRes();
+    mockChannel(undefined);
+
+    await discordController.sendMessage(createMockReq({ body: { content: 'Hello' } }), res);
+
+    expect(res.validationError).toHaveBeenCalledWith('Discord channel ID is not configured');
+    expect(discordService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('returns forbidden on a Discord 403', async () => {
+    const res = createMockRes();
+    mockChannel('123456789012345678');
+    discordService.sendMessage.mockResolvedValueOnce(failure(403));
+
+    await discordController.sendMessage(createMockReq({ body: { content: 'Hello' } }), res);
+
+    expect(res.forbidden).toHaveBeenCalledWith('Bot lacks permission to send messages to this channel');
+  });
+
+  it('returns not found on a Discord 404', async () => {
+    const res = createMockRes();
+    mockChannel('123456789012345678');
+    discordService.sendMessage.mockResolvedValueOnce(failure(404));
+
+    await discordController.sendMessage(createMockReq({ body: { content: 'Hello' } }), res);
+
+    expect(res.notFound).toHaveBeenCalledWith('Discord channel not found');
+  });
+
+  it('reports a Discord 429 as a 429, not a validation error', async () => {
+    const res = createMockRes();
+    mockChannel('123456789012345678');
+    discordService.sendMessage.mockResolvedValueOnce(failure(429));
+
+    await discordController.sendMessage(createMockReq({ body: { content: 'Hello' } }), res);
+
+    expect(res.error).toHaveBeenCalledWith(expect.stringContaining('rate limiting'), 429);
+    expect(res.validationError).not.toHaveBeenCalled();
+  });
+
+  it('does not echo Discord error bodies or log the payload on a 400', async () => {
+    const res = createMockRes();
+    mockChannel('123456789012345678');
+    discordService.sendMessage.mockResolvedValueOnce(
+      failure(400, { code: 50035, message: 'secret-detail', errors: { embeds: 'x' } })
+    );
+
+    await discordController.sendMessage(createMockReq({ body: { content: 'sensitive text' } }), res);
+
+    expect(res.validationError).toHaveBeenCalledWith('Discord rejected the message');
+    const logged = JSON.stringify(logger.error.mock.calls);
+    expect(logged).not.toContain('secret-detail');
+    expect(logged).not.toContain('sensitive text');
+    expect(logged).toContain('50035');
+  });
+
+  it('returns a generic error on an unknown Discord failure', async () => {
+    const res = createMockRes();
+    mockChannel('123456789012345678');
+    discordService.sendMessage.mockResolvedValueOnce({
+      success: false, message: 'Network Error', error: { code: 'DISCORD_API_ERROR', originalError: new Error('Network Error') },
     });
 
-    it('should update only bot_token when only that is provided', async () => {
-      const req = createMockReq({
-        body: { bot_token: 'new-token' },
-        user: { role: 'DM' },
-        isSuperadmin: true,
-      });
-      const res = createMockRes();
+    await discordController.sendMessage(createMockReq({ body: { content: 'Hello' } }), res);
 
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await discordController.updateSettings(req, res);
-
-      // Only 1 query for bot_token, no connection test (channel_id not provided)
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO settings'),
-        ['discord_bot_token', 'new-token']
-      );
-      expect(axios.post).not.toHaveBeenCalled();
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bot_token: true,
-          channel_id: false,
-          connection_test: null,
-        }),
-        expect.any(String)
-      );
-    });
-
-    it('should update enabled status to disabled (per-campaign row)', async () => {
-      const req = createMockReq({
-        body: { enabled: false },
-        user: { role: 'DM' },
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await discordController.updateSettings(req, res);
-
-      // Only one upsert should run (just enabled, not bot_token or channel_id)
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO campaign_settings'),
-        ['1', 'discord_integration_enabled', '0', 'boolean']
-      );
-    });
-
-    it('should store an empty channel id as an explicit per-campaign unset', async () => {
-      const req = createMockReq({
-        body: { channel_id: '' },
-        user: { role: 'DM' },
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await discordController.updateSettings(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO campaign_settings'),
-        ['1', 'discord_channel_id', '', 'string']
-      );
-    });
-
-    it('should reject a malformed channel id', async () => {
-      const req = createMockReq({
-        body: { channel_id: 'not-a-snowflake' },
-        user: { role: 'DM' },
-      });
-      const res = createMockRes();
-
-      await discordController.updateSettings(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'discord_channel_id must be a Discord snowflake (17-19 digits) or empty'
-      );
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should return forbidden error when non-DM user tries to update', async () => {
-      const req = createMockReq({
-        body: { bot_token: 'new-token' },
-        user: { role: 'Player' },
-      });
-      const res = createMockRes();
-
-      await discordController.updateSettings(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update Discord settings');
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should reject a user demoted to Player in the campaign even with a stale JWT DM role', async () => {
-      const req = createMockReq({
-        body: { bot_token: 'new-token' },
-        user: { role: 'DM' },     // stale JWT role
-        campaignRole: 'Player',    // per-campaign role wins
-      });
-      const res = createMockRes();
-
-      await discordController.updateSettings(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update Discord settings');
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should allow a superadmin whose JWT role is not DM', async () => {
-      const req = createMockReq({
-        body: { bot_token: 'new-token' },
-        user: { role: 'Player' },
-        campaignRole: 'Player',
-        isSuperadmin: true,
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await discordController.updateSettings(req, res);
-
-      expect(res.forbidden).not.toHaveBeenCalled();
-      expect(res.success).toHaveBeenCalled();
-    });
-
-    it('should forbid a per-campaign DM (non-superadmin) from changing the global bot token', async () => {
-      const req = createMockReq({
-        body: { bot_token: 'attacker-token' },
-        user: { role: 'DM' },
-        campaignRole: 'DM',
-      });
-      const res = createMockRes();
-
-      await discordController.updateSettings(req, res);
-
-      expect(res.forbidden).toHaveBeenCalled();
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should still let a per-campaign DM change channel and enabled flag', async () => {
-      const req = createMockReq({
-        body: { channel_id: VALID_CHANNEL_ID, enabled: true },
-        user: { role: 'DM' },
-        campaignRole: 'DM',
-      });
-      const res = createMockRes();
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await discordController.updateSettings(req, res);
-
-      expect(res.forbidden).not.toHaveBeenCalled();
-      expect(res.success).toHaveBeenCalled();
-    });
-
-    it('should save settings even when connection test fails', async () => {
-      const req = createMockReq({
-        body: { bot_token: 'bad-token', channel_id: VALID_CHANNEL_ID, enabled: true },
-        user: { role: 'DM' },
-        isSuperadmin: true,
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-      axios.post.mockRejectedValueOnce({
-        response: { data: { message: 'Invalid token' } },
-        message: 'Unauthorized',
-      });
-
-      await discordController.updateSettings(req, res);
-
-      // Settings should still be saved (3 writes)
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(3);
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          connection_test: expect.objectContaining({
-            success: false,
-            message: 'Connection test failed',
-          }),
-        }),
-        expect.any(String)
-      );
-    });
+    expect(res.error).toHaveBeenCalledWith('Internal server error');
   });
 });

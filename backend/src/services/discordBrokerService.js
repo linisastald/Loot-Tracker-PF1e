@@ -5,6 +5,12 @@ const dbUtils = require('../utils/dbUtils');
 const { discordRateLimiter } = require('../utils/rateLimiter');
 const ServiceResult = require('../utils/ServiceResult');
 const campaignSettings = require('../utils/campaignSettings');
+const DISCORD_API_BASE = 'https://discord.com/api/v10';
+const SNOWFLAKE_PATTERN = /^\d{17,19}$/;
+// Default allowed_mentions: role pings still work (session announcements ping
+// the campaign role) but @everyone/@here and individual user pings never do,
+// so user-supplied text (cancel reasons, session titles) cannot mass-notify.
+const DEFAULT_ALLOWED_MENTIONS = Object.freeze({ parse: ['roles'] });
 
 // Broker registration enumerates EVERY campaign that has a Discord channel
 // configured and registers them all under one broker app (one appId, one
@@ -140,6 +146,7 @@ class DiscordBrokerService {
    */
   async buildAllChannelsConfig() {
     const channels = {};
+    let queryRows = null;
 
     try {
       // Authoritative per-campaign channel rows. Reads campaign_settings
@@ -160,6 +167,7 @@ class DiscordBrokerService {
             AND cs.value <> ''`
       );
 
+      queryRows = result.rows;
       for (const row of result.rows) {
         if (row.enabled === 'false') continue; // explicitly disabled
         channels[row.channel_id] = {
@@ -174,8 +182,10 @@ class DiscordBrokerService {
     }
 
     // Legacy fallback: deployments with no explicit per-campaign channel row
-    // (channel still lives in the deprecated global settings table).
-    if (Object.keys(channels).length === 0) {
+    // (channel still lives in the deprecated global settings table). Only when
+    // the query succeeded and returned no rows: a failed query or campaigns that
+    // are all explicitly disabled must not resurrect the global channel.
+    if (queryRows !== null && queryRows.length === 0) {
       const legacy = await this.getDiscordSettings();
       if (legacy && legacy.session_channel_id) {
         Object.assign(channels, this.buildChannelConfig(legacy));
@@ -247,16 +257,13 @@ class DiscordBrokerService {
       // deployments — where the channel lived in the global settings table —
       // still register a channel.
       const rows = await campaignSettings.getCampaignSettings(
-        ['discord_channel_id', 'campaign_role_id'],
+        ['discord_channel_id'],
         { campaignId: DEFAULT_BROKER_CAMPAIGN_ID }
       );
 
       const settings = {};
       if (rows.discord_channel_id !== undefined) {
         settings.session_channel_id = rows.discord_channel_id;
-      }
-      if (rows.campaign_role_id !== undefined) {
-        settings.guild_id = rows.campaign_role_id; // Using role_id as guild identifier for now
       }
 
       return settings;
@@ -365,7 +372,7 @@ class DiscordBrokerService {
     } catch (error) {
       if (error.response) {
         // Server responded with error status
-        throw new Error(`HTTP ${error.response.status}: ${error.response.data.message || 'Unknown error'}`);
+        throw new Error(`HTTP ${error.response.status}: ${error.response.data?.message || 'Unknown error'}`);
       } else if (error.request) {
         // Request was made but no response received
         throw new Error('No response from Discord broker');
@@ -401,48 +408,94 @@ class DiscordBrokerService {
   }
 
   /**
+   * The global Discord bot token (settings table; shared by every campaign).
+   * @returns {Promise<string>}
+   * @throws {Error} when no token is configured
+   */
+  async getBotToken() {
+    const result = await dbUtils.executeQuery(
+      'SELECT value FROM settings WHERE name = $1',
+      ['discord_bot_token']
+    );
+    const token = result.rows[0]?.value;
+    if (!token) {
+      throw new Error('Discord bot token not configured');
+    }
+    return token;
+  }
+
+  /**
+   * One authenticated, rate-limited call to the Discord REST API. Every id that
+   * ends up in the URL must be a snowflake, so a crafted id can never redirect
+   * the bot-token request to another Discord endpoint.
+   *
+   * @param {string} method - HTTP method (post, patch, put, delete)
+   * @param {Object} ids - { channelId, messageId? } validated as snowflakes
+   * @param {string} pathSuffix - Path after /channels/{channelId}[/messages/{messageId}]
+   * @param {Object|null} payload - Request body
+   * @returns {Promise<Object>} axios response
+   */
+  async discordRequest(method, { channelId, messageId = null }, pathSuffix, payload = null) {
+    if (!SNOWFLAKE_PATTERN.test(String(channelId)) || (messageId !== null && !SNOWFLAKE_PATTERN.test(String(messageId)))) {
+      throw new Error('Invalid Discord channel or message id');
+    }
+
+    const botToken = await this.getBotToken();
+    await discordRateLimiter.acquire();
+
+    const path = messageId === null
+      ? `/channels/${channelId}${pathSuffix}`
+      : `/channels/${channelId}/messages/${messageId}${pathSuffix}`;
+
+    return axios({
+      method,
+      url: `${DISCORD_API_BASE}${path}`,
+      data: payload,
+      headers: {
+        'Authorization': `Bot ${botToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+  }
+
+  /**
+   * Log a failed Discord call and wrap it in a ServiceResult.
+   */
+  discordFailure(label, error, logContext) {
+    logger.error(label, {
+      error: error.message,
+      response: error.response?.data,
+      ...logContext
+    });
+
+    return ServiceResult.failure(
+      error.response?.data?.message || error.message,
+      error,
+      error.response?.status === 429 ? 'RATE_LIMITED' : 'DISCORD_API_ERROR'
+    );
+  }
+
+  /**
    * Send a message to a Discord channel
    * @param {Object} options - Message options
    * @param {string} options.channelId - Discord channel ID
    * @param {string} options.content - Message content (optional)
-   * @param {Object} options.embed - Message embed (optional)
+   * @param {Object} options.embed - Single message embed (optional)
+   * @param {Array} options.embeds - Several message embeds (optional)
    * @param {Array} options.components - Message components/buttons (optional)
+   * @param {Object} options.allowedMentions - Discord allowed_mentions (optional,
+   *   defaults to role pings only)
    * @returns {Promise<Object>} - Result with success flag and message data
    */
-  async sendMessage({ channelId, content = null, embed = null, components = null }) {
+  async sendMessage({ channelId, content = null, embed = null, embeds = null, components = null, allowedMentions = null }) {
     try {
-      // Get bot token from settings
-      const settingsQuery = await dbUtils.executeQuery(
-        'SELECT value FROM settings WHERE name = $1',
-        ['discord_bot_token']
-      );
-
-      if (settingsQuery.rows.length === 0 || !settingsQuery.rows[0].value) {
-        throw new Error('Discord bot token not configured');
-      }
-
-      const botToken = settingsQuery.rows[0].value;
-
-      // Build message payload
-      const payload = {};
+      const payload = { allowed_mentions: allowedMentions || DEFAULT_ALLOWED_MENTIONS };
       if (content) payload.content = content;
-      if (embed) payload.embeds = [embed];
+      if (embeds) payload.embeds = embeds;
+      else if (embed) payload.embeds = [embed];
       if (components) payload.components = components;
 
-      // Apply rate limiting before Discord API call
-      await discordRateLimiter.acquire();
-
-      // Send message via Discord API
-      const response = await axios.post(
-        `https://discord.com/api/v10/channels/${channelId}/messages`,
-        payload,
-        {
-          headers: {
-            'Authorization': `Bot ${botToken}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      const response = await this.discordRequest('post', { channelId }, '/messages', payload);
 
       logger.info('Discord message sent successfully', {
         channelId,
@@ -450,19 +503,8 @@ class DiscordBrokerService {
       });
 
       return ServiceResult.success(response.data, 'Discord message sent successfully');
-
     } catch (error) {
-      logger.error('Failed to send Discord message:', {
-        error: error.message,
-        response: error.response?.data,
-        channelId
-      });
-
-      return ServiceResult.failure(
-        error.response?.data?.message || error.message,
-        error,
-        error.response?.status === 429 ? 'RATE_LIMITED' : 'DISCORD_API_ERROR'
-      );
+      return this.discordFailure('Failed to send Discord message:', error, { channelId });
     }
   }
 
@@ -474,42 +516,17 @@ class DiscordBrokerService {
    * @param {string} options.content - Message content (optional)
    * @param {Object} options.embed - Message embed (optional)
    * @param {Array} options.components - Message components/buttons (optional)
+   * @param {Object} options.allowedMentions - Discord allowed_mentions (optional)
    * @returns {Promise<Object>} - Result with success flag and message data
    */
-  async updateMessage({ channelId, messageId, content = null, embed = null, components = null }) {
+  async updateMessage({ channelId, messageId, content = null, embed = null, components = null, allowedMentions = null }) {
     try {
-      // Get bot token from settings
-      const settingsQuery = await dbUtils.executeQuery(
-        'SELECT value FROM settings WHERE name = $1',
-        ['discord_bot_token']
-      );
-
-      if (settingsQuery.rows.length === 0 || !settingsQuery.rows[0].value) {
-        throw new Error('Discord bot token not configured');
-      }
-
-      const botToken = settingsQuery.rows[0].value;
-
-      // Build message payload
-      const payload = {};
+      const payload = { allowed_mentions: allowedMentions || DEFAULT_ALLOWED_MENTIONS };
       if (content !== null) payload.content = content;
       if (embed) payload.embeds = [embed];
       if (components) payload.components = components;
 
-      // Apply rate limiting before Discord API call
-      await discordRateLimiter.acquire();
-
-      // Update message via Discord API
-      const response = await axios.patch(
-        `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
-        payload,
-        {
-          headers: {
-            'Authorization': `Bot ${botToken}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      const response = await this.discordRequest('patch', { channelId, messageId }, '', payload);
 
       logger.info('Discord message updated successfully', {
         channelId,
@@ -517,20 +534,27 @@ class DiscordBrokerService {
       });
 
       return ServiceResult.success(response.data, 'Discord message updated successfully');
-
     } catch (error) {
-      logger.error('Failed to update Discord message:', {
-        error: error.message,
-        response: error.response?.data,
-        channelId,
-        messageId
-      });
+      return this.discordFailure('Failed to update Discord message:', error, { channelId, messageId });
+    }
+  }
 
-      return ServiceResult.failure(
-        error.response?.data?.message || error.message,
-        error,
-        error.response?.status === 429 ? 'RATE_LIMITED' : 'DISCORD_API_ERROR'
-      );
+  /**
+   * Delete a Discord message
+   * @param {Object} options - Delete options
+   * @param {string} options.channelId - Discord channel ID
+   * @param {string} options.messageId - Discord message ID
+   * @returns {Promise<Object>} - Result with success flag
+   */
+  async deleteMessage({ channelId, messageId }) {
+    try {
+      await this.discordRequest('delete', { channelId, messageId }, '');
+
+      logger.info('Discord message deleted', { channelId, messageId });
+
+      return ServiceResult.success(null, 'Discord message deleted successfully');
+    } catch (error) {
+      return this.discordFailure('Failed to delete Discord message:', error, { channelId, messageId });
     }
   }
 
@@ -544,34 +568,11 @@ class DiscordBrokerService {
    */
   async addReaction({ channelId, messageId, emoji }) {
     try {
-      // Get bot token from settings
-      const settingsQuery = await dbUtils.executeQuery(
-        'SELECT value FROM settings WHERE name = $1',
-        ['discord_bot_token']
-      );
-
-      if (settingsQuery.rows.length === 0 || !settingsQuery.rows[0].value) {
-        throw new Error('Discord bot token not configured');
-      }
-
-      const botToken = settingsQuery.rows[0].value;
-
-      // URL encode the emoji for the API request
-      const encodedEmoji = encodeURIComponent(emoji);
-
-      // Apply rate limiting before Discord API call
-      await discordRateLimiter.acquire();
-
-      // Add reaction via Discord API
-      await axios.put(
-        `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/reactions/${encodedEmoji}/@me`,
-        {},
-        {
-          headers: {
-            'Authorization': `Bot ${botToken}`,
-            'Content-Type': 'application/json'
-          }
-        }
+      await this.discordRequest(
+        'put',
+        { channelId, messageId },
+        `/reactions/${encodeURIComponent(emoji)}/@me`,
+        {}
       );
 
       logger.debug('Discord reaction added successfully', {
@@ -581,21 +582,8 @@ class DiscordBrokerService {
       });
 
       return ServiceResult.success(null, 'Discord reaction added successfully');
-
     } catch (error) {
-      logger.error('Failed to add Discord reaction:', {
-        error: error.message,
-        response: error.response?.data,
-        channelId,
-        messageId,
-        emoji
-      });
-
-      return ServiceResult.failure(
-        error.response?.data?.message || error.message,
-        error,
-        error.response?.status === 429 ? 'RATE_LIMITED' : 'DISCORD_API_ERROR'
-      );
+      return this.discordFailure('Failed to add Discord reaction:', error, { channelId, messageId, emoji });
     }
   }
 }

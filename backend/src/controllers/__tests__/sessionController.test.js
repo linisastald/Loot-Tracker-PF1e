@@ -30,7 +30,7 @@ jest.mock('../../services/sessionService', () => ({
   postSessionAnnouncement: jest.fn(),
 }));
 
-jest.mock('../../services/discordBrokerService', () => ({ sendMessage: jest.fn() }));
+jest.mock('../../services/discordBrokerService', () => ({ sendMessage: jest.fn(), deleteMessage: jest.fn() }));
 
 const Session = require('../../models/Session');
 const sessionService = require('../../services/sessionService');
@@ -214,9 +214,19 @@ describe('deleteSession', () => {
     expect(res.success).toHaveBeenCalled();
   });
 
+  it('removes the Discord announcement through the broker service', async () => {
+    Session.findById.mockResolvedValue({ id: 5, discord_message_id: 'm1', discord_channel_id: 'c1' });
+    discordBroker.deleteMessage.mockResolvedValue({ success: true });
+    Session.delete.mockResolvedValue();
+    const res = makeRes();
+    await controller.deleteSession(makeReq({}, { params: { id: '5' } }), res);
+    expect(discordBroker.deleteMessage).toHaveBeenCalledWith({ channelId: 'c1', messageId: 'm1' });
+    expect(Session.delete).toHaveBeenCalledWith(5);
+  });
+
   it('still deletes the session when removing the Discord message fails', async () => {
     Session.findById.mockResolvedValue({ id: 5, discord_message_id: 'm1', discord_channel_id: 'c1' });
-    dbUtils.executeQuery.mockResolvedValue({ rows: [] }); // no bot token configured
+    discordBroker.deleteMessage.mockResolvedValue({ success: false, message: 'Missing Access' });
     Session.delete.mockResolvedValue();
     const res = makeRes();
     await controller.deleteSession(makeReq({}, { params: { id: '5' } }), res);

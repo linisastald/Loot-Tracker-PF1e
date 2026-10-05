@@ -1,11 +1,12 @@
 /**
  * Route-level tests for the broker-facing Discord endpoints (S1).
- * POST /interactions and POST /events must reject requests without the shared
- * broker secret, accept requests with it, and the legacy /reactions route is gone.
+ * POST /interactions must reject requests without the shared broker secret and
+ * accept requests with it; the unused diagnostic, /events, /send-event, /status,
+ * /settings and legacy /reactions routes are gone.
  */
 jest.mock('../../../middleware/auth', () => (req, res, next) => next());
 jest.mock('../../../controllers/discordController', () => ({
-  sendMessage: jest.fn(), getIntegrationStatus: jest.fn(), updateSettings: jest.fn(),
+  sendMessage: jest.fn(),
 }));
 jest.mock('../../../controllers/sessionController', () => ({
   processSessionInteraction: jest.fn(),
@@ -16,6 +17,7 @@ jest.mock('../../../utils/logger', () => ({
 
 const request = require('supertest');
 const express = require('express');
+const discordController = require('../../../controllers/discordController');
 const sessionController = require('../../../controllers/sessionController');
 const discordRoutes = require('../discord');
 
@@ -29,6 +31,7 @@ describe('broker-facing Discord routes', () => {
     process.env.DISCORD_BROKER_SECRET = 'route-secret';
     // resetMocks is on in the unit config, so (re)install the handler per test
     sessionController.processSessionInteraction.mockImplementation((req, res) => res.json({ type: 1 }));
+    discordController.sendMessage.mockImplementation((req, res) => res.json({ ok: true }));
   });
   afterAll(() => {
     if (origSecret === undefined) delete process.env.DISCORD_BROKER_SECRET;
@@ -54,12 +57,24 @@ describe('broker-facing Discord routes', () => {
     expect(sessionController.processSessionInteraction).toHaveBeenCalled();
   });
 
-  it('rejects POST /events without the secret and accepts it with the secret', async () => {
-    const bad = await request(app).post('/api/discord/events').send({ type: 'X', data: {} });
-    expect(bad.status).toBe(401);
-    const ok = await request(app).post('/api/discord/events')
-      .set('X-Broker-Secret', 'route-secret').send({ type: 'X', data: {} });
-    expect(ok.status).toBe(200);
+  it('no longer exposes the unused diagnostic and legacy endpoints', async () => {
+    const calls = [
+      request(app).post('/api/discord/events').set('X-Broker-Secret', 'route-secret').send({ type: 'X', data: {} }),
+      request(app).get('/api/discord/interactions'),
+      request(app).get('/api/discord/interactions/test'),
+      request(app).post('/api/discord/send-event').send({ title: 't' }),
+      request(app).get('/api/discord/status'),
+      request(app).put('/api/discord/settings').send({ enabled: true }),
+    ];
+    for (const res of await Promise.all(calls)) {
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it('keeps POST /send-message for authenticated campaign members', async () => {
+    const res = await request(app).post('/api/discord/send-message').send({ content: 'x' });
+    expect(discordController.sendMessage).toHaveBeenCalled();
+    expect(res.status).toBe(200);
   });
 
   it('no longer exposes the legacy /reactions endpoint', async () => {

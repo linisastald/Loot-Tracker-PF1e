@@ -348,12 +348,9 @@ app.use('/api/gold', csrfProtection, goldRoutes);
 
 // Create selective CSRF middleware that skips Discord service endpoints
 const selectiveCSRFProtection = (req, res, next) => {
-  // Skip CSRF protection for Discord interactions endpoint
-  if (req.path === '/interactions' && (req.method === 'POST' || req.method === 'GET')) {
-    logger.debug(`Skipping CSRF protection for Discord interactions ${req.method}`);
-    return next();
-  }
-  if (req.path === '/interactions/test' && req.method === 'GET') {
+  // Skip CSRF protection for the Discord interactions endpoint (service-to-service)
+  if (req.path === '/interactions' && req.method === 'POST') {
+    logger.debug('Skipping CSRF protection for Discord interactions POST');
     return next();
   }
   // Apply CSRF protection for all other routes
