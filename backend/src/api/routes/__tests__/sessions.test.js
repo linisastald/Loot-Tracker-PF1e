@@ -758,6 +758,17 @@ describe('POST /sessions/:id/remind', () => {
     expect(sessionService.sendSessionReminder).toHaveBeenCalledWith('7', 'non_responders', { isManual: true });
   });
 
+  it('should return 404 for an unknown session', async () => {
+    const notFound = new Error('Session not found');
+    notFound.name = 'NotFoundError';
+    sessionService.sendSessionReminder.mockRejectedValue(notFound);
+
+    const res = await request(app).post('/sessions/7/remind');
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+  });
+
   it('should return 500 when service throws', async () => {
     sessionService.sendSessionReminder.mockRejectedValue(new Error('discord down'));
 

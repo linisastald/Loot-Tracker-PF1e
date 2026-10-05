@@ -557,35 +557,6 @@ class DiscordBrokerService {
       return this.discordFailure('Failed to delete Discord message:', error, { channelId, messageId });
     }
   }
-
-  /**
-   * Add a reaction emoji to a Discord message
-   * @param {Object} options - Reaction options
-   * @param {string} options.channelId - Discord channel ID
-   * @param {string} options.messageId - Discord message ID
-   * @param {string} options.emoji - Emoji to add (unicode emoji or custom emoji ID)
-   * @returns {Promise<Object>} - Result with success flag
-   */
-  async addReaction({ channelId, messageId, emoji }) {
-    try {
-      await this.discordRequest(
-        'put',
-        { channelId, messageId },
-        `/reactions/${encodeURIComponent(emoji)}/@me`,
-        {}
-      );
-
-      logger.debug('Discord reaction added successfully', {
-        channelId,
-        messageId,
-        emoji
-      });
-
-      return ServiceResult.success(null, 'Discord reaction added successfully');
-    } catch (error) {
-      return this.discordFailure('Failed to add Discord reaction:', error, { channelId, messageId, emoji });
-    }
-  }
 }
 
 module.exports = new DiscordBrokerService();

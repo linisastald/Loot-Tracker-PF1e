@@ -15,10 +15,7 @@ const DISCORD_EMBED_COLORS = {
     // Session Status Colors
     SCHEDULED: 0x0099FF,    // Blue - Session is scheduled/pending
     CONFIRMED: 0x00FF00,    // Green - Session is confirmed
-    CANCELLED: 0xFF0000,    // Red - Session is cancelled
-
-    // Notification Type Colors
-    REMINDER: 0xFFA500      // Orange - Reminder notifications
+    CANCELLED: 0xFF0000     // Red - Session is cancelled
 };
 
 module.exports = {

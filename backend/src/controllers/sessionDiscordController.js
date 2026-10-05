@@ -47,6 +47,9 @@ const remindSession = async (req, res) => {
         });
 
     } catch (error) {
+        if (error.name === 'NotFoundError') {
+            return res.status(404).json({ success: false, message: 'Session not found' });
+        }
         logger.error('Failed to send reminder:', error);
         res.status(500).json({ success: false, message: 'Failed to send reminder' });
     }

@@ -131,6 +131,7 @@ describe('updateSession', () => {
     expect(discordBroker.sendMessage).toHaveBeenCalledTimes(1);
     expect(discordBroker.sendMessage.mock.calls[0][0].content).toContain('<@&r1>');
     expect(discordBroker.sendMessage.mock.calls[0][0].content).toContain('Reason: sick');
+    expect(discordBroker.sendMessage.mock.calls[0][0].allowedMentions).toEqual({ parse: [], roles: ['r1'] });
   });
 });
 

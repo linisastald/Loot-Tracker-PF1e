@@ -392,21 +392,6 @@ describe('DiscordBrokerService Discord REST calls', () => {
     });
   });
 
-  describe('addReaction', () => {
-    it('puts the url-encoded emoji reaction', async () => {
-      axios.mockResolvedValueOnce({ data: {} });
-
-      const result = await discordBrokerService.addReaction({ channelId: CHANNEL, messageId: MESSAGE, emoji: '✅' });
-
-      expect(result.success).toBe(true);
-      const call = axios.mock.calls[0][0];
-      expect(call.method).toBe('put');
-      expect(call.url).toBe(
-        `https://discord.com/api/v10/channels/${CHANNEL}/messages/${MESSAGE}/reactions/${encodeURIComponent('✅')}/@me`
-      );
-    });
-  });
-
   describe('deleteMessage', () => {
     it('deletes the message and returns a success result', async () => {
       axios.mockResolvedValueOnce({ data: {} });

@@ -294,6 +294,8 @@ describe('SessionService', () => {
       expect(ping.channelId).toBe('456');
       expect(ping.content).toContain('<@&123>');
       expect(ping.content).toContain('Reason: DM sick');
+      // A role id typed into the reason must not ping: only the campaign role may
+      expect(ping.allowedMentions).toEqual({ parse: [], roles: ['123'] });
       const [updateSql, updateParams] = dbUtils.executeQuery.mock.calls[0];
       expect(updateSql).toContain("status = 'cancelled'");
       expect(updateParams).toEqual([1, 'DM sick']);
@@ -354,6 +356,7 @@ describe('SessionService', () => {
       expect(ping.channelId).toBe('456');
       expect(ping.content).toContain('<@&123>');
       expect(ping.content).toContain('has been reinstated');
+      expect(ping.allowedMentions).toEqual({ parse: [], roles: ['123'] });
     });
 
     it('should return null if session not found', async () => {

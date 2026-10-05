@@ -123,7 +123,9 @@ class SessionService {
             const discordService = require('./discordBrokerService');
             await discordService.sendMessage({
                 channelId: settings.discord_channel_id,
-                content: buildMessage(settings.campaign_role_id)
+                content: buildMessage(settings.campaign_role_id),
+                // Only the campaign role may ping, whatever the text contains
+                allowedMentions: { parse: [], roles: [settings.campaign_role_id] }
             });
             logger.info(`Discord ${kind} notification sent`, logContext);
         } catch (discordError) {

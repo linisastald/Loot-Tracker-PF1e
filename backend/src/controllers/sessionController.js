@@ -183,7 +183,9 @@ const updateSession = async (req, res) => {
 
                     await discordService.sendMessage({
                         channelId: settings.discord_channel_id,
-                        content: cancelMessage
+                        content: cancelMessage,
+                        // Only the campaign role may ping, whatever the reason says
+                        allowedMentions: { parse: [], roles: [settings.campaign_role_id] }
                     });
 
                     logger.info('Discord cancellation ping sent', {

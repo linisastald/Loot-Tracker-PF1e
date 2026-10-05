@@ -194,9 +194,8 @@ class AttendanceService {
      *
      * This is the membership gate for Discord attendance: a user may only
      * respond to a session if they own an active character in that session's
-     * campaign. The campaign_id filter is explicit on purpose — RLS is not yet
-     * enforced (the app connects as the table owner), so campaign context alone
-     * does not scope the `characters` read.
+     * campaign. The campaign_id filter is explicit on purpose, so the gate holds
+     * for whatever campaign context the caller happens to run under.
      *
      * @param {number} userId - User ID
      * @param {number|string} campaignId - Campaign ID of the session
