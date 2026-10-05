@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const emailService = require('../services/emailService');
 const campaignContext = require('../utils/campaignContext');
 const Invite = require('../models/Invite');
+const { assertRedeemable } = require('../utils/inviteRules');
 const { AUTH, COOKIES } = require('../config/constants');
 require('dotenv').config();
 
@@ -215,12 +216,7 @@ const registerUser = async (req, res) => {
         // credential, and it determines which campaign membership is granted.
         invite = await campaignContext.runWithCampaign('all', () => Invite.findByCode(inviteCode));
 
-        if (!invite || invite.is_used) {
-            throw controllerFactory.createValidationError('Invalid or used invite code');
-        }
-        if (invite.expires_at && new Date(invite.expires_at) <= new Date()) {
-            throw controllerFactory.createValidationError('This invitation code has expired');
-        }
+        assertRedeemable(invite);
     }
 
     const userCheck = await dbUtils.executeQuery(

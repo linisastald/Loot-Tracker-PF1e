@@ -427,6 +427,7 @@ module.exports = {
   validateTableName,
   validateColumnName,
   validateColumnNames,
+  SET_CAMPAIGN_SQL,
   ALLOWED_TABLES,
   ALLOWED_COLUMNS
 };

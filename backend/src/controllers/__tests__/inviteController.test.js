@@ -552,7 +552,7 @@ describe('inviteController', () => {
       expect(res.success).toHaveBeenCalledWith(null, 'Invite code deactivated successfully');
     });
 
-    it('should 404 when the invite does not exist or belongs to another campaign', async () => {
+    it('should 404 when the invite does not exist, belongs to another campaign or is already used', async () => {
       const req = createMockReq({ body: { inviteId: 999 } });
       const res = createMockRes();
 
@@ -562,7 +562,7 @@ describe('inviteController', () => {
 
       await inviteController.deactivateInvite(req, res);
 
-      expect(res.notFound).toHaveBeenCalledWith('Invite code not found');
+      expect(res.notFound).toHaveBeenCalledWith('Invite code not found or already used');
     });
 
     it('should reject a missing inviteId', async () => {

@@ -267,11 +267,9 @@ exports.create = async ({ name, slug, world, createdById }) => {
     // the transaction-local GUC at the NEW campaign before inserting (the
     // request's GUC still names the creator's current campaign). set_config
     // with is_local=true resets at COMMIT, so nothing leaks.
-    await client.query("SELECT set_config('app.current_campaign', $1, true)", [String(campaign.id)]);
+    await client.query(dbUtils.SET_CAMPAIGN_SQL, [String(campaign.id)]);
     await SessionTask.seedDefaults(client, campaign.id);
 
     return campaign;
   });
 };
-
-module.exports = exports;

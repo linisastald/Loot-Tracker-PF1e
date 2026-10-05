@@ -13,6 +13,7 @@ const Campaign = require('../models/Campaign');
 const controllerFactory = require('../utils/controllerFactory');
 const campaignContext = require('../utils/campaignContext');
 const logger = require('../utils/logger');
+const { assertRedeemable } = require('../utils/inviteRules');
 const { GAME } = require('../config/constants');
 
 /** Custom invite expiry bounds (hours). 720 hours = 30 days. */
@@ -25,6 +26,19 @@ const MAX_EXPIRES_IN_HOURS = 720;
  * 6 base-36 chars — 6-8 alphanumeric covers both.
  */
 const REDEEM_CODE_PATTERN = /^[A-Z0-9]{6,8}$/;
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/** Create an invite for the requester's current campaign and log it. */
+const createInvite = async (req, expiresAt, kind) => {
+    const invite = await Invite.create({
+        createdBy: req.user.id,
+        campaignId: req.campaignId,
+        expiresAt,
+    });
+    logger.info(`${kind} invite created for campaign ${req.campaignId} by user ${req.user.id} (expires: ${expiresAt ? expiresAt.toISOString() : 'never'})`);
+    return invite;
+};
 
 /**
  * GET /api/invites
@@ -45,15 +59,8 @@ const getActiveInvites = async (req, res) => {
  * Response data: { code, expires_at }
  */
 const generateQuickInvite = async (req, res) => {
-    const expiresAt = new Date(Date.now() + GAME.QUICK_INVITE_EXPIRY_HOURS * 60 * 60 * 1000);
-
-    const invite = await Invite.create({
-        createdBy: req.user.id,
-        campaignId: req.campaignId,
-        expiresAt,
-    });
-
-    logger.info(`Quick invite created for campaign ${req.campaignId} by user ${req.user.id}`);
+    const expiresAt = new Date(Date.now() + GAME.QUICK_INVITE_EXPIRY_HOURS * HOUR_MS);
+    const invite = await createInvite(req, expiresAt, 'Quick');
     controllerFactory.sendCreatedResponse(res, invite, 'Quick invite code generated successfully');
 };
 
@@ -77,16 +84,10 @@ const generateCustomInvite = async (req, res) => {
                 `expiresInHours must be an integer between ${MIN_EXPIRES_IN_HOURS} and ${MAX_EXPIRES_IN_HOURS}, or null for a never-expiring invite`
             );
         }
-        expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+        expiresAt = new Date(Date.now() + hours * HOUR_MS);
     }
 
-    const invite = await Invite.create({
-        createdBy: req.user.id,
-        campaignId: req.campaignId,
-        expiresAt,
-    });
-
-    logger.info(`Custom invite created for campaign ${req.campaignId} by user ${req.user.id} (expires: ${expiresAt ? expiresAt.toISOString() : 'never'})`);
+    const invite = await createInvite(req, expiresAt, 'Custom');
     controllerFactory.sendCreatedResponse(res, invite, 'Custom invite code generated successfully');
 };
 
@@ -123,12 +124,7 @@ const redeemInvite = async (req, res) => {
     // be invisible.
     const invite = await campaignContext.runWithCampaign('all', () => Invite.findByCode(normalizedCode));
 
-    if (!invite || invite.is_used) {
-        throw controllerFactory.createValidationError('Invalid or used invite code');
-    }
-    if (invite.expires_at && new Date(invite.expires_at) <= new Date()) {
-        throw controllerFactory.createValidationError('This invitation code has expired');
-    }
+    assertRedeemable(invite);
 
     // Already a member: reject WITHOUT consuming the code (it stays
     // redeemable by whoever it was actually meant for). user_campaign has no
@@ -173,9 +169,10 @@ const redeemInvite = async (req, res) => {
 
 /**
  * POST /api/invites/deactivate
- * Mark an invite as used so it can no longer be redeemed. Only invites
+ * Mark an unused invite as used so it can no longer be redeemed. Only invites
  * belonging to the requesting DM's current campaign can be deactivated;
- * anything else 404s (no cross-campaign existence leak).
+ * anything else (other campaign, missing, or already redeemed - whose
+ * redemption record is left intact) 404s, with no cross-campaign existence leak.
  *
  * Body: { inviteId }
  */
@@ -189,7 +186,7 @@ const deactivateInvite = async (req, res) => {
 
     const deactivated = await Invite.deactivate(id, req.campaignId, req.user.id);
     if (!deactivated) {
-        throw controllerFactory.createNotFoundError('Invite code not found');
+        throw controllerFactory.createNotFoundError('Invite code not found or already used');
     }
 
     logger.info(`Invite ${id} deactivated in campaign ${req.campaignId} by user ${req.user.id}`);

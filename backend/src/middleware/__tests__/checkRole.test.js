@@ -46,6 +46,7 @@ describe('checkRole middleware', () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({
+      success: false,
       message: 'Access denied: Insufficient permissions',
     });
   });
@@ -67,6 +68,7 @@ describe('checkRole middleware', () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({
+      success: false,
       message: 'Access denied: User role not found',
     });
   });
@@ -109,6 +111,7 @@ describe('checkRole middleware', () => {
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith({
+        success: false,
         message: 'Access denied: Insufficient permissions',
       });
     });
@@ -132,6 +135,7 @@ describe('checkRole middleware', () => {
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith({
+        success: false,
         message: 'Access denied: User role not found',
       });
     });
@@ -179,6 +183,7 @@ describe('checkRole middleware', () => {
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({
+      success: false,
       message: 'Internal server error during authorization',
     });
   });
