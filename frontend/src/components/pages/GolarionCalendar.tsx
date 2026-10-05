@@ -1125,16 +1125,18 @@ const GolarionCalendar: React.FC = () => {
                         Go to Today
                     </Button>
 
-                    <Button
-                        variant="outlined"
-                        color="secondary"
-                        onClick={() => setConfirmDialogOpen(true)}
-                        disabled={!selectedDate}
-                        startIcon={<EventIcon/>}
-                        sx={{fontWeight: 500, textTransform: 'none', boxShadow: 1, mx: 0.5}}
-                    >
-                        Set Current Day
-                    </Button>
+                    {dmMode && (
+                        <Button
+                            variant="outlined"
+                            color="secondary"
+                            onClick={() => setConfirmDialogOpen(true)}
+                            disabled={!selectedDate}
+                            startIcon={<EventIcon/>}
+                            sx={{fontWeight: 500, textTransform: 'none', boxShadow: 1, mx: 0.5}}
+                        >
+                            Set Current Day
+                        </Button>
+                    )}
 
                     <Box sx={{display: 'flex', alignItems: 'center', mx: 0.5}}>
                         <TextField

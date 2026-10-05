@@ -124,8 +124,75 @@ describe('calendarController', () => {
   // setCurrentDate
   // ---------------------------------------------------------------
   describe('setCurrentDate', () => {
+    it('rejects a Player (F-0246)', async () => {
+      const req = createMockReq({
+        user: { role: 'Player', id: 2 },
+        body: { year: 4723, month: 3, day: 15 },
+      });
+      const res = createMockRes();
+
+      await calendarController.setCurrentDate(req, res);
+
+      expect(res.forbidden).toHaveBeenCalled();
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects an absurd year (F-0246)', async () => {
+      const req = createMockReq({
+        user: { role: 'DM', id: 1 },
+        body: { year: 1000000000, month: 3, day: 15 },
+      });
+      const res = createMockRes();
+
+      await calendarController.setCurrentDate(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Year must be between'));
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects a forward jump larger than the advance cap (F-0246)', async () => {
+      const req = createMockReq({
+        user: { role: 'DM', id: 1 },
+        body: { year: 4730, month: 3, day: 15 },
+      });
+      const res = createMockRes();
+      const mockClient = {
+        query: jest.fn().mockResolvedValueOnce({ rows: [{ year: 4723, month: 3, day: 14 }] }),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      mockRegionRead('Varisia');
+
+      await calendarController.setCurrentDate(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('forward more than 366'));
+      expect(mockClient.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets a superadmin set the date without a DM role', async () => {
+      const req = createMockReq({
+        isSuperadmin: true,
+        user: { role: 'Player', id: 3 },
+        campaignRole: 'Player',
+        body: { year: 4723, month: 3, day: 15 },
+      });
+      const res = createMockRes();
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [{ year: 4723, month: 3, day: 14 }] })
+          .mockResolvedValueOnce({ rows: [] }),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      mockRegionRead('Varisia');
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
+
+      await calendarController.setCurrentDate(req, res);
+
+      expect(res.success).toHaveBeenCalled();
+    });
+
     it('should set a valid date successfully', async () => {
       const req = createMockReq({
+        user: { role: 'DM', id: 1 },
         body: { year: 4723, month: 3, day: 15 },
       });
       const res = createMockRes();
@@ -157,6 +224,7 @@ describe('calendarController', () => {
 
     it('should reject non-integer values', async () => {
       const req = createMockReq({
+        user: { role: 'DM', id: 1 },
         body: { year: 4723, month: 'March', day: 15 },
       });
       const res = createMockRes();
@@ -170,6 +238,7 @@ describe('calendarController', () => {
 
     it('should reject invalid month (0)', async () => {
       const req = createMockReq({
+        user: { role: 'DM', id: 1 },
         body: { year: 4723, month: 0, day: 15 },
       });
       const res = createMockRes();
@@ -183,6 +252,7 @@ describe('calendarController', () => {
 
     it('should reject invalid month (13)', async () => {
       const req = createMockReq({
+        user: { role: 'DM', id: 1 },
         body: { year: 4723, month: 13, day: 1 },
       });
       const res = createMockRes();
@@ -196,6 +266,7 @@ describe('calendarController', () => {
 
     it('should reject invalid day for the given month', async () => {
       const req = createMockReq({
+        user: { role: 'DM', id: 1 },
         body: { year: 4723, month: 2, day: 29 }, // Feb has 28 days in Golarion
       });
       const res = createMockRes();
@@ -209,6 +280,7 @@ describe('calendarController', () => {
 
     it('should reject day 0', async () => {
       const req = createMockReq({
+        user: { role: 'DM', id: 1 },
         body: { year: 4723, month: 1, day: 0 },
       });
       const res = createMockRes();
@@ -222,6 +294,7 @@ describe('calendarController', () => {
 
     it('should insert when no existing date', async () => {
       const req = createMockReq({
+        user: { role: 'DM', id: 1 },
         body: { year: 4723, month: 5, day: 10 },
       });
       const res = createMockRes();

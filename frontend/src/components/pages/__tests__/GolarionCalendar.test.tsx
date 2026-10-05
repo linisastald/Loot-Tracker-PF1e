@@ -99,10 +99,17 @@ describe('GolarionCalendar', () => {
     expect(screen.getByRole('button', { name: /Go to Today/i })).toBeInTheDocument();
   });
 
-  it('renders Set Current Day button', async () => {
+  it('renders Set Current Day button for a DM only', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
     renderCalendar();
-
     expect(screen.getByRole('button', { name: /Set Current Day/i })).toBeInTheDocument();
+    localStorage.clear();
+  });
+
+  it('hides Set Current Day from players', async () => {
+    localStorage.clear();
+    renderCalendar();
+    expect(screen.queryByRole('button', { name: /Set Current Day/i })).not.toBeInTheDocument();
   });
 
   it('renders the Add Days input and button', async () => {
@@ -164,12 +171,17 @@ describe('GolarionCalendar', () => {
   });
 
   describe('set current day', () => {
+    afterEach(() => {
+      localStorage.clear();
+    });
+
     const weatherCallCount = () =>
       (api.get as any).mock.calls.filter((call: unknown[]) =>
         String(call[0]).startsWith('/weather/range')
       ).length;
 
     it('refetches weather for the month after confirming Set Current Day', async () => {
+      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
       renderCalendar();
 
       // Initial load: current date selected + first weather fetch done

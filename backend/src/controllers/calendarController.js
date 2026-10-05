@@ -3,7 +3,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const { generateWeatherForNextDay } = require('./weatherController');
-const { getMonthDays, addDays, calculateDaysBetween } = require('../utils/golarionCalendar');
+const { getMonthDays, addDays, compareDates, calculateDaysBetween } = require('../utils/golarionCalendar');
 const { getForecastDays } = require('../utils/weatherForecast');
 const campaignSettings = require('../utils/campaignSettings');
 const { hasDmRights } = require('../utils/roleUtils');
@@ -13,6 +13,11 @@ const GolarionNote = require('../models/GolarionNote');
 // runaway weather-generation loop. The DM can issue another request to go
 // further.
 const MAX_ADVANCE_DAYS = 366;
+
+// Sane bounds for the Golarion year accepted by set-current-date (Absalom
+// Reckoning is in the 4700s; this just keeps absurd values out of the date loops).
+const MIN_YEAR = 1;
+const MAX_YEAR = 9999;
 
 // Maximum span (in days) of a single note or copy-to-days action.
 const MAX_NOTE_SPAN_DAYS = 366;
@@ -78,11 +83,19 @@ const getCurrentDate = async (req, res) => {
  * Set the current date in the Golarion calendar
  */
 const setCurrentDate = async (req, res) => {
+  if (!hasDmRights(req)) {
+    throw controllerFactory.createAuthorizationError('Only a DM can set the current date');
+  }
+
   const {year, month, day} = req.body;
 
   // Validate the date values
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
     throw controllerFactory.createValidationError('Year, month, and day must be integers');
+  }
+
+  if (year < MIN_YEAR || year > MAX_YEAR) {
+    throw controllerFactory.createValidationError(`Year must be between ${MIN_YEAR} and ${MAX_YEAR}`);
   }
 
   if (month < 1 || month > 12) {
@@ -106,6 +119,19 @@ const setCurrentDate = async (req, res) => {
   const { oldDate } = await dbUtils.executeTransaction(async (client) => {
     // Get the old date before updating (for weather generation)
     const oldDateResult = await client.query('SELECT year, month, day FROM golarion_current_date LIMIT 1');
+
+    // Cap the forward jump like advanceDays so extendWeatherForecast never
+    // loops over an unbounded span. Moving backwards is unrestricted. The limit
+    // date is computed with a loop of at most MAX_ADVANCE_DAYS iterations.
+    if (oldDateResult.rows.length > 0) {
+      const previous = oldDateResult.rows[0];
+      const furthest = addDays(previous, MAX_ADVANCE_DAYS);
+      if (compareDates({year, month, day}, furthest) > 0) {
+        throw controllerFactory.createValidationError(
+          `Cannot move the date forward more than ${MAX_ADVANCE_DAYS} days at once`
+        );
+      }
+    }
 
     // Update or insert current date
     if (oldDateResult.rows.length > 0) {
