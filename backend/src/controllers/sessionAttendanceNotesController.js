@@ -8,6 +8,11 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const sessionService = require('../services/sessionService');
 const Session = require('../models/Session');
+const { hasDmRights } = require('../utils/roleUtils');
+
+// Errors thrown by the attendance service for bad input (unknown session,
+// character that is not the caller's) are the caller's mistake, not a 500.
+const VALIDATION_STATUS_BY_ERROR_NAME = { ValidationError: 400, NotFoundError: 404 };
 
 // Record detailed attendance with timing and notes
 const recordDetailedAttendance = async (req, res) => {
@@ -24,6 +29,10 @@ const recordDetailedAttendance = async (req, res) => {
         });
 
     } catch (error) {
+        const status = VALIDATION_STATUS_BY_ERROR_NAME[error.name];
+        if (status) {
+            return res.status(status).json({ success: false, message: error.message });
+        }
         logger.error('Failed to record detailed attendance:', error);
         res.status(500).json({ success: false, message: 'Failed to record attendance' });
     }
@@ -50,6 +59,12 @@ const addSessionNote = async (req, res) => {
         const { note, note_type = 'general' } = req.body;
         const userId = req.user.id;
 
+        // dm_note notes are private to DMs: only they may write them (the
+        // Sessions UI only offers the type to a DM).
+        if (note_type === 'dm_note' && !hasDmRights(req)) {
+            return res.status(403).json({ success: false, message: 'Only a DM can add a DM note' });
+        }
+
         const created = await Session.addNote(sessionId, userId, note_type, note);
 
         res.status(201).json({
@@ -71,7 +86,12 @@ const getSessionNotes = async (req, res) => {
 
         const notes = await Session.getNotes(sessionId);
 
-        res.json({ success: true, data: notes });
+        // Players never see dm_note notes.
+        const visibleNotes = hasDmRights(req)
+            ? notes
+            : notes.filter(note => note.note_type !== 'dm_note');
+
+        res.json({ success: true, data: visibleNotes });
 
     } catch (error) {
         logger.error('Failed to fetch session notes:', error);

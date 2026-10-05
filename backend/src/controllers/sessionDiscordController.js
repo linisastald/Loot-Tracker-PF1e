@@ -1,15 +1,14 @@
 // src/controllers/sessionDiscordController.js
-// Discord-related session endpoints: manual announcements/reminders, session
-// reinstatement, and the user <-> Discord account mapping.
+// Discord-related session endpoints: manual announcements/reminders and
+// session reinstatement.
 //
 // Each handler keeps its own try/catch and bare { success, message } error
-// responses (client-visible shapes, including uncancel's 400 and link-discord's
-// 23505 handling, that createHandler's generic error would change);
-// createHandler remains as the outer safety net.
+// responses (client-visible shapes, including uncancel's 400, that
+// createHandler's generic error would change); createHandler remains as the
+// outer safety net.
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const sessionService = require('../services/sessionService');
-const Session = require('../models/Session');
 
 // Post session announcement manually
 const announceSession = async (req, res) => {
@@ -75,52 +74,6 @@ const uncancelSession = async (req, res) => {
     }
 };
 
-// Get user's Discord mapping
-const getDiscordMapping = async (req, res) => {
-    try {
-        const mapping = await Session.getUserDiscordMapping(req.user.id);
-
-        if (!mapping) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-
-        res.json({ success: true, data: mapping });
-
-    } catch (error) {
-        logger.error('Failed to fetch Discord mapping:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch Discord mapping' });
-    }
-};
-
-// Link Discord account to user
-const linkDiscord = async (req, res) => {
-    try {
-        const { discord_id, discord_username } = req.body;
-
-        const mapping = await Session.linkUserDiscord(req.user.id, discord_id, discord_username);
-
-        if (!mapping) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-
-        res.json({
-            success: true,
-            message: 'Discord account linked successfully',
-            data: mapping
-        });
-
-    } catch (error) {
-        if (error.code === '23505') { // unique violation
-            return res.status(400).json({
-                success: false,
-                message: 'This Discord account is already linked to another user'
-            });
-        }
-        logger.error('Failed to link Discord account:', error);
-        res.status(500).json({ success: false, message: 'Failed to link Discord account' });
-    }
-};
-
 module.exports = {
     announceSession: controllerFactory.createHandler(announceSession, {
         errorMessage: 'Error posting session announcement'
@@ -130,11 +83,5 @@ module.exports = {
     }),
     uncancelSession: controllerFactory.createHandler(uncancelSession, {
         errorMessage: 'Error uncancelling session'
-    }),
-    getDiscordMapping: controllerFactory.createHandler(getDiscordMapping, {
-        errorMessage: 'Error retrieving Discord mapping'
-    }),
-    linkDiscord: controllerFactory.createHandler(linkDiscord, {
-        errorMessage: 'Error linking Discord account'
     })
 };

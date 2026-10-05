@@ -48,8 +48,10 @@ const getEnhancedSessions = async (req, res) => {
     }
 };
 
-// Get the next upcoming session with its attendance - used by the Tasks page
-// to pre-populate character checkboxes based on who has RSVP'd
+// Get the session being dealt for (first non-cancelled session that started
+// less than 12 hours ago or is still to come - the same window as
+// last-session-attendees) with its attendance. Used by the Tasks page to
+// pre-populate character checkboxes based on who has RSVP'd
 const getNextWithAttendance = async (req, res) => {
     try {
         const session = await Session.getNextUpcomingSession();
@@ -150,17 +152,6 @@ const getLastSessionAttendees = async (req, res) => {
     }
 };
 
-// Get upcoming sessions view with attendance summary
-const getUpcomingDetailed = async (req, res) => {
-    try {
-        const rows = await Session.getUpcomingDetailed();
-        res.json({ success: true, data: rows });
-    } catch (error) {
-        logger.error('Failed to fetch upcoming sessions:', error);
-        res.status(500).json({ success: false, message: 'Failed to fetch upcoming sessions' });
-    }
-};
-
 module.exports = {
     getEnhancedSessions: controllerFactory.createHandler(getEnhancedSessions, {
         errorMessage: 'Error retrieving enhanced sessions'
@@ -170,8 +161,5 @@ module.exports = {
     }),
     getLastSessionAttendees: controllerFactory.createHandler(getLastSessionAttendees, {
         errorMessage: 'Error retrieving last session attendees'
-    }),
-    getUpcomingDetailed: controllerFactory.createHandler(getUpcomingDetailed, {
-        errorMessage: 'Error retrieving detailed upcoming sessions'
     })
 };

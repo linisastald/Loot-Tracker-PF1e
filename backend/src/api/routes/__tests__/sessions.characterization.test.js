@@ -1,6 +1,11 @@
 /**
  * Characterisation tests for the sessions router (finding F-0129).
  *
+ * Updated by W09: the unused routes (upcoming-detailed, discord-mapping,
+ * link-discord, GET /:id, recurring instances/update/delete/generate) were
+ * removed, every express-validator chain is now enforced, and 400 messages are
+ * plain strings.
+ *
  * These pin the observable behaviour of the handlers that used to live inline
  * in routes/sessions.js (response shapes, status codes, messages, and the SQL
  * text/params sent to the database) so they can be moved to controllers and
@@ -13,6 +18,8 @@ jest.mock('../../../middleware/auth', () => {
   return (req, res, next) => {
     req.user = { id: 7, role: 'DM', username: 'testdm' };
     req.campaignId = 3;
+    // Tests choose the per-campaign role with the x-test-role header.
+    req.campaignRole = req.headers['x-test-role'] || 'DM';
     next();
   };
 });
@@ -25,7 +32,6 @@ jest.mock('../../../middleware/validation', () => ({
 }));
 jest.mock('../../../controllers/sessionController', () => ({
   getUpcomingSessions: jest.fn((req, res) => res.json({ success: true, data: [] })),
-  getSession: jest.fn((req, res) => res.json({ success: true, data: {} })),
   createSession: jest.fn((req, res) => res.status(201).json({ success: true })),
   updateSession: jest.fn((req, res) => res.json({ success: true })),
   deleteSession: jest.fn((req, res) => res.json({ success: true })),
@@ -44,10 +50,6 @@ jest.mock('../../../models/SessionTask', () => ({
 }));
 jest.mock('../../../services/sessionService', () => ({
   createRecurringSession: jest.fn(),
-  getRecurringSessionInstances: jest.fn(),
-  updateRecurringSession: jest.fn(),
-  deleteRecurringSession: jest.fn(),
-  generateAdditionalInstances: jest.fn(),
   postSessionAnnouncement: jest.fn(),
   sendSessionReminder: jest.fn(),
   uncancelSession: jest.fn(),
@@ -90,7 +92,7 @@ describe('GET /sessions/enhanced (characterisation)', () => {
     expect(res.body).toEqual({ success: true, message: 'Sessions retrieved successfully', data: [{ id: 1 }] });
     const [sql, params] = dbUtils.executeQuery.mock.calls[0];
     expect(norm(sql)).toContain('FROM game_sessions gs LEFT JOIN session_attendance sa ON gs.id = sa.session_id');
-    expect(norm(sql)).toContain('WHERE 1=1 AND gs.status = $1 AND gs.start_time > NOW() GROUP BY gs.id ORDER BY gs.start_time');
+    expect(norm(sql)).toContain('WHERE gs.status = $1 AND gs.start_time > NOW() GROUP BY gs.id ORDER BY gs.start_time');
     expect(params).toEqual(['scheduled']);
   });
 
@@ -120,7 +122,9 @@ describe('GET /sessions/next-with-attendance (characterisation)', () => {
     expect(res.body).toEqual({ success: true, data: null });
     expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
     const sql = norm(dbUtils.executeQuery.mock.calls[0][0]);
-    expect(sql).toContain('SELECT id, title, start_time, status FROM game_sessions WHERE start_time > NOW()');
+    // Same window as last-session-attendees: a session that started within the
+    // last 12 hours is still "the session being dealt for" (F-0134).
+    expect(sql).toContain("SELECT id, title, start_time, status FROM game_sessions WHERE start_time > NOW() - INTERVAL '12 hours'");
     expect(sql).toContain("(status IS NULL OR status != 'cancelled') ORDER BY start_time ASC LIMIT 1");
     expect(dbUtils.executeQuery.mock.calls[0][1]).toBeUndefined();
   });
@@ -214,37 +218,6 @@ describe('GET /sessions/last-session-attendees (characterisation)', () => {
   });
 });
 
-describe('GET /sessions/upcoming-detailed and /discord-mapping (characterisation)', () => {
-  it('upcoming-detailed selects from the view with a limit of 10', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
-    const res = await request(app).get('/sessions/upcoming-detailed');
-    expect(res.body).toEqual({ success: true, data: [{ id: 1 }] });
-    expect(norm(dbUtils.executeQuery.mock.calls[0][0])).toBe('SELECT * FROM upcoming_sessions ORDER BY start_time LIMIT 10');
-    expect(dbUtils.executeQuery.mock.calls[0][1]).toBeUndefined();
-  });
-
-  it('discord-mapping queries by the authenticated user id', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 7, username: 'u' }] });
-    const res = await request(app).get('/sessions/discord-mapping');
-    expect(res.body).toEqual({ success: true, data: { id: 7, username: 'u' } });
-    expect(norm(dbUtils.executeQuery.mock.calls[0][0])).toBe(
-      'SELECT id, username, discord_id, discord_username FROM users WHERE id = $1'
-    );
-    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([7]);
-  });
-
-  it('discord-mapping 404 and 500 bodies', async () => {
-    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-    let res = await request(app).get('/sessions/discord-mapping');
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ success: false, message: 'User not found' });
-    dbUtils.executeQuery.mockRejectedValueOnce(new Error('x'));
-    res = await request(app).get('/sessions/discord-mapping');
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ success: false, message: 'Failed to fetch Discord mapping' });
-  });
-});
-
 describe('task-history (characterisation)', () => {
   it('POST returns 201 with message and the full INSERT params', async () => {
     dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
@@ -276,7 +249,8 @@ describe('task-history (characterisation)', () => {
   it('POST 400 and 500 bodies', async () => {
     let res = await request(app).post('/sessions/task-history').send({});
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ success: false, message: 'assignments are required' });
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe('assignments are required');
     dbUtils.executeQuery.mockRejectedValue(new Error('x'));
     res = await request(app).post('/sessions/task-history').send({ assignments: {} });
     expect(res.status).toBe(500);
@@ -297,7 +271,8 @@ describe('task-history (characterisation)', () => {
   it('GET rejects an out-of-range limit with 400 and the first message', async () => {
     const res = await request(app).get('/sessions/task-history?limit=500');
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ success: false, message: 'limit must be 1-200' });
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toBe('limit must be 1-200');
     expect(dbUtils.executeQuery).not.toHaveBeenCalled();
   });
 
@@ -319,9 +294,8 @@ describe('recurring routes (characterisation)', () => {
     const res = await request(app).post('/sessions/recurring').send({ title: '' });
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
-    // Quirk: validateRequest passes express-validator error objects, so message
-    // is the first error OBJECT rather than a string.
-    expect(res.body.message).toEqual(expect.objectContaining({ msg: 'Title is required', path: 'title' }));
+    // The message is the first failure's text, as a plain string.
+    expect(res.body.message).toBe('Title is required');
     expect(res.body.errors.general.length).toBeGreaterThan(1);
     expect(sessionService.createRecurringSession).not.toHaveBeenCalled();
   });
@@ -333,10 +307,8 @@ describe('recurring routes (characterisation)', () => {
     expect(res.body).toEqual({
       success: true, message: 'Recurring session created successfully', data: { template: { id: 1 } },
     });
-    expect(sessionService.createRecurringSession).toHaveBeenCalledWith({
-      ...valid, created_by: 7, auto_announce_hours: 168, reminder_hours: 48,
-      confirmation_hours: 48, maximum_players: 6,
-    });
+    // Defaults for omitted fields are applied by the service, not the route.
+    expect(sessionService.createRecurringSession).toHaveBeenCalledWith({ ...valid, created_by: 7 });
   });
 
   it('POST /recurring 500 exposes error.message and omits details outside development', async () => {
@@ -368,69 +340,20 @@ describe('recurring routes (characterisation)', () => {
     expect(res.body.message).toBe('Failed to create recurring session');
   });
 
-  it('GET instances: service args, success body, fixed 500 message', async () => {
-    sessionService.getRecurringSessionInstances.mockResolvedValue([{ id: 1 }]);
-    let res = await request(app).get('/sessions/recurring/5/instances?upcoming_only=true&limit=20');
-    expect(res.body).toEqual({ success: true, data: [{ id: 1 }] });
-    expect(sessionService.getRecurringSessionInstances).toHaveBeenCalledWith('5', { upcoming_only: true, limit: 20 });
-    sessionService.getRecurringSessionInstances.mockRejectedValue(new Error('secret'));
-    res = await request(app).get('/sessions/recurring/5/instances');
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ success: false, message: 'Failed to get session instances' });
+  it('POST /recurring keeps an explicit 0 (no reminder) instead of replacing it with a default', async () => {
+    sessionService.createRecurringSession.mockResolvedValue({});
+    await request(app).post('/sessions/recurring').send({ ...valid, reminder_hours: 0 });
+    expect(sessionService.createRecurringSession).toHaveBeenCalledWith({ ...valid, reminder_hours: 0, created_by: 7 });
   });
 
-  it('GET instances ignores validator failures (limit=0 falls back to 10, limit=999 passes through)', async () => {
-    sessionService.getRecurringSessionInstances.mockResolvedValue([]);
-    await request(app).get('/sessions/recurring/5/instances?limit=0');
-    expect(sessionService.getRecurringSessionInstances).toHaveBeenLastCalledWith('5', { upcoming_only: false, limit: 10 });
-    await request(app).get('/sessions/recurring/5/instances?limit=999');
-    expect(sessionService.getRecurringSessionInstances).toHaveBeenLastCalledWith('5', { upcoming_only: false, limit: 999 });
-  });
-
-  it('PUT passes the whole body, replies with message, and 500s with error.message', async () => {
-    sessionService.updateRecurringSession.mockResolvedValue({ id: 5 });
-    let res = await request(app).put('/sessions/recurring/5').send({ title: 'N', update_instances: true });
-    expect(res.body).toEqual({ success: true, message: 'Recurring session updated successfully', data: { id: 5 } });
-    expect(sessionService.updateRecurringSession).toHaveBeenCalledWith('5', { title: 'N', update_instances: true });
-    sessionService.updateRecurringSession.mockRejectedValue(new Error('nope'));
-    res = await request(app).put('/sessions/recurring/5').send({});
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ success: false, message: 'nope' });
-  });
-
-  it('PUT ignores validator results (empty title still reaches the service)', async () => {
-    sessionService.updateRecurringSession.mockResolvedValue({});
-    const res = await request(app).put('/sessions/recurring/5').send({ title: '' });
-    expect(res.status).toBe(200);
-    expect(sessionService.updateRecurringSession).toHaveBeenCalledWith('5', { title: '' });
-  });
-
-  it('DELETE: flag semantics, message, and 500 with error.message', async () => {
-    sessionService.deleteRecurringSession.mockResolvedValue({ id: 5 });
-    let res = await request(app).delete('/sessions/recurring/5');
-    expect(res.body).toEqual({ success: true, message: 'Recurring session deleted successfully', data: { id: 5 } });
-    expect(sessionService.deleteRecurringSession).toHaveBeenLastCalledWith('5', true);
-    await request(app).delete('/sessions/recurring/5?delete_instances=false');
-    expect(sessionService.deleteRecurringSession).toHaveBeenLastCalledWith('5', false);
-    await request(app).delete('/sessions/recurring/5?delete_instances=whatever');
-    expect(sessionService.deleteRecurringSession).toHaveBeenLastCalledWith('5', true);
-    sessionService.deleteRecurringSession.mockRejectedValue(new Error(''));
-    res = await request(app).delete('/sessions/recurring/5');
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ success: false, message: 'Failed to delete recurring session' });
-  });
-
-  it('POST generate: default 12, count in message, 500 message fallback', async () => {
-    sessionService.generateAdditionalInstances.mockResolvedValue([{ id: 1 }, { id: 2 }]);
-    let res = await request(app).post('/sessions/recurring/5/generate').send({});
-    expect(res.body).toEqual({
-      success: true, message: 'Generated 2 additional session instances', data: [{ id: 1 }, { id: 2 }],
-    });
-    expect(sessionService.generateAdditionalInstances).toHaveBeenCalledWith('5', 12);
-    sessionService.generateAdditionalInstances.mockRejectedValue(new Error(''));
-    res = await request(app).post('/sessions/recurring/5/generate').send({ count: 3 });
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ success: false, message: 'Failed to generate additional instances' });
+  it('POST /recurring rejects an unbounded recurring_end_count and non-integer hours', async () => {
+    let res = await request(app).post('/sessions/recurring').send({ ...valid, recurring_end_count: 100000 });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Invalid end count (1-104)');
+    res = await request(app).post('/sessions/recurring').send({ ...valid, reminder_hours: 'soon' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Invalid reminder hours');
+    expect(sessionService.createRecurringSession).not.toHaveBeenCalled();
   });
 });
 
@@ -450,11 +373,22 @@ describe('discord routes (characterisation)', () => {
     expect(res.body).toEqual({ success: false, message: 'Failed to post announcement' });
   });
 
-  it('announce ignores a non-integer id validator (service still called)', async () => {
-    sessionService.postSessionAnnouncement.mockResolvedValue({ id: 'm' });
-    const res = await request(app).post('/sessions/abc/announce');
-    expect(res.status).toBe(200);
-    expect(sessionService.postSessionAnnouncement).toHaveBeenCalledWith('abc');
+  it('announce/remind/uncancel reject a non-integer id (validators are enforced)', async () => {
+    for (const path of ['announce', 'remind', 'uncancel']) {
+      const res = await request(app).post('/sessions/abc/' + path).send({});
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('Session ID must be an integer');
+    }
+    expect(sessionService.postSessionAnnouncement).not.toHaveBeenCalled();
+    expect(sessionService.sendSessionReminder).not.toHaveBeenCalled();
+    expect(sessionService.uncancelSession).not.toHaveBeenCalled();
+  });
+
+  it('remind rejects an unknown reminder_type', async () => {
+    const res = await request(app).post('/sessions/9/remind').send({ reminder_type: 'everyone' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Invalid reminder type');
+    expect(sessionService.sendSessionReminder).not.toHaveBeenCalled();
   });
 
   it('remind: manual flag, default type, bodies', async () => {
@@ -488,36 +422,6 @@ describe('discord routes (characterisation)', () => {
     expect(res.body).toEqual({ success: false, message: 'Failed to uncancel session' });
   });
 
-  it('link-discord: UPDATE params, 200/404/400/500 bodies', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 7, discord_id: 'd' }] });
-    let res = await request(app).post('/sessions/link-discord').send({ discord_id: 'd', discord_username: 'dn' });
-    expect(res.body).toEqual({ success: true, message: 'Discord account linked successfully', data: { id: 7, discord_id: 'd' } });
-    const [sql, params] = dbUtils.executeQuery.mock.calls[0];
-    expect(norm(sql)).toBe(
-      'UPDATE users SET discord_id = $1, discord_username = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING id, username, discord_id, discord_username'
-    );
-    expect(params).toEqual(['d', 'dn', 7]);
-    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-    res = await request(app).post('/sessions/link-discord').send({ discord_id: 'd' });
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ success: false, message: 'User not found' });
-    dbUtils.executeQuery.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }));
-    res = await request(app).post('/sessions/link-discord').send({ discord_id: 'd' });
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ success: false, message: 'This Discord account is already linked to another user' });
-    expect(logger.error).not.toHaveBeenCalled();
-    dbUtils.executeQuery.mockRejectedValueOnce(new Error('x'));
-    res = await request(app).post('/sessions/link-discord').send({ discord_id: 'd' });
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ success: false, message: 'Failed to link Discord account' });
-  });
-
-  it('link-discord ignores validator results (missing discord_id still runs the UPDATE)', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 7 }] });
-    const res = await request(app).post('/sessions/link-discord').send({});
-    expect(res.status).toBe(200);
-    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([undefined, undefined, 7]);
-  });
 });
 
 describe('attendance/detailed and notes (characterisation)', () => {
@@ -537,7 +441,7 @@ describe('attendance/detailed and notes (characterisation)', () => {
     const res = await request(app)
       .post('/sessions/9/attendance/detailed').send({ response_type: 'yes', late_arrival_time: '25:99' });
     expect(res.status).toBe(400);
-    expect(res.body.message).toEqual(expect.objectContaining({ msg: 'Invalid time format', path: 'late_arrival_time' }));
+    expect(res.body.message).toBe('Invalid time format');
     expect(res.body.errors.general).toHaveLength(1);
     expect(sessionService.recordAttendance).not.toHaveBeenCalled();
   });
@@ -552,7 +456,7 @@ describe('attendance/detailed and notes (characterisation)', () => {
     expect(res.body).toEqual({ success: false, message: 'Failed to fetch attendance' });
   });
 
-  it('POST notes: INSERT params, default type, 201 body, validators ignored', async () => {
+  it('POST notes: INSERT params, default type, 201 body', async () => {
     dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
     let res = await request(app).post('/sessions/9/notes').send({ note: 'hi' });
     expect(res.status).toBe(201);
@@ -560,13 +464,43 @@ describe('attendance/detailed and notes (characterisation)', () => {
     const [sql, params] = dbUtils.executeQuery.mock.calls[0];
     expect(norm(sql)).toBe('INSERT INTO session_notes (session_id, user_id, note_type, note) VALUES ($1, $2, $3, $4) RETURNING *');
     expect(params).toEqual(['9', 7, 'general', 'hi']);
-    res = await request(app).post('/sessions/9/notes').send({ note: 'x', note_type: 'bogus' });
-    expect(res.status).toBe(201);
-    expect(dbUtils.executeQuery.mock.calls[1][1]).toEqual(['9', 7, 'bogus', 'x']);
     dbUtils.executeQuery.mockRejectedValueOnce(new Error('x'));
     res = await request(app).post('/sessions/9/notes').send({ note: 'x' });
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ success: false, message: 'Failed to add note' });
+  });
+
+  it('POST notes enforces its validators (empty note, bad type, non-integer id)', async () => {
+    let res = await request(app).post('/sessions/9/notes').send({});
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Note content is required');
+    res = await request(app).post('/sessions/9/notes').send({ note: 'x', note_type: 'bogus' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Invalid note type');
+    res = await request(app).post('/sessions/abc/notes').send({ note: 'x' });
+    expect(res.status).toBe(400);
+    expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('POST notes: only a DM may write a dm_note', async () => {
+    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+    let res = await request(app).post('/sessions/9/notes').set('x-test-role', 'Player').send({ note: 'x', note_type: 'dm_note' });
+    expect(res.status).toBe(403);
+    expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    res = await request(app).post('/sessions/9/notes').set('x-test-role', 'Player').send({ note: 'x', note_type: 'prep_request' });
+    expect(res.status).toBe(201);
+    res = await request(app).post('/sessions/9/notes').set('x-test-role', 'DM').send({ note: 'x', note_type: 'dm_note' });
+    expect(res.status).toBe(201);
+  });
+
+  it('GET notes: players never receive dm_note notes, DMs do', async () => {
+    dbUtils.executeQuery.mockResolvedValue({
+      rows: [{ id: 1, note_type: 'general' }, { id: 2, note_type: 'dm_note' }],
+    });
+    let res = await request(app).get('/sessions/9/notes').set('x-test-role', 'Player');
+    expect(res.body.data.map(n => n.id)).toEqual([1]);
+    res = await request(app).get('/sessions/9/notes').set('x-test-role', 'DM');
+    expect(res.body.data.map(n => n.id)).toEqual([1, 2]);
   });
 
   it('GET notes: SELECT text/params and bodies', async () => {
@@ -579,5 +513,84 @@ describe('attendance/detailed and notes (characterisation)', () => {
     dbUtils.executeQuery.mockRejectedValueOnce(new Error('x'));
     res = await request(app).get('/sessions/9/notes');
     expect(res.body).toEqual({ success: false, message: 'Failed to fetch notes' });
+  });
+});
+
+describe('W09 input validation and error mapping', () => {
+  it('task-history POST rejects assignments that are not phase -> character -> task names', async () => {
+    for (const assignments of ['text', [], { pre: [] }, { pre: { A: 'Snacks' } }, { pre: { A: [1] } }]) {
+      const res = await request(app).post('/sessions/task-history').send({ assignments });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('assignments must map phase -> character -> list of task names');
+    }
+    expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('task-history POST rejects bad numeric fields', async () => {
+    let res = await request(app).post('/sessions/task-history').send({ assignments: {}, character_count: -1 });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('character_count must be 0-1000');
+    res = await request(app).post('/sessions/task-history').send({ assignments: {}, late_count: 'many' });
+    expect(res.status).toBe(400);
+    res = await request(app).post('/sessions/task-history').send({ assignments: {}, session_id: 'abc' });
+    expect(res.status).toBe(400);
+    expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+  });
+
+  it('task-history POST accepts a real Tasks page payload', async () => {
+    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+    const res = await request(app).post('/sessions/task-history').send({
+      session_id: null, session_title: null,
+      assignments: { pre: { Valeros: ['Snacks'] }, during: {}, post: { DM: ['Recap'] } },
+      character_count: 5, late_count: 0,
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('attendance/detailed maps service validation and not-found errors to 400 and 404', async () => {
+    sessionService.recordAttendance.mockRejectedValueOnce(
+      Object.assign(new Error('Character must be one of your active characters in this campaign'), { name: 'ValidationError' })
+    );
+    let res = await request(app).post('/sessions/9/attendance/detailed').send({ response_type: 'yes', character_id: 55 });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ success: false, message: 'Character must be one of your active characters in this campaign' });
+    sessionService.recordAttendance.mockRejectedValueOnce(
+      Object.assign(new Error('Session not found'), { name: 'NotFoundError' })
+    );
+    res = await request(app).post('/sessions/9/attendance/detailed').send({ response_type: 'yes' });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ success: false, message: 'Session not found' });
+  });
+
+  it('attendance/detailed accepts an empty character selection and rejects a non-numeric one', async () => {
+    sessionService.recordAttendance.mockResolvedValue({ id: 1 });
+    let res = await request(app).post('/sessions/9/attendance/detailed').send({ response_type: 'no', character_id: '' });
+    expect(res.status).toBe(200);
+    res = await request(app).post('/sessions/9/attendance/detailed').send({ response_type: 'yes', character_id: 'abc' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Invalid character');
+  });
+
+  it('attendance/detailed GET rejects a non-integer id', async () => {
+    const res = await request(app).get('/sessions/abc/attendance/detailed');
+    expect(res.status).toBe(400);
+    expect(sessionService.getSessionAttendance).not.toHaveBeenCalled();
+  });
+
+  it('removed routes are gone (404)', async () => {
+    const requests = [
+      request(app).get('/sessions/upcoming-detailed'),
+      request(app).get('/sessions/discord-mapping'),
+      request(app).post('/sessions/link-discord').send({ discord_id: '1' }),
+      request(app).get('/sessions/5'),
+      request(app).get('/sessions/recurring/5/instances'),
+      request(app).put('/sessions/recurring/5').send({}),
+      request(app).delete('/sessions/recurring/5'),
+      request(app).post('/sessions/recurring/5/generate').send({}),
+    ];
+    for (const pending of requests) {
+      const res = await pending;
+      expect(res.status).toBe(404);
+    }
   });
 });

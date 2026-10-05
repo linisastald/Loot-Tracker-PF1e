@@ -13,14 +13,30 @@ const { body, param, query, validationResult } = require('express-validator');
 const ApiResponse = require('../../utils/apiResponse');
 const { VALID_RECURRING_PATTERNS } = require('../../constants/sessionConstants');
 
-// Middleware to check express-validator validation results
+// Middleware to check express-validator validation results. Every validator
+// chain below must be followed by this, otherwise its rules are never enforced.
+// The response message is the first failure's text (a plain string).
 const validateRequest = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        const response = ApiResponse.validationError(errors.array());
+        const response = ApiResponse.validationError(errors.array().map(error => error.msg));
         return ApiResponse.send(res, response);
     }
     next();
+};
+
+const sessionIdParam = param('id').isInt({ min: 1 }).withMessage('Session ID must be an integer');
+
+// Task assignments: { pre|during|post: { characterName: [taskName, ...] } }
+const isTaskAssignments = (value) => {
+    const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (!isPlainObject(value)) return false;
+    return Object.values(value).every(phase =>
+        isPlainObject(phase) &&
+        Object.values(phase).every(tasks =>
+            Array.isArray(tasks) && tasks.every(task => typeof task === 'string')
+        )
+    );
 };
 
 // Route order matters: literal paths must be registered before '/:id' so they
@@ -42,12 +58,6 @@ router.get('/next-with-attendance', verifyToken, sessionListController.getNextWi
 // Who was at the previous session - used by the Tasks page
 router.get('/last-session-attendees', verifyToken, sessionListController.getLastSessionAttendees);
 
-// Get upcoming sessions view with attendance summary
-router.get('/upcoming-detailed', verifyToken, sessionListController.getUpcomingDetailed);
-
-// Get user's Discord mapping
-router.get('/discord-mapping', verifyToken, sessionDiscordController.getDiscordMapping);
-
 // ========================================================================
 // TASK ASSIGNMENT HISTORY ROUTES
 // Records manual pre/during/post task assignments made from the Tasks page.
@@ -55,20 +65,18 @@ router.get('/discord-mapping', verifyToken, sessionDiscordController.getDiscordM
 
 // Save a task assignment to history
 router.post('/task-history', verifyToken, [
-    body('assignments').exists().withMessage('assignments are required')
-], sessionTaskHistoryController.saveTaskHistory);
+    body('assignments').exists().withMessage('assignments are required').bail()
+        .custom(isTaskAssignments).withMessage('assignments must map phase -> character -> list of task names'),
+    body('session_id').optional({ nullable: true }).isInt({ min: 1 }).withMessage('session_id must be an integer'),
+    body('session_title').optional({ nullable: true }).isString().isLength({ max: 255 }).withMessage('session_title must be at most 255 characters'),
+    body('character_count').optional().isInt({ min: 0, max: 1000 }).withMessage('character_count must be 0-1000'),
+    body('late_count').optional().isInt({ min: 0, max: 1000 }).withMessage('late_count must be 0-1000')
+], validateRequest, sessionTaskHistoryController.saveTaskHistory);
 
 // Get task assignment history (most recent first)
 router.get('/task-history', verifyToken, [
     query('limit').optional().isInt({ min: 1, max: 200 }).withMessage('limit must be 1-200')
-], sessionTaskHistoryController.getTaskHistory);
-
-// Get a specific session with validation
-router.get('/:id', validate({
-  params: {
-    id: { type: 'number', required: true, min: 1 }
-  }
-}), verifyToken, sessionController.getSession);
+], validateRequest, sessionTaskHistoryController.getTaskHistory);
 
 // Create a new session (DM only) with validation
 router.post('/', verifyToken, checkRole('DM'), createValidationMiddleware('createSession'), sessionController.createSession);
@@ -108,37 +116,15 @@ router.post('/recurring', verifyToken, checkRole('DM'), [
     body('end_time').isISO8601().withMessage('Invalid end time'),
     body('recurring_pattern').isIn(VALID_RECURRING_PATTERNS).withMessage('Invalid recurring pattern'),
     body('recurring_day_of_week').isInt({ min: 0, max: 6 }).withMessage('Invalid day of week'),
-    body('recurring_interval').optional().isInt({ min: 1 }).withMessage('Invalid interval'),
-    body('recurring_end_date').optional().isISO8601().withMessage('Invalid end date'),
-    body('recurring_end_count').optional().isInt({ min: 1 }).withMessage('Invalid end count')
+    body('recurring_interval').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid interval'),
+    body('recurring_end_date').optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage('Invalid end date'),
+    body('recurring_end_count').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1, max: 104 }).withMessage('Invalid end count (1-104)'),
+    body('minimum_players').optional({ nullable: true, checkFalsy: true }).isInt({ min: 0 }).withMessage('Invalid minimum players'),
+    body('maximum_players').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid maximum players'),
+    body('auto_announce_hours').optional({ nullable: true, checkFalsy: true }).isInt({ min: 0 }).withMessage('Invalid auto announce hours'),
+    body('reminder_hours').optional({ nullable: true, checkFalsy: true }).isInt({ min: 0 }).withMessage('Invalid reminder hours'),
+    body('confirmation_hours').optional({ nullable: true, checkFalsy: true }).isInt({ min: 0 }).withMessage('Invalid confirmation hours')
 ], validateRequest, recurringSessionController.createRecurringSession);
-
-// Get recurring session instances
-router.get('/recurring/:templateId/instances', verifyToken, [
-    param('templateId').notEmpty().withMessage('Template ID is required'),
-    query('upcoming_only').optional().isBoolean().withMessage('Invalid upcoming_only flag'),
-    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Invalid limit')
-], recurringSessionController.getRecurringInstances);
-
-// Update recurring session template (DM only)
-router.put('/recurring/:templateId', verifyToken, checkRole('DM'), [
-    param('templateId').notEmpty().withMessage('Template ID is required'),
-    body('title').optional().notEmpty().withMessage('Title cannot be empty'),
-    body('description').optional().isLength({ max: 1000 }).withMessage('Description too long'),
-    body('update_instances').optional().isBoolean().withMessage('Invalid update_instances flag')
-], recurringSessionController.updateRecurringSession);
-
-// Delete recurring session template (DM only)
-router.delete('/recurring/:templateId', verifyToken, checkRole('DM'), [
-    param('templateId').notEmpty().withMessage('Template ID is required'),
-    query('delete_instances').optional().isBoolean().withMessage('Invalid delete_instances flag')
-], recurringSessionController.deleteRecurringSession);
-
-// Generate additional instances for recurring session (DM only)
-router.post('/recurring/:templateId/generate', verifyToken, checkRole('DM'), [
-    param('templateId').notEmpty().withMessage('Template ID is required'),
-    body('count').optional().isInt({ min: 1, max: 52 }).withMessage('Invalid count (1-52)')
-], recurringSessionController.generateAdditionalInstances);
 
 // ========================================================================
 // DISCORD INTEGRATION ROUTES
@@ -146,19 +132,19 @@ router.post('/recurring/:templateId/generate', verifyToken, checkRole('DM'), [
 
 // Post session announcement manually
 router.post('/:id/announce', verifyToken, checkRole('DM'), [
-    param('id').isInt().withMessage('Session ID must be an integer')
-], sessionDiscordController.announceSession);
+    sessionIdParam
+], validateRequest, sessionDiscordController.announceSession);
 
 // Send session reminder manually
 router.post('/:id/remind', verifyToken, checkRole('DM'), [
-    param('id').isInt().withMessage('Session ID must be an integer'),
+    sessionIdParam,
     body('reminder_type').optional().isIn(['non_responders', 'maybe_responders', 'all']).withMessage('Invalid reminder type')
-], sessionDiscordController.remindSession);
+], validateRequest, sessionDiscordController.remindSession);
 
 // Uncancel a session (DM only)
 router.post('/:id/uncancel', verifyToken, checkRole('DM'), [
-    param('id').isInt().withMessage('Session ID must be an integer')
-], sessionDiscordController.uncancelSession);
+    sessionIdParam
+], validateRequest, sessionDiscordController.uncancelSession);
 
 // ========================================================================
 // ENHANCED ATTENDANCE ROUTES
@@ -166,7 +152,7 @@ router.post('/:id/uncancel', verifyToken, checkRole('DM'), [
 
 // Record detailed attendance with timing and notes
 router.post('/:id/attendance/detailed', verifyToken, [
-    param('id').isInt().withMessage('Session ID must be an integer'),
+    sessionIdParam,
     body('response_type').isIn([
         // Canonical response types
         'yes', 'no', 'maybe', 'late', 'early', 'late_and_early',
@@ -175,13 +161,14 @@ router.post('/:id/attendance/detailed', verifyToken, [
     ]).withMessage('Invalid response type'),
     body('late_arrival_time').optional({ nullable: true, checkFalsy: true }).matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid time format'),
     body('early_departure_time').optional({ nullable: true, checkFalsy: true }).matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Invalid time format'),
-    body('notes').optional({ nullable: true }).isLength({ max: 500 }).withMessage('Notes must be under 500 characters')
+    body('notes').optional({ nullable: true }).isLength({ max: 500 }).withMessage('Notes must be under 500 characters'),
+    body('character_id').optional({ nullable: true, checkFalsy: true }).isInt({ min: 1 }).withMessage('Invalid character')
 ], validateRequest, sessionAttendanceNotesController.recordDetailedAttendance);
 
 // Get detailed session attendance
 router.get('/:id/attendance/detailed', verifyToken, [
-    param('id').isInt().withMessage('Session ID must be an integer')
-], sessionAttendanceNotesController.getDetailedAttendance);
+    sessionIdParam
+], validateRequest, sessionAttendanceNotesController.getDetailedAttendance);
 
 // ========================================================================
 // SESSION NOTES ROUTES
@@ -189,24 +176,15 @@ router.get('/:id/attendance/detailed', verifyToken, [
 
 // Add session note (prep request, general note, etc.)
 router.post('/:id/notes', verifyToken, [
-    param('id').isInt().withMessage('Session ID must be an integer'),
-    body('note').notEmpty().withMessage('Note content is required'),
+    sessionIdParam,
+    body('note').isString().withMessage('Note content is required').bail().trim().notEmpty().withMessage('Note content is required')
+        .isLength({ max: 2000 }).withMessage('Note must be under 2000 characters'),
     body('note_type').optional().isIn(['prep_request', 'general', 'dm_note']).withMessage('Invalid note type')
-], sessionAttendanceNotesController.addSessionNote);
+], validateRequest, sessionAttendanceNotesController.addSessionNote);
 
 // Get session notes
 router.get('/:id/notes', verifyToken, [
-    param('id').isInt().withMessage('Session ID must be an integer')
-], sessionAttendanceNotesController.getSessionNotes);
-
-// ========================================================================
-// DISCORD USER MAPPING ROUTES
-// ========================================================================
-
-// Link Discord account to user
-router.post('/link-discord', verifyToken, [
-    body('discord_id').notEmpty().withMessage('Discord ID is required'),
-    body('discord_username').optional().isLength({ max: 100 }).withMessage('Discord username too long')
-], sessionDiscordController.linkDiscord);
+    sessionIdParam
+], validateRequest, sessionAttendanceNotesController.getSessionNotes);
 
 module.exports = router;

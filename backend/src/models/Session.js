@@ -2,6 +2,22 @@
 const BaseModel = require('./BaseModel');
 const dbUtils = require('../utils/dbUtils');
 
+// Shared SQL fragments
+const NOT_CANCELLED = "(status IS NULL OR status != 'cancelled')";
+// "The session being dealt for" window: a session that started less than 12
+// hours ago still counts, so tonight's session is current at the table too.
+const DEAL_WINDOW_START = "start_time > NOW() - INTERVAL '12 hours'";
+// A user's currently active character, used when an attendance row has no
+// character_id (legacy Discord handler, RSVP before an active character).
+// Expects the attendance table to be aliased as sa; exposes the row as ac.
+const ACTIVE_CHARACTER_JOIN = `LEFT JOIN LATERAL (
+                SELECT id, name FROM characters
+                WHERE user_id = sa.user_id AND active = true
+                ORDER BY id LIMIT 1
+            ) ac ON true`;
+// Display name for a session_attendance row (character first, then username).
+const DISPLAY_NAME = 'COALESCE(c.name, u.username)';
+
 class Session extends BaseModel {
     constructor() {
         super({
@@ -24,57 +40,6 @@ class Session extends BaseModel {
         `;
         const result = await dbUtils.executeQuery(query, [limit]);
         return result.rows;
-    }
-    
-    /**
-     * Get a session by ID with attendance information
-     * @param {number} sessionId - The session ID
-     * @returns {Promise<Object>} - Session with attendance information
-     */
-    async getSessionWithAttendance(sessionId) {
-        // Get session details
-        const sessionQuery = `SELECT * FROM game_sessions WHERE id = $1`;
-        const sessionResult = await dbUtils.executeQuery(sessionQuery, [sessionId]);
-        
-        if (sessionResult.rows.length === 0) {
-            return null;
-        }
-        
-        const session = sessionResult.rows[0];
-        
-        // Get attendance information
-        const attendanceQuery = `
-            SELECT sa.id, sa.status, sa.user_id, sa.character_id,
-                   u.username, c.name as character_name
-            FROM session_attendance sa
-            JOIN users u ON sa.user_id = u.id
-            LEFT JOIN characters c ON sa.character_id = c.id
-            WHERE sa.session_id = $1
-        `;
-        
-        const attendanceResult = await dbUtils.executeQuery(attendanceQuery, [sessionId]);
-        
-        // Group by attendance status
-        const attendance = {
-            accepted: [],
-            declined: [],
-            tentative: []
-        };
-        
-        attendanceResult.rows.forEach(row => {
-            attendance[row.status].push({
-                id: row.id,
-                user_id: row.user_id,
-                character_id: row.character_id,
-                username: row.username,
-                character_name: row.character_name
-            });
-        });
-        
-        return {
-            ...session,
-            attendance
-        };
     }
     
     /**
@@ -169,8 +134,7 @@ class Session extends BaseModel {
      * @returns {Promise<Array>} - Session rows with confirmed/declined/maybe aggregates
      */
     async getEnhancedList(status, upcomingOnly) {
-        // Build WHERE clause conditions using array pattern for safer SQL construction
-        const whereConditions = ['1=1'];
+        const whereConditions = [];
         const queryParams = [];
 
         if (status) {
@@ -182,8 +146,11 @@ class Session extends BaseModel {
             whereConditions.push('gs.start_time > NOW()');
         }
 
-        // Join conditions with AND - safer than string concatenation
-        const whereClause = whereConditions.join(' AND ');
+        const whereClause = whereConditions.length > 0
+            ? `WHERE ${whereConditions.join(' AND ')}`
+            : '';
+
+        const lateSuffix = "CASE WHEN sa.response_type = 'late' THEN ' (late)' ELSE '' END";
 
         const result = await dbUtils.executeQuery(`
             SELECT
@@ -191,26 +158,17 @@ class Session extends BaseModel {
                 COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.status = 'accepted') as confirmed_count,
                 COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.status = 'declined') as declined_count,
                 COUNT(DISTINCT sa.user_id) FILTER (WHERE sa.status = 'tentative') as maybe_count,
-                0 as modified_count,
-                string_agg(
-                    DISTINCT CASE WHEN sa.status = 'accepted'
-                    THEN COALESCE(c.name, u.username) || CASE WHEN sa.response_type = 'late' THEN ' (late)' ELSE '' END
-                    END,
-                    ', ' ORDER BY CASE WHEN sa.status = 'accepted' THEN COALESCE(c.name, u.username) || CASE WHEN sa.response_type = 'late' THEN ' (late)' ELSE '' END END
-                ) as confirmed_names,
-                string_agg(
-                    DISTINCT CASE WHEN sa.status = 'declined' THEN COALESCE(c.name, u.username) END,
-                    ', ' ORDER BY CASE WHEN sa.status = 'declined' THEN COALESCE(c.name, u.username) END
-                ) as declined_names,
-                string_agg(
-                    DISTINCT CASE WHEN sa.status = 'tentative' THEN COALESCE(c.name, u.username) END,
-                    ', ' ORDER BY CASE WHEN sa.status = 'tentative' THEN COALESCE(c.name, u.username) END
-                ) as maybe_names
+                string_agg(DISTINCT ${DISPLAY_NAME} || ${lateSuffix}, ', '
+                    ORDER BY ${DISPLAY_NAME} || ${lateSuffix}) FILTER (WHERE sa.status = 'accepted') as confirmed_names,
+                string_agg(DISTINCT ${DISPLAY_NAME}, ', '
+                    ORDER BY ${DISPLAY_NAME}) FILTER (WHERE sa.status = 'declined') as declined_names,
+                string_agg(DISTINCT ${DISPLAY_NAME}, ', '
+                    ORDER BY ${DISPLAY_NAME}) FILTER (WHERE sa.status = 'tentative') as maybe_names
             FROM game_sessions gs
             LEFT JOIN session_attendance sa ON gs.id = sa.session_id
             LEFT JOIN users u ON sa.user_id = u.id
             LEFT JOIN characters c ON sa.character_id = c.id
-            WHERE ${whereClause}
+            ${whereClause}
             GROUP BY gs.id
             ORDER BY gs.start_time
         `, queryParams);
@@ -218,15 +176,17 @@ class Session extends BaseModel {
     }
 
     /**
-     * The next upcoming non-cancelled session, or null.
+     * The session being dealt for next (see DEAL_WINDOW_START): the first
+     * non-cancelled session that started less than 12 hours ago or is still to
+     * come, or null.
      * @returns {Promise<Object|null>}
      */
     async getNextUpcomingSession() {
         const result = await dbUtils.executeQuery(`
             SELECT id, title, start_time, status
             FROM game_sessions
-            WHERE start_time > NOW()
-              AND (status IS NULL OR status != 'cancelled')
+            WHERE ${DEAL_WINDOW_START}
+              AND ${NOT_CANCELLED}
             ORDER BY start_time ASC
             LIMIT 1
         `);
@@ -254,11 +214,7 @@ class Session extends BaseModel {
             FROM session_attendance sa
             JOIN users u ON sa.user_id = u.id
             LEFT JOIN characters c ON sa.character_id = c.id
-            LEFT JOIN LATERAL (
-                SELECT id, name FROM characters
-                WHERE user_id = sa.user_id AND active = true
-                ORDER BY id LIMIT 1
-            ) ac ON true
+            ${ACTIVE_CHARACTER_JOIN}
             WHERE sa.session_id = $1
         `, [sessionId]);
         return result.rows;
@@ -273,8 +229,8 @@ class Session extends BaseModel {
         const result = await dbUtils.executeQuery(`
             SELECT id
             FROM game_sessions
-            WHERE start_time > NOW() - INTERVAL '12 hours'
-              AND (status IS NULL OR status != 'cancelled')
+            WHERE ${DEAL_WINDOW_START}
+              AND ${NOT_CANCELLED}
             ORDER BY start_time ASC
             LIMIT 1
         `);
@@ -291,7 +247,7 @@ class Session extends BaseModel {
             SELECT id, title, start_time
             FROM game_sessions
             WHERE start_time <= NOW()
-              AND (status IS NULL OR status != 'cancelled')
+              AND ${NOT_CANCELLED}
               AND ($1::int IS NULL OR id <> $1::int)
             ORDER BY start_time DESC
             LIMIT 1
@@ -312,25 +268,10 @@ class Session extends BaseModel {
         const result = await dbUtils.executeQuery(`
             SELECT DISTINCT COALESCE(sa.character_id, ac.id) AS character_id
             FROM session_attendance sa
-            LEFT JOIN LATERAL (
-                SELECT id FROM characters
-                WHERE user_id = sa.user_id AND active = true
-                ORDER BY id LIMIT 1
-            ) ac ON true
+            ${ACTIVE_CHARACTER_JOIN}
             WHERE sa.session_id = $1
               AND (sa.response_type = ANY($2::text[]) OR sa.status = $3)
         `, [sessionId, attendingResponses, acceptedStatus]);
-        return result.rows;
-    }
-
-    /**
-     * Rows of the upcoming_sessions view (next 10).
-     * @returns {Promise<Array>}
-     */
-    async getUpcomingDetailed() {
-        const result = await dbUtils.executeQuery(`
-            SELECT * FROM upcoming_sessions ORDER BY start_time LIMIT 10
-        `);
         return result.rows;
     }
 
@@ -366,33 +307,6 @@ class Session extends BaseModel {
         return result.rows;
     }
 
-    /**
-     * A user's Discord mapping, or null when the user does not exist.
-     * @returns {Promise<Object|null>}
-     */
-    async getUserDiscordMapping(userId) {
-        const result = await dbUtils.executeQuery(`
-            SELECT id, username, discord_id, discord_username
-            FROM users
-            WHERE id = $1
-        `, [userId]);
-        return result.rows.length === 0 ? null : result.rows[0];
-    }
-
-    /**
-     * Link a Discord account to a user. Unique violations (pg code 23505)
-     * propagate to the caller.
-     * @returns {Promise<Object|null>} - Updated mapping, or null when no such user
-     */
-    async linkUserDiscord(userId, discordId, discordUsername) {
-        const result = await dbUtils.executeQuery(`
-            UPDATE users
-            SET discord_id = $1, discord_username = $2, updated_at = CURRENT_TIMESTAMP
-            WHERE id = $3
-            RETURNING id, username, discord_id, discord_username
-        `, [discordId, discordUsername, userId]);
-        return result.rows.length === 0 ? null : result.rows[0];
-    }
 }
 
 module.exports = new Session();

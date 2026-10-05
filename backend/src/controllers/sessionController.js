@@ -27,26 +27,6 @@ const getUpcomingSessions = async (req, res) => {
 };
 
 /**
- * Get a specific session with attendance information
- */
-const getSession = async (req, res) => {
-    const { id } = req.params;
-    const sessionId = parseInt(id);
-
-    if (!id || isNaN(sessionId)) {
-        throw controllerFactory.createValidationError('Valid session ID is required');
-    }
-
-    const session = await Session.getSessionWithAttendance(sessionId);
-
-    if (!session) {
-        throw controllerFactory.createNotFoundError('Session not found');
-    }
-
-    controllerFactory.sendSuccessResponse(res, session, 'Session retrieved successfully');
-};
-
-/**
  * Create a new session
  */
 const createSession = async (req, res) => {
@@ -1194,10 +1174,6 @@ const updateAttendanceValidation = {
 module.exports = {
     getUpcomingSessions: controllerFactory.createHandler(getUpcomingSessions, {
         errorMessage: 'Error retrieving upcoming sessions'
-    }),
-    
-    getSession: controllerFactory.createHandler(getSession, {
-        errorMessage: 'Error retrieving session'
     }),
     
     createSession: controllerFactory.createHandler(createSession, {

@@ -631,18 +631,6 @@ class SessionService {
         return attendanceService.getSessionAttendance(sessionId);
     }
 
-    async getSessionAttendanceDetails(sessionId) {
-        return attendanceService.getSessionAttendanceDetails(sessionId);
-    }
-
-    async getConfirmedAttendanceCount(sessionId) {
-        return attendanceService.getConfirmedAttendanceCount(sessionId);
-    }
-
-    async getNonResponders(sessionId) {
-        return attendanceService.getNonResponders(sessionId);
-    }
-
     // Discord methods - delegate to SessionDiscordService
     async postSessionAnnouncement(sessionId) {
         return sessionDiscordService.postSessionAnnouncement(sessionId);
@@ -660,29 +648,9 @@ class SessionService {
         return sessionDiscordService.getDiscordSettings();
     }
 
-    async getReactionMap() {
-        return sessionDiscordService.getReactionMap();
-    }
-
     // Recurring methods - delegate to RecurringSessionService
     async createRecurringSession(sessionData) {
         return recurringSessionService.createRecurringSession(sessionData);
-    }
-
-    async getRecurringSessionInstances(templateId, filters = {}) {
-        return recurringSessionService.getRecurringSessionInstances(templateId, filters);
-    }
-
-    async updateRecurringSession(templateId, updateData) {
-        return recurringSessionService.updateRecurringSession(templateId, updateData);
-    }
-
-    async deleteRecurringSession(templateId, deleteFutureInstances = true) {
-        return recurringSessionService.deleteRecurringSession(templateId, deleteFutureInstances);
-    }
-
-    async generateAdditionalInstances(templateId, count = 12) {
-        return recurringSessionService.generateAdditionalInstances(templateId, count);
     }
 
     // Utility methods

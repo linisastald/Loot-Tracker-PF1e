@@ -43,51 +43,6 @@ describe('Session model', () => {
     });
   });
 
-  describe('getSessionWithAttendance', () => {
-    it('should return session with grouped attendance', async () => {
-      // Session query
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ id: 1, title: 'Session 1' }],
-      });
-      // Attendance query
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [
-          { id: 1, status: 'accepted', user_id: 1, username: 'player1', character_id: 1, character_name: 'Valeros' },
-          { id: 2, status: 'declined', user_id: 2, username: 'player2', character_id: null, character_name: null },
-          { id: 3, status: 'tentative', user_id: 3, username: 'player3', character_id: 2, character_name: 'Merisiel' },
-        ],
-      });
-
-      const result = await Session.getSessionWithAttendance(1);
-
-      expect(result.title).toBe('Session 1');
-      expect(result.attendance.accepted).toHaveLength(1);
-      expect(result.attendance.declined).toHaveLength(1);
-      expect(result.attendance.tentative).toHaveLength(1);
-      expect(result.attendance.accepted[0].username).toBe('player1');
-    });
-
-    it('should return null when session not found', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      const result = await Session.getSessionWithAttendance(999);
-
-      expect(result).toBeNull();
-    });
-
-    it('should handle empty attendance', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [{ id: 1, title: 'Empty Session' }] })
-        .mockResolvedValueOnce({ rows: [] });
-
-      const result = await Session.getSessionWithAttendance(1);
-
-      expect(result.attendance.accepted).toHaveLength(0);
-      expect(result.attendance.declined).toHaveLength(0);
-      expect(result.attendance.tentative).toHaveLength(0);
-    });
-  });
-
   describe('updateAttendance', () => {
     it('should upsert attendance record', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1, status: 'accepted' }] });

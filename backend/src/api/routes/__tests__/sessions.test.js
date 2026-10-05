@@ -5,25 +5,23 @@
  * the controller pattern and use direct SQL via dbUtils or sessionService.
  *
  * Approach: Mount the router on a minimal Express app via supertest, with
- * auth/role middleware mocked to pass through, and dbUtils/sessionService
- * mocked to return controlled data.
+ * the auth middleware mocked (the per-campaign role comes from the
+ * x-test-role header, default DM), the REAL checkRole so DM-only gating is
+ * asserted, and dbUtils/sessionService mocked to return controlled data.
  */
 
 // ---------------------------------------------------------------------------
 // Mocks - must be declared before any require() that triggers the route file
 // ---------------------------------------------------------------------------
 
-// Mock auth middleware to inject a test user and call next()
+// Mock auth middleware to inject a test user and the per-campaign role that
+// the real checkRole reads (req.campaignRole), then call next()
 jest.mock('../../../middleware/auth', () => {
   return (req, res, next) => {
-    req.user = req._testUser || { id: 1, role: 'DM', username: 'testdm' };
+    req.user = { id: 1, role: 'DM', username: 'testdm' };
+    req.campaignRole = req.headers['x-test-role'] || 'DM';
     next();
   };
-});
-
-// Mock checkRole to always pass (individual role tests belong in middleware tests)
-jest.mock('../../../middleware/checkRole', () => {
-  return () => (req, res, next) => next();
 });
 
 // Mock validation middleware to always pass (pass-through)
@@ -35,7 +33,6 @@ jest.mock('../../../middleware/validation', () => ({
 // Mock the session controller (delegates used by non-inline routes)
 jest.mock('../../../controllers/sessionController', () => ({
   getUpcomingSessions: jest.fn((req, res) => res.json({ success: true, data: [] })),
-  getSession: jest.fn((req, res) => res.json({ success: true, data: {} })),
   createSession: jest.fn((req, res) => res.status(201).json({ success: true })),
   updateSession: jest.fn((req, res) => res.json({ success: true })),
   deleteSession: jest.fn((req, res) => res.json({ success: true })),
@@ -66,10 +63,6 @@ jest.mock('../../../models/SessionTask', () => ({
 // Mock sessionService
 jest.mock('../../../services/sessionService', () => ({
   createRecurringSession: jest.fn(),
-  getRecurringSessionInstances: jest.fn(),
-  updateRecurringSession: jest.fn(),
-  deleteRecurringSession: jest.fn(),
-  generateAdditionalInstances: jest.fn(),
   postSessionAnnouncement: jest.fn(),
   sendSessionReminder: jest.fn(),
   uncancelSession: jest.fn(),
@@ -88,6 +81,8 @@ const express = require('express');
 const request = require('supertest');
 const dbUtils = require('../../../utils/dbUtils');
 const sessionService = require('../../../services/sessionService');
+const SessionTask = require('../../../models/SessionTask');
+const sessionController = require('../../../controllers/sessionController');
 const logger = require('../../../utils/logger');
 
 // Build a minimal Express app with the sessions router
@@ -110,7 +105,64 @@ let app;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // resetMocks wipes the factory default, so restore "no task has an announce
+  // label" explicitly; otherwise getAll resolves undefined and every task-history
+  // test would silently exercise the lookup-failure path.
+  SessionTask.getAll.mockResolvedValue([]);
+  // Same for the mocked controller handlers: without an implementation a
+  // request would never get a response.
+  for (const handler of Object.values(sessionController)) {
+    handler.mockImplementation((req, res) => res.json({ success: true }));
+  }
   app = createApp();
+});
+
+// ===========================================================================
+// DM-only gating (real checkRole)
+// ===========================================================================
+describe('DM-only session routes', () => {
+  const dmOnly = [
+    ['post', '/sessions'],
+    ['put', '/sessions/5'],
+    ['delete', '/sessions/5'],
+    ['post', '/sessions/check-notifications'],
+    ['post', '/sessions/recurring'],
+    ['post', '/sessions/5/announce'],
+    ['post', '/sessions/5/remind'],
+    ['post', '/sessions/5/uncancel'],
+  ];
+
+  it.each(dmOnly)('%s %s rejects a Player with 403 and never reaches the handler', async (method, path) => {
+    const res = await request(app)[method](path).set('x-test-role', 'Player').send({});
+
+    expect(res.status).toBe(403);
+    expect(sessionService.createRecurringSession).not.toHaveBeenCalled();
+    expect(sessionService.postSessionAnnouncement).not.toHaveBeenCalled();
+    expect(sessionService.sendSessionReminder).not.toHaveBeenCalled();
+    expect(sessionService.uncancelSession).not.toHaveBeenCalled();
+    expect(sessionController.createSession).not.toHaveBeenCalled();
+    expect(sessionController.updateSession).not.toHaveBeenCalled();
+    expect(sessionController.deleteSession).not.toHaveBeenCalled();
+    expect(sessionController.checkAndSendSessionNotifications).not.toHaveBeenCalled();
+  });
+
+  it.each(dmOnly)('%s %s is allowed through for a DM (not 403)', async (method, path) => {
+    const res = await request(app)[method](path).set('x-test-role', 'DM').send({});
+
+    expect(res.status).not.toBe(403);
+  });
+
+  it.each([
+    ['get', '/sessions'],
+    ['get', '/sessions/enhanced'],
+    ['post', '/sessions/5/attendance'],
+  ])('%s %s stays open to a Player', async (method, path) => {
+    dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+    const res = await request(app)[method](path).set('x-test-role', 'Player').send({});
+
+    expect(res.status).not.toBe(403);
+  });
 });
 
 // ===========================================================================
@@ -141,9 +193,9 @@ describe('GET /sessions/enhanced', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data).toEqual(mockSessions);
     expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
-    // No query params means the WHERE clause should just be '1=1'
+    // No query params means there is no WHERE clause at all
     const sql = dbUtils.executeQuery.mock.calls[0][0];
-    expect(sql).toContain('1=1');
+    expect(sql).not.toMatch(/^[ \t]*WHERE\b/m);
     expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([]);
   });
 
@@ -224,7 +276,7 @@ describe('POST /sessions/recurring', () => {
     description: 'Our regular Wednesday game',
   };
 
-  it('should create a recurring session with defaults', async () => {
+  it('should create a recurring session and leave defaults to the service', async () => {
     const mockResult = { id: 'tmpl-1', ...validBody };
     sessionService.createRecurringSession.mockResolvedValue(mockResult);
 
@@ -236,12 +288,12 @@ describe('POST /sessions/recurring', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data).toEqual(mockResult);
 
-    // Verify defaults were applied
+    // The route only adds created_by; omitted fields stay undefined so the
+    // service applies DEFAULT_VALUES (one source of truth).
     const callArg = sessionService.createRecurringSession.mock.calls[0][0];
-    expect(callArg.auto_announce_hours).toBe(168);
-    expect(callArg.reminder_hours).toBe(48);
-    expect(callArg.confirmation_hours).toBe(48);
-    expect(callArg.maximum_players).toBe(6);
+    expect(callArg.auto_announce_hours).toBeUndefined();
+    expect(callArg.reminder_hours).toBeUndefined();
+    expect(callArg.maximum_players).toBeUndefined();
     expect(callArg.created_by).toBe(1); // from mocked req.user.id
   });
 
@@ -277,131 +329,6 @@ describe('POST /sessions/recurring', () => {
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
     expect(logger.error).toHaveBeenCalled();
-  });
-});
-
-// ===========================================================================
-// GET /sessions/recurring/:templateId/instances
-// ===========================================================================
-describe('GET /sessions/recurring/:templateId/instances', () => {
-  it('should return instances for a template', async () => {
-    const mockInstances = [
-      { id: 1, template_id: 'tmpl-1', start_time: '2026-04-15T18:00:00Z' },
-      { id: 2, template_id: 'tmpl-1', start_time: '2026-04-22T18:00:00Z' },
-    ];
-    sessionService.getRecurringSessionInstances.mockResolvedValue(mockInstances);
-
-    const res = await request(app).get('/sessions/recurring/tmpl-1/instances');
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toEqual(mockInstances);
-    expect(sessionService.getRecurringSessionInstances).toHaveBeenCalledWith(
-      'tmpl-1',
-      { upcoming_only: false, limit: 10 }
-    );
-  });
-
-  it('should pass upcoming_only and limit filters', async () => {
-    sessionService.getRecurringSessionInstances.mockResolvedValue([]);
-
-    const res = await request(app).get(
-      '/sessions/recurring/tmpl-1/instances?upcoming_only=true&limit=5'
-    );
-
-    expect(res.status).toBe(200);
-    expect(sessionService.getRecurringSessionInstances).toHaveBeenCalledWith(
-      'tmpl-1',
-      { upcoming_only: true, limit: 5 }
-    );
-  });
-
-  it('should default limit to 10 when not provided', async () => {
-    sessionService.getRecurringSessionInstances.mockResolvedValue([]);
-
-    await request(app).get('/sessions/recurring/tmpl-1/instances');
-
-    const filters = sessionService.getRecurringSessionInstances.mock.calls[0][1];
-    expect(filters.limit).toBe(10);
-  });
-
-  it('should return 500 when service throws', async () => {
-    sessionService.getRecurringSessionInstances.mockRejectedValue(new Error('fail'));
-
-    const res = await request(app).get('/sessions/recurring/tmpl-1/instances');
-
-    expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
-    expect(res.body.message).toBe('Failed to get session instances');
-  });
-});
-
-// ===========================================================================
-// PUT /sessions/recurring/:templateId
-// ===========================================================================
-describe('PUT /sessions/recurring/:templateId', () => {
-  it('should update a recurring session template', async () => {
-    const mockTemplate = { id: 'tmpl-1', title: 'Updated Title' };
-    sessionService.updateRecurringSession.mockResolvedValue(mockTemplate);
-
-    const res = await request(app)
-      .put('/sessions/recurring/tmpl-1')
-      .send({ title: 'Updated Title' });
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toEqual(mockTemplate);
-    expect(sessionService.updateRecurringSession).toHaveBeenCalledWith(
-      'tmpl-1',
-      { title: 'Updated Title' }
-    );
-  });
-
-  it('should return 500 when service throws', async () => {
-    sessionService.updateRecurringSession.mockRejectedValue(new Error('not found'));
-
-    const res = await request(app)
-      .put('/sessions/recurring/tmpl-1')
-      .send({ title: 'X' });
-
-    expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
-  });
-});
-
-// ===========================================================================
-// DELETE /sessions/recurring/:templateId
-// ===========================================================================
-describe('DELETE /sessions/recurring/:templateId', () => {
-  it('should delete a recurring session and future instances by default', async () => {
-    const mockResult = { id: 'tmpl-1', deleted: true };
-    sessionService.deleteRecurringSession.mockResolvedValue(mockResult);
-
-    const res = await request(app).delete('/sessions/recurring/tmpl-1');
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(sessionService.deleteRecurringSession).toHaveBeenCalledWith('tmpl-1', true);
-  });
-
-  it('should preserve future instances when delete_instances is false', async () => {
-    sessionService.deleteRecurringSession.mockResolvedValue({ id: 'tmpl-1' });
-
-    const res = await request(app).delete(
-      '/sessions/recurring/tmpl-1?delete_instances=false'
-    );
-
-    expect(res.status).toBe(200);
-    expect(sessionService.deleteRecurringSession).toHaveBeenCalledWith('tmpl-1', false);
-  });
-
-  it('should return 500 when service throws', async () => {
-    sessionService.deleteRecurringSession.mockRejectedValue(new Error('fail'));
-
-    const res = await request(app).delete('/sessions/recurring/tmpl-1');
-
-    expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
   });
 });
 
@@ -890,159 +817,6 @@ describe('POST /sessions/:id/uncancel', () => {
 });
 
 // ===========================================================================
-// POST /sessions/link-discord
-// ===========================================================================
-describe('POST /sessions/link-discord', () => {
-  it('should link a Discord account to the current user', async () => {
-    const mockUser = { id: 1, username: 'testdm', discord_id: '123456', discord_username: 'TestDM#1234' };
-    dbUtils.executeQuery.mockResolvedValue({ rows: [mockUser] });
-
-    const res = await request(app)
-      .post('/sessions/link-discord')
-      .send({ discord_id: '123456', discord_username: 'TestDM#1234' });
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toEqual(mockUser);
-    expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE users'),
-      ['123456', 'TestDM#1234', 1]
-    );
-  });
-
-  it('should return 404 when user is not found', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-    const res = await request(app)
-      .post('/sessions/link-discord')
-      .send({ discord_id: '123456' });
-
-    expect(res.status).toBe(404);
-    expect(res.body.message).toBe('User not found');
-  });
-
-  it('should return 400 on unique constraint violation (duplicate discord_id)', async () => {
-    const uniqueError = new Error('duplicate key');
-    uniqueError.code = '23505';
-    dbUtils.executeQuery.mockRejectedValue(uniqueError);
-
-    const res = await request(app)
-      .post('/sessions/link-discord')
-      .send({ discord_id: '123456' });
-
-    expect(res.status).toBe(400);
-    expect(res.body.message).toContain('already linked');
-  });
-
-  it('should return 500 on generic database error', async () => {
-    dbUtils.executeQuery.mockRejectedValue(new Error('connection reset'));
-
-    const res = await request(app)
-      .post('/sessions/link-discord')
-      .send({ discord_id: '123456' });
-
-    expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
-  });
-});
-
-// ===========================================================================
-// GET /sessions/upcoming-detailed
-// ===========================================================================
-describe('GET /sessions/upcoming-detailed', () => {
-  it('should return upcoming sessions from the view', async () => {
-    const mockRows = [{ id: 1, title: 'Next Session', start_time: '2026-04-15T18:00:00Z' }];
-    dbUtils.executeQuery.mockResolvedValue({ rows: mockRows });
-
-    const res = await request(app).get('/sessions/upcoming-detailed');
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toEqual(mockRows);
-  });
-
-  it('should return 500 on database error', async () => {
-    dbUtils.executeQuery.mockRejectedValue(new Error('fail'));
-
-    const res = await request(app).get('/sessions/upcoming-detailed');
-
-    expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
-  });
-});
-
-// ===========================================================================
-// GET /sessions/discord-mapping
-// ===========================================================================
-describe('GET /sessions/discord-mapping', () => {
-  it('should return the current user discord mapping', async () => {
-    const mockUser = { id: 1, username: 'testdm', discord_id: '123', discord_username: 'DM#1' };
-    dbUtils.executeQuery.mockResolvedValue({ rows: [mockUser] });
-
-    const res = await request(app).get('/sessions/discord-mapping');
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toEqual(mockUser);
-  });
-
-  it('should return 404 when user is not found', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-    const res = await request(app).get('/sessions/discord-mapping');
-
-    expect(res.status).toBe(404);
-    expect(res.body.message).toBe('User not found');
-  });
-
-  it('should return 500 on database error', async () => {
-    dbUtils.executeQuery.mockRejectedValue(new Error('fail'));
-
-    const res = await request(app).get('/sessions/discord-mapping');
-
-    expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
-  });
-});
-
-// ===========================================================================
-// POST /sessions/recurring/:templateId/generate
-// ===========================================================================
-describe('POST /sessions/recurring/:templateId/generate', () => {
-  it('should generate additional instances with default count', async () => {
-    const mockInstances = [{ id: 1 }, { id: 2 }];
-    sessionService.generateAdditionalInstances.mockResolvedValue(mockInstances);
-
-    const res = await request(app).post('/sessions/recurring/tmpl-1/generate');
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(res.body.message).toContain('2');
-    expect(sessionService.generateAdditionalInstances).toHaveBeenCalledWith('tmpl-1', 12);
-  });
-
-  it('should use provided count', async () => {
-    sessionService.generateAdditionalInstances.mockResolvedValue([{ id: 1 }]);
-
-    const res = await request(app)
-      .post('/sessions/recurring/tmpl-1/generate')
-      .send({ count: 5 });
-
-    expect(res.status).toBe(200);
-    expect(sessionService.generateAdditionalInstances).toHaveBeenCalledWith('tmpl-1', 5);
-  });
-
-  it('should return 500 when service throws', async () => {
-    sessionService.generateAdditionalInstances.mockRejectedValue(new Error('fail'));
-
-    const res = await request(app).post('/sessions/recurring/tmpl-1/generate');
-
-    expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
-  });
-});
-
-// ===========================================================================
 // POST /sessions/:id/remind
 // ===========================================================================
 describe('POST /sessions/:id/remind', () => {
@@ -1125,5 +899,25 @@ describe('POST /sessions/:id/attendance/detailed', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
+  });
+});
+
+// ===========================================================================
+// task-history: announcement lookup failure (F-0092)
+// ===========================================================================
+describe('POST /sessions/task-history when the task definition lookup fails', () => {
+  it('still saves the row, with null announcements and a warning', async () => {
+    SessionTask.getAll.mockRejectedValue(new Error('definitions unavailable'));
+    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 9 }] });
+
+    const res = await request(app)
+      .post('/sessions/task-history')
+      .send({ assignments: { pre: { Valeros: ['Snacks'] } } });
+
+    expect(res.status).toBe(201);
+    const params = dbUtils.executeQuery.mock.calls[0][1];
+    expect(params[5]).toBeNull(); // snack_master_name
+    expect(params[6]).toBeNull(); // announcements
+    expect(logger.warn).toHaveBeenCalled();
   });
 });
