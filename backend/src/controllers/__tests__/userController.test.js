@@ -42,13 +42,16 @@ function createMockRes() {
 
 // Helper to create a mock request object
 function createMockReq(overrides = {}) {
-  return {
+  const req = {
     body: {},
     params: {},
     query: {},
     user: { id: 1, role: 'Player' },
     ...overrides,
   };
+  // Mirror verifyToken: the per-campaign role is what authorizes DM actions
+  if (req.campaignRole === undefined && req.user) req.campaignRole = req.user.role;
+  return req;
 }
 
 // Reusable test data

@@ -46,13 +46,16 @@ function createMockRes() {
 }
 
 function createMockReq(overrides = {}) {
-  return {
+  const req = {
     body: {},
     params: {},
     query: {},
     user: { id: 1, role: 'DM' },
     ...overrides,
   };
+  // Mirror verifyToken: the per-campaign role is what authorizes DM actions
+  if (req.campaignRole === undefined && req.user) req.campaignRole = req.user.role;
+  return req;
 }
 
 describe('settingsController', () => {

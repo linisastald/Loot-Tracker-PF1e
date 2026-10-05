@@ -27,8 +27,9 @@ const FIRST_DM_BOOTSTRAP_LOCK_KEY = 727450001;
 
 /**
  * Read the registration_mode setting ('open' | 'invite-only' | 'closed').
- * A missing row or an unrecognized value defaults to 'open' (fresh installs
- * seed 'open'; migration 046 derives the mode for existing deployments).
+ * A missing row or an unrecognized value defaults to 'invite-only' (fail
+ * closed; fresh installs seed 'open' and migration 046 derives the mode for
+ * existing deployments, so a row normally exists).
  * @return {Promise<string>} The effective registration mode
  */
 const getRegistrationMode = async () => {
@@ -36,7 +37,7 @@ const getRegistrationMode = async () => {
         "SELECT value FROM settings WHERE name = 'registration_mode'"
     );
     const value = result.rows[0]?.value;
-    return REGISTRATION_MODES.includes(value) ? value : 'open';
+    return REGISTRATION_MODES.includes(value) ? value : 'invite-only';
 };
 
 /**

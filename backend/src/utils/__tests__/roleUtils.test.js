@@ -3,8 +3,8 @@
  *
  * hasDmRights is the single source of truth for "may this request perform DM
  * actions": superadmin always passes; otherwise the per-campaign role
- * (req.campaignRole, set by verifyToken) wins and the legacy JWT role
- * (req.user.role) is only a transition fallback.
+ * (req.campaignRole, set by verifyToken) decides; the legacy JWT role
+ * (req.user.role) is never consulted.
  */
 
 const { hasDmRights, isSuperadmin } = require('../roleUtils');
@@ -35,8 +35,9 @@ describe('roleUtils', () => {
       expect(hasDmRights({ isSuperadmin: true, user: { role: 'Player' } })).toBe(true);
     });
 
-    it('falls back to the JWT role when no campaignRole was resolved', () => {
-      expect(hasDmRights({ user: { role: 'DM' } })).toBe(true);
+    it('ignores a stale JWT DM role when no campaignRole was resolved', () => {
+      expect(hasDmRights({ user: { role: 'DM' } })).toBe(false);
+      expect(hasDmRights({ user: { role: 'DM' }, campaignRole: null })).toBe(false);
       expect(hasDmRights({ user: { role: 'Player' } })).toBe(false);
     });
 

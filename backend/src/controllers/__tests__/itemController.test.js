@@ -47,13 +47,16 @@ function mockRes() {
  * Helper to build a mock Express request object
  */
 function mockReq(overrides = {}) {
-  return {
+  const req = {
     query: {},
     params: {},
     body: {},
     user: { id: 1, role: 'player' },
     ...overrides,
   };
+  // Mirror verifyToken: the per-campaign role is what authorizes DM actions
+  if (req.campaignRole === undefined && req.user) req.campaignRole = req.user.role;
+  return req;
 }
 
 describe('itemController', () => {

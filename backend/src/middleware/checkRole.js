@@ -4,9 +4,8 @@ const logger = require('../utils/logger');
  * Middleware to check if user has required role(s).
  *
  * Multi-campaign aware: the role checked is the user's role **in the resolved
- * campaign** (`req.campaignRole`, set by verifyToken), falling back to the
- * legacy JWT role (`req.user.role`) on paths where campaign resolution has not
- * run. Superadmins (`req.isSuperadmin`) bypass campaign role checks entirely.
+ * campaign** (`req.campaignRole`, set by verifyToken). The legacy JWT role
+ * (`req.user.role`) is never consulted. Superadmins (`req.isSuperadmin`) bypass campaign role checks entirely.
  *
  * @param {Array<string>|string} roles - Allowed role(s) for the route
  * @returns {Function} Express middleware function
@@ -22,9 +21,8 @@ const checkRole = (roles) => (req, res, next) => {
       return next();
     }
 
-    // Per-campaign role (set by verifyToken) wins; fall back to the legacy
-    // JWT role for paths where campaign resolution has not run
-    const userRole = req.campaignRole ?? req.user?.role;
+    // Only the per-campaign role (set by verifyToken) counts
+    const userRole = req.campaignRole;
 
     if (!userRole) {
       logger.warn('Authorization failed: No user role found in token');

@@ -13,6 +13,7 @@ describe('checkRole middleware', () => {
   beforeEach(() => {
     req = {
       user: { role: 'player' },
+      campaignRole: 'player', // what verifyToken sets from the membership
       method: 'GET',
       originalUrl: '/api/test',
     };
@@ -57,8 +58,9 @@ describe('checkRole middleware', () => {
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  it('should return 403 when req.user has no role', () => {
+  it('should return 403 when there is no campaign role', () => {
     req.user = {};
+    delete req.campaignRole;
     const middleware = checkRole('player');
     middleware(req, res, next);
 
@@ -71,6 +73,7 @@ describe('checkRole middleware', () => {
 
   it('should return 403 when req.user is undefined', () => {
     req.user = undefined;
+    delete req.campaignRole;
     const middleware = checkRole('player');
     middleware(req, res, next);
 
@@ -79,7 +82,7 @@ describe('checkRole middleware', () => {
   });
 
   it('should allow dm role to access dm-only routes', () => {
-    req.user.role = 'dm';
+    req.campaignRole = 'dm';
     const middleware = checkRole('dm');
     middleware(req, res, next);
 
@@ -110,17 +113,19 @@ describe('checkRole middleware', () => {
       });
     });
 
-    it('should fall back to the JWT role when campaignRole is not set', () => {
+    it('should NOT fall back to the JWT role when campaignRole is not set (stale DM role grants nothing)', () => {
       req.user.role = 'DM';
-      // req.campaignRole intentionally undefined (non-campaign-resolved path)
+      delete req.campaignRole; // no campaign membership resolved
       const middleware = checkRole('DM');
       middleware(req, res, next);
 
-      expect(next).toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
     });
 
     it('should return 403 when neither campaignRole nor JWT role is set', () => {
       req.user = {};
+      delete req.campaignRole;
       const middleware = checkRole('DM');
       middleware(req, res, next);
 
@@ -165,8 +170,8 @@ describe('checkRole middleware', () => {
   });
 
   it('should return 500 on unexpected errors', () => {
-    // Force an error by making req.user a getter that throws
-    Object.defineProperty(req, 'user', {
+    // Force an error by making req.campaignRole a getter that throws
+    Object.defineProperty(req, 'campaignRole', {
       get() { throw new Error('unexpected'); },
     });
     const middleware = checkRole('player');

@@ -7,10 +7,10 @@ const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
 
 // General user routes - require authentication
-router.get('/me', verifyToken, userController.getCurrentUser);
-router.put('/change-password', verifyToken, userController.changePassword);
-router.put('/change-email', verifyToken, userController.changeEmail);
-router.put('/update-discord-id', verifyToken, userController.updateDiscordId);
+router.get('/me', verifyToken.allowNoCampaign, userController.getCurrentUser);
+router.put('/change-password', verifyToken.allowNoCampaign, userController.changePassword);
+router.put('/change-email', verifyToken.allowNoCampaign, userController.changeEmail);
+router.put('/update-discord-id', verifyToken.allowNoCampaign, userController.updateDiscordId);
 router.get('/characters', verifyToken, userController.getCharacters);
 router.post('/characters', verifyToken, userController.addCharacter);
 router.put('/characters', verifyToken, userController.updateCharacter);

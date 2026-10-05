@@ -5,11 +5,11 @@ const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
 
 // Campaign picker: the requesting user's campaigns (all campaigns for superadmins)
-router.get('/', verifyToken, campaignController.getMyCampaigns);
+router.get('/', verifyToken.allowNoCampaign, campaignController.getMyCampaigns);
 
 // Current campaign context (campaignId/role/isSuperadmin from verifyToken),
 // including the campaign's settings map (theme override etc.)
-router.get('/current', verifyToken, campaignController.getCurrentCampaign);
+router.get('/current', verifyToken.allowNoCampaign, campaignController.getCurrentCampaign);
 
 // Campaign member roster (DM User Management page) — DM of the current
 // campaign only (superadmins pass via the checkRole bypass).

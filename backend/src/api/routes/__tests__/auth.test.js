@@ -13,9 +13,13 @@
  */
 
 // Mock auth middleware to pass through
-jest.mock('../../../middleware/auth', () => (req, res, next) => {
-  req.user = { id: 1, role: 'DM', username: 'testdm' };
-  next();
+jest.mock('../../../middleware/auth', () => {
+  const mw = (req, res, next) => {
+    req.user = { id: 1, role: 'DM', username: 'testdm' };
+    next();
+  };
+  mw.allowNoCampaign = mw;
+  return mw;
 });
 
 // Mock the controller: every handler reports which endpoint was reached

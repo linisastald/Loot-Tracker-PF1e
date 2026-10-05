@@ -15,8 +15,13 @@ jest.mock('../../utils/controllerFactory', () => ({
 
 describe('ValidationService', () => {
   describe('requireDM', () => {
-    it('should not throw for DM role (JWT fallback, no campaign resolution)', () => {
-      expect(() => ValidationService.requireDM({ user: { role: 'DM' } })).not.toThrow();
+    it('should not throw for a per-campaign DM', () => {
+      expect(() => ValidationService.requireDM({ campaignRole: 'DM', user: { role: 'DM' } })).not.toThrow();
+    });
+
+    it('should throw for a stale JWT DM role without a campaign role', () => {
+      expect(() => ValidationService.requireDM({ user: { role: 'DM' } }))
+        .toThrow('Only DMs can perform this operation');
     });
 
     it('should throw AuthorizationError for non-DM', () => {

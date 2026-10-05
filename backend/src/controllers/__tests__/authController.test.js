@@ -66,7 +66,7 @@ function createMockRes() {
 
 // Helper to create a mock request object
 function createMockReq(overrides = {}) {
-  return {
+  const req = {
     body: {},
     params: {},
     query: {},
@@ -74,6 +74,9 @@ function createMockReq(overrides = {}) {
     user: null,
     ...overrides,
   };
+  // Mirror verifyToken: the per-campaign role is what authorizes DM actions
+  if (req.campaignRole === undefined && req.user) req.campaignRole = req.user.role;
+  return req;
 }
 
 describe('authController', () => {
@@ -875,28 +878,18 @@ describe('authController', () => {
       expect(res.created).not.toHaveBeenCalled();
     });
 
-    it('should default to open mode when the registration_mode row is missing', async () => {
+    it('should behave as invite-only when the registration_mode row is missing (no invite -> rejected)', async () => {
       const req = createMockReq({ body: { ...validBody } });
       const res = createMockRes();
 
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })   // no registration_mode row
-        .mockResolvedValueOnce({ rows: [] })   // username ok
-        .mockResolvedValueOnce({ rows: [] });  // email ok
-
-      dbUtils.executeTransaction.mockImplementation(async (callback) => {
-        const txClient = {
-          query: jest.fn().mockResolvedValueOnce({
-            rows: [{ id: 15, username: 'newplayer', role: 'Player', email: 'new@example.com' }],
-          }),
-          release: jest.fn(),
-        };
-        return await callback(txClient);
-      });
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });   // no registration_mode row
 
       await authController.registerUser(req, res);
 
-      expect(res.created).toHaveBeenCalled();
+      expect(res.validationError).toHaveBeenCalledWith(
+        'Invitation code is required for registration'
+      );
+      expect(res.created).not.toHaveBeenCalled();
     });
   });
 
@@ -1062,7 +1055,7 @@ describe('authController', () => {
       );
     });
 
-    it('should default to open when the registration_mode row does not exist', async () => {
+    it('should default to invite-only when the registration_mode row does not exist', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1071,12 +1064,12 @@ describe('authController', () => {
       await authController.checkRegistrationStatus(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { mode: 'open', registrationsOpen: true },
+        { mode: 'invite-only', registrationsOpen: true },
         expect.any(String)
       );
     });
 
-    it('should default to open for an unrecognized stored value', async () => {
+    it('should default to invite-only for an unrecognized stored value', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -1085,7 +1078,7 @@ describe('authController', () => {
       await authController.checkRegistrationStatus(req, res);
 
       expect(res.success).toHaveBeenCalledWith(
-        { mode: 'open', registrationsOpen: true },
+        { mode: 'invite-only', registrationsOpen: true },
         expect.any(String)
       );
     });

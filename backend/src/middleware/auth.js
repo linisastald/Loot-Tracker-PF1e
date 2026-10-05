@@ -32,8 +32,14 @@ const CAMPAIGN_HEADER_PATTERN = /^\d+$/;
  * - `X-Campaign-Id` header present: the user must be a member of that campaign
  *   (uses the membership's role) or a superadmin (allowed as 'DM'); otherwise 403.
  * - Header absent (legacy clients): the membership with the lowest campaign_id
- *   is used — deterministic, and campaign 1 for all existing users. Users with
- *   no memberships fall back to campaign 1 with the legacy JWT role.
+ *   is used — deterministic, and campaign 1 for all existing users.
+ * - No memberships and not a superadmin: NO campaign context. `verifyToken`
+ *   answers 403 ("not a member of any campaign"); only routes mounted with
+ *   `verifyToken.allowNoCampaign` (identity, campaign picker, invite
+ *   redemption, own-account settings) are let through, with `req.campaignId`
+ *   and `req.campaignRole` null and queries scoped to campaign 0 (matches no
+ *   rows under RLS). A superadmin without memberships defaults to campaign 1
+ *   as DM.
  *
  * Sets `req.campaignId` (number), `req.campaignRole` ('DM'|'Player') and
  * `req.isSuperadmin` (boolean), then runs the rest of the middleware chain
@@ -45,7 +51,13 @@ const CAMPAIGN_HEADER_PATTERN = /^\d+$/;
  * @param {Function} next - Express next middleware function
  * @returns {Promise<void>}
  */
-const verifyToken = async (req, res, next) => {
+const NO_CAMPAIGN_MESSAGE =
+  'You are not a member of any campaign. Redeem an invite code to join one.';
+
+/** Campaign id used for membership-free routes: no campaign has id 0, so RLS matches no rows. */
+const NO_CAMPAIGN_SCOPE = '0';
+
+const createVerifyToken = ({ allowNoCampaign = false } = {}) => async (req, res, next) => {
   let decoded;
 
   try {
@@ -177,11 +189,21 @@ const verifyToken = async (req, res, next) => {
       );
       campaignId = Number(defaultMembership.campaign_id);
       campaignRole = defaultMembership.role;
-    } else {
-      // Transition fallback: user predates the membership backfill
+    } else if (isSuperadmin) {
+      // Global operator with no memberships: default to campaign 1 as DM
       campaignId = 1;
-      campaignRole = req.user.role;
-      logger.debug(`No campaign memberships found for user ${decoded.id}; defaulting to campaign 1 with JWT role "${req.user.role}"`);
+      campaignRole = 'DM';
+    } else if (!allowNoCampaign) {
+      logger.warn(`Authorization failed: user ${decoded.id} has no campaign membership (${req.method} ${req.originalUrl})`);
+      return res.status(403).json({
+        success: false,
+        message: NO_CAMPAIGN_MESSAGE,
+        code: 'NO_CAMPAIGN'
+      });
+    } else {
+      // Membership-free route for a user without any campaign: no context
+      campaignId = null;
+      campaignRole = null;
     }
   } catch (error) {
     logger.error(`Failed to resolve campaign context for user ${decoded.id}: ${error.message}`);
@@ -197,6 +219,13 @@ const verifyToken = async (req, res, next) => {
 
   // Run the rest of the chain inside the tenant context so every downstream
   // query (async continuations included) is scoped to this campaign.
-  return campaignContext.runWithCampaign(String(campaignId), () => next());
+  return campaignContext.runWithCampaign(
+    campaignId === null ? NO_CAMPAIGN_SCOPE : String(campaignId),
+    () => next()
+  );
 };
+
+const verifyToken = createVerifyToken();
+verifyToken.allowNoCampaign = createVerifyToken({ allowNoCampaign: true });
+
 module.exports = verifyToken;

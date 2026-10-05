@@ -12,12 +12,16 @@
  */
 
 // Mock auth middleware to pass through as a per-campaign DM
-jest.mock('../../../middleware/auth', () => (req, res, next) => {
-  req.user = { id: 1, role: 'DM', username: 'testdm' };
-  req.campaignId = 1;
-  req.campaignRole = 'DM';
-  req.isSuperadmin = false;
-  next();
+jest.mock('../../../middleware/auth', () => {
+  const mw = (req, res, next) => {
+    req.user = { id: 1, role: 'DM', username: 'testdm' };
+    req.campaignId = 1;
+    req.campaignRole = 'DM';
+    req.isSuperadmin = false;
+    next();
+  };
+  mw.allowNoCampaign = mw;
+  return mw;
 });
 
 // Real checkRole semantics are tested in middleware/__tests__/checkRole.test.js;

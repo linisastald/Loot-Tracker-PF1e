@@ -238,18 +238,92 @@ describe('verifyToken middleware', () => {
         expect(contextAfterAwait).toBe('4');
       });
 
-      it('falls back to campaign 1 with the JWT role when the user has no memberships', async () => {
-        authedRequest({ id: 7, role: 'DM' });
-        dbUtils.executeQuery.mockResolvedValue({
-          rows: [{ is_superadmin: false, user_role: 'DM', campaign_id: null, role: null }],
+      describe('user with zero memberships', () => {
+        const noMembership = (userRole = 'Player', isSuperadmin = false) => ({
+          rows: [{ is_superadmin: isSuperadmin, user_role: userRole, campaign_id: null, role: null }],
         });
 
-        await verifyToken(req, res, next);
+        it('gets 403 with a readable message and no campaign context (stale JWT role DM is ignored)', async () => {
+          authedRequest({ id: 7, role: 'DM' });
+          dbUtils.executeQuery.mockResolvedValue(noMembership('DM'));
 
-        expect(next).toHaveBeenCalled();
-        expect(req.campaignId).toBe(1);
-        expect(req.campaignRole).toBe('DM');
-        expect(req.isSuperadmin).toBe(false);
+          await verifyToken(req, res, next);
+
+          expect(next).not.toHaveBeenCalled();
+          expect(res.status).toHaveBeenCalledWith(403);
+          expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            success: false,
+            code: 'NO_CAMPAIGN',
+            message: expect.stringContaining('Redeem an invite code'),
+          }));
+        });
+
+        it('loses access after being removed from the only campaign (membership rows gone)', async () => {
+          authedRequest({ id: 7, role: 'Player' });
+          dbUtils.executeQuery.mockResolvedValueOnce({ rows: [row(1, 'Player')] });
+          await verifyToken(req, res, next);
+          expect(next).toHaveBeenCalledTimes(1);
+
+          next = jest.fn();
+          res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+          dbUtils.executeQuery.mockResolvedValueOnce(noMembership());
+          await verifyToken(req, res, next);
+
+          expect(next).not.toHaveBeenCalled();
+          expect(res.status).toHaveBeenCalledWith(403);
+        });
+
+        it('still gets 403 when sending an X-Campaign-Id header', async () => {
+          authedRequest();
+          req.headers['x-campaign-id'] = '1';
+          dbUtils.executeQuery.mockResolvedValue(noMembership());
+
+          await verifyToken(req, res, next);
+
+          expect(next).not.toHaveBeenCalled();
+          expect(res.status).toHaveBeenCalledWith(403);
+        });
+
+        it('is let through membership-free routes (allowNoCampaign) with null campaign and an empty scope (campaign 0)', async () => {
+          authedRequest({ id: 7, role: 'DM' });
+          dbUtils.executeQuery.mockResolvedValue(noMembership('DM'));
+
+          let contextInsideHandler;
+          next = jest.fn(() => {
+            contextInsideHandler = campaignContext.getCampaignId();
+          });
+
+          await verifyToken.allowNoCampaign(req, res, next);
+
+          expect(next).toHaveBeenCalled();
+          expect(req.campaignId).toBeNull();
+          expect(req.campaignRole).toBeNull();
+          expect(req.isSuperadmin).toBe(false);
+          expect(contextInsideHandler).toBe('0');
+        });
+
+        it('allowNoCampaign does not relax the X-Campaign-Id membership check', async () => {
+          authedRequest();
+          req.headers['x-campaign-id'] = '1';
+          dbUtils.executeQuery.mockResolvedValue(noMembership());
+
+          await verifyToken.allowNoCampaign(req, res, next);
+
+          expect(next).not.toHaveBeenCalled();
+          expect(res.status).toHaveBeenCalledWith(403);
+        });
+
+        it('keeps a superadmin without memberships working: campaign 1 as DM', async () => {
+          authedRequest({ id: 7, role: 'Player' });
+          dbUtils.executeQuery.mockResolvedValue(noMembership('Player', true));
+
+          await verifyToken(req, res, next);
+
+          expect(next).toHaveBeenCalled();
+          expect(req.campaignId).toBe(1);
+          expect(req.campaignRole).toBe('DM');
+          expect(req.isSuperadmin).toBe(true);
+        });
       });
     });
 
