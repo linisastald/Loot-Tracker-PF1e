@@ -26,9 +26,6 @@ jest.mock('../../utils/logger', () => ({
 jest.mock('../attendance/AttendanceService', () => ({
   recordAttendance: jest.fn(),
   getSessionAttendance: jest.fn(),
-  getSessionAttendanceDetails: jest.fn(),
-  getConfirmedAttendanceCount: jest.fn(),
-  getNonResponders: jest.fn(),
 }));
 
 jest.mock('../discord/SessionDiscordService', () => ({
@@ -36,23 +33,14 @@ jest.mock('../discord/SessionDiscordService', () => ({
   sendSessionReminder: jest.fn(),
   updateSessionMessage: jest.fn(),
   getDiscordSettings: jest.fn(),
-  getReactionMap: jest.fn(),
 }));
 
 jest.mock('../recurring/RecurringSessionService', () => ({
   createRecurringSession: jest.fn(),
-  getRecurringSessionInstances: jest.fn(),
-  updateRecurringSession: jest.fn(),
-  deleteRecurringSession: jest.fn(),
-  generateAdditionalInstances: jest.fn(),
 }));
 
 jest.mock('../discordBrokerService', () => ({
   sendMessage: jest.fn(),
-}));
-
-jest.mock('node-cron', () => ({
-  schedule: jest.fn(() => ({ stop: jest.fn() })),
 }));
 
 // ---- Load modules under test ----
@@ -61,6 +49,7 @@ const dbUtils = require('../../utils/dbUtils');
 const attendanceService = require('../attendance/AttendanceService');
 const sessionDiscordService = require('../discord/SessionDiscordService');
 const recurringSessionService = require('../recurring/RecurringSessionService');
+const discordBroker = require('../discordBrokerService');
 
 // ---- Helpers ----
 
@@ -237,8 +226,17 @@ describe('SessionService', () => {
 
       await sessionService.updateSession(1, { start_time: futureDate() });
 
-      // Verify rescheduling happened (more than 1 executeQuery call)
-      expect(dbUtils.executeQuery.mock.calls.length).toBeGreaterThan(1);
+      const calls = dbUtils.executeQuery.mock.calls;
+      // 1 UPDATE, then the old reminders are marked sent and 3 new ones inserted
+      const reminderUpdate = calls.find(c => c[0].includes('UPDATE session_reminders'));
+      expect(reminderUpdate[0]).toContain('sent = FALSE');
+      expect(reminderUpdate[1]).toEqual([1]);
+      const inserts = calls.filter(c => c[0].includes('INSERT INTO session_reminders'));
+      expect(inserts.map(c => c[1])).toEqual([
+        [1, 7, 'initial', 'all'],
+        [1, 2, 'followup', 'non_responders'],
+        [1, 1, 'final', 'maybe_responders'],
+      ]);
     });
   });
 
@@ -381,13 +379,20 @@ describe('SessionService', () => {
         campaign_role_id: '123',
         discord_channel_id: '456',
       });
-      const discordBroker = require('../discordBrokerService');
       discordBroker.sendMessage.mockResolvedValueOnce();
 
       const result = await sessionService.cancelSession(1, 'DM sick');
 
       expect(result.status).toBe('cancelled');
       expect(sessionDiscordService.updateSessionMessage).toHaveBeenCalledWith(1);
+      expect(discordBroker.sendMessage).toHaveBeenCalledTimes(1);
+      const ping = discordBroker.sendMessage.mock.calls[0][0];
+      expect(ping.channelId).toBe('456');
+      expect(ping.content).toContain('<@&123>');
+      expect(ping.content).toContain('Reason: DM sick');
+      const [updateSql, updateParams] = dbUtils.executeQuery.mock.calls[0];
+      expect(updateSql).toContain("status = 'cancelled'");
+      expect(updateParams).toEqual([1, 'DM sick']);
     });
 
     it('should return null if session not found', async () => {
@@ -495,8 +500,10 @@ describe('SessionService', () => {
 
       await sessionService.checkAutoCancel(1);
 
-      // Verify cancelSession was triggered (second executeQuery call is the cancel UPDATE)
-      expect(dbUtils.executeQuery.mock.calls.length).toBeGreaterThan(1);
+      // Second executeQuery call is the cancel UPDATE with the automatic reason
+      const [cancelSql, cancelParams] = dbUtils.executeQuery.mock.calls[1];
+      expect(cancelSql).toContain("status = 'cancelled'");
+      expect(cancelParams).toEqual([1, 'Automatic cancellation due to insufficient players']);
     });
 
     it('should not cancel session when DB function returns false', async () => {
@@ -563,8 +570,9 @@ describe('SessionService', () => {
 
     it('should include weekday, month, day, and time', () => {
       const result = sessionService.formatSessionDate('2025-01-01T12:00:00Z');
-      // The exact output depends on locale, but should be a non-empty string
-      expect(result.length).toBeGreaterThan(10);
+      // en-US long format: "Wednesday, January 1, 2025 at/, 12:00 PM" (time zone dependent)
+      expect(result).toMatch(/^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2}, 202[45]/);
+      expect(result).toMatch(/\d{1,2}:\d{2}\s?(AM|PM)/);
     });
   });
 
