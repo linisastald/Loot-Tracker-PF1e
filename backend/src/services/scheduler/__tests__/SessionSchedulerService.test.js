@@ -18,11 +18,6 @@ jest.mock('../../../utils/logger', () => ({
   error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn(),
 }));
 
-jest.mock('../../../utils/campaignContext', () => ({
-  runWithCampaign: jest.fn(),
-  getCampaignId: jest.fn(),
-}));
-
 jest.mock('../../../utils/timezoneUtils', () => ({
   getCampaignTimezone: jest.fn().mockResolvedValue('America/New_York'),
 }));
@@ -55,9 +50,9 @@ const attendanceService = require('../../attendance/AttendanceService');
 
 const scheduler = require('../SessionSchedulerService');
 
-// Tracks the campaign context active when a collaborator is invoked, so we
-// can assert per-row work really ran "inside" the row's campaign.
-let activeCampaign;
+// The real campaignContext is used (so validation and nesting cannot drift
+// from production); runWithCampaign is only spied on to record the ids.
+// Collaborators read the active context with campaignContext.getCampaignId().
 
 const contextIds = () => campaignContext.runWithCampaign.mock.calls.map(call => call[0]);
 
@@ -65,30 +60,11 @@ describe('SessionSchedulerService campaign context', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockExecuteQuery.mockReset();
-    activeCampaign = null;
+    jest.spyOn(campaignContext, 'runWithCampaign');
+  });
 
-    // Pass-through mock that preserves real validation + nesting semantics
-    campaignContext.runWithCampaign.mockImplementation((campaignId, fn) => {
-      const id = String(campaignId);
-      if (!/^\d+$|^all$/.test(id)) {
-        throw new Error(`Invalid campaign id: ${id}`);
-      }
-      const previous = activeCampaign;
-      activeCampaign = id;
-      const restore = () => { activeCampaign = previous; };
-      try {
-        const result = fn();
-        if (result && typeof result.finally === 'function') {
-          return result.finally(restore);
-        }
-        restore();
-        return result;
-      } catch (error) {
-        restore();
-        throw error;
-      }
-    });
-    campaignContext.getCampaignId.mockImplementation(() => activeCampaign || '1');
+  afterEach(() => {
+    campaignContext.runWithCampaign.mockRestore();
   });
 
   // ==========================================================================
@@ -105,7 +81,7 @@ describe('SessionSchedulerService campaign context', () => {
 
       const seenContexts = [];
       sessionDiscordService.postSessionAnnouncement.mockImplementation(async () => {
-        seenContexts.push(activeCampaign);
+        seenContexts.push(campaignContext.getCampaignId());
       });
 
       await scheduler.checkPendingAnnouncements();
@@ -152,7 +128,7 @@ describe('SessionSchedulerService campaign context', () => {
 
       const seenContexts = [];
       sessionDiscordService.sendSessionReminder.mockImplementation(async () => {
-        seenContexts.push(activeCampaign);
+        seenContexts.push(campaignContext.getCampaignId());
       });
 
       await scheduler.checkPendingReminders();
@@ -199,7 +175,7 @@ describe('SessionSchedulerService campaign context', () => {
       let confirmContext = null;
       attendanceService.getConfirmedAttendanceCount.mockResolvedValue(5);
       sessionService.confirmSession.mockImplementation(async () => {
-        confirmContext = activeCampaign;
+        confirmContext = campaignContext.getCampaignId();
       });
 
       await scheduler.checkSessionConfirmations();
@@ -214,7 +190,7 @@ describe('SessionSchedulerService campaign context', () => {
         .mockResolvedValueOnce({ rows: [{ id: 21, minimum_players: 4, campaign_id: 2 }] }) // find work
         .mockImplementationOnce(async () => {
           // reminder check query runs under the row's campaign
-          expect(activeCampaign).toBe('2');
+          expect(campaignContext.getCampaignId()).toBe('2');
           return { rows: [{ 1: 1 }] }; // reminder already sent
         });
 
@@ -265,7 +241,7 @@ describe('SessionSchedulerService campaign context', () => {
 
       let completeContext = null;
       sessionService.completeSession.mockImplementation(async () => {
-        completeContext = activeCampaign;
+        completeContext = campaignContext.getCampaignId();
       });
 
       await scheduler.checkSessionCompletions();
@@ -302,7 +278,7 @@ describe('SessionSchedulerService campaign context', () => {
 
       const seenContexts = [];
       mockExecuteQuery.mockImplementation(async () => {
-        seenContexts.push(activeCampaign);
+        seenContexts.push(campaignContext.getCampaignId());
         return { rows: [], rowCount: 0 };
       });
 

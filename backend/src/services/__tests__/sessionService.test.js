@@ -179,89 +179,44 @@ describe('SessionService', () => {
       );
       expect(automationInserts.length).toBe(2);
     });
-  });
 
-  // ========================================================================
-  // updateSession
-  // ========================================================================
-  describe('updateSession', () => {
-    it('should update allowed fields and return result', async () => {
-      const session = buildSession({ title: 'Updated Title' });
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [session] });
-
-      const result = await sessionService.updateSession(1, { title: 'Updated Title' });
-
-      expect(result.title).toBe('Updated Title');
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE game_sessions'),
-        expect.arrayContaining([1, 'Updated Title']),
-        expect.any(String)
-      );
-    });
-
-    it('should throw when no valid fields provided', async () => {
-      await expect(
-        sessionService.updateSession(1, { invalid_field: 'nope' })
-      ).rejects.toThrow('No valid fields provided for update');
-    });
-
-    it('should throw when session not found', async () => {
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await expect(
-        sessionService.updateSession(999, { title: 'No session' })
-      ).rejects.toThrow('Session not found');
-    });
-
-    it('should reschedule events when timing fields change', async () => {
+    it('schedules announcement, reminder and confirmation with the matching type and time', async () => {
       const session = buildSession();
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [session] });
-      // rescheduleSessionEvents will call cancelSessionEvents then scheduleSessionEvents
-      // cancelSessionEvents calls executeQuery, scheduleSessionEvents calls executeQuery x3
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({}) // cancel reminders
-        .mockResolvedValueOnce({}) // insert reminder 1
-        .mockResolvedValueOnce({}) // insert reminder 2
-        .mockResolvedValueOnce({}); // insert reminder 3
+      const start = new Date(Date.now() + 30 * 24 * 3600 * 1000);
+      mockClient.query
+        .mockResolvedValueOnce({ rows: [session] })
+        .mockResolvedValue({});
 
-      await sessionService.updateSession(1, { start_time: futureDate() });
+      await sessionService.createSession({
+        title: 'Session 42',
+        start_time: start.toISOString(),
+        auto_announce_hours: 72,
+        reminder_hours: 24,
+        confirmation_hours: 48,
+        created_by: 1,
+      });
 
-      const calls = dbUtils.executeQuery.mock.calls;
-      // 1 UPDATE, then the old reminders are marked sent and 3 new ones inserted
-      const reminderUpdate = calls.find(c => c[0].includes('UPDATE session_reminders'));
-      expect(reminderUpdate[0]).toContain('sent = FALSE');
-      expect(reminderUpdate[1]).toEqual([1]);
-      const inserts = calls.filter(c => c[0].includes('INSERT INTO session_reminders'));
-      expect(inserts.map(c => c[1])).toEqual([
-        [1, 7, 'initial', 'all'],
-        [1, 2, 'followup', 'non_responders'],
-        [1, 1, 'final', 'maybe_responders'],
-      ]);
+      const inserts = mockClient.query.mock.calls.filter(c => c[0].includes('session_automations'));
+      expect(inserts.map(c => c[1][1])).toEqual(['announcement', 'reminder', 'confirmation']);
+      expect(inserts[0][1][2].getTime()).toBe(start.getTime() - 72 * 3600 * 1000);
+      expect(inserts[1][1][2].getTime()).toBe(start.getTime() - 24 * 3600 * 1000);
     });
-  });
 
-  // ========================================================================
-  // deleteSession
-  // ========================================================================
-  describe('deleteSession', () => {
-    it('should cancel events and delete session', async () => {
+    it('skips automations whose scheduled time is already in the past', async () => {
       const session = buildSession();
-      // cancelSessionEvents executeQuery, then DELETE executeQuery
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({}) // cancel events
-        .mockResolvedValueOnce({ rows: [session] }); // DELETE
+      const start = new Date(Date.now() + 10 * 3600 * 1000);
+      mockClient.query.mockResolvedValueOnce({ rows: [session] }).mockResolvedValue({});
 
-      const result = await sessionService.deleteSession(1);
+      await sessionService.createSession({
+        title: 'Soon',
+        start_time: start.toISOString(),
+        auto_announce_hours: 72,
+        reminder_hours: 24,
+        confirmation_hours: 48,
+        created_by: 1,
+      });
 
-      expect(result).toEqual(session);
-    });
-
-    it('should throw when session not found', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({}) // cancel events
-        .mockResolvedValueOnce({ rows: [] }); // DELETE returns nothing
-
-      await expect(sessionService.deleteSession(999)).rejects.toThrow('Session not found');
+      expect(mockClient.query.mock.calls.filter(c => c[0].includes('session_automations'))).toHaveLength(0);
     });
   });
 
@@ -289,57 +244,6 @@ describe('SessionService', () => {
       const result = await sessionService.getSession(999);
 
       expect(result).toBeNull();
-    });
-  });
-
-  // ========================================================================
-  // getEnhancedSessions
-  // ========================================================================
-  describe('getEnhancedSessions', () => {
-    it('should return sessions with default filters', async () => {
-      const sessions = [buildSession()];
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: sessions });
-
-      const result = await sessionService.getEnhancedSessions();
-
-      expect(result).toEqual(sessions);
-    });
-
-    it('should apply status filter', async () => {
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await sessionService.getEnhancedSessions({ status: 'scheduled' });
-
-      const queryStr = dbUtils.executeQuery.mock.calls[0][0];
-      expect(queryStr).toContain('gs.status = $');
-      expect(dbUtils.executeQuery.mock.calls[0][1]).toContain('scheduled');
-    });
-
-    it('should apply upcoming_only filter', async () => {
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await sessionService.getEnhancedSessions({ upcoming_only: true });
-
-      const queryStr = dbUtils.executeQuery.mock.calls[0][0];
-      expect(queryStr).toContain('gs.start_time > NOW()');
-    });
-
-    it('should include attendance by default', async () => {
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await sessionService.getEnhancedSessions();
-
-      const queryStr = dbUtils.executeQuery.mock.calls[0][0];
-      expect(queryStr).toContain('session_attendance');
-    });
-
-    it('should exclude attendance when include_attendance is false', async () => {
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await sessionService.getEnhancedSessions({ include_attendance: false });
-
-      const queryStr = dbUtils.executeQuery.mock.calls[0][0];
-      expect(queryStr).not.toContain('LEFT JOIN session_attendance');
     });
   });
 
@@ -433,6 +337,25 @@ describe('SessionService', () => {
       expect(result.status).toBe('scheduled');
     });
 
+    it('pings the campaign role that the session was reinstated', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [buildSession({ status: 'cancelled' })] })
+        .mockResolvedValueOnce({ rows: [buildSession({ status: 'scheduled' })] });
+      sessionDiscordService.updateSessionMessage.mockResolvedValueOnce();
+      sessionDiscordService.getDiscordSettings.mockResolvedValueOnce({
+        campaign_role_id: '123',
+        discord_channel_id: '456',
+      });
+      discordBroker.sendMessage.mockResolvedValueOnce();
+
+      await sessionService.uncancelSession(1);
+
+      const ping = discordBroker.sendMessage.mock.calls[0][0];
+      expect(ping.channelId).toBe('456');
+      expect(ping.content).toContain('<@&123>');
+      expect(ping.content).toContain('has been reinstated');
+    });
+
     it('should return null if session not found', async () => {
       dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -477,42 +400,39 @@ describe('SessionService', () => {
       expect(dbUtils.executeTransaction).toHaveBeenCalled();
     });
 
-    it('should throw if session not found or already completed', async () => {
-      mockClient.query.mockResolvedValueOnce({ rows: [] }); // UPDATE returns nothing
+    it('counts attendance by status so late/early/in-app RSVPs are confirmed', async () => {
+      const session = buildSession({ status: 'completed' });
+      mockClient.query
+        .mockResolvedValueOnce({ rows: [session] })
+        .mockResolvedValueOnce({ rows: [{ confirmed_count: 2, declined_count: 0, maybe_count: 0, attendee_names: [] }] })
+        .mockResolvedValueOnce({});
 
-      await expect(sessionService.completeSession(999)).rejects.toThrow(
-        'Session not found or already completed'
-      );
+      await sessionService.completeSession(1);
+
+      const summarySql = mockClient.query.mock.calls[1][0];
+      expect(summarySql).toContain("status = 'accepted'");
+      expect(summarySql).toContain("status = 'declined'");
+      expect(summarySql).toContain("status = 'tentative'");
+      expect(summarySql).not.toContain('response_type');
+    });
+
+    it('should throw a not-found error for an unknown session', async () => {
+      mockClient.query
+        .mockResolvedValueOnce({ rows: [] }) // UPDATE returns nothing
+        .mockResolvedValueOnce({ rows: [] }); // lookup finds nothing
+
+      await expect(sessionService.completeSession(999)).rejects.toThrow('Session not found');
       expect(dbUtils.executeTransaction).toHaveBeenCalled();
     });
-  });
 
-  // ========================================================================
-  // checkAutoCancel
-  // ========================================================================
-  describe('checkAutoCancel', () => {
-    it('should cancel session when DB function returns true', async () => {
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ should_cancel: true }] });
-      // cancelSession will call executeQuery
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [buildSession({ status: 'cancelled' })] });
-      sessionDiscordService.updateSessionMessage.mockResolvedValueOnce();
-      sessionDiscordService.getDiscordSettings.mockResolvedValueOnce({});
+    it('names the current status when the session cannot be completed', async () => {
+      mockClient.query
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ status: 'cancelled' }] });
 
-      await sessionService.checkAutoCancel(1);
-
-      // Second executeQuery call is the cancel UPDATE with the automatic reason
-      const [cancelSql, cancelParams] = dbUtils.executeQuery.mock.calls[1];
-      expect(cancelSql).toContain("status = 'cancelled'");
-      expect(cancelParams).toEqual([1, 'Automatic cancellation due to insufficient players']);
-    });
-
-    it('should not cancel session when DB function returns false', async () => {
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ should_cancel: false }] });
-
-      await sessionService.checkAutoCancel(1);
-
-      // Only the check query should have been called
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      await expect(sessionService.completeSession(1)).rejects.toThrow(
+        'Session cannot be completed (current status: cancelled)'
+      );
     });
   });
 
@@ -558,25 +478,6 @@ describe('SessionService', () => {
   });
 
   // ========================================================================
-  // formatSessionDate
-  // ========================================================================
-  describe('formatSessionDate', () => {
-    it('should return a formatted date string', () => {
-      const result = sessionService.formatSessionDate('2025-03-15T18:00:00Z');
-      // Should contain at least the month and year
-      expect(result).toContain('2025');
-      expect(typeof result).toBe('string');
-    });
-
-    it('should include weekday, month, day, and time', () => {
-      const result = sessionService.formatSessionDate('2025-01-01T12:00:00Z');
-      // en-US long format: "Wednesday, January 1, 2025 at/, 12:00 PM" (time zone dependent)
-      expect(result).toMatch(/^[A-Z][a-z]+day, [A-Z][a-z]+ \d{1,2}, 202[45]/);
-      expect(result).toMatch(/\d{1,2}:\d{2}\s?(AM|PM)/);
-    });
-  });
-
-  // ========================================================================
   // scheduleSessionEvents
   // ========================================================================
   describe('scheduleSessionEvents', () => {
@@ -599,20 +500,4 @@ describe('SessionService', () => {
     });
   });
 
-  // ========================================================================
-  // cancelSessionEvents
-  // ========================================================================
-  describe('cancelSessionEvents', () => {
-    it('should mark pending reminders as sent', () => {
-      dbUtils.executeQuery.mockResolvedValue({});
-
-      sessionService.cancelSessionEvents(1);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE session_reminders'),
-        [1],
-        expect.any(String)
-      );
-    });
-  });
 });

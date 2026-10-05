@@ -193,3 +193,34 @@ describe('checkAndSendSessionNotifications', () => {
     expect(res.error).toHaveBeenCalled();
   });
 });
+
+describe('deleteSession', () => {
+  const dbUtils = require('../../utils/dbUtils');
+
+  it('answers not found for an unknown session without deleting anything', async () => {
+    Session.findById.mockResolvedValue(null);
+    const res = makeRes();
+    await controller.deleteSession(makeReq({}, { params: { id: '9' } }), res);
+    expect(res.notFound).toHaveBeenCalled();
+    expect(Session.delete).not.toHaveBeenCalled();
+  });
+
+  it('deletes a session that has no Discord message', async () => {
+    Session.findById.mockResolvedValue({ id: 5, discord_message_id: null });
+    Session.delete.mockResolvedValue();
+    const res = makeRes();
+    await controller.deleteSession(makeReq({}, { params: { id: '5' } }), res);
+    expect(Session.delete).toHaveBeenCalledWith(5);
+    expect(res.success).toHaveBeenCalled();
+  });
+
+  it('still deletes the session when removing the Discord message fails', async () => {
+    Session.findById.mockResolvedValue({ id: 5, discord_message_id: 'm1', discord_channel_id: 'c1' });
+    dbUtils.executeQuery.mockResolvedValue({ rows: [] }); // no bot token configured
+    Session.delete.mockResolvedValue();
+    const res = makeRes();
+    await controller.deleteSession(makeReq({}, { params: { id: '5' } }), res);
+    expect(Session.delete).toHaveBeenCalledWith(5);
+    expect(res.success).toHaveBeenCalled();
+  });
+});
