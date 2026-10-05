@@ -23,10 +23,10 @@ const getDiscordSettings = async (req, res) => {
 
     const settings = { ...globalSettings, ...perCampaign };
 
-    // Mask the bot token for security if it exists
-    if (settings.discord_bot_token) {
-        settings.discord_bot_token = maskSensitiveValue(settings.discord_bot_token);
-    }
+    // The bot token is a secret: never return it (not even partially) - only
+    // whether one is configured. This endpoint is open to every authenticated user.
+    settings.discord_bot_token_set = !!settings.discord_bot_token;
+    delete settings.discord_bot_token;
 
     controllerFactory.sendSuccessResponse(res, settings, 'Discord settings retrieved');
 };
@@ -132,8 +132,8 @@ const GLOBAL_SETTING_RULES = {
     }
 };
 
-/** Global names readable through GET /api/user/settings (registrations_open: legacy, read-only). */
-const READABLE_GLOBAL_SETTINGS = [...Object.keys(GLOBAL_SETTING_RULES), 'registrations_open'];
+/** Global names readable through GET /api/user/settings (registrations_open / invite_required: legacy, read-only). */
+const READABLE_GLOBAL_SETTINGS = [...Object.keys(GLOBAL_SETTING_RULES), 'registrations_open', 'invite_required'];
 
 /**
  * List the deployment-global settings (superadmin only).
@@ -244,17 +244,6 @@ const fetchSettingsByNames = async (names) => {
 };
 
 /**
- * Helper function to mask sensitive values (like API keys and tokens)
- * @param {string} value - The sensitive value to mask
- * @returns {string} - Masked value
- */
-const maskSensitiveValue = (value) => {
-    if (!value || value.length < 8) return '***';
-
-    return value.substring(0, 4) + '...' + value.substring(value.length - 4);
-};
-
-/**
  * Simple encryption for API keys using base64 encoding
  * @param {string} value - The value to encrypt
  * @returns {string} - Encrypted value
@@ -362,18 +351,17 @@ const updateWeatherForecastDays = async (req, res) => {
 };
 
 /**
- * Get OpenAI key setting (masked for security)
+ * Report whether an OpenAI key is configured (the key itself is never returned)
  */
 const getOpenAiKey = async (req, res) => {
     try {
         const settings = await fetchSettingsByNames(['openai_key']);
         const openaiKey = settings.openai_key;
 
-        // Return masked key or empty if not set
-        const maskedKey = openaiKey ? maskSensitiveValue(decryptValue(openaiKey)) : '';
-
+        // The key is a secret: never return it (not even partially) - only
+        // whether one is configured. This endpoint is open to every
+        // authenticated user (Smart Item Detection availability check).
         controllerFactory.sendSuccessResponse(res, {
-            value: maskedKey,
             hasKey: !!openaiKey
         }, 'OpenAI key setting retrieved');
     } catch (error) {

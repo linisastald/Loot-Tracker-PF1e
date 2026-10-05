@@ -2,14 +2,14 @@
  * Unit tests for settingsController
  *
  * Tests all settings endpoints:
- * - getDiscordSettings: retrieves Discord config with masked token
+ * - getDiscordSettings: retrieves Discord config; token never returned (is-set flag only)
  * - getCampaignName: retrieves campaign name with default fallback
  * - getAllSettings: superadmin-only, never returns secret values
  * - updateSetting: superadmin-only, allowlisted names, per-name validation, no secret logging
  * - getInfamySystem: retrieves infamy system flag
  * - getAveragePartyLevel: retrieves APL with default
  * - getRegion: retrieves region with default
- * - getOpenAiKey: retrieves masked OpenAI key
+ * - getOpenAiKey: reports whether a key is set (never the key)
  * - getCampaignTimezone: retrieves campaign timezone
  * - getTimezoneOptions: returns list of timezone options
  * - updateCampaignTimezone: DM-only, validates timezone, clears cache
@@ -65,7 +65,7 @@ describe('settingsController', () => {
   // ─── getDiscordSettings ─────────────────────────────────────────
 
   describe('getDiscordSettings', () => {
-    it('should return Discord settings with masked bot token', async () => {
+    it('should return Discord settings without any part of the bot token', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -81,9 +81,11 @@ describe('settingsController', () => {
 
       expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
-      // Token should be masked
-      expect(data.discord_bot_token).not.toContain('MTIzNDU2');
-      expect(data.discord_bot_token).toContain('...');
+      // The token must never be returned, not even partially - only an "is set" flag
+      expect(data.discord_bot_token).toBeUndefined();
+      expect(JSON.stringify(data)).not.toContain('MTIz');
+      expect(JSON.stringify(data)).not.toContain('mnop');
+      expect(data.discord_bot_token_set).toBe(true);
       expect(data.discord_channel_id).toBe('123456789');
       expect(data.discord_integration_enabled).toBe('true');
     });
@@ -99,6 +101,7 @@ describe('settingsController', () => {
       expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
       expect(data.discord_bot_token).toBeUndefined();
+      expect(data.discord_bot_token_set).toBe(false);
     });
 
     it('should return 500 when query fails', async () => {
@@ -601,7 +604,7 @@ describe('settingsController', () => {
   // ─── getOpenAiKey ───────────────────────────────────────────────
 
   describe('getOpenAiKey', () => {
-    it('should return masked OpenAI key when set', async () => {
+    it('should report hasKey and never return any part of the OpenAI key', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -616,12 +619,13 @@ describe('settingsController', () => {
       expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
       expect(data.hasKey).toBe(true);
-      // Value should be masked
-      expect(data.value).toContain('...');
-      expect(data.value).not.toBe('sk-test-key-1234567890');
+      expect(data.value).toBeUndefined();
+      expect(JSON.stringify(data)).not.toContain('sk-t');
+      expect(JSON.stringify(data)).not.toContain('7890');
+      expect(JSON.stringify(data)).not.toContain(encodedKey);
     });
 
-    it('should return empty value with hasKey false when not set', async () => {
+    it('should return hasKey false when not set', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -631,7 +635,6 @@ describe('settingsController', () => {
 
       const data = res.success.mock.calls[0][0];
       expect(data.hasKey).toBe(false);
-      expect(data.value).toBe('');
     });
   });
 
