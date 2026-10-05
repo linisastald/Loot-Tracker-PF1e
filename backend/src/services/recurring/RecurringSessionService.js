@@ -6,7 +6,14 @@
 const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
 const timezoneUtils = require('../../utils/timezoneUtils');
-const { DEFAULT_VALUES } = require('../../constants/sessionConstants');
+const { DEFAULT_VALUES, VALID_RECURRING_PATTERNS } = require('../../constants/sessionConstants');
+
+// Instances generated when a template has no end count (about a year of weekly sessions)
+const DEFAULT_INSTANCE_COUNT = 52;
+// Hard cap on the instances one template can generate (two years of weekly sessions)
+const MAX_INSTANCE_COUNT = 104;
+const DEFAULT_CONFIRMATION_HOURS = 48; // 2 days before
+const FALLBACK_TIMEZONE = 'America/New_York';
 
 class RecurringSessionService {
     /**
@@ -15,29 +22,30 @@ class RecurringSessionService {
      * @returns {Promise<Object>} - Template and generated instances
      */
     async createRecurringSession(sessionData) {
-        try {
-            const result = await dbUtils.executeTransaction(async (client) => {
+        const result = await dbUtils.executeTransaction(async (client) => {
             const {
                 title,
                 start_time,
                 end_time,
                 description,
-                minimum_players = DEFAULT_VALUES.MINIMUM_PLAYERS,
-                maximum_players = DEFAULT_VALUES.MAXIMUM_PLAYERS,
-                auto_announce_hours = DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS,
-                reminder_hours = DEFAULT_VALUES.REMINDER_HOURS,
-                confirmation_hours = 48, // Default: 2 days before
                 created_by,
                 // Recurring fields
                 recurring_pattern, // 'weekly', 'biweekly', 'monthly', 'custom'
-                recurring_day_of_week, // 0-6 (Sunday = 0)
-                recurring_interval = 1, // for custom patterns
-                recurring_end_date = null,
-                recurring_end_count = null
+                recurring_day_of_week // 0-6 (Sunday = 0)
             } = sessionData;
 
+            // Omitted (or null) settings take the defaults; an explicit 0 is kept
+            const minimum_players = sessionData.minimum_players ?? DEFAULT_VALUES.MINIMUM_PLAYERS;
+            const maximum_players = sessionData.maximum_players ?? DEFAULT_VALUES.MAXIMUM_PLAYERS;
+            const auto_announce_hours = sessionData.auto_announce_hours ?? DEFAULT_VALUES.AUTO_ANNOUNCE_HOURS;
+            const reminder_hours = sessionData.reminder_hours ?? DEFAULT_VALUES.REMINDER_HOURS;
+            const confirmation_hours = sessionData.confirmation_hours ?? DEFAULT_CONFIRMATION_HOURS;
+            const recurring_interval = sessionData.recurring_interval || 1; // for custom patterns
+            const recurring_end_date = sessionData.recurring_end_date || null;
+            const recurring_end_count = sessionData.recurring_end_count || null;
+
             // Validate recurring parameters
-            if (!recurring_pattern || !['weekly', 'biweekly', 'monthly', 'custom'].includes(recurring_pattern)) {
+            if (!recurring_pattern || !VALID_RECURRING_PATTERNS.includes(recurring_pattern)) {
                 throw new Error('Invalid recurring pattern');
             }
 
@@ -51,6 +59,14 @@ class RecurringSessionService {
             const interval = parseInt(recurring_interval);
             if (recurring_pattern === 'custom' && (isNaN(interval) || interval < 1)) {
                 throw new Error(`Custom interval must be at least 1, received: ${recurring_interval}`);
+            }
+
+            // Bound how many instances one template can generate
+            if (recurring_end_count !== null) {
+                const endCount = parseInt(recurring_end_count);
+                if (isNaN(endCount) || endCount < 1 || endCount > MAX_INSTANCE_COUNT) {
+                    throw new Error(`Recurring end count must be between 1 and ${MAX_INSTANCE_COUNT}, received: ${recurring_end_count}`);
+                }
             }
 
             // Create the master recurring session (let database auto-generate the id)
@@ -83,33 +99,33 @@ class RecurringSessionService {
                 template: recurringSession,
                 instances: generatedSessions
             };
-            });
+        });
 
-            // Schedule reminders after the transaction commits: scheduleSessionEvents
-            // runs on its own pooled connection, which cannot see uncommitted session
-            // rows (FK violation on session_reminders otherwise).
-            const sessionService = require('../sessionService');
-            for (const instance of result.instances) {
-                await sessionService.scheduleSessionEvents(instance);
-            }
-
-            return result;
-
-        } catch (error) {
-            logger.error('Failed to create recurring session:', error);
-            throw error;
+        // Schedule reminders after the transaction commits: scheduleSessionEvents
+        // runs on its own pooled connection, which cannot see uncommitted session
+        // rows (FK violation on session_reminders otherwise).
+        const sessionService = require('../sessionService');
+        for (const instance of result.instances) {
+            await sessionService.scheduleSessionEvents(instance);
         }
+
+        return result;
     }
 
     /**
-     * Generate session instances from a recurring template
+     * Generate session instances from a recurring template.
+     *
+     * A failed instance INSERT propagates: Postgres has already aborted the
+     * transaction by then, so carrying on would only roll everything back
+     * silently.
      * @param {Object} client - Database client (for transactions)
      * @param {Object} template - Recurring session template
      * @returns {Promise<Array>} - Generated session instances
      */
     async generateRecurringInstances(client, template) {
-        // Cache the campaign timezone for DST-aware date calculations
-        this._cachedTimezone = await timezoneUtils.getCampaignTimezone();
+        // Campaign timezone for DST-aware date calculations (passed down as an
+        // argument: this service is a singleton shared by concurrent requests)
+        const timezone = await timezoneUtils.getCampaignTimezone();
 
         const instances = [];
         const startDate = new Date(template.start_time);
@@ -117,327 +133,60 @@ class RecurringSessionService {
         const sessionDuration = endDate.getTime() - startDate.getTime();
 
         // Calculate how many instances to generate
-        const maxInstances = template.recurring_end_count || 52; // Default to 1 year worth
-        const endLimit = template.recurring_end_date ? new Date(template.recurring_end_date) : null;
+        const maxInstances = Math.min(template.recurring_end_count || DEFAULT_INSTANCE_COUNT, MAX_INSTANCE_COUNT);
+        // The end date is inclusive: a session on that calendar day (campaign
+        // timezone) is still generated.
+        const lastDate = this._dateOnlyString(template.recurring_end_date);
+        // Monthly sessions return to the template's day of month after a short month
+        const anchorDay = this._wallClockParts(startDate, timezone).day;
 
         let currentDate = new Date(startDate);
         let instanceCount = 0;
 
         while (instanceCount < maxInstances) {
-            if (endLimit && currentDate > endLimit) {
+            if (lastDate && this._localDateString(currentDate, timezone) > lastDate) {
                 break;
             }
 
             // Skip the first instance as it's the template
             if (instanceCount > 0) {
-                const instanceStartTime = new Date(currentDate);
                 const instanceEndTime = new Date(currentDate.getTime() + sessionDuration);
 
-                try {
-                    const instanceResult = await client.query(`
-                        INSERT INTO game_sessions (
-                            title, start_time, end_time, description, minimum_players, maximum_players,
-                            auto_announce_hours, reminder_hours, confirmation_hours, created_by,
-                            parent_recurring_id, created_from_recurring, status, created_at, updated_at
-                        )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'scheduled', NOW(), NOW())
-                        RETURNING *
-                    `, [
-                        `${template.title} - ${this.formatDateForTitle(instanceStartTime)}`,
-                        instanceStartTime.toISOString(),
-                        instanceEndTime.toISOString(),
-                        template.description,
-                        template.minimum_players,
-                        template.maximum_players,
-                        template.auto_announce_hours,
-                        template.reminder_hours,
-                        template.confirmation_hours,
-                        template.created_by,
-                        template.id
-                    ]);
+                const instanceResult = await client.query(`
+                    INSERT INTO game_sessions (
+                        title, start_time, end_time, description, minimum_players, maximum_players,
+                        auto_announce_hours, reminder_hours, confirmation_hours, created_by,
+                        parent_recurring_id, created_from_recurring, status, created_at, updated_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'scheduled', NOW(), NOW())
+                    RETURNING *
+                `, [
+                    `${template.title} - ${this.formatDateForTitle(currentDate)}`,
+                    currentDate.toISOString(),
+                    instanceEndTime.toISOString(),
+                    template.description,
+                    template.minimum_players,
+                    template.maximum_players,
+                    template.auto_announce_hours,
+                    template.reminder_hours,
+                    template.confirmation_hours,
+                    template.created_by,
+                    template.id
+                ]);
 
-                    instances.push(instanceResult.rows[0]);
-                } catch (error) {
-                    logger.error(`Failed to create session instance for ${currentDate}:`, error);
-                    // Continue with other instances
-                }
+                instances.push(instanceResult.rows[0]);
             }
 
             instanceCount++;
 
             // Calculate next occurrence
-            currentDate = this.calculateNextOccurrence(currentDate, template.recurring_pattern, template.recurring_interval, template.recurring_day_of_week);
+            currentDate = this.calculateNextOccurrence(
+                currentDate, template.recurring_pattern, template.recurring_interval,
+                template.recurring_day_of_week, timezone, anchorDay
+            );
         }
 
         return instances;
-    }
-
-    /**
-     * Get instances of a recurring session
-     * @param {number} templateId - Recurring template ID
-     * @param {Object} filters - Query filters
-     * @returns {Promise<Array>} - Session instances
-     */
-    async getRecurringSessionInstances(templateId, filters = {}) {
-        try {
-            const { upcoming_only = true, limit = 10 } = filters;
-
-            let whereClause = 'WHERE parent_recurring_id = $1';
-            const queryParams = [templateId];
-
-            if (upcoming_only) {
-                whereClause += ' AND start_time > NOW()';
-            }
-
-            const result = await dbUtils.executeQuery(`
-                SELECT
-                    gs.*,
-                    COUNT(sa.id) FILTER (WHERE sa.status = 'accepted') as confirmed_count,
-                    COUNT(sa.id) FILTER (WHERE sa.status = 'declined') as declined_count,
-                    COUNT(sa.id) FILTER (WHERE sa.status = 'tentative') as maybe_count
-                FROM game_sessions gs
-                LEFT JOIN session_attendance sa ON gs.id = sa.session_id
-                ${whereClause}
-                GROUP BY gs.id
-                ORDER BY gs.start_time
-                LIMIT $2
-            `, [...queryParams, limit]);
-
-            return result.rows;
-
-        } catch (error) {
-            logger.error('Failed to get recurring session instances:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Update a recurring session template
-     * @param {number} templateId - Template ID
-     * @param {Object} updateData - Update data
-     * @returns {Promise<Object>} - Updated template
-     */
-    async updateRecurringSession(templateId, updateData) {
-        try {
-            return await dbUtils.executeTransaction(async (client) => {
-            const {
-                title,
-                description,
-                minimum_players,
-                maximum_players,
-                auto_announce_hours,
-                reminder_hours,
-                recurring_pattern,
-                recurring_day_of_week,
-                recurring_interval,
-                recurring_end_date,
-                recurring_end_count,
-                update_instances = false // Whether to update existing instances
-            } = updateData;
-
-            // Update the template
-            const templateResult = await client.query(`
-                UPDATE game_sessions
-                SET
-                    title = COALESCE($2, title),
-                    description = COALESCE($3, description),
-                    minimum_players = COALESCE($4, minimum_players),
-                    maximum_players = COALESCE($5, maximum_players),
-                    auto_announce_hours = COALESCE($6, auto_announce_hours),
-                    reminder_hours = COALESCE($7, reminder_hours),
-                    recurring_pattern = COALESCE($8, recurring_pattern),
-                    recurring_day_of_week = COALESCE($9, recurring_day_of_week),
-                    recurring_interval = COALESCE($10, recurring_interval),
-                    recurring_end_date = COALESCE($11, recurring_end_date),
-                    recurring_end_count = COALESCE($12, recurring_end_count),
-                    updated_at = NOW()
-                WHERE id = $1 AND is_recurring = TRUE
-                RETURNING *
-            `, [
-                templateId, title, description, minimum_players, maximum_players,
-                auto_announce_hours, reminder_hours,
-                recurring_pattern, recurring_day_of_week, recurring_interval,
-                recurring_end_date, recurring_end_count
-            ]);
-
-            if (templateResult.rows.length === 0) {
-                throw new Error('Recurring session template not found');
-            }
-
-            const template = templateResult.rows[0];
-
-            // Update existing instances if requested
-            if (update_instances) {
-                await client.query(`
-                    UPDATE game_sessions
-                    SET
-                        title = $2,
-                        description = COALESCE($3, description),
-                        minimum_players = COALESCE($4, minimum_players),
-                        maximum_players = COALESCE($5, maximum_players),
-                        auto_announce_hours = COALESCE($6, auto_announce_hours),
-                        reminder_hours = COALESCE($7, reminder_hours),
-                        updated_at = NOW()
-                    WHERE parent_recurring_id = $1 AND start_time > NOW()
-                `, [
-                    templateId,
-                    title ? `${title} - Session` : null,
-                    description, minimum_players, maximum_players,
-                    auto_announce_hours, reminder_hours
-                ]);
-            }
-
-            logger.info('Recurring session template updated:', { templateId });
-            return template;
-            });
-
-        } catch (error) {
-            logger.error('Failed to update recurring session:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Delete a recurring session template
-     * @param {number} templateId - Template ID
-     * @param {boolean} deleteFutureInstances - Whether to delete future instances
-     * @returns {Promise<Object>} - Deleted template
-     */
-    async deleteRecurringSession(templateId, deleteFutureInstances = true) {
-        try {
-            return await dbUtils.executeTransaction(async (client) => {
-            if (deleteFutureInstances) {
-                // Delete future instances (not yet started)
-                await client.query(`
-                    DELETE FROM game_sessions
-                    WHERE parent_recurring_id = $1 AND start_time > NOW()
-                `, [templateId]);
-            }
-
-            // Delete the template
-            const result = await client.query(`
-                DELETE FROM game_sessions
-                WHERE id = $1 AND is_recurring = TRUE
-                RETURNING *
-            `, [templateId]);
-
-            if (result.rows.length === 0) {
-                throw new Error('Recurring session template not found');
-            }
-
-            logger.info('Recurring session deleted:', {
-                templateId,
-                deletedInstances: deleteFutureInstances
-            });
-
-            return result.rows[0];
-            });
-
-        } catch (error) {
-            logger.error('Failed to delete recurring session:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Generate additional instances for a recurring template
-     * @param {number} templateId - Template ID
-     * @param {number} count - Number of instances to generate
-     * @returns {Promise<Array>} - New instances
-     */
-    async generateAdditionalInstances(templateId, count = 12) {
-        try {
-            // Lazy load to avoid circular dependency
-            const sessionService = require('../sessionService');
-
-            // Cache the campaign timezone for DST-aware date calculations
-            this._cachedTimezone = await timezoneUtils.getCampaignTimezone();
-
-            const template = await sessionService.getSession(templateId);
-            if (!template || !template.is_recurring) {
-                throw new Error('Recurring session template not found');
-            }
-
-            // Find the last generated instance
-            const lastInstanceResult = await dbUtils.executeQuery(`
-                SELECT * FROM game_sessions
-                WHERE parent_recurring_id = $1
-                ORDER BY start_time DESC
-                LIMIT 1
-            `, [templateId]);
-
-            let lastDate;
-            if (lastInstanceResult.rows.length > 0) {
-                lastDate = new Date(lastInstanceResult.rows[0].start_time);
-            } else {
-                lastDate = new Date(template.start_time);
-            }
-
-            const newInstances = [];
-
-            const createdInstances = await dbUtils.executeTransaction(async (client) => {
-                for (let i = 0; i < count; i++) {
-                    lastDate = this.calculateNextOccurrence(
-                        lastDate,
-                        template.recurring_pattern,
-                        template.recurring_interval,
-                        template.recurring_day_of_week
-                    );
-
-                    // Check if we've exceeded the end conditions
-                    if (template.recurring_end_date && lastDate > new Date(template.recurring_end_date)) {
-                        break;
-                    }
-
-                    const sessionDuration = new Date(template.end_time).getTime() - new Date(template.start_time).getTime();
-                    const instanceEndTime = new Date(lastDate.getTime() + sessionDuration);
-
-                    const instanceResult = await client.query(`
-                        INSERT INTO game_sessions (
-                            title, start_time, end_time, description, minimum_players, maximum_players,
-                            auto_announce_hours, reminder_hours, confirmation_hours, created_by,
-                            parent_recurring_id, created_from_recurring, status, created_at, updated_at
-                        )
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'scheduled', NOW(), NOW())
-                        RETURNING *
-                    `, [
-                        `${template.title} - ${this.formatDateForTitle(lastDate)}`,
-                        lastDate.toISOString(),
-                        instanceEndTime.toISOString(),
-                        template.description,
-                        template.minimum_players,
-                        template.maximum_players,
-                        template.auto_announce_hours,
-                        template.reminder_hours,
-                        template.confirmation_hours,
-                        template.created_by,
-                        template.id
-                    ]);
-
-                    newInstances.push(instanceResult.rows[0]);
-                }
-
-                logger.info('Generated additional recurring instances:', {
-                    templateId,
-                    count: newInstances.length
-                });
-
-                return newInstances;
-            });
-
-            // Schedule reminders after the transaction commits: scheduleSessionEvents
-            // runs on its own pooled connection, which cannot see uncommitted session
-            // rows (FK violation on session_reminders otherwise).
-            for (const instance of createdInstances) {
-                await sessionService.scheduleSessionEvents(instance);
-            }
-
-            return createdInstances;
-
-        } catch (error) {
-            logger.error('Failed to generate additional instances:', error);
-            throw error;
-        }
     }
 
     /**
@@ -448,13 +197,70 @@ class RecurringSessionService {
      * @param {string} pattern - Recurring pattern
      * @param {number} interval - Interval for custom patterns
      * @param {number} targetDayOfWeek - Target day of week (0-6)
-     * @param {string} [timezone] - IANA timezone (defaults to campaign timezone cache)
+     * @param {string} [timezone] - IANA timezone (defaults to America/New_York)
+     * @param {number} [anchorDay] - Day of month a monthly pattern returns to after
+     *   a short month (defaults to the day of currentDate)
      * @returns {Date} - Next occurrence date (UTC)
      */
-    calculateNextOccurrence(currentDate, pattern, interval, targetDayOfWeek, timezone) {
-        const tz = timezone || this._cachedTimezone || 'America/New_York';
+    calculateNextOccurrence(currentDate, pattern, interval, targetDayOfWeek, timezone, anchorDay) {
+        const tz = timezone || FALLBACK_TIMEZONE;
 
-        // Get the wall-clock components in the campaign timezone
+        // Wall-clock components in the campaign timezone
+        const { year, month, day, hour, minute, second } = this._wallClockParts(currentDate, tz);
+
+        let nextYear = year;
+        let nextMonth = month; // 1-based
+        let nextDay = day;
+
+        switch (pattern) {
+            case 'weekly':
+                nextDay += 7;
+                break;
+            case 'biweekly':
+                nextDay += 14;
+                break;
+            case 'monthly': {
+                nextMonth += 1;
+                if (nextMonth > 12) {
+                    nextMonth = 1;
+                    nextYear += 1;
+                }
+                // Same day of month as the anchor, clamped to the last day of the new month
+                const lastDayOfMonth = new Date(Date.UTC(nextYear, nextMonth, 0)).getUTCDate();
+                nextDay = Math.min(anchorDay || day, lastDayOfMonth);
+                break;
+            }
+            case 'custom':
+                nextDay += (interval * 7);
+                break;
+            default:
+                throw new Error(`Unknown recurring pattern: ${pattern}`);
+        }
+
+        // Calendar arithmetic in UTC normalizes day overflow across months
+        const target = new Date(Date.UTC(nextYear, nextMonth - 1, nextDay));
+
+        // For weekly patterns, move forward to the correct day of week if needed
+        if ((pattern === 'weekly' || pattern === 'biweekly') && targetDayOfWeek !== null && targetDayOfWeek !== undefined) {
+            target.setUTCDate(target.getUTCDate() + ((targetDayOfWeek - target.getUTCDay() + 7) % 7));
+        }
+
+        // Wall-clock time as if it were UTC, then shift by the timezone offset
+        // at that moment to get the real UTC instant
+        const utcGuess = new Date(Date.UTC(
+            target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate(), hour, minute, second
+        ));
+        return new Date(utcGuess.getTime() - this._getTimezoneOffsetMs(utcGuess, tz));
+    }
+
+    /**
+     * Wall-clock components of an instant in a timezone.
+     * @param {Date} date - The instant
+     * @param {string} tz - IANA timezone
+     * @returns {{year:number, month:number, day:number, hour:number, minute:number, second:number}} month is 1-based
+     */
+    _wallClockParts(date, tz) {
+        // hourCycle h23 renders local midnight as 00 (hour12:false renders 24)
         const formatter = new Intl.DateTimeFormat('en-US', {
             timeZone: tz,
             year: 'numeric',
@@ -463,79 +269,39 @@ class RecurringSessionService {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit',
-            hour12: false
+            hourCycle: 'h23'
         });
 
-        const parts = formatter.formatToParts(currentDate);
+        const parts = formatter.formatToParts(date);
         const getPart = (type) => parseInt(parts.find(p => p.type === type).value);
 
-        let year = getPart('year');
-        let month = getPart('month'); // 1-based
-        let day = getPart('day');
-        const hour = getPart('hour');
-        const minute = getPart('minute');
-        const second = getPart('second');
+        return {
+            year: getPart('year'),
+            month: getPart('month'),
+            day: getPart('day'),
+            hour: getPart('hour'),
+            minute: getPart('minute'),
+            second: getPart('second')
+        };
+    }
 
-        switch (pattern) {
-            case 'weekly':
-                day += 7;
-                break;
-            case 'biweekly':
-                day += 14;
-                break;
-            case 'monthly': {
-                const origDay = day;
-                month += 1;
-                if (month > 12) {
-                    month = 1;
-                    year += 1;
-                }
-                // Clamp to last day of new month
-                const maxDay = new Date(year, month, 0).getDate();
-                day = Math.min(origDay, maxDay);
-                break;
-            }
-            case 'custom':
-                day += (interval * 7);
-                break;
-            default:
-                throw new Error(`Unknown recurring pattern: ${pattern}`);
-        }
+    /**
+     * Calendar date (YYYY-MM-DD) of an instant in a timezone.
+     */
+    _localDateString(date, tz) {
+        const { year, month, day } = this._wallClockParts(date, tz);
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
 
-        // Normalize the date (handles day overflow across months)
-        const normalizedLocal = new Date(year, month - 1, day, hour, minute, second);
-        const normYear = normalizedLocal.getFullYear();
-        const normMonth = normalizedLocal.getMonth() + 1;
-        const normDay = normalizedLocal.getDate();
-
-        // For weekly patterns, adjust to the correct day of week if needed
-        let finalDay = normDay;
-        if ((pattern === 'weekly' || pattern === 'biweekly') && targetDayOfWeek !== null && targetDayOfWeek !== undefined) {
-            // Use a temp Date to calculate day of week in local calendar
-            const tempDate = new Date(normYear, normMonth - 1, normDay);
-            const currentDayOfWeek = tempDate.getDay();
-            const daysUntilTarget = (targetDayOfWeek - currentDayOfWeek + 7) % 7;
-            if (daysUntilTarget !== 0) {
-                finalDay += daysUntilTarget;
-            }
-        }
-
-        // Convert the wall-clock time back to UTC by finding the UTC offset for this moment
-        // Build an ISO-like string and use the timezone to find the correct UTC instant
-        const targetLocal = new Date(normYear, normMonth - 1, finalDay, hour, minute, second);
-        const finalYear = targetLocal.getFullYear();
-        const finalMonth = targetLocal.getMonth() + 1;
-        const finalDayOfMonth = targetLocal.getDate();
-
-        // Create a UTC date at the same wall-clock time, then adjust for the timezone offset
-        const utcGuess = new Date(Date.UTC(finalYear, finalMonth - 1, finalDayOfMonth, hour, minute, second));
-
-        // Find the actual offset at this time in the target timezone
-        const offsetMs = this._getTimezoneOffsetMs(utcGuess, tz);
-        // The actual UTC time = wall-clock time - offset
-        const result = new Date(utcGuess.getTime() - offsetMs);
-
-        return result;
+    /**
+     * YYYY-MM-DD for a DATE column value. node-postgres returns DATE as a Date at
+     * local midnight, so its local components are the stored calendar date.
+     */
+    _dateOnlyString(value) {
+        if (!value) return null;
+        if (typeof value === 'string') return value.slice(0, 10);
+        const date = new Date(value);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     }
 
     /**
@@ -546,30 +312,10 @@ class RecurringSessionService {
      * @returns {number} - Offset in milliseconds
      */
     _getTimezoneOffsetMs(utcDate, tz) {
-        // Format the UTC date in the target timezone to find what wall-clock time it maps to
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: tz,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        });
-
-        const parts = formatter.formatToParts(utcDate);
-        const getPart = (type) => parseInt(parts.find(p => p.type === type).value);
-
-        const localYear = getPart('year');
-        const localMonth = getPart('month') - 1;
-        const localDay = getPart('day');
-        const localHour = getPart('hour') === 24 ? 0 : getPart('hour');
-        const localMinute = getPart('minute');
-        const localSecond = getPart('second');
+        const local = this._wallClockParts(utcDate, tz);
 
         // Build the local time as if it were UTC
-        const localAsUtc = Date.UTC(localYear, localMonth, localDay, localHour, localMinute, localSecond);
+        const localAsUtc = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute, local.second);
 
         // offset = local - UTC
         return localAsUtc - utcDate.getTime();
