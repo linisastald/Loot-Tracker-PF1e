@@ -67,6 +67,7 @@ const useConsumable = async (req, res) => {
             status = CASE WHEN charges = 1 THEN 'Trashed' ELSE status END
         WHERE id = $1
           AND charges > 0
+          AND status = 'Kept Party'
         RETURNING *
       `;
     } else {
@@ -75,12 +76,15 @@ const useConsumable = async (req, res) => {
                              FROM loot
                              WHERE itemid = $1
                                AND quantity > 0
+                               AND status = 'Kept Party'
                              ORDER BY id
                              LIMIT 1 FOR UPDATE)
         UPDATE loot
         SET quantity = quantity - 1,
             status = CASE WHEN quantity - 1 = 0 THEN 'Trashed' ELSE status END
         WHERE id = (SELECT id FROM updated_row)
+          AND quantity > 0
+          AND status = 'Kept Party'
         RETURNING *
       `;
     }

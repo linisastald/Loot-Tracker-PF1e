@@ -138,6 +138,8 @@ describe('consumablesController', () => {
 
       await consumablesController.useConsumable(req, res);
 
+      // F-0271: wand decrement is restricted to party-held wands
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/status = 'Kept Party'/);
       // Verify wand update query
       expect(mockClient.query.mock.calls[0][0]).toContain('charges = charges - 1');
       expect(mockClient.query.mock.calls[0][1]).toEqual([1]);
@@ -177,6 +179,9 @@ describe('consumablesController', () => {
       await consumablesController.useConsumable(req, res);
 
       expect(mockClient.query.mock.calls[0][0]).toContain('quantity = quantity - 1');
+      // F-0271: only party-held stock may be decremented
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/status = 'Kept Party'/);
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/quantity > 0/);
       expect(res.success).toHaveBeenCalledWith(
         updatedPotion,
         'potion consumed successfully'
