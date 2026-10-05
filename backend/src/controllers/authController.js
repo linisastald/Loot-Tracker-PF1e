@@ -209,7 +209,7 @@ const registerUser = async (req, res) => {
     let invite = null;
     if (inviteCode) {
         // CROSS-CAMPAIGN LOOKUP REQUIRED: /auth/register is unauthenticated,
-        // so no campaign context exists and the RLS GUC defaults to '1' — a
+        // so no campaign context exists (the GUC would be empty, matching no rows) — a
         // campaign-2 invite would be invisible here. This is the one place
         // 'all' mode is required on a request path: the code itself is the
         // credential, and it determines which campaign membership is granted.
@@ -257,7 +257,7 @@ const registerUser = async (req, res) => {
     // callback returns, so the response must wait until it resolves.
     //
     // The whole transactional block runs under runWithCampaign('all'): this
-    // unauthenticated path has no campaign context (GUC would default to '1'),
+    // unauthenticated path has no campaign context (the empty GUC matches no rows),
     // and when a cross-campaign invite is redeemed both the user_campaign
     // INSERT and the invites UPDATE must pass the RLS tenant policy's
     // WITH CHECK for the invite's campaign.

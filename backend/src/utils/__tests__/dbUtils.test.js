@@ -39,7 +39,7 @@ describe('dbUtils tenant-context plumbing', () => {
       const result = await dbUtils.executeQuery('SELECT * FROM loot WHERE id = $1', [5]);
 
       expect(mockClient.query).toHaveBeenNthCalledWith(1, 'BEGIN');
-      expect(mockClient.query).toHaveBeenNthCalledWith(2, SET_CONFIG_SQL, ['1']);
+      expect(mockClient.query).toHaveBeenNthCalledWith(2, SET_CONFIG_SQL, ['']);
       expect(mockClient.query).toHaveBeenNthCalledWith(3, 'SELECT * FROM loot WHERE id = $1', [5]);
       expect(mockClient.query).toHaveBeenNthCalledWith(4, 'COMMIT');
       expect(mockClient.query).toHaveBeenCalledTimes(4);
@@ -47,10 +47,10 @@ describe('dbUtils tenant-context plumbing', () => {
       expect(mockClient.release).toHaveBeenCalledWith(false);
     });
 
-    it('defaults the campaign id to "1" when no context is active', async () => {
+    it('sends an empty campaign id (RLS: no rows) when no context is active', async () => {
       await dbUtils.executeQuery('SELECT 1');
 
-      expect(mockClient.query).toHaveBeenCalledWith(SET_CONFIG_SQL, ['1']);
+      expect(mockClient.query).toHaveBeenCalledWith(SET_CONFIG_SQL, ['']);
     });
 
     it('sends the active campaign id when running inside runWithCampaign', async () => {
@@ -114,7 +114,7 @@ describe('dbUtils tenant-context plumbing', () => {
       const result = await dbUtils.executeTransaction(callback);
 
       expect(mockClient.query).toHaveBeenNthCalledWith(1, 'BEGIN');
-      expect(mockClient.query).toHaveBeenNthCalledWith(2, SET_CONFIG_SQL, ['1']);
+      expect(mockClient.query).toHaveBeenNthCalledWith(2, SET_CONFIG_SQL, ['']);
       expect(mockClient.query).toHaveBeenNthCalledWith(3, 'UPDATE loot SET status = $1', ['kept']);
       expect(mockClient.query).toHaveBeenNthCalledWith(4, 'COMMIT');
       expect(callback).toHaveBeenCalledWith(mockClient);
@@ -156,7 +156,7 @@ describe('dbUtils tenant-context plumbing', () => {
 
       expect(exists).toBe(true);
       expect(mockClient.query).toHaveBeenNthCalledWith(1, 'BEGIN');
-      expect(mockClient.query).toHaveBeenNthCalledWith(2, SET_CONFIG_SQL, ['1']);
+      expect(mockClient.query).toHaveBeenNthCalledWith(2, SET_CONFIG_SQL, ['']);
       expect(mockClient.query).toHaveBeenNthCalledWith(4, 'COMMIT');
     });
   });

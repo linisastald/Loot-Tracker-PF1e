@@ -339,6 +339,23 @@ describe('processSessionInteraction campaign context', () => {
     );
   });
 
+  it('refuses to link when the originating session message cannot be resolved to a campaign', async () => {
+    mockExecuteQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    const req = {
+      headers: {},
+      body: {
+        type: 3,
+        data: { custom_id: `link_character_${ENHANCED_MESSAGE_ID}_999888777666555444`, values: ['3'] },
+        member: { user: { id: '999888777666555444' } },
+      },
+    };
+    const res = makeRes();
+    await sessionController.processSessionInteraction(req, res);
+
+    expect(res.json.mock.calls[0][0].data.content).toContain('Could not determine the campaign');
+    expect(mockExecuteQuery.mock.calls.some(c => String(c[0]).includes('UPDATE users SET discord_id'))).toBe(false);
+  });
+
   it('does not report success when the linked character has no owner account', async () => {
     mockExecuteQuery.mockImplementation(async (query) => {
       if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 4 }] };

@@ -40,8 +40,8 @@ describe('campaignSettings', () => {
       expect(() => campaignSettings.resolveCampaignId('')).toThrow('Invalid campaign id');
     });
 
-    it('should fall back to the default campaign when no context is active', () => {
-      expect(campaignSettings.resolveCampaignId()).toBe('1');
+    it('should THROW (fail closed) when no context is active and no id is given', () => {
+      expect(() => campaignSettings.resolveCampaignId()).toThrow(/No campaign context/);
     });
 
     it('should resolve from the active campaign context', () => {

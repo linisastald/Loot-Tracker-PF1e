@@ -116,7 +116,7 @@ exports.create = async ({ createdBy, campaignId, expiresAt }) => {
  * IMPORTANT: invites are campaign-scoped under RLS. Callers on
  * unauthenticated paths (registration) must wrap this in
  * campaignContext.runWithCampaign('all', ...) or a cross-campaign invite
- * will be invisible (the GUC defaults to campaign '1').
+ * will be invisible (with no context the GUC is empty and matches no rows).
  *
  * @param {string} code - Invite code as entered by the registrant
  * @return {Promise<Object|null>} The invite row or null

@@ -70,6 +70,15 @@ const failure = (status, data = {}) => ({
   error: { code: 'DISCORD_API_ERROR', originalError: { response: { status, data } } },
 });
 
+// These tests call handlers directly, outside the request context that verifyToken
+// establishes (an unset context now fails closed): simulate a request in campaign 1
+// unless the test sets its own context with runWithCampaign.
+beforeEach(() => {
+  const campaignContext = require('../../utils/campaignContext');
+  const realGetCampaignId = campaignContext.getCampaignId;
+  jest.spyOn(campaignContext, 'getCampaignId').mockImplementation(() => realGetCampaignId() || '1');
+});
+
 describe('discordController.sendMessage', () => {
   beforeEach(() => {
     jest.clearAllMocks();

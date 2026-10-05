@@ -9,6 +9,15 @@ jest.mock('../logger', () => ({
 const { isValidTimezone, getTimezoneOptions, clearTimezoneCache, getCampaignTimezone, VALID_TIMEZONES } = require('../timezoneUtils');
 const dbUtils = require('../dbUtils');
 
+// These tests call handlers directly, outside the request context that verifyToken
+// establishes (an unset context now fails closed): simulate a request in campaign 1
+// unless the test sets its own context with runWithCampaign.
+beforeEach(() => {
+  const campaignContext = require('../campaignContext');
+  const realGetCampaignId = campaignContext.getCampaignId;
+  jest.spyOn(campaignContext, 'getCampaignId').mockImplementation(() => realGetCampaignId() || '1');
+});
+
 describe('timezoneUtils', () => {
   beforeEach(() => {
     jest.clearAllMocks();

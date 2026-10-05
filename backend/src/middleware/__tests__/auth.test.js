@@ -251,7 +251,7 @@ describe('verifyToken middleware', () => {
         expect(next).toHaveBeenCalled();
         expect(contextInsideHandler).toBe('3');
         // Context does not leak outside the chain
-        expect(campaignContext.getCampaignId()).toBe('1');
+        expect(campaignContext.getCampaignId()).toBe('');
       });
 
       it('propagates the context across async continuations of the handler', async () => {

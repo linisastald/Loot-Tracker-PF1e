@@ -75,6 +75,11 @@ const resolveCampaignId = (campaignId) => {
   }
 
   const contextId = campaignContext.getCampaignId();
+  if (contextId === '') {
+    throw new Error(
+      'No campaign context active: pass an explicit campaignId or run inside runWithCampaign'
+    );
+  }
   if (contextId === 'all') {
     throw new Error(
       "Cannot resolve a campaign setting in cross-campaign ('all') context: " +

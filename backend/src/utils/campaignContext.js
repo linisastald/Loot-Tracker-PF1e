@@ -7,21 +7,23 @@
  * `app.current_campaign` GUC on every query/transaction, which the row-level
  * security policies use to scope data to a single campaign.
  *
- * Until the Phase 3 request middleware sets real values, no context is active
- * and `getCampaignId()` returns the default '1' — correct for existing
- * single-campaign deployments, and inert while the app still connects as the
- * database owner (RLS not enforced for owners).
+ * Fail closed: when no context is active, `getCampaignId()` returns '' — the
+ * RLS policies turn an empty GUC into NULL, so a query that escaped
+ * runWithCampaign sees no rows (and cannot write any) instead of silently
+ * reading and writing campaign 1. Code that legitimately runs outside a
+ * request (login lookups, background jobs) must opt in explicitly with
+ * runWithCampaign('all' | <id>, ...).
  */
 const { AsyncLocalStorage } = require('async_hooks');
 
 const storage = new AsyncLocalStorage();
 
 /**
- * Campaign id used when no context is active (single-campaign deployments).
- * Phase 3 request middleware will establish real per-request contexts.
+ * Campaign id reported when no context is active: matches no campaign under
+ * the RLS policies (fail closed).
  * @type {string}
  */
-const DEFAULT_CAMPAIGN_ID = '1';
+const NO_CONTEXT_CAMPAIGN_ID = '';
 
 /**
  * Pattern of acceptable campaign ids: a positive integer string, or the
@@ -59,9 +61,9 @@ const runWithCampaign = (campaignId, fn) => {
  * Get the campaign id for the current async context.
  *
  * @returns {string} - Current campaign id as a string ('all' in cross-campaign
- *   mode); defaults to '1' when no context is active
+ *   mode); '' when no context is active (matches no rows under RLS)
  */
-const getCampaignId = () => storage.getStore()?.campaignId ?? DEFAULT_CAMPAIGN_ID;
+const getCampaignId = () => storage.getStore()?.campaignId ?? NO_CONTEXT_CAMPAIGN_ID;
 
 module.exports = {
   runWithCampaign,

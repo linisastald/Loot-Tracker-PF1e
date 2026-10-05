@@ -31,6 +31,15 @@ function createMockReq(over = {}) {
   return { body: {}, params: {}, query: {}, user: { role: 'DM', id: 1 }, ...over };
 }
 
+// These tests call handlers directly, outside the request context that verifyToken
+// establishes (an unset context now fails closed): simulate a request in campaign 1
+// unless the test sets its own context with runWithCampaign.
+beforeEach(() => {
+  const campaignContext = require('../../utils/campaignContext');
+  const realGetCampaignId = campaignContext.getCampaignId;
+  jest.spyOn(campaignContext, 'getCampaignId').mockImplementation(() => realGetCampaignId() || '1');
+});
+
 describe('lootGeneratorController', () => {
   beforeEach(() => jest.clearAllMocks());
 

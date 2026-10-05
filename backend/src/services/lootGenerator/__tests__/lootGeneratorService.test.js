@@ -49,6 +49,15 @@ beforeEach(() => {
   });
 });
 
+// These tests call handlers directly, outside the request context that verifyToken
+// establishes (an unset context now fails closed): simulate a request in campaign 1
+// unless the test sets its own context with runWithCampaign.
+beforeEach(() => {
+  const campaignContext = require('../../../utils/campaignContext');
+  const realGetCampaignId = campaignContext.getCampaignId;
+  jest.spyOn(campaignContext, 'getCampaignId').mockImplementation(() => realGetCampaignId() || '1');
+});
+
 describe('pure helpers', () => {
   it('coinsFromGp is value-exact (platinum*10 + gold == gp)', () => {
     for (const gp of [0, 7, 130, 3350, 67000]) {

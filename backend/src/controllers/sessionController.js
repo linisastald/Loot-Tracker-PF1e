@@ -332,15 +332,16 @@ const handleCharacterLinkSelection = async (res, data, discordUserId) => {
     // custom_id is `link_character_<messageId>_<discordUserId>`; resolve
     // the originating session message to its campaign so the
     // campaign-scoped characters lookup below sees the right rows.
-    // Fall back to the current (default) context if it can't be
-    // resolved, preserving single-campaign behavior.
+    // No fallback to a default campaign: an unresolvable message is refused
+    // (an unset context fails closed).
     const linkOriginMessageId = data.custom_id.split('_')[2];
     const linkResolved = /^\d{17,19}$/.test(linkOriginMessageId || '')
         ? await resolveDiscordMessageCampaign(linkOriginMessageId)
         : null;
-    const linkCampaignId = linkResolved
-        ? linkResolved.campaignId
-        : campaignContext.getCampaignId();
+    if (!linkResolved) {
+        return ephemeral(res, 'Could not determine the campaign for this session message.');
+    }
+    const linkCampaignId = linkResolved.campaignId;
 
     return campaignContext.runWithCampaign(linkCampaignId, async () => {
         // Get the user who owns this character, scoped to the session's
