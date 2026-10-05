@@ -27,7 +27,7 @@ for (const line of seedLines) {
 
 // (id, 'name', old_value, new_value, new_cl)
 const migRowRe = /^\s*\((\d+), '((?:[^']|'')*)', (NULL|[\d.]+), ([\d.]+), (\d+)\),?$/;
-const migRows = migrationSql.split('\n').map(l => migRowRe.exec(l)).filter(Boolean).map(m => ({
+const migRows = migrationSql.split(/\r?\n/).map(l => migRowRe.exec(l)).filter(Boolean).map(m => ({
   id: Number(m[1]),
   name: m[2].replace(/''/g, "'"),
   oldValue: m[3] === 'NULL' ? null : Number(m[3]),
