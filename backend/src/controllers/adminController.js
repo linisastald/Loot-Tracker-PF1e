@@ -41,195 +41,111 @@ const validateValuecalc = (valuecalc) => {
   }
 };
 
+/** Optional text/number fields: undefined, null and '' are NULL; 0 is a real value. */
+const nullIfBlank = (value) => (value === undefined || value === null || value === '' ? null : value);
+
+/** Column order of the item write queries; `values` below must match. */
+const ITEM_COLUMNS = ['name', 'type', 'subtype', 'value', 'weight', 'casterlevel'];
+
+/** Column order of the mod write queries; `values` below must match. */
+const MOD_COLUMNS = ['name', 'plus', 'type', 'valuecalc', 'target', 'subtarget', 'casterlevel'];
+
 /**
- * Create a new item
+ * Insert (no :id param) or update (req.params.id) one catalog row and send the
+ * response. Table and column names are fixed constants above, never request
+ * input; every value goes through a bound parameter.
+ *
+ * @param {Object} req - Express request
+ * @param {Object} res - Express response
+ * @param {Object} spec
+ * @param {string} spec.table - 'item' or 'mod'
+ * @param {string[]} spec.columns - Column names, in the order of `spec.values`
+ * @param {Array} spec.values - Bound values for the columns
+ * @param {string} spec.noun - 'Item' or 'Mod', for messages
  */
-const createItem = async (req, res) => {
+const writeCatalogRow = async (req, res, {table, columns, values, noun}) => {
+  const id = req.params.id;
+  const isUpdate = id !== undefined;
+  const name = values[columns.indexOf('name')];
+
+  const query = isUpdate
+    ? `UPDATE ${table}
+       SET ${columns.map((column, i) => `${column} = $${i + 1}`).join(', ')}
+       WHERE id = $${columns.length + 1}
+       RETURNING *`
+    : `INSERT INTO ${table} (${columns.join(', ')})
+       VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')})
+       RETURNING *`;
+
+  const result = await dbUtils.executeQuery(
+    query,
+    isUpdate ? [...values, id] : values,
+    `Error ${isUpdate ? 'updating' : 'creating'} ${noun.toLowerCase()}`
+  );
+
+  if (isUpdate && result.rows.length === 0) {
+    throw controllerFactory.createNotFoundError(`${noun} with ID ${id} not found`);
+  }
+
+  logger.info(
+    isUpdate ? `${noun} updated: ${name} (ID: ${id})` : `${noun} created: ${name}`,
+    {userId: req.user.id}
+  );
+
+  return controllerFactory.sendSuccessResponse(
+    res,
+    result.rows[0],
+    `${noun} ${isUpdate ? 'updated' : 'created'} successfully`
+  );
+};
+
+/** Shared by createItem / updateItem. */
+const saveItem = async (req, res) => {
   requireSuperadminForCatalogWrite(req);
 
   const {name, type, subtype, value, weight, casterlevel} = req.body;
-
-  // Validate required fields using controllerFactory error types
   if (!name || !type || (value === undefined || value === null)) {
     throw controllerFactory.createValidationError('Name, type, and value are required fields');
   }
 
-  // Prepare query
-  const query = `
-    INSERT INTO item (name, type, subtype, value, weight, casterlevel)
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING *
-  `;
-
-  const values = [
-    name,
-    type,
-    subtype || null,
-    value,
-    weight || null,
-    casterlevel || null
-  ];
-
-  const result = await dbUtils.executeQuery(query, values, 'Error creating item');
-
-  // Log the operation
-  logger.info(`Item created: ${name}`, {userId: req.user.id});
-
-  return controllerFactory.sendSuccessResponse(res, result.rows[0], 'Item created successfully');
+  return writeCatalogRow(req, res, {
+    table: 'item',
+    columns: ITEM_COLUMNS,
+    values: [name, type, nullIfBlank(subtype), value, nullIfBlank(weight), nullIfBlank(casterlevel)],
+    noun: 'Item'
+  });
 };
 
-/**
- * Update an existing item
- */
-const updateItem = async (req, res) => {
-  requireSuperadminForCatalogWrite(req);
-
-  const {id} = req.params;
-  const {name, type, subtype, value, weight, casterlevel} = req.body;
-
-  // Validate required fields using controllerFactory error types
-  if (!name || !type || (value === undefined || value === null)) {
-    throw controllerFactory.createValidationError('Name, type, and value are required fields');
-  }
-
-  // Update item directly and check if it existed via rowCount
-  const query = `
-    UPDATE item
-    SET name        = $1,
-        type        = $2,
-        subtype     = $3,
-        value       = $4,
-        weight      = $5,
-        casterlevel = $6
-    WHERE id = $7
-    RETURNING *
-  `;
-
-  const values = [
-    name,
-    type,
-    subtype || null,
-    value,
-    weight || null,
-    casterlevel || null,
-    id
-  ];
-
-  const result = await dbUtils.executeQuery(query, values, 'Error updating item');
-
-  if (result.rows.length === 0) {
-    throw controllerFactory.createNotFoundError(`Item with ID ${id} not found`);
-  }
-
-  // Log the operation
-  logger.info(`Item updated: ${name} (ID: ${id})`, {userId: req.user.id});
-
-  return controllerFactory.sendSuccessResponse(res, result.rows[0], 'Item updated successfully');
-};
-
-/**
- * Create a new mod
- */
-const createMod = async (req, res) => {
+/** Shared by createMod / updateMod. */
+const saveMod = async (req, res) => {
   requireSuperadminForCatalogWrite(req);
 
   const {name, plus, type, valuecalc, target, subtarget, casterlevel} = req.body;
-
-  // Validate required fields using controllerFactory error types
   if (!name || !type || !target) {
     throw controllerFactory.createValidationError('Name, type, and target are required fields');
   }
   validateValuecalc(valuecalc);
 
-  // Prepare query
-  const query = `
-    INSERT INTO mod (name, plus, type, valuecalc, target, subtarget, casterlevel)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-    RETURNING *
-  `;
-
-  const values = [
-    name,
-    plus || null,
-    type,
-    valuecalc || null,
-    target,
-    subtarget || null,
-    casterlevel || null
-  ];
-
-  const result = await dbUtils.executeQuery(query, values, 'Error creating mod');
-
-  // Log the operation
-  logger.info(`Mod created: ${name}`, {userId: req.user.id});
-
-  return controllerFactory.sendSuccessResponse(res, result.rows[0], 'Mod created successfully');
-};
-
-/**
- * Update an existing mod
- */
-const updateMod = async (req, res) => {
-  requireSuperadminForCatalogWrite(req);
-
-  const {id} = req.params;
-  const {name, plus, type, valuecalc, target, subtarget, casterlevel} = req.body;
-
-  // Validate required fields using controllerFactory error types
-  if (!name || !type || !target) {
-    throw controllerFactory.createValidationError('Name, type, and target are required fields');
-  }
-  validateValuecalc(valuecalc);
-
-  // Update mod directly and check if it existed via rowCount
-  const query = `
-    UPDATE mod
-    SET name        = $1,
-        plus        = $2,
-        type        = $3,
-        valuecalc   = $4,
-        target      = $5,
-        subtarget   = $6,
-        casterlevel = $7
-    WHERE id = $8
-    RETURNING *
-  `;
-
-  const values = [
-    name,
-    plus || null,
-    type,
-    valuecalc || null,
-    target,
-    subtarget || null,
-    casterlevel || null,
-    id
-  ];
-
-  const result = await dbUtils.executeQuery(query, values, 'Error updating mod');
-
-  if (result.rows.length === 0) {
-    throw controllerFactory.createNotFoundError(`Mod with ID ${id} not found`);
-  }
-
-  // Log the operation
-  logger.info(`Mod updated: ${name} (ID: ${id})`, {userId: req.user.id});
-
-  return controllerFactory.sendSuccessResponse(res, result.rows[0], 'Mod updated successfully');
+  return writeCatalogRow(req, res, {
+    table: 'mod',
+    columns: MOD_COLUMNS,
+    values: [name, nullIfBlank(plus), type, nullIfBlank(valuecalc), target, nullIfBlank(subtarget), nullIfBlank(casterlevel)],
+    noun: 'Mod'
+  });
 };
 
 // Use controllerFactory to create handler functions with standardized error handling
 module.exports = {
-  createItem: controllerFactory.createHandler(createItem, {
+  createItem: controllerFactory.createHandler(saveItem, {
     errorMessage: 'Error creating item'
   }),
-  updateItem: controllerFactory.createHandler(updateItem, {
+  updateItem: controllerFactory.createHandler(saveItem, {
     errorMessage: 'Error updating item'
   }),
-  createMod: controllerFactory.createHandler(createMod, {
+  createMod: controllerFactory.createHandler(saveMod, {
     errorMessage: 'Error creating mod'
   }),
-  updateMod: controllerFactory.createHandler(updateMod, {
+  updateMod: controllerFactory.createHandler(saveMod, {
     errorMessage: 'Error updating mod'
   }),
 };

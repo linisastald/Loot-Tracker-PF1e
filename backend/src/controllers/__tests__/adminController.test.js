@@ -522,4 +522,48 @@ describe('adminController', () => {
       expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
   });
+
+  // ─── explicit zero values are data, not "missing" (F-0215) ───────
+
+  describe('zero values', () => {
+    it('createItem stores weight 0 and casterlevel 0 as 0, not NULL', async () => {
+      const req = createMockReq({ body: { name: 'Feather', type: 'Gear', value: 1, weight: 0, casterlevel: 0 } });
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+
+      await adminController.createItem(req, createMockRes());
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params).toEqual(['Feather', 'Gear', null, 1, 0, 0]);
+    });
+
+    it('updateItem keeps an explicit weight of 0', async () => {
+      const req = createMockReq({ params: { id: '3' }, body: { name: 'Feather', type: 'Gear', value: 1, weight: 0 } });
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 3 }] });
+
+      await adminController.updateItem(req, createMockRes());
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params).toEqual(['Feather', 'Gear', null, 1, 0, null, '3']);
+    });
+
+    it('createMod stores plus 0 and casterlevel 0 as 0', async () => {
+      const req = createMockReq({ body: { name: 'Masterwork', type: 'Weapon', target: 'weapon', plus: 0, casterlevel: 0 } });
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+
+      await adminController.createMod(req, createMockRes());
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params).toEqual(['Masterwork', 0, 'Weapon', null, 'weapon', null, 0]);
+    });
+
+    it('updateMod keeps plus 0 and still nulls an empty valuecalc', async () => {
+      const req = createMockReq({ params: { id: '4' }, body: { name: 'Masterwork', type: 'Weapon', target: 'weapon', plus: 0, valuecalc: '' } });
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 4 }] });
+
+      await adminController.updateMod(req, createMockRes());
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params).toEqual(['Masterwork', 0, 'Weapon', null, 'weapon', null, null, '4']);
+    });
+  });
 });
