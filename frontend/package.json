@@ -13,7 +13,7 @@
     "@mui/material": "^9.1.2",
     "@mui/system": "^9.1.2",
     "@mui/x-date-pickers": "^9.7.0",
-    "axios": "^1.15.0",
+    "axios": "^1.20.0",
     "date-fns": "^4.1.0",
     "date-fns-tz": "~3.2.0",
     "notistack": "^3.0.1",
