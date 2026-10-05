@@ -24,7 +24,7 @@ const setupGetMock = (mode: RegistrationMode, dmExists = true) => {
     }
     if (url.includes('check-registration-status')) {
       return Promise.resolve({
-        data: { mode, registrationsOpen: mode !== 'closed' },
+        data: { mode },
       } as any);
     }
     return Promise.resolve({ data: {} } as any);

@@ -22,7 +22,6 @@ type RegistrationMode = 'open' | 'invite-only' | 'closed';
 
 interface RegistrationStatusData {
     mode: RegistrationMode;
-    registrationsOpen: boolean;
 }
 
 interface CheckDmData {

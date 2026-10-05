@@ -1,6 +1,6 @@
 // src/App.js
 import CssBaseline from '@mui/material/CssBaseline';
-import React, {Suspense, useCallback, useEffect, useState} from 'react';
+import React, {Suspense, useEffect, useState} from 'react';
 import {BrowserRouter as Router, Navigate, Route, Routes} from 'react-router-dom';
 import {ThemeProvider} from '@mui/material/styles';
 import {Box, CircularProgress} from '@mui/material';
@@ -143,12 +143,6 @@ function App() {
     setUser(null);
   };
 
-  const handleUserUpdate = useCallback((updatedUser: any) => {
-    setUser(updatedUser);
-    if (updatedUser) {
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-    }
-  }, []);
 
   // Show loading spinner while checking authentication
   if (authLoading) {
@@ -178,7 +172,7 @@ function App() {
             without a mounted provider those calls are silent no-ops */}
         <SnackbarProvider maxSnack={3} autoHideDuration={5000}>
         <ConfigProvider>
-          <AuthProvider user={user} isAuthenticated={isAuthenticated} onUserUpdate={handleUserUpdate}>
+          <AuthProvider user={user} isAuthenticated={isAuthenticated}>
           {/* CampaignProvider reads auth state from AuthContext and only fetches
               campaign info once authenticated (it is a no-op on the login page) */}
           <CampaignProvider>

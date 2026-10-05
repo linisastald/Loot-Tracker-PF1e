@@ -92,7 +92,6 @@ const renderWithAuth = (isAuthenticated: boolean) =>
     <AuthProvider
       user={isAuthenticated ? { id: 1, username: 'tester', role: 'Player' } : null}
       isAuthenticated={isAuthenticated}
-      onUserUpdate={vi.fn()}
     >
       <CampaignProvider>
         <Probe />
