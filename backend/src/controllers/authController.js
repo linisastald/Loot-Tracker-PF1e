@@ -612,15 +612,19 @@ const forgotPassword = async (req, res) => {
     // the token back.
     const {token} = await dbUtils.executeTransaction((client) => createPasswordResetToken(client, user.id));
 
-    try {
-        const emailSent = await emailService.sendPasswordResetEmail(user.email, user.username, token);
-        if (!emailSent) {
-            logger.warn(`Failed to send password reset email to ${user.email}`);
-        }
-    } catch (error) {
-        // Same response as for unknown accounts, so mail failures do not leak
-        logger.error(`Error sending password reset email to ${user.email}: ${error.message}`);
-    }
+    // Not awaited: the answer must not depend on the SMTP round trip, or the
+    // response time would reveal which username/email pairs exist. Failures
+    // are only logged, so mail errors look the same as for unknown accounts.
+    Promise.resolve()
+        .then(() => emailService.sendPasswordResetEmail(user.email, user.username, token))
+        .then((emailSent) => {
+            if (!emailSent) {
+                logger.warn(`Failed to send password reset email to ${user.email}`);
+            }
+        })
+        .catch((error) => {
+            logger.error(`Error sending password reset email to ${user.email}: ${error.message}`);
+        });
 
     return controllerFactory.sendSuccessMessage(res, FORGOT_PASSWORD_MESSAGE);
 };

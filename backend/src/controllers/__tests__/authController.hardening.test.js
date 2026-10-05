@@ -376,6 +376,22 @@ describe('authController hardening', () => {
       expect(res.error).not.toHaveBeenCalled();
     });
 
+    it('forgotPassword answers without waiting for the SMTP round trip (no timing difference to unknown accounts)', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 1, username: 'u', email: 'u@example.com' }] });
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb({ query: jest.fn().mockResolvedValue({ rows: [] }) }));
+      emailService.sendPasswordResetEmail.mockReturnValue(new Promise(() => {})); // never settles
+      const res = createMockRes();
+
+      const outcome = await Promise.race([
+        authController.forgotPassword(createReq({ body: { username: 'u', email: 'u@example.com' } }), res).then(() => 'answered'),
+        new Promise((resolve) => setTimeout(() => resolve('blocked on smtp'), 200)),
+      ]);
+
+      expect(outcome).toBe('answered');
+      expect(emailService.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+      expect(res.success).toHaveBeenCalledWith(null, expect.stringContaining('If a user'));
+    });
+
     it('generateManualResetLink stores the hash while the returned URL carries the raw token', async () => {
       dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 5, username: 'p', email: 'p@example.com' }] });
       const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
