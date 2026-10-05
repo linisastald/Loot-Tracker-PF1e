@@ -5,6 +5,7 @@
 
 const dbUtils = require('../../utils/dbUtils');
 const logger = require('../../utils/logger');
+const controllerFactory = require('../../utils/controllerFactory');
 const {
     ATTENDANCE_STATUS,
     RESPONSE_TYPE_MAP,
@@ -14,115 +15,136 @@ const {
 class AttendanceService {
     /**
      * Record or update attendance for a session
+     *
+     * The session must be visible in the current campaign context, and a
+     * supplied character_id must be an active character of the RSVPing user in
+     * that session's campaign (a player cannot RSVP as someone else's character
+     * or one from another campaign).
+     *
      * @param {number} sessionId - Session ID
      * @param {number} userId - User ID
      * @param {string} responseType - Response type (yes, no, maybe, late, etc.)
-     * @param {Object} additionalData - Additional data (late_arrival_time, notes, character_id, etc.)
+     * @param {Object} additionalData - Additional data (late_arrival_time, early_departure_time, notes, character_id)
      * @returns {Promise<Object>} - Attendance record and counts
+     * @throws {NotFoundError} If the session does not exist in the current campaign
+     * @throws {ValidationError} If character_id is not the user's active character in the session's campaign
      */
     async recordAttendance(sessionId, userId, responseType, additionalData = {}) {
-        try {
-            const {
-                late_arrival_time,
-                early_departure_time,
-                notes,
-                discord_id,
-                character_id
-            } = additionalData;
+        const {
+            late_arrival_time,
+            early_departure_time,
+            notes
+        } = additionalData;
+        const character_id = additionalData.character_id || null;
 
-            // Normalize legacy status values (accepted/declined/tentative)
-            // back to canonical response types (yes/no/maybe). Without this,
-            // older callers store response_type='accepted' which the Tasks
-            // page filter (which keys off yes/late/early/late_and_early) does
-            // not recognize.
-            const normalizedResponseType = STATUS_TO_RESPONSE_MAP[responseType?.toLowerCase()] || responseType;
+        // Normalize legacy status values (accepted/declined/tentative) back to
+        // canonical response types (yes/no/maybe). Without this, older callers
+        // store response_type='accepted' which the Tasks page filter (which keys
+        // off yes/late/early/late_and_early) does not recognize.
+        const lowered = typeof responseType === 'string' ? responseType.toLowerCase() : responseType;
+        const normalizedResponseType = STATUS_TO_RESPONSE_MAP[lowered] || lowered;
 
-            // Map response type to status for database constraint
-            const status = RESPONSE_TYPE_MAP[normalizedResponseType] ||
-                          RESPONSE_TYPE_MAP[normalizedResponseType?.toLowerCase()] ||
-                          (Object.values(ATTENDANCE_STATUS).includes(normalizedResponseType) ? normalizedResponseType : ATTENDANCE_STATUS.TENTATIVE);
+        // Map response type to status for database constraint
+        const status = RESPONSE_TYPE_MAP[normalizedResponseType] || ATTENDANCE_STATUS.TENTATIVE;
 
-            const { attendance, counts } = await dbUtils.executeTransaction(async (client) => {
-                // Upsert attendance record
-                const attendanceResult = await client.query(`
-                    INSERT INTO session_attendance (
-                        session_id, user_id, character_id, status, response_type, late_arrival_time,
-                        early_departure_time, notes, response_timestamp
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-                    ON CONFLICT (session_id, user_id)
-                    DO UPDATE SET
-                        character_id = EXCLUDED.character_id,
-                        status = EXCLUDED.status,
-                        response_type = EXCLUDED.response_type,
-                        late_arrival_time = EXCLUDED.late_arrival_time,
-                        early_departure_time = EXCLUDED.early_departure_time,
-                        notes = EXCLUDED.notes,
-                        response_timestamp = NOW(),
-                        updated_at = NOW()
-                    RETURNING *
-                `, [sessionId, userId, character_id, status, normalizedResponseType, late_arrival_time, early_departure_time, notes]);
+        const { attendance, counts } = await dbUtils.executeTransaction(async (client) => {
+            // The session must exist in the caller's campaign context. The
+            // foreign key check on session_attendance bypasses RLS, so this
+            // lookup is what stops a row being attached to another campaign's
+            // session id.
+            const sessionResult = await client.query(
+                'SELECT id, campaign_id FROM game_sessions WHERE id = $1',
+                [sessionId]
+            );
+            if (sessionResult.rows.length === 0) {
+                throw controllerFactory.createNotFoundError('Session not found');
+            }
 
-                const attendanceRecord = attendanceResult.rows[0];
+            if (character_id) {
+                const characterResult = await client.query(`
+                    SELECT id FROM characters
+                    WHERE id = $1 AND user_id = $2 AND campaign_id = $3 AND active = true
+                `, [character_id, userId, sessionResult.rows[0].campaign_id]);
+                if (characterResult.rows.length === 0) {
+                    throw controllerFactory.createValidationError(
+                        'Character must be one of your active characters in this campaign'
+                    );
+                }
+            }
 
-                // Get updated attendance counts
-                const attendanceCounts = await this.getAttendanceCounts(client, sessionId);
+            // Upsert attendance record
+            const attendanceResult = await client.query(`
+                INSERT INTO session_attendance (
+                    session_id, user_id, character_id, status, response_type, late_arrival_time,
+                    early_departure_time, notes, response_timestamp
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                ON CONFLICT (session_id, user_id)
+                DO UPDATE SET
+                    character_id = EXCLUDED.character_id,
+                    status = EXCLUDED.status,
+                    response_type = EXCLUDED.response_type,
+                    late_arrival_time = EXCLUDED.late_arrival_time,
+                    early_departure_time = EXCLUDED.early_departure_time,
+                    notes = EXCLUDED.notes,
+                    response_timestamp = NOW(),
+                    updated_at = NOW()
+                RETURNING *
+            `, [sessionId, userId, character_id, status, normalizedResponseType, late_arrival_time, early_departure_time, notes]);
 
-                // Update session with new counts
-                await client.query(`
-                    UPDATE game_sessions
-                    SET
-                        confirmed_count = $2,
-                        declined_count = $3,
-                        maybe_count = $4,
-                        updated_at = NOW()
-                    WHERE id = $1
-                `, [sessionId, attendanceCounts.confirmed_count, attendanceCounts.declined_count, attendanceCounts.maybe_count]);
+            const attendanceRecord = attendanceResult.rows[0];
 
-                // Enqueue Discord message update in outbox (within transaction)
-                const discordOutboxService = require('../discordOutboxService');
-                await discordOutboxService.enqueue(client, 'session_update', { sessionId }, sessionId);
+            // Get updated attendance counts
+            const attendanceCounts = await this.getAttendanceCounts(client, sessionId);
 
-                return { attendance: attendanceRecord, counts: attendanceCounts };
-            });
+            // Update session with new counts
+            await client.query(`
+                UPDATE game_sessions
+                SET
+                    confirmed_count = $2,
+                    declined_count = $3,
+                    maybe_count = $4,
+                    updated_at = NOW()
+                WHERE id = $1
+            `, [sessionId, attendanceCounts.confirmed_count, attendanceCounts.declined_count, attendanceCounts.maybe_count]);
 
-            logger.info('Attendance recorded and Discord update enqueued:', {
-                sessionId,
-                userId,
-                characterId: character_id,
-                responseType,
-                attendanceId: attendance.id
-            });
+            // Enqueue Discord message update in outbox (within transaction)
+            const discordOutboxService = require('../discordOutboxService');
+            await discordOutboxService.enqueue(client, 'session_update', { sessionId }, sessionId);
 
-            return { attendance, counts };
-        } catch (error) {
-            logger.error('Failed to record attendance:', error);
-            throw error;
-        }
+            return { attendance: attendanceRecord, counts: attendanceCounts };
+        });
+
+        logger.info('Attendance recorded and Discord update enqueued:', {
+            sessionId,
+            userId,
+            characterId: character_id,
+            responseType,
+            attendanceId: attendance.id
+        });
+
+        return { attendance, counts };
     }
 
     /**
-     * Get attendance counts for a session
-     * @param {Object} client - Database client (optional, for transactions)
+     * Get attendance counts for a session inside a transaction.
+     *
+     * Canonical definition, keyed off status (set by every RSVP path, in-app and
+     * Discord): confirmed = accepted (yes, late, early, late_and_early),
+     * declined, maybe = tentative.
+     * @param {Object} client - Transaction client
      * @param {number} sessionId - Session ID
-     * @returns {Promise<Object>} - Attendance counts
+     * @returns {Promise<Object>} - confirmed_count, declined_count, maybe_count
      */
     async getAttendanceCounts(client, sessionId) {
-        const query = `
+        const result = await client.query(`
             SELECT
-                COUNT(*) FILTER (WHERE response_type = 'yes') as confirmed_count,
-                COUNT(*) FILTER (WHERE response_type = 'no') as declined_count,
-                COUNT(*) FILTER (WHERE response_type = 'maybe') as maybe_count,
-                COUNT(*) FILTER (WHERE response_type = 'late') as late_count,
-                COUNT(*) FILTER (WHERE response_type = 'early') as early_count,
-                COUNT(*) FILTER (WHERE response_type = 'late_and_early') as late_and_early_count
+                COUNT(*) FILTER (WHERE status = 'accepted') as confirmed_count,
+                COUNT(*) FILTER (WHERE status = 'declined') as declined_count,
+                COUNT(*) FILTER (WHERE status = 'tentative') as maybe_count
             FROM session_attendance
             WHERE session_id = $1
-        `;
-
-        const result = client
-            ? await client.query(query, [sessionId])
-            : await dbUtils.executeQuery(query, [sessionId]);
+        `, [sessionId]);
 
         return result.rows[0];
     }
@@ -133,31 +155,26 @@ class AttendanceService {
      * @returns {Promise<Array>} - Attendance records with user info
      */
     async getSessionAttendance(sessionId) {
-        try {
-            const result = await dbUtils.executeQuery(`
-                SELECT
-                    sa.*,
-                    u.username,
-                    u.discord_id,
-                    c.name as character_name
-                FROM session_attendance sa
-                JOIN users u ON sa.user_id = u.id
-                LEFT JOIN characters c ON sa.character_id = c.id
-                WHERE sa.session_id = $1
-                ORDER BY sa.response_timestamp DESC
-            `, [sessionId]);
+        const result = await dbUtils.executeQuery(`
+            SELECT
+                sa.*,
+                u.username,
+                u.discord_id,
+                c.name as character_name
+            FROM session_attendance sa
+            JOIN users u ON sa.user_id = u.id
+            LEFT JOIN characters c ON sa.character_id = c.id
+            WHERE sa.session_id = $1
+            ORDER BY sa.response_timestamp DESC
+        `, [sessionId]);
 
-            return result.rows;
-        } catch (error) {
-            logger.error('Failed to get session attendance:', error);
-            throw error;
-        }
+        return result.rows;
     }
 
     /**
      * Get confirmed attendance count
-     * Counts players who are attending: yes, late, early, late_and_early
-     * Does NOT count: no, maybe
+     * Counts players who are attending (status accepted: yes, late, early,
+     * late_and_early, plus in-app RSVPs). Does NOT count: no, maybe
      * @param {number} sessionId - Session ID
      * @returns {Promise<number>} - Number of confirmed attendees
      */
@@ -166,7 +183,7 @@ class AttendanceService {
             SELECT COUNT(DISTINCT user_id) as count
             FROM session_attendance
             WHERE session_id = $1
-            AND response_type IN ('yes', 'late', 'early', 'late_and_early')
+            AND status = 'accepted'
         `, [sessionId]);
 
         return parseInt(result.rows[0].count) || 0;
@@ -219,80 +236,6 @@ class AttendanceService {
         `, [sessionId]);
 
         return result.rows;
-    }
-
-    /**
-     * Get detailed attendance information for a session
-     * @param {number} sessionId - Session ID
-     * @returns {Promise<Object>} - Detailed attendance breakdown
-     */
-    async getSessionAttendanceDetails(sessionId) {
-        const result = await dbUtils.executeQuery(`
-            SELECT
-                sa.response_type,
-                sa.status,
-                sa.late_arrival_time,
-                sa.early_departure_time,
-                sa.notes,
-                sa.response_timestamp,
-                u.id as user_id,
-                u.username,
-                u.discord_id,
-                c.id as character_id,
-                c.name as character_name
-            FROM session_attendance sa
-            JOIN users u ON sa.user_id = u.id
-            LEFT JOIN characters c ON sa.character_id = c.id
-            WHERE sa.session_id = $1
-            ORDER BY
-                CASE sa.response_type
-                    WHEN 'yes' THEN 1
-                    WHEN 'maybe' THEN 2
-                    WHEN 'late' THEN 3
-                    WHEN 'no' THEN 4
-                    ELSE 5
-                END,
-                u.username
-        `, [sessionId]);
-
-        // Group by response type
-        const grouped = {
-            confirmed: [],
-            declined: [],
-            maybe: [],
-            late: [],
-            notResponded: []
-        };
-
-        result.rows.forEach(row => {
-            const attendee = {
-                userId: row.user_id,
-                username: row.username,
-                characterName: row.character_name,
-                responseType: row.response_type,
-                lateArrivalTime: row.late_arrival_time,
-                earlyDepartureTime: row.early_departure_time,
-                notes: row.notes,
-                responseTimestamp: row.response_timestamp
-            };
-
-            switch (row.response_type) {
-                case 'yes':
-                    grouped.confirmed.push(attendee);
-                    break;
-                case 'no':
-                    grouped.declined.push(attendee);
-                    break;
-                case 'maybe':
-                    grouped.maybe.push(attendee);
-                    break;
-                case 'late':
-                    grouped.late.push(attendee);
-                    break;
-            }
-        });
-
-        return grouped;
     }
 }
 
