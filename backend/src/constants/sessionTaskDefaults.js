@@ -16,7 +16,6 @@ const TASK_OPTION_DEFAULTS = Object.freeze({
   quantity: 1,                       // copies dealt (e.g. two Loot Masters)
   min_characters: null,              // only when at least this many selected
   max_characters: null,              // only when at most this many selected
-  is_snack_master: false,            // legacy flag; derived from announce_label
   requires_previous_attendance: false, // only to people who were at the last session
   exclude_late: false,               // skip characters marked Late
   exclude_early: false,              // skip characters marked Leaving early
@@ -62,12 +61,12 @@ const DEFAULT_SESSION_TASKS = [
   task('post', 'Windows shut and locked and Post Discord Reminders', 6, { dm_eligible: true }),
   task('post', 'Ensure no duplicate snacks for next session', 7, {
     dm_eligible: true,
-    is_snack_master: true,
     announce_label: 'Snack Master',
   }),
 ];
 
-/** Announce label that also feeds the legacy snack_master_name column. */
+/** Announce label that also feeds the legacy snack_master_name column. (The old
+ * is_snack_master column is no longer written; nothing reads it.) */
 const SNACK_MASTER_LABEL = 'Snack Master';
 
 module.exports = {

@@ -47,19 +47,6 @@ exports.getAll = async (campaignId) => {
 };
 
 /**
- * One task definition in the campaign, or null.
- * @param {number} campaignId
- * @param {number} id
- */
-exports.getById = async (campaignId, id) => {
-  const result = await dbUtils.executeQuery(
-    `SELECT ${COLUMNS} FROM session_task_definition WHERE campaign_id = $1 AND id = $2`,
-    [campaignId, id]
-  );
-  return result.rows.length > 0 ? result.rows[0] : null;
-};
-
-/**
  * Create a task at the end of its phase's list. Any option left out of
  * `data` takes its default from TASK_OPTION_DEFAULTS.
  * @param {number} campaignId
@@ -85,18 +72,31 @@ exports.create = async (campaignId, data) => {
 };
 
 /**
- * Update a task's editable fields. Returns the updated row or null if the id
- * is not in the campaign.
+ * Update a task's editable fields. A task moved to another phase goes to the
+ * end of that phase's list (it would otherwise keep its old-phase sort_order
+ * and land at an arbitrary position). Returns the updated row or null if the
+ * id is not in the campaign.
  * @param {number} campaignId
  * @param {number} id
  * @param {Object} data - { phase, name, ...options }
  */
 exports.update = async (campaignId, id, data) => {
   const values = editableValues(data);
-  const assignments = EDITABLE_FIELDS.map((field, i) => `${field} = $${i + 3}`).join(', ');
+  // $3 (phase) is read in three places; every use carries the same ::text cast
+  // so Postgres deduces one parameter type. In SET expressions the bare column
+  // names still refer to the OLD row, which is what the CASE compares against.
+  const assignments = EDITABLE_FIELDS
+    .map((field, i) => `${field} = $${i + 3}${i === 0 ? '::text' : ''}`)
+    .join(', ');
   const result = await dbUtils.executeQuery(
     `UPDATE session_task_definition
-     SET ${assignments}, updated_at = NOW()
+     SET ${assignments},
+         sort_order = CASE WHEN phase = $3::text THEN sort_order
+                           ELSE (SELECT COALESCE(MAX(t.sort_order), 0) + 1
+                                 FROM session_task_definition t
+                                 WHERE t.campaign_id = $1 AND t.phase = $3::text)
+                      END,
+         updated_at = NOW()
      WHERE campaign_id = $1 AND id = $2
      RETURNING ${COLUMNS}`,
     [campaignId, id, ...values]
@@ -158,14 +158,19 @@ exports.reorder = async (campaignId, phase, orderedIds) => {
  * @param {number} campaignId
  */
 exports.seedDefaults = async (client, campaignId) => {
-  const placeholders = EDITABLE_FIELDS.map((_, i) => `$${i + 2}`).join(', ');
-  for (const task of DEFAULT_SESSION_TASKS) {
-    await client.query(
-      `INSERT INTO session_task_definition (campaign_id, ${EDITABLE_FIELDS.join(', ')}, sort_order)
-       VALUES ($1, ${placeholders}, $${EDITABLE_FIELDS.length + 2})`,
-      [campaignId, ...editableValues(task), task.sort_order]
-    );
-  }
+  // One multi-row INSERT: $1 is the campaign, then (options..., sort_order) per task.
+  const width = EDITABLE_FIELDS.length + 1;
+  const params = [campaignId];
+  const tuples = DEFAULT_SESSION_TASKS.map((task, row) => {
+    params.push(...editableValues(task), task.sort_order);
+    const slots = Array.from({ length: width }, (_, i) => `$${2 + row * width + i}`);
+    return `($1, ${slots.join(', ')})`;
+  });
+  await client.query(
+    `INSERT INTO session_task_definition (campaign_id, ${EDITABLE_FIELDS.join(', ')}, sort_order)
+     VALUES ${tuples.join(', ')}`,
+    params
+  );
 };
 
 /**

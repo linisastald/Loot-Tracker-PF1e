@@ -56,12 +56,6 @@ describe('SessionTask model', () => {
     expect(result).toEqual([row()]);
   });
 
-  it('getById returns null when nothing matches', async () => {
-    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-    expect(await SessionTask.getById(42, 5)).toBeNull();
-    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([42, 5]);
-  });
-
   it('create appends to the end of the phase and fills unspecified options with defaults', async () => {
     dbUtils.executeQuery.mockResolvedValueOnce({ rows: [row({ id: 9, sort_order: 6 })] });
 
@@ -137,6 +131,18 @@ describe('SessionTask model', () => {
     expect(result).toBeNull();
   });
 
+  it('update moves a task whose phase changed to the end of the new phase (F-1224)', async () => {
+    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [row({ phase: 'post' })] });
+
+    await SessionTask.update(42, 3, { phase: 'post', name: 'X' });
+
+    const sql = dbUtils.executeQuery.mock.calls[0][0];
+    expect(sql).toContain('sort_order = CASE WHEN phase = $3::text THEN sort_order');
+    expect(sql).toContain('COALESCE(MAX(t.sort_order), 0) + 1');
+    // phase ($3) is used in several positions: every use carries the same cast
+    sql.match(/\$3(::\w+)?(?!\d)/g).forEach((o) => expect(o).toBe('$3::text'));
+  });
+
   it('remove reports whether a row was deleted', async () => {
     dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 3 }] });
     expect(await SessionTask.remove(42, 3)).toBe(true);
@@ -168,21 +174,23 @@ describe('SessionTask model', () => {
     expect(client.query.mock.calls[2][1]).toEqual([3, 42, 20, 'during']);
   });
 
-  it('seedDefaults inserts every stock task with an explicit campaign_id and its options', async () => {
+  it('seedDefaults inserts every stock task in ONE multi-row statement with an explicit campaign_id', async () => {
     const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
 
     await SessionTask.seedDefaults(client, 42);
 
-    expect(client.query).toHaveBeenCalledTimes(DEFAULT_SESSION_TASKS.length);
-    for (const call of client.query.mock.calls) {
-      expect(call[0]).toContain('INSERT INTO session_task_definition');
-      expect(call[1][0]).toBe(42);
-      expect(call[1]).toHaveLength(EDITABLE_FIELDS.length + 2); // + campaign_id, sort_order
-    }
-    const nameOf = (call) => call[1][1 + fieldIndex('name')];
-    const withFlag = (field) => client.query.mock.calls
-      .filter((c) => c[1][1 + fieldIndex(field)] === true)
-      .map(nameOf);
+    expect(client.query).toHaveBeenCalledTimes(1);
+    const [sql, params] = client.query.mock.calls[0];
+    expect(sql).toContain('INSERT INTO session_task_definition');
+    expect(params[0]).toBe(42);
+    const width = EDITABLE_FIELDS.length + 1; // + sort_order
+    expect(params).toHaveLength(1 + DEFAULT_SESSION_TASKS.length * width);
+    // one tuple per task, each starting with the shared $1
+    expect(sql.match(/\(\$1, /g)).toHaveLength(DEFAULT_SESSION_TASKS.length);
+
+    const rows = DEFAULT_SESSION_TASKS.map((_, n) => params.slice(1 + n * width, 1 + (n + 1) * width));
+    const nameOf = (r) => r[fieldIndex('name')];
+    const withFlag = (field) => rows.filter((r) => r[fieldIndex(field)] === true).map(nameOf);
 
     // The stock lists keep the behaviour the phases used to hardcode.
     expect(withFlag('exclude_late')).toEqual(
@@ -192,11 +200,9 @@ describe('SessionTask model', () => {
       DEFAULT_SESSION_TASKS.filter((t) => t.phase === 'post').map((t) => t.name)
     );
     expect(withFlag('requires_previous_attendance')).toEqual(['Recap']);
-    const snackCall = client.query.mock.calls.find(
-      (c) => c[1][1 + fieldIndex('announce_label')] === 'Snack Master'
-    );
-    expect(nameOf(snackCall)).toBe('Ensure no duplicate snacks for next session');
-    expect(snackCall[1][1 + fieldIndex('is_snack_master')]).toBe(true);
+    const snackRow = rows.find((r) => r[fieldIndex('announce_label')] === 'Snack Master');
+    expect(nameOf(snackRow)).toBe('Ensure no duplicate snacks for next session');
+    expect(rows.map((r) => r[width - 1])).toEqual(DEFAULT_SESSION_TASKS.map((t) => t.sort_order));
   });
 
   it('resetDefaults wipes the campaign list, reseeds, and returns the fresh list', async () => {
@@ -208,7 +214,7 @@ describe('SessionTask model', () => {
 
     expect(client.query.mock.calls[0][0]).toContain('DELETE FROM session_task_definition');
     expect(client.query.mock.calls[0][1]).toEqual([42]);
-    expect(client.query).toHaveBeenCalledTimes(1 + DEFAULT_SESSION_TASKS.length);
+    expect(client.query).toHaveBeenCalledTimes(2); // DELETE + one multi-row INSERT
     expect(result).toEqual([row()]);
   });
 });

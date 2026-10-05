@@ -13,7 +13,6 @@ const controllerFactory = require('../utils/controllerFactory');
 const {
   TASK_PHASES,
   DEFAULT_SESSION_TASKS,
-  SNACK_MASTER_LABEL,
 } = require('../constants/sessionTaskDefaults');
 
 const MAX_NAME_LENGTH = 255;
@@ -65,17 +64,32 @@ const parseOptionalText = (value, field, maxLength) => {
   return trimmed;
 };
 
-/**
- * Validate and normalise a task payload. Throws a validation error on bad
- * input; returns the clean fields ready for the model.
- */
-const parseTaskInput = (body = {}) => {
-  const phase = typeof body.phase === 'string' ? body.phase.trim() : '';
+/** A trimmed phase that must be one of TASK_PHASES. */
+const parsePhase = (value) => {
+  const phase = typeof value === 'string' ? value.trim() : '';
   if (!TASK_PHASES.includes(phase)) {
     throw controllerFactory.createValidationError(
       `phase must be one of: ${TASK_PHASES.join(', ')}`
     );
   }
+  return phase;
+};
+
+/** The :id route parameter as a positive integer. */
+const parseTaskId = (req) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id < 1) {
+    throw controllerFactory.createValidationError('Invalid task id');
+  }
+  return id;
+};
+
+/**
+ * Validate and normalise a task payload. Throws a validation error on bad
+ * input; returns the clean fields ready for the model.
+ */
+const parseTaskInput = (body = {}) => {
+  const phase = parsePhase(body.phase);
 
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   if (!name) {
@@ -127,9 +141,6 @@ const parseTaskInput = (body = {}) => {
     quantity,
     min_characters: minCharacters,
     max_characters: maxCharacters,
-    // Legacy flag kept in sync with the label so older readers still work.
-    is_snack_master: announceLabel !== null
-      && announceLabel.toLowerCase() === SNACK_MASTER_LABEL.toLowerCase(),
     requires_previous_attendance: parseBool(body.requires_previous_attendance),
     exclude_late: parseBool(body.exclude_late),
     exclude_early: parseBool(body.exclude_early),
@@ -173,10 +184,7 @@ const create = async (req, res) => {
 
 /** Update a task's fields (DM only). */
 const update = async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!Number.isInteger(id) || id < 1) {
-    throw controllerFactory.createValidationError('Invalid task id');
-  }
+  const id = parseTaskId(req);
   const campaignId = requireCampaignId(req);
   const input = parseTaskInput(req.body);
   await assertFixedCharacter(input);
@@ -189,10 +197,7 @@ const update = async (req, res) => {
 
 /** Delete a task (DM only). */
 const remove = async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (!Number.isInteger(id) || id < 1) {
-    throw controllerFactory.createValidationError('Invalid task id');
-  }
+  const id = parseTaskId(req);
   const deleted = await SessionTask.remove(requireCampaignId(req), id);
   if (!deleted) {
     throw controllerFactory.createNotFoundError('Session task not found');
@@ -205,12 +210,7 @@ const remove = async (req, res) => {
  * Body: { phase, ids: [taskId, ...] } in the desired order.
  */
 const reorder = async (req, res) => {
-  const phase = typeof req.body.phase === 'string' ? req.body.phase.trim() : '';
-  if (!TASK_PHASES.includes(phase)) {
-    throw controllerFactory.createValidationError(
-      `phase must be one of: ${TASK_PHASES.join(', ')}`
-    );
-  }
+  const phase = parsePhase(req.body.phase);
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) {
     throw controllerFactory.createValidationError('ids must be a non-empty array');

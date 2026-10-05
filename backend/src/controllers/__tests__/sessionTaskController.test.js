@@ -87,7 +87,7 @@ describe('getAll', () => {
     await controller.getAll(req, res);
 
     expect(SessionTask.getAll).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Select a campaign'));
   });
 });
 
@@ -150,19 +150,18 @@ describe('create', () => {
     expect(res.created).toHaveBeenCalled();
   });
 
-  it('keeps the legacy is_snack_master flag in sync with a "Snack Master" announce label', async () => {
+  it('no longer derives the legacy is_snack_master flag from the announce label', async () => {
     SessionTask.create.mockResolvedValue(task({ id: 12 }));
     const req = createMockReq({
-      body: { phase: 'post', name: 'Snacks', announce_label: 'snack master' },
+      body: { phase: 'post', name: 'Snacks', announce_label: 'Snack Master' },
     });
     const res = createMockRes();
 
     await controller.create(req, res);
 
-    expect(SessionTask.create).toHaveBeenCalledWith(
-      1,
-      expect.objectContaining({ announce_label: 'snack master', is_snack_master: true })
-    );
+    const input = SessionTask.create.mock.calls[0][1];
+    expect(input.announce_label).toBe('Snack Master');
+    expect(input).not.toHaveProperty('is_snack_master');
   });
 
   it('rejects a fixed character that is not in the campaign', async () => {
@@ -175,7 +174,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('fixed_character_id'));
   });
 
   it('rejects a task that is both sticky and avoid-repeat', async () => {
@@ -187,7 +186,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('sticky and avoid-repeat'));
   });
 
   it('rejects max_characters below min_characters', async () => {
@@ -199,7 +198,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('max_characters must be at least'));
   });
 
   it('rejects an out-of-range priority', async () => {
@@ -209,7 +208,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('priority'));
   });
 
   it('rejects an over-long announce label', async () => {
@@ -221,7 +220,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('announce_label'));
   });
 
   it('rejects an unknown phase', async () => {
@@ -231,7 +230,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('phase must be one of'));
   });
 
   it('rejects a blank name', async () => {
@@ -241,7 +240,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('name is required'));
   });
 
   it('rejects an out-of-range quantity', async () => {
@@ -251,7 +250,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('quantity'));
   });
 
   it('rejects an out-of-range min_characters', async () => {
@@ -261,7 +260,7 @@ describe('create', () => {
     await controller.create(req, res);
 
     expect(SessionTask.create).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('min_characters'));
   });
 });
 
@@ -301,7 +300,7 @@ describe('update', () => {
     await controller.update(req, res);
 
     expect(SessionTask.update).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Invalid task id'));
   });
 });
 
@@ -315,6 +314,16 @@ describe('remove', () => {
 
     expect(SessionTask.remove).toHaveBeenCalledWith(1, 10);
     expect(res.success).toHaveBeenCalled();
+  });
+
+  it('rejects an invalid id', async () => {
+    const req = createMockReq({ params: { id: '0' } });
+    const res = createMockRes();
+
+    await controller.remove(req, res);
+
+    expect(SessionTask.remove).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Invalid task id'));
   });
 
   it('returns 404 when nothing was deleted', async () => {
@@ -348,7 +357,27 @@ describe('reorder', () => {
     await controller.reorder(req, res);
 
     expect(SessionTask.reorder).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('duplicates'));
+  });
+
+  it('rejects an unknown phase', async () => {
+    const req = createMockReq({ body: { phase: 'midnight', ids: [1] } });
+    const res = createMockRes();
+
+    await controller.reorder(req, res);
+
+    expect(SessionTask.reorder).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('phase must be one of'));
+  });
+
+  it('rejects non-positive ids', async () => {
+    const req = createMockReq({ body: { phase: 'pre', ids: [1, 0] } });
+    const res = createMockRes();
+
+    await controller.reorder(req, res);
+
+    expect(SessionTask.reorder).not.toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('positive integers'));
   });
 
   it('rejects an empty id list', async () => {
@@ -358,7 +387,7 @@ describe('reorder', () => {
     await controller.reorder(req, res);
 
     expect(SessionTask.reorder).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('non-empty array'));
   });
 });
 
@@ -382,6 +411,6 @@ describe('resetDefaults', () => {
     await controller.resetDefaults(req, res);
 
     expect(SessionTask.resetDefaults).not.toHaveBeenCalled();
-    expect(res.validationError).toHaveBeenCalled();
+    expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Select a campaign'));
   });
 });
