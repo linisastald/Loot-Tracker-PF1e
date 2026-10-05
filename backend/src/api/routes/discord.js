@@ -10,7 +10,6 @@ const logger = require('../../utils/logger');
 logger.info('Discord routes file loaded');
 
 router.post('/send-message', verifyToken, discordController.sendMessage);
-router.post('/send-event', verifyToken, discordController.sendEvent);
 router.get('/status', verifyToken, discordController.getIntegrationStatus);
 router.put('/settings', verifyToken, discordController.updateSettings);
 

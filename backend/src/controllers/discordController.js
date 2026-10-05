@@ -5,8 +5,6 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
 const { hasDmRights, isSuperadmin } = require('../utils/roleUtils');
-const Campaign = require('../models/Campaign');
-const { APP_NAME } = require('../config/constants');
 
 /**
  * Send a message to Discord
@@ -127,209 +125,6 @@ const sendMessage = async (req, res) => {
 };
 
 /**
- * Send a session attendance message with interactive buttons
- */
-const sendEvent = async (req, res) => {
-    const { title, description, start_time, end_time } = req.body;
-
-    // Validate required fields
-    if (!title || !start_time || !end_time) {
-        throw controllerFactory.createValidationError('Title, start_time, and end_time are required for session messages');
-    }
-
-    // Validate dates
-    const startDate = new Date(start_time);
-    const endDate = new Date(end_time);
-    
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        throw controllerFactory.createValidationError('Invalid date format for start_time or end_time');
-    }
-
-    // Bot token is global broker infrastructure; channel and role ids are
-    // per-campaign (campaign_settings with global fallback). The embed title
-    // uses the CURRENT campaign's display name (campaigns.name, request
-    // context via req.campaignId), falling back to the static APP_NAME.
-    const tokenResult = await dbUtils.executeQuery(
-        'SELECT value FROM settings WHERE name = $1',
-        ['discord_bot_token']
-    );
-
-    const perCampaign = await campaignSettings.getCampaignSettings(['discord_channel_id', 'campaign_role_id']);
-
-    const discord_bot_token = tokenResult.rows[0]?.value;
-    const discord_channel_id = perCampaign['discord_channel_id'];
-    const campaign_name = (req.campaignId ? await Campaign.getNameById(req.campaignId) : null) || APP_NAME;
-    const campaign_role_id = perCampaign['campaign_role_id'];
-
-    if (!discord_bot_token) {
-        throw controllerFactory.createValidationError('Discord bot token is not configured');
-    }
-
-    if (!discord_channel_id) {
-        throw controllerFactory.createValidationError('Discord channel ID is not configured');
-    }
-
-    // Format date for display
-    const sessionDate = startDate.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-    
-    const sessionTime = startDate.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-    });
-
-    // Create embed for session announcement
-    const embed = {
-        title: `${campaign_name} Session`,
-        description: description || 'Please click a button to indicate your attendance!',
-        color: 0x00ff00, // Green color
-        fields: [
-            {
-                name: '📅 Date',
-                value: sessionDate,
-                inline: true
-            },
-            {
-                name: '🕐 Time', 
-                value: sessionTime,
-                inline: true
-            },
-            {
-                name: '⏱️ Duration',
-                value: `${Math.round((endDate - startDate) / (1000 * 60 * 60))} hours`,
-                inline: true
-            },
-            {
-                name: 'Responses',
-                value: 'No responses yet...',
-                inline: false
-            }
-        ],
-        timestamp: new Date().toISOString(),
-        footer: {
-            text: 'Session Attendance Tracker'
-        }
-    };
-
-    // Create interactive buttons
-    const components = [
-        {
-            type: 1, // Action Row
-            components: [
-                {
-                    type: 2, // Button
-                    style: 3, // Success (green)
-                    label: 'Yes, I can attend',
-                    emoji: { name: '✅' },
-                    custom_id: 'session_yes'
-                },
-                {
-                    type: 2, // Button
-                    style: 4, // Danger (red)
-                    label: 'No, I cannot attend',
-                    emoji: { name: '❌' },
-                    custom_id: 'session_no'
-                },
-                {
-                    type: 2, // Button
-                    style: 2, // Secondary (gray)
-                    label: 'Maybe/Unsure',
-                    emoji: { name: '❓' },
-                    custom_id: 'session_maybe'
-                }
-            ]
-        }
-    ];
-
-    let messageContent = '';
-    if (campaign_role_id) {
-        messageContent = `<@&${campaign_role_id}>`;
-    }
-
-    const messagePayload = {
-        content: messageContent,
-        embeds: [embed],
-        components: components
-    };
-
-    try {
-        logger.info('Sending session attendance message:', {
-            channelId: discord_channel_id,
-            campaignName: campaign_name,
-            sessionDate: sessionDate
-        });
-
-        // Send the message
-        const response = await axios.post(
-            `https://discord.com/api/channels/${discord_channel_id}/messages`,
-            messagePayload,
-            {
-                headers: {
-                    'Authorization': `Bot ${discord_bot_token}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        const messageId = response.data.id;
-
-        // Store session message info for interaction handling
-        try {
-            // First, let's check if we have a sessions table or session_messages table
-            // For now, we'll create a simple mapping in the session_messages table
-            await dbUtils.executeQuery(
-                `INSERT INTO session_messages (message_id, channel_id, session_date, session_time, responses) 
-                 VALUES ($1, $2, $3, $4, $5) 
-                 ON CONFLICT (message_id) DO UPDATE SET 
-                 session_date = EXCLUDED.session_date, 
-                 session_time = EXCLUDED.session_time`,
-                [messageId, discord_channel_id, startDate.toISOString(), endDate.toISOString(), JSON.stringify({})]
-            );
-        } catch (dbError) {
-            logger.warn('Failed to store session message in database:', dbError.message);
-            // Continue execution - the message was sent successfully
-        }
-
-        logger.info('Session attendance message sent successfully', {
-            messageId: messageId,
-            channelId: discord_channel_id
-        });
-
-        controllerFactory.sendSuccessResponse(res, {
-            message_id: messageId,
-            channel_id: discord_channel_id,
-            session_date: sessionDate,
-            session_time: sessionTime
-        }, 'Session attendance message sent successfully');
-    } catch (error) {
-        if (error.response && error.response.data) {
-            logger.error('Discord API error:', {
-                status: error.response.status,
-                error: error.response.data,
-                payload: JSON.stringify(messagePayload)
-            });
-
-            if (error.response.status === 403) {
-                throw controllerFactory.createAuthorizationError('Bot lacks permission to send messages');
-            } else if (error.response.status === 404) {
-                throw controllerFactory.createNotFoundError('Discord channel not found');
-            } else if (error.response.status === 400) {
-                throw controllerFactory.createValidationError(`Bad request: ${JSON.stringify(error.response.data)}`);
-            } else if (error.response.status === 429) {
-                throw controllerFactory.createValidationError('Rate limited by Discord API, please try again later');
-            }
-        }
-
-        throw new Error(`Failed to send session message: ${error.message}`);
-    }
-};
-
-/**
  * Get Discord integration status
  */
 const getIntegrationStatus = async (req, res) => {
@@ -446,10 +241,6 @@ const sendMessageValidation = {
     requiredFields: []  // Special validation logic in the handler
 };
 
-const sendEventValidation = {
-    requiredFields: ['title', 'start_time', 'end_time']
-};
-
 const updateSettingsValidation = {
     requiredFields: []  // At least one of the fields should be provided, validated in handler
 };
@@ -459,11 +250,6 @@ module.exports = {
     sendMessage: controllerFactory.createHandler(sendMessage, {
         errorMessage: 'Error sending message to Discord',
         validation: sendMessageValidation
-    }),
-
-    sendEvent: controllerFactory.createHandler(sendEvent, {
-        errorMessage: 'Error creating Discord event',
-        validation: sendEventValidation
     }),
 
     getIntegrationStatus: controllerFactory.createHandler(getIntegrationStatus, {

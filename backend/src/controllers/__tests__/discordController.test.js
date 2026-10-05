@@ -1,16 +1,12 @@
 /**
  * Unit tests for discordController
- * Tests sendMessage, sendEvent, getIntegrationStatus, updateSettings
+ * Tests sendMessage, getIntegrationStatus, updateSettings
  *
  * Phase 4c (campaign settings split): the bot token is read from the global
  * settings table; the channel/role ids and the integration-enabled flag are
  * per-campaign (campaign_settings via the campaignSettings helper, with a
  * global fallback when no per-campaign row exists). The tests below mock the
  * resulting query sequences.
- *
- * Phase 5a (branding): the sendEvent embed title uses the CURRENT campaign's
- * campaigns.name (Campaign.getNameById on req.campaignId), falling back to
- * the static APP_NAME — the deprecated 'campaign_name' settings row is gone.
  */
 
 // Mock dependencies before requiring the controller
@@ -26,15 +22,10 @@ jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
-jest.mock('../../models/Campaign', () => ({
-  getNameById: jest.fn(),
-}));
-
 jest.mock('axios');
 
 const dbUtils = require('../../utils/dbUtils');
 const axios = require('axios');
-const Campaign = require('../../models/Campaign');
 const discordController = require('../discordController');
 
 // A valid Discord snowflake for channel ids (17-19 digits)
@@ -62,8 +53,7 @@ function createMockReq(overrides = {}) {
     query: {},
     cookies: {},
     user: null,
-    // Set by verifyToken on real requests; sendEvent uses it for the
-    // embed-title branding (campaigns.name)
+    // Set by verifyToken on real requests
     campaignId: 1,
     ...overrides,
   };
@@ -91,29 +81,6 @@ function mockSendMessageSettings({ token, channel } = {}) {
     .mockResolvedValueOnce({ rows: channel !== undefined ? [{ value: channel }] : [] });
   if (channel === undefined) {
     // Helper consults the deprecated global row when the campaign has none
-    dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-  }
-}
-
-/**
- * Mock the sendEvent settings reads:
- *  1. global bot token (single-row SELECT value),
- *  2. per-campaign batch (discord_channel_id, campaign_role_id),
- *  3. global fallback batch when some per-campaign names are missing.
- * The embed-title branding comes from Campaign.getNameById (mocked model),
- * not the settings table.
- */
-function mockSendEventSettings({ token, campaignName, channel, roleId } = {}) {
-  Campaign.getNameById.mockResolvedValue(campaignName !== undefined ? campaignName : null);
-
-  const perCampaignRows = {};
-  if (channel !== undefined) perCampaignRows.discord_channel_id = channel;
-  if (roleId !== undefined) perCampaignRows.campaign_role_id = roleId;
-
-  dbUtils.executeQuery
-    .mockResolvedValueOnce({ rows: token !== undefined ? [{ value: token }] : [] })
-    .mockResolvedValueOnce(makeSettingsRows(perCampaignRows));
-  if (channel === undefined || roleId === undefined) {
     dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
   }
 }
@@ -405,191 +372,6 @@ describe('discordController', () => {
       await discordController.sendMessage(req, res);
 
       expect(res.error).toHaveBeenCalledWith('Internal server error');
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // sendEvent
-  // ---------------------------------------------------------------
-  describe('sendEvent', () => {
-    const eventSettings = {
-      token: 'bot-token-123',
-      campaignName: 'Rise of the Runelords',
-      channel: 'channel-456',
-      roleId: 'role-789',
-    };
-
-    const validBody = {
-      title: 'Session 42',
-      description: 'We continue the adventure',
-      start_time: '2025-06-15T18:00:00Z',
-      end_time: '2025-06-15T22:00:00Z',
-    };
-
-    it('should send a session event successfully', async () => {
-      const req = createMockReq({ body: validBody });
-      const res = createMockRes();
-
-      mockSendEventSettings(eventSettings);
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // session_messages insert
-
-      axios.post.mockResolvedValueOnce({ data: { id: 'event-msg-001' } });
-
-      await discordController.sendEvent(req, res);
-
-      // Branding comes from the request campaign's campaigns.name
-      expect(Campaign.getNameById).toHaveBeenCalledWith(1);
-      expect(axios.post).toHaveBeenCalledWith(
-        'https://discord.com/api/channels/channel-456/messages',
-        expect.objectContaining({
-          content: '<@&role-789>',
-          embeds: expect.arrayContaining([
-            expect.objectContaining({ title: 'Rise of the Runelords Session' }),
-          ]),
-          components: expect.any(Array),
-        }),
-        expect.any(Object)
-      );
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message_id: 'event-msg-001',
-          channel_id: 'channel-456',
-        }),
-        'Session attendance message sent successfully'
-      );
-    });
-
-    it('should send event without role mention when campaign_role_id is not set', async () => {
-      const req = createMockReq({ body: validBody });
-      const res = createMockRes();
-
-      mockSendEventSettings({ ...eventSettings, roleId: undefined });
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // session_messages insert
-
-      axios.post.mockResolvedValueOnce({ data: { id: 'event-msg-002' } });
-
-      await discordController.sendEvent(req, res);
-
-      const postedPayload = axios.post.mock.calls[0][1];
-      expect(postedPayload.content).toBe('');
-    });
-
-    it('should fall back to the static app name when the campaign row is missing', async () => {
-      const req = createMockReq({ body: validBody });
-      const res = createMockRes();
-
-      mockSendEventSettings({ token: 'bot-token-123', channel: 'channel-456' });
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // session_messages insert
-
-      axios.post.mockResolvedValueOnce({ data: { id: 'event-msg-003' } });
-
-      await discordController.sendEvent(req, res);
-
-      const postedPayload = axios.post.mock.calls[0][1];
-      expect(postedPayload.embeds[0].title).toBe('Pathfinder Loot Tracker Session');
-    });
-
-    it('should return validation error when title is missing', async () => {
-      const req = createMockReq({
-        body: { start_time: '2025-06-15T18:00:00Z', end_time: '2025-06-15T22:00:00Z' },
-      });
-      const res = createMockRes();
-
-      await discordController.sendEvent(req, res);
-
-      // createHandler validation checks requiredFields: ['title', 'start_time', 'end_time']
-      expect(res.validationError).toHaveBeenCalled();
-    });
-
-    it('should return validation error when start_time is missing', async () => {
-      const req = createMockReq({
-        body: { title: 'Session', end_time: '2025-06-15T22:00:00Z' },
-      });
-      const res = createMockRes();
-
-      await discordController.sendEvent(req, res);
-
-      expect(res.validationError).toHaveBeenCalled();
-    });
-
-    it('should return validation error for invalid date format', async () => {
-      const req = createMockReq({
-        body: { title: 'Session', start_time: 'not-a-date', end_time: '2025-06-15T22:00:00Z' },
-      });
-      const res = createMockRes();
-
-      await discordController.sendEvent(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Invalid date format for start_time or end_time'
-      );
-    });
-
-    it('should return validation error when bot token not configured', async () => {
-      const req = createMockReq({ body: validBody });
-      const res = createMockRes();
-
-      mockSendEventSettings({ channel: 'channel-456', roleId: 'role-789' });
-
-      await discordController.sendEvent(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith('Discord bot token is not configured');
-    });
-
-    it('should return validation error when channel ID not configured', async () => {
-      const req = createMockReq({ body: validBody });
-      const res = createMockRes();
-
-      mockSendEventSettings({ token: 'bot-token-123', roleId: 'role-789' });
-
-      await discordController.sendEvent(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith('Discord channel ID is not configured');
-    });
-
-    it('should still succeed if session_messages insert fails', async () => {
-      const req = createMockReq({ body: validBody });
-      const res = createMockRes();
-
-      mockSendEventSettings(eventSettings);
-      dbUtils.executeQuery.mockRejectedValueOnce(new Error('DB insert failed')); // session_messages insert fails
-
-      axios.post.mockResolvedValueOnce({ data: { id: 'event-msg-004' } });
-
-      await discordController.sendEvent(req, res);
-
-      // Should still succeed despite DB error
-      expect(res.success).toHaveBeenCalled();
-    });
-
-    it('should return forbidden error on Discord 403', async () => {
-      const req = createMockReq({ body: validBody });
-      const res = createMockRes();
-
-      mockSendEventSettings(eventSettings);
-      axios.post.mockRejectedValueOnce({
-        response: { status: 403, data: { message: 'Missing Permissions' } },
-        message: 'Forbidden',
-      });
-
-      await discordController.sendEvent(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith('Bot lacks permission to send messages');
-    });
-
-    it('should return not found error on Discord 404', async () => {
-      const req = createMockReq({ body: validBody });
-      const res = createMockRes();
-
-      mockSendEventSettings(eventSettings);
-      axios.post.mockRejectedValueOnce({
-        response: { status: 404, data: { message: 'Unknown Channel' } },
-        message: 'Not found',
-      });
-
-      await discordController.sendEvent(req, res);
-
-      expect(res.notFound).toHaveBeenCalledWith('Discord channel not found');
     });
   });
 

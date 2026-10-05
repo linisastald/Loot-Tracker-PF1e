@@ -1,12 +1,9 @@
 // src/controllers/sessionController.js
 const Session = require('../models/Session');
-const Campaign = require('../models/Campaign');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignContext = require('../utils/campaignContext');
-const campaignSettings = require('../utils/campaignSettings');
-const { APP_NAME } = require('../config/constants');
 const axios = require('axios');
 const sessionService = require('../services/sessionService');
 const discordService = require('../services/discordBrokerService');
@@ -14,20 +11,15 @@ const attendanceService = require('../services/attendance/AttendanceService');
 const sessionDiscordService = require('../services/discord/SessionDiscordService');
 const {
     VALID_ATTENDANCE_STATUSES,
-    RESPONSE_TYPE_MAP,
     RESPONSE_EMOJI_MAP
 } = require('../constants/sessionConstants');
 
 const DEFAULT_UPCOMING_LIMIT = 5;
 const MAX_UPCOMING_LIMIT = 100;
 
-// Discord button ids (custom_id minus the "session_" prefix) -> response type.
-// session_yes/no/maybe come from the legacy embeds, session_attend_* from
-// SessionDiscordService.createAttendanceButtons.
+// Discord button ids (custom_id minus the "session_" prefix) -> response type,
+// as emitted by SessionDiscordService.createAttendanceButtons.
 const BUTTON_ACTION_RESPONSE_TYPES = {
-    yes: 'yes',
-    no: 'no',
-    maybe: 'maybe',
     attend_yes: 'yes',
     attend_no: 'no',
     attend_maybe: 'maybe',
@@ -292,12 +284,11 @@ const updateAttendance = async (req, res) => {
  * input.
  *
  * @param {string} messageId - Discord message snowflake
- * @returns {Promise<{campaignId: string, sessionId: number|null, legacyMessage: Object|null}|null>}
- *   - null when no session or legacy message matches
+ * @returns {Promise<{campaignId: string, sessionId: number}|null>}
+ *   - null when no session announcement matches
  */
 const resolveDiscordMessageCampaign = async (messageId) => {
     return campaignContext.runWithCampaign('all', async () => {
-        // Enhanced sessions first
         const sessionResult = await dbUtils.executeQuery(`
             SELECT id, campaign_id FROM game_sessions
             WHERE discord_message_id = $1
@@ -307,22 +298,7 @@ const resolveDiscordMessageCampaign = async (messageId) => {
         if (sessionResult.rows.length > 0) {
             return {
                 campaignId: String(sessionResult.rows[0].campaign_id),
-                sessionId: sessionResult.rows[0].id,
-                legacyMessage: null
-            };
-        }
-
-        // Fall back to legacy session_messages table
-        const legacyResult = await dbUtils.executeQuery(
-            'SELECT session_date, session_time, responses, channel_id, campaign_id FROM session_messages WHERE message_id = $1',
-            [messageId]
-        );
-
-        if (legacyResult.rows.length > 0) {
-            return {
-                campaignId: String(legacyResult.rows[0].campaign_id),
-                sessionId: null,
-                legacyMessage: legacyResult.rows[0]
+                sessionId: sessionResult.rows[0].id
             };
         }
 
@@ -469,29 +445,24 @@ const processSessionInteraction = async (req, res) => {
                 return ephemeral(res, 'Invalid request.');
             }
 
-            const responseType = BUTTON_ACTION_RESPONSE_TYPES[action];
-            if (!responseType) {
-                logger.warn('Invalid action received from Discord button:', { action, customId: data.custom_id });
-                return ephemeral(res, 'Invalid action.');
-            }
-
             // Resolve the message to its owning campaign under hardcoded
             // cross-campaign mode, then process the interaction under that
             // campaign's context so all tenant-scoped reads/writes pass RLS.
             const resolved = await resolveDiscordMessageCampaign(messageId);
 
             if (!resolved) {
-                return ephemeral(res, 'Session not found.');
+                // Announcements from the retired session_messages flow (and
+                // messages of deleted sessions) land here.
+                return ephemeral(res, 'This session announcement is no longer active.');
             }
 
-            if (resolved.legacyMessage) {
-                // Handle legacy format under the message's campaign
-                return await campaignContext.runWithCampaign(resolved.campaignId, () =>
-                    handleLegacySessionInteraction(res, resolved.legacyMessage, messageId, discordUserId, discordNickname, action)
-                );
+            const responseType = BUTTON_ACTION_RESPONSE_TYPES[action];
+            if (!responseType) {
+                logger.warn('Invalid action received from Discord button:', { action, customId: data.custom_id });
+                return ephemeral(res, 'Invalid action.');
             }
 
-            // Enhanced session found - act under its campaign
+            // Session found - act under its campaign
             return await campaignContext.runWithCampaign(resolved.campaignId, () =>
                 handleEnhancedSessionInteraction(res, resolved.sessionId, messageId, discordUserId, discordNickname, responseType)
             );
@@ -635,236 +606,6 @@ const handleEnhancedSessionInteraction = async (res, sessionId, messageId, disco
             components: components
         }
     });
-};
-
-/**
- * Handle legacy session_messages interactions (messages posted by
- * discordController.sendEvent before game_sessions existed).
- */
-const handleLegacySessionInteraction = async (res, sessionMessage, messageId, discordUserId, discordNickname, action) => {
-    try {
-        // Get user info
-        let displayName = discordNickname;
-        const linkedUser = await findUserByDiscordId(discordUserId);
-
-        if (linkedUser) {
-            displayName = linkedUser.username;
-        } else {
-            // Try character name match
-            const charResult = await dbUtils.executeQuery(
-                'SELECT name FROM characters WHERE LOWER(name) = LOWER($1) AND active = true LIMIT 1',
-                [discordNickname]
-            );
-            if (charResult.rows.length > 0) {
-                displayName = charResult.rows[0].name;
-            }
-        }
-
-        // responses is a JSONB column, so pg normally hands back an object;
-        // only parse when it arrives as a string.
-        let responses = {};
-        const rawResponses = sessionMessage.responses;
-        if (rawResponses && typeof rawResponses === 'object') {
-            responses = { ...rawResponses };
-        } else if (typeof rawResponses === 'string') {
-            try {
-                responses = JSON.parse(rawResponses) || {};
-            } catch (e) {
-                logger.error('Failed to parse legacy session responses JSON:', { error: e.message, messageId });
-                responses = {};
-            }
-        }
-
-        const status = RESPONSE_TYPE_MAP[action];
-
-        if (!status) {
-            return ephemeral(res, 'Invalid action.');
-        }
-
-        // Ensure all response arrays exist
-        if (!responses.accepted) responses.accepted = [];
-        if (!responses.declined) responses.declined = [];
-        if (!responses.tentative) responses.tentative = [];
-
-        // Remove user from all lists
-        Object.keys(responses).forEach(key => {
-            if (Array.isArray(responses[key])) {
-                responses[key] = responses[key].filter(u => u.discord_id !== discordUserId);
-            }
-        });
-
-        // Add to new status
-        responses[status].push({
-            discord_id: discordUserId,
-            display_name: displayName
-        });
-
-        // Update database
-        await dbUtils.executeQuery(
-            'UPDATE session_messages SET responses = $1 WHERE message_id = $2',
-            [JSON.stringify(responses), messageId]
-        );
-
-        // Update Discord message
-        await updateSessionMessageEmbed(messageId, sessionMessage, responses);
-
-        return ephemeral(res, `You are marked as **${status}** for this session.`);
-
-    } catch (error) {
-        logger.error('Legacy session interaction error:', error);
-        return ephemeral(res, 'An error occurred.');
-    }
-};
-
-/**
- * Helper function to update session message embed with responses
- */
-const updateSessionMessageEmbed = async (messageId, sessionMessage, responses) => {
-    try {
-        // Bot token is global broker infrastructure; the channel is the one the
-        // message was posted to (falling back to the campaign's current channel
-        // for rows stored without one). Runs under the message's campaign context.
-        const settings = await dbUtils.executeQuery(
-            'SELECT value FROM settings WHERE name = $1',
-            ['discord_bot_token']
-        );
-
-        const discord_bot_token = settings.rows[0]?.value;
-        const discord_channel_id = sessionMessage.channel_id
-            || await campaignSettings.getCampaignSetting('discord_channel_id');
-
-        // Embed title branding: the message's campaign display name
-        // (campaigns.name). In a cross-campaign ('all') context there is no
-        // single campaign, so fall back to the static APP_NAME.
-        const contextCampaignId = campaignContext.getCampaignId();
-        const campaign_name = (contextCampaignId !== 'all'
-            ? await Campaign.getNameById(contextCampaignId)
-            : null) || APP_NAME;
-
-        if (!discord_bot_token || !discord_channel_id) {
-            throw new Error('Discord not configured');
-        }
-
-        // Format dates
-        const startDate = new Date(sessionMessage.session_date);
-        const endDate = new Date(sessionMessage.session_time);
-
-        const sessionDate = startDate.toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-
-        const sessionTime = startDate.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-        });
-
-        // Format response lists
-        const formatResponseList = (users) => {
-            if (!users || users.length === 0) {
-                return 'No responses yet...';
-            }
-            return users.map(user => user.display_name).join('\n');
-        };
-
-        const accepted = responses.accepted || [];
-        const declined = responses.declined || [];
-        const tentative = responses.tentative || [];
-
-        // Create updated embed
-        const embed = {
-            title: `${campaign_name} Session`,
-            description: 'Please click a button to indicate your attendance!',
-            color: 0x00ff00,
-            fields: [
-                {
-                    name: '📅 Date',
-                    value: sessionDate,
-                    inline: true
-                },
-                {
-                    name: '🕐 Time',
-                    value: sessionTime,
-                    inline: true
-                },
-                {
-                    name: '⏱️ Duration',
-                    value: `${Math.round((endDate - startDate) / (1000 * 60 * 60))} hours`,
-                    inline: true
-                },
-                {
-                    name: `✅ Accepted (${accepted.length})`,
-                    value: formatResponseList(accepted),
-                    inline: false
-                },
-                {
-                    name: `❌ Declined (${declined.length})`,
-                    value: formatResponseList(declined),
-                    inline: false
-                },
-                {
-                    name: `❓ Maybe (${tentative.length})`,
-                    value: formatResponseList(tentative),
-                    inline: false
-                }
-            ],
-            timestamp: new Date().toISOString(),
-            footer: {
-                text: 'Session Attendance Tracker'
-            }
-        };
-
-        // Keep the same buttons
-        const components = [
-            {
-                type: 1,
-                components: [
-                    {
-                        type: 2,
-                        style: 3,
-                        label: 'Yes, I can attend',
-                        emoji: { name: '✅' },
-                        custom_id: 'session_yes'
-                    },
-                    {
-                        type: 2,
-                        style: 4,
-                        label: 'No, I cannot attend',
-                        emoji: { name: '❌' },
-                        custom_id: 'session_no'
-                    },
-                    {
-                        type: 2,
-                        style: 2,
-                        label: 'Maybe/Unsure',
-                        emoji: { name: '❓' },
-                        custom_id: 'session_maybe'
-                    }
-                ]
-            }
-        ];
-
-        // Update the message
-        await axios.patch(
-            `https://discord.com/api/channels/${discord_channel_id}/messages/${messageId}`,
-            {
-                embeds: [embed],
-                components: components
-            },
-            {
-                headers: {
-                    'Authorization': `Bot ${discord_bot_token}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-    } catch (error) {
-        logger.error('Error updating session message embed:', error.message);
-    }
 };
 
 /**

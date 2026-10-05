@@ -218,49 +218,27 @@ describe('processSessionInteraction campaign context', () => {
     );
   });
 
-  it('processes a legacy session_messages interaction under the legacy row campaign', async () => {
+  it('answers a button on a message that is not a current session with an ephemeral "no longer active" reply', async () => {
     const seenQueries = [];
     mockExecuteQuery.mockImplementation(async (query) => {
-      seenQueries.push({ query, context: activeCampaign });
-      if (query.includes('FROM game_sessions')) {
-        return { rows: [] }; // no enhanced session
-      }
-      if (query.includes('FROM session_messages')) {
-        return {
-          rows: [{
-            session_date: new Date().toISOString(),
-            session_time: new Date().toISOString(),
-            responses: '{}',
-            campaign_id: 3,
-          }],
-        };
-      }
-      if (query.includes('FROM users')) {
-        return { rows: [{ id: 7, username: 'bob' }] };
-      }
+      seenQueries.push(query);
       return { rows: [], rowCount: 0 };
     });
 
-    const res = makeRes();
-    await sessionController.processSessionInteraction(buttonRequest('session_yes'), res);
-
-    expect(contextIds()).toEqual(['all', '3']);
-
-    // Legacy fallback lookup selects campaign_id and runs under 'all'
-    const legacyLookup = seenQueries.find(q => q.query.includes('FROM session_messages'));
-    expect(legacyLookup.context).toBe('all');
-    expect(legacyLookup.query).toContain('campaign_id');
-
-    // The legacy responses UPDATE runs under campaign 3
-    const responsesUpdate = seenQueries.find(q => q.query.includes('UPDATE session_messages'));
-    expect(responsesUpdate.context).toBe('3');
-
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 4 })
-    );
+    // session_yes / session_no / session_maybe were the retired announcement buttons
+    for (const customId of ['session_yes', 'session_no', 'session_maybe', 'session_attend_yes']) {
+      const res = makeRes();
+      await sessionController.processSessionInteraction(buttonRequest(customId), res);
+      expect(res.json).toHaveBeenCalledWith({
+        type: 4,
+        data: { content: 'This session announcement is no longer active.', flags: 64 },
+      });
+    }
+    expect(seenQueries.some(q => q.includes('session_messages'))).toBe(false);
+    expect(sessionService.recordAttendance).not.toHaveBeenCalled();
   });
 
-  it('returns "Session not found." without entering a per-campaign context when nothing matches', async () => {
+  it('replies "no longer active" without entering a per-campaign context when nothing matches', async () => {
     mockExecuteQuery.mockResolvedValue({ rows: [] });
 
     const res = makeRes();
@@ -269,7 +247,7 @@ describe('processSessionInteraction campaign context', () => {
     expect(contextIds()).toEqual(['all']);
     expect(res.json).toHaveBeenCalledWith({
       type: 4,
-      data: { content: 'Session not found.', flags: 64 },
+      data: { content: 'This session announcement is no longer active.', flags: 64 },
     });
     expect(sessionService.recordAttendance).not.toHaveBeenCalled();
   });
@@ -424,35 +402,4 @@ describe('processSessionInteraction campaign context', () => {
     const del = mockExecuteQuery.mock.calls.find(c => String(c[0]).includes('DELETE FROM discord_reaction_tracking'));
     expect(del[1]).toEqual([ENHANCED_MESSAGE_ID, '999888777666555444', '❌']);
   });
-
-  it('keeps earlier legacy responses when the JSONB column arrives as an object, and uses the stored channel', async () => {
-    const axios = require('axios');
-    mockExecuteQuery.mockImplementation(async (query) => {
-      if (query.includes('FROM game_sessions')) return { rows: [] };
-      if (query.includes('FROM session_messages')) {
-        return {
-          rows: [{
-            session_date: new Date().toISOString(),
-            session_time: new Date().toISOString(),
-            responses: { accepted: [{ discord_id: 'other', display_name: 'Amiri' }], declined: [], tentative: [] },
-            channel_id: '555555555555555555',
-            campaign_id: 3,
-          }],
-        };
-      }
-      if (query.includes('FROM settings')) return { rows: [{ value: 'token' }] };
-      if (query.includes('FROM users')) return { rows: [{ id: 7, username: 'bob' }] };
-      return { rows: [], rowCount: 0 };
-    });
-    axios.patch.mockResolvedValue({});
-
-    await sessionController.processSessionInteraction(buttonRequest('session_no'), makeRes());
-
-    const update = mockExecuteQuery.mock.calls.find(c => String(c[0]).includes('UPDATE session_messages'));
-    const saved = JSON.parse(update[1][0]);
-    expect(saved.accepted).toEqual([{ discord_id: 'other', display_name: 'Amiri' }]);
-    expect(saved.declined).toEqual([{ discord_id: '999888777666555444', display_name: 'bob' }]);
-    expect(axios.patch.mock.calls[0][0]).toContain('/channels/555555555555555555/messages/');
-  });
 });
-

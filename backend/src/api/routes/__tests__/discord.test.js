@@ -5,7 +5,7 @@
  */
 jest.mock('../../../middleware/auth', () => (req, res, next) => next());
 jest.mock('../../../controllers/discordController', () => ({
-  sendMessage: jest.fn(), sendEvent: jest.fn(), getIntegrationStatus: jest.fn(), updateSettings: jest.fn(),
+  sendMessage: jest.fn(), getIntegrationStatus: jest.fn(), updateSettings: jest.fn(),
 }));
 jest.mock('../../../controllers/sessionController', () => ({
   processSessionInteraction: jest.fn(),
