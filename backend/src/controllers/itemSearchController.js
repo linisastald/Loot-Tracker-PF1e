@@ -4,6 +4,7 @@ const City = require('../models/City');
 const controllerFactory = require('../utils/controllerFactory');
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
+const { calculateFinalValue } = require('../services/calculateFinalValue');
 
 /**
  * Check item availability in a city
@@ -36,15 +37,19 @@ const checkItemAvailability = async (req, res) => {
   // Get or create the city
   let city = await City.getOrCreate(city_name.trim(), city_size);
 
-  // Calculate item value
+  // Calculate item value (base catalog value; mods are priced below with the
+  // shared calculateFinalValue so availability uses the full market price)
   let itemValue = 0;
+  let itemType = null;
+  let itemSubtype = null;
+  let itemWeight = null;
   let itemName = 'Custom Item';
   let baseItemCasterLevel = 0;
   let totalEnhancementPlus = 0;
 
   if (item_id) {
     // Get base item value and caster level
-    const itemQuery = 'SELECT name, value, casterlevel FROM item WHERE id = $1';
+    const itemQuery = 'SELECT name, value, casterlevel, type, subtype, weight FROM item WHERE id = $1';
     const itemResult = await dbUtils.executeQuery(itemQuery, [item_id]);
 
     if (itemResult.rows.length === 0) {
@@ -55,6 +60,9 @@ const checkItemAvailability = async (req, res) => {
     itemName = item.name;
     itemValue = parseFloat(item.value) || 0;
     baseItemCasterLevel = parseInt(item.casterlevel) || 0;
+    itemType = item.type || null;
+    itemSubtype = item.subtype || null;
+    itemWeight = item.weight === null || item.weight === undefined ? null : Number(item.weight);
   }
 
   // Add mod values if any (batch fetch all mods at once)
@@ -64,18 +72,18 @@ const checkItemAvailability = async (req, res) => {
       [mod_ids]
     );
 
-    for (const mod of modResult.rows) {
-      if (mod.valuecalc && mod.valuecalc.includes('PLUS')) {
-        const plus = mod.plus || 0;
-        // Weapon enhancement: bonus² × 2000, Armor enhancement: bonus² × 1000 (CRB)
-        const multiplier = mod.target === 'armor' ? 1000 : 2000;
-        const enhancementCost = plus * plus * multiplier;
-        itemValue += enhancementCost;
-        totalEnhancementPlus += plus;
-      } else if (mod.valuecalc && !isNaN(parseFloat(mod.valuecalc))) {
-        itemValue += parseFloat(mod.valuecalc);
-      }
+    // Enhancement mods carry their bonus in `plus` (valuecalc is NULL for them),
+    // so price through the shared calculateFinalValue: plus table (weapon/armor),
+    // masterwork, and valuecalc operators. A search with no base item takes its
+    // weapon/armor type from the mods' target.
+    if (!itemType) {
+      const target = modResult.rows.find((mod) => mod.target === 'weapon' || mod.target === 'armor');
+      itemType = target ? target.target : null;
     }
+    itemValue = calculateFinalValue(
+      itemValue, itemType, itemSubtype, modResult.rows, false, itemName, undefined, undefined, itemWeight
+    );
+    totalEnhancementPlus = modResult.rows.reduce((sum, mod) => sum + (Number(mod.plus) || 0), 0);
   }
 
   // Effective caster level of the item: the higher of the item's intrinsic caster level

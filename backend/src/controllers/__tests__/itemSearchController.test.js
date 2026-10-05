@@ -99,7 +99,7 @@ describe('itemSearchController', () => {
       // Item lookup
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] }) // golarion date
-        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15' }] }); // item query
+        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15', type: 'weapon' }] }); // item query
 
       ItemSearch.calculateAvailability.mockReturnValue({
         threshold: 95,
@@ -112,7 +112,7 @@ describe('itemSearchController', () => {
       await itemSearchController.checkItemAvailability(req, res);
 
       expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        'SELECT name, value, casterlevel FROM item WHERE id = $1',
+        'SELECT name, value, casterlevel, type, subtype, weight FROM item WHERE id = $1',
         [5]
       );
       expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(15, 1000);
@@ -142,7 +142,7 @@ describe('itemSearchController', () => {
       expect(res.notFound).toHaveBeenCalledWith('Item not found');
     });
 
-    it('should add mod values with PLUS-based enhancement costs (weapon)', async () => {
+    it('F-0371: prices enhancement mods that only set `plus` (valuecalc NULL), as in mod_data.sql', async () => {
       const req = createMockReq({
         body: { ...baseBody, item_id: 5, mod_ids: [10, 11] },
       });
@@ -150,16 +150,16 @@ describe('itemSearchController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
-        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15' }] }) // base item
+        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15', type: 'weapon', subtype: 'martial', casterlevel: null, weight: 4 }] }) // base item
         .mockResolvedValueOnce({
           rows: [
-            { name: '+1 Enhancement', valuecalc: 'PLUS', plus: 1, target: 'weapon' },
-            { name: 'Flaming', valuecalc: 'PLUS', plus: 2, target: 'weapon' },
+            { name: '+1', valuecalc: null, plus: 1, target: 'weapon' },
+            { name: 'Flaming', valuecalc: null, plus: 1, target: 'weapon' },
           ],
         }); // mods
 
-      // +1 weapon: 1*1*2000 = 2000, +2 weapon: 2*2*2000 = 8000, base = 15
-      // total = 15 + 2000 + 8000 = 10015
+      // +1 and Flaming = +2 total: 8000 (weapon plus table) + 300 masterwork + 15 base
+      // total = 8315 (same figure the loot pricing path produces)
       ItemSearch.calculateAvailability.mockReturnValue({
         threshold: 0,
         percentage: 0,
@@ -169,12 +169,12 @@ describe('itemSearchController', () => {
 
       await itemSearchController.checkItemAvailability(req, res);
 
-      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(10015, 1000);
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(8315, 1000);
       // too_expensive returns early without creating a search record
       expect(res.success).toHaveBeenCalledWith(
         expect.objectContaining({
           too_expensive: true,
-          item_value: 10015,
+          item_value: 8315,
         }),
         expect.any(String)
       );
@@ -188,14 +188,14 @@ describe('itemSearchController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
-        .mockResolvedValueOnce({ rows: [{ name: 'Chain Shirt', value: '100' }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Chain Shirt', value: '100', type: 'armor' }] })
         .mockResolvedValueOnce({
           rows: [
-            { name: '+1 Enhancement', valuecalc: 'PLUS', plus: 1, target: 'armor' },
+            { name: '+1', valuecalc: null, plus: 1, target: 'armor' },
           ],
         });
 
-      // +1 armor: 1*1*1000 = 1000, base = 100, total = 1100
+      // +1 armor: 1000 (armor plus table) + 150 masterwork + 100 base = 1250
       ItemSearch.calculateAvailability.mockReturnValue({
         threshold: 40,
         percentage: 40,
@@ -206,7 +206,7 @@ describe('itemSearchController', () => {
 
       await itemSearchController.checkItemAvailability(req, res);
 
-      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(1100, 1000);
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(1250, 1000);
     });
 
     it('should add flat numeric mod values', async () => {
@@ -217,10 +217,10 @@ describe('itemSearchController', () => {
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
-        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15' }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Longsword', value: '15', type: 'weapon' }] })
         .mockResolvedValueOnce({
           rows: [
-            { name: 'Keen', valuecalc: '8000', plus: null, target: 'weapon' },
+            { name: 'Keen', valuecalc: '+8000', plus: null, target: 'weapon' },
           ],
         });
 
@@ -235,6 +235,34 @@ describe('itemSearchController', () => {
       await itemSearchController.checkItemAvailability(req, res);
 
       expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(8015, 1000);
+    });
+
+    it('F-0371: applies multiplier valuecalcs and derives caster level from mod.plus', async () => {
+      const req = createMockReq({
+        body: { ...baseBody, item_id: 5, mod_ids: [10, 11] },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Cloak', value: '100', type: 'wondrous', casterlevel: 3 }] })
+        .mockResolvedValueOnce({
+          rows: [
+            { name: 'Doubled', valuecalc: '*2', plus: null, target: null },
+            { name: '+2 thing', valuecalc: null, plus: 2, target: null },
+          ],
+        });
+
+      ItemSearch.calculateAvailability.mockReturnValue({
+        threshold: 40, percentage: 40, description: '40%', reason: 'available',
+      });
+      ItemSearch.create.mockResolvedValue({ id: 3 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      // 100 * 2 = 200; non-weapon/armor adds no plus-table cost
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(200, 1000);
+      expect(ItemSearch.calculateCasterLevelPenalty).toHaveBeenCalledWith(6, 5); // max(3, 2*3)
     });
 
     it('should return too_expensive without creating search record', async () => {
