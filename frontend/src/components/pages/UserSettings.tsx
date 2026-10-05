@@ -165,23 +165,22 @@ const UserSettings = () => {
     };
 
     // Function to handle Discord ID update
-    const handleUpdateDiscordId = async (e) => {
-        e.preventDefault();
+    const submitDiscordId = async (value: string) => {
         setDiscordError('');
         setDiscordSuccess('');
 
         // Validate Discord ID format (17-19 digit number)
-        if (discordId && !/^\d{17,19}$/.test(discordId)) {
+        if (value && !/^\d{17,19}$/.test(value)) {
             setDiscordError('Invalid Discord ID format. It should be a 17-19 digit number.');
             return;
         }
 
         try {
             await api.put('/user/update-discord-id', {
-                discord_id: discordId || null
+                discord_id: value || null
             });
 
-            setDiscordSuccess(discordId ? 'Discord ID linked successfully' : 'Discord ID unlinked successfully');
+            setDiscordSuccess(value ? 'Discord ID linked successfully' : 'Discord ID unlinked successfully');
 
             // Refresh user data
             fetchUserData();
@@ -189,6 +188,16 @@ const UserSettings = () => {
             console.error('Error updating Discord ID:', error);
             setDiscordError(error.response?.data?.message || 'Error updating Discord ID');
         }
+    };
+
+    const handleUpdateDiscordId = (e: React.FormEvent) => {
+        e.preventDefault();
+        return submitDiscordId(discordId);
+    };
+
+    const handleUnlinkDiscordId = () => {
+        setDiscordId('');
+        return submitDiscordId('');
     };
 
     return (
@@ -387,11 +396,7 @@ const UserSettings = () => {
                                             <Button
                                                 variant="outlined"
                                                 color="error"
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    setDiscordId('');
-                                                    handleUpdateDiscordId(e);
-                                                }}
+                                                onClick={handleUnlinkDiscordId}
                                             >
                                                 Unlink
                                             </Button>

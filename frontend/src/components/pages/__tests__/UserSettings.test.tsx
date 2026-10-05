@@ -65,6 +65,18 @@ describe('UserSettings', () => {
     (api.get as any).mockResolvedValue(mockUserData);
   });
 
+  it('Unlink sends a null discord id instead of re-linking the old one', async () => {
+    (api.put as any).mockResolvedValue({ data: {} });
+    renderUserSettings();
+
+    const unlink = await screen.findByRole('button', { name: /^unlink$/i });
+    fireEvent.click(unlink);
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/user/update-discord-id', { discord_id: null });
+    });
+  });
+
   it('renders the settings tabs', async () => {
     renderUserSettings();
 
