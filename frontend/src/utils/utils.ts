@@ -361,12 +361,16 @@ export const handleSplitSubmit = async (
       lootId: itemId,
       newQuantities: splitQuantities,
     });
-    if (response.status === 200) {
+    // The api response interceptor unwraps the HTTP response and returns the
+    // body ({ success, message, data }), which has no `status`. Failed requests
+    // reject, so a resolved call is a success unless the body says otherwise.
+    const body = response as unknown as { success?: boolean; message?: string };
+    if (body?.success !== false) {
       await fetchLoot();
       setOpenSplitDialog(false);
       setSelectedItems([]);
     } else {
-      console.error('Error splitting loot item:', response.data);
+      console.error('Error splitting loot item:', body.message);
     }
   } catch (error: any) {
     console.error('Error splitting loot item:', error);
