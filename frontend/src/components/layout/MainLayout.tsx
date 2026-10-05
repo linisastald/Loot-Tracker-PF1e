@@ -2,10 +2,12 @@ import React, {Suspense, useState, useEffect} from 'react';
 import Sidebar from './Sidebar';
 import CampaignSelector from './CampaignSelector';
 import NoSessionTodayBanner from './NoSessionTodayBanner';
+import NoCampaignNotice from './NoCampaignNotice';
 import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography, useMediaQuery, useTheme} from '@mui/material';
 import {Outlet, useLocation, useNavigate} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useConfig } from '../../contexts/ConfigContext';
+import { useCampaign } from '../../contexts/CampaignContext';
 
 interface MainLayoutProps {
   onLogout: () => void;
@@ -19,6 +21,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { config } = useConfig();
+  const { hasNoCampaign } = useCampaign();
 
   // Update document title when config changes
   useEffect(() => {
@@ -136,10 +139,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
           }}
         >
           {/* Multi-campaign: gentle "wrong campaign?" hint, above page content */}
-          <NoSessionTodayBanner />
-          <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress size={32} /></Box>}>
-            <Outlet />
-          </Suspense>
+          {hasNoCampaign ? (
+            // Not a member of any campaign: every campaign page would 403, so show
+            // the redeem-an-invite state instead of an error loop
+            <NoCampaignNotice onLogout={onLogout} />
+          ) : (
+            <>
+              <NoSessionTodayBanner />
+              <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress size={32} /></Box>}>
+                <Outlet />
+              </Suspense>
+            </>
+          )}
         </Box>
       </Box>
     </Box>

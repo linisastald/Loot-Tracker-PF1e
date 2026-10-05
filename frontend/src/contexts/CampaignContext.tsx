@@ -37,6 +37,12 @@ export interface CampaignContextType {
    */
   campaignSettings: Record<string, unknown>;
   loading: boolean;
+  /**
+   * True only after a SUCCESSFUL campaign fetch showed the user belongs to no
+   * campaign (and is not a superadmin). Campaign-scoped routes answer 403 for
+   * such a user, so the layout shows the redeem-an-invite state instead.
+   */
+  hasNoCampaign: boolean;
   /** Persist the selection and reload the app under the new tenant */
   switchCampaign: (id: number) => void;
   /** Refetch the campaign list and current-campaign info */
@@ -66,6 +72,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
   const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [campaignSettings, setCampaignSettings] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
+  const [hasNoCampaign, setHasNoCampaign] = useState(false);
 
   const refresh = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -78,7 +85,8 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
       // api interceptor returns the response body ({ success, message, data }),
       // so `.data` here is the data payload itself.
       const list = listResponse?.data;
-      setCampaigns(Array.isArray(list) ? list : []);
+      const campaignList: CampaignSummary[] = Array.isArray(list) ? list : [];
+      setCampaigns(campaignList);
 
       const current = currentResponse?.data;
       if (current?.campaign) {
@@ -92,6 +100,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
       }
       setCampaignRole(current?.role ?? null);
       setIsSuperadmin(Boolean(current?.isSuperadmin));
+      setHasNoCampaign(campaignList.length === 0 && !current?.isSuperadmin);
       setCampaignSettings(current?.settings ?? {});
     } catch (error) {
       // Leave whatever state we had; the selector simply shows no campaign.
@@ -126,6 +135,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
     isSuperadmin,
     campaignSettings,
     loading,
+    hasNoCampaign,
     switchCampaign,
     refresh,
   };

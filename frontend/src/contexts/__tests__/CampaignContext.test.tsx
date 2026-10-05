@@ -76,6 +76,7 @@ const Probe: React.FC = () => {
       <span data-testid="loading">{String(ctx.loading)}</span>
       <span data-testid="current">{ctx.currentCampaign?.name ?? 'none'}</span>
       <span data-testid="current-slug">{ctx.currentCampaign?.slug ?? 'none'}</span>
+      <span data-testid="no-campaign">{String(ctx.hasNoCampaign)}</span>
       <span data-testid="count">{ctx.campaigns.length}</span>
       <span data-testid="role">{ctx.campaignRole ?? 'none'}</span>
       <span data-testid="superadmin">{String(ctx.isSuperadmin)}</span>
@@ -104,6 +105,39 @@ describe('CampaignContext', () => {
     vi.clearAllMocks();
     localStorage.clear();
     setupApiMock();
+  });
+
+  describe('hasNoCampaign', () => {
+    const noMembershipCurrent = { campaignId: null, role: null, isSuperadmin: false, campaign: null, settings: {} };
+
+    it('is true for a non-superadmin with an empty campaign list', async () => {
+      setupApiMock(noMembershipCurrent, []);
+      renderWithAuth(true);
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      expect(screen.getByTestId('no-campaign')).toHaveTextContent('true');
+    });
+
+    it('is false for a member', async () => {
+      renderWithAuth(true);
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      expect(screen.getByTestId('no-campaign')).toHaveTextContent('false');
+    });
+
+    it('is false for a superadmin with an empty list', async () => {
+      setupApiMock({ ...noMembershipCurrent, isSuperadmin: true }, []);
+      renderWithAuth(true);
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      expect(screen.getByTestId('no-campaign')).toHaveTextContent('false');
+    });
+
+    it('stays false when the fetch fails (a transient error is not "no campaign")', async () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      (api.get as any).mockRejectedValue(new Error('network'));
+      renderWithAuth(true);
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      expect(screen.getByTestId('no-campaign')).toHaveTextContent('false');
+      errSpy.mockRestore();
+    });
   });
 
   describe('fetch on mount', () => {
