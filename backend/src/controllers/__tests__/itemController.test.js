@@ -86,8 +86,9 @@ describe('itemController', () => {
       const [query, params] = dbUtils.executeQuery.mock.calls[0];
       // Default filter: unprocessed items
       expect(query).toContain("statuspage IS NULL OR statuspage = 'Pending Sale'");
-      // Default limit of 50
-      expect(params).toContain(50);
+      // F-0345: no implicit cap - the UI never pages, so all rows are returned
+      expect(query).not.toMatch(/LIMIT/i);
+      expect(params).toEqual([]);
 
       // Response via success helper
       expect(res.success).toHaveBeenCalledTimes(1);
@@ -154,6 +155,9 @@ describe('itemController', () => {
       const responseData = res.success.mock.calls[0][0];
       expect(responseData.metadata.limit).toBe(10);
       expect(responseData.metadata.offset).toBe(5);
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('LIMIT $1 OFFSET $2');
+      expect(params).toEqual([10, 5]);
     });
   });
 

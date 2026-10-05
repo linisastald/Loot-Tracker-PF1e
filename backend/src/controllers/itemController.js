@@ -11,7 +11,14 @@ const SearchService = require('../services/searchService');
  */
 const getAllLoot = async (req, res) => {
   try {
-    const { status, character_id, limit = 50, offset = 0, fields } = req.query;
+    const { status, character_id, fields } = req.query;
+    // No implicit cap: loot_view returns a summary row plus individual rows per
+    // item and no caller pages, so a default LIMIT silently dropped rows.
+    // Pagination only applies when the caller explicitly sends a positive limit.
+    const parsedLimit = parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : null;
+    const parsedOffset = parseInt(req.query.offset, 10);
+    const offset = Number.isInteger(parsedOffset) && parsedOffset > 0 ? parsedOffset : 0;
     
     // Define available fields and default selection for performance
     const availableFields = [
@@ -94,8 +101,8 @@ const getAllLoot = async (req, res) => {
       individual: individualItems,
       count: allItems.length,
       metadata: {
-        limit: parseInt(limit),
-        offset: parseInt(offset),
+        limit,
+        offset,
         fields: selectedFields,
         total_fields: availableFields.length,
         response_size_reduction: `${Math.round((1 - selectedFields.length / availableFields.length) * 100)}%`
