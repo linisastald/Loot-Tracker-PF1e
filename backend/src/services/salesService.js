@@ -2,6 +2,7 @@
 const dbUtils = require('../utils/dbUtils');
 const { calculateItemSaleValue, calculateTotalSaleValue } = require('../utils/saleValueCalculator');
 const logger = require('../utils/logger');
+const controllerFactory = require('../utils/controllerFactory');
 
 /**
  * Service for handling item sales operations
@@ -82,8 +83,18 @@ class SalesService {
       [lootIds, soldForValues, now]
     );
 
-    // Update status to Sold
-    await client.query("UPDATE loot SET status = 'Sold' WHERE id = ANY($1)", [validItemIds]);
+    // Update status to Sold. The status guard in the WHERE clause plus the row
+    // count check make a double-sale impossible even if a concurrent request
+    // slipped past the caller's own status check.
+    const updateResult = await client.query(
+      "UPDATE loot SET status = 'Sold' WHERE id = ANY($1) AND status = 'Pending Sale'",
+      [validItemIds]
+    );
+    if (updateResult.rowCount !== validItemIds.length) {
+      throw controllerFactory.createValidationError(
+        'Some items are no longer pending sale (they may have just been sold); no items were sold'
+      );
+    }
 
     // Create gold entry
     const goldEntry = this.createGoldEntry(totalSold, notes);
@@ -166,16 +177,34 @@ class SalesService {
     return await dbUtils.executeTransaction(async (client) => {
       // Get the specified items, falling back to catalog value when the row's
       // own value is null so DM-linked items still sell for the right price.
+      // Rows are locked (FOR UPDATE) so a concurrent sale of the same ids waits,
+      // then sees status 'Sold' and is rejected below.
       const itemsResult = await client.query(`
         SELECT l.*, COALESCE(l.value, i.value) AS value
         FROM loot l
         LEFT JOIN item i ON i.id = l.itemid
         WHERE l.id = ANY($1)
+        ORDER BY l.id
+        FOR UPDATE OF l
       `, [itemIds]);
       const items = itemsResult.rows;
 
       if (items.length === 0) {
         throw new Error('No items found with the specified IDs');
+      }
+
+      // Only 'Pending Sale' items are sellable, same as the other sale paths.
+      const notSellable = items.filter(item => item.status !== 'Pending Sale');
+      const foundIds = new Set(items.map(item => Number(item.id)));
+      const missingIds = itemIds.filter(id => !foundIds.has(Number(id)));
+      if (notSellable.length > 0 || missingIds.length > 0) {
+        const parts = notSellable.map(item => `${item.name} (id ${item.id}, status ${item.status})`);
+        if (missingIds.length > 0) {
+          parts.push(`not found: ${missingIds.join(', ')}`);
+        }
+        throw controllerFactory.createValidationError(
+          `Cannot sell items that are not pending sale: ${parts.join('; ')}. No items were sold.`
+        );
       }
 
       const { validItems, invalidItems } = this.filterValidSaleItems(items);

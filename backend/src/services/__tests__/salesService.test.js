@@ -23,6 +23,12 @@ const saleValueCalculator = require('../../utils/saleValueCalculator');
 
 // Default sale-value behavior. Re-applied in beforeEach because the unit
 // jest config sets resetMocks: true, which wipes implementations between tests.
+// Generic client.query result: rowCount mirrors the id array an UPDATE ... ANY($1) targets.
+const defaultClientQuery = async (sql, params) => ({
+  rows: [{ id: 1 }],
+  rowCount: Array.isArray(params && params[0]) ? params[0].length : 1,
+});
+
 const defaultItemSaleValue = (item) => {
   const value = parseFloat(item.value) || 0;
   return item.type === 'trade good' ? value : value * 0.5;
@@ -149,7 +155,7 @@ describe('SalesService', () => {
       // SELECT pending items
       mockClient.query.mockResolvedValueOnce({ rows: pendingItems });
       // INSERT sold records (one per item)
-      mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
+      mockClient.query.mockImplementation(defaultClientQuery);
 
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
@@ -189,11 +195,11 @@ describe('SalesService', () => {
     it('should sell only specified items', async () => {
       const mockClient = { query: jest.fn() };
       const items = [
-        { id: 1, name: 'Gem', unidentified: false, value: 50, type: 'trade good', quantity: 1 },
+        { id: 1, name: 'Gem', status: 'Pending Sale', unidentified: false, value: 50, type: 'trade good', quantity: 1 },
       ];
 
       mockClient.query.mockResolvedValueOnce({ rows: items });
-      mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
+      mockClient.query.mockImplementation(defaultClientQuery);
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       const result = await SalesService.sellSelectedItems([1]);
@@ -201,6 +207,40 @@ describe('SalesService', () => {
       expect(result.sold.count).toBe(1);
       // Verify it queries by IDs
       expect(mockClient.query.mock.calls[0][1]).toEqual([[1]]);
+    });
+
+    it('F-0740: rejects ids that are already sold, naming them, and sells nothing', async () => {
+      const mockClient = { query: jest.fn() };
+      mockClient.query.mockResolvedValueOnce({
+        rows: [
+          { id: 1, name: 'Gem', status: 'Pending Sale', unidentified: false, value: 50, type: 'trade good' },
+          { id: 2, name: 'Ruby', status: 'Sold', unidentified: false, value: 500, type: 'trade good' },
+        ],
+      });
+      mockClient.query.mockImplementation(defaultClientQuery);
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      await expect(SalesService.sellSelectedItems([1, 2, 77])).rejects.toMatchObject({
+        name: 'ValidationError',
+        message: expect.stringMatching(/Ruby \(id 2, status Sold\).*not found: 77/),
+      });
+      // Only the SELECT ran: no sold rows, no status update, no gold entry
+      expect(mockClient.query).toHaveBeenCalledTimes(1);
+      expect(mockClient.query.mock.calls[0][0]).toContain('FOR UPDATE');
+    });
+
+    it('F-0740: fails the whole sale when the guarded UPDATE affects fewer rows than expected', async () => {
+      const mockClient = { query: jest.fn() };
+      mockClient.query
+        .mockResolvedValueOnce({
+          rows: [{ id: 1, name: 'Gem', status: 'Pending Sale', unidentified: false, value: 50, type: 'trade good' }],
+        })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }) // INSERT sold
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }); // UPDATE guarded by status: lost the race
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      await expect(SalesService.sellSelectedItems([1])).rejects.toMatchObject({ name: 'ValidationError' });
+      expect(mockClient.query.mock.calls[2][0]).toContain("status = 'Pending Sale'");
     });
 
     it('should throw when no items found with given IDs', async () => {
@@ -226,7 +266,7 @@ describe('SalesService', () => {
       ];
 
       mockClient.query.mockResolvedValueOnce({ rows: items });
-      mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
+      mockClient.query.mockImplementation(defaultClientQuery);
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       const result = await SalesService.sellAllExceptItems([1, 2]);
@@ -242,7 +282,7 @@ describe('SalesService', () => {
       mockClient.query.mockResolvedValueOnce({
         rows: [{ id: 1, name: 'Sword', unidentified: false, value: 100, type: 'weapon', quantity: 1 }],
       });
-      mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
+      mockClient.query.mockImplementation(defaultClientQuery);
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       const result = await SalesService.sellAllExceptItems([]);
@@ -268,7 +308,7 @@ describe('SalesService', () => {
       ];
 
       mockClient.query.mockResolvedValueOnce({ rows: items });
-      mockClient.query.mockResolvedValue({ rows: [{ id: 1 }] });
+      mockClient.query.mockImplementation(defaultClientQuery);
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
       const result = await SalesService.sellUpToAmount(75);
