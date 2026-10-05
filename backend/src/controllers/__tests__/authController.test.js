@@ -1278,4 +1278,85 @@ describe('authController', () => {
       expect(res.validationError).toHaveBeenCalled();
     });
   });
+
+  // ---------------------------------------------------------------
+  // forgotPassword / resetPassword (token-based flow)
+  // ---------------------------------------------------------------
+  describe('forgotPassword', () => {
+    const emailService = require('../../services/emailService');
+
+    it('creates a reset token and emails a user matching username and email', async () => {
+      const req = createMockReq({ body: { username: 'testuser', email: 'test@example.com' } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ id: 1, username: 'testuser', email: 'test@example.com' }],
+      });
+      const mockClient = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+      emailService.sendPasswordResetEmail.mockResolvedValue(true);
+
+      await authController.forgotPassword(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+        'SELECT id, username, email FROM users WHERE username = $1 AND email = $2',
+        ['testuser', 'test@example.com']
+      );
+      expect(mockClient.query).toHaveBeenCalledTimes(2);
+      expect(emailService.sendPasswordResetEmail).toHaveBeenCalledWith(
+        'test@example.com',
+        'testuser',
+        expect.any(String)
+      );
+      expect(res.success).toHaveBeenCalled();
+    });
+
+    it('responds identically and sends no email when no user matches', async () => {
+      const req = createMockReq({ body: { username: 'ghost', email: 'ghost@example.com' } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await authController.forgotPassword(req, res);
+
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      expect(emailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+      expect(res.success).toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('hashes the new password and marks the token used', async () => {
+      const req = createMockReq({ body: { token: 'valid-reset-token', newPassword: 'newpassword123' } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ user_id: 1, username: 'testuser', token: 'valid-reset-token' }],
+      });
+      bcrypt.hash.mockResolvedValue('newhashedpassword');
+      const mockClient = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      await authController.resetPassword(req, res);
+
+      expect(bcrypt.hash).toHaveBeenCalledWith('newpassword123', 10);
+      expect(mockClient.query).toHaveBeenCalledWith(
+        'UPDATE users SET password = $1, login_attempts = 0, locked_until = NULL WHERE id = $2',
+        ['newhashedpassword', 1]
+      );
+      expect(mockClient.query).toHaveBeenCalledWith(
+        'UPDATE password_reset_tokens SET used = TRUE WHERE token = $1',
+        ['valid-reset-token']
+      );
+      expect(res.success).toHaveBeenCalled();
+    });
+
+    it('rejects an invalid or expired token', async () => {
+      const req = createMockReq({ body: { token: 'invalid-token', newPassword: 'newpassword123' } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await authController.resetPassword(req, res);
+
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      expect(res.validationError).toHaveBeenCalledWith('Invalid or expired reset token');
+    });
+  });
 });
