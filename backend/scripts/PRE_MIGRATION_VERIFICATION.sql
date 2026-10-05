@@ -84,21 +84,21 @@ SELECT
     'loot.lastupdate' as column_name,
     COUNT(*) FILTER (WHERE lastupdate IS NULL) as null_count,
     COUNT(*) as total_count,
-    ROUND(100.0 * COUNT(*) FILTER (WHERE lastupdate IS NULL) / COUNT(*), 2) || '%' as null_percentage
+    ROUND(100.0 * COUNT(*) FILTER (WHERE lastupdate IS NULL) / NULLIF(COUNT(*), 0), 2) || '%' as null_percentage
 FROM loot
 UNION ALL
 SELECT
     'loot.session_date',
     COUNT(*) FILTER (WHERE session_date IS NULL),
     COUNT(*),
-    ROUND(100.0 * COUNT(*) FILTER (WHERE session_date IS NULL) / COUNT(*), 2) || '%'
+    ROUND(100.0 * COUNT(*) FILTER (WHERE session_date IS NULL) / NULLIF(COUNT(*), 0), 2) || '%'
 FROM loot
 UNION ALL
 SELECT
     'users.joined',
     COUNT(*) FILTER (WHERE joined IS NULL),
     COUNT(*),
-    ROUND(100.0 * COUNT(*) FILTER (WHERE joined IS NULL) / COUNT(*), 2) || '%'
+    ROUND(100.0 * COUNT(*) FILTER (WHERE joined IS NULL) / NULLIF(COUNT(*), 0), 2) || '%'
 FROM users;
 
 -- =============================================================================

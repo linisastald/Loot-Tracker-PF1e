@@ -19,6 +19,9 @@ const logger = require('./logger');
  * - Checksum validation for migration integrity
  * - Support for both new installations and existing production databases
  */
+// Numbered migration files only: NNN_description.sql (or YYYYMMDD_NNN_description.sql)
+const MIGRATION_FILE_PATTERN = /^\d+_.+\.sql$/;
+
 class MigrationRunner {
   constructor() {
     this.migrationDir = path.join(__dirname, '../../migrations');
@@ -238,8 +241,11 @@ class MigrationRunner {
       return [];
     }
 
+    // Only numbered migrations (NNN_name.sql or YYYYMMDD_NNN_name.sql) are
+    // applied. Anything else in the directory (manual verification scripts,
+    // notes) is ignored so it can never be executed as a migration.
     return fs.readdirSync(this.migrationDir)
-      .filter(file => file.endsWith('.sql') && !file.includes('rollback'))
+      .filter(file => MIGRATION_FILE_PATTERN.test(file) && !file.includes('rollback'))
       .sort(); // Ensure consistent order
   }
 
