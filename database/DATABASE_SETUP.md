@@ -2,72 +2,66 @@
 
 ## Overview
 
-As of version 0.8.0, the Pathfinder 1e Loot Tracker uses a consolidated database schema approach. All database tables, views, indexes, and initial data are defined in a single comprehensive file.
+The database is PostgreSQL 16. A database is built in two layers:
 
-## Schema Files
+1. **Initial schema and seed data** - SQL files in `database/`, run once by the PostgreSQL container on first start of an empty data directory.
+2. **Migrations** - numbered SQL files in `backend/migrations/`, applied automatically by the backend on every start (`backend/src/utils/migrationRunner.js`, called from `startServer` in `backend/index.js`).
 
-- **`init_complete.sql`** - The complete, production-ready database schema (USE THIS)
-- **`init.sql`** - Legacy partial schema (kept for reference only)
-- **`schema.sql`** - Legacy schema file (kept for reference only)
+Schema changes are made by adding a new migration. Never edit a migration that has been applied.
+
+## Initial Schema Files
+
+Mounted into `/docker-entrypoint-initdb.d/` by `docker/docker-compose.yml` and run in this order on a brand-new database:
+
+| Order | File | Purpose |
+|---|---|---|
+| 00 | `00-extensions.sql` | PostgreSQL extensions |
+| 01 | `init.sql` | Base schema (tables, views, indexes, campaigns) |
+| 02 | `item_data.sql` | Item catalog seed |
+| 03 | `mod_data.sql` | Item modifier seed |
+| 04 | `min_caster_levels_data.sql` | Minimum caster levels |
+| 05 | `min_costs_data.sql` | Minimum item costs by spell level |
+| 06 | `spells_data.sql` | Spell list |
+| 07 | `weather_regions_data.sql` | Weather regions |
+| 08 | `impositions_data.sql` | Impositions |
+| 09 | `sessions.sql` | Session seed data |
+
+Other files:
+
+- `init_complete.sql` - an old consolidated snapshot from v0.8.0. It is **not** used by Docker or the application and does not contain the schema added by later migrations (campaigns, row-level security, session task options, ...). Do not use it for new installs.
+- `setup_app_role.sql` - creates the non-owner `loot_app` role that the application connects as so that row-level security is enforced. Run it as the database owner.
+- `performance_indexes.sql`, `SCHEMA_ANALYSIS.md` - reference material.
 
 ## New Installation
 
-### Option 1: Using PostgreSQL Command Line
+Use Docker Compose (`docker/docker-compose.yml`). On first start with an empty data volume PostgreSQL runs the `database/` files above; the backend then starts and applies every migration in `backend/migrations/` that is not yet recorded.
+
+Manual setup against an empty database is the same sequence:
 
 ```bash
-# Create the database
 createdb -U postgres loot_tracking
-
-# Run the complete schema
-psql -U postgres -d loot_tracking -f database/init_complete.sql
+psql -U postgres -d loot_tracking -f database/00-extensions.sql
+psql -U postgres -d loot_tracking -f database/init.sql
+# ...then the seed files in the order listed above...
+# finally start the backend; it applies the migrations
 ```
 
-### Option 2: Using Docker
+## Migrations
 
-```bash
-# The Docker container automatically runs init_complete.sql on first startup
-docker-compose up -d
-```
+- Files live in `backend/migrations/` and are named `NNN_description.sql` (three-digit sequence number). Only files matching that pattern are run; anything else in the directory is ignored.
+- Applied migrations are tracked in the `schema_migrations_v2` table (history in `migration_history`). The older `schema_migrations` table is read for backward compatibility.
+- Migrations run on startup under a database lock, each in its own transaction (except ones using `CREATE INDEX CONCURRENTLY`). A failing migration stops the server from starting.
+- Migrations must be idempotent and safe on both a production database and a fresh install built from `init.sql`.
+- Never rename existing columns or tables; production has legacy names (`whohas`, `lastupdate`).
+- `backend/migrations/archived/` holds the pre-v0.8 migrations. They are never run; production already has their effects. Do not run them on a database that already has them applied.
+- Manual verification scripts (`PRE_MIGRATION_VERIFICATION.sql`, `POST_MIGRATION_VERIFICATION.sql`) are in `backend/scripts/`. They are run by hand with `psql`, never by the runner.
 
-### Option 3: Manual Setup
+### Making Schema Changes
 
-1. Connect to PostgreSQL:
-```bash
-psql -U postgres
-```
-
-2. Create the database:
-```sql
-CREATE DATABASE loot_tracking;
-\c loot_tracking
-```
-
-3. Run the schema file:
-```sql
-\i /path/to/database/init_complete.sql
-```
-
-## Database Features
-
-The consolidated schema includes:
-
-### Core Systems
-- **User Management** - Authentication, roles, and user accounts
-- **Character Management** - Player characters with appraisal bonuses and status tracking
-- **Loot Management** - Comprehensive item tracking with identification and ownership
-- **Gold Management** - Financial transactions and balance tracking
-
-### Advanced Features
-- **Fleet Management** - Ships, crew, and outposts for pirate campaigns
-- **Weather System** - Golarion regional weather tracking
-- **Fame/Infamy System** - Reputation tracking for different ports
-- **Calendar System** - Golarion calendar with month/day tracking
-- **Discord Integration** - Webhook support for notifications
-
-### Performance Optimization
-- **Strategic Indexes** - Over 50 indexes for optimal query performance
-- **Materialized Views** - `loot_view` and `gold_totals_view` for complex queries
-- **Optimized Constraints** - Foreign keys and check constraints for data integrity
+1. Add `backend/migrations/<next number>_description.sql` (check the highest existing number first).
+2. Make it idempotent (`IF NOT EXISTS`, `DROP ... IF EXISTS`).
+3. If fresh installs should also get the change from the start, mirror it in `database/init.sql`; the migration still has to be a no-op on that result.
+4. Test on a development database. Migrations run automatically when the backend starts.
 
 ## Environment Variables
 
@@ -86,93 +80,40 @@ JWT_SECRET=your_jwt_secret
 OPENAI_API_KEY=your_openai_key  # Optional, for item parsing
 ```
 
-## Migration from Older Versions
-
-If upgrading from a version before 0.8.0:
-
-1. **Backup your database** first:
-```bash
-pg_dump -U postgres -d loot_tracking > backup_$(date +%Y%m%d).sql
-```
-
-2. Your existing database already has all migrations applied, no action needed.
-
-3. The application will now skip the migration runner on startup.
-
-## Schema Management
-
-### Important Changes in v0.8.0
-
-- **No more migrations** - The migration system has been removed
-- **Single source of truth** - All schema changes go directly in `init_complete.sql`
-- **Simplified deployment** - New installations just run one SQL file
-
-### Making Schema Changes
-
-1. Edit `database/init_complete.sql` directly
-2. Test changes on a development database
-3. For existing production databases, create an ALTER script for the specific changes
+See `CLAUDE.md` and `docker/` for the full list (including the separate admin connection used by the migration runner).
 
 ## Troubleshooting
 
-### Common Issues
+1. **"relation/column does not exist" errors**
+   - Check that the backend started and that migrations completed: look at `backend/logs/` and the `schema_migrations_v2` table.
+   - Make sure the database was initialised from `init.sql` (not `init_complete.sql`).
 
-1. **"relation does not exist" errors**
-   - Ensure you're using `init_complete.sql`, not the old `init.sql`
-   - Check that all CREATE statements completed successfully
+2. **Backend will not start after a deploy**
+   - A migration failed. The error is in the backend log; fix forward with a new migration rather than editing the failed one.
 
-2. **Permission denied errors**
-   - Ensure your database user has CREATE privileges
-   - Grant necessary permissions: `GRANT ALL ON DATABASE loot_tracking TO your_user;`
+3. **Permission denied errors**
+   - The migration runner connects as the database owner; the app connects as `loot_app`. Run `setup_app_role.sql` as the owner if grants are missing.
 
-3. **Duplicate key errors on fresh install**
-   - Drop and recreate the database to ensure a clean slate
-   - `DROP DATABASE loot_tracking; CREATE DATABASE loot_tracking;`
+4. **Duplicate key errors on fresh install**
+   - Drop and recreate the database (and its Docker volume) to get a clean first-start initialisation.
 
-## Database Structure Overview
+## Main Table Categories
 
-### Main Table Categories
-
-1. **Core Tables** (Always Required)
-   - users, characters, loot, item, mod, gold, etc.
-
-2. **Feature Tables** (Feature-Specific)
-   - ships, crew, outposts (Fleet Management)
-   - golarion_weather_*, weather_regions (Weather System)
-   - fame_ports, fame_history (Fame/Infamy)
-
-3. **System Tables** (Application Support)
-   - settings, session_messages, discord_webhooks
-   - identify, consumables, consumableuse
-
-4. **Views** (Performance Optimization)
-   - loot_view - Aggregates loot data with summaries
-   - gold_totals_view - Calculates financial totals
-   - index_usage_stats - Monitors index performance
+1. **Core** - users, characters, loot, item, mod, gold, campaigns
+2. **Feature** - ships, crew, outposts (fleet management); weather tables; fame tables
+3. **System** - settings, session tables, discord_webhooks, identify, consumables
+4. **Views** - `loot_view`, `gold_totals_view`
 
 ## Maintenance
 
-### Regular Tasks
-
-1. **Update statistics** (monthly):
 ```sql
-ANALYZE;
-```
-
-2. **Check index usage** (quarterly):
-```sql
-SELECT * FROM index_usage_stats WHERE usage_level = 'UNUSED';
-```
-
-3. **Vacuum database** (weekly):
-```sql
-VACUUM ANALYZE;
+ANALYZE;          -- monthly
+VACUUM ANALYZE;   -- weekly
 ```
 
 ## Support
 
-For database-related issues:
 1. Check the error logs in `backend/logs/`
 2. Verify your `.env` configuration
-3. Ensure PostgreSQL version 12+ is installed
+3. Ensure PostgreSQL 16 (12+ minimum) is installed
 4. Report issues at: https://github.com/linisastald/Loot-Tracker-PF1e/issues
