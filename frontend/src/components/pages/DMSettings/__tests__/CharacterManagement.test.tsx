@@ -105,8 +105,10 @@ const setupDefaultApiMocks = (
     if (url === '/user/all-characters') {
       return Promise.resolve({ data: characters });
     }
-    if (url === '/user/all') {
-      return Promise.resolve({ data: users });
+    if (url === '/campaigns/current/members') {
+      return Promise.resolve({
+        data: { members: users.map((u) => ({ user_id: u.id, username: u.username, role: u.role })) },
+      });
     }
     return Promise.reject(new Error(`Unexpected GET ${url}`));
   });
@@ -146,8 +148,29 @@ describe('CharacterManagement (DMSettings)', () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith('/user/all-characters');
-        expect(api.get).toHaveBeenCalledWith('/user/all');
+        expect(api.get).toHaveBeenCalledWith('/campaigns/current/members');
       });
+    });
+
+    it('does not call the superadmin-only /user/all endpoint', async () => {
+      renderComponent();
+
+      await screen.findByRole('cell', { name: 'Zara' });
+      expect(api.get).not.toHaveBeenCalledWith('/user/all');
+    });
+
+    it('still renders characters when the member roster request fails', async () => {
+      (api.get as any).mockImplementation((url: string) => {
+        if (url === '/user/all-characters') {
+          return Promise.resolve({ data: mockCharacters });
+        }
+        return Promise.reject(new Error('403'));
+      });
+
+      renderComponent();
+
+      expect(await screen.findByRole('cell', { name: 'Zara' })).toBeInTheDocument();
+      expect(screen.queryByText(/Error loading data/i)).not.toBeInTheDocument();
     });
 
     it('renders a row for each returned character', async () => {

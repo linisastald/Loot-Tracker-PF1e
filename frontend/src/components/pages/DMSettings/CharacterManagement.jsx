@@ -52,15 +52,27 @@ const CharacterManagement = () => {
 
     const fetchData = async () => {
         try {
-            const [charactersResponse, usersResponse] = await Promise.all([
-                api.get(`/user/all-characters`),
-                api.get(`/user/all`)
-            ]);
+            const charactersResponse = await api.get(`/user/all-characters`);
             setCharacters(charactersResponse.data);
-            setUsers(usersResponse.data);
+            setError('');
         } catch (error) {
             console.error('Error fetching data', error);
             setError('Error loading data. Please try again.');
+        }
+
+        // The owner dropdown comes from the DM-scoped campaign roster. /user/all is
+        // superadmin-only, so an ordinary campaign DM would be rejected there. A
+        // roster failure must not stop the character list from rendering.
+        try {
+            const membersResponse = await api.get(`/campaigns/current/members`);
+            const members = membersResponse?.data?.members || [];
+            setUsers(members.map((member) => ({
+                id: member.user_id,
+                username: member.username,
+                role: member.role
+            })));
+        } catch (error) {
+            console.error('Error fetching campaign members', error);
         }
     };
 
