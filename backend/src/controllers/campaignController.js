@@ -55,6 +55,27 @@ const validateBooleanValue = (name, value) => {
 };
 
 /**
+ * Build a validator for a bounded integer setting. Accepts integers and
+ * integer strings (surrounding whitespace allowed); rejects '5.5', '5abc', ''.
+ * @param {string} name - Setting name (for the error message)
+ * @param {number} min - Inclusive lower bound
+ * @param {number} max - Inclusive upper bound
+ * @return {function(*): {value: string, valueType: string}}
+ */
+const intRange = (name, min, max) => (value) => {
+  const parsed = parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max || String(parsed) !== String(value).trim()) {
+    throw controllerFactory.createValidationError(
+      `${name} must be an integer between ${min} and ${max}`
+    );
+  }
+  return { value: String(parsed), valueType: 'integer' };
+};
+
+/** Plain decimal number: digits with an optional fraction ('1.5', '2'); no exponent or trailing text. */
+const DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
+
+/**
  * Per-name validators for the scalar (non-theme) campaign settings. Each takes
  * the raw request value and returns { value, valueType } ready for upsert
  * (scalar settings are always stored — '' records an explicit unset that
@@ -83,15 +104,7 @@ const SCALAR_SETTING_VALIDATORS = {
     return { value: trimmed, valueType: 'string' };
   },
 
-  weather_forecast_days: (value) => {
-    const parsed = parseInt(value, 10);
-    if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_FORECAST_DAYS || String(parsed) !== String(value).trim()) {
-      throw controllerFactory.createValidationError(
-        `weather_forecast_days must be an integer between 0 and ${MAX_FORECAST_DAYS}`
-      );
-    }
-    return { value: String(parsed), valueType: 'integer' };
-  },
+  weather_forecast_days: intRange('weather_forecast_days', 0, MAX_FORECAST_DAYS),
 
   treasure_track: (value) => {
     if (!TREASURE_TRACKS.includes(value)) {
@@ -101,51 +114,18 @@ const SCALAR_SETTING_VALIDATORS = {
   },
 
   treasure_modifier: (value) => {
-    const mod = parseFloat(value);
+    const isNumber = typeof value === 'number' && Number.isFinite(value);
+    const isDecimalString = typeof value === 'string' && DECIMAL_PATTERN.test(value.trim());
+    const mod = isNumber ? value : (isDecimalString ? parseFloat(value) : NaN);
     if (!(mod > 0) || mod > 100) {
       throw controllerFactory.createValidationError('treasure_modifier must be a positive number (at most 100)');
     }
     return { value: String(mod), valueType: 'string' };
   },
 
-  average_party_level: (value) => {
-    const parsed = parseInt(value, 10);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 30 || String(parsed) !== String(value).trim()) {
-      throw controllerFactory.createValidationError(
-        'average_party_level must be an integer between 1 and 30'
-      );
-    }
-    return { value: String(parsed), valueType: 'integer' };
-  },
-
-  infamy_system_enabled: (value) => validateBooleanValue('infamy_system_enabled', value),
-  harrow_system_enabled: (value) => validateBooleanValue('harrow_system_enabled', value),
-
-  harrow_current_chapter: (value) => {
-    const parsed = parseInt(value, 10);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 6 || String(parsed) !== String(value).trim()) {
-      throw controllerFactory.createValidationError(
-        'harrow_current_chapter must be an integer between 1 and 6'
-      );
-    }
-    return { value: String(parsed), valueType: 'integer' };
-  },
-
-  auto_appraisal_enabled: (value) => validateBooleanValue('auto_appraisal_enabled', value),
-  auto_task_generation: (value) => validateBooleanValue('auto_task_generation', value),
-  default_quantity_enabled: (value) => validateBooleanValue('default_quantity_enabled', value),
-  auto_split_stacks_enabled: (value) => validateBooleanValue('auto_split_stacks_enabled', value),
-
-  default_browser_quantity: (value) => {
-    const parsed = parseInt(value, 10);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 9999 || String(parsed) !== String(value).trim()) {
-      throw controllerFactory.createValidationError(
-        'default_browser_quantity must be an integer between 1 and 9999'
-      );
-    }
-    return { value: String(parsed), valueType: 'integer' };
-  },
-  discord_integration_enabled: (value) => validateBooleanValue('discord_integration_enabled', value),
+  average_party_level: intRange('average_party_level', 1, MAX_PARTY_LEVEL),
+  harrow_current_chapter: intRange('harrow_current_chapter', 1, 6),
+  default_browser_quantity: intRange('default_browser_quantity', 1, 9999),
 
   discord_channel_id: (value) => {
     const id = value === null || value === undefined ? '' : String(value).trim();
@@ -166,11 +146,15 @@ const SCALAR_SETTING_VALIDATORS = {
   },
 };
 
+for (const name of BOOLEAN_SETTINGS) {
+  SCALAR_SETTING_VALIDATORS[name] = (value) => validateBooleanValue(name, value);
+}
+
 /** Keys a theme override may contain — all optional. */
 const THEME_KEYS = ['mode', 'primary', 'secondary', 'background_default', 'background_paper'];
 
 /** Theme keys holding a #rrggbb color value. */
-const THEME_COLOR_KEYS = ['primary', 'secondary', 'background_default', 'background_paper'];
+const THEME_COLOR_KEYS = THEME_KEYS.filter((key) => key !== 'mode');
 
 /** Valid theme modes. */
 const THEME_MODES = ['dark', 'light'];
@@ -266,6 +250,23 @@ const deriveSlug = (value) => {
 };
 
 /**
+ * Validate and trim a campaign name (required, at most 255 characters).
+ * @param {*} name - Raw name from the request body
+ * @return {string} The trimmed name
+ * @throws {Error} ValidationError when missing or too long
+ */
+const validateCampaignName = (name) => {
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    throw controllerFactory.createValidationError('Campaign name is required');
+  }
+  const trimmedName = name.trim();
+  if (trimmedName.length > 255) {
+    throw controllerFactory.createValidationError('Campaign name cannot exceed 255 characters');
+  }
+  return trimmedName;
+};
+
+/**
  * Get the campaigns visible to the requesting user (campaign picker).
  * Superadmins see every campaign (annotated role 'DM'); everyone else
  * sees their user_campaign memberships with their per-campaign role.
@@ -337,44 +338,39 @@ const updateCurrentCampaignSetting = async (req, res) => {
     );
   }
 
+  let storedValue;
+  let cleared = false;
+
   if (name === 'theme') {
     const theme = validateThemeValue(value);
 
     if (theme === null) {
       await Campaign.deleteSetting(req.campaignId, name);
-      logger.info(`Campaign setting '${name}' cleared for campaign ${req.campaignId} by user ${req.user.id}`);
-      return controllerFactory.sendSuccessResponse(
-        res,
-        { name, value: null },
-        'Campaign setting cleared successfully'
-      );
+      storedValue = null;
+      cleared = true;
+    } else {
+      await Campaign.upsertSetting(req.campaignId, name, JSON.stringify(theme), 'json');
+      storedValue = theme;
     }
+  } else {
+    const validated = SCALAR_SETTING_VALIDATORS[name](value);
+    await Campaign.upsertSetting(req.campaignId, name, validated.value, validated.valueType);
+    storedValue = validated.value;
 
-    await Campaign.upsertSetting(req.campaignId, name, JSON.stringify(theme), 'json');
-    logger.info(`Campaign setting '${name}' updated for campaign ${req.campaignId} by user ${req.user.id}`);
-    return controllerFactory.sendSuccessResponse(
-      res,
-      { name, value: theme },
-      'Campaign setting updated successfully'
-    );
+    // A timezone change must invalidate this campaign's cached timezone and
+    // restart the scheduler (its cron clock follows the default campaign)
+    if (name === 'campaign_timezone') {
+      timezoneUtils.clearTimezoneCache(req.campaignId);
+      const sessionSchedulerService = require('../services/scheduler/SessionSchedulerService');
+      await sessionSchedulerService.restart();
+    }
   }
 
-  const validated = SCALAR_SETTING_VALIDATORS[name](value);
-  await Campaign.upsertSetting(req.campaignId, name, validated.value, validated.valueType);
-
-  // A timezone change must invalidate this campaign's cached timezone and
-  // restart the scheduler (its cron clock follows the default campaign)
-  if (name === 'campaign_timezone') {
-    timezoneUtils.clearTimezoneCache(req.campaignId);
-    const sessionSchedulerService = require('../services/scheduler/SessionSchedulerService');
-    await sessionSchedulerService.restart();
-  }
-
-  logger.info(`Campaign setting '${name}' updated for campaign ${req.campaignId} by user ${req.user.id}`);
+  logger.info(`Campaign setting '${name}' ${cleared ? 'cleared' : 'updated'} for campaign ${req.campaignId} by user ${req.user.id}`);
   controllerFactory.sendSuccessResponse(
     res,
-    { name, value: validated.value },
-    'Campaign setting updated successfully'
+    { name, value: storedValue },
+    `Campaign setting ${cleared ? 'cleared' : 'updated'} successfully`
   );
 };
 
@@ -399,26 +395,47 @@ const getCurrentPartyLevel = async (req, res) => {
 };
 
 /**
- * Level up the current campaign: raise the shared character level by one and,
- * when Discord is enabled and configured, announce the new level to the
- * campaign's channel (tagging the campaign role when set). DM-only.
- *
- * The stored 'average_party_level' setting holds the CHARACTER LEVEL every PC
- * shares; the Average Party Level (APL) is derived from that level and the
- * active party size (see utils/partyLevel).
- *
- * A Discord failure never fails the request — the level is already persisted;
- * the response reports whether the announcement was sent.
- *
- * Response data: { character_level, apl, character_count, average_party_level, discordSent }
- * (average_party_level mirrors character_level for backward compatibility.)
+ * Per-campaign promise chains that serialize the level-up read-modify-write.
+ * The server is a single Node process, so an in-process queue is enough.
+ * @type {Map<number, Promise<*>>}
  */
-const levelUpCampaign = async (req, res) => {
+const levelUpQueues = new Map();
+
+/**
+ * Run `task` after every earlier task queued for the same campaign finished.
+ * @param {number} campaignId
+ * @param {function(): Promise<*>} task
+ * @return {Promise<*>} The task's result (or rejection)
+ */
+const withCampaignLock = (campaignId, task) => {
+  const previous = levelUpQueues.get(campaignId) || Promise.resolve();
+  const run = previous.then(task, task);
+  const tail = run.catch(() => {});
+  levelUpQueues.set(campaignId, tail);
+  tail.then(() => {
+    if (levelUpQueues.get(campaignId) === tail) levelUpQueues.delete(campaignId);
+  });
+  return run;
+};
+
+/**
+ * Persist level + 1 for the request's campaign.
+ * @param {Object} req - Express request (campaignId, user, body.expectedLevel)
+ * @return {Promise<{newLevel: number, apl: number, characterCount: number}>}
+ */
+const raiseCharacterLevel = async (req) => {
   const currentValue = await campaignSettings.getCampaignSetting('average_party_level', {
     campaignId: req.campaignId,
     defaultValue: '5'
   });
   const currentLevel = parseInt(currentValue, 10) || 5;
+
+  const { expectedLevel } = req.body || {};
+  if (expectedLevel !== undefined && expectedLevel !== null && Number(expectedLevel) !== currentLevel) {
+    throw controllerFactory.createValidationError(
+      `The party level has changed (now ${currentLevel}); refresh and try again`
+    );
+  }
 
   if (currentLevel >= MAX_PARTY_LEVEL) {
     throw controllerFactory.createValidationError(
@@ -438,14 +455,22 @@ const levelUpCampaign = async (req, res) => {
     `Campaign ${req.campaignId} leveled up to character level ${newLevel} ` +
     `(APL ${apl}, ${characterCount} characters) by user ${req.user.id}`
   );
+  return { newLevel, apl, characterCount };
+};
 
-  // Announce to Discord when enabled and configured. Wrapped so a Discord
-  // outage (or missing bot token) cannot roll back or fail the level-up.
-  let discordSent = false;
+/**
+ * Announce a level-up to the campaign's Discord channel when the integration
+ * is enabled and configured (tagging the campaign role when set). Never
+ * throws: the level is already persisted.
+ * @param {number} campaignId
+ * @param {number} newLevel
+ * @return {Promise<boolean>} Whether a message was sent
+ */
+const announceLevelUp = async (campaignId, newLevel) => {
   try {
     const settings = await campaignSettings.getCampaignSettings(
       ['discord_integration_enabled', 'discord_channel_id', 'campaign_role_id'],
-      { campaignId: req.campaignId }
+      { campaignId }
     );
 
     if (settings.discord_integration_enabled === '1' && settings.discord_channel_id) {
@@ -454,21 +479,42 @@ const levelUpCampaign = async (req, res) => {
         channelId: settings.discord_channel_id,
         content: `${mention}🎉 The party has leveled up! Please level your characters up to **level ${newLevel}**.`
       });
-      discordSent = !!(result && result.success);
+      return !!(result && result.success);
     }
   } catch (error) {
     logger.error('Level-up Discord announcement failed', { error: error.message });
   }
+  return false;
+};
+
+/**
+ * Level up the current campaign: raise the shared character level by one and,
+ * when Discord is enabled and configured, announce the new level to the
+ * campaign's channel (tagging the campaign role when set). DM-only.
+ *
+ * The stored 'average_party_level' setting holds the CHARACTER LEVEL every PC
+ * shares; the Average Party Level (APL) is derived from that level and the
+ * active party size (see utils/partyLevel).
+ *
+ * Concurrent level-ups for the same campaign run one at a time (the level is a
+ * read-modify-write), and an optional body.expectedLevel makes a stale or
+ * double-submitted request fail instead of skipping a level.
+ *
+ * A Discord failure never fails the request — the level is already persisted;
+ * the response reports whether the announcement was sent.
+ *
+ * Response data: { character_level, apl, character_count, discordSent }
+ */
+const levelUpCampaign = async (req, res) => {
+  const { newLevel, apl, characterCount } = await withCampaignLock(
+    req.campaignId,
+    () => raiseCharacterLevel(req)
+  );
+  const discordSent = await announceLevelUp(req.campaignId, newLevel);
 
   controllerFactory.sendSuccessResponse(
     res,
-    {
-      character_level: newLevel,
-      apl,
-      character_count: characterCount,
-      average_party_level: newLevel,
-      discordSent,
-    },
+    { character_level: newLevel, apl, character_count: characterCount, discordSent },
     `Party leveled up to level ${newLevel} (APL ${apl})`
   );
 };
@@ -482,16 +528,7 @@ const levelUpCampaign = async (req, res) => {
  * Supersedes the deprecated global 'campaign_name' setting row.
  */
 const renameCurrentCampaign = async (req, res) => {
-  const { name } = req.body;
-
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    throw controllerFactory.createValidationError('Campaign name is required');
-  }
-
-  const trimmedName = name.trim();
-  if (trimmedName.length > 255) {
-    throw controllerFactory.createValidationError('Campaign name cannot exceed 255 characters');
-  }
+  const trimmedName = validateCampaignName(req.body.name);
 
   const campaign = await Campaign.updateName(req.campaignId, trimmedName);
   if (!campaign) {
@@ -570,15 +607,7 @@ const createCampaign = async (req, res) => {
   }
 
   const { name, slug, world } = req.body;
-
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    throw controllerFactory.createValidationError('Campaign name is required');
-  }
-
-  const trimmedName = name.trim();
-  if (trimmedName.length > 255) {
-    throw controllerFactory.createValidationError('Campaign name cannot exceed 255 characters');
-  }
+  const trimmedName = validateCampaignName(name);
 
   // Slug is optional — derive from the name when absent. Both paths go
   // through the same normalization (lowercase, alphanumeric + hyphens).
