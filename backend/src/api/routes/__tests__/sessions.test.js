@@ -196,7 +196,7 @@ describe('GET /sessions/enhanced', () => {
     // No query params means there is no WHERE clause at all
     const sql = dbUtils.executeQuery.mock.calls[0][0];
     expect(sql).not.toMatch(/^[ \t]*WHERE\b/m);
-    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([]);
+    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([1]);
   });
 
   it('should filter by valid status', async () => {
@@ -208,7 +208,7 @@ describe('GET /sessions/enhanced', () => {
     expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
     const sql = dbUtils.executeQuery.mock.calls[0][0];
     expect(sql).toContain('gs.status = $1');
-    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual(['scheduled']);
+    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual(['scheduled', 1]);
   });
 
   it('should reject an invalid status value', async () => {
@@ -249,7 +249,22 @@ describe('GET /sessions/enhanced', () => {
     const sql = dbUtils.executeQuery.mock.calls[0][0];
     expect(sql).toContain('gs.status = $1');
     expect(sql).toContain('gs.start_time > NOW()');
-    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual(['confirmed']);
+    expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual(['confirmed', 1]);
+  });
+
+  it("should include the caller's own attendance on every session (F-1412)", async () => {
+    dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+    await request(app).get('/sessions/enhanced?status=confirmed');
+
+    const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+    const normalized = sql.replace(/\s+/g, ' ');
+    // status filter keeps $1, the caller's id is the next placeholder
+    expect(normalized).toContain('sa2.user_id = $2');
+    expect(normalized).toMatch(/AS user_status/);
+    expect(normalized).toMatch(/AS user_response_type/);
+    expect(normalized).toMatch(/AS user_character_id/);
+    expect(params).toEqual(['confirmed', 1]);
   });
 
   it('should return 500 when the database query fails', async () => {

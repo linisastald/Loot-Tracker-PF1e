@@ -93,7 +93,7 @@ describe('GET /sessions/enhanced (characterisation)', () => {
     const [sql, params] = dbUtils.executeQuery.mock.calls[0];
     expect(norm(sql)).toContain('FROM game_sessions gs LEFT JOIN session_attendance sa ON gs.id = sa.session_id');
     expect(norm(sql)).toContain('WHERE gs.status = $1 AND gs.start_time > NOW() GROUP BY gs.id ORDER BY gs.start_time');
-    expect(params).toEqual(['scheduled']);
+    expect(params).toEqual(['scheduled', 7]);
   });
 
   it('returns the standard 400 validation envelope for a bad status', async () => {

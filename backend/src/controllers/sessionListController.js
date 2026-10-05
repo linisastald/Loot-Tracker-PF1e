@@ -36,7 +36,7 @@ const getEnhancedSessions = async (req, res) => {
             return ApiResponse.send(res, response);
         }
 
-        const sessions = await Session.getEnhancedList(status, upcoming_only === 'true');
+        const sessions = await Session.getEnhancedList(status, upcoming_only === 'true', req.user.id);
 
         const response = ApiResponse.success(sessions, 'Sessions retrieved successfully');
         return ApiResponse.send(res, response);

@@ -65,9 +65,11 @@ class Session extends BaseModel {
      * Sessions with attendance counts and names (the "enhanced" list).
      * @param {string|null} status - Already-validated status filter, or falsy for none
      * @param {boolean} upcomingOnly - Only sessions starting after now
+     * @param {number|null} userId - Caller; their own response is returned as user_status /
+     *        user_response_type / user_character_id (null when they have not responded)
      * @returns {Promise<Array>} - Session rows with confirmed/declined/maybe aggregates
      */
-    async getEnhancedList(status, upcomingOnly) {
+    async getEnhancedList(status, upcomingOnly, userId = null) {
         const whereConditions = [];
         const queryParams = [];
 
@@ -84,6 +86,9 @@ class Session extends BaseModel {
             ? `WHERE ${whereConditions.join(' AND ')}`
             : '';
 
+        queryParams.push(userId);
+        const userParam = `$${queryParams.length}`;
+
         const lateSuffix = "CASE WHEN sa.response_type = 'late' THEN ' (late)' ELSE '' END";
 
         const result = await dbUtils.executeQuery(`
@@ -97,7 +102,10 @@ class Session extends BaseModel {
                 string_agg(DISTINCT ${DISPLAY_NAME}, ', '
                     ORDER BY ${DISPLAY_NAME}) FILTER (WHERE sa.status = 'declined') as declined_names,
                 string_agg(DISTINCT ${DISPLAY_NAME}, ', '
-                    ORDER BY ${DISPLAY_NAME}) FILTER (WHERE sa.status = 'tentative') as maybe_names
+                    ORDER BY ${DISPLAY_NAME}) FILTER (WHERE sa.status = 'tentative') as maybe_names,
+                (SELECT sa2.status FROM session_attendance sa2 WHERE sa2.session_id = gs.id AND sa2.user_id = ${userParam}) AS user_status,
+                (SELECT sa2.response_type FROM session_attendance sa2 WHERE sa2.session_id = gs.id AND sa2.user_id = ${userParam}) AS user_response_type,
+                (SELECT sa2.character_id FROM session_attendance sa2 WHERE sa2.session_id = gs.id AND sa2.user_id = ${userParam}) AS user_character_id
             FROM game_sessions gs
             LEFT JOIN session_attendance sa ON gs.id = sa.session_id
             LEFT JOIN users u ON sa.user_id = u.id
