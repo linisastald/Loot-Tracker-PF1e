@@ -35,6 +35,29 @@ export interface TaskDefinition {
 /** Phases in display order. */
 export const TASK_PHASE_ORDER: readonly TaskPhase[] = ['pre', 'during', 'post'];
 
+/** Display text for each phase (DM Settings). */
+export const TASK_PHASE_INFO: ReadonlyArray<{
+  key: TaskPhase;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: 'pre',
+    label: 'Pre-Session',
+    description: 'Dealt before play starts.',
+  },
+  {
+    key: 'during',
+    label: 'During Session',
+    description: 'Dealt for the session itself.',
+  },
+  {
+    key: 'post',
+    label: 'Post-Session',
+    description: 'Dealt at the end of the night.',
+  },
+];
+
 /** character (or "DM") name -> task names dealt to them. */
 export type TaskMap = Record<string, string[]>;
 

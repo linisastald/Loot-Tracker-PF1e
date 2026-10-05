@@ -169,12 +169,10 @@ describe('Tasks', () => {
   });
 
   it('renders character names when returned from API', async () => {
-    vi.mocked(api.get).mockResolvedValueOnce({
-      data: [
-        { id: 1, name: 'Fighter Bob', player_name: 'Bob' },
-        { id: 2, name: 'Wizard Alice', player_name: 'Alice' },
-      ],
-    });
+    mockGetWithCharacters([
+      { id: 1, name: 'Fighter Bob', player_name: 'Bob' },
+      { id: 2, name: 'Wizard Alice', player_name: 'Alice' },
+    ]);
     renderComponent();
     expect(await screen.findByText('Fighter Bob')).toBeInTheDocument();
     expect(screen.getByText('Wizard Alice')).toBeInTheDocument();
@@ -288,33 +286,11 @@ describe('Tasks', () => {
   });
 
   it('assigns two Loot Masters but never both to the same person', async () => {
-    mockGetWithCharacters([
-      { id: 1, name: 'Fighter Bob', player_name: 'Bob' },
-      { id: 2, name: 'Wizard Alice', player_name: 'Alice' },
-      { id: 3, name: 'Rogue Cat', player_name: 'Cat' },
-      { id: 4, name: 'Cleric Dan', player_name: 'Dan' },
-    ]);
+    mockGetWithCharacters(FOUR_CHARACTERS);
     renderComponent();
+    await selectAll();
 
-    // Select all four characters.
-    fireEvent.click(await screen.findByText('Fighter Bob'));
-    fireEvent.click(screen.getByText('Wizard Alice'));
-    fireEvent.click(screen.getByText('Rogue Cat'));
-    fireEvent.click(screen.getByText('Cleric Dan'));
-
-    fireEvent.click(
-      screen.getByRole('button', { name: /assign tasks and send to discord/i })
-    );
-
-    let assignments: { pre: Record<string, string[]>; during: Record<string, string[]>; post: Record<string, string[]> } =
-      { pre: {}, during: {}, post: {} };
-    await waitFor(() => {
-      const call = (api.post as any).mock.calls.find(
-        (c: any[]) => c[0] === '/sessions/task-history'
-      );
-      expect(call).toBeTruthy();
-      assignments = call[1].assignments;
-    });
+    const assignments = await assignAndReadHistory();
 
     const during = assignments.during;
 

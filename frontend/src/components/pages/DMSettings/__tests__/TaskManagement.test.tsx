@@ -27,7 +27,6 @@ const OPTION_DEFAULTS = {
   quantity: 1,
   min_characters: null,
   max_characters: null,
-  is_snack_master: false,
   requires_previous_attendance: false,
   exclude_late: false,
   exclude_early: false,
@@ -53,7 +52,7 @@ const TASKS = [
   },
   {
     id: 4, phase: 'post', name: 'Ensure no duplicate snacks for next session', sort_order: 1,
-    ...OPTION_DEFAULTS, dm_eligible: true, is_snack_master: true, announce_label: 'Snack Master',
+    ...OPTION_DEFAULTS, dm_eligible: true, announce_label: 'Snack Master',
     fixed_character_id: 42,
   },
 ];
@@ -123,7 +122,7 @@ describe('TaskManagement', () => {
   });
 
   it('shows a retryable error when loading fails', async () => {
-    vi.mocked(api.get).mockRejectedValueOnce(new Error('boom'));
+    vi.mocked(api.get).mockRejectedValueOnce({ response: { data: { message: 'boom' } } });
     renderPage();
 
     expect(await screen.findByText('boom')).toBeInTheDocument();
@@ -146,7 +145,7 @@ describe('TaskManagement', () => {
     fireEvent.change(within(dialog).getByLabelText(/copies/i), {
       target: { value: '2' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: /^add$/i }));
+    fireEvent.click(within(dialog).getByText('Add', { selector: 'button' }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/session-tasks', {
@@ -178,7 +177,7 @@ describe('TaskManagement', () => {
       target: { value: 'Check both doors' },
     });
     fireEvent.click(within(dialog).getByLabelText(/never the same person two sessions running/i));
-    fireEvent.click(within(dialog).getByRole('button', { name: /^add$/i }));
+    fireEvent.click(within(dialog).getByText('Add', { selector: 'button' }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/session-tasks', {
@@ -191,7 +190,7 @@ describe('TaskManagement', () => {
     });
   });
 
-  it('refuses a task that is both sticky and rotating', async () => {
+  it('disables the rotate option while the task is sticky, so both can never be picked', async () => {
     renderPage();
     await screen.findByText('Get Dice Trays');
 
@@ -202,13 +201,79 @@ describe('TaskManagement', () => {
     expect(within(dialog).getByLabelText(/never the same person two sessions running/i)).toBeDisabled();
   });
 
+  describe('submit-time validation', () => {
+    const openAdd = async () => {
+      renderPage();
+      await screen.findByText('Get Dice Trays');
+      fireEvent.click(screen.getAllByRole('button', { name: /add task/i })[0]);
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText(/task name/i), { target: { value: 'Valid name' } });
+      return dialog;
+    };
+    const submit = (dialog: HTMLElement) =>
+      fireEvent.click(within(dialog).getByText('Add', { selector: 'button' }));
+
+    it('rejects a maximum below the minimum', async () => {
+      const dialog = await openAdd();
+      fireEvent.change(within(dialog).getByLabelText(/minimum characters/i), { target: { value: '6' } });
+      fireEvent.change(within(dialog).getByLabelText(/maximum characters/i), { target: { value: '4' } });
+      submit(dialog);
+      expect(await within(dialog).findByText(/maximum characters cannot be below the minimum/i)).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('rejects a limit that is not a whole number instead of truncating it (F-1218)', async () => {
+      const dialog = await openAdd();
+      fireEvent.change(within(dialog).getByLabelText(/copies/i), { target: { value: '2.7' } });
+      submit(dialog);
+      expect(await within(dialog).findByText(/copies must be a whole number/i)).toBeInTheDocument();
+      fireEvent.change(within(dialog).getByLabelText(/copies/i), { target: { value: '1' } });
+      fireEvent.change(within(dialog).getByLabelText(/minimum characters/i), { target: { value: '1e1' } });
+      submit(dialog);
+      expect(await within(dialog).findByText(/minimum characters must be a whole number/i)).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('rejects an over-long announce label', async () => {
+      const dialog = await openAdd();
+      // fireEvent bypasses the input's maxLength, as a programmatic paste would.
+      fireEvent.change(within(dialog).getByLabelText(/announce as/i), { target: { value: 'x'.repeat(101) } });
+      submit(dialog);
+      expect(await within(dialog).findByText(/announce label must be at most 100 characters/i)).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('re-applies the new phase defaults when the phase is changed while adding (F-1225)', async () => {
+      const dialog = await openAdd(); // opened from the Pre card: skips late arrivals
+      expect(within(dialog).getByLabelText(/skip characters arriving late/i)).toBeChecked();
+      fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: /phase/i }));
+      fireEvent.click(await screen.findByRole('option', { name: /post-session/i }));
+      expect(within(dialog).getByLabelText(/skip characters arriving late/i)).not.toBeChecked();
+      expect(within(dialog).getByLabelText(/the dm can draw this task/i)).toBeChecked();
+    });
+  });
+
+  it('shows a neutral label, not "no longer active", for a fixed assignee when characters failed to load (F-1228)', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) =>
+      url === '/user/active-characters'
+        ? Promise.reject(new Error('down'))
+        : Promise.resolve({ data: { data: TASKS } })
+    );
+    renderPage();
+    await screen.findByText('Get Dice Trays');
+    fireEvent.click(screen.getByRole('button', { name: /edit ensure no duplicate snacks/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText(/always goes to/i)).toHaveTextContent(/character list unavailable/i);
+    expect(within(dialog).getByLabelText(/always goes to/i)).not.toHaveTextContent(/no longer active/i);
+  });
+
   it('validates the form before saving', async () => {
     renderPage();
     await screen.findByText('Get Dice Trays');
 
     fireEvent.click(screen.getAllByRole('button', { name: /add task/i })[0]);
     const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: /^add$/i }));
+    fireEvent.click(within(dialog).getByText('Add', { selector: 'button' }));
 
     expect(
       await within(dialog).findByText(/task name is required/i)
@@ -238,7 +303,7 @@ describe('TaskManagement', () => {
     });
     fireEvent.click(within(dialog).getByLabelText(/requires attendance at the last session/i));
     fireEvent.click(within(dialog).getByLabelText(/^active$/i));
-    fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }));
+    fireEvent.click(within(dialog).getByText('Save', { selector: 'button' }));
 
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith('/session-tasks/1', {
@@ -273,7 +338,7 @@ describe('TaskManagement', () => {
       screen.getByRole('button', { name: /delete loot master/i })
     );
     const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }));
+    fireEvent.click(within(dialog).getByText('Delete', { selector: 'button' }));
 
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith('/session-tasks/3')
@@ -307,11 +372,75 @@ describe('TaskManagement', () => {
     fireEvent.click(screen.getByRole('button', { name: /restore defaults/i }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(
-      within(dialog).getByRole('button', { name: /restore defaults/i })
+      within(dialog).getByText('Restore defaults', { selector: 'button' })
     );
 
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith('/session-tasks/reset-defaults', {})
     );
   });
+
+  describe('failure paths', () => {
+    it('keeps the dialog open and shows the server message when saving fails', async () => {
+      vi.mocked(api.post).mockRejectedValueOnce({ response: { data: { message: 'Name already used' } } });
+      renderPage();
+      await screen.findByText('Get Dice Trays');
+      fireEvent.click(screen.getAllByRole('button', { name: /add task/i })[0]);
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText(/task name/i), { target: { value: 'Dup' } });
+      fireEvent.click(within(dialog).getByText('Add', { selector: 'button' }));
+
+      expect(await within(dialog).findByText('Name already used')).toBeInTheDocument();
+      expect(screen.getByRole('dialog')).toBe(dialog);
+    });
+
+    it('keeps the list when a delete fails and reports it', async () => {
+      vi.mocked(api.delete).mockRejectedValueOnce({ response: { data: { message: 'Cannot delete' } } });
+      renderPage();
+      await screen.findByText('Loot Master');
+      fireEvent.click(screen.getByRole('button', { name: /delete loot master/i }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByText('Delete', { selector: 'button' }));
+
+      expect(await screen.findByText('Cannot delete')).toBeInTheDocument();
+      expect(screen.getByText('Loot Master')).toBeInTheDocument();
+    });
+
+    it('reloads the list and reports the error when a reorder fails', async () => {
+      vi.mocked(api.put).mockRejectedValueOnce({ response: { data: { message: 'Reorder failed' } } });
+      renderPage();
+      await screen.findByText('Get Dice Trays');
+      expect(taskListCalls()).toBe(1);
+      fireEvent.click(screen.getByRole('button', { name: /move get dice trays down/i }));
+
+      expect(await screen.findByText('Reorder failed')).toBeInTheDocument();
+      await waitFor(() => expect(taskListCalls()).toBe(2));
+    });
+
+    it('reports a failed restore and leaves the list alone', async () => {
+      vi.mocked(api.post).mockRejectedValueOnce({ response: { data: { message: 'Reset failed' } } });
+      renderPage();
+      await screen.findByText('Get Dice Trays');
+      fireEvent.click(screen.getByRole('button', { name: /restore defaults/i }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByText('Restore defaults', { selector: 'button' }));
+
+      expect(await screen.findByText('Reset failed')).toBeInTheDocument();
+      expect(screen.getByText('Get Dice Trays')).toBeInTheDocument();
+    });
+  });
+
+  it('refreshes the list in place after a save, without swapping it for a spinner (F-1219)', async () => {
+    renderPage();
+    await screen.findByText('Get Dice Trays');
+    fireEvent.click(screen.getAllByRole('button', { name: /add task/i })[0]);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/task name/i), { target: { value: 'Extra' } });
+    fireEvent.click(within(dialog).getByText('Add', { selector: 'button' }));
+
+    await waitFor(() => expect(taskListCalls()).toBe(2));
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.getByText('Get Dice Trays')).toBeInTheDocument();
+  });
+
 });
