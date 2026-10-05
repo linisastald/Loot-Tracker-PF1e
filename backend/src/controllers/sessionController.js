@@ -651,10 +651,6 @@ const createSessionValidation = {
     requiredFields: ['title', 'start_time', 'end_time']
 };
 
-const updateSessionValidation = {
-    requiredFields: []  // At least one field should be present, validated in handler
-};
-
 const updateAttendanceValidation = {
     requiredFields: ['status']
 };
@@ -671,8 +667,7 @@ module.exports = {
     }),
 
     updateSession: controllerFactory.createHandler(updateSession, {
-        errorMessage: 'Error updating session',
-        validation: updateSessionValidation
+        errorMessage: 'Error updating session'
     }),
 
     deleteSession: controllerFactory.createHandler(deleteSession, {
