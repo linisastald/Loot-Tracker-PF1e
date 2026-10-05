@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 
 // Mock the api utility (3 levels up from layout/__tests__/)
@@ -55,7 +55,9 @@ const isoDaysFromNow = (days: number): string =>
 
 const todayKeyUtc = (): string => new Date().toISOString().slice(0, 10);
 
-const mockSessions = (sessions: Array<{ id: number; start_time: string | null }>) => {
+const mockSessions = (
+  sessions: Array<{ id: number; start_time: string | null; status?: string }>
+) => {
   (api.get as any).mockImplementation((url: string) => {
     if (url === '/sessions/enhanced') {
       return Promise.resolve({ data: sessions });
@@ -64,11 +66,19 @@ const mockSessions = (sessions: Array<{ id: number; start_time: string | null }>
   });
 };
 
-// Resolve once the component has finished its session fetch
-const waitForFetch = () =>
-  waitFor(() => {
+// Resolve once the component has finished its session fetch AND applied the
+// result. api.get is called synchronously by the effect, so waiting for the
+// call alone would assert "no banner" while the sessions state is still null
+// (when the component renders nothing whatever the logic says).
+const waitForFetch = async () => {
+  await waitFor(() => {
     expect(api.get).toHaveBeenCalled();
   });
+  // Flush the resolved/rejected promise chain and the state updates it triggers
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+};
 
 describe('NoSessionTodayBanner', () => {
   beforeEach(() => {
@@ -109,6 +119,13 @@ describe('NoSessionTodayBanner', () => {
     expect(screen.queryByText(BANNER_TEXT)).not.toBeInTheDocument();
   });
 
+  it('still shows the banner when the only session today is cancelled', async () => {
+    mockSessions([{ id: 1, start_time: new Date().toISOString(), status: 'cancelled' }]);
+    render(<NoSessionTodayBanner />);
+
+    expect(await screen.findByText(BANNER_TEXT)).toBeInTheDocument();
+  });
+
   it('renders nothing while unauthenticated and does not fetch', () => {
     authValue = { isAuthenticated: false, user: null as any, isDM: false };
     render(<NoSessionTodayBanner />);
@@ -146,9 +163,8 @@ describe('NoSessionTodayBanner', () => {
     (api.get as any).mockRejectedValue(new Error('boom'));
     render(<NoSessionTodayBanner />);
 
-    await waitFor(() => {
-      expect(api.get).toHaveBeenCalledWith('/sessions');
-    });
+    await waitForFetch();
+    expect(api.get).toHaveBeenCalledWith('/sessions');
     expect(screen.queryByText(BANNER_TEXT)).not.toBeInTheDocument();
   });
 
