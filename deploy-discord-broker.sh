@@ -8,7 +8,6 @@ set -e
 # Configuration
 COMPOSE_FILE="docker-compose.discord-broker.yml"
 ENV_FILE=".env.discord-broker"
-DATA_PATH="/mnt/pool/appdata/discord-broker"  # Update this to your TrueNAS dataset path
 
 # Colors for output
 RED='\033[0;31m'
@@ -64,10 +63,6 @@ if [ -z "$DISCORD_BROKER_SECRET" ] || [ "$DISCORD_BROKER_SECRET" = "your_shared_
     echo "In production the broker rejects registration without it (see BROKER_ALLOW_UNAUTHENTICATED_CONTROL for the rollout switch)."
 fi
 
-# Create data directory if it doesn't exist
-echo "Creating data directory at $DATA_PATH..."
-mkdir -p "$DATA_PATH"
-chmod 755 "$DATA_PATH"
 
 # Check if the image exists
 if ! docker images | grep -q "discord-broker.*dev"; then

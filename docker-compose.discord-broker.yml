@@ -24,12 +24,6 @@ services:
     ports:
       - "3000:3000"  # Change the first port if 3000 is already in use
 
-    volumes:
-      # NOTE: discord-handler keeps its registry in memory and never reads or
-      # writes /data, so this mount is currently unused.
-      # Update this path to your desired TrueNAS dataset location
-      - /mnt/pool/appdata/discord-broker:/data
-
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
