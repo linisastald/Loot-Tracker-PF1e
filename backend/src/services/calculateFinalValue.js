@@ -1,6 +1,82 @@
 const logger = require('../utils/logger');
 
 /**
+ * mod.valuecalc grammar (F-0643). valuecalc used to be concatenated onto the
+ * running value and passed to eval(). It is now parsed strictly and NEVER
+ * evaluated as code. Shapes present in database/mod_data.sql (85 distinct
+ * values, all covered by tests):
+ *   OP NUMBER            e.g. "+1000", "*1.1", "/2"     (OP is one of + - * /)
+ *   "+(N*item.wgt)"      e.g. "+(10*item.wgt)"          (after the item.wgt
+ *                        substitution this is OP "(" NUMBER "*" NUMBER ")")
+ * Anything else is logged with logger.warn and treated as a no-op.
+ */
+// Numeric literal: digits with optional fraction / exponent (exponent only
+// because Number.prototype.toString can render weights as e.g. 1e-7).
+const NUMBER = String.raw`(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?`;
+const OPERAND_RE = new RegExp(String.raw`^([+\-*/])(${NUMBER})$`);
+const PRODUCT_RE = new RegExp(String.raw`^([+\-*/])\((${NUMBER})\*(${NUMBER})\)$`);
+
+// Raw (stored) form accepted when an admin creates/edits a mod: no whitespace,
+// and the weight only through the literal token item.wgt.
+const RAW_NUMBER = String.raw`(?:\d+(?:\.\d+)?|\.\d+)`;
+const VALUECALC_RAW_RE = new RegExp(
+  String.raw`^[+\-*/](?:${RAW_NUMBER}|\(${RAW_NUMBER}\*item\.wgt\))$`
+);
+
+/**
+ * Whether a stored mod.valuecalc string is in the supported grammar.
+ * Used by POST/PUT /admin/mods validation.
+ * @param {string} valuecalc - raw valuecalc text
+ * @returns {boolean}
+ */
+const isValidValuecalc = (valuecalc) =>
+  typeof valuecalc === 'string' && VALUECALC_RAW_RE.test(valuecalc);
+
+/**
+ * Apply an (already item.wgt-substituted) valuecalc to a running value.
+ * Never executes the text. Returns the original value, unchanged, when the
+ * text is not a supported shape or would not produce a finite number.
+ * @param {number} value - running value
+ * @param {string} valuecalc - substituted valuecalc, e.g. "+500" or "+(10*2.5)"
+ * @param {string} [modName] - mod name for log messages
+ * @returns {number}
+ */
+const applyValuecalc = (value, valuecalc, modName) => {
+  const text = typeof valuecalc === 'string' ? valuecalc : '';
+  let op;
+  let operand;
+  let match = OPERAND_RE.exec(text);
+  if (match) {
+    op = match[1];
+    operand = Number(match[2]);
+  } else if ((match = PRODUCT_RE.exec(text))) {
+    op = match[1];
+    operand = Number(match[2]) * Number(match[3]);
+  } else {
+    logger.warn(`Ignoring unsupported valuecalc for mod ${modName}: ${JSON.stringify(text).slice(0, 100)}`);
+    return value;
+  }
+
+  let result;
+  switch (op) {
+    case '+': result = value + operand; break;
+    case '-': result = value - operand; break;
+    case '*': result = value * operand; break;
+    default:
+      if (operand === 0) {
+        logger.warn(`Ignoring valuecalc with division by zero for mod ${modName}`);
+        return value;
+      }
+      result = value / operand;
+  }
+  if (!Number.isFinite(result)) {
+    logger.warn(`Ignoring valuecalc for mod ${modName}: result is not a finite number`);
+    return value;
+  }
+  return result;
+};
+
+/**
  * Calculate the final value of an item based on its properties and modifications
  * @param {number} itemValue - Base value of the item
  * @param {string} itemType - Type of the item (weapon, armor, etc.)
@@ -67,13 +143,8 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
         if (mod.valuecalc) {
           const originalValue = modifiedValue;
           const valuecalc = mod.valuecalc.replace('item.wgt', weight.toString());
-          try {
-            // Use safe eval here
-            modifiedValue = Number(eval(`${modifiedValue}${valuecalc}`));
-            logger.debug(`Applied mod value calculation for ${mod.name}: ${originalValue} -> ${modifiedValue}`);
-          } catch (evalError) {
-            logger.error(`Error evaluating valuecalc ${valuecalc} for mod ${mod.name}: ${evalError.message}`);
-          }
+          modifiedValue = applyValuecalc(modifiedValue, valuecalc, mod.name);
+          logger.debug(`Applied mod value calculation for ${mod.name}: ${originalValue} -> ${modifiedValue}`);
         }
         if (mod.plus) {
           totalPlus += Number(mod.plus);
@@ -123,4 +194,4 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
   }
 };
 
-module.exports = { calculateFinalValue };
+module.exports = { calculateFinalValue, applyValuecalc, isValidValuecalc };

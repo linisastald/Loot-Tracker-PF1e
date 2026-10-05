@@ -125,14 +125,14 @@ describe('calculateFinalValue (PF1e item valuation)', () => {
     it('should apply valuecalc from mods', () => {
       const mods = [{ name: 'Custom', valuecalc: '+500' }];
       const result = calculateFinalValue(100, 'misc', null, mods, false, 'Item', null, 'Medium', 1);
-      // eval('100+500') = 600
+      // 100+500 = 600
       expect(result).toBe(600);
     });
 
     it('should replace item.wgt in valuecalc', () => {
-      const mods = [{ name: 'Weight-based', valuecalc: '+item.wgt*10' }];
+      const mods = [{ name: 'Weight-based', valuecalc: '+(10*item.wgt)' }];
       const result = calculateFinalValue(100, 'misc', null, mods, false, 'Heavy Item', null, 'Medium', 5);
-      // weight = 5 * 1 (Medium) = 5, eval('100+5*10') = 150
+      // weight = 5 * 1 (Medium) = 5, 100+(10*5) = 150
       expect(result).toBe(150);
     });
 
@@ -146,10 +146,9 @@ describe('calculateFinalValue (PF1e item valuation)', () => {
     it('should return original value on calculation error', () => {
       // Create a scenario that would cause eval to fail
       const mods = [{ name: 'Bad', valuecalc: '+undefined_var' }];
-      // The eval might throw but the outer try-catch should handle it
       const result = calculateFinalValue(100, 'misc', null, mods, false, 'Item', null, 'Medium', 1);
-      // Result depends on whether eval throws - if it does, inner catch logs but continues
-      expect(typeof result).toBe('number');
+      // Unsupported valuecalc is ignored (no-op), never evaluated
+      expect(result).toBe(100);
     });
 
     it('should handle null itemWeight', () => {

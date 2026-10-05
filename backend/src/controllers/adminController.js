@@ -2,6 +2,7 @@
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const { isValidValuecalc } = require('../services/calculateFinalValue');
 
 /**
  * The base `item` and `mod` tables are the SHARED catalog: they have no
@@ -20,6 +21,22 @@ const requireSuperadminForCatalogWrite = (req) => {
   if (!req.isSuperadmin) {
     throw controllerFactory.createAuthorizationError(
       'Only the system administrator can modify the shared item catalog'
+    );
+  }
+};
+
+/**
+ * mod.valuecalc is parsed (never evaluated) by calculateFinalValue and only
+ * supports "<+|-|*|/><number>" or "<op>(<number>*item.wgt)". Reject anything
+ * else when a mod is written so a bad value cannot be stored.
+ * @param {*} valuecalc - value from the request body
+ * @throws {Error} ValidationError when present but not in the supported form
+ */
+const validateValuecalc = (valuecalc) => {
+  if (valuecalc === undefined || valuecalc === null || valuecalc === '') return;
+  if (!isValidValuecalc(valuecalc)) {
+    throw controllerFactory.createValidationError(
+      'valuecalc must be an operator (+ - * /) followed by a number, e.g. "+500", "*1.5", "/2", or "+(10*item.wgt)"'
     );
   }
 };
@@ -122,6 +139,7 @@ const createMod = async (req, res) => {
   if (!name || !type || !target) {
     throw controllerFactory.createValidationError('Name, type, and target are required fields');
   }
+  validateValuecalc(valuecalc);
 
   // Prepare query
   const query = `
@@ -161,6 +179,7 @@ const updateMod = async (req, res) => {
   if (!name || !type || !target) {
     throw controllerFactory.createValidationError('Name, type, and target are required fields');
   }
+  validateValuecalc(valuecalc);
 
   // Update mod directly and check if it existed via rowCount
   const query = `
