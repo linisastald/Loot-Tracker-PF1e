@@ -13,6 +13,7 @@ const campaignContext = require('../utils/campaignContext');
 class DiscordOutboxService {
     constructor() {
         this.processingJob = null;
+        this.cleanupJob = null;
         this.isProcessing = false;
     }
 
@@ -27,6 +28,11 @@ class DiscordOutboxService {
             }
         });
 
+        // Purge delivered rows once a day (03:17, off the hour to avoid the busy minute)
+        this.cleanupJob = cron.schedule('17 3 * * *', async () => {
+            await this.cleanup();
+        });
+
         logger.info('Discord outbox processor started (runs every minute)');
     }
 
@@ -36,7 +42,12 @@ class DiscordOutboxService {
     stop() {
         if (this.processingJob) {
             this.processingJob.stop();
+            this.processingJob = null;
             logger.info('Discord outbox processor stopped');
+        }
+        if (this.cleanupJob) {
+            this.cleanupJob.stop();
+            this.cleanupJob = null;
         }
     }
 
@@ -60,48 +71,31 @@ class DiscordOutboxService {
     }
 
     /**
-     * Calculate exponential backoff delay in milliseconds
-     * @param {number} retryCount - Number of retries attempted
-     * @returns {number} - Delay in milliseconds
-     */
-    calculateBackoffDelay(retryCount) {
-        // Exponential backoff: 5 minutes * 2^retryCount, capped at 1 hour
-        const baseDelayMs = 5 * 60 * 1000; // 5 minutes
-        const maxDelayMs = 60 * 60 * 1000; // 1 hour
-        return Math.min(baseDelayMs * Math.pow(2, retryCount), maxDelayMs);
-    }
-
-    /**
      * Process pending messages in the outbox
      */
     async processOutbox() {
         this.isProcessing = true;
 
         try {
-            // Get pending and failed messages that are ready for retry
-            // Uses exponential backoff based on retry_count.
+            // Get pending and failed messages that are ready for retry, plus rows
+            // left in 'processing' for over ten minutes (the process died mid-send
+            // or the status update itself failed).
+            // Exponential backoff: 5 minutes * 2^retry_count, capped at 60 minutes.
             // Background job: the find-work SELECT runs cross-campaign ('all')
             // so the outbox of every campaign is drained; each message is then
             // processed under its own row's campaign context.
             const result = await campaignContext.runWithCampaign('all', () => dbUtils.executeQuery(`
-                SELECT *,
-                    CASE
-                        WHEN retry_count = 0 THEN INTERVAL '5 minutes'
-                        WHEN retry_count = 1 THEN INTERVAL '10 minutes'
-                        WHEN retry_count = 2 THEN INTERVAL '20 minutes'
-                        WHEN retry_count = 3 THEN INTERVAL '40 minutes'
-                        ELSE INTERVAL '60 minutes'
-                    END as retry_delay
+                SELECT *
                 FROM discord_outbox
-                WHERE status IN ('pending', 'failed')
-                AND retry_count < max_retries
-                AND (last_attempt_at IS NULL OR last_attempt_at < NOW() - CASE
-                    WHEN retry_count = 0 THEN INTERVAL '5 minutes'
-                    WHEN retry_count = 1 THEN INTERVAL '10 minutes'
-                    WHEN retry_count = 2 THEN INTERVAL '20 minutes'
-                    WHEN retry_count = 3 THEN INTERVAL '40 minutes'
-                    ELSE INTERVAL '60 minutes'
-                END)
+                WHERE retry_count < max_retries
+                AND (
+                    (status IN ('pending', 'failed')
+                     AND (last_attempt_at IS NULL OR last_attempt_at < NOW()
+                          - LEAST(INTERVAL '5 minutes' * POWER(2, retry_count), INTERVAL '60 minutes')))
+                    OR
+                    (status = 'processing'
+                     AND last_attempt_at < NOW() - INTERVAL '10 minutes')
+                )
                 ORDER BY created_at ASC
                 LIMIT 10
             `));
@@ -138,10 +132,14 @@ class DiscordOutboxService {
      */
     async processMessage(message) {
         try {
-            // Mark as processing
+            // Mark as processing. A row still in 'processing' was abandoned by an
+            // earlier attempt, so picking it up again counts as a retry (a message
+            // that keeps killing the process cannot loop forever).
             await dbUtils.executeQuery(`
                 UPDATE discord_outbox
-                SET status = 'processing', last_attempt_at = NOW()
+                SET status = 'processing',
+                    last_attempt_at = NOW(),
+                    retry_count = CASE WHEN status = 'processing' THEN retry_count + 1 ELSE retry_count END
                 WHERE id = $1
             `, [message.id]);
 
@@ -152,16 +150,6 @@ class DiscordOutboxService {
             const payload = message.payload;
 
             switch (message.message_type) {
-                case 'session_announcement':
-                {
-                    // Resolves null/undefined when Discord is unconfigured or the send failed
-                    const announcement = await sessionService.postSessionAnnouncement(payload.sessionId);
-                    if (!announcement) {
-                        throw new Error('Session announcement was not posted to Discord');
-                    }
-                    break;
-                }
-
                 case 'session_update':
                     // Resolves false on a failed or unconfigured Discord update
                     if ((await sessionService.updateSessionMessage(payload.sessionId)) === false) {
@@ -169,25 +157,9 @@ class DiscordOutboxService {
                     }
                     break;
 
-                case 'session_cancellation':
-                    // Send cancellation notification. Discord channel/role ids
-                    // are per-campaign (campaign_settings) and resolve from the
-                    // message's campaign context established in processOutbox.
-                    const settings = await sessionService.getDiscordSettings();
-                    if (settings.campaign_role_id && settings.discord_channel_id) {
-                        const discordService = require('./discordBrokerService');
-                        const sendResult = await discordService.sendMessage({
-                            channelId: settings.discord_channel_id,
-                            content: payload.message
-                        });
-                        if (!sendResult || !sendResult.success) {
-                            throw new Error(`Cancellation message send failed: ${sendResult?.error?.message || sendResult?.message || 'unknown error'}`);
-                        }
-                    }
-                    break;
-
                 default:
-                    logger.warn(`Unknown outbox message type: ${message.message_type}`);
+                    // Never mark a message we cannot deliver as sent
+                    throw new Error(`Unknown outbox message type: ${message.message_type}`);
             }
 
             // Mark as sent

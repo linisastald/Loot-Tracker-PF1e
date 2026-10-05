@@ -509,6 +509,13 @@ startServer().then(server => {
         logger.error('Error stopping session scheduler service:', error);
       }
 
+      // Stop the Discord outbox cron jobs
+      try {
+        discordOutboxService.stop();
+      } catch (error) {
+        logger.error('Error stopping Discord outbox service:', error);
+      }
+
       // Stop Discord broker service
       try {
         await discordBrokerService.stop();
