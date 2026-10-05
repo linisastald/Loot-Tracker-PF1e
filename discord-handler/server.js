@@ -41,8 +41,20 @@ const secretsMatch = (provided, expected) => {
   return crypto.timingSafeEqual(a, b);
 };
 
+// Rollout aid: with BROKER_ALLOW_UNAUTHENTICATED_CONTROL=true, a backend that
+// predates the shared secret (sends no X-Broker-Secret header at all) may still
+// register / heartbeat / unregister. A wrong secret is always rejected, and
+// /status always needs the secret. Turn this off once every backend is updated.
+const TRANSITION_PATHS = new Set(['/register', '/unregister', '/heartbeat']);
+const transitionModeEnabled = () => process.env.BROKER_ALLOW_UNAUTHENTICATED_CONTROL === 'true';
+
 const requireBrokerSecret = (req, res, next) => {
   const expected = process.env.DISCORD_BROKER_SECRET;
+
+  if (transitionModeEnabled() && TRANSITION_PATHS.has(req.path) && req.get(BROKER_SECRET_HEADER) === undefined) {
+    console.warn(`Transition mode: allowing unauthenticated control request to ${req.path} (appId: ${req.body?.appId})`);
+    return next();
+  }
 
   if (!expected) {
     if (process.env.NODE_ENV === 'production') {
@@ -437,6 +449,10 @@ const startServer = () => app.listen(PORT, () => {
 
   if (!process.env.DISCORD_PUBLIC_KEY) {
     console.warn('⚠️  DISCORD_PUBLIC_KEY not configured - signature verification will fail');
+  }
+
+  if (transitionModeEnabled()) {
+    console.warn('⚠️  BROKER_ALLOW_UNAUTHENTICATED_CONTROL is on - /register, /unregister and /heartbeat accept requests without the broker secret. Turn it off once every backend sends the secret.');
   }
 
   if (!process.env.DISCORD_BROKER_SECRET) {

@@ -29,6 +29,8 @@ services:
 
       # Shared secret required on /register, /unregister, /heartbeat (REQUIRED in production)
       - DISCORD_BROKER_SECRET=${DISCORD_BROKER_SECRET:-}
+      # Rollout only: "true" lets pre-secret backends keep registering; remove afterwards
+      - BROKER_ALLOW_UNAUTHENTICATED_CONTROL=${BROKER_ALLOW_UNAUTHENTICATED_CONTROL:-}
       # Optional: comma-separated hosts a registered callback endpoint may use
       - BROKER_ALLOWED_ENDPOINT_HOSTS=${BROKER_ALLOWED_ENDPOINT_HOSTS:-}
 

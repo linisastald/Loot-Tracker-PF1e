@@ -72,6 +72,27 @@ test('register / heartbeat / unregister succeed with the right secret', async ()
   assert.equal(res.status, 200);
 });
 
+test('transition mode lets a pre-secret backend through, but never a wrong secret or /status', async () => {
+  process.env.NODE_ENV = 'production';
+  process.env.BROKER_ALLOW_UNAUTHENTICATED_CONTROL = 'true';
+  try {
+    let res = await post('/register', registration());
+    assert.equal(res.status, 200);
+    res = await post('/heartbeat', { appId: 'app-1' });
+    assert.equal(res.status, 200);
+    res = await post('/heartbeat', { appId: 'app-1' }, 'wrong');
+    assert.equal(res.status, 401);
+    res = await fetch(`${base}/status`);
+    assert.equal(res.status, 401);
+    res = await post('/unregister', { appId: 'app-1' });
+    assert.equal(res.status, 200);
+  } finally {
+    delete process.env.BROKER_ALLOW_UNAUTHENTICATED_CONTROL;
+  }
+  const res = await post('/register', registration());
+  assert.equal(res.status, 401);
+});
+
 test('control endpoints are open outside production when no secret is set (local dev)', async () => {
   delete process.env.DISCORD_BROKER_SECRET;
   const res = await post('/register', registration());
