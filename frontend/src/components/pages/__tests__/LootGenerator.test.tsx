@@ -10,6 +10,11 @@ vi.mock('../../../utils/api', () => ({
   },
 }));
 
+let mockIsDM = false;
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => mockIsDM,
+}));
+
 import api from '../../../utils/api';
 import LootGenerator from '../LootGenerator';
 
@@ -35,7 +40,7 @@ const PREVIEW = {
 describe('LootGenerator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+    mockIsDM = true;
     (api.get as any).mockResolvedValue({ data: { track: 'medium', modifier: 1 } });
     (api.post as any).mockImplementation((url: string) => {
       if (url === '/loot-generator/generate') return Promise.resolve({ data: PREVIEW });
@@ -45,10 +50,10 @@ describe('LootGenerator', () => {
     });
   });
 
-  afterEach(() => localStorage.clear());
+  afterEach(() => { mockIsDM = false; });
 
   it('shows a DM-only warning for non-DMs', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 2, username: 'p', role: 'Player' }));
+    mockIsDM = false;
     renderPage();
     expect(screen.getByText(/available to DMs only/i)).toBeInTheDocument();
   });

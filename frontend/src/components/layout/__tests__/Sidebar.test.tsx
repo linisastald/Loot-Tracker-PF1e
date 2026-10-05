@@ -21,13 +21,15 @@ vi.mock('../../../services/versionService', () => ({
 }));
 
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { username: 'dm-user' }, isDM: true }),
+  useAuth: () => ({ user: { username: 'dm-user', role: 'DM' } }),
 }));
 
 let campaignContextValue: any;
 
 vi.mock('../../../contexts/CampaignContext', () => ({
   useCampaign: () => campaignContextValue,
+  // same rule as CampaignContext: DM of the current campaign, or superadmin
+  useIsDM: () => campaignContextValue.campaignRole === 'DM' || campaignContextValue.isSuperadmin,
 }));
 
 import Sidebar from '../Sidebar';
@@ -128,5 +130,25 @@ describe('Sidebar (campaign context integration)', () => {
       expect(screen.getAllByText('Loot Entry').length).toBeGreaterThan(0);
     });
     expect(screen.queryByText('System Admin')).not.toBeInTheDocument();
+  });
+
+  describe('DM Settings entry follows the campaign role, not the account role', () => {
+    it('is shown to the DM of the current campaign', async () => {
+      renderSidebar();
+      await waitFor(() => expect(screen.getAllByText('DM Settings').length).toBeGreaterThan(0));
+    });
+
+    it('is hidden from a player in this campaign even if the account is DM elsewhere', async () => {
+      campaignContextValue = { ...makeContext(), campaignRole: 'Player' as const };
+      renderSidebar();
+      await waitFor(() => expect(screen.getAllByText('Loot Entry').length).toBeGreaterThan(0));
+      expect(screen.queryByText('DM Settings')).not.toBeInTheDocument();
+    });
+
+    it('is shown to a superadmin who is only a player here', async () => {
+      campaignContextValue = { ...makeContext({}, undefined, true), campaignRole: 'Player' as const };
+      renderSidebar();
+      await waitFor(() => expect(screen.getAllByText('DM Settings').length).toBeGreaterThan(0));
+    });
   });
 });

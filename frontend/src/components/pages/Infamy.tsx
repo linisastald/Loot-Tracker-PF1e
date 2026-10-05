@@ -14,7 +14,7 @@ import {
 } from '@mui/icons-material';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
-import { useAuth } from '../../contexts/AuthContext';
+import { useIsDM } from '../../contexts/CampaignContext';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
 
@@ -225,7 +225,7 @@ const Infamy: React.FC = () => {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [tabValue, setTabValue] = useState(0);
-    const { isDM } = useAuth();
+    const isDM = useIsDM();
 
     // Campaign timezone hook
     const { timezone, loading: timezoneLoading } = useCampaignTimezone();

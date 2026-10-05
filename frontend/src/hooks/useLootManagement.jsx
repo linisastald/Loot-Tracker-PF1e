@@ -16,9 +16,11 @@ import {
   handleUpdateSubmit,
 } from '../utils/utils';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsDM } from '../contexts/CampaignContext';
 
 const useLootManagement = (statusToFetch) => {
-  const { user: authUser, isDM: isDMUser } = useAuth();
+  const { user: authUser } = useAuth();
+  const isDMUser = useIsDM();
 
   // Common state
   const [loot, setLoot] = useState({ summary: [], individual: [] });

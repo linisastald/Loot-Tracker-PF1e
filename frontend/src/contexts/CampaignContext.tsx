@@ -32,11 +32,19 @@ export interface CampaignContextType {
   campaignRole: 'DM' | 'Player' | null;
   isSuperadmin: boolean;
   /**
+   * UI gate for DM-only controls: the user's role in the CURRENT campaign is DM,
+   * or the user is a superadmin. Mirrors the backend's hasDmRights; render hint
+   * only, the server stays the authority.
+   */
+  isDM: boolean;
+  /**
    * Per-campaign settings map ({ [name]: value }). Unused in Phase 4a;
    * Phase 4b reads theme settings from here. May be {} today.
    */
   campaignSettings: Record<string, unknown>;
   loading: boolean;
+  /** Message of the last failed campaign fetch, null when the last fetch worked */
+  error: string | null;
   /**
    * True only after a SUCCESSFUL campaign fetch showed the user belongs to no
    * campaign (and is not a superadmin). Campaign-scoped routes answer 403 for
@@ -59,6 +67,9 @@ export const useCampaign = (): CampaignContextType => {
   return context;
 };
 
+/** Whether the current user may see DM-only controls in the current campaign. */
+export const useIsDM = (): boolean => useCampaign().isDM;
+
 interface CampaignProviderProps {
   children: React.ReactNode;
 }
@@ -73,6 +84,7 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
   const [campaignSettings, setCampaignSettings] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [hasNoCampaign, setHasNoCampaign] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -102,9 +114,10 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
       setIsSuperadmin(Boolean(current?.isSuperadmin));
       setHasNoCampaign(campaignList.length === 0 && !current?.isSuperadmin);
       setCampaignSettings(current?.settings ?? {});
-    } catch (error) {
-      // Leave whatever state we had; the selector simply shows no campaign.
-      console.error('Failed to fetch campaign info:', error);
+      setError(null);
+    } catch {
+      // Leave whatever state we had and surface the failure through `error`.
+      setError('Failed to load campaign information');
     } finally {
       setLoading(false);
     }
@@ -133,8 +146,10 @@ export const CampaignProvider: React.FC<CampaignProviderProps> = ({ children }) 
     currentCampaign,
     campaignRole,
     isSuperadmin,
+    isDM: campaignRole === 'DM' || isSuperadmin,
     campaignSettings,
     loading,
+    error,
     hasNoCampaign,
     switchCampaign,
     refresh,

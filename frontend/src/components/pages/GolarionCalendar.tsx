@@ -48,8 +48,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import api from '../../utils/api';
-import {isDM} from '../../utils/auth';
-import {useCampaign} from '../../contexts/CampaignContext';
+import {useCampaign, useIsDM} from '../../contexts/CampaignContext';
 import {
     getGolarionDayOfWeek,
     getGolarionMonthDays,
@@ -340,7 +339,7 @@ const GolarionCalendar: React.FC = () => {
     const [currentRegion, setCurrentRegion] = useState('Varisia');
 
     // DM-only weather forecast controls
-    const dmMode = isDM();
+    const dmMode = useIsDM();
     const [forecastDays, setForecastDays] = useState<string>('7');
     const [weatherDialogOpen, setWeatherDialogOpen] = useState<boolean>(false);
     const [weatherForm, setWeatherForm] = useState<WeatherForm>(EMPTY_WEATHER_FORM);

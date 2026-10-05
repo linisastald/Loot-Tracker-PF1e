@@ -8,10 +8,14 @@ vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({
     user: { id: 1, username: 'testplayer', role: 'player' },
     isAuthenticated: true,
-    isDM: false,
     refreshUser: vi.fn(),
     setUser: vi.fn(),
   }),
+}));
+
+// DM gating comes from the current campaign, not the account
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => false,
 }));
 
 // Mock the useCampaignTimezone hook

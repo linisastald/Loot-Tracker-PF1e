@@ -7,6 +7,11 @@ vi.mock('../../../utils/api', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }));
 
+let mockIsDM = false;
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => mockIsDM,
+}));
+
 import api from '../../../utils/api';
 import SpellbookGenerator from '../SpellbookGenerator';
 
@@ -34,7 +39,7 @@ const BOOK = {
 describe('SpellbookGenerator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+    mockIsDM = true;
     (api.post as any).mockImplementation((url: string) => {
       if (url === '/loot-generator/spellbook') return Promise.resolve({ data: BOOK });
       if (url === '/loot-generator/commit') return Promise.resolve({ data: { itemsCreated: 1, coinsPosted: false } });
@@ -42,10 +47,10 @@ describe('SpellbookGenerator', () => {
     });
   });
 
-  afterEach(() => localStorage.clear());
+  afterEach(() => { mockIsDM = false; });
 
   it('shows a DM-only warning for non-DMs', () => {
-    localStorage.setItem('user', JSON.stringify({ id: 2, username: 'p', role: 'Player' }));
+    mockIsDM = false;
     renderPage();
     expect(screen.getByText(/available to DMs only/i)).toBeInTheDocument();
   });

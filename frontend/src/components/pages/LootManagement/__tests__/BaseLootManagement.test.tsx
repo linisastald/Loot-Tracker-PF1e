@@ -61,6 +61,12 @@ vi.mock('../../../../contexts/AuthContext', () => ({
   useAuth: () => useAuthMock(),
 }));
 
+// DM routing follows the role in the CURRENT campaign (or superadmin)
+let mockIsDM = false;
+vi.mock('../../../../contexts/CampaignContext', () => ({
+  useIsDM: () => mockIsDM,
+}));
+
 // CustomLootTable pulls in lots of unrelated state; stub it out.
 vi.mock('../../../common/CustomLootTable', () => ({
   default: () => <div data-testid="loot-table" />,
@@ -80,6 +86,7 @@ const config: any = {
 describe('BaseLootManagement.handleUpdateSubmit role branching', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsDM = false;
   });
 
   const submitDialog = async () => {
@@ -91,6 +98,7 @@ describe('BaseLootManagement.handleUpdateSubmit role branching', () => {
   };
 
   it('routes to the DM endpoint when caller is a DM', async () => {
+    mockIsDM = true;
     useAuthMock.mockReturnValue({ user: { id: 1, role: 'DM' } });
 
     await submitDialog();
@@ -108,6 +116,16 @@ describe('BaseLootManagement.handleUpdateSubmit role branching', () => {
     expect(lootService.updateLootItem).not.toHaveBeenCalled();
     expect(setOpenUpdateDialog).toHaveBeenCalledWith(false);
     expect(setSelectedItems).toHaveBeenCalledWith([]);
+  });
+
+  it('uses the player endpoint for a player in this campaign even when the account role is DM', async () => {
+    mockIsDM = false;
+    useAuthMock.mockReturnValue({ user: { id: 1, role: 'DM' } });
+
+    await submitDialog();
+
+    expect(lootService.updateLootItem).toHaveBeenCalledTimes(1);
+    expect(lootService.updateLootItemAsDM).not.toHaveBeenCalled();
   });
 
   it('routes to the player endpoint for non-DM users', async () => {

@@ -14,7 +14,7 @@ vi.mock('../../utils/api', () => ({
 
 import api from '../../utils/api';
 import { AuthProvider } from '../AuthContext';
-import { CampaignProvider, useCampaign } from '../CampaignContext';
+import { CampaignProvider, useCampaign, useIsDM } from '../CampaignContext';
 
 // ---------------------------------------------------------------------------
 // window.location.reload mock (switchCampaign performs a full reload)
@@ -80,6 +80,8 @@ const Probe: React.FC = () => {
       <span data-testid="count">{ctx.campaigns.length}</span>
       <span data-testid="role">{ctx.campaignRole ?? 'none'}</span>
       <span data-testid="superadmin">{String(ctx.isSuperadmin)}</span>
+      <span data-testid="is-dm">{String(ctx.isDM)}</span>
+      <span data-testid="error">{ctx.error ?? 'none'}</span>
       <span data-testid="settings">{JSON.stringify(ctx.campaignSettings)}</span>
       <button onClick={() => ctx.switchCampaign(2)}>do-switch</button>
       <button onClick={() => ctx.refresh()}>do-refresh</button>
@@ -136,6 +138,76 @@ describe('CampaignContext', () => {
       await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
       expect(screen.getByTestId('no-campaign')).toHaveTextContent('false');
       errSpy.mockRestore();
+    });
+  });
+
+  describe('isDM / useIsDM (UI gating, the server stays the authority)', () => {
+    const IsDmProbe: React.FC = () => <span data-testid="hook-is-dm">{String(useIsDM())}</span>;
+    const renderBoth = () =>
+      render(
+        <AuthProvider user={{ id: 1, username: 'u', role: 'Player' }} isAuthenticated>
+          <CampaignProvider>
+            <Probe />
+            <IsDmProbe />
+          </CampaignProvider>
+        </AuthProvider>
+      );
+    const asMember = (role: 'DM' | 'Player', isSuperadmin = false) => ({
+      campaignId: 1, role, isSuperadmin,
+      campaign: { id: 1, name: 'C', slug: 'c' }, settings: {},
+    });
+
+    it('is true for the DM of the current campaign', async () => {
+      setupApiMock(asMember('DM'));
+      renderBoth();
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      expect(screen.getByTestId('is-dm')).toHaveTextContent('true');
+      expect(screen.getByTestId('hook-is-dm')).toHaveTextContent('true');
+    });
+
+    it('is false for a player, even when the cached account role is DM', async () => {
+      localStorage.setItem('user', JSON.stringify({ role: 'DM' }));
+      setupApiMock(asMember('Player'));
+      renderBoth();
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      expect(screen.getByTestId('is-dm')).toHaveTextContent('false');
+      expect(screen.getByTestId('hook-is-dm')).toHaveTextContent('false');
+    });
+
+    it('is true for a superadmin whatever the campaign role', async () => {
+      setupApiMock(asMember('Player', true));
+      renderBoth();
+      await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+      expect(screen.getByTestId('hook-is-dm')).toHaveTextContent('true');
+    });
+
+    it('follows the campaign: DM in one campaign, player in another', async () => {
+      setupApiMock(asMember('DM'));
+      renderBoth();
+      await waitFor(() => expect(screen.getByTestId('is-dm')).toHaveTextContent('true'));
+      setupApiMock({ ...asMember('Player'), campaignId: 2 });
+      fireEvent.click(screen.getByText('do-refresh'));
+      await waitFor(() => expect(screen.getByTestId('is-dm')).toHaveTextContent('false'));
+    });
+
+    it('is false before the campaign has loaded', () => {
+      render(
+        <AuthProvider user={null} isAuthenticated={false}>
+          <CampaignProvider><IsDmProbe /></CampaignProvider>
+        </AuthProvider>
+      );
+      expect(screen.getByTestId('hook-is-dm')).toHaveTextContent('false');
+    });
+  });
+
+  describe('error state', () => {
+    it('exposes a message when the campaign fetch fails and clears it on success', async () => {
+      (api.get as any).mockRejectedValue(new Error('network'));
+      renderWithAuth(true);
+      await waitFor(() => expect(screen.getByTestId('error')).not.toHaveTextContent('none'));
+      setupApiMock();
+      fireEvent.click(screen.getByText('do-refresh'));
+      await waitFor(() => expect(screen.getByTestId('error')).toHaveTextContent('none'));
     });
   });
 

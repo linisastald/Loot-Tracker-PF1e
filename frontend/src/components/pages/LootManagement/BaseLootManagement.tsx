@@ -6,6 +6,7 @@ import CustomUpdateDialog from '../../common/dialogs/CustomUpdateDialog';
 import useLootManagement from '../../../hooks/useLootManagement';
 import lootService from '../../../services/lootService';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useIsDM } from '../../../contexts/CampaignContext';
 import { notifyLootCountsChanged } from '../../../utils/events';
 import { LootActionKey, LootManagementConfig, LootStatus } from '../../../types/game';
 
@@ -15,6 +16,7 @@ interface BaseLootManagementProps {
 
 const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
   const { user: authUser } = useAuth();
+  const isDM = useIsDM();
   const [updateError, setUpdateError] = React.useState('');
   const {
     loot,
@@ -96,7 +98,6 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
       size: entry.size,
       notes: entry.notes,
     };
-    const isDM = (authUser as any)?.role === 'DM';
     try {
       setUpdateError('');
       if (isDM) {

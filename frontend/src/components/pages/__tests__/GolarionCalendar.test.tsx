@@ -31,8 +31,10 @@ vi.mock('../../../utils/api', () => ({
 // campaign context as strings (multi-campaign Phase 4c)
 const refreshMock = vi.fn().mockResolvedValue(undefined);
 let campaignSettingsValue: Record<string, unknown>;
+let mockIsDM = false;
 
 vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => mockIsDM,
   useCampaign: () => ({
     campaigns: [],
     currentCampaign: { id: 1, name: 'Test Campaign', slug: 'test' },
@@ -100,14 +102,14 @@ describe('GolarionCalendar', () => {
   });
 
   it('renders Set Current Day button for a DM only', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+    mockIsDM = true;
     renderCalendar();
     expect(screen.getByRole('button', { name: /Set Current Day/i })).toBeInTheDocument();
-    localStorage.clear();
+    mockIsDM = false;
   });
 
   it('hides Set Current Day from players', async () => {
-    localStorage.clear();
+    mockIsDM = false;
     renderCalendar();
     expect(screen.queryByRole('button', { name: /Set Current Day/i })).not.toBeInTheDocument();
   });
@@ -172,7 +174,7 @@ describe('GolarionCalendar', () => {
 
   describe('set current day', () => {
     afterEach(() => {
-      localStorage.clear();
+      mockIsDM = false;
     });
 
     const weatherCallCount = () =>
@@ -181,7 +183,7 @@ describe('GolarionCalendar', () => {
       ).length;
 
     it('refetches weather for the month after confirming Set Current Day', async () => {
-      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+      mockIsDM = true;
       renderCalendar();
 
       // Initial load: current date selected + first weather fetch done
@@ -300,11 +302,11 @@ describe('GolarionCalendar', () => {
 
   describe('DM weather controls', () => {
     afterEach(() => {
-      localStorage.clear();
+      mockIsDM = false;
     });
 
     it('hides forecast controls from players', async () => {
-      // No user in localStorage -> isDM() is false
+      // Not a DM in this campaign
       renderCalendar();
 
       await waitFor(() => {
@@ -315,7 +317,7 @@ describe('GolarionCalendar', () => {
     });
 
     it('shows forecast controls to a DM', async () => {
-      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+      mockIsDM = true;
 
       renderCalendar();
 
@@ -326,7 +328,7 @@ describe('GolarionCalendar', () => {
     });
 
     it('prefills the forecast length from campaignSettings.weather_forecast_days', async () => {
-      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+      mockIsDM = true;
       campaignSettingsValue = { region: 'Varisia', weather_forecast_days: '14' };
 
       renderCalendar();
@@ -341,7 +343,7 @@ describe('GolarionCalendar', () => {
     });
 
     it('saves the forecast length to the per-campaign settings endpoint and refreshes', async () => {
-      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+      mockIsDM = true;
 
       renderCalendar();
 
@@ -365,7 +367,7 @@ describe('GolarionCalendar', () => {
     });
 
     it('surfaces the backend envelope message when the forecast save fails', async () => {
-      localStorage.setItem('user', JSON.stringify({ id: 1, username: 'dm', role: 'DM' }));
+      mockIsDM = true;
       (api.put as any).mockRejectedValueOnce({
         response: { status: 403, data: { success: false, message: 'DM role required' } },
       });

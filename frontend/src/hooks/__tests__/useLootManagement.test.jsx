@@ -31,13 +31,16 @@ vi.mock('../../utils/utils', () => ({
 
 // Mock AuthContext
 const mockAuthUser = { id: 1, username: 'testuser', role: 'Player', activeCharacterId: 10 };
-const mockIsDM = false;
 
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: vi.fn(() => ({
     user: mockAuthUser,
-    isDM: mockIsDM,
   })),
+}));
+
+// DM gating comes from the current campaign, not the account
+vi.mock('../../contexts/CampaignContext', () => ({
+  useIsDM: vi.fn(() => false),
 }));
 
 // Mock api (needed by utils)
@@ -65,6 +68,7 @@ import {
   handleUpdateSubmit,
 } from '../../utils/utils';
 import { useAuth } from '../../contexts/AuthContext';
+import { useIsDM } from '../../contexts/CampaignContext';
 import useLootManagement from '../useLootManagement';
 
 describe('useLootManagement', () => {
@@ -74,8 +78,8 @@ describe('useLootManagement', () => {
     // Reset auth mock to default
     useAuth.mockReturnValue({
       user: mockAuthUser,
-      isDM: false,
     });
+    useIsDM.mockReturnValue(false);
 
     // Reset applyFilters to pass-through
     applyFilters.mockImplementation((loot) => loot || { summary: [], individual: [] });
@@ -123,7 +127,6 @@ describe('useLootManagement', () => {
       await waitFor(() => {
         expect(lootService.getAllLoot).toHaveBeenCalledWith(
           expect.objectContaining({
-            isDM: false,
             activeCharacterId: 10,
             fields: expect.any(String),
           })
@@ -134,8 +137,8 @@ describe('useLootManagement', () => {
     it('should call getAllLoot with isDM true when user is DM', async () => {
       useAuth.mockReturnValue({
         user: { id: 2, username: 'dm', role: 'DM' },
-        isDM: true,
       });
+      useIsDM.mockReturnValue(true);
 
       renderHook(() => useLootManagement(null));
 
@@ -151,7 +154,6 @@ describe('useLootManagement', () => {
     it('should not fetch loot if non-DM player has no activeCharacterId', async () => {
       useAuth.mockReturnValue({
         user: { id: 3, username: 'nochar', role: 'Player' },
-        isDM: false,
       });
 
       renderHook(() => useLootManagement(null));
@@ -604,7 +606,6 @@ describe('useLootManagement', () => {
     it('should use authUser.id as fallback if no activeCharacterId', async () => {
       useAuth.mockReturnValue({
         user: { id: 5, username: 'nochar', role: 'Player' },
-        isDM: false,
       });
 
       // This user has no activeCharacterId, so fetchLoot won't be called for statusToFetch=null
@@ -633,7 +634,6 @@ describe('useLootManagement', () => {
     it('should not call appraiseLoot if authUser is null', async () => {
       useAuth.mockReturnValue({
         user: null,
-        isDM: false,
       });
 
       const { result } = renderHook(() => useLootManagement('Kept Party'));
@@ -655,7 +655,6 @@ describe('useLootManagement', () => {
     it('should not call appraiseLoot if authUser has no id', async () => {
       useAuth.mockReturnValue({
         user: { username: 'noid', role: 'Player' },
-        isDM: false,
       });
 
       const { result } = renderHook(() => useLootManagement('Kept Party'));

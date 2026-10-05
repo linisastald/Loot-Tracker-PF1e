@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import CustomLootTable from '../common/CustomLootTable';
 import { useAuth } from '../../contexts/AuthContext';
+import { useIsDM } from '../../contexts/CampaignContext';
 
 interface LootItem {
   id: number;
@@ -87,7 +88,8 @@ const Identify: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
 
-  const { user: authUser, isDM: isDMUser } = useAuth();
+  const { user: authUser } = useAuth();
+  const isDMUser = useIsDM();
 
   useEffect(() => {
     if (authUser) {

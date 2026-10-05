@@ -15,7 +15,7 @@ import {
 import type {SelectChangeEvent} from '@mui/material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import api from '../../utils/api';
-import {isDM} from '../../utils/auth';
+import {useIsDM} from '../../contexts/CampaignContext';
 import SpellbookViewer, {Spellbook} from '../spellbook/SpellbookViewer';
 
 const CLASS_OPTIONS = [
@@ -38,7 +38,7 @@ const SCHOOLS = [
 ];
 
 const SpellbookGenerator: React.FC = () => {
-    const dmMode = isDM();
+    const dmMode = useIsDM();
     const [casterClass, setCasterClass] = useState<string>('wizard');
     const [casterLevel, setCasterLevel] = useState<string>('9');
     const [school, setSchool] = useState<string>('');

@@ -52,7 +52,7 @@ import StyleIcon from '@mui/icons-material/Style';
 import lootService from '../../services/lootService';
 import versionService from '../../services/versionService';
 import { useAuth } from '../../contexts/AuthContext';
-import { useCampaign } from '../../contexts/CampaignContext';
+import { useCampaign, useIsDM } from '../../contexts/CampaignContext';
 import { APP_EVENTS } from '../../utils/events';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLogout }) => {
@@ -67,7 +67,8 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { user, isDM } = useAuth();
+  const { user } = useAuth();
+  const isDM = useIsDM();
   const username = user?.username || '';
   const activeCharacter = user?.activeCharacter || null;
 

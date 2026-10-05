@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import api from '../../utils/api';
 import lootService from '../../services/lootService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useIsDM } from '../../contexts/CampaignContext';
 import {
   Alert,
   Box,
@@ -123,7 +124,8 @@ const GoldTransactions: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [totals, setTotals] = useState<GoldTotals>({platinum: 0, gold: 0, silver: 0, copper: 0, fullTotal: 0});
-    const { user: authUser, isDM } = useAuth();
+    const { user: authUser } = useAuth();
+    const isDM = useIsDM();
     const userRole = authUser?.role || '';
     const [startDate, setStartDate] = useState<Date>(new Date(new Date().setMonth(new Date().getMonth() - 6)));
     const [endDate, setEndDate] = useState<Date>(new Date());

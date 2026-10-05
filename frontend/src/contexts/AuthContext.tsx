@@ -14,7 +14,6 @@ export interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   isAuthenticated: boolean;
-  isDM: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -41,7 +40,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   const value: AuthContextType = {
     user,
     isAuthenticated,
-    isDM: user?.role === 'DM',
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

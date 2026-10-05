@@ -9,6 +9,12 @@ vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => mockUseAuth(),
 }));
 
+// DM gating comes from the current campaign, not the account
+let mockIsDM = false;
+vi.mock('../../../contexts/CampaignContext', () => ({
+  useIsDM: () => mockIsDM,
+}));
+
 // Mock lootService
 vi.mock('../../../services/lootService', () => ({
   default: {
@@ -35,11 +41,11 @@ const renderIdentify = (authOverrides = {}) => {
   const defaultAuth = {
     user: { id: 1, username: 'testplayer', role: 'player', activeCharacterId: 10 },
     isAuthenticated: true,
-    isDM: false,
     refreshUser: vi.fn(),
     setUser: vi.fn(),
     ...authOverrides,
   };
+  mockIsDM = Boolean((authOverrides as { isDM?: boolean }).isDM);
   mockUseAuth.mockReturnValue(defaultAuth);
 
   return render(

@@ -5,7 +5,7 @@ import {notifyLootCountsChanged} from '../../utils/events';
 import {Alert, Box, Button, Container, Paper, Typography} from '@mui/material';
 import EntryForm from './EntryForm';
 import api from '../../utils/api';
-import {useAuth} from '../../contexts/AuthContext';
+import {useIsDM} from '../../contexts/CampaignContext';
 
 const LootEntry = () => {
     const {
@@ -24,7 +24,7 @@ const LootEntry = () => {
     const [activeCharacterId, setActiveCharacterId] = useState(null);
     const [itemOptions, setItemOptions] = useState([]);
     const [characters, setCharacters] = useState([]);
-    const {isDM} = useAuth();
+    const isDM = useIsDM();
 
     useEffect(() => {
         fetchInitialData(setItemOptions, setActiveCharacterId);

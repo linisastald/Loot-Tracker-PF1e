@@ -30,7 +30,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import CasinoIcon from '@mui/icons-material/Casino';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import api from '../../utils/api';
-import {isDM} from '../../utils/auth';
+import {useIsDM} from '../../contexts/CampaignContext';
 
 const CREATURE_TYPES = [
     'aberration', 'animal', 'construct', 'dragon', 'fey', 'humanoid', 'magical beast',
@@ -135,7 +135,7 @@ const makeEnemy = (): EnemyRow => ({
 });
 
 const LootGenerator: React.FC = () => {
-    const dmMode = isDM();
+    const dmMode = useIsDM();
     const [enemies, setEnemies] = useState<EnemyRow[]>([makeEnemy()]);
     const [track, setTrack] = useState<string>('medium');
     const [modifier, setModifier] = useState<string>('1');
