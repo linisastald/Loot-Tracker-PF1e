@@ -22,7 +22,7 @@ class Session extends BaseModel {
     constructor() {
         super({
             tableName: 'game_sessions',
-            timestamps: { createdAt: true, updatedAt: true }
+            timestamps: { createdAt: false, updatedAt: true }
         });
     }
 
@@ -40,72 +40,6 @@ class Session extends BaseModel {
         `;
         const result = await dbUtils.executeQuery(query, [limit]);
         return result.rows;
-    }
-    
-    /**
-     * Create or update session attendance
-     * @param {number} sessionId - The session ID
-     * @param {number} userId - The user ID
-     * @param {number} characterId - The character ID (optional)
-     * @param {string} status - The attendance status (accepted, declined, tentative)
-     * @returns {Promise<Object>} - Updated session attendance
-     */
-    async updateAttendance(sessionId, userId, characterId, status) {
-        const query = `
-            INSERT INTO session_attendance (session_id, user_id, character_id, status, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (session_id, user_id)
-            DO UPDATE SET
-                status = EXCLUDED.status,
-                character_id = EXCLUDED.character_id,
-                updated_at = EXCLUDED.updated_at
-            RETURNING *
-        `;
-
-        const result = await dbUtils.executeQuery(query, [sessionId, userId, characterId, status]);
-        return result.rows[0];
-    }
-    
-    /**
-     * Create a new game session with Discord notification details
-     * @param {Object} sessionData - The session data
-     * @returns {Promise<Object>} - Created session
-     */
-    async createSession(sessionData) {
-        return await dbUtils.executeTransaction(async (client) => {
-            const { title, start_time, end_time, description, discord_message_id, discord_channel_id } = sessionData;
-            
-            const insertQuery = `
-                INSERT INTO game_sessions (title, start_time, end_time, description, discord_message_id, discord_channel_id)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING *
-            `;
-            
-            const result = await client.query(insertQuery, [
-                title, start_time, end_time, description, discord_message_id, discord_channel_id
-            ]);
-            
-            return result.rows[0];
-        });
-    }
-    
-    /**
-     * Update session Discord message details
-     * @param {number} sessionId - The session ID
-     * @param {string} messageId - The Discord message ID
-     * @param {string} channelId - The Discord channel ID
-     * @returns {Promise<Object>} - Updated session
-     */
-    async updateDiscordMessage(sessionId, messageId, channelId) {
-        const query = `
-            UPDATE game_sessions
-            SET discord_message_id = $2, discord_channel_id = $3, updated_at = NOW()
-            WHERE id = $1
-            RETURNING *
-        `;
-        
-        const result = await dbUtils.executeQuery(query, [sessionId, messageId, channelId]);
-        return result.rows[0];
     }
     
     /**

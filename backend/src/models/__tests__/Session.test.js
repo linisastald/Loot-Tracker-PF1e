@@ -43,54 +43,6 @@ describe('Session model', () => {
     });
   });
 
-  describe('updateAttendance', () => {
-    it('should upsert attendance record', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1, status: 'accepted' }] });
-
-      const result = await Session.updateAttendance(1, 2, 3, 'accepted');
-
-      expect(result.status).toBe('accepted');
-      const query = dbUtils.executeQuery.mock.calls[0][0];
-      expect(query).toContain('ON CONFLICT');
-      expect(query).toContain('DO UPDATE');
-    });
-  });
-
-  describe('createSession', () => {
-    it('should create session within a transaction', async () => {
-      const mockClient = { query: jest.fn() };
-      mockClient.query.mockResolvedValue({
-        rows: [{ id: 1, title: 'New Session' }],
-      });
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
-
-      const sessionData = {
-        title: 'New Session',
-        start_time: '2024-03-15T18:00:00Z',
-        end_time: '2024-03-15T22:00:00Z',
-        description: 'Adventure continues',
-        discord_message_id: null,
-        discord_channel_id: null,
-      };
-
-      const result = await Session.createSession(sessionData);
-
-      expect(result.title).toBe('New Session');
-      expect(mockClient.query).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('updateDiscordMessage', () => {
-    it('should update discord message and channel IDs', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
-
-      await Session.updateDiscordMessage(1, 'msg-123', 'ch-456');
-
-      const values = dbUtils.executeQuery.mock.calls[0][1];
-      expect(values).toEqual([1, 'msg-123', 'ch-456']);
-    });
-  });
-
   describe('findSessionsNeedingNotifications', () => {
     it('should query for scheduled sessions without discord messages', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [] });

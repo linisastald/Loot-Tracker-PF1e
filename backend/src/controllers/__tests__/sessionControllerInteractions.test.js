@@ -287,6 +287,9 @@ describe('processSessionInteraction campaign context', () => {
       if (query.includes('FROM users WHERE discord_id')) {
         return { rows: [] }; // not yet linked
       }
+      if (query.includes('UPDATE users SET discord_id')) {
+        return { rows: [], rowCount: 1 };
+      }
       return { rows: [], rowCount: 0 };
     });
 
@@ -357,4 +360,99 @@ describe('processSessionInteraction campaign context', () => {
       })
     );
   });
+
+  it('does not report success when the linked character has no owner account', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 4 }] };
+      if (query.includes('FROM characters')) return { rows: [{ user_id: null, name: 'Orphan' }] };
+      return { rows: [], rowCount: 0 };
+    });
+    const req = {
+      headers: {},
+      body: {
+        type: 3,
+        data: { custom_id: `link_character_${ENHANCED_MESSAGE_ID}_999888777666555444`, values: ['3'] },
+        member: { user: { id: '999888777666555444' } },
+      },
+    };
+    const res = makeRes();
+    await sessionController.processSessionInteraction(req, res);
+
+    expect(mockExecuteQuery.mock.calls.some(c => String(c[0]).includes('UPDATE users SET discord_id'))).toBe(false);
+    expect(res.json.mock.calls[0][0].data.content).toContain('no player account');
+  });
+
+  it('reports failure when the guarded link UPDATE changes no row', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 4 }] };
+      if (query.includes('FROM characters')) return { rows: [{ user_id: 7, name: 'Valeros' }] };
+      if (query.includes('SELECT discord_id FROM users WHERE id')) return { rows: [{ discord_id: null }] };
+      if (query.includes('UPDATE users SET discord_id')) {
+        expect(query).toContain('discord_id IS NULL');
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const req = {
+      headers: {},
+      body: {
+        type: 3,
+        data: { custom_id: `link_character_${ENHANCED_MESSAGE_ID}_999888777666555444`, values: ['3'] },
+        member: { user: { id: '999888777666555444' } },
+      },
+    };
+    const res = makeRes();
+    await sessionController.processSessionInteraction(req, res);
+    expect(res.json.mock.calls[0][0].data.content).toContain('could not be linked');
+  });
+
+  it('replaces other reaction rows when they switch response', async () => {
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) return { rows: [{ id: 50, campaign_id: 6 }] };
+      if (query.includes('FROM users')) return { rows: [{ id: 7, username: 'bob' }] };
+      if (query.includes('FROM characters')) return { rows: [{ id: 3 }] };
+      return { rows: [], rowCount: 0 };
+    });
+    sessionService.recordAttendance.mockResolvedValue({});
+    sessionService.getSession.mockResolvedValue({ id: 50 });
+    sessionService.getSessionAttendance.mockResolvedValue([]);
+    sessionDiscordService.createSessionEmbed.mockResolvedValue({});
+    sessionDiscordService.createAttendanceButtons.mockReturnValue([]);
+
+    await sessionController.processSessionInteraction(buttonRequest('session_attend_no'), makeRes());
+
+    const del = mockExecuteQuery.mock.calls.find(c => String(c[0]).includes('DELETE FROM discord_reaction_tracking'));
+    expect(del[1]).toEqual([ENHANCED_MESSAGE_ID, '999888777666555444', '❌']);
+  });
+
+  it('keeps earlier legacy responses when the JSONB column arrives as an object, and uses the stored channel', async () => {
+    const axios = require('axios');
+    mockExecuteQuery.mockImplementation(async (query) => {
+      if (query.includes('FROM game_sessions')) return { rows: [] };
+      if (query.includes('FROM session_messages')) {
+        return {
+          rows: [{
+            session_date: new Date().toISOString(),
+            session_time: new Date().toISOString(),
+            responses: { accepted: [{ discord_id: 'other', display_name: 'Amiri' }], declined: [], tentative: [] },
+            channel_id: '555555555555555555',
+            campaign_id: 3,
+          }],
+        };
+      }
+      if (query.includes('FROM settings')) return { rows: [{ value: 'token' }] };
+      if (query.includes('FROM users')) return { rows: [{ id: 7, username: 'bob' }] };
+      return { rows: [], rowCount: 0 };
+    });
+    axios.patch.mockResolvedValue({});
+
+    await sessionController.processSessionInteraction(buttonRequest('session_no'), makeRes());
+
+    const update = mockExecuteQuery.mock.calls.find(c => String(c[0]).includes('UPDATE session_messages'));
+    const saved = JSON.parse(update[1][0]);
+    expect(saved.accepted).toEqual([{ discord_id: 'other', display_name: 'Amiri' }]);
+    expect(saved.declined).toEqual([{ discord_id: '999888777666555444', display_name: 'bob' }]);
+    expect(axios.patch.mock.calls[0][0]).toContain('/channels/555555555555555555/messages/');
+  });
 });
+

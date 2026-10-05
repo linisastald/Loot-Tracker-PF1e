@@ -8,21 +8,61 @@ const campaignContext = require('../utils/campaignContext');
 const campaignSettings = require('../utils/campaignSettings');
 const { APP_NAME } = require('../config/constants');
 const axios = require('axios');
-const { format, formatDistance } = require('date-fns');
+const sessionService = require('../services/sessionService');
+const discordService = require('../services/discordBrokerService');
+const attendanceService = require('../services/attendance/AttendanceService');
+const sessionDiscordService = require('../services/discord/SessionDiscordService');
 const {
-    ATTENDANCE_STATUS,
     VALID_ATTENDANCE_STATUSES,
     RESPONSE_TYPE_MAP,
     RESPONSE_EMOJI_MAP
 } = require('../constants/sessionConstants');
 
+const DEFAULT_UPCOMING_LIMIT = 5;
+const MAX_UPCOMING_LIMIT = 100;
+
+// Discord button ids (custom_id minus the "session_" prefix) -> response type.
+// session_yes/no/maybe come from the legacy embeds, session_attend_* from
+// SessionDiscordService.createAttendanceButtons.
+const BUTTON_ACTION_RESPONSE_TYPES = {
+    yes: 'yes',
+    no: 'no',
+    maybe: 'maybe',
+    attend_yes: 'yes',
+    attend_no: 'no',
+    attend_maybe: 'maybe',
+    attend_late: 'late'
+};
+
+// The in-app RSVP dialog also sends late/early on the legacy attendance endpoint.
+const LEGACY_ATTENDANCE_INPUTS = [...VALID_ATTENDANCE_STATUSES, 'late', 'early'];
+
+/**
+ * Reply to a Discord interaction with an ephemeral (caller-only) message.
+ */
+const ephemeral = (res, content) => res.json({ type: 4, data: { content, flags: 64 } });
+
+/**
+ * Parse :id from the route, throwing a validation error when it is not a number.
+ */
+const parseSessionId = (req) => {
+    const sessionId = parseInt(req.params.id, 10);
+    if (Number.isNaN(sessionId)) {
+        throw controllerFactory.createValidationError('Valid session ID is required');
+    }
+    return sessionId;
+};
+
 /**
  * Get all upcoming sessions
  */
 const getUpcomingSessions = async (req, res) => {
-    const limit = req.query.limit ? parseInt(req.query.limit) : 5;
+    const requested = parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(requested) && requested > 0
+        ? Math.min(requested, MAX_UPCOMING_LIMIT)
+        : DEFAULT_UPCOMING_LIMIT;
     const sessions = await Session.getUpcomingSessions(limit);
-    
+
     controllerFactory.sendSuccessResponse(res, sessions, 'Upcoming sessions retrieved successfully');
 };
 
@@ -64,9 +104,7 @@ const createSession = async (req, res) => {
         throw controllerFactory.createValidationError('End time must be after start time');
     }
 
-    // Use sessionService directly to create session with all fields
-    // SessionService handles the enhanced fields properly
-    const sessionService = require('../services/sessionService');
+    // sessionService handles the enhanced fields and the hours-based defaults
     const session = await sessionService.createSession({
         title,
         start_time: startDate,
@@ -74,11 +112,10 @@ const createSession = async (req, res) => {
         description: description || '',
         minimum_players,
         maximum_players,
-        // Use hours-based timing (defaults handled by service layer)
         auto_announce_hours,
         reminder_hours,
         confirmation_hours,
-        created_by: req.user?.id || 1 // Use authenticated user ID or default to 1
+        created_by: req.user.id
     });
 
     // Note: Sessions are announced either:
@@ -92,13 +129,8 @@ const createSession = async (req, res) => {
  * Update a session
  */
 const updateSession = async (req, res) => {
-    const { id } = req.params;
-    const sessionId = parseInt(id);
+    const sessionId = parseSessionId(req);
     const { title, start_time, end_time, description, status, cancel_reason } = req.body;
-
-    if (!id || isNaN(sessionId)) {
-        throw controllerFactory.createValidationError('Valid session ID is required');
-    }
 
     // Check if session exists
     const existing = await Session.findById(sessionId);
@@ -130,67 +162,46 @@ const updateSession = async (req, res) => {
         updateData.end_time = endDate;
     }
 
-    // Validate that end time is after start time if both are being updated
-    if (updateData.start_time && updateData.end_time && updateData.end_time <= updateData.start_time) {
-        throw controllerFactory.createValidationError('End time must be after start time');
+    // When either time changes, the result (new value or stored counterpart)
+    // must still end after it starts.
+    if (updateData.start_time || updateData.end_time) {
+        const effectiveStart = new Date(updateData.start_time ?? existing.start_time);
+        const effectiveEnd = new Date(updateData.end_time ?? existing.end_time);
+        if (effectiveEnd <= effectiveStart) {
+            throw controllerFactory.createValidationError('End time must be after start time');
+        }
     }
 
     // Update the session
     updateData.updated_at = new Date();
     const updated = await Session.update(sessionId, updateData);
 
-    // Debug logging for cancellation
-    logger.info('Session update - checking for Discord updates', {
-        sessionId: sessionId,
-        hasAnnouncementId: !!existing.discord_message_id,
-        announcementId: existing.discord_message_id,
-        newStatus: status,
-        oldStatus: existing.status,
-        cancelReason: cancel_reason
-    });
-
     // If session has Discord message, update it
     if (existing.discord_message_id) {
         try {
-            // Use sessionService's updateSessionMessage for proper handling
-            const sessionService = require('../services/sessionService');
             await sessionService.updateSessionMessage(sessionId);
 
             // If session was just cancelled, send a cancellation ping
             if (status === 'cancelled' && existing.status !== 'cancelled') {
-                logger.info('Session cancelled - preparing to send Discord ping', {
-                    sessionId: id,
-                    title: updated.title,
-                    cancelReason: cancel_reason
-                });
-
                 const settings = await sessionService.getDiscordSettings();
-                logger.info('Discord settings retrieved', {
-                    hasCampaignRole: !!settings.campaign_role_id,
-                    hasChannel: !!settings.discord_channel_id,
-                    campaignRoleId: settings.campaign_role_id,
-                    channelId: settings.discord_channel_id
-                });
 
                 if (settings.campaign_role_id && settings.discord_channel_id) {
-                    const discordService = require('../services/discordBrokerService');
                     const cancelMessage = cancel_reason
                         ? `<@&${settings.campaign_role_id}> Session "${updated.title}" has been cancelled. Reason: ${cancel_reason}`
                         : `<@&${settings.campaign_role_id}> Session "${updated.title}" has been cancelled.`;
-
-                    logger.info('Sending Discord cancellation message', {
-                        channelId: settings.discord_channel_id,
-                        message: cancelMessage
-                    });
 
                     await discordService.sendMessage({
                         channelId: settings.discord_channel_id,
                         content: cancelMessage
                     });
 
-                    logger.info('Discord cancellation message sent successfully');
+                    logger.info('Discord cancellation ping sent', {
+                        sessionId,
+                        channelId: settings.discord_channel_id
+                    });
                 } else {
                     logger.warn('Missing Discord settings for cancellation ping', {
+                        sessionId,
                         hasCampaignRole: !!settings.campaign_role_id,
                         hasChannel: !!settings.discord_channel_id
                     });
@@ -200,14 +211,10 @@ const updateSession = async (req, res) => {
             logger.error('Failed to update Discord message for session', {
                 error: error.message,
                 stack: error.stack,
-                sessionId: id
+                sessionId
             });
             // Continue - we don't want to fail the session update if Discord fails
         }
-    } else {
-        logger.info('No announcement message ID - skipping Discord updates', {
-            sessionId: id
-        });
     }
 
     controllerFactory.sendSuccessResponse(res, updated, 'Session updated successfully');
@@ -217,12 +224,7 @@ const updateSession = async (req, res) => {
  * Delete a session
  */
 const deleteSession = async (req, res) => {
-    const { id } = req.params;
-    const sessionId = parseInt(id);
-
-    if (!id || isNaN(sessionId)) {
-        throw controllerFactory.createValidationError('Valid session ID is required');
-    }
+    const sessionId = parseSessionId(req);
 
     // Check if session exists and get Discord info before deletion
     const session = await Session.findById(sessionId);
@@ -250,52 +252,32 @@ const deleteSession = async (req, res) => {
 };
 
 /**
- * Update attendance for a session
+ * Update attendance for a session (legacy endpoint, still the Sessions page
+ * fallback). Goes through recordAttendance so response_type, the session
+ * counts and the Discord embed stay in step with the detailed endpoint, and so
+ * a character_id must be the caller's own active character in the session's
+ * campaign.
  */
 const updateAttendance = async (req, res) => {
-    const { id } = req.params;
-    const sessionId = parseInt(id);
+    const sessionId = parseSessionId(req);
     const { status, character_id } = req.body;
-    const userId = req.user.id;
-    const characterId = character_id ? parseInt(character_id) : null;
 
-    if (!id || isNaN(sessionId)) {
-        throw controllerFactory.createValidationError('Valid session ID is required');
+    if (!status || !LEGACY_ATTENDANCE_INPUTS.includes(status)) {
+        throw controllerFactory.createValidationError(`Valid status is required (${LEGACY_ATTENDANCE_INPUTS.join(', ')})`);
     }
 
-    if (!status || !VALID_ATTENDANCE_STATUSES.includes(status)) {
-        throw controllerFactory.createValidationError(`Valid status is required (${VALID_ATTENDANCE_STATUSES.join(', ')})`);
-    }
-
-    // Check if session exists
-    const session = await Session.findById(sessionId);
-    if (!session) {
-        throw controllerFactory.createNotFoundError('Session not found');
-    }
-
-    // Update attendance
-    const attendance = await Session.updateAttendance(
-        sessionId,
-        userId,
-        characterId,
-        status
-    );
-
-    // If session has Discord message, update it
-    if (session.discord_message_id && session.discord_channel_id) {
-        try {
-            // Use sessionService to update Discord message
-            const sessionService = require('../services/sessionService');
-            await sessionService.updateSessionMessage(sessionId);
-        } catch (error) {
-            logger.error('Failed to update Discord message for attendance update', {
-                error: error.message,
-                sessionId: sessionId
-            });
-            // Continue - we don't want to fail the attendance update if Discord fails
+    let characterId = null;
+    if (character_id) {
+        characterId = parseInt(character_id, 10);
+        if (Number.isNaN(characterId)) {
+            throw controllerFactory.createValidationError('Valid character ID is required');
         }
     }
-    
+
+    const { attendance } = await sessionService.recordAttendance(sessionId, req.user.id, status, {
+        character_id: characterId
+    });
+
     controllerFactory.sendSuccessResponse(res, attendance, 'Attendance updated successfully');
 };
 
@@ -307,8 +289,7 @@ const updateAttendance = async (req, res) => {
  * This is the primitive message -> campaign resolution: look the message up
  * across ALL campaigns, then let the caller act under the owning campaign's
  * context. The 'all' sentinel is hardcoded here and never derived from client
- * input. Per-campaign Discord config (channel -> campaign mapping via
- * campaign_settings) comes in a later phase.
+ * input.
  *
  * @param {string} messageId - Discord message snowflake
  * @returns {Promise<{campaignId: string, sessionId: number|null, legacyMessage: Object|null}|null>}
@@ -333,7 +314,7 @@ const resolveDiscordMessageCampaign = async (messageId) => {
 
         // Fall back to legacy session_messages table
         const legacyResult = await dbUtils.executeQuery(
-            'SELECT session_date, session_time, responses, campaign_id FROM session_messages WHERE message_id = $1',
+            'SELECT session_date, session_time, responses, channel_id, campaign_id FROM session_messages WHERE message_id = $1',
             [messageId]
         );
 
@@ -350,10 +331,102 @@ const resolveDiscordMessageCampaign = async (messageId) => {
 };
 
 /**
+ * The user (id, username) a Discord account is linked to, or null.
+ */
+const findUserByDiscordId = async (discordUserId) => {
+    const result = await dbUtils.executeQuery(
+        'SELECT id, username FROM users WHERE discord_id = $1',
+        [discordUserId]
+    );
+    return result.rows[0] || null;
+};
+
+/**
+ * Handle the character select menu used to link a Discord account.
+ * Responds to the interaction itself.
+ */
+const handleCharacterLinkSelection = async (res, data, discordUserId) => {
+    const characterId = parseInt(data.values?.[0], 10);
+
+    if (!discordUserId || !characterId) {
+        return ephemeral(res, 'Invalid selection.');
+    }
+
+    // custom_id is `link_character_<messageId>_<discordUserId>`; resolve
+    // the originating session message to its campaign so the
+    // campaign-scoped characters lookup below sees the right rows.
+    // Fall back to the current (default) context if it can't be
+    // resolved, preserving single-campaign behavior.
+    const linkOriginMessageId = data.custom_id.split('_')[2];
+    const linkResolved = /^\d{17,19}$/.test(linkOriginMessageId || '')
+        ? await resolveDiscordMessageCampaign(linkOriginMessageId)
+        : null;
+    const linkCampaignId = linkResolved
+        ? linkResolved.campaignId
+        : campaignContext.getCampaignId();
+
+    return campaignContext.runWithCampaign(linkCampaignId, async () => {
+        // Get the user who owns this character, scoped to the session's
+        // campaign so a crafted/stale select value can't link to a
+        // character outside this campaign.
+        const characterResult = await dbUtils.executeQuery(
+            'SELECT user_id, name FROM characters WHERE id = $1 AND campaign_id = $2',
+            [characterId, linkCampaignId]
+        );
+
+        if (characterResult.rows.length === 0) {
+            return ephemeral(res, 'Character not found in this campaign.');
+        }
+
+        const ownerId = characterResult.rows[0].user_id;
+        const characterName = characterResult.rows[0].name;
+
+        if (!ownerId) {
+            return ephemeral(res, 'That character has no player account to link.');
+        }
+
+        // Never overwrite an existing link on the character owner's account
+        // (an unlink must be a deliberate account action, not a menu click).
+        const ownerLink = await dbUtils.executeQuery(
+            'SELECT discord_id FROM users WHERE id = $1',
+            [ownerId]
+        );
+        if (ownerLink.rows.length > 0 && ownerLink.rows[0].discord_id
+            && ownerLink.rows[0].discord_id !== discordUserId) {
+            return ephemeral(res, "⚠️ That character's account is already linked to a Discord account. Ask your DM to unlink it first.");
+        }
+
+        // Check if this Discord ID is already linked to another account
+        const existingLink = await findUserByDiscordId(discordUserId);
+        if (existingLink) {
+            return ephemeral(res, `⚠️ Your Discord account is already linked to ${existingLink.username}.`);
+        }
+
+        // Link the Discord ID to the character's owner. The IS NULL guard keeps
+        // a concurrent link from being overwritten; rowCount tells us if it took.
+        const linkResult = await dbUtils.executeQuery(
+            'UPDATE users SET discord_id = $1 WHERE id = $2 AND discord_id IS NULL',
+            [discordUserId, ownerId]
+        );
+        if (linkResult.rowCount === 0) {
+            return ephemeral(res, '⚠️ That character\'s account could not be linked. It may already be linked to a Discord account.');
+        }
+
+        logger.info('Discord account linked via character selection:', {
+            discordUserId,
+            userId: ownerId,
+            characterId,
+            characterName
+        });
+
+        return ephemeral(res, `✅ Your Discord account has been linked to ${characterName}'s account! You can now use the attendance buttons.`);
+    });
+};
+
+/**
  * Process Discord interaction for session attendance (enhanced version)
  */
 const processSessionInteraction = async (req, res) => {
-    // Add comprehensive logging
     logger.info('Discord interaction received:', {
         type: req.body.type,
         customId: req.body.data?.custom_id,
@@ -371,112 +444,10 @@ const processSessionInteraction = async (req, res) => {
     // Handle character linking select menu
     if (type === 3 && data?.custom_id?.startsWith('link_character_')) {
         try {
-            const discordUserId = member?.user?.id || user?.id;
-            const characterId = parseInt(data.values?.[0]);
-
-            if (!discordUserId || !characterId) {
-                return res.json({
-                    type: 4,
-                    data: { content: "Invalid selection.", flags: 64 }
-                });
-            }
-
-            // custom_id is `link_character_<messageId>_<discordUserId>`; resolve
-            // the originating session message to its campaign so the
-            // campaign-scoped characters lookup below sees the right rows.
-            // Fall back to the current (default) context if it can't be
-            // resolved, preserving single-campaign behavior.
-            const linkOriginMessageId = data.custom_id.split('_')[2];
-            const linkResolved = /^\d{17,19}$/.test(linkOriginMessageId || '')
-                ? await resolveDiscordMessageCampaign(linkOriginMessageId)
-                : null;
-            const linkCampaignId = linkResolved
-                ? linkResolved.campaignId
-                : campaignContext.getCampaignId();
-
-            return await campaignContext.runWithCampaign(linkCampaignId, async () => {
-
-            // Get the user who owns this character, scoped to the session's
-            // campaign so a crafted/stale select value can't link to a
-            // character outside this campaign (campaign_id explicit: RLS is
-            // not yet enforced).
-            const characterResult = await dbUtils.executeQuery(
-                'SELECT user_id, name FROM characters WHERE id = $1 AND campaign_id = $2',
-                [characterId, linkCampaignId]
-            );
-
-            if (characterResult.rows.length === 0) {
-                return res.json({
-                    type: 4,
-                    data: { content: "Character not found in this campaign.", flags: 64 }
-                });
-            }
-
-            const ownerId = characterResult.rows[0].user_id;
-            const characterName = characterResult.rows[0].name;
-
-            // Never overwrite an existing link on the character owner's account
-            // (an unlink must be a deliberate account action, not a menu click).
-            const ownerLink = await dbUtils.executeQuery(
-                'SELECT discord_id FROM users WHERE id = $1',
-                [ownerId]
-            );
-            if (ownerLink.rows.length > 0 && ownerLink.rows[0].discord_id
-                && ownerLink.rows[0].discord_id !== discordUserId) {
-                return res.json({
-                    type: 4,
-                    data: {
-                        content: "⚠️ That character's account is already linked to a Discord account. Ask your DM to unlink it first.",
-                        flags: 64
-                    }
-                });
-            }
-
-            // Check if this Discord ID is already linked to another account
-            const existingLink = await dbUtils.executeQuery(
-                'SELECT username FROM users WHERE discord_id = $1',
-                [discordUserId]
-            );
-
-            if (existingLink.rows.length > 0) {
-                return res.json({
-                    type: 4,
-                    data: {
-                        content: `⚠️ Your Discord account is already linked to ${existingLink.rows[0].username}.`,
-                        flags: 64
-                    }
-                });
-            }
-
-            // Link the Discord ID to the character's owner
-            await dbUtils.executeQuery(
-                'UPDATE users SET discord_id = $1 WHERE id = $2',
-                [discordUserId, ownerId]
-            );
-
-            logger.info('Discord account linked via character selection:', {
-                discordUserId,
-                userId: ownerId,
-                characterId,
-                characterName
-            });
-
-            return res.json({
-                type: 4,
-                data: {
-                    content: `✅ Your Discord account has been linked to ${characterName}'s account! You can now use the attendance buttons.`,
-                    flags: 64
-                }
-            });
-
-            }); // end runWithCampaign(linkCampaignId)
-
+            return await handleCharacterLinkSelection(res, data, member?.user?.id || user?.id);
         } catch (error) {
             logger.error('Character linking error:', error);
-            return res.json({
-                type: 4,
-                data: { content: "An error occurred while linking your account.", flags: 64 }
-            });
+            return ephemeral(res, 'An error occurred while linking your account.');
         }
     }
 
@@ -489,43 +460,19 @@ const processSessionInteraction = async (req, res) => {
             const discordNickname = member?.nick || member?.user?.global_name || member?.user?.username || user?.username;
 
             if (!discordUserId) {
-                return res.json({
-                    type: 4,
-                    data: { content: "Could not identify user.", flags: 64 }
-                });
+                return ephemeral(res, 'Could not identify user.');
             }
 
             // Validate Discord message ID format (Discord snowflakes are 17-19 digits)
             if (!messageId || !/^\d{17,19}$/.test(messageId)) {
                 logger.warn('Invalid Discord message ID format:', { messageId, userId: discordUserId });
-                return res.json({
-                    type: 4,
-                    data: { content: "Invalid request.", flags: 64 }
-                });
+                return ephemeral(res, 'Invalid request.');
             }
 
-            // Map actions to new response types
-            const responseTypeMap = {
-                'yes': 'yes',
-                'no': 'no',
-                'maybe': 'maybe',
-                'late': 'late',
-                'early': 'early',
-                'late_and_early': 'late_and_early',
-                // Handle "attend_" prefix from Discord buttons
-                'attend_yes': 'yes',
-                'attend_no': 'no',
-                'attend_maybe': 'maybe',
-                'attend_late': 'late'
-            };
-
-            const responseType = responseTypeMap[action];
+            const responseType = BUTTON_ACTION_RESPONSE_TYPES[action];
             if (!responseType) {
                 logger.warn('Invalid action received from Discord button:', { action, customId: data.custom_id });
-                return res.json({
-                    type: 4,
-                    data: { content: "Invalid action.", flags: 64 }
-                });
+                return ephemeral(res, 'Invalid action.');
             }
 
             // Resolve the message to its owning campaign under hardcoded
@@ -534,16 +481,13 @@ const processSessionInteraction = async (req, res) => {
             const resolved = await resolveDiscordMessageCampaign(messageId);
 
             if (!resolved) {
-                return res.json({
-                    type: 4,
-                    data: { content: "Session not found.", flags: 64 }
-                });
+                return ephemeral(res, 'Session not found.');
             }
 
             if (resolved.legacyMessage) {
-                // Handle legacy format (existing code) under the message's campaign
+                // Handle legacy format under the message's campaign
                 return await campaignContext.runWithCampaign(resolved.campaignId, () =>
-                    handleLegacySessionInteraction(req, res, resolved.legacyMessage, messageId, discordUserId, discordNickname, action)
+                    handleLegacySessionInteraction(res, resolved.legacyMessage, messageId, discordUserId, discordNickname, action)
                 );
             }
 
@@ -554,14 +498,49 @@ const processSessionInteraction = async (req, res) => {
 
         } catch (error) {
             logger.error('Session interaction error:', error);
-            return res.json({
-                type: 4,
-                data: { content: "An error occurred.", flags: 64 }
-            });
+            return ephemeral(res, 'An error occurred.');
         }
     }
 
-    return res.json({ type: 4, data: { content: "Unknown interaction", flags: 64 } });
+    return ephemeral(res, 'Unknown interaction');
+};
+
+/**
+ * Offer the active characters of the session's campaign in a select menu so an
+ * unlinked Discord user can link their account. Responds to the interaction.
+ */
+const respondWithCharacterLinkPrompt = async (res, campaignId, messageId, discordUserId) => {
+    const charactersResult = await dbUtils.executeQuery(
+        'SELECT c.id, c.name, u.username FROM characters c JOIN users u ON c.user_id = u.id WHERE c.active = true AND c.campaign_id = $1 ORDER BY c.name ASC',
+        [campaignId]
+    );
+
+    if (charactersResult.rows.length === 0) {
+        return ephemeral(res, '⚠️ No characters found for this campaign. Join the campaign in the web app and create a character, then link your Discord account in your profile settings.');
+    }
+
+    const options = charactersResult.rows.map(char => ({
+        label: `${char.name} (${char.username})`,
+        value: char.id.toString(),
+        description: `Link to ${char.username}'s account`
+    }));
+
+    return res.json({
+        type: 4,
+        data: {
+            content: '⚠️ Your Discord account is not linked. Please select your character to link your account:',
+            components: [{
+                type: 1, // Action Row
+                components: [{
+                    type: 3, // Select Menu
+                    custom_id: `link_character_${messageId}_${discordUserId}`,
+                    placeholder: 'Select your character',
+                    options: options.slice(0, 25) // Discord limit is 25 options
+                }]
+            }],
+            flags: 64 // Ephemeral
+        }
+    });
 };
 
 /**
@@ -572,162 +551,104 @@ const processSessionInteraction = async (req, res) => {
  * reads and writes are correctly tenant-scoped.
  */
 const handleEnhancedSessionInteraction = async (res, sessionId, messageId, discordUserId, discordNickname, responseType) => {
-    const sessionService = require('../services/sessionService');
-    const attendanceService = require('../services/attendance/AttendanceService');
+    // The session's campaign (this runs inside runWithCampaign for it).
+    const campaignId = campaignContext.getCampaignId();
 
-            // The session's campaign (this runs inside runWithCampaign for it).
-            const campaignId = campaignContext.getCampaignId();
+    const linkedUser = await findUserByDiscordId(discordUserId);
 
-            // Find user by Discord ID
-            let userId = null;
-            let displayName = discordNickname;
+    if (!linkedUser) {
+        // Only offer characters in THIS session's campaign so a Discord user
+        // can't link to (and respond as) a character from another campaign.
+        logger.warn('Discord user not linked to account, showing character selection:', { discordUserId, discordNickname, campaignId });
+        return respondWithCharacterLinkPrompt(res, campaignId, messageId, discordUserId);
+    }
 
-            const userResult = await dbUtils.executeQuery(
-                'SELECT id, username FROM users WHERE discord_id = $1',
-                [discordUserId]
-            );
+    const userId = linkedUser.id;
 
-            if (userResult.rows.length > 0) {
-                userId = userResult.rows[0].id;
-                displayName = userResult.rows[0].username;
-            } else {
-                // User not found - offer character selection to link account.
-                // Only offer characters in THIS session's campaign so a Discord
-                // user can't link to (and respond as) a character from another
-                // campaign. campaign_id is filtered explicitly because RLS is
-                // not yet enforced.
-                logger.warn('Discord user not linked to account, showing character selection:', { discordUserId, discordNickname, campaignId });
+    // Membership gate: a linked user may only respond if they own an
+    // active character in THIS session's campaign. Without this, a user
+    // who belongs to another campaign (or never joined this one) could
+    // react and be recorded as attending, which then leaked them into
+    // that campaign's reminders.
+    let characterId = null;
+    try {
+        characterId = await attendanceService.getActiveCharacterInCampaign(userId, campaignId);
+    } catch (charError) {
+        logger.error('Error looking up character for Discord attendance:', {
+            error: charError.message,
+            stack: charError.stack,
+            userId,
+            discordUserId,
+            sessionId,
+            campaignId
+        });
+        return ephemeral(res, 'An error occurred while recording your response.');
+    }
 
-                const charactersResult = await dbUtils.executeQuery(
-                    'SELECT c.id, c.name, u.username FROM characters c JOIN users u ON c.user_id = u.id WHERE c.active = true AND c.campaign_id = $1 ORDER BY c.name ASC',
-                    [campaignId]
-                );
+    if (!characterId) {
+        logger.warn('Discord attendance refused - user has no active character in session campaign:', {
+            userId,
+            discordUserId,
+            sessionId,
+            campaignId
+        });
+        return ephemeral(res, "⚠️ You're not in this campaign, so you can't respond to its sessions. Join the campaign in the web app and create a character first.");
+    }
 
-                if (charactersResult.rows.length === 0) {
-                    return res.json({
-                        type: 4,
-                        data: {
-                            content: `⚠️ No characters found for this campaign. Join the campaign in the web app and create a character, then link your Discord account in your profile settings.`,
-                            flags: 64
-                        }
-                    });
-                }
+    logger.info('Found active character for Discord attendance:', { userId, characterId, discordUserId, campaignId });
 
-                // Create select menu with characters
-                const options = charactersResult.rows.map(char => ({
-                    label: `${char.name} (${char.username})`,
-                    value: char.id.toString(),
-                    description: `Link to ${char.username}'s account`
-                }));
+    // Record attendance (Discord update is queued in the outbox within the transaction)
+    await sessionService.recordAttendance(sessionId, userId, responseType, {
+        discord_id: discordUserId,
+        character_id: characterId
+    });
 
-                return res.json({
-                    type: 4,
-                    data: {
-                        content: `⚠️ Your Discord account is not linked. Please select your character to link your account:`,
-                        components: [{
-                            type: 1, // Action Row
-                            components: [{
-                                type: 3, // Select Menu
-                                custom_id: `link_character_${messageId}_${discordUserId}`,
-                                placeholder: 'Select your character',
-                                options: options.slice(0, 25) // Discord limit is 25 options
-                            }]
-                        }],
-                        flags: 64 // Ephemeral
-                    }
-                });
-            }
+    const reactionEmoji = RESPONSE_EMOJI_MAP[responseType] || '❓';
 
-            // Membership gate: a linked user may only respond if they own an
-            // active character in THIS session's campaign. Without this, a user
-            // who belongs to another campaign (or never joined this one) could
-            // react and be recorded as attending, which then leaked them into
-            // that campaign's reminders.
-            let characterId = null;
-            try {
-                characterId = await attendanceService.getActiveCharacterInCampaign(userId, campaignId);
-            } catch (charError) {
-                logger.error('Error looking up character for Discord attendance:', {
-                    error: charError.message,
-                    stack: charError.stack,
-                    userId,
-                    discordUserId,
-                    sessionId,
-                    campaignId
-                });
-                return res.json({
-                    type: 4,
-                    data: { content: "An error occurred while recording your response.", flags: 64 }
-                });
-            }
+    // Update Discord reaction tracking: one current response per user and
+    // message, so switching from yes to no replaces the earlier row.
+    await dbUtils.executeQuery(
+        'DELETE FROM discord_reaction_tracking WHERE message_id = $1 AND user_discord_id = $2 AND reaction_emoji <> $3',
+        [messageId, discordUserId, reactionEmoji]
+    );
+    await dbUtils.executeQuery(`
+        INSERT INTO discord_reaction_tracking
+        (message_id, user_discord_id, reaction_emoji, session_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (message_id, user_discord_id, reaction_emoji)
+        DO UPDATE SET reaction_time = CURRENT_TIMESTAMP
+    `, [messageId, discordUserId, RESPONSE_EMOJI_MAP[responseType] || '❓', sessionId]);
 
-            if (!characterId) {
-                logger.warn('Discord attendance refused - user has no active character in session campaign:', {
-                    userId,
-                    discordUserId,
-                    sessionId,
-                    campaignId
-                });
-                return res.json({
-                    type: 4,
-                    data: {
-                        content: `⚠️ You're not in this campaign, so you can't respond to its sessions. Join the campaign in the web app and create a character first.`,
-                        flags: 64
-                    }
-                });
-            }
+    // Get updated session and attendance data for immediate embed update
+    const session = await sessionService.getSession(sessionId);
+    const attendance = await sessionService.getSessionAttendance(sessionId);
 
-            logger.info('Found active character for Discord attendance:', { userId, characterId, discordUserId, campaignId });
+    const embed = await sessionDiscordService.createSessionEmbed(session, attendance);
+    const components = sessionDiscordService.createAttendanceButtons();
 
-            // Record attendance (Discord update is now queued in outbox within transaction)
-            await sessionService.recordAttendance(sessionId, userId, responseType, {
-                discord_id: discordUserId,
-                character_id: characterId
-            });
-
-            // Update Discord reaction tracking
-            await dbUtils.executeQuery(`
-                INSERT INTO discord_reaction_tracking
-                (message_id, user_discord_id, reaction_emoji, session_id)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (message_id, user_discord_id, reaction_emoji)
-                DO UPDATE SET reaction_time = CURRENT_TIMESTAMP
-            `, [messageId, discordUserId, getEmojiForResponseType(responseType), sessionId]);
-
-            // Get updated session and attendance data for immediate embed update
-            const session = await sessionService.getSession(sessionId);
-            const attendance = await sessionService.getSessionAttendance(sessionId);
-
-            // Create updated embed
-            const sessionDiscordService = require('../services/discord/SessionDiscordService');
-            const embed = await sessionDiscordService.createSessionEmbed(session, attendance);
-            const components = sessionDiscordService.createAttendanceButtons();
-
-            // Return immediate update with type 7 (UPDATE_MESSAGE)
-            // This updates the message immediately without waiting for outbox processor
-            return res.json({
-                type: 7, // UPDATE_MESSAGE - immediately updates the message
-                data: {
-                    embeds: [embed],
-                    components: components
-                }
-            });
+    // Return immediate update with type 7 (UPDATE_MESSAGE)
+    // This updates the message immediately without waiting for outbox processor
+    return res.json({
+        type: 7, // UPDATE_MESSAGE - immediately updates the message
+        data: {
+            embeds: [embed],
+            components: components
+        }
+    });
 };
 
 /**
- * Handle legacy session interactions (for backward compatibility)
+ * Handle legacy session_messages interactions (messages posted by
+ * discordController.sendEvent before game_sessions existed).
  */
-const handleLegacySessionInteraction = async (req, res, sessionMessage, messageId, discordUserId, discordNickname, action) => {
+const handleLegacySessionInteraction = async (res, sessionMessage, messageId, discordUserId, discordNickname, action) => {
     try {
         // Get user info
         let displayName = discordNickname;
-        const userResult = await dbUtils.executeQuery(
-            'SELECT id, username FROM users WHERE discord_id = $1',
-            [discordUserId]
-        );
+        const linkedUser = await findUserByDiscordId(discordUserId);
 
-        if (userResult.rows.length > 0) {
-            displayName = userResult.rows[0].username;
+        if (linkedUser) {
+            displayName = linkedUser.username;
         } else {
             // Try character name match
             const charResult = await dbUtils.executeQuery(
@@ -739,36 +660,25 @@ const handleLegacySessionInteraction = async (req, res, sessionMessage, messageI
             }
         }
 
+        // responses is a JSONB column, so pg normally hands back an object;
+        // only parse when it arrives as a string.
         let responses = {};
-
-        logger.info('Processing legacy session interaction - before parsing:', {
-            messageId,
-            discordUserId,
-            displayName,
-            action,
-            rawResponses: sessionMessage.responses,
-            responseType: typeof sessionMessage.responses
-        });
-
-        try {
-            responses = JSON.parse(sessionMessage.responses || '{}');
-        } catch (e) {
-            logger.error('Failed to parse responses JSON:', {
-                error: e.message,
-                rawResponses: sessionMessage.responses
-            });
-            responses = {};
+        const rawResponses = sessionMessage.responses;
+        if (rawResponses && typeof rawResponses === 'object') {
+            responses = { ...rawResponses };
+        } else if (typeof rawResponses === 'string') {
+            try {
+                responses = JSON.parse(rawResponses) || {};
+            } catch (e) {
+                logger.error('Failed to parse legacy session responses JSON:', { error: e.message, messageId });
+                responses = {};
+            }
         }
-
-        logger.info('Parsed responses before update:', responses);
 
         const status = RESPONSE_TYPE_MAP[action];
 
         if (!status) {
-            return res.json({
-                type: 4,
-                data: { content: "Invalid action.", flags: 64 }
-            });
+            return ephemeral(res, 'Invalid action.');
         }
 
         // Ensure all response arrays exist
@@ -779,12 +689,7 @@ const handleLegacySessionInteraction = async (req, res, sessionMessage, messageI
         // Remove user from all lists
         Object.keys(responses).forEach(key => {
             if (Array.isArray(responses[key])) {
-                const beforeCount = responses[key].length;
                 responses[key] = responses[key].filter(u => u.discord_id !== discordUserId);
-                const afterCount = responses[key].length;
-                if (beforeCount !== afterCount) {
-                    logger.info(`Removed user from ${key}: ${beforeCount} -> ${afterCount}`);
-                }
             }
         });
 
@@ -793,8 +698,6 @@ const handleLegacySessionInteraction = async (req, res, sessionMessage, messageI
             discord_id: discordUserId,
             display_name: displayName
         });
-
-        logger.info('Responses after update:', responses);
 
         // Update database
         await dbUtils.executeQuery(
@@ -805,28 +708,12 @@ const handleLegacySessionInteraction = async (req, res, sessionMessage, messageI
         // Update Discord message
         await updateSessionMessageEmbed(messageId, sessionMessage, responses);
 
-        return res.json({
-            type: 4,
-            data: {
-                content: `You are marked as **${status}** for this session.`,
-                flags: 64
-            }
-        });
+        return ephemeral(res, `You are marked as **${status}** for this session.`);
 
     } catch (error) {
         logger.error('Legacy session interaction error:', error);
-        return res.json({
-            type: 4,
-            data: { content: "An error occurred.", flags: 64 }
-        });
+        return ephemeral(res, 'An error occurred.');
     }
-};
-
-/**
- * Get emoji for response type
- */
-const getEmojiForResponseType = (responseType) => {
-    return RESPONSE_EMOJI_MAP[responseType] || '❓';
 };
 
 /**
@@ -834,49 +721,47 @@ const getEmojiForResponseType = (responseType) => {
  */
 const updateSessionMessageEmbed = async (messageId, sessionMessage, responses) => {
     try {
-        // Bot token is global broker infrastructure; the channel id is
-        // per-campaign. This helper only runs under the message's campaign
-        // context (runWithCampaign in the interaction handlers), so the
-        // context resolution is correct.
+        // Bot token is global broker infrastructure; the channel is the one the
+        // message was posted to (falling back to the campaign's current channel
+        // for rows stored without one). Runs under the message's campaign context.
         const settings = await dbUtils.executeQuery(
             'SELECT value FROM settings WHERE name = $1',
             ['discord_bot_token']
         );
 
         const discord_bot_token = settings.rows[0]?.value;
-        const discord_channel_id = await campaignSettings.getCampaignSetting('discord_channel_id');
+        const discord_channel_id = sessionMessage.channel_id
+            || await campaignSettings.getCampaignSetting('discord_channel_id');
 
         // Embed title branding: the message's campaign display name
-        // (campaigns.name), resolved from the per-row campaign context the
-        // interaction handlers establish. Defensive: in a cross-campaign
-        // ('all') context there is no single campaign, so fall back to the
-        // static APP_NAME rather than guessing.
+        // (campaigns.name). In a cross-campaign ('all') context there is no
+        // single campaign, so fall back to the static APP_NAME.
         const contextCampaignId = campaignContext.getCampaignId();
         const campaign_name = (contextCampaignId !== 'all'
             ? await Campaign.getNameById(contextCampaignId)
             : null) || APP_NAME;
-        
+
         if (!discord_bot_token || !discord_channel_id) {
             throw new Error('Discord not configured');
         }
-        
+
         // Format dates
         const startDate = new Date(sessionMessage.session_date);
         const endDate = new Date(sessionMessage.session_time);
-        
+
         const sessionDate = startDate.toLocaleDateString('en-US', {
             weekday: 'long',
             year: 'numeric',
             month: 'long',
             day: 'numeric'
         });
-        
+
         const sessionTime = startDate.toLocaleTimeString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
             hour12: true
         });
-        
+
         // Format response lists
         const formatResponseList = (users) => {
             if (!users || users.length === 0) {
@@ -884,11 +769,11 @@ const updateSessionMessageEmbed = async (messageId, sessionMessage, responses) =
             }
             return users.map(user => user.display_name).join('\n');
         };
-        
+
         const accepted = responses.accepted || [];
         const declined = responses.declined || [];
         const tentative = responses.tentative || [];
-        
+
         // Create updated embed
         const embed = {
             title: `${campaign_name} Session`,
@@ -931,7 +816,7 @@ const updateSessionMessageEmbed = async (messageId, sessionMessage, responses) =
                 text: 'Session Attendance Tracker'
             }
         };
-        
+
         // Keep the same buttons
         const components = [
             {
@@ -961,7 +846,7 @@ const updateSessionMessageEmbed = async (messageId, sessionMessage, responses) =
                 ]
             }
         ];
-        
+
         // Update the message
         await axios.patch(
             `https://discord.com/api/channels/${discord_channel_id}/messages/${messageId}`,
@@ -976,96 +861,9 @@ const updateSessionMessageEmbed = async (messageId, sessionMessage, responses) =
                 }
             }
         );
-        
+
     } catch (error) {
         logger.error('Error updating session message embed:', error.message);
-    }
-};
-
-/**
- * Process Discord interaction for session attendance
- */
-const processDiscordInteraction = async (req, res) => {
-    const { type, data, member, message } = req.body;
-    
-    // Verify this is a component interaction (button click)
-    if (type !== 2 || !data || !data.custom_id) {
-        return res.json({ type: 4, data: { content: "Invalid interaction", flags: 64 } });
-    }
-    
-    try {
-        // Parse the custom_id which should be in format: action:sessionId
-        const [action, sessionIdStr] = data.custom_id.split(':');
-        const sessionId = parseInt(sessionIdStr);
-
-        if (!action || !sessionIdStr || isNaN(sessionId)) {
-            return res.json({ type: 4, data: { content: "Invalid button data", flags: 64 } });
-        }
-
-        // Get Discord user ID
-        const discordUserId = member.user.id;
-        
-        // Find user by Discord ID
-        const userResult = await dbUtils.executeQuery(
-            'SELECT id FROM users WHERE discord_id = $1',
-            [discordUserId]
-        );
-        
-        if (userResult.rows.length === 0) {
-            return res.json({
-                type: 4,
-                data: {
-                    content: "You need to link your Discord account in the web app first.",
-                    flags: 64 // Ephemeral flag - only visible to the user who triggered it
-                }
-            });
-        }
-        
-        const userId = userResult.rows[0].id;
-        
-        // Find user's default character
-        const characterResult = await dbUtils.executeQuery(
-            'SELECT id FROM characters WHERE user_id = $1 AND active = true LIMIT 1',
-            [userId]
-        );
-        
-        const characterId = characterResult.rows.length > 0 ? characterResult.rows[0].id : null;
-        
-        // Map action to status
-        const status = RESPONSE_TYPE_MAP[action];
-        
-        if (!status) {
-            return res.json({ type: 4, data: { content: "Invalid action", flags: 64 } });
-        }
-        
-        // Update attendance
-        await Session.updateAttendance(sessionId, userId, characterId, status);
-
-        // Update the Discord message with new attendance using sessionService
-        const sessionService = require('../services/sessionService');
-        await sessionService.updateSessionMessage(sessionId);
-        
-        // Send ephemeral response to user
-        return res.json({
-            type: 4,
-            data: {
-                content: `You have marked yourself as **${status}** for this session.`,
-                flags: 64 // Ephemeral flag - only visible to the user who triggered it
-            }
-        });
-    } catch (error) {
-        logger.error('Error processing Discord interaction', {
-            error: error.message,
-            body: req.body
-        });
-        
-        return res.json({
-            type: 4,
-            data: {
-                content: "An error occurred while processing your response. Please try again or use the web app.",
-                flags: 64
-            }
-        });
     }
 };
 
@@ -1077,13 +875,13 @@ const deleteDiscordMessage = async (channelId, messageId) => {
     const settings = await dbUtils.executeQuery(
         'SELECT value FROM settings WHERE name = \'discord_bot_token\''
     );
-    
+
     if (settings.rows.length === 0) {
         throw new Error('Discord bot token not configured');
     }
-    
+
     const discord_bot_token = settings.rows[0].value;
-    
+
     try {
         await axios.delete(
             `https://discord.com/api/channels/${channelId}/messages/${messageId}`,
@@ -1094,12 +892,12 @@ const deleteDiscordMessage = async (channelId, messageId) => {
                 }
             }
         );
-        
+
         logger.info('Discord message deleted', {
             channelId,
             messageId
         });
-        
+
         return true;
     } catch (error) {
         logger.error('Error deleting Discord message', {
@@ -1116,45 +914,39 @@ const deleteDiscordMessage = async (channelId, messageId) => {
  * Check and send notifications for upcoming sessions
  */
 const checkAndSendSessionNotifications = async (req, res) => {
-    try {
-        // Find sessions needing notifications
-        const sessions = await Session.findSessionsNeedingNotifications();
-        
-        if (sessions.length === 0) {
-            return controllerFactory.sendSuccessResponse(res, { 
-                message: 'No sessions need notifications',
-                count: 0
+    // Find sessions needing notifications
+    const sessions = await Session.findSessionsNeedingNotifications();
+
+    if (sessions.length === 0) {
+        return controllerFactory.sendSuccessResponse(res, {
+            message: 'No sessions need notifications',
+            count: 0
+        });
+    }
+
+    // Send notifications for each session
+    const results = [];
+
+    for (const session of sessions) {
+        try {
+            await sessionService.postSessionAnnouncement(session.id);
+            results.push({
+                sessionId: session.id,
+                status: 'success'
+            });
+        } catch (error) {
+            results.push({
+                sessionId: session.id,
+                status: 'error',
+                error: error.message
             });
         }
-        
-        // Send notifications for each session
-        const results = [];
-
-        for (const session of sessions) {
-            try {
-                // Use sessionService for Discord notifications
-                const sessionService = require('../services/sessionService');
-                await sessionService.postSessionAnnouncement(session.id);
-                results.push({
-                    sessionId: session.id,
-                    status: 'success'
-                });
-            } catch (error) {
-                results.push({
-                    sessionId: session.id,
-                    status: 'error',
-                    error: error.message
-                });
-            }
-        }
-        
-        controllerFactory.sendSuccessResponse(res, {
-            message: `Processed ${sessions.length} sessions`,
-            results
-        });
-    } catch (error) {
-        throw new Error(`Failed to check and send session notifications: ${error.message}`);
     }
+
+    controllerFactory.sendSuccessResponse(res, {
+        message: `Processed ${sessions.length} sessions`,
+        results
+    });
 };
 
 // Define validation rules
@@ -1175,34 +967,30 @@ module.exports = {
     getUpcomingSessions: controllerFactory.createHandler(getUpcomingSessions, {
         errorMessage: 'Error retrieving upcoming sessions'
     }),
-    
+
     createSession: controllerFactory.createHandler(createSession, {
         errorMessage: 'Error creating session',
         validation: createSessionValidation
     }),
-    
+
     updateSession: controllerFactory.createHandler(updateSession, {
         errorMessage: 'Error updating session',
         validation: updateSessionValidation
     }),
-    
+
     deleteSession: controllerFactory.createHandler(deleteSession, {
         errorMessage: 'Error deleting session'
     }),
-    
+
     updateAttendance: controllerFactory.createHandler(updateAttendance, {
         errorMessage: 'Error updating attendance',
         validation: updateAttendanceValidation
     }),
-    
-    processDiscordInteraction: controllerFactory.createHandler(processDiscordInteraction, {
-        errorMessage: 'Error processing Discord interaction'
-    }),
-    
+
     processSessionInteraction: controllerFactory.createHandler(processSessionInteraction, {
         errorMessage: 'Error processing Discord session interaction'
     }),
-    
+
     checkAndSendSessionNotifications: controllerFactory.createHandler(checkAndSendSessionNotifications, {
         errorMessage: 'Error checking and sending session notifications'
     })
