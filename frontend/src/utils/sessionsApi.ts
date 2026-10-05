@@ -15,6 +15,10 @@ export interface SessionListItem {
     confirmed_names?: string | null;
     maybe_names?: string | null;
     declined_names?: string | null;
+    /** The caller's own response (null when they have not responded). */
+    user_status?: string | null;
+    user_response_type?: string | null;
+    user_character_id?: number | null;
 }
 
 /**
