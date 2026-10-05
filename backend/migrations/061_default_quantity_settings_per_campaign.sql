@@ -1,4 +1,4 @@
--- Migration: 063_default_quantity_settings_per_campaign.sql
+-- Migration: 061_default_quantity_settings_per_campaign.sql
 -- Purpose: Move the three non-secret "item entry" defaults out of the
 --   deployment-global settings table into campaign_settings, so a per-campaign
 --   DM can change them for their own campaign without write access to global
