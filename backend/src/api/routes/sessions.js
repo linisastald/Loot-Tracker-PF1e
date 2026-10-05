@@ -170,21 +170,4 @@ router.get('/:id/attendance/detailed', verifyToken, [
     sessionIdParam
 ], validateRequest, sessionAttendanceNotesController.getDetailedAttendance);
 
-// ========================================================================
-// SESSION NOTES ROUTES
-// ========================================================================
-
-// Add session note (prep request, general note, etc.)
-router.post('/:id/notes', verifyToken, [
-    sessionIdParam,
-    body('note').isString().withMessage('Note content is required').bail().trim().notEmpty().withMessage('Note content is required')
-        .isLength({ max: 2000 }).withMessage('Note must be under 2000 characters'),
-    body('note_type').optional().isIn(['prep_request', 'general', 'dm_note']).withMessage('Invalid note type')
-], validateRequest, sessionAttendanceNotesController.addSessionNote);
-
-// Get session notes
-router.get('/:id/notes', verifyToken, [
-    sessionIdParam
-], validateRequest, sessionAttendanceNotesController.getSessionNotes);
-
 module.exports = router;

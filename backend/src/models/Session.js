@@ -208,39 +208,6 @@ class Session extends BaseModel {
         `, [sessionId, attendingResponses, acceptedStatus]);
         return result.rows;
     }
-
-    /**
-     * Insert a session note.
-     * @returns {Promise<Object>} - The inserted row
-     */
-    async addNote(sessionId, userId, noteType, note) {
-        const result = await dbUtils.executeQuery(`
-            INSERT INTO session_notes (session_id, user_id, note_type, note)
-            VALUES ($1, $2, $3, $4)
-            RETURNING *
-        `, [sessionId, userId, noteType, note]);
-        return result.rows[0];
-    }
-
-    /**
-     * Notes for a session, newest first, with author and character names.
-     * @returns {Promise<Array>}
-     */
-    async getNotes(sessionId) {
-        const result = await dbUtils.executeQuery(`
-            SELECT
-                sn.*,
-                u.username,
-                c.name as character_name
-            FROM session_notes sn
-            JOIN users u ON sn.user_id = u.id
-            LEFT JOIN characters c ON sn.character_id = c.id
-            WHERE sn.session_id = $1
-            ORDER BY sn.created_at DESC
-        `, [sessionId]);
-        return result.rows;
-    }
-
 }
 
 module.exports = new Session();

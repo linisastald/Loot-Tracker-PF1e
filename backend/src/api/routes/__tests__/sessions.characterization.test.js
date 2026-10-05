@@ -455,65 +455,6 @@ describe('attendance/detailed and notes (characterisation)', () => {
     res = await request(app).get('/sessions/9/attendance/detailed');
     expect(res.body).toEqual({ success: false, message: 'Failed to fetch attendance' });
   });
-
-  it('POST notes: INSERT params, default type, 201 body', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
-    let res = await request(app).post('/sessions/9/notes').send({ note: 'hi' });
-    expect(res.status).toBe(201);
-    expect(res.body).toEqual({ success: true, message: 'Note added successfully', data: { id: 1 } });
-    const [sql, params] = dbUtils.executeQuery.mock.calls[0];
-    expect(norm(sql)).toBe('INSERT INTO session_notes (session_id, user_id, note_type, note) VALUES ($1, $2, $3, $4) RETURNING *');
-    expect(params).toEqual(['9', 7, 'general', 'hi']);
-    dbUtils.executeQuery.mockRejectedValueOnce(new Error('x'));
-    res = await request(app).post('/sessions/9/notes').send({ note: 'x' });
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ success: false, message: 'Failed to add note' });
-  });
-
-  it('POST notes enforces its validators (empty note, bad type, non-integer id)', async () => {
-    let res = await request(app).post('/sessions/9/notes').send({});
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Note content is required');
-    res = await request(app).post('/sessions/9/notes').send({ note: 'x', note_type: 'bogus' });
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('Invalid note type');
-    res = await request(app).post('/sessions/abc/notes').send({ note: 'x' });
-    expect(res.status).toBe(400);
-    expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-  });
-
-  it('POST notes: only a DM may write a dm_note', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
-    let res = await request(app).post('/sessions/9/notes').set('x-test-role', 'Player').send({ note: 'x', note_type: 'dm_note' });
-    expect(res.status).toBe(403);
-    expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    res = await request(app).post('/sessions/9/notes').set('x-test-role', 'Player').send({ note: 'x', note_type: 'prep_request' });
-    expect(res.status).toBe(201);
-    res = await request(app).post('/sessions/9/notes').set('x-test-role', 'DM').send({ note: 'x', note_type: 'dm_note' });
-    expect(res.status).toBe(201);
-  });
-
-  it('GET notes: players never receive dm_note notes, DMs do', async () => {
-    dbUtils.executeQuery.mockResolvedValue({
-      rows: [{ id: 1, note_type: 'general' }, { id: 2, note_type: 'dm_note' }],
-    });
-    let res = await request(app).get('/sessions/9/notes').set('x-test-role', 'Player');
-    expect(res.body.data.map(n => n.id)).toEqual([1]);
-    res = await request(app).get('/sessions/9/notes').set('x-test-role', 'DM');
-    expect(res.body.data.map(n => n.id)).toEqual([1, 2]);
-  });
-
-  it('GET notes: SELECT text/params and bodies', async () => {
-    dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
-    let res = await request(app).get('/sessions/9/notes');
-    expect(res.body).toEqual({ success: true, data: [{ id: 1 }] });
-    const [sql, params] = dbUtils.executeQuery.mock.calls[0];
-    expect(norm(sql)).toContain('FROM session_notes sn JOIN users u ON sn.user_id = u.id LEFT JOIN characters c ON sn.character_id = c.id WHERE sn.session_id = $1 ORDER BY sn.created_at DESC');
-    expect(params).toEqual(['9']);
-    dbUtils.executeQuery.mockRejectedValueOnce(new Error('x'));
-    res = await request(app).get('/sessions/9/notes');
-    expect(res.body).toEqual({ success: false, message: 'Failed to fetch notes' });
-  });
 });
 
 describe('W09 input validation and error mapping', () => {
