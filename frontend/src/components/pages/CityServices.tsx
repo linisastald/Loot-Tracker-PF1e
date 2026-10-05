@@ -33,6 +33,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
 import api from '../../utils/api';
+import { availabilityItemLabel } from '../../utils/availabilityPricing';
 import lootService from '../../services/lootService';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -500,7 +501,7 @@ const CityServices: React.FC = () => {
                 options={items}
                 getOptionLabel={(option) => {
                   if (typeof option === 'string') return option;
-                  return `${option.name} (${option.value} gp)`;
+                  return availabilityItemLabel(option);
                 }}
                 value={selectedItem}
                 inputValue={itemInputValue}

@@ -4,7 +4,7 @@ const City = require('../models/City');
 const controllerFactory = require('../utils/controllerFactory');
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
-const { calculateFinalValue } = require('../services/calculateFinalValue');
+const { calculateFinalValue, isWandName, WAND_FULL_CHARGES } = require('../services/calculateFinalValue');
 
 /**
  * Check item availability in a city
@@ -65,25 +65,35 @@ const checkItemAvailability = async (req, res) => {
     itemWeight = item.weight === null || item.weight === undefined ? null : Number(item.weight);
   }
 
+  // The catalog stores a wand's value per charge. An availability check is for
+  // buying a new wand, so price it at full charges.
+  const isWand = isWandName(itemName);
+
   // Add mod values if any (batch fetch all mods at once)
+  let modRows = [];
   if (mod_ids && Array.isArray(mod_ids) && mod_ids.length > 0) {
     const modResult = await dbUtils.executeQuery(
       'SELECT name, valuecalc, plus, target FROM mod WHERE id = ANY($1)',
       [mod_ids]
     );
+    modRows = modResult.rows;
 
     // Enhancement mods carry their bonus in `plus` (valuecalc is NULL for them),
     // so price through the shared calculateFinalValue: plus table (weapon/armor),
     // masterwork, and valuecalc operators. A search with no base item takes its
     // weapon/armor type from the mods' target.
     if (!itemType) {
-      const target = modResult.rows.find((mod) => mod.target === 'weapon' || mod.target === 'armor');
+      const target = modRows.find((mod) => mod.target === 'weapon' || mod.target === 'armor');
       itemType = target ? target.target : null;
     }
+    totalEnhancementPlus = modRows.reduce((sum, mod) => sum + (Number(mod.plus) || 0), 0);
+  }
+
+  if (modRows.length > 0 || isWand) {
     itemValue = calculateFinalValue(
-      itemValue, itemType, itemSubtype, modResult.rows, false, itemName, undefined, undefined, itemWeight
+      itemValue, itemType, itemSubtype, modRows, false, itemName,
+      isWand ? WAND_FULL_CHARGES : undefined, undefined, itemWeight
     );
-    totalEnhancementPlus = modResult.rows.reduce((sum, mod) => sum + (Number(mod.plus) || 0), 0);
   }
 
   // Effective caster level of the item: the higher of the item's intrinsic caster level

@@ -77,6 +77,20 @@ const applyValuecalc = (value, valuecalc, modName) => {
 };
 
 /**
+ * The catalog stores a wand's value PER CHARGE (full-wand price / 50), so the
+ * charge count must be multiplied in. A new, full wand has 50 charges.
+ */
+const WAND_FULL_CHARGES = 50;
+
+/**
+ * Whether an item name denotes a wand (catalog convention: name starts with "wand of").
+ * @param {string} itemName
+ * @returns {boolean}
+ */
+const isWandName = (itemName) =>
+  typeof itemName === 'string' && itemName.toLowerCase().startsWith('wand of');
+
+/**
  * Calculate the final value of an item based on its properties and modifications
  * @param {number} itemValue - Base value of the item
  * @param {string} itemType - Type of the item (weapon, armor, etc.)
@@ -133,7 +147,7 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
     }
 
     // Special case for wands
-    if (itemName && itemName.toLowerCase().startsWith('wand of') && charges) {
+    if (isWandName(itemName) && charges) {
       modifiedValue *= charges;
       logger.debug(`Applied wand charges multiplier: ${charges} -> ${modifiedValue}`);
     }
@@ -194,4 +208,4 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
   }
 };
 
-module.exports = { calculateFinalValue, applyValuecalc, isValidValuecalc };
+module.exports = { calculateFinalValue, applyValuecalc, isValidValuecalc, isWandName, WAND_FULL_CHARGES };

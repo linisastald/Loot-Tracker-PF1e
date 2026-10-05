@@ -127,6 +127,74 @@ describe('itemSearchController', () => {
       );
     });
 
+    it('F-0371 follow-up: checks a wand at full (50) charges, not the per-charge catalog value', async () => {
+      const req = createMockReq({ body: { ...baseBody, item_id: 7 } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Wand of Cure Light Wounds', value: '15', type: 'magic', subtype: 'wand', casterlevel: 1, weight: 1 }] });
+      ItemSearch.calculateAvailability.mockReturnValue({ threshold: 95, percentage: 95, description: '95%', reason: 'available' });
+      ItemSearch.create.mockResolvedValue({ id: 1 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(750, 1000);
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ item_value: 750 }));
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ item_name: 'Wand of Cure Light Wounds', item_value: 750 }),
+        expect.any(String)
+      );
+    });
+
+    it('F-0371 follow-up: wand detection is case-insensitive on the "wand of" prefix', async () => {
+      const req = createMockReq({ body: { ...baseBody, item_id: 7 } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'WAND OF Magic Missile (1st)', value: '15', type: 'magic', subtype: 'wand', casterlevel: 1, weight: 1 }] });
+      ItemSearch.calculateAvailability.mockReturnValue({ threshold: 95, percentage: 95, description: '95%', reason: 'available' });
+      ItemSearch.create.mockResolvedValue({ id: 1 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(750, 1000);
+    });
+
+    it('F-0371 follow-up: a non-wand magic item is not multiplied', async () => {
+      const req = createMockReq({ body: { ...baseBody, item_id: 8 } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Rod of Wonder', value: '15', type: 'magic', subtype: 'rod', casterlevel: 1, weight: 1 }] });
+      ItemSearch.calculateAvailability.mockReturnValue({ threshold: 95, percentage: 95, description: '95%', reason: 'available' });
+      ItemSearch.create.mockResolvedValue({ id: 1 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(15, 1000);
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ item_value: 15 }));
+    });
+
+    it('F-0371 follow-up: a wand with a mod applies the mod to the full-wand price', async () => {
+      const req = createMockReq({ body: { ...baseBody, item_id: 7, mod_ids: [20] } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Wand of Cure Light Wounds', value: '15', type: 'magic', subtype: 'wand', casterlevel: 1, weight: 1 }] })
+        .mockResolvedValueOnce({ rows: [{ name: 'Doubled', valuecalc: '*2', plus: null, target: 'all' }] });
+      ItemSearch.calculateAvailability.mockReturnValue({ threshold: 95, percentage: 95, description: '95%', reason: 'available' });
+      ItemSearch.create.mockResolvedValue({ id: 1 });
+
+      await itemSearchController.checkItemAvailability(req, res);
+
+      // 15 per charge * 50 charges = 750, then *2
+      expect(ItemSearch.calculateAvailability).toHaveBeenCalledWith(1500, 1000);
+    });
+
     it('should return not found when item_id does not exist', async () => {
       const req = createMockReq({
         body: { ...baseBody, item_id: 999 },
