@@ -226,7 +226,7 @@ describe('SessionDiscordService', () => {
         id: 5, created_by: null, start_time: new Date('2026-11-01T19:00:00Z'), title: 'S'
       });
       attendanceService.getSessionAttendance.mockResolvedValue([]);
-      attendanceService.getNonResponders.mockResolvedValue([{ user_discord_id: '111' }]);
+      attendanceService.getNonResponders.mockResolvedValue([{ discord_id: '111' }]);
       jest.spyOn(sessionDiscordService, 'getDiscordSettings')
         .mockResolvedValue({ discord_channel_id: 'chan', campaign_role_id: null });
       jest.spyOn(sessionDiscordService, 'recordReminder').mockResolvedValue();
@@ -255,6 +255,43 @@ describe('SessionDiscordService', () => {
         .rejects.toThrow(/channel not configured/);
       expect(discordBroker.sendMessage).not.toHaveBeenCalled();
       expect(sessionDiscordService.recordReminder).not.toHaveBeenCalled();
+    });
+  });
+
+  // The scheduler cancels early only when this is empty (F-0752).
+  describe('getAutoReminderRecipients', () => {
+    const sessionService = require('../../sessionService');
+
+    beforeEach(() => {
+      sessionService.getSession.mockResolvedValue({ id: 5, created_by: 9 });
+      mockExecuteQuery.mockResolvedValue({ rows: [{ discord_id: 'dm' }] });
+    });
+
+    it('is the non-responders plus maybes, without the DM and without users lacking a Discord id', async () => {
+      attendanceService.getSessionAttendance.mockResolvedValue([
+        { user_id: 1, response_type: 'yes', discord_id: 'a' },
+        { user_id: 2, response_type: 'maybe', discord_id: 'b' },
+        { user_id: 3, response_type: 'no', discord_id: 'c' },
+      ]);
+      attendanceService.getNonResponders.mockResolvedValue([
+        { id: 4, discord_id: 'd' },
+        { id: 9, discord_id: 'dm' },
+        { id: 5, discord_id: null },
+      ]);
+
+      const recipients = await sessionDiscordService.getAutoReminderRecipients(5);
+
+      expect(recipients.map(u => u.discord_id)).toEqual(['d', 'b']);
+    });
+
+    it('is empty when everyone has answered yes/no and only the DM is outstanding', async () => {
+      attendanceService.getSessionAttendance.mockResolvedValue([
+        { user_id: 1, response_type: 'yes', discord_id: 'a' },
+        { user_id: 3, response_type: 'no', discord_id: 'c' },
+      ]);
+      attendanceService.getNonResponders.mockResolvedValue([{ id: 9, discord_id: 'dm' }]);
+
+      await expect(sessionDiscordService.getAutoReminderRecipients(5)).resolves.toEqual([]);
     });
   });
 

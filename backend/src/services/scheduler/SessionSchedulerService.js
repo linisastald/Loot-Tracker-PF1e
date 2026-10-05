@@ -8,6 +8,7 @@ const cron = require('node-cron');
 const timezoneUtils = require('../../utils/timezoneUtils');
 const dbUtils = require('../../utils/dbUtils');
 const campaignContext = require('../../utils/campaignContext');
+const { CANCEL_REMINDER_MIN_AGE_HOURS } = require('../../constants/sessionConstants');
 
 // Cron schedule constants for self-documenting job timing
 const CRON_SCHEDULES = {
@@ -305,8 +306,13 @@ class SessionSchedulerService {
      * It is the ONLY place that cancels sessions automatically (the database
      * trigger that used to do it was dropped in migration 063).
      *
-     * IMPORTANT: Will not auto-cancel unless a reminder has been sent first.
-     * This prevents cancellation before players have been notified.
+     * Cancel rules for a session below minimum_players:
+     *   1. Nobody is left to remind (every expected player has responded, see
+     *      SessionDiscordService.getAutoReminderRecipients): cancel now.
+     *   2. Otherwise a reminder must have been sent first, and the newest one
+     *      must be at least CANCEL_REMINDER_MIN_AGE_HOURS old. Without any
+     *      reminder, one is sent now and the next check decides.
+     * A session with enough confirmed players is confirmed, never cancelled.
      */
     async checkSessionConfirmations() {
         // Lazy load to avoid circular dependency
@@ -331,15 +337,26 @@ class SessionSchedulerService {
                     return;
                 }
 
-                // Before cancelling, check if a reminder has been sent
-                // This prevents cancellation before players have been notified
-                const reminderCheck = await dbUtils.executeQuery(`
-                    SELECT 1 FROM session_reminders
-                    WHERE session_id = $1 AND sent = TRUE
-                    LIMIT 1
-                `, [session.id]);
+                const cancelReason = `Insufficient confirmed players: ${attendanceCount} of ${session.minimum_players} minimum required`;
 
-                if (reminderCheck.rows.length === 0) {
+                // Nobody left to remind: waiting would not change anything.
+                const toRemind = await sessionDiscordService.getAutoReminderRecipients(session.id);
+                if (toRemind.length === 0) {
+                    logger.info(`Session ${session.id} has insufficient players (${attendanceCount}/${session.minimum_players}) and every expected player has responded. Cancelling.`);
+                    await sessionService.cancelSession(session.id, cancelReason);
+                    return;
+                }
+
+                // Otherwise players must have been reminded, and long enough ago
+                const reminderCheck = await dbUtils.executeQuery(`
+                    SELECT COUNT(*) AS sent_count,
+                           COUNT(*) FILTER (WHERE sent_at > NOW() - make_interval(hours => $2::int)) AS recent_count
+                    FROM session_reminders
+                    WHERE session_id = $1 AND sent = TRUE
+                `, [session.id, CANCEL_REMINDER_MIN_AGE_HOURS]);
+                const { sent_count: sentCount, recent_count: recentCount } = reminderCheck.rows[0];
+
+                if (parseInt(sentCount, 10) === 0) {
                     // No reminder sent yet - send one first, don't cancel yet
                     logger.info(`Session ${session.id} has insufficient players (${attendanceCount}/${session.minimum_players}) but no reminder sent yet. Sending reminder before potential cancellation.`);
                     try {
@@ -349,10 +366,11 @@ class SessionSchedulerService {
                         logger.error(`Failed to send pre-cancellation reminder for session ${session.id}:`, reminderError);
                         // Don't cancel if we couldn't send the reminder - try again next check
                     }
+                } else if (parseInt(recentCount, 10) > 0) {
+                    logger.info(`Session ${session.id} has insufficient players but the newest reminder is less than ${CANCEL_REMINDER_MIN_AGE_HOURS} hours old. Not cancelling yet.`);
                 } else {
-                    // Reminder was already sent, now we can proceed with cancellation
-                    logger.info(`Session ${session.id} has insufficient players and reminder already sent. Proceeding with cancellation.`);
-                    await sessionService.cancelSession(session.id, `Insufficient confirmed players: ${attendanceCount} of ${session.minimum_players} minimum required`);
+                    logger.info(`Session ${session.id} has insufficient players and the reminder is old enough. Proceeding with cancellation.`);
+                    await sessionService.cancelSession(session.id, cancelReason);
                 }
             },
             onError: (session, error) => logger.error(`Failed to process confirmation for session ${session.id}:`, error)

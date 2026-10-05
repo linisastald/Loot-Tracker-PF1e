@@ -30,6 +30,7 @@ jest.mock('node-cron', () => ({
 jest.mock('../../discord/SessionDiscordService', () => ({
   postSessionAnnouncement: jest.fn(),
   sendSessionReminder: jest.fn(),
+  getAutoReminderRecipients: jest.fn(),
 }));
 
 jest.mock('../../sessionService', () => ({
@@ -185,16 +186,17 @@ describe('SessionSchedulerService campaign context', () => {
       expect(confirmContext).toBe('4');
     });
 
-    it('runs the reminder-sent check inside the row campaign before cancelling', async () => {
+    it('runs the reminder-age check inside the row campaign before cancelling', async () => {
       mockExecuteQuery
         .mockResolvedValueOnce({ rows: [{ id: 21, minimum_players: 4, campaign_id: 2 }] }) // find work
         .mockImplementationOnce(async () => {
           // reminder check query runs under the row's campaign
           expect(campaignContext.getCampaignId()).toBe('2');
-          return { rows: [{ 1: 1 }] }; // reminder already sent
+          return { rows: [{ sent_count: '1', recent_count: '0' }] }; // reminder old enough
         });
 
       attendanceService.getConfirmedAttendanceCount.mockResolvedValue(1);
+      sessionDiscordService.getAutoReminderRecipients.mockResolvedValue([{ id: 7, discord_id: '777' }]);
       sessionService.cancelSession.mockResolvedValue({});
 
       await scheduler.checkSessionConfirmations();
@@ -225,6 +227,78 @@ describe('SessionSchedulerService campaign context', () => {
         expect.stringContaining('Failed to process confirmation for session 22'),
         expect.any(Error)
       );
+    });
+  });
+
+  // ==========================================================================
+  // Auto-cancel rules (F-0752, F-0753)
+  // ==========================================================================
+  describe('checkSessionConfirmations auto-cancel rules', () => {
+    const underAttended = { id: 30, minimum_players: 4, campaign_id: 1 };
+    const somebodyToRemind = [{ id: 7, discord_id: '777' }];
+
+    const arrange = ({ confirmed, recipients, reminder }) => {
+      mockExecuteQuery.mockResolvedValueOnce({ rows: [underAttended] }); // find work
+      if (reminder) mockExecuteQuery.mockResolvedValueOnce({ rows: [reminder] });
+      attendanceService.getConfirmedAttendanceCount.mockResolvedValue(confirmed);
+      sessionDiscordService.getAutoReminderRecipients.mockResolvedValue(recipients);
+      sessionService.cancelSession.mockResolvedValue({});
+      sessionService.confirmSession.mockResolvedValue({});
+      sessionDiscordService.sendSessionReminder.mockResolvedValue(undefined);
+    };
+
+    it('does not cancel while the reminder is younger than 12 hours', async () => {
+      arrange({ confirmed: 1, recipients: somebodyToRemind, reminder: { sent_count: '1', recent_count: '1' } });
+
+      await scheduler.checkSessionConfirmations();
+
+      expect(sessionService.cancelSession).not.toHaveBeenCalled();
+      expect(sessionDiscordService.sendSessionReminder).not.toHaveBeenCalled();
+    });
+
+    it('cancels when the newest reminder is at least 12 hours old', async () => {
+      arrange({ confirmed: 1, recipients: somebodyToRemind, reminder: { sent_count: '2', recent_count: '0' } });
+
+      await scheduler.checkSessionConfirmations();
+
+      expect(sessionService.cancelSession).toHaveBeenCalledWith(30, expect.stringContaining('1 of 4'));
+    });
+
+    it('asks the database for reminders newer than the named 12 hour constant', async () => {
+      arrange({ confirmed: 1, recipients: somebodyToRemind, reminder: { sent_count: '1', recent_count: '0' } });
+
+      await scheduler.checkSessionConfirmations();
+
+      const [, params] = mockExecuteQuery.mock.calls[1];
+      expect(params).toEqual([30, 12]);
+    });
+
+    it('cancels at the normal check when every expected player has responded and no reminder was sent', async () => {
+      arrange({ confirmed: 1, recipients: [], reminder: null });
+
+      await scheduler.checkSessionConfirmations();
+
+      expect(sessionService.cancelSession).toHaveBeenCalledWith(30, expect.stringContaining('1 of 4'));
+      expect(sessionDiscordService.sendSessionReminder).not.toHaveBeenCalled();
+    });
+
+    it('does not cancel when some players have not responded and no reminder was sent; it sends the reminder', async () => {
+      arrange({ confirmed: 1, recipients: somebodyToRemind, reminder: { sent_count: '0', recent_count: '0' } });
+
+      await scheduler.checkSessionConfirmations();
+
+      expect(sessionService.cancelSession).not.toHaveBeenCalled();
+      expect(sessionDiscordService.sendSessionReminder).toHaveBeenCalledWith(30, 'auto', { isManual: false });
+    });
+
+    it('never cancels a session with enough confirmed players', async () => {
+      arrange({ confirmed: 4, recipients: [], reminder: null });
+
+      await scheduler.checkSessionConfirmations();
+
+      expect(sessionService.confirmSession).toHaveBeenCalledWith(30);
+      expect(sessionService.cancelSession).not.toHaveBeenCalled();
+      expect(sessionDiscordService.getAutoReminderRecipients).not.toHaveBeenCalled();
     });
   });
 

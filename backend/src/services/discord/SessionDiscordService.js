@@ -103,22 +103,8 @@ class SessionDiscordService {
             const attendanceService = require('../attendance/AttendanceService');
 
             const session = await sessionService.getSession(sessionId);
-            const attendanceData = await attendanceService.getSessionAttendance(sessionId);
-
-            const nonResponders = await attendanceService.getNonResponders(sessionId);
-            const maybeResponders = attendanceData.filter(a => a.response_type === 'maybe');
-
-            // Get DM's discord_id to exclude them from reminders
-            let dmDiscordId = null;
-            if (session.created_by) {
-                const dmResult = await dbUtils.executeQuery(
-                    'SELECT discord_id FROM users WHERE id = $1',
-                    [session.created_by]
-                );
-                if (dmResult.rows.length > 0) {
-                    dmDiscordId = dmResult.rows[0].discord_id;
-                }
-            }
+            const { attendanceData, nonResponders, maybeResponders } = await this._getReminderGroups(sessionId);
+            const dmDiscordId = await this._getDmDiscordId(session);
 
             let targetUsers = [];
             let message = '';
@@ -169,13 +155,8 @@ class SessionDiscordService {
             } else {
                 // Always ping individual users, never the role for auto/targeted reminders
                 // Exclude the DM from reminder pings
-                const mentions = targetUsers
-                    .filter(u => {
-                        const discordId = u.user_discord_id || u.discord_id;
-                        return discordId && discordId !== dmDiscordId;
-                    })
-                    .map(u => `<@${u.user_discord_id || u.discord_id}>`)
-                    .filter(mention => mention && !mention.includes('null') && !mention.includes('undefined'))
+                const mentions = this._remindable(targetUsers, dmDiscordId)
+                    .map(u => `<@${u.discord_id}>`)
                     .join(' ');
 
                 if (!mentions) {
@@ -212,6 +193,47 @@ class SessionDiscordService {
             logger.error('Failed to send session reminder:', error);
             throw error;
         }
+    }
+
+    /**
+     * Who the automatic reminder would ping right now: the session's
+     * non-responders plus its maybes, minus the DM and anyone without a
+     * Discord id. Empty means every expected player has answered (or has
+     * nothing to ping), so there is nobody left to remind. The scheduler uses
+     * this to decide whether waiting for a reminder is pointless.
+     * @param {number} sessionId - Session ID
+     * @returns {Promise<Array>} - Users the 'auto' reminder would mention
+     */
+    async getAutoReminderRecipients(sessionId) {
+        const sessionService = require('../sessionService');
+        const session = await sessionService.getSession(sessionId);
+        const { nonResponders, maybeResponders } = await this._getReminderGroups(sessionId);
+        const dmDiscordId = await this._getDmDiscordId(session);
+        return this._remindable([...nonResponders, ...maybeResponders], dmDiscordId);
+    }
+
+    /** Attendance rows plus the non-responder and maybe groups reminders target. */
+    async _getReminderGroups(sessionId) {
+        const attendanceService = require('../attendance/AttendanceService');
+        const attendanceData = await attendanceService.getSessionAttendance(sessionId);
+        const nonResponders = await attendanceService.getNonResponders(sessionId);
+        const maybeResponders = attendanceData.filter(a => a.response_type === 'maybe');
+        return { attendanceData, nonResponders, maybeResponders };
+    }
+
+    /** The DM's discord_id (excluded from reminder pings), or null. */
+    async _getDmDiscordId(session) {
+        if (!session.created_by) return null;
+        const dmResult = await dbUtils.executeQuery(
+            'SELECT discord_id FROM users WHERE id = $1',
+            [session.created_by]
+        );
+        return dmResult.rows.length > 0 ? dmResult.rows[0].discord_id : null;
+    }
+
+    /** Users with a Discord id who are not the DM. */
+    _remindable(users, dmDiscordId) {
+        return users.filter(u => u.discord_id && u.discord_id !== dmDiscordId);
     }
 
     /**
