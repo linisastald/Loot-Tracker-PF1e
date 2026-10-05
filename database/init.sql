@@ -89,10 +89,59 @@ CREATE TABLE ships (
     damage INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
+    -- Extended columns used by backend/src/models/Ship.js. Also added idempotently
+    -- by migration 064 for databases created before they were in init.sql
+    -- (origin: archived migrations 02, 03, 05, 06 and init_complete.sql).
+    ship_type VARCHAR(50),
+    size VARCHAR(20) DEFAULT 'Colossal',
+    cost INTEGER DEFAULT 0,
+    max_speed INTEGER DEFAULT 30,
+    acceleration INTEGER DEFAULT 15,
+    propulsion VARCHAR(100),
+    min_crew INTEGER DEFAULT 1,
+    max_crew INTEGER DEFAULT 10,
+    cargo_capacity INTEGER DEFAULT 10000,
+    max_passengers INTEGER DEFAULT 10,
+    decks INTEGER DEFAULT 1,
+    ramming_damage VARCHAR(20) DEFAULT '1d8',
+    base_ac INTEGER DEFAULT 10,
+    touch_ac INTEGER DEFAULT 10,
+    hardness INTEGER DEFAULT 0,
+    max_hp INTEGER DEFAULT 100,
+    current_hp INTEGER DEFAULT 100,
+    cmb INTEGER DEFAULT 0,
+    cmd INTEGER DEFAULT 10,
+    saves INTEGER DEFAULT 0,
+    initiative INTEGER DEFAULT 0,
+    legacy_damage INTEGER,
+    plunder INTEGER DEFAULT 0,
+    infamy INTEGER DEFAULT 0,
+    disrepute INTEGER DEFAULT 0,
+    sails_oars VARCHAR(100),
+    sailing_check_bonus INTEGER DEFAULT 0,
+    weapons JSONB DEFAULT '[]'::jsonb,
+    officers JSONB DEFAULT '[]'::jsonb,
+    improvements JSONB DEFAULT '[]'::jsonb,
+    cargo_manifest JSONB DEFAULT '{"items": [], "passengers": [], "impositions": []}'::jsonb,
+    ship_notes TEXT,
+    captain_name VARCHAR(255),
+    flag_description TEXT,
+    status VARCHAR(20) DEFAULT 'Active',
+    campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id),
+    CONSTRAINT ships_hp_check CHECK (current_hp >= 0 AND current_hp <= max_hp),
+    CONSTRAINT ships_ac_check CHECK (base_ac >= 0 AND base_ac <= 50 AND touch_ac >= 0 AND touch_ac <= 50),
+    CONSTRAINT ships_crew_check CHECK (min_crew >= 0 AND max_crew >= min_crew),
+    CONSTRAINT ships_capacity_check CHECK (cargo_capacity >= 0 AND max_passengers >= 0),
+    CONSTRAINT ships_campaign_stats_check CHECK (plunder >= 0 AND infamy >= 0 AND disrepute >= 0),
+    CONSTRAINT ships_status_check CHECK (status IN ('PC Active', 'Active', 'Docked', 'Lost', 'Sunk'))
 );
 
 CREATE INDEX idx_ships_campaign_id ON ships(campaign_id);
+CREATE INDEX idx_ships_status ON ships(status);
+CREATE INDEX idx_ships_weapons ON ships USING GIN (weapons);
+CREATE INDEX idx_ships_officers ON ships USING GIN (officers);
+CREATE INDEX idx_ships_improvements ON ships USING GIN (improvements);
+CREATE INDEX idx_ships_cargo ON ships USING GIN (cargo_manifest);
 
 CREATE TABLE outposts (
     id SERIAL PRIMARY KEY,
