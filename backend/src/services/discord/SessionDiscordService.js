@@ -32,7 +32,10 @@ class SessionDiscordService {
                     sessionId,
                     existingMessageId: session.discord_message_id
                 });
-                await this.updateSessionMessage(sessionId);
+                const updated = await this.updateSessionMessage(sessionId);
+                if (!updated) {
+                    return null;
+                }
                 return { id: session.discord_message_id, updated: true };
             }
 
@@ -74,6 +77,13 @@ class SessionDiscordService {
 
                 return messageResult.data;
             }
+
+            // sendMessage returns a failure result instead of throwing.
+            logger.error('Discord rejected session announcement:', {
+                sessionId,
+                error: messageResult?.error?.message || messageResult?.message
+            });
+            return null;
         } catch (error) {
             logger.error('Failed to post session announcement:', error);
             throw error;
@@ -148,6 +158,9 @@ class SessionDiscordService {
             }
 
             const settings = await this.getDiscordSettings();
+            if (!settings.discord_channel_id) {
+                throw new Error('Discord channel not configured for session reminders');
+            }
 
             // For "all" reminders, ping the role if configured, otherwise ping all attendees individually
             let content = '';
@@ -178,6 +191,14 @@ class SessionDiscordService {
                 content
             });
 
+            // sendMessage never throws; it returns ServiceResult.failure. Only a
+            // confirmed send may be recorded, otherwise the scheduler would treat
+            // the players as notified and never retry.
+            if (!messageResult || !messageResult.success) {
+                const reason = messageResult?.error?.message || messageResult?.message || 'unknown error';
+                throw new Error(`Failed to send Discord reminder: ${reason}`);
+            }
+
             // Record reminder
             await this.recordReminder(sessionId, reminderType, targetUsers, options);
 
@@ -206,7 +227,7 @@ class SessionDiscordService {
             const session = await sessionService.getSession(sessionId);
             if (!session || !session.discord_message_id) {
                 logger.info('No message to update for session:', sessionId);
-                return;
+                return true; // nothing to do is not a failure
             }
 
             logger.info('Updating Discord message for session', {
@@ -231,22 +252,33 @@ class SessionDiscordService {
 
             const settings = await this.getDiscordSettings();
             if (settings.discord_bot_token && settings.discord_channel_id) {
-                await discordService.updateMessage({
+                const updateResult = await discordService.updateMessage({
                     channelId: settings.discord_channel_id,
                     messageId: session.discord_message_id,
                     embed,
                     components
                 });
 
+                if (!updateResult || !updateResult.success) {
+                    logger.error('Discord message update failed', {
+                        sessionId,
+                        messageId: session.discord_message_id,
+                        error: updateResult?.error?.message || updateResult?.message
+                    });
+                    return false;
+                }
+
                 logger.info('Discord message updated successfully', {
                     sessionId,
                     messageId: session.discord_message_id
                 });
+                return true;
             } else {
                 logger.warn('Missing Discord settings for message update', {
                     hasToken: !!settings.discord_bot_token,
                     hasChannel: !!settings.discord_channel_id
                 });
+                return false;
             }
         } catch (error) {
             logger.error('Failed to update session message:', {
@@ -254,6 +286,7 @@ class SessionDiscordService {
                 stack: error.stack,
                 sessionId
             });
+            return false;
         }
     }
 

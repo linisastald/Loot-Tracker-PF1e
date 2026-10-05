@@ -430,6 +430,39 @@ describe('DiscordOutboxService', () => {
   // ========================================================================
   // cleanup
   // ========================================================================
+  describe('processMessage Discord failure results (F-0677)', () => {
+    const run = async (type, payload) => {
+      mockExecuteQuery.mockResolvedValue({});
+      await discordOutboxService.processMessage({ id: 9, message_type: type, payload, retry_count: 0 });
+      const sql = mockExecuteQuery.mock.calls.map(c => c[0]).filter(q => typeof q === 'string');
+      return {
+        sent: sql.some(q => q.includes("status = 'sent'")),
+        failed: sql.some(q => q.includes("status = 'failed'") && q.includes('retry_count = retry_count + 1')),
+      };
+    };
+
+    it('marks session_announcement failed when no announcement was posted', async () => {
+      require('../sessionService').postSessionAnnouncement.mockResolvedValueOnce(null);
+      expect(await run('session_announcement', { sessionId: 1 })).toEqual({ sent: false, failed: true });
+    });
+
+    it('marks session_update failed when the update resolves false', async () => {
+      require('../sessionService').updateSessionMessage.mockResolvedValueOnce(false);
+      expect(await run('session_update', { sessionId: 1 })).toEqual({ sent: false, failed: true });
+    });
+
+    it('marks session_cancellation failed when sendMessage returns a failure result', async () => {
+      require('../sessionService').getDiscordSettings.mockResolvedValueOnce({ campaign_role_id: '1', discord_channel_id: '2' });
+      require('../discordBrokerService').sendMessage.mockResolvedValueOnce({ success: false, error: { message: 'x' } });
+      expect(await run('session_cancellation', { message: 'm' })).toEqual({ sent: false, failed: true });
+    });
+
+    it('marks session_update sent when the update succeeds', async () => {
+      require('../sessionService').updateSessionMessage.mockResolvedValueOnce(true);
+      expect(await run('session_update', { sessionId: 1 })).toEqual({ sent: true, failed: false });
+    });
+  });
+
   describe('cleanup', () => {
     it('should delete sent messages older than 7 days', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ rowCount: 5 });

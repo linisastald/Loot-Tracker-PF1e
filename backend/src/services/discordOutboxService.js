@@ -153,11 +153,20 @@ class DiscordOutboxService {
 
             switch (message.message_type) {
                 case 'session_announcement':
-                    await sessionService.postSessionAnnouncement(payload.sessionId);
+                {
+                    // Resolves null/undefined when Discord is unconfigured or the send failed
+                    const announcement = await sessionService.postSessionAnnouncement(payload.sessionId);
+                    if (!announcement) {
+                        throw new Error('Session announcement was not posted to Discord');
+                    }
                     break;
+                }
 
                 case 'session_update':
-                    await sessionService.updateSessionMessage(payload.sessionId);
+                    // Resolves false on a failed or unconfigured Discord update
+                    if ((await sessionService.updateSessionMessage(payload.sessionId)) === false) {
+                        throw new Error('Session message was not updated on Discord');
+                    }
                     break;
 
                 case 'session_cancellation':
@@ -167,10 +176,13 @@ class DiscordOutboxService {
                     const settings = await sessionService.getDiscordSettings();
                     if (settings.campaign_role_id && settings.discord_channel_id) {
                         const discordService = require('./discordBrokerService');
-                        await discordService.sendMessage({
+                        const sendResult = await discordService.sendMessage({
                             channelId: settings.discord_channel_id,
                             content: payload.message
                         });
+                        if (!sendResult || !sendResult.success) {
+                            throw new Error(`Cancellation message send failed: ${sendResult?.error?.message || sendResult?.message || 'unknown error'}`);
+                        }
                     }
                     break;
 

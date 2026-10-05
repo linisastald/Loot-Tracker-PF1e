@@ -212,4 +212,84 @@ describe('SessionDiscordService', () => {
       );
     });
   });
+
+  // -----------------------------------------------------------------
+  // Send results: sendMessage/updateMessage return ServiceResult.failure
+  // instead of throwing, so success must be checked (F-0649).
+  // -----------------------------------------------------------------
+  describe('sendSessionReminder send result handling', () => {
+    const discordBroker = require('../../discordBrokerService');
+    const sessionService = require('../../sessionService');
+
+    beforeEach(() => {
+      sessionService.getSession.mockResolvedValue({
+        id: 5, created_by: null, start_time: new Date('2026-11-01T19:00:00Z'), title: 'S'
+      });
+      attendanceService.getSessionAttendance.mockResolvedValue([]);
+      attendanceService.getNonResponders.mockResolvedValue([{ user_discord_id: '111' }]);
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings')
+        .mockResolvedValue({ discord_channel_id: 'chan', campaign_role_id: null });
+      jest.spyOn(sessionDiscordService, 'recordReminder').mockResolvedValue();
+    });
+
+    it('does not record the reminder and throws when Discord rejects the send', async () => {
+      discordBroker.sendMessage.mockResolvedValue({ success: false, error: { message: 'Missing Access' } });
+
+      await expect(sessionDiscordService.sendSessionReminder(5, 'auto', { isManual: false }))
+        .rejects.toThrow(/Missing Access/);
+      expect(sessionDiscordService.recordReminder).not.toHaveBeenCalled();
+    });
+
+    it('records the reminder only after a confirmed send', async () => {
+      discordBroker.sendMessage.mockResolvedValue({ success: true, data: { id: 'm1' } });
+
+      await sessionDiscordService.sendSessionReminder(5, 'auto', { isManual: false });
+
+      expect(sessionDiscordService.recordReminder).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws before sending when no channel is configured', async () => {
+      sessionDiscordService.getDiscordSettings.mockResolvedValue({ discord_channel_id: null });
+
+      await expect(sessionDiscordService.sendSessionReminder(5, 'auto', { isManual: false }))
+        .rejects.toThrow(/channel not configured/);
+      expect(discordBroker.sendMessage).not.toHaveBeenCalled();
+      expect(sessionDiscordService.recordReminder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('announcement/update result handling (F-0677)', () => {
+    const discordBroker = require('../../discordBrokerService');
+    const sessionService = require('../../sessionService');
+
+    beforeEach(() => {
+      sessionDiscordService.updateSessionMessage.mockRestore();
+      jest.spyOn(sessionDiscordService, 'getDiscordSettings')
+        .mockResolvedValue({ discord_channel_id: 'chan', discord_bot_token: 't' });
+      jest.spyOn(sessionDiscordService, 'createSessionEmbed').mockResolvedValue({ color: 1, fields: [] });
+      attendanceService.getSessionAttendance.mockResolvedValue([]);
+    });
+
+    it('updateSessionMessage resolves false when updateMessage returns a failure result', async () => {
+      sessionService.getSession.mockResolvedValue({ id: 1, discord_message_id: 'm', status: 'scheduled' });
+      discordBroker.updateMessage.mockResolvedValue({ success: false, error: { message: 'boom' } });
+
+      await expect(sessionDiscordService.updateSessionMessage(1)).resolves.toBe(false);
+    });
+
+    it('updateSessionMessage resolves true on success', async () => {
+      sessionService.getSession.mockResolvedValue({ id: 1, discord_message_id: 'm', status: 'scheduled' });
+      discordBroker.updateMessage.mockResolvedValue({ success: true, data: {} });
+
+      await expect(sessionDiscordService.updateSessionMessage(1)).resolves.toBe(true);
+    });
+
+    it('postSessionAnnouncement resolves null when sendMessage fails', async () => {
+      sessionService.getSession.mockResolvedValue({ id: 1, discord_message_id: null });
+      discordBroker.sendMessage.mockResolvedValue({ success: false, error: { message: 'boom' } });
+
+      await expect(sessionDiscordService.postSessionAnnouncement(1)).resolves.toBeNull();
+      expect(mockExecuteQuery).not.toHaveBeenCalled();
+    });
+  });
 });
