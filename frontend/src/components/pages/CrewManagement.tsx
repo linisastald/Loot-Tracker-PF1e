@@ -57,6 +57,12 @@ interface Outpost {
 
 type Location = Ship | Outpost;
 
+// Ships and outposts live in separate tables with independent id sequences, so
+// an id alone is ambiguous. Locations are identified inside this component by a
+// composite key such as "ship:1" / "outpost:1".
+const locationKey = (type: 'ship' | 'outpost', id: number): string => `${type}:${id}`;
+const keyOf = (loc: Location): string => locationKey(loc.type, loc.id);
+
 interface EditingCrew {
   name: string;
   race: string;
@@ -156,15 +162,13 @@ const CrewManagement: React.FC = () => {
   }, [crew, page, rowsPerPage]);
 
   const availableLocationsForMove = useMemo((): Location[] => {
-    return allLocations.filter(loc => loc.id !== selectedCrew?.location_id);
-  }, [allLocations, selectedCrew?.location_id]);
+    if (!selectedCrew) return allLocations;
+    const currentKey = locationKey(selectedCrew.location_type, selectedCrew.location_id);
+    return allLocations.filter(loc => keyOf(loc) !== currentKey);
+  }, [allLocations, selectedCrew]);
 
-  const locationLookup = useMemo((): Record<number, Location> => {
-    const lookup: Record<number, Location> = {};
-    allLocations.forEach(location => {
-      lookup[location.id] = location;
-    });
-    return lookup;
+  const findLocation = useCallback((key: string): Location | undefined => {
+    return allLocations.find(loc => keyOf(loc) === key);
   }, [allLocations]);
 
   const fetchData = useCallback(async (): Promise<void> => {
@@ -183,16 +187,16 @@ const CrewManagement: React.FC = () => {
       setDeceasedCrew(deceasedResponse.data.crew);
       
       // Combine all locations for the dropdown
-      const locations = [
-        ...shipsResponse.data.ships.map(ship => ({ ...ship, type: 'ship' })),
-        ...outpostsResponse.data.outposts.map(outpost => ({ ...outpost, type: 'outpost' }))
+      const locations: Location[] = [
+        ...shipsResponse.data.ships.map((ship: Ship) => ({ ...ship, type: 'ship' as const })),
+        ...outpostsResponse.data.outposts.map((outpost: Outpost) => ({ ...outpost, type: 'outpost' as const }))
       ];
       setAllLocations(locations);
       
       // Find PC Active ship and set as default for recruitment
       const pcActiveShip = shipsResponse.data.ships.find(ship => ship.status === 'PC Active');
       if (pcActiveShip) {
-        setRecruitmentData(prev => ({ ...prev, location_id: pcActiveShip.id }));
+        setRecruitmentData(prev => ({ ...prev, location_id: locationKey('ship', pcActiveShip.id) }));
       }
       
       // Get current Golarion date
@@ -235,7 +239,7 @@ const CrewManagement: React.FC = () => {
       customRace: isCustomRace ? crewMember.race : '',
       age: crewMember.age?.toString() || '',
       description: crewMember.description || '',
-      location_id: crewMember.location_id.toString(),
+      location_id: locationKey(crewMember.location_type, crewMember.location_id),
       ship_position: crewMember.ship_position || '',
       hire_date: crewMember.hire_date ? golarionToInputFormat(
         crewMember.hire_date.year || new Date(crewMember.hire_date).getFullYear(),
@@ -259,7 +263,7 @@ const CrewManagement: React.FC = () => {
       }
 
       // Determine location type from the selected location
-      const selectedLocation = allLocations.find(loc => loc.id.toString() === editingCrew.location_id);
+      const selectedLocation = findLocation(editingCrew.location_id);
       if (!selectedLocation) {
         setError('Invalid location selected');
         return;
@@ -277,7 +281,7 @@ const CrewManagement: React.FC = () => {
         age: editingCrew.age ? parseInt(editingCrew.age) : null,
         description: editingCrew.description,
         location_type: selectedLocation.type,
-        location_id: parseInt(editingCrew.location_id),
+        location_id: selectedLocation.id,
         ship_position: selectedLocation.type === 'ship' ? editingCrew.ship_position : null,
         hire_date: hireDateParsed
       };
@@ -302,7 +306,7 @@ const CrewManagement: React.FC = () => {
   const handleMoveCrew = async (): Promise<void> => {
     try {
       // Determine location type from the selected location
-      const selectedLocation = allLocations.find(loc => loc.id.toString() === moveData.location_id);
+      const selectedLocation = findLocation(moveData.location_id);
       if (!selectedLocation) {
         setError('Invalid location selected');
         return;
@@ -311,7 +315,7 @@ const CrewManagement: React.FC = () => {
       await crewService.moveCrewToLocation(
         selectedCrew!.id,
         selectedLocation.type,
-        parseInt(moveData.location_id),
+        selectedLocation.id,
         selectedLocation.type === 'ship' ? moveData.ship_position : null
       );
       setSuccess('Crew member moved successfully');
@@ -336,7 +340,7 @@ const CrewManagement: React.FC = () => {
         return;
       }
 
-      const selectedLocation = allLocations.find(loc => loc.id.toString() === recruitmentData.location_id);
+      const selectedLocation = findLocation(recruitmentData.location_id);
       if (!selectedLocation) {
         setError('Invalid location selected');
         return;
@@ -385,7 +389,7 @@ const CrewManagement: React.FC = () => {
           age: randomAge,
           description: `${recruitmentMethod} via ${skillTypeLabel} check`,
           location_type: selectedLocation.type,
-          location_id: parseInt(recruitmentData.location_id),
+          location_id: selectedLocation.id,
           ship_position: selectedLocation.type === 'ship' ? 'Crew' : null,
           hire_date: hireDateParsed
         };
@@ -469,7 +473,7 @@ const CrewManagement: React.FC = () => {
                 setRecruitmentData({
                   skillType: 'diplomacy',
                   rollResult: '',
-                  location_id: pcActiveShip ? pcActiveShip.id.toString() : ''
+                  location_id: pcActiveShip ? locationKey('ship', pcActiveShip.id) : ''
                 });
                 setRecruitmentDialogOpen(true);
               }}
@@ -709,11 +713,11 @@ const CrewManagement: React.FC = () => {
                 fullWidth
                 options={allLocations}
                 getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
-                value={allLocations.find(loc => loc.id.toString() === editingCrew.location_id) || null}
+                value={findLocation(editingCrew.location_id) || null}
                 onChange={(event: any, newValue: Location | null) => {
                   setEditingCrew({ 
                     ...editingCrew, 
-                    location_id: newValue ? newValue.id.toString() : '',
+                    location_id: newValue ? keyOf(newValue) : '',
                     ship_position: newValue?.type !== 'ship' ? '' : editingCrew.ship_position
                   });
                 }}
@@ -723,7 +727,7 @@ const CrewManagement: React.FC = () => {
               />
             </Grid>
 
-            {allLocations.find(loc => loc.id.toString() === editingCrew.location_id)?.type === 'ship' && (
+            {findLocation(editingCrew.location_id)?.type === 'ship' && (
               <Grid size={12}>
                 <FormControl fullWidth>
                   <InputLabel>Ship Position</InputLabel>
@@ -780,11 +784,11 @@ const CrewManagement: React.FC = () => {
                 fullWidth
                 options={availableLocationsForMove}
                 getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
-                value={allLocations.find(loc => loc.id.toString() === moveData.location_id) || null}
+                value={findLocation(moveData.location_id) || null}
                 onChange={(event: any, newValue: Location | null) => {
                   setMoveData({ 
                     ...moveData, 
-                    location_id: newValue ? newValue.id.toString() : '',
+                    location_id: newValue ? keyOf(newValue) : '',
                     ship_position: newValue?.type !== 'ship' ? '' : moveData.ship_position
                   });
                 }}
@@ -799,7 +803,7 @@ const CrewManagement: React.FC = () => {
                 )}
               />
             </Grid>
-            {allLocations.find(loc => loc.id.toString() === moveData.location_id)?.type === 'ship' && (
+            {findLocation(moveData.location_id)?.type === 'ship' && (
               <Grid size={12}>
                 <FormControl fullWidth>
                   <InputLabel>Ship Position</InputLabel>
@@ -941,11 +945,11 @@ const CrewManagement: React.FC = () => {
                 fullWidth
                 options={allLocations}
                 getOptionLabel={(option) => `${option.name} (${option.type === 'ship' ? 'Ship' : 'Outpost'})`}
-                value={allLocations.find(loc => loc.id.toString() === recruitmentData.location_id) || null}
+                value={findLocation(recruitmentData.location_id) || null}
                 onChange={(event: any, newValue: Location | null) => {
                   setRecruitmentData({ 
                     ...recruitmentData, 
-                    location_id: newValue ? newValue.id.toString() : ''
+                    location_id: newValue ? keyOf(newValue) : ''
                   });
                 }}
                 renderInput={(params) => (

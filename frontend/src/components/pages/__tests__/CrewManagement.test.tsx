@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
@@ -11,6 +12,8 @@ vi.mock('../../../services/crewService', () => ({
         crew: [
           { id: 1, name: 'Barnabas Bligh', race: 'Human', age: 34, location_id: 1, location_type: 'ship', ship_position: 'Crew' },
           { id: 2, name: 'Crimson Cogward', race: 'Human', age: 29, location_id: 1, location_type: 'ship', ship_position: 'Rigger' },
+          // Outpost id 1 deliberately shares its id with ship id 1
+          { id: 4, name: 'Dockhand Dune', race: 'Human', age: 40, location_id: 1, location_type: 'outpost', ship_position: null },
         ],
       },
     }),
@@ -49,7 +52,7 @@ vi.mock('../../../services/outpostService', () => ({
     getAllOutposts: vi.fn().mockResolvedValue({
       data: {
         outposts: [
-          { id: 10, name: 'Tidewater Rock', type: 'outpost' },
+          { id: 1, name: 'Tidewater Rock', type: 'outpost' },
         ],
       },
     }),
@@ -72,6 +75,7 @@ vi.mock('../../../data/raceData', () => ({
 }));
 
 import CrewManagement from '../CrewManagement';
+import crewService from '../../../services/crewService';
 
 const renderCrewManagement = () => {
   return render(
@@ -154,6 +158,38 @@ describe('CrewManagement', () => {
       // Both crew members are on Man's Promise
       const locationCells = screen.getAllByText("Man's Promise");
       expect(locationCells.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('ship and outpost sharing the same id', () => {
+    it('saves an edit of an outpost crew member with location_type outpost', async () => {
+      const user = userEvent.setup();
+      renderCrewManagement();
+      const row = (await screen.findByText('Dockhand Dune')).closest('tr') as HTMLElement;
+      await user.click(within(row).getByTitle('Edit'));
+      // The dialog must preselect the outpost, not the ship with the same id
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByLabelText(/Location/)).toHaveValue('Tidewater Rock (Outpost)');
+      await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+      await waitFor(() => expect(crewService.updateCrew).toHaveBeenCalled());
+      expect(crewService.updateCrew).toHaveBeenCalledWith(
+        4,
+        expect.objectContaining({ location_type: 'outpost', location_id: 1 })
+      );
+    });
+
+    it('moves a crew member to the outpost, not the same-id ship', async () => {
+      const user = userEvent.setup();
+      renderCrewManagement();
+      const row = (await screen.findByText('Barnabas Bligh')).closest('tr') as HTMLElement;
+      await user.click(within(row).getByTitle('Move'));
+      const dialog = await screen.findByRole('dialog');
+      // Crew is on ship 1: the same-id outpost must still be offered
+      await user.click(within(dialog).getByLabelText(/New Location/));
+      await user.click(await screen.findByRole('option', { name: /Tidewater Rock/ }));
+      await user.click(within(dialog).getByRole('button', { name: 'Move' }));
+      await waitFor(() => expect(crewService.moveCrewToLocation).toHaveBeenCalled());
+      expect(crewService.moveCrewToLocation).toHaveBeenCalledWith(1, 'outpost', 1, null);
     });
   });
 });
