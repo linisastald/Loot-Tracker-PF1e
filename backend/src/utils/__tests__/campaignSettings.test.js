@@ -303,10 +303,13 @@ describe('campaignSettings', () => {
     it('should contain exactly the pinned per-campaign names', () => {
       expect([...campaignSettings.PER_CAMPAIGN_SETTINGS].sort()).toEqual([
         'auto_appraisal_enabled',
+        'auto_split_stacks_enabled',
         'auto_task_generation',
         'average_party_level',
         'campaign_role_id',
         'campaign_timezone',
+        'default_browser_quantity',
+        'default_quantity_enabled',
         'discord_channel_id',
         'discord_integration_enabled',
         'harrow_current_chapter',

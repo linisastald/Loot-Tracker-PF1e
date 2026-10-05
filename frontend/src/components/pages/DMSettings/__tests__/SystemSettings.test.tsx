@@ -20,19 +20,22 @@ vi.mock('../../../../utils/api', () => ({
 const refreshMock = vi.fn().mockResolvedValue(undefined);
 let campaignContextValue: any;
 
-const makeContext = (settings: Record<string, unknown> = {}) => ({
+const makeContext = (settings: Record<string, unknown> = {}, isSuperadmin = false) => ({
   campaigns: [
     { id: 1, name: 'Rise of the Runelords', slug: 'rotrl', role: 'DM' as const },
   ],
   currentCampaign: { id: 1, name: 'Rise of the Runelords', slug: 'rotrl' },
   campaignRole: 'DM' as const,
-  isSuperadmin: false,
+  isSuperadmin,
   campaignSettings: {
     discord_channel_id: '',
     campaign_role_id: '',
     discord_integration_enabled: '0',
     auto_appraisal_enabled: '1',
     campaign_timezone: 'America/New_York',
+    default_quantity_enabled: '0',
+    default_browser_quantity: '1',
+    auto_split_stacks_enabled: '0',
     ...settings,
   },
   loading: false,
@@ -67,25 +70,15 @@ vi.mock('../CampaignThemeSettings', () => ({
 import api from '../../../../utils/api';
 import SystemSettings from '../SystemSettings';
 
-// ----- Default fixture data ---------------------------------------------------
-const buildSettingsList = (overrides: Partial<Record<string, string>> = {}) => {
-  const base: Record<string, string> = {
-    default_browser_quantity: '1',
-    default_quantity_enabled: '0',
-    auto_appraisal_enabled: '1',
-    auto_split_stacks_enabled: '0',
-    ...overrides,
-  };
-  return Object.entries(base).map(([name, value]) => ({ name, value }));
-};
-
-// Only the (global) bot token is still served by /settings/discord; the
+// /settings/discord only reports whether the (global) bot token is set; the
 // channel/role/enabled values are per-campaign and come from the context.
+// The token itself is never returned by the server.
 const defaultDiscordResponse = {
   data: {
-    discord_bot_token: '',
+    discord_bot_token_set: false,
   },
 };
+const SAVED_TOKEN_RESPONSE = { data: { discord_bot_token_set: true } };
 
 const defaultOpenAiResponse = {
   data: { hasKey: false },
@@ -103,18 +96,15 @@ const defaultTimezoneOptionsResponse = {
 
 // Build a get-mock that responds to all startup endpoints, with optional overrides
 const makeGetMock = (opts: {
-  settings?: Array<{ name: string; value: string }>;
   discord?: any;
   openai?: any;
   timezoneOptions?: any;
 } = {}) => {
-  const settings = opts.settings ?? buildSettingsList();
   const discord = opts.discord ?? defaultDiscordResponse;
   const openai = opts.openai ?? defaultOpenAiResponse;
   const timezoneOptions = opts.timezoneOptions ?? defaultTimezoneOptionsResponse;
 
   return vi.fn().mockImplementation((url: string) => {
-    if (url === '/user/settings') return Promise.resolve({ data: settings });
     if (url === '/settings/discord') return Promise.resolve(discord);
     if (url === '/settings/openai-key') return Promise.resolve(openai);
     if (url === '/settings/timezone-options') return Promise.resolve(timezoneOptions);
@@ -230,7 +220,7 @@ describe('SystemSettings', () => {
     });
     (api.get as any).mockImplementation(
       makeGetMock({
-        discord: { data: { discord_bot_token: 'secrettoken' } },
+        discord: SAVED_TOKEN_RESPONSE,
         openai: { data: { hasKey: true } },
       }),
     );
@@ -285,8 +275,9 @@ describe('SystemSettings', () => {
   });
 
   it('never sends the (global) bot token to the per-campaign endpoint', async () => {
+    campaignContextValue = makeContext({}, true);
     (api.get as any).mockImplementation(
-      makeGetMock({ discord: { data: { discord_bot_token: 'secrettoken' } } }),
+      makeGetMock({ discord: SAVED_TOKEN_RESPONSE }),
     );
 
     renderSystemSettings();
@@ -320,8 +311,9 @@ describe('SystemSettings', () => {
   // 5b. Bot token: placeholder mode, typed token saved, field reset (Phase 5b)
   // -----------------------------------------------------------------------
   it('keeps the bot token field empty with a placeholder when a token exists server-side', async () => {
+    campaignContextValue = makeContext({}, true);
     (api.get as any).mockImplementation(
-      makeGetMock({ discord: { data: { discord_bot_token: 'secrettoken' } } }),
+      makeGetMock({ discord: SAVED_TOKEN_RESPONSE }),
     );
 
     renderSystemSettings();
@@ -337,8 +329,9 @@ describe('SystemSettings', () => {
   });
 
   it('saves a typed bot token via the global endpoint and resets the field to placeholder mode', async () => {
+    campaignContextValue = makeContext({}, true);
     (api.get as any).mockImplementation(
-      makeGetMock({ discord: { data: { discord_bot_token: 'old-secret' } } }),
+      makeGetMock({ discord: SAVED_TOKEN_RESPONSE }),
     );
 
     renderSystemSettings();
@@ -369,8 +362,9 @@ describe('SystemSettings', () => {
   });
 
   it('does not send a token write when the bot token field is left untouched', async () => {
+    campaignContextValue = makeContext({}, true);
     (api.get as any).mockImplementation(
-      makeGetMock({ discord: { data: { discord_bot_token: 'old-secret' } } }),
+      makeGetMock({ discord: SAVED_TOKEN_RESPONSE }),
     );
 
     renderSystemSettings();
@@ -393,6 +387,7 @@ describe('SystemSettings', () => {
   });
 
   it('shows the plain placeholder when no token exists server-side yet', async () => {
+    campaignContextValue = makeContext({}, true);
     renderSystemSettings();
 
     await waitFor(() => {
@@ -425,7 +420,7 @@ describe('SystemSettings', () => {
   // -----------------------------------------------------------------------
   // 6. General settings save
   // -----------------------------------------------------------------------
-  it('saves general settings: globals via /user/update-setting, auto-appraisal via the per-campaign endpoint', async () => {
+  it('saves general settings entirely through the per-campaign endpoint, never the global one', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
@@ -438,41 +433,58 @@ describe('SystemSettings', () => {
       expect(screen.getByText(/General settings updated successfully/i)).toBeInTheDocument();
     });
 
-    const globalPuts = (api.put as any).mock.calls
-      .filter(([url]: any[]) => url === '/user/update-setting')
-      .map(([, body]: any[]) => body);
+    const globalPuts = (api.put as any).mock.calls.filter(([url]: any[]) => url === '/user/update-setting');
+    expect(globalPuts).toHaveLength(0);
+
     const campaignPuts = (api.put as any).mock.calls
       .filter(([url]: any[]) => url === '/campaigns/current/settings')
       .map(([, body]: any[]) => body);
-
-    // default_quantity_enabled=0 and auto_split_stacks_enabled=0 stay global
-    expect(globalPuts).toEqual(
+    expect(campaignPuts).toEqual(
       expect.arrayContaining([
         { name: 'default_quantity_enabled', value: '0' },
         { name: 'auto_split_stacks_enabled', value: '0' },
+        { name: 'auto_appraisal_enabled', value: '1' },
       ]),
     );
-    // The dead global 'theme' setting is never written anymore
-    expect(globalPuts).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: 'theme' })]),
-    );
-    // auto_appraisal_enabled (from the campaign context default '1') is per-campaign
-    expect(campaignPuts).toEqual([{ name: 'auto_appraisal_enabled', value: '1' }]);
-    expect(globalPuts).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: 'auto_appraisal_enabled' }),
-      ]),
-    );
-
     // default_browser_quantity should NOT be PUT because default_quantity_enabled is false
-    expect(globalPuts).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: 'default_browser_quantity' }),
-      ]),
+    expect(campaignPuts).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'default_browser_quantity' })]),
     );
-
-    // Context refreshed after the per-campaign write
     expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it('never fetches the global settings listing (secrets) and works for a plain campaign DM', async () => {
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Save General Settings/i })).toBeInTheDocument();
+    });
+
+    const getUrls = (api.get as any).mock.calls.map(([url]: any[]) => url);
+    expect(getUrls).not.toContain('/user/settings');
+    // A non-superadmin DM does not see (or fetch) the global secrets
+    expect(getUrls).not.toContain('/settings/discord');
+    expect(getUrls).not.toContain('/settings/openai-key');
+    expect(screen.queryByLabelText(/Bot Token/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/OpenAI API Key/i)).not.toBeInTheDocument();
+    // The per-campaign Discord fields remain available to the DM
+    expect(screen.getByLabelText(/Channel ID/i)).toBeInTheDocument();
+  });
+
+  it('reads the item-entry defaults from the campaign settings map', async () => {
+    campaignContextValue = makeContext({
+      default_quantity_enabled: '1',
+      default_browser_quantity: '7',
+      auto_split_stacks_enabled: '1',
+    });
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Enable Default Quantity/i)).toBeChecked();
+    });
+    expect(screen.getByRole('spinbutton', { name: /Default Quantity/i })).toHaveValue(7);
+    expect(screen.getByLabelText(/Auto-Split Stacks/i)).toBeChecked();
   });
 
   it('reads auto-appraisal from the campaign settings map', async () => {
@@ -485,15 +497,11 @@ describe('SystemSettings', () => {
     });
   });
 
-  it('PUTs default_browser_quantity when enabled and > 0', async () => {
-    (api.get as any).mockImplementation(
-      makeGetMock({
-        settings: buildSettingsList({
-          default_quantity_enabled: '1',
-          default_browser_quantity: '5',
-        }),
-      }),
-    );
+  it('PUTs default_browser_quantity to the per-campaign endpoint when enabled and > 0', async () => {
+    campaignContextValue = makeContext({
+      default_quantity_enabled: '1',
+      default_browser_quantity: '5',
+    });
 
     renderSystemSettings();
 
@@ -504,12 +512,10 @@ describe('SystemSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: /Save General Settings/i }));
 
     await waitFor(() => {
-      const putCalls = (api.put as any).mock.calls.map(([, body]: any[]) => body);
-      expect(putCalls).toEqual(
-        expect.arrayContaining([
-          { name: 'default_browser_quantity', value: '5' },
-        ]),
-      );
+      expect(api.put).toHaveBeenCalledWith('/campaigns/current/settings', {
+        name: 'default_browser_quantity',
+        value: '5',
+      });
     });
   });
 
@@ -570,136 +576,67 @@ describe('SystemSettings', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 8. Backup database
+  // 8. OpenAI key: superadmin-only, write-only
   // -----------------------------------------------------------------------
-  it('POSTs to /admin/backup-database and triggers a download', async () => {
-    // Stub URL.createObjectURL for jsdom (it doesn't implement it)
-    const createObjectURL = vi.fn().mockReturnValue('blob:fake-url');
-    Object.defineProperty(window.URL, 'createObjectURL', {
-      configurable: true,
-      value: createObjectURL,
+  it('shows the OpenAI key as an empty write-only input with a saved placeholder', async () => {
+    campaignContextValue = makeContext({}, true);
+    (api.get as any).mockImplementation(makeGetMock({ openai: { data: { hasKey: true } } }));
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/OpenAI API Key/i)).toBeInTheDocument();
+    });
+    const input = screen.getByLabelText(/OpenAI API Key/i) as HTMLInputElement;
+    expect(input).toHaveValue('');
+    expect(input).toHaveAttribute('placeholder', 'Key saved — type to replace');
+  });
+
+  it('does not write the OpenAI key when the field is left empty, and writes it when typed', async () => {
+    campaignContextValue = makeContext({}, true);
+    (api.get as any).mockImplementation(makeGetMock({ openai: { data: { hasKey: true } } }));
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/OpenAI API Key/i)).toBeInTheDocument();
     });
 
-    // Spy on createElement so we can inspect/control the anchor element
-    const realCreateElement = document.createElement.bind(document);
-    const linkClick = vi.fn();
-    const createElementSpy = vi
-      .spyOn(document, 'createElement')
-      .mockImplementation((tag: string) => {
-        const el = realCreateElement(tag);
-        if (tag === 'a') {
-          (el as any).click = linkClick;
-        }
-        return el;
+    fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Discord settings updated successfully/i)).toBeInTheDocument();
+    });
+    expect(
+      (api.put as any).mock.calls.filter(([, body]: any[]) => body?.name === 'openai_key'),
+    ).toHaveLength(0);
+
+    const input = screen.getByLabelText(/OpenAI API Key/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'sk-new-key' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/user/update-setting', {
+        name: 'openai_key',
+        value: 'sk-new-key',
       });
-
-    (api.post as any).mockImplementation((url: string) => {
-      if (url === '/admin/backup-database') {
-        return Promise.resolve(new ArrayBuffer(8));
-      }
-      return Promise.resolve({ data: {} });
     });
-
-    renderSystemSettings();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Backup Database/i })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /Backup Database/i }));
-
-    await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith(
-        '/admin/backup-database',
-        { excludeTables: ['min_caster_levels', 'min_costs', 'mod', 'spells', 'item'] },
-        { responseType: 'blob' },
-      );
-    });
-
-    await waitFor(() => {
-      expect(linkClick).toHaveBeenCalled();
-      expect(createObjectURL).toHaveBeenCalled();
-      expect(screen.getByText(/Database backup created successfully/i)).toBeInTheDocument();
-    });
-
-    createElementSpy.mockRestore();
+    await waitFor(() => expect(input).toHaveValue(''));
   });
 
   // -----------------------------------------------------------------------
-  // 9. Restore database
+  // 9. Database backup / restore card was removed (endpoints never existed)
   // -----------------------------------------------------------------------
-  it('disables Restore button until a file is selected, then POSTs FormData on confirm', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-
+  it('does not render the Database Backup & Restore card', async () => {
     renderSystemSettings();
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Restore$/i })).toBeInTheDocument();
+      expect(screen.getByText(/System Settings/i)).toBeInTheDocument();
     });
 
-    // Initially disabled with no file
-    const restoreBtn = screen.getByRole('button', { name: /^Restore$/i });
-    expect(restoreBtn).toBeDisabled();
-
-    // Find the file input (hidden, inside the "Select Backup File" label)
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-    expect(fileInput).not.toBeNull();
-
-    const file = new File(['-- backup --'], 'backup.sql', { type: 'application/sql' });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Selected file: backup.sql/i)).toBeInTheDocument();
-    });
-
-    // Now enabled
-    await waitFor(() => expect(restoreBtn).not.toBeDisabled());
-
-    (api.post as any).mockResolvedValueOnce({ data: { success: true } });
-
-    fireEvent.click(restoreBtn);
-
-    await waitFor(() => {
-      expect(confirmSpy).toHaveBeenCalled();
-      expect(api.post).toHaveBeenCalled();
-    });
-
-    // Verify the call was to /admin/restore-database with a FormData body
-    const restoreCall = (api.post as any).mock.calls.find(
-      ([url]: any[]) => url === '/admin/restore-database',
-    );
-    expect(restoreCall).toBeDefined();
-    expect(restoreCall[1]).toBeInstanceOf(FormData);
-    expect((restoreCall[1] as FormData).get('backupFile')).toBeInstanceOf(File);
-
-    confirmSpy.mockRestore();
-  });
-
-  it('does not call the API when the user cancels the restore confirmation', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-
-    renderSystemSettings();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Restore$/i })).toBeInTheDocument();
-    });
-
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(['-- backup --'], 'backup.sql', { type: 'application/sql' });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() => expect(screen.getByText(/Selected file: backup.sql/i)).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: /^Restore$/i }));
-
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
-
-    const restoreCall = (api.post as any).mock.calls.find(
-      ([url]: any[]) => url === '/admin/restore-database',
-    );
-    expect(restoreCall).toBeUndefined();
-
-    confirmSpy.mockRestore();
+    expect(screen.queryByText(/Database Backup/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Backup Database/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Restore$/i })).not.toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
   // -----------------------------------------------------------------------
@@ -722,20 +659,14 @@ describe('SystemSettings', () => {
   // -----------------------------------------------------------------------
   // 11. Error case
   // -----------------------------------------------------------------------
-  it('shows an error alert when /user/settings rejects', async () => {
-    // Make the settings call (and friends) fail; Promise.all rejects on first error
+  it('shows an error alert when the initial fetch rejects', async () => {
     (api.get as any).mockImplementation((url: string) => {
-      if (url === '/user/settings') {
+      if (url === '/settings/timezone-options') {
         return Promise.reject(new Error('boom'));
       }
-      // Provide benign defaults for the others so the assertion focuses on the error
-      if (url === '/settings/discord') return Promise.resolve(defaultDiscordResponse);
-      if (url === '/settings/openai-key') return Promise.resolve(defaultOpenAiResponse);
-      if (url === '/settings/timezone-options') return Promise.resolve(defaultTimezoneOptionsResponse);
       return Promise.resolve({ data: {} });
     });
 
-    // Silence the expected console.error from the component
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     renderSystemSettings();

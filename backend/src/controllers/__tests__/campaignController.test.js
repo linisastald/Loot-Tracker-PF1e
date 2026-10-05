@@ -658,6 +658,9 @@ describe('campaignController', () => {
         ['infamy_system_enabled', false, '0', 'boolean'],
         ['auto_appraisal_enabled', true, '1', 'boolean'],
         ['auto_task_generation', '0', '0', 'boolean'],
+        ['default_quantity_enabled', '1', '1', 'boolean'],
+        ['auto_split_stacks_enabled', false, '0', 'boolean'],
+        ['default_browser_quantity', '5', '5', 'integer'],
         ['discord_integration_enabled', '1', '1', 'boolean'],
         ['discord_channel_id', '123456789012345678', '123456789012345678', 'string'],
         ['discord_channel_id', '', '', 'string'], // explicit unset
@@ -702,6 +705,9 @@ describe('campaignController', () => {
         ['infamy_system_enabled', 'yes', "infamy_system_enabled must be '0' or '1'"],
         ['auto_appraisal_enabled', 2, "auto_appraisal_enabled must be '0' or '1'"],
         ['auto_task_generation', 'on', "auto_task_generation must be '0' or '1'"],
+        ['default_quantity_enabled', 'yes', "default_quantity_enabled must be '0' or '1'"],
+        ['default_browser_quantity', 0, 'default_browser_quantity must be an integer between 1 and 9999'],
+        ['default_browser_quantity', 'many', 'default_browser_quantity must be an integer between 1 and 9999'],
         ['discord_integration_enabled', 'enabled', "discord_integration_enabled must be '0' or '1'"],
         ['discord_channel_id', 'abc', 'discord_channel_id must be a Discord snowflake'],
         ['discord_channel_id', '1234567890123456', 'discord_channel_id must be a Discord snowflake'], // 16 digits

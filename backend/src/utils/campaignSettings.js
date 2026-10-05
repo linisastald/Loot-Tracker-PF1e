@@ -50,6 +50,9 @@ const PER_CAMPAIGN_SETTINGS = [
   'discord_integration_enabled',
   'discord_channel_id',
   'campaign_role_id',
+  'default_quantity_enabled',
+  'default_browser_quantity',
+  'auto_split_stacks_enabled',
 ];
 
 /**

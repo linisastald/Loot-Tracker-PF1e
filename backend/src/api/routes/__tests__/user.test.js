@@ -36,6 +36,11 @@ jest.mock('../../../controllers/userController', () => {
   return new Proxy({}, { get: (target, prop) => handler(String(prop)) });
 });
 
+jest.mock('../../../controllers/settingsController', () => {
+  const handler = (name) => (req, res) => res.status(200).json({ handler: name });
+  return new Proxy({}, { get: (target, prop) => handler(String(prop)) });
+});
+
 jest.mock('../../../controllers/authController', () => {
   const handler = (name) => (req, res) => res.status(200).json({ handler: name, body: req.body });
   return {
@@ -89,6 +94,18 @@ describe('user routes', () => {
       // used to construct the route's middleware (superadmin enforcement is
       // inside the controller).
       expect(checkRoleArgsAtLoad).toContainEqual(['DM']);
+    });
+  });
+
+  describe('global settings routes (S3)', () => {
+    it('routes GET /settings to the superadmin-only settingsController.getAllSettings', async () => {
+      const res = await request(app).get('/api/user/settings');
+      expect(res.body.handler).toBe('getAllSettings');
+    });
+
+    it('routes PUT /update-setting to the superadmin-only settingsController.updateSetting', async () => {
+      const res = await request(app).put('/api/user/update-setting').send({ name: 'theme', value: 'dark' });
+      expect(res.body.handler).toBe('updateSetting');
     });
   });
 });

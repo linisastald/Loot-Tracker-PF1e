@@ -30,6 +30,8 @@ const BOOLEAN_SETTINGS = [
   'auto_appraisal_enabled',
   'auto_task_generation',
   'discord_integration_enabled',
+  'default_quantity_enabled',
+  'auto_split_stacks_enabled',
 ];
 
 /** Treasure progression tracks accepted by the loot generator. */
@@ -131,6 +133,18 @@ const SCALAR_SETTING_VALIDATORS = {
 
   auto_appraisal_enabled: (value) => validateBooleanValue('auto_appraisal_enabled', value),
   auto_task_generation: (value) => validateBooleanValue('auto_task_generation', value),
+  default_quantity_enabled: (value) => validateBooleanValue('default_quantity_enabled', value),
+  auto_split_stacks_enabled: (value) => validateBooleanValue('auto_split_stacks_enabled', value),
+
+  default_browser_quantity: (value) => {
+    const parsed = parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 9999 || String(parsed) !== String(value).trim()) {
+      throw controllerFactory.createValidationError(
+        'default_browser_quantity must be an integer between 1 and 9999'
+      );
+    }
+    return { value: String(parsed), valueType: 'integer' };
+  },
   discord_integration_enabled: (value) => validateBooleanValue('discord_integration_enabled', value),
 
   discord_channel_id: (value) => {

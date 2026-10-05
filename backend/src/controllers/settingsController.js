@@ -4,7 +4,7 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const timezoneUtils = require('../utils/timezoneUtils');
 const campaignSettings = require('../utils/campaignSettings');
-const { hasDmRights } = require('../utils/roleUtils');
+const { hasDmRights, isSuperadmin } = require('../utils/roleUtils');
 const Campaign = require('../models/Campaign');
 const { APP_NAME } = require('../config/constants');
 const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
@@ -23,10 +23,10 @@ const getDiscordSettings = async (req, res) => {
 
     const settings = { ...globalSettings, ...perCampaign };
 
-    // Mask the bot token for security if it exists
-    if (settings.discord_bot_token) {
-        settings.discord_bot_token = maskSensitiveValue(settings.discord_bot_token);
-    }
+    // The bot token is a secret: never return it (not even partially) - only
+    // whether one is configured. This endpoint is open to every authenticated user.
+    settings.discord_bot_token_set = !!settings.discord_bot_token;
+    delete settings.discord_bot_token;
 
     controllerFactory.sendSuccessResponse(res, settings, 'Discord settings retrieved');
 };
@@ -46,55 +46,142 @@ const getCampaignName = async (req, res) => {
 };
 
 /**
- * Get all application settings
- * Only accessible by DM
+ * Deployment-global settings that may be written through PUT
+ * /api/user/update-setting (superadmin only), with per-name validation.
+ *
+ * Built from the names actually read by code and seeded in
+ * migrations/init.sql: registration_mode (authController), frontend_url
+ * (reset links), discord_bot_token (Discord broker/controller), openai_key
+ * (parseItemDescriptionWithGPT) and the global 'theme' default. Per-campaign
+ * settings live in campaign_settings and are rejected here. 'secret' rules are
+ * never returned by any endpoint (only an "is set" flag) and never logged.
+ *
+ * validate(value) returns the normalized string to store, or throws a
+ * validation error.
+ */
+const REGISTRATION_MODES = ['open', 'invite-only', 'closed'];
+
+const requireNonEmptyString = (name, value, maxLength) => {
+    if (typeof value !== 'string' || !value.trim()) {
+        throw controllerFactory.createValidationError(`${name} must be a non-empty string`);
+    }
+    const trimmed = value.trim();
+    if (trimmed.length > maxLength || /\s/.test(trimmed)) {
+        throw controllerFactory.createValidationError(
+            `${name} must not contain whitespace and must be at most ${maxLength} characters`
+        );
+    }
+    return trimmed;
+};
+
+const GLOBAL_SETTING_RULES = {
+    registration_mode: {
+        valueType: 'string',
+        validate: (value) => {
+            if (!REGISTRATION_MODES.includes(value)) {
+                throw controllerFactory.createValidationError(
+                    "registration_mode must be one of 'open', 'invite-only', or 'closed'"
+                );
+            }
+            return value;
+        }
+    },
+    frontend_url: {
+        valueType: 'text',
+        // '' clears the override (the code then falls back to env/localhost)
+        validate: (value) => {
+            if (value === '' || value === null) return '';
+            let parsed = null;
+            try {
+                parsed = typeof value === 'string' ? new URL(value) : null;
+            } catch (error) {
+                parsed = null;
+            }
+            const valid = parsed
+                && (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+                && !parsed.username && !parsed.password
+                && parsed.pathname === '/' && !parsed.search && !parsed.hash
+                && value.replace(/\/$/, '').toLowerCase() === parsed.origin;
+            if (!valid) {
+                throw controllerFactory.createValidationError(
+                    'frontend_url must be a valid http(s) origin such as https://loot.example.com (no path, query or credentials)'
+                );
+            }
+            return parsed.origin;
+        }
+    },
+    discord_bot_token: {
+        secret: true,
+        valueType: 'text',
+        validate: (value) => requireNonEmptyString('discord_bot_token', value, 200)
+    },
+    openai_key: {
+        secret: true,
+        encrypted: true,
+        valueType: 'encrypted',
+        validate: (value) => requireNonEmptyString('openai_key', value, 300)
+    },
+    theme: {
+        valueType: 'string',
+        validate: (value) => {
+            if (!['dark', 'light'].includes(value)) {
+                throw controllerFactory.createValidationError("theme must be 'dark' or 'light'");
+            }
+            return value;
+        }
+    }
+};
+
+/** Global names readable through GET /api/user/settings (registrations_open / invite_required: legacy, read-only). */
+const READABLE_GLOBAL_SETTINGS = [...Object.keys(GLOBAL_SETTING_RULES), 'registrations_open', 'invite_required'];
+
+/**
+ * List the deployment-global settings (superadmin only).
+ * Secret values (and any value_type='encrypted' row) are NEVER returned:
+ * they come back as { name, value: null, secret: true, is_set }.
  */
 const getAllSettings = async (req, res) => {
-    // This should be protected by middleware to ensure only DMs can access
-    if (!hasDmRights(req)) {
-        throw controllerFactory.createAuthorizationError('Only DMs can access all settings');
+    if (!isSuperadmin(req)) {
+        throw controllerFactory.createAuthorizationError('Only the system administrator can view global settings');
     }
 
-    const result = await dbUtils.executeQuery('SELECT name, value, value_type FROM settings ORDER BY name');
+    const result = await dbUtils.executeQuery(
+        'SELECT name, value, value_type FROM settings WHERE name = ANY($1) ORDER BY name',
+        [READABLE_GLOBAL_SETTINGS]
+    );
 
-    // Convert to a more usable format
-    const settings = {};
-    result.rows.forEach(row => {
-        let value = row.value;
-        // Don't decrypt for getAllSettings - keep encrypted values masked
-        if (row.value_type === 'encrypted') {
-            value = maskSensitiveValue(value);
+    const byName = new Map(result.rows.map(row => [row.name, row]));
+    const settings = [];
+    for (const name of READABLE_GLOBAL_SETTINGS) {
+        const row = byName.get(name);
+        const isSecret = GLOBAL_SETTING_RULES[name]?.secret === true || row?.value_type === 'encrypted';
+        if (isSecret) {
+            settings.push({name, value: null, secret: true, is_set: !!(row && row.value)});
+        } else if (row) {
+            settings.push({name, value: row.value, value_type: row.value_type});
         }
-        settings[row.name] = value;
-    });
+    }
 
-    controllerFactory.sendSuccessResponse(res, settings, 'All settings retrieved');
+    controllerFactory.sendSuccessResponse(res, settings, 'Global settings retrieved');
 };
 
 /**
- * Update a setting
- * Only accessible by DM
+ * Update one deployment-global setting (superadmin only, allowlisted names).
+ * Never echoes or logs the value of a secret.
  */
 const updateSetting = async (req, res) => {
     const {name, value} = req.body;
 
-    // Validate user has DM permissions
-    if (!hasDmRights(req)) {
-        throw controllerFactory.createAuthorizationError('Only DMs can update settings');
+    if (!isSuperadmin(req)) {
+        throw controllerFactory.createAuthorizationError('Only the system administrator can change global settings');
     }
 
-    if (!name) {
+    if (typeof name !== 'string' || !name) {
         throw controllerFactory.createValidationError('Setting name is required');
     }
 
-    // Validate setting name using allowed pattern
-    const validSettingNamePattern = /^[a-z0-9_]+$/;
-    if (!validSettingNamePattern.test(name)) {
-        throw controllerFactory.createValidationError('Setting name must contain only lowercase letters, numbers, and underscores');
-    }
-
     // Per-campaign settings must never be written as global rows (that would
-    // silently change every campaign) — point callers at the campaign endpoint
+    // silently change every campaign) - point callers at the campaign endpoint
     if (campaignSettings.PER_CAMPAIGN_SETTINGS.includes(name)) {
         throw controllerFactory.createValidationError(
             `'${name}' is a per-campaign setting; update it via PUT /api/campaigns/current/settings`
@@ -109,96 +196,27 @@ const updateSetting = async (req, res) => {
         );
     }
 
-    // registration_mode drives the registration flow — constrain it to the
-    // three supported values (scoped validation; other settings are free-form)
-    if (name === 'registration_mode' && !['open', 'invite-only', 'closed'].includes(value)) {
-        throw controllerFactory.createValidationError(
-            "registration_mode must be one of 'open', 'invite-only', or 'closed'"
-        );
+    if (!Object.prototype.hasOwnProperty.call(GLOBAL_SETTING_RULES, name)) {
+        throw controllerFactory.createValidationError(`'${name}' is not a configurable global setting`);
     }
 
-    try {
-        // Encrypt sensitive values before storing
-        let valueToStore = value;
-        let valueType = 'text'; // Default for most settings
+    const rule = GLOBAL_SETTING_RULES[name];
+    const normalized = rule.validate(value);
+    const valueToStore = rule.encrypted ? encryptValue(normalized) : normalized;
 
-        if (name === 'openai_key' && value) {
-            valueToStore = encryptValue(value);
-            valueType = 'encrypted';
-        } else if (name === 'registrations_open') {
-            // (the other boolean settings are per-campaign now and rejected above)
-            valueType = 'boolean';
-        } else if (name === 'registration_mode') {
-            valueType = 'string';
-        }
-        
-        await dbUtils.executeQuery(
-            'INSERT INTO settings (name, value, value_type) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value, value_type = EXCLUDED.value_type',
-            [name, valueToStore, valueType]
-        );
+    await dbUtils.executeQuery(
+        'INSERT INTO settings (name, value, value_type) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value, value_type = EXCLUDED.value_type',
+        [name, valueToStore, rule.valueType]
+    );
 
-        // Log the setting change (mask sensitive values in logs)
-        const logValue = (name === 'openai_key' && value) ? maskSensitiveValue(value) : value;
-        logger.info(`Setting updated: ${name}=${logValue}`, {userId: req.user.id});
+    // Never log the value (secrets live in this table)
+    logger.info(`Global setting updated: ${name}`, {userId: req.user.id});
 
-        controllerFactory.sendSuccessResponse(res, {name, value}, 'Setting updated successfully');
-    } catch (error) {
-        logger.error(`Error updating setting ${name}:`, error);
-        throw error;
-    }
-};
-
-/**
- * Delete a setting
- * Only accessible by DM
- */
-const deleteSetting = async (req, res) => {
-    const {name} = req.params;
-
-    // Validate user has DM permissions
-    if (!hasDmRights(req)) {
-        throw controllerFactory.createAuthorizationError('Only DMs can delete settings');
-    }
-
-    if (!name) {
-        throw controllerFactory.createValidationError('Setting name is required');
-    }
-
-    // Check if this is a protected setting that cannot be deleted
-    const protectedSettings = [
-        'campaign_name',
-        'registration_mode',
-        'registrations_open',
-        'discord_bot_token',
-        'discord_channel_id',
-        'discord_integration_enabled',
-        'infamy_system_enabled',
-        'auto_appraisal_enabled',
-        'openai_key'
-    ];
-
-    if (protectedSettings.includes(name)) {
-        throw controllerFactory.createValidationError(`Cannot delete protected setting: ${name}`);
-    }
-
-    try {
-        const result = await dbUtils.executeQuery('DELETE FROM settings WHERE name = $1 RETURNING *', [name]);
-
-        if (result.rows.length === 0) {
-            throw controllerFactory.createNotFoundError(`Setting not found: ${name}`);
-        }
-
-        // Log the setting deletion
-        logger.info(`Setting deleted: ${name}`, {userId: req.user.id});
-
-        controllerFactory.sendSuccessMessage(res, `Setting ${name} deleted successfully`);
-    } catch (error) {
-        if (error.name === 'NotFoundError') {
-            throw error;
-        }
-        logger.error(`Error deleting setting ${name}:`, error);
-        throw error;
-    }
+    controllerFactory.sendSuccessResponse(
+        res,
+        rule.secret ? {name, is_set: true} : {name, value: normalized},
+        'Setting updated successfully'
+    );
 };
 
 /**
@@ -223,17 +241,6 @@ const fetchSettingsByNames = async (names) => {
     });
 
     return settings;
-};
-
-/**
- * Helper function to mask sensitive values (like API keys and tokens)
- * @param {string} value - The sensitive value to mask
- * @returns {string} - Masked value
- */
-const maskSensitiveValue = (value) => {
-    if (!value || value.length < 8) return '***';
-
-    return value.substring(0, 4) + '...' + value.substring(value.length - 4);
 };
 
 /**
@@ -344,18 +351,17 @@ const updateWeatherForecastDays = async (req, res) => {
 };
 
 /**
- * Get OpenAI key setting (masked for security)
+ * Report whether an OpenAI key is configured (the key itself is never returned)
  */
 const getOpenAiKey = async (req, res) => {
     try {
         const settings = await fetchSettingsByNames(['openai_key']);
         const openaiKey = settings.openai_key;
 
-        // Return masked key or empty if not set
-        const maskedKey = openaiKey ? maskSensitiveValue(decryptValue(openaiKey)) : '';
-
+        // The key is a secret: never return it (not even partially) - only
+        // whether one is configured. This endpoint is open to every
+        // authenticated user (Smart Item Detection availability check).
         controllerFactory.sendSuccessResponse(res, {
-            value: maskedKey,
             hasKey: !!openaiKey
         }, 'OpenAI key setting retrieved');
     } catch (error) {
@@ -444,10 +450,6 @@ module.exports = {
     updateSetting: controllerFactory.createHandler(updateSetting, {
         errorMessage: 'Error updating setting',
         validation: updateSettingValidation
-    }),
-
-    deleteSetting: controllerFactory.createHandler(deleteSetting, {
-        errorMessage: 'Error deleting setting'
     }),
 
     getInfamySystem: controllerFactory.createHandler(getInfamySystem, {

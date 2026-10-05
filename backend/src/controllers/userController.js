@@ -3,7 +3,6 @@ const bcrypt = require('bcryptjs');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
-const campaignSettings = require('../utils/campaignSettings');
 const { hasDmRights } = require('../utils/roleUtils');
 
 /**
@@ -442,63 +441,6 @@ const deleteUser = async (req, res) => {
 };
 
 /**
- * Update a setting (DM only)
- */
-const updateSetting = async (req, res) => {
-    const {name, value} = req.body;
-
-    // Ensure DM permission (should be handled by middleware too)
-    if (!hasDmRights(req)) {
-        throw controllerFactory.createAuthorizationError('Only DMs can update settings');
-    }
-
-    // Per-campaign settings must never be written as global rows (that would
-    // silently change every campaign) — point callers at the campaign endpoint
-    if (campaignSettings.PER_CAMPAIGN_SETTINGS.includes(name)) {
-        throw controllerFactory.createValidationError(
-            `'${name}' is a per-campaign setting; update it via PUT /api/campaigns/current/settings`
-        );
-    }
-
-    // campaign_name is deprecated: the campaign's display name lives on
-    // campaigns.name and is renamed via PATCH /api/campaigns/current
-    if (name === 'campaign_name') {
-        throw controllerFactory.createValidationError(
-            "'campaign_name' is deprecated; rename the campaign via PATCH /api/campaigns/current"
-        );
-    }
-
-    // registration_mode drives the registration flow — constrain it to the
-    // three supported values (scoped validation; other settings are free-form)
-    if (name === 'registration_mode' && !['open', 'invite-only', 'closed'].includes(value)) {
-        throw controllerFactory.createValidationError(
-            "registration_mode must be one of 'open', 'invite-only', or 'closed'"
-        );
-    }
-
-    await dbUtils.executeQuery(
-        'INSERT INTO settings (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value',
-        [name, value]
-    );
-
-    logger.info(`Setting "${name}" updated to "${value}" by DM ${req.user.id}`);
-    controllerFactory.sendSuccessMessage(res, 'Setting updated successfully');
-};
-
-/**
- * Get all settings (DM only)
- */
-const getSettings = async (req, res) => {
-    // Ensure DM permission (should be handled by middleware too)
-    if (!hasDmRights(req)) {
-        throw controllerFactory.createAuthorizationError('Only DMs can view all settings');
-    }
-
-    const result = await dbUtils.executeQuery('SELECT * FROM settings');
-    controllerFactory.sendSuccessResponse(res, result.rows, 'Settings retrieved successfully');
-};
-
-/**
  * Get all user accounts (superadmin only — account-level listing)
  */
 const getAllUsers = async (req, res) => {
@@ -651,10 +593,6 @@ const deleteUserValidation = {
     requiredFields: ['userId']
 };
 
-const updateSettingValidation = {
-    requiredFields: ['name', 'value']
-};
-
 // Create handlers with validation and error handling
 module.exports = {
     changeEmail: controllerFactory.createHandler(changeEmail, {
@@ -710,15 +648,6 @@ module.exports = {
     deleteUser: controllerFactory.createHandler(deleteUser, {
         errorMessage: 'Error deleting user',
         validation: deleteUserValidation
-    }),
-
-    updateSetting: controllerFactory.createHandler(updateSetting, {
-        errorMessage: 'Error updating setting',
-        validation: updateSettingValidation
-    }),
-
-    getSettings: controllerFactory.createHandler(getSettings, {
-        errorMessage: 'Error fetching settings'
     }),
 
     getAllUsers: controllerFactory.createHandler(getAllUsers, {

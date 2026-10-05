@@ -2,15 +2,14 @@
  * Unit tests for settingsController
  *
  * Tests all settings endpoints:
- * - getDiscordSettings: retrieves Discord config with masked token
+ * - getDiscordSettings: retrieves Discord config; token never returned (is-set flag only)
  * - getCampaignName: retrieves campaign name with default fallback
- * - getAllSettings: DM-only access, masks encrypted values
- * - updateSetting: DM-only, validates name pattern, encrypts sensitive values
- * - deleteSetting: DM-only, protects core settings, handles not found
+ * - getAllSettings: superadmin-only, never returns secret values
+ * - updateSetting: superadmin-only, allowlisted names, per-name validation, no secret logging
  * - getInfamySystem: retrieves infamy system flag
  * - getAveragePartyLevel: retrieves APL with default
  * - getRegion: retrieves region with default
- * - getOpenAiKey: retrieves masked OpenAI key
+ * - getOpenAiKey: reports whether a key is set (never the key)
  * - getCampaignTimezone: retrieves campaign timezone
  * - getTimezoneOptions: returns list of timezone options
  * - updateCampaignTimezone: DM-only, validates timezone, clears cache
@@ -66,7 +65,7 @@ describe('settingsController', () => {
   // ─── getDiscordSettings ─────────────────────────────────────────
 
   describe('getDiscordSettings', () => {
-    it('should return Discord settings with masked bot token', async () => {
+    it('should return Discord settings without any part of the bot token', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -82,9 +81,11 @@ describe('settingsController', () => {
 
       expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
-      // Token should be masked
-      expect(data.discord_bot_token).not.toContain('MTIzNDU2');
-      expect(data.discord_bot_token).toContain('...');
+      // The token must never be returned, not even partially - only an "is set" flag
+      expect(data.discord_bot_token).toBeUndefined();
+      expect(JSON.stringify(data)).not.toContain('MTIz');
+      expect(JSON.stringify(data)).not.toContain('mnop');
+      expect(data.discord_bot_token_set).toBe(true);
       expect(data.discord_channel_id).toBe('123456789');
       expect(data.discord_integration_enabled).toBe('true');
     });
@@ -100,6 +101,7 @@ describe('settingsController', () => {
       expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
       expect(data.discord_bot_token).toBeUndefined();
+      expect(data.discord_bot_token_set).toBe(false);
     });
 
     it('should return 500 when query fails', async () => {
@@ -160,63 +162,183 @@ describe('settingsController', () => {
     });
   });
 
-  // ─── getAllSettings ─────────────────────────────────────────────
+  // ─── getAllSettings (global settings, superadmin only) ──────────
 
   describe('getAllSettings', () => {
-    it('should return all settings for DM users with encrypted values masked', async () => {
-      const req = createMockReq({ user: { id: 1, role: 'DM' } });
+    const SECRET_B64 = 'c2stZXhhbXBsZWtleS0xMjM0NTY3ODkw';
+    const BOT_TOKEN = 'MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.Gg1234.abcdefghijklmnop';
+
+    const superReq = () => createMockReq({
+      user: { id: 1, role: 'Player' },
+      campaignRole: 'Player',
+      isSuperadmin: true,
+    });
+
+    it('should return settings to a superadmin with no secret values', async () => {
       const res = createMockRes();
 
       dbUtils.executeQuery.mockResolvedValue({
         rows: [
-          { name: 'campaign_name', value: 'Rise of the Runelords', value_type: 'text' },
-          { name: 'openai_key', value: 'c2stZXhhbXBsZWtleS0xMjM0NTY3ODkw', value_type: 'encrypted' },
-          { name: 'registrations_open', value: 'true', value_type: 'boolean' },
+          { name: 'registration_mode', value: 'invite-only', value_type: 'string' },
+          { name: 'openai_key', value: SECRET_B64, value_type: 'encrypted' },
+          { name: 'discord_bot_token', value: BOT_TOKEN, value_type: 'text' },
+          { name: 'frontend_url', value: 'https://loot.example.com', value_type: 'text' },
         ],
       });
 
-      await settingsController.getAllSettings(req, res);
+      await settingsController.getAllSettings(superReq(), res);
 
       expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
-      expect(data.campaign_name).toBe('Rise of the Runelords');
-      // Encrypted values should be masked, not the raw base64
-      expect(data.openai_key).toContain('...');
-      expect(data.registrations_open).toBe('true');
+      const serialized = JSON.stringify(data);
+      expect(serialized).not.toContain(SECRET_B64);
+      expect(serialized).not.toContain(BOT_TOKEN);
+      expect(data.find(s => s.name === 'registration_mode').value).toBe('invite-only');
+      expect(data.find(s => s.name === 'frontend_url').value).toBe('https://loot.example.com');
+      expect(data.find(s => s.name === 'openai_key')).toEqual({
+        name: 'openai_key', value: null, secret: true, is_set: true
+      });
+      expect(data.find(s => s.name === 'discord_bot_token')).toEqual({
+        name: 'discord_bot_token', value: null, secret: true, is_set: true
+      });
     });
 
-    it('should reject non-DM users', async () => {
+    it('should report is_set false for secrets with no row', async () => {
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await settingsController.getAllSettings(superReq(), res);
+
+      const data = res.success.mock.calls[0][0];
+      expect(data.find(s => s.name === 'openai_key').is_set).toBe(false);
+      expect(data.find(s => s.name === 'discord_bot_token').is_set).toBe(false);
+    });
+
+    it('should only query allowlisted names', async () => {
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await settingsController.getAllSettings(superReq(), res);
+
+      const [query, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('ANY($1)');
+      expect(params[0]).toEqual(expect.arrayContaining([
+        'registration_mode', 'frontend_url', 'discord_bot_token', 'openai_key', 'theme'
+      ]));
+    });
+
+    it('should mask any value_type encrypted row even outside the secret list', async () => {
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({
+        rows: [{ name: 'theme', value: 'topsecret', value_type: 'encrypted' }],
+      });
+
+      await settingsController.getAllSettings(superReq(), res);
+
+      const data = res.success.mock.calls[0][0];
+      expect(JSON.stringify(data)).not.toContain('topsecret');
+      expect(data.find(s => s.name === 'theme').secret).toBe(true);
+    });
+
+    it('should reject a campaign DM (403)', async () => {
+      const req = createMockReq({ user: { id: 2, role: 'DM' }, campaignRole: 'DM', isSuperadmin: false });
+      const res = createMockRes();
+
+      await settingsController.getAllSettings(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can view global settings');
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should reject a Player (403)', async () => {
       const req = createMockReq({ user: { id: 2, role: 'Player' } });
       const res = createMockRes();
 
       await settingsController.getAllSettings(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can access all settings');
+      expect(res.forbidden).toHaveBeenCalled();
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
   });
 
-  // ─── updateSetting ──────────────────────────────────────────────
+  // ─── updateSetting (global settings, superadmin only) ───────────
 
   describe('updateSetting', () => {
-    it('should update a global text setting successfully', async () => {
+    const logger = require('../../utils/logger');
+
+    const superReq = (body) => createMockReq({
+      user: { id: 3, role: 'Player' },
+      campaignRole: 'Player',
+      isSuperadmin: true,
+      body,
+    });
+
+    it('should reject a campaign DM (403) without touching the database', async () => {
       const req = createMockReq({
-        body: { name: 'frontend_url', value: 'https://loot.example.com' },
+        user: { id: 2, role: 'DM' },
+        campaignRole: 'DM',
+        isSuperadmin: false,
+        body: { name: 'registration_mode', value: 'open' },
       });
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+      await settingsController.updateSetting(req, res);
+
+      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can change global settings');
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should reject a user demoted to Player even with a stale DM JWT role', async () => {
+      const req = createMockReq({
+        user: { id: 2, role: 'DM' },
+        campaignRole: 'Player',
+        body: { name: 'frontend_url', value: 'https://evil.example.com' },
+      });
+      const res = createMockRes();
 
       await settingsController.updateSetting(req, res);
 
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      expect(res.forbidden).toHaveBeenCalled();
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should update frontend_url for a superadmin', async () => {
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await settingsController.updateSetting(superReq({ name: 'frontend_url', value: 'https://loot.example.com/' }), res);
+
       const [query, params] = dbUtils.executeQuery.mock.calls[0];
       expect(query).toContain('INSERT INTO settings');
       expect(query).toContain('ON CONFLICT');
-      expect(params[0]).toBe('frontend_url');
-      expect(params[1]).toBe('https://loot.example.com');
-      expect(params[2]).toBe('text');
+      expect(params).toEqual(['frontend_url', 'https://loot.example.com', 'text']);
       expect(res.success).toHaveBeenCalled();
+    });
+
+    it.each([
+      'ftp://loot.example.com',
+      'javascript:alert(1)',
+      'https://loot.example.com/reset',
+      'https://user:pw@loot.example.com',
+      'https://loot.example.com?x=1',
+      'not a url',
+      'loot.example.com',
+    ])('should reject frontend_url %s', async (value) => {
+      const res = createMockRes();
+
+      await settingsController.updateSetting(superReq({ name: 'frontend_url', value }), res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('frontend_url'));
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('should allow clearing frontend_url with an empty string', async () => {
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await settingsController.updateSetting(superReq({ name: 'frontend_url', value: '' }), res);
+
+      expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual(['frontend_url', '', 'text']);
     });
 
     it.each([
@@ -233,10 +355,9 @@ describe('settingsController', () => {
       'discord_channel_id',
       'campaign_role_id',
     ])('should reject the per-campaign setting %s with a pointer to the campaign endpoint', async (name) => {
-      const req = createMockReq({ body: { name, value: '1' } });
       const res = createMockRes();
 
-      await settingsController.updateSetting(req, res);
+      await settingsController.updateSetting(superReq({ name, value: '1' }), res);
 
       expect(res.validationError).toHaveBeenCalledWith(
         `'${name}' is a per-campaign setting; update it via PUT /api/campaigns/current/settings`
@@ -244,11 +365,10 @@ describe('settingsController', () => {
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
 
-    it('should reject the deprecated campaign_name with a pointer to the rename endpoint', async () => {
-      const req = createMockReq({ body: { name: 'campaign_name', value: 'Skulls & Shackles' } });
+    it('should reject the deprecated campaign_name', async () => {
       const res = createMockRes();
 
-      await settingsController.updateSetting(req, res);
+      await settingsController.updateSetting(superReq({ name: 'campaign_name', value: 'X' }), res);
 
       expect(res.validationError).toHaveBeenCalledWith(
         "'campaign_name' is deprecated; rename the campaign via PATCH /api/campaigns/current"
@@ -256,228 +376,116 @@ describe('settingsController', () => {
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
 
-    it('should encrypt openai_key before storing', async () => {
-      const req = createMockReq({
-        body: { name: 'openai_key', value: 'sk-test-key-12345' },
-      });
-      const res = createMockRes();
+    it.each(['some_unknown_setting', 'registrations_open', '__proto__', 'constructor', 'Invalid-Name!'])(
+      'should reject the non-allowlisted name %s',
+      async (name) => {
+        const res = createMockRes();
 
+        await settingsController.updateSetting(superReq({ name, value: 'x' }), res);
+
+        expect(res.validationError).toHaveBeenCalledWith(
+          `'${name}' is not a configurable global setting`
+        );
+        expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      }
+    );
+
+    it('should encrypt openai_key, store it as encrypted and not echo it', async () => {
+      const res = createMockRes();
       dbUtils.executeQuery.mockResolvedValue({ rows: [] });
 
-      await settingsController.updateSetting(req, res);
+      await settingsController.updateSetting(superReq({ name: 'openai_key', value: 'sk-test-key-12345' }), res);
 
       const [, params] = dbUtils.executeQuery.mock.calls[0];
-      // Value should be base64 encoded
       expect(params[1]).toBe(Buffer.from('sk-test-key-12345').toString('base64'));
       expect(params[2]).toBe('encrypted');
+      const payload = res.success.mock.calls[0][0];
+      expect(payload).toEqual({ name: 'openai_key', is_set: true });
+      expect(JSON.stringify(payload)).not.toContain('sk-test-key-12345');
     });
 
-    it('should set value_type to boolean for boolean settings', async () => {
-      const req = createMockReq({
-        body: { name: 'registrations_open', value: 'true' },
-      });
+    it('should store discord_bot_token readable by the Discord code (type text) and not echo it', async () => {
       const res = createMockRes();
-
       dbUtils.executeQuery.mockResolvedValue({ rows: [] });
 
-      await settingsController.updateSetting(req, res);
+      await settingsController.updateSetting(superReq({ name: 'discord_bot_token', value: '  tok.en-123  ' }), res);
 
-      const [, params] = dbUtils.executeQuery.mock.calls[0];
-      expect(params[2]).toBe('boolean');
+      expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual(['discord_bot_token', 'tok.en-123', 'text']);
+      expect(res.success.mock.calls[0][0]).toEqual({ name: 'discord_bot_token', is_set: true });
     });
 
-    it('should reject non-DM users', async () => {
-      const req = createMockReq({
-        user: { id: 2, role: 'Player' },
-        body: { name: 'frontend_url', value: 'Test' },
-      });
+    it.each(['', '   ', null, undefined, 123, 'has space'])('should reject empty or malformed secret %p', async (value) => {
       const res = createMockRes();
 
-      await settingsController.updateSetting(req, res);
+      await settingsController.updateSetting(superReq({ name: 'openai_key', value }), res);
 
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update settings');
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should reject a user demoted to Player in the campaign even with a stale JWT DM role', async () => {
-      const req = createMockReq({
-        user: { id: 2, role: 'DM' },     // stale JWT role
-        campaignRole: 'Player',           // per-campaign role wins
-        body: { name: 'frontend_url', value: 'Test' },
-      });
-      const res = createMockRes();
-
-      await settingsController.updateSetting(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update settings');
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should allow a superadmin whose JWT role is not DM', async () => {
-      const req = createMockReq({
-        user: { id: 3, role: 'Player' },
-        campaignRole: 'Player',
-        isSuperadmin: true,
-        body: { name: 'frontend_url', value: 'https://loot.example.com' },
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await settingsController.updateSetting(req, res);
-
-      expect(res.forbidden).not.toHaveBeenCalled();
-      expect(res.success).toHaveBeenCalled();
-    });
-
-    it('should reject when name is missing', async () => {
-      const req = createMockReq({
-        body: { value: 'Test' },
-      });
-      const res = createMockRes();
-
-      await settingsController.updateSetting(req, res);
-
-      // The createHandler validation catches missing 'name' field
       expect(res.validationError).toHaveBeenCalled();
     });
 
-    it('should store registration_mode with value_type string when valid', async () => {
-      const req = createMockReq({
-        body: { name: 'registration_mode', value: 'invite-only' },
-      });
+    it('should never put a setting value in a logger call', async () => {
       const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+      const spies = ['info', 'warn', 'error', 'debug'].map(level => jest.spyOn(logger, level).mockImplementation(() => {}));
 
+      await settingsController.updateSetting(superReq({ name: 'openai_key', value: 'sk-secret-value-999' }), res);
+      await settingsController.updateSetting(superReq({ name: 'discord_bot_token', value: 'bot-secret-value-999' }), res);
+      await settingsController.updateSetting(superReq({ name: 'registration_mode', value: 'closed' }), res);
+
+      const logged = JSON.stringify(spies.flatMap(spy => spy.mock.calls));
+      expect(logged).not.toContain('sk-secret-value-999');
+      expect(logged).not.toContain('bot-secret-value-999');
+      expect(logged).not.toContain('c2stc2VjcmV0LXZhbHVlLTk5OQ');
+      expect(logged).toContain('registration_mode');
+      spies.forEach(spy => spy.mockRestore());
+    });
+
+    it('should store registration_mode with value_type string when valid', async () => {
+      const res = createMockRes();
       dbUtils.executeQuery.mockResolvedValue({ rows: [] });
 
-      await settingsController.updateSetting(req, res);
+      await settingsController.updateSetting(superReq({ name: 'registration_mode', value: 'invite-only' }), res);
 
-      const [, params] = dbUtils.executeQuery.mock.calls[0];
-      expect(params[0]).toBe('registration_mode');
-      expect(params[1]).toBe('invite-only');
-      expect(params[2]).toBe('string');
+      expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual(['registration_mode', 'invite-only', 'string']);
       expect(res.success).toHaveBeenCalled();
     });
 
     it('should reject registration_mode values outside open/invite-only/closed', async () => {
-      const req = createMockReq({
-        body: { name: 'registration_mode', value: 'sometimes' },
-      });
       const res = createMockRes();
 
-      await settingsController.updateSetting(req, res);
+      await settingsController.updateSetting(superReq({ name: 'registration_mode', value: 'sometimes' }), res);
 
-      expect(res.validationError).toHaveBeenCalledWith(
-        expect.stringContaining('registration_mode')
-      );
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('registration_mode'));
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
 
-    it('should reject invalid setting name patterns', async () => {
-      const req = createMockReq({
-        body: { name: 'Invalid-Name!', value: 'Test' },
-      });
+    it('should accept only dark/light for the global theme default', async () => {
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await settingsController.updateSetting(superReq({ name: 'theme', value: 'light' }), res);
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+
+      const res2 = createMockRes();
+      await settingsController.updateSetting(superReq({ name: 'theme', value: 'purple' }), res2);
+      expect(res2.validationError).toHaveBeenCalled();
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('should reject when name is missing', async () => {
       const res = createMockRes();
 
-      await settingsController.updateSetting(req, res);
+      await settingsController.updateSetting(superReq({ value: 'Test' }), res);
 
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Setting name must contain only lowercase letters, numbers, and underscores'
-      );
+      expect(res.validationError).toHaveBeenCalled();
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
 
     it('should return 500 when database update fails', async () => {
-      const req = createMockReq({
-        body: { name: 'frontend_url', value: 'Test' },
-      });
       const res = createMockRes();
-
       dbUtils.executeQuery.mockRejectedValue(new Error('Insert failed'));
 
-      await settingsController.updateSetting(req, res);
-
-      expect(res.error).toHaveBeenCalledWith('Internal server error');
-    });
-  });
-
-  // ─── deleteSetting ──────────────────────────────────────────────
-
-  describe('deleteSetting', () => {
-    it('should delete a non-protected setting successfully', async () => {
-      const req = createMockReq({
-        params: { name: 'custom_setting' },
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ name: 'custom_setting', value: 'some_value' }],
-      });
-
-      await settingsController.deleteSetting(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
-      expect(res.success).toHaveBeenCalled();
-    });
-
-    it('should reject deletion of protected settings', async () => {
-      const protectedSettings = [
-        'campaign_name',
-        'registrations_open',
-        'discord_bot_token',
-        'discord_channel_id',
-        'discord_integration_enabled',
-        'infamy_system_enabled',
-        'auto_appraisal_enabled',
-        'openai_key',
-      ];
-
-      for (const settingName of protectedSettings) {
-        const req = createMockReq({ params: { name: settingName } });
-        const res = createMockRes();
-
-        await settingsController.deleteSetting(req, res);
-
-        expect(res.validationError).toHaveBeenCalledWith(
-          `Cannot delete protected setting: ${settingName}`
-        );
-      }
-    });
-
-    it('should return not found when setting does not exist', async () => {
-      const req = createMockReq({
-        params: { name: 'nonexistent_setting' },
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await settingsController.deleteSetting(req, res);
-
-      expect(res.notFound).toHaveBeenCalledWith('Setting not found: nonexistent_setting');
-    });
-
-    it('should reject non-DM users', async () => {
-      const req = createMockReq({
-        user: { id: 2, role: 'Player' },
-        params: { name: 'custom_setting' },
-      });
-      const res = createMockRes();
-
-      await settingsController.deleteSetting(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can delete settings');
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should return 500 when database delete fails', async () => {
-      const req = createMockReq({
-        params: { name: 'custom_setting' },
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockRejectedValue(new Error('Delete failed'));
-
-      await settingsController.deleteSetting(req, res);
+      await settingsController.updateSetting(superReq({ name: 'registration_mode', value: 'open' }), res);
 
       expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
@@ -596,7 +604,7 @@ describe('settingsController', () => {
   // ─── getOpenAiKey ───────────────────────────────────────────────
 
   describe('getOpenAiKey', () => {
-    it('should return masked OpenAI key when set', async () => {
+    it('should report hasKey and never return any part of the OpenAI key', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -611,12 +619,13 @@ describe('settingsController', () => {
       expect(res.success).toHaveBeenCalled();
       const data = res.success.mock.calls[0][0];
       expect(data.hasKey).toBe(true);
-      // Value should be masked
-      expect(data.value).toContain('...');
-      expect(data.value).not.toBe('sk-test-key-1234567890');
+      expect(data.value).toBeUndefined();
+      expect(JSON.stringify(data)).not.toContain('sk-t');
+      expect(JSON.stringify(data)).not.toContain('7890');
+      expect(JSON.stringify(data)).not.toContain(encodedKey);
     });
 
-    it('should return empty value with hasKey false when not set', async () => {
+    it('should return hasKey false when not set', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
@@ -626,7 +635,6 @@ describe('settingsController', () => {
 
       const data = res.success.mock.calls[0][0];
       expect(data.hasKey).toBe(false);
-      expect(data.value).toBe('');
     });
   });
 

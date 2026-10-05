@@ -2,10 +2,13 @@
 // Multi-campaign Phase 4c: the Discord channel/role/enabled flag, the
 // campaign timezone, and auto-appraisal are per-campaign — they read from
 // useCampaign().campaignSettings and write to PUT /campaigns/current/settings.
-// Default quantity, bot token, and the OpenAI key remain global
-// (PUT /user/update-setting). Registration mode moved to the System Admin
-// page (Phase 5a); the legacy global 'theme' toggle was removed (the app
-// uses the static base theme plus per-campaign overrides).
+// The item-entry defaults (default quantity, auto-split stacks) are
+// per-campaign too. Only the Discord bot token and the OpenAI key are
+// deployment-global: they are superadmin-only, write-only inputs (the server
+// never returns them; an empty input means "leave unchanged") saved through
+// PUT /user/update-setting. Registration mode lives on the System Admin page;
+// the legacy global 'theme' toggle was removed (the app uses the static base
+// theme plus per-campaign overrides).
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
 import {useSnackbar} from 'notistack';
@@ -30,8 +33,6 @@ import {
   Typography
 } from '@mui/material';
 import {
-  CloudDownload,
-  CloudUpload,
   Message as ChatIcon,
   Settings as SettingsIcon,
   DataObject as TestDataIcon,
@@ -39,18 +40,12 @@ import {
 } from '@mui/icons-material';
 import CampaignThemeSettings from './CampaignThemeSettings';
 
-// Display-only mask for the saved OpenAI key (never applies to the bot token)
-const MASKED_VALUE = '********';
-
 const SystemSettings = () => {
-    const {currentCampaign, campaignSettings, refresh} = useCampaign();
+    const {currentCampaign, campaignSettings, isSuperadmin, refresh} = useCampaign();
     const {enqueueSnackbar} = useSnackbar();
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [isLoadingDiscord, setIsLoadingDiscord] = useState(false);
-    const [isBackingUp, setIsBackingUp] = useState(false);
-    const [isRestoring, setIsRestoring] = useState(false);
-    const [backupFile, setBackupFile] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -88,15 +83,16 @@ const SystemSettings = () => {
         openaiKey: ''
     });
 
-    // The saved bot token is never echoed back into the field. When a token
-    // exists server-side the input stays empty and shows a placeholder; any
-    // user input is kept raw in state and sent verbatim on save.
+    // Saved secrets are never echoed back into their fields. The server only
+    // says whether one exists; the input stays empty (write-only) and shows a
+    // placeholder, and any typed input is sent verbatim on save.
     const [hasSavedBotToken, setHasSavedBotToken] = useState(false);
+    const [hasSavedOpenAiKey, setHasSavedOpenAiKey] = useState(false);
 
     useEffect(() => {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [isSuperadmin]);
 
     // Per-campaign values come from the campaign context (GET /campaigns/current
     // settings map, values stored as strings). Re-sync whenever the context
@@ -111,11 +107,15 @@ const SystemSettings = () => {
         setDiscordSettings(prev => ({...prev, channelId, roleId, enabled}));
         setOriginalSettings(prev => ({...prev, channelId, roleId, enabled}));
 
+        const parsedQuantity = parseInt(campaignSettings?.default_browser_quantity, 10);
         setDefaultSettings(prev => ({
             ...prev,
             autoAppraisalEnabled: campaignSettings?.auto_appraisal_enabled !== undefined
                 ? campaignSettings.auto_appraisal_enabled === '1'
-                : true
+                : true,
+            defaultBrowserQuantity: parsedQuantity > 0 ? parsedQuantity : 1,
+            defaultQuantityEnabled: campaignSettings?.default_quantity_enabled === '1',
+            autoSplitStacksEnabled: campaignSettings?.auto_split_stacks_enabled === '1'
         }));
 
         const timezone = (typeof campaignSettings?.campaign_timezone === 'string' && campaignSettings.campaign_timezone)
@@ -129,61 +129,25 @@ const SystemSettings = () => {
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const [
-                settingsResponse,
-                discordResponse,
-                openaiResponse,
-                timezoneOptionsResponse
-            ] = await Promise.all([
-                api.get(`/user/settings`),
-                api.get('/settings/discord'),
-                api.get('/settings/openai-key'),
-                api.get('/settings/timezone-options')
-            ]);
-
-            // Set the global Discord settings (bot token + OpenAI key). The
-            // channel ID, role ID, and enabled flag are per-campaign and come
-            // from the campaign context instead.
-            if (discordResponse.data) {
-                // Never put the saved token in the field — only remember that
-                // one exists so the input can show a placeholder.
-                setHasSavedBotToken(!!discordResponse.data.discord_bot_token);
-
-                // Get OpenAI key
-                const openaiKey = openaiResponse.data?.hasKey ? MASKED_VALUE : '';
-
-                setDiscordSettings(prev => ({
-                    ...prev,
-                    botToken: '',
-                    openaiKey: openaiKey
-                }));
-
-                setOriginalSettings(prev => ({
-                    ...prev,
-                    botToken: '',
-                    openaiKey: openaiKey
-                }));
+            const requests = [api.get('/settings/timezone-options')];
+            // The global secrets' "is set" flags are only relevant to (and
+            // only editable by) the superadmin
+            if (isSuperadmin) {
+                requests.push(api.get('/settings/discord'), api.get('/settings/openai-key'));
             }
+            const [timezoneOptionsResponse, discordResponse, openaiResponse] = await Promise.all(requests);
 
-            // Load global default settings (auto-appraisal is per-campaign and
-            // synced from the campaign context instead)
-            const defaultQuantity = settingsResponse.data.find(setting => setting.name === 'default_browser_quantity');
-            const defaultQuantityEnabled = settingsResponse.data.find(setting => setting.name === 'default_quantity_enabled');
-            const autoSplitStacks = settingsResponse.data.find(setting => setting.name === 'auto_split_stacks_enabled');
-
-            setDefaultSettings(prev => ({
-                ...prev,
-                defaultBrowserQuantity: defaultQuantity ? parseInt(defaultQuantity.value) || 1 : 1,
-                defaultQuantityEnabled: defaultQuantityEnabled ? defaultQuantityEnabled.value === '1' : false,
-                autoSplitStacksEnabled: autoSplitStacks ? autoSplitStacks.value === '1' : false
-            }));
+            if (isSuperadmin) {
+                // Only remember that a secret exists - the server never returns it
+                setHasSavedBotToken(!!discordResponse?.data?.discord_bot_token_set);
+                setHasSavedOpenAiKey(!!openaiResponse?.data?.hasKey);
+            }
 
             // Load timezone option list (the current timezone itself is a
             // per-campaign setting synced from the campaign context)
             const options = timezoneOptionsResponse.data?.options || timezoneOptionsResponse?.options || [];
             setTimezoneOptions(options);
         } catch (error) {
-            console.error('Error fetching data', error);
             setError('Error loading settings data. Please try again.');
         } finally {
             setIsLoading(false);
@@ -198,7 +162,7 @@ const SystemSettings = () => {
 
             // Only send the token if the user typed a replacement; an empty
             // field means "keep the saved token" (shared by all campaigns)
-            const typedBotToken = discordSettings.botToken.trim() !== '';
+            const typedBotToken = isSuperadmin && discordSettings.botToken.trim() !== '';
             if (typedBotToken) {
                 await api.put('/user/update-setting', {
                     name: 'discord_bot_token',
@@ -236,11 +200,13 @@ const SystemSettings = () => {
                 touchedCampaignSettings = true;
             }
 
-            // Only update OpenAI key if it's changed and not the masked value
-            if (discordSettings.openaiKey !== MASKED_VALUE && discordSettings.openaiKey !== originalSettings.openaiKey) {
+            // Only send the OpenAI key if the superadmin typed a replacement;
+            // an empty field means "keep the saved key"
+            const typedOpenAiKey = isSuperadmin && discordSettings.openaiKey.trim() !== '';
+            if (typedOpenAiKey) {
                 await api.put('/user/update-setting', {
                     name: 'openai_key',
-                    value: discordSettings.openaiKey
+                    value: discordSettings.openaiKey.trim()
                 });
             }
 
@@ -250,14 +216,18 @@ const SystemSettings = () => {
                 channelId: discordSettings.channelId,
                 roleId: discordSettings.roleId,
                 enabled: discordSettings.enabled,
-                openaiKey: discordSettings.openaiKey !== MASKED_VALUE ? discordSettings.openaiKey : originalSettings.openaiKey
+                openaiKey: ''
             });
 
-            // After a successful token save, reset the field to placeholder
-            // mode — never echo the saved token back into the input.
+            // After a successful secret save, reset the field to placeholder
+            // mode - never echo the saved value back into the input.
             if (typedBotToken) {
                 setDiscordSettings(prev => ({...prev, botToken: ''}));
                 setHasSavedBotToken(true);
+            }
+            if (typedOpenAiKey) {
+                setDiscordSettings(prev => ({...prev, openaiKey: ''}));
+                setHasSavedOpenAiKey(true);
             }
 
             if (touchedCampaignSettings) {
@@ -280,15 +250,15 @@ const SystemSettings = () => {
         try {
             // Only update settings if they've been changed from defaults
 
-            // Save default quantity enabled setting
-            await api.put('/user/update-setting', {
+            // Item-entry defaults (per-campaign)
+            await api.put('/campaigns/current/settings', {
                 name: 'default_quantity_enabled',
                 value: defaultSettings.defaultQuantityEnabled ? '1' : '0'
             });
 
             // Only save default browser quantity if enabled and valid
             if (defaultSettings.defaultQuantityEnabled && defaultSettings.defaultBrowserQuantity > 0) {
-                await api.put('/user/update-setting', {
+                await api.put('/campaigns/current/settings', {
                     name: 'default_browser_quantity',
                     value: defaultSettings.defaultBrowserQuantity.toString()
                 });
@@ -300,8 +270,8 @@ const SystemSettings = () => {
                 value: defaultSettings.autoAppraisalEnabled ? '1' : '0'
             });
 
-            // Save auto-split stacks setting
-            await api.put('/user/update-setting', {
+            // Save auto-split stacks setting (per-campaign)
+            await api.put('/campaigns/current/settings', {
                 name: 'auto_split_stacks_enabled',
                 value: defaultSettings.autoSplitStacksEnabled ? '1' : '0'
             });
@@ -338,80 +308,6 @@ const SystemSettings = () => {
         }
     };
 
-    // Database backup and restore handlers
-    const handleBackupDatabase = async () => {
-        try {
-            setIsBackingUp(true);
-
-            // Define tables to exclude
-            const excludeTables = ['min_caster_levels', 'min_costs', 'mod', 'spells', 'item'];
-
-            // Call API endpoint to get database backup
-            const response = await api.post('/admin/backup-database', {excludeTables}, {
-                responseType: 'blob'
-            });
-
-            // Create download link
-            const url = window.URL.createObjectURL(new Blob([response]));
-            const link = document.createElement('a');
-            const date = new Date().toISOString().split('T')[0];
-            link.href = url;
-            link.setAttribute('download', `pathfinder_loot_backup_${date}.sql`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-
-            setSuccess('Database backup created successfully');
-            setError('');
-        } catch (err) {
-            setError('Error creating database backup');
-            setSuccess('');
-        } finally {
-            setIsBackingUp(false);
-        }
-    };
-
-    const handleFileSelect = (event) => {
-        if (event.target.files && event.target.files[0]) {
-            setBackupFile(event.target.files[0]);
-        }
-    };
-
-    const handleRestoreDatabase = async () => {
-        if (!backupFile) return;
-
-        // Show a confirmation dialog
-        if (!window.confirm('Warning: This will overwrite your current database with the backup. All unsaved changes will be lost. Continue?')) {
-            return;
-        }
-
-        try {
-            setIsRestoring(true);
-
-            const formData = new FormData();
-            formData.append('backupFile', backupFile);
-
-            await api.post('/admin/restore-database', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                }
-            });
-
-            setSuccess('Database restored successfully. The application will reload in 5 seconds.');
-            setError('');
-
-            // Reload after a short delay
-            setTimeout(() => {
-                window.location.reload();
-            }, 5000);
-        } catch (err) {
-            setError('Error restoring database: ' + (err.response?.data?.message || err.message));
-            setSuccess('');
-        } finally {
-            setIsRestoring(false);
-        }
-    };
-
     const handleGenerateTestData = async () => {
         setIsGeneratingTestData(true);
         try {
@@ -422,7 +318,6 @@ const SystemSettings = () => {
             setSnackbarOpen(true);
             setError('');
         } catch (error) {
-            console.error('Error generating test data:', error);
             setError(error.response?.data?.message || 'Error generating test data. Please try again.');
             setSuccess('');
         } finally {
@@ -466,18 +361,21 @@ const SystemSettings = () => {
                                 : 'Channel, role, and enable flag apply only to the current campaign'}
                         />
                         <CardContent>
-                            <TextField
-                                label="Bot Token"
-                                type="password"
-                                value={discordSettings.botToken}
-                                onChange={(e) => setDiscordSettings({...discordSettings, botToken: e.target.value})}
-                                fullWidth
-                                margin="normal"
-                                placeholder={hasSavedBotToken ? 'Token saved — type to replace' : 'Enter Discord Bot Token'}
-                                helperText={hasSavedBotToken
-                                    ? 'A token is saved. Leave blank to keep it, or type a new one to replace it.'
-                                    : 'Enter the Discord bot token'}
-                            />
+                            {isSuperadmin && (
+                                <TextField
+                                    label="Bot Token"
+                                    type="password"
+                                    value={discordSettings.botToken}
+                                    onChange={(e) => setDiscordSettings({...discordSettings, botToken: e.target.value})}
+                                    fullWidth
+                                    margin="normal"
+                                    autoComplete="off"
+                                    placeholder={hasSavedBotToken ? 'Token saved — type to replace' : 'Enter Discord Bot Token'}
+                                    helperText={hasSavedBotToken
+                                        ? 'A token is saved. Leave blank to keep it, or type a new one to replace it. Shared by all campaigns.'
+                                        : 'Enter the Discord bot token (shared by all campaigns)'}
+                                />
+                            )}
                             <TextField
                                 label="Channel ID"
                                 value={discordSettings.channelId}
@@ -496,16 +394,21 @@ const SystemSettings = () => {
                                 placeholder="Discord Role ID (optional)"
                                 helperText="Role to ping for session announcements"
                             />
-                            <TextField
-                                label="OpenAI API Key"
-                                type="password"
-                                value={discordSettings.openaiKey || ''}
-                                onChange={(e) => setDiscordSettings({...discordSettings, openaiKey: e.target.value})}
-                                fullWidth
-                                margin="normal"
-                                placeholder="Enter OpenAI API Key for Smart Item Detection"
-                                helperText="Required for Smart Item Detection feature"
-                            />
+                            {isSuperadmin && (
+                                <TextField
+                                    label="OpenAI API Key"
+                                    type="password"
+                                    value={discordSettings.openaiKey || ''}
+                                    onChange={(e) => setDiscordSettings({...discordSettings, openaiKey: e.target.value})}
+                                    fullWidth
+                                    margin="normal"
+                                    autoComplete="off"
+                                    placeholder={hasSavedOpenAiKey ? 'Key saved — type to replace' : 'Enter OpenAI API Key for Smart Item Detection'}
+                                    helperText={hasSavedOpenAiKey
+                                        ? 'A key is saved. Leave blank to keep it, or type a new one to replace it.'
+                                        : 'Required for Smart Item Detection feature'}
+                                />
+                            )}
                             <FormControlLabel
                                 control={
                                     <Switch
@@ -690,70 +593,6 @@ const SystemSettings = () => {
                 {/* Campaign Theme (per-campaign override, Phase 4b) */}
                 <Grid size={{xs: 12, md: 6}}>
                     <CampaignThemeSettings/>
-                </Grid>
-
-                {/* Database Backup & Restore */}
-                <Grid size={12}>
-                    <Card variant="outlined">
-                        <CardHeader title="Database Backup & Restore"/>
-                        <CardContent>
-                            <Typography variant="body2" gutterBottom sx={{
-                                color: "text.secondary"
-                            }}>
-                                Backup and restore your database. The backup will exclude the following system tables:
-                                min_caster_levels, min_costs, mod, spells, and item.
-                            </Typography>
-
-                            <Grid container spacing={2} sx={{mt: 1}}>
-                                <Grid size={{xs: 12, md: 6}}>
-                                    <Button
-                                        variant="outlined"
-                                        color="primary"
-                                        startIcon={<CloudDownload/>}
-                                        fullWidth
-                                        onClick={handleBackupDatabase}
-                                        disabled={isBackingUp}
-                                    >
-                                        {isBackingUp ? <CircularProgress size={24}/> : 'Backup Database'}
-                                    </Button>
-                                </Grid>
-
-                                <Grid size={{xs: 12, md: 6}}>
-                                    <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-                                        <Button
-                                            variant="contained"
-                                            component="label"
-                                            color="secondary"
-                                            sx={{flex: 1}}
-                                        >
-                                            Select Backup File
-                                            <input
-                                                type="file"
-                                                accept=".sql,.dump"
-                                                hidden
-                                                onChange={handleFileSelect}
-                                            />
-                                        </Button>
-                                        <Button
-                                            variant="outlined"
-                                            color="secondary"
-                                            startIcon={<CloudUpload/>}
-                                            disabled={!backupFile || isRestoring}
-                                            onClick={handleRestoreDatabase}
-                                            sx={{flex: 1}}
-                                        >
-                                            {isRestoring ? <CircularProgress size={24}/> : 'Restore'}
-                                        </Button>
-                                    </Box>
-                                    {backupFile && (
-                                        <Typography variant="body2" sx={{mt: 1}}>
-                                            Selected file: {backupFile.name}
-                                        </Typography>
-                                    )}
-                                </Grid>
-                            </Grid>
-                        </CardContent>
-                    </Card>
                 </Grid>
 
                 {/* Test Data Generation - Only show on test instance */}
