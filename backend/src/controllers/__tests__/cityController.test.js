@@ -33,6 +33,7 @@ function createMockReq(overrides = {}) {
     params: {},
     query: {},
     user: { id: 1 },
+    isSuperadmin: true,
     ...overrides,
   };
 }
@@ -358,6 +359,41 @@ describe('cityController', () => {
       await cityController.deleteCity(req, res);
 
       expect(res.notFound).toHaveBeenCalledWith('City not found');
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // authorization (F-0042, F-0268, F-0269, F-0565)
+  // -------------------------------------------------------------------
+  describe('mutations are superadmin-only', () => {
+    const nonSuper = { isSuperadmin: false, campaignRole: 'DM', user: { id: 2, role: 'DM' } };
+
+    it.each(['createCity', 'updateCity', 'deleteCity'])('%s rejects a campaign DM / player', async (fn) => {
+      const req = createMockReq({
+        ...nonSuper,
+        params: { id: '1' },
+        body: { name: 'X', size: 'Village' },
+      });
+      const res = createMockRes();
+      City.findById.mockResolvedValue({ id: 1, name: 'Sandpoint' });
+
+      await cityController[fn](req, res);
+
+      expect(res.forbidden).toHaveBeenCalled();
+      expect(City.create).not.toHaveBeenCalled();
+      expect(City.update).not.toHaveBeenCalled();
+      expect(City.delete).not.toHaveBeenCalled();
+    });
+
+    it('deleteCity returns a validation error when history still references the city', async () => {
+      const req = createMockReq({ params: { id: '1' } });
+      const res = createMockRes();
+      City.findById.mockResolvedValue({ id: 1, name: 'Sandpoint' });
+      City.delete.mockRejectedValue(Object.assign(new Error('fk'), { code: '23503' }));
+
+      await cityController.deleteCity(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('history'));
     });
   });
 

@@ -2,6 +2,23 @@
 const City = require('../models/City');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
+const { isSuperadmin } = require('../utils/roleUtils');
+
+/**
+ * The city table is global (no campaign_id, no RLS): a write changes reference
+ * data for every campaign, so direct city mutations are superadmin-only.
+ * (Members still get cities created implicitly by item search / spellcasting
+ * via City.getOrCreate; that path does not go through these handlers.)
+ * @param {Object} req - Express request
+ * @throws {Error} AuthorizationError when the requester is not a superadmin
+ */
+const requireSuperadmin = (req) => {
+  if (!isSuperadmin(req)) {
+    throw controllerFactory.createAuthorizationError(
+      'Only the system administrator can modify cities'
+    );
+  }
+};
 
 /**
  * Get all cities
@@ -43,6 +60,8 @@ const searchCities = async (req, res) => {
  * Create a new city
  */
 const createCity = async (req, res) => {
+  requireSuperadmin(req);
+
   const { name, size, population, region, alignment } = req.body;
 
   if (!name || !name.trim()) {
@@ -82,6 +101,8 @@ const createCity = async (req, res) => {
  * Update a city
  */
 const updateCity = async (req, res) => {
+  requireSuperadmin(req);
+
   const { id } = req.params;
   const { name, size, population, region, alignment } = req.body;
 
@@ -121,6 +142,8 @@ const updateCity = async (req, res) => {
  * Delete a city
  */
 const deleteCity = async (req, res) => {
+  requireSuperadmin(req);
+
   const { id } = req.params;
 
   const city = await City.findById(id);
@@ -128,7 +151,18 @@ const deleteCity = async (req, res) => {
     throw controllerFactory.createNotFoundError('City not found');
   }
 
-  await City.delete(id);
+  try {
+    await City.delete(id);
+  } catch (err) {
+    // 23503 = foreign_key_violation: item_search / spellcasting_service rows
+    // (in any campaign) still reference this city (FKs are ON DELETE RESTRICT).
+    if (err && err.code === '23503') {
+      throw controllerFactory.createValidationError(
+        'This city has item-search or spellcasting history and cannot be deleted'
+      );
+    }
+    throw err;
+  }
   logger.info(`City deleted: ${city.name}`);
   controllerFactory.sendSuccessResponse(res, null, 'City deleted successfully');
 };
