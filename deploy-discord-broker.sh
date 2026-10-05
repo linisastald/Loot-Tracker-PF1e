@@ -38,10 +38,9 @@ if [ ! -f "$ENV_FILE" ]; then
     echo -e "${YELLOW}Environment file not found. Creating from template...${NC}"
     if [ -f ".env.discord-broker.example" ]; then
         cp .env.discord-broker.example "$ENV_FILE"
-        echo -e "${YELLOW}Please edit $ENV_FILE and add your Discord credentials:${NC}"
-        echo "  - DISCORD_BOT_TOKEN"
-        echo "  - DISCORD_CLIENT_ID"
-        echo "  - DISCORD_GUILD_ID"
+        echo -e "${YELLOW}Please edit $ENV_FILE and fill in:${NC}"
+        echo "  - DISCORD_PUBLIC_KEY (Discord developer portal, General Information)"
+        echo "  - DISCORD_BROKER_SECRET (openssl rand -hex 32; same value on every backend)"
         echo ""
         echo -e "${RED}After editing, run this script again.${NC}"
         exit 1
@@ -53,19 +52,16 @@ fi
 
 # Check if required environment variables are set
 source "$ENV_FILE"
-if [ -z "$DISCORD_BOT_TOKEN" ] || [ "$DISCORD_BOT_TOKEN" = "your_bot_token_here" ]; then
-    echo -e "${RED}Error: DISCORD_BOT_TOKEN not configured in $ENV_FILE${NC}"
+# The broker verifies Discord's request signatures with the application public key
+# (discord-handler/server.js); it does not use the bot token, client id or guild id.
+if [ -z "$DISCORD_PUBLIC_KEY" ] || [ "$DISCORD_PUBLIC_KEY" = "your_public_key_here" ]; then
+    echo -e "${RED}Error: DISCORD_PUBLIC_KEY not configured in $ENV_FILE${NC}"
     exit 1
 fi
 
-if [ -z "$DISCORD_CLIENT_ID" ] || [ "$DISCORD_CLIENT_ID" = "your_client_id_here" ]; then
-    echo -e "${RED}Error: DISCORD_CLIENT_ID not configured in $ENV_FILE${NC}"
-    exit 1
-fi
-
-if [ -z "$DISCORD_GUILD_ID" ] || [ "$DISCORD_GUILD_ID" = "your_guild_id_here" ]; then
-    echo -e "${RED}Error: DISCORD_GUILD_ID not configured in $ENV_FILE${NC}"
-    exit 1
+if [ -z "$DISCORD_BROKER_SECRET" ] || [ "$DISCORD_BROKER_SECRET" = "your_shared_broker_secret_here" ]; then
+    echo -e "${YELLOW}Warning: DISCORD_BROKER_SECRET is not set in $ENV_FILE.${NC}"
+    echo "In production the broker rejects registration without it (see BROKER_ALLOW_UNAUTHENTICATED_CONTROL for the rollout switch)."
 fi
 
 # Create data directory if it doesn't exist
@@ -77,7 +73,7 @@ chmod 755 "$DATA_PATH"
 if ! docker images | grep -q "discord-broker.*dev"; then
     echo -e "${YELLOW}Discord broker image not found.${NC}"
     echo "Please build it first with:"
-    echo "  bash build_image.sh --discord-broker --branch feature/discord-session-attendance"
+    echo "  bash build_image.sh --discord-broker --branch master"
     exit 1
 fi
 
