@@ -127,18 +127,23 @@ describe('discordController', () => {
   // sendMessage
   // ---------------------------------------------------------------
   describe('sendMessage', () => {
-    // sendMessage requires DM rights; default every request here to a DM
-    // (the non-DM case is tested explicitly below)
     const dmReq = (overrides = {}) => createMockReq({ user: { role: 'DM' }, ...overrides });
 
-    it('should reject a Player (no DM rights)', async () => {
-      const req = dmReq({ body: { content: 'hi' }, user: { role: 'Player' } });
+    it('should let a Player post to the campaign channel, ignoring a supplied channel_id', async () => {
+      const req = dmReq({ body: { content: 'hi', channel_id: 'other-channel' }, user: { role: 'Player' } });
       const res = createMockRes();
+
+      mockSendMessageSettings({ token: 'bot-token-123', channel: 'channel-456' });
+      axios.post.mockResolvedValueOnce({ data: { id: 'msg-1' } });
 
       await discordController.sendMessage(req, res);
 
-      expect(res.forbidden).toHaveBeenCalled();
-      expect(axios.post).not.toHaveBeenCalled();
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(axios.post).toHaveBeenCalledWith(
+        'https://discord.com/api/channels/channel-456/messages',
+        expect.objectContaining({ allowed_mentions: { parse: [] } }),
+        expect.anything()
+      );
     });
 
     it('should set allowed_mentions to parse nothing', async () => {

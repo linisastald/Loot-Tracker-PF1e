@@ -12,12 +12,8 @@ const { APP_NAME } = require('../config/constants');
  * Send a message to Discord
  */
 const sendMessage = async (req, res) => {
-    // Posting arbitrary content with the shared bot token is a DM action
-    if (!hasDmRights(req)) {
-        throw controllerFactory.createAuthorizationError('Only DMs can send Discord messages');
-    }
-
-    // A client-supplied channel_id is deliberately ignored: the message always
+    // Any authenticated campaign member may post: players send task
+    // assignments from the Tasks page. A client-supplied channel_id is deliberately ignored: the message always
     // goes to the requesting campaign's configured channel.
     const {embeds, content} = req.body;
 
