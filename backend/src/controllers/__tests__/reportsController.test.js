@@ -120,6 +120,48 @@ describe('reportsController', () => {
     });
   });
 
+  // ─── F-0382: no implicit cap ─────────────────────────────────────
+
+  describe('unpaginated requests return the full set', () => {
+    const cases = [
+      ['getKeptPartyLoot', {}],
+      ['getKeptCharacterLoot', {}],
+      ['getKeptCharacterLoot', { character_id: '5' }],
+      ['getTrashedLoot', {}],
+    ];
+
+    it.each(cases)('%s without page/limit applies no LIMIT', async (fn, query) => {
+      const req = createMockReq({ query });
+      const res = createMockRes();
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 1, row_type: 'summary' }] })
+        .mockResolvedValueOnce({ rows: [{ count: '120' }] });
+
+      await reportsController[fn](req, res);
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).not.toMatch(/LIMIT|OFFSET/i);
+      expect(params).not.toContain(50);
+      const data = res.success.mock.calls[0][0];
+      expect(data.pagination.hasMore).toBe(false);
+      expect(data.pagination.total).toBe(120);
+    });
+
+    it('still paginates when the caller sends page/limit', async () => {
+      const req = createMockReq({ query: { page: '2', limit: '10', character_id: '5' } });
+      const res = createMockRes();
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '25' }] });
+
+      await reportsController.getKeptCharacterLoot(req, res);
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toMatch(/LIMIT \$\d+ OFFSET \$\d+/);
+      expect(params).toEqual(expect.arrayContaining(['5', 10, 10]));
+    });
+  });
+
   // ─── getKeptCharacterLoot ───────────────────────────────────────
 
   describe('getKeptCharacterLoot', () => {

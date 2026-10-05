@@ -5,19 +5,48 @@ const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
 
 /**
+ * Resolve paging for a report request. The report pages never send page/limit
+ * (they render the whole list), so by default NO LIMIT is applied; a mixed
+ * summary+individual row list silently capped at 50 was dropping data
+ * (F-0382). Paging only happens when the caller explicitly asks for it.
+ */
+const resolvePaging = (query) => {
+  if (query.page === undefined && query.limit === undefined) {
+    return { paginate: false };
+  }
+  return { paginate: true, ...ValidationService.validatePagination(query.page, query.limit) };
+};
+
+/**
+ * Build the pagination block for the response. When unpaginated the whole set
+ * was returned, so limit equals the total and there is nothing more to fetch.
+ */
+const buildPagination = (paging, total) => {
+  if (!paging.paginate) {
+    return { total, limit: total, offset: 0, page: 1, totalPages: 1, hasMore: false };
+  }
+  return {
+    total,
+    limit: paging.limit,
+    offset: paging.offset,
+    page: paging.page,
+    totalPages: Math.ceil(total / paging.limit),
+    hasMore: (paging.offset + paging.limit) < total
+  };
+};
+
+/**
  * Get party kept loot items
  */
 const getKeptPartyLoot = async (req, res) => {
   try {
-    const { limit = 50, offset = 0 } = req.query;
-    const pagination = ValidationService.validatePagination(req.query.page, limit);
+    const paging = resolvePaging(req.query);
 
     const query = `
       SELECT *
       FROM loot_view
       WHERE statuspage = 'Kept Party'
-      ORDER BY name
-      LIMIT $1 OFFSET $2
+      ORDER BY name${paging.paginate ? ' LIMIT $1 OFFSET $2' : ''}
     `;
 
     const countQuery = `
@@ -27,7 +56,7 @@ const getKeptPartyLoot = async (req, res) => {
     `;
 
     const [itemsResult, countResult] = await Promise.all([
-      dbUtils.executeQuery(query, [pagination.limit, pagination.offset]),
+      dbUtils.executeQuery(query, paging.paginate ? [paging.limit, paging.offset] : []),
       dbUtils.executeQuery(countQuery)
     ]);
 
@@ -41,14 +70,7 @@ const getKeptPartyLoot = async (req, res) => {
       summary: summaryItems,
       individual: individualItems,
       count: allItems.length,
-      pagination: {
-        total: parseInt(countResult.rows[0].count),
-        limit: pagination.limit,
-        offset: pagination.offset,
-        page: pagination.page,
-        totalPages: Math.ceil(parseInt(countResult.rows[0].count) / pagination.limit),
-        hasMore: (pagination.offset + pagination.limit) < parseInt(countResult.rows[0].count)
-      }
+      pagination: buildPagination(paging, parseInt(countResult.rows[0].count))
     }, `Found ${allItems.length} party kept items`);
   } catch (error) {
     logger.error('Error fetching party kept loot:', error);
@@ -61,8 +83,8 @@ const getKeptPartyLoot = async (req, res) => {
  */
 const getKeptCharacterLoot = async (req, res) => {
   try {
-    const { character_id, limit = 50, offset = 0 } = req.query;
-    const pagination = ValidationService.validatePagination(req.query.page, limit);
+    const { character_id } = req.query;
+    const paging = resolvePaging(req.query);
 
     let query = `
       SELECT *
@@ -70,8 +92,8 @@ const getKeptCharacterLoot = async (req, res) => {
       WHERE statuspage IN ('Kept Character', 'Kept Self')
     `;
 
-    const params = [pagination.limit, pagination.offset];
-    let paramIndex = 3;
+    const params = [];
+    let paramIndex = 1;
 
     if (character_id) {
       ValidationService.validateCharacterId(parseInt(character_id));
@@ -80,7 +102,11 @@ const getKeptCharacterLoot = async (req, res) => {
       paramIndex++;
     }
 
-    query += ` ORDER BY character_name, name LIMIT $1 OFFSET $2`;
+    query += ' ORDER BY character_name, name';
+    if (paging.paginate) {
+      query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      params.push(paging.limit, paging.offset);
+    }
 
     let countQuery = `
       SELECT COUNT(*)
@@ -109,14 +135,7 @@ const getKeptCharacterLoot = async (req, res) => {
       summary: summaryItems,
       individual: individualItems,
       count: allItems.length,
-      pagination: {
-        total: parseInt(countResult.rows[0].count),
-        limit: pagination.limit,
-        offset: pagination.offset,
-        page: pagination.page,
-        totalPages: Math.ceil(parseInt(countResult.rows[0].count) / pagination.limit),
-        hasMore: (pagination.offset + pagination.limit) < parseInt(countResult.rows[0].count)
-      },
+      pagination: buildPagination(paging, parseInt(countResult.rows[0].count)),
       filters: { character_id }
     }, `Found ${allItems.length} character kept items`);
   } catch (error) {
@@ -130,15 +149,13 @@ const getKeptCharacterLoot = async (req, res) => {
  */
 const getTrashedLoot = async (req, res) => {
   try {
-    const { limit = 50, offset = 0 } = req.query;
-    const pagination = ValidationService.validatePagination(req.query.page, limit);
+    const paging = resolvePaging(req.query);
 
     const query = `
       SELECT *
       FROM loot_view
       WHERE statuspage IN ('Trash', 'Trashed', 'Given Away')
-      ORDER BY statuspage, name
-      LIMIT $1 OFFSET $2
+      ORDER BY statuspage, name${paging.paginate ? ' LIMIT $1 OFFSET $2' : ''}
     `;
 
     const countQuery = `
@@ -148,7 +165,7 @@ const getTrashedLoot = async (req, res) => {
     `;
 
     const [itemsResult, countResult] = await Promise.all([
-      dbUtils.executeQuery(query, [pagination.limit, pagination.offset]),
+      dbUtils.executeQuery(query, paging.paginate ? [paging.limit, paging.offset] : []),
       dbUtils.executeQuery(countQuery)
     ]);
 
@@ -162,14 +179,7 @@ const getTrashedLoot = async (req, res) => {
       summary: summaryItems,
       individual: individualItems,
       count: allItems.length,
-      pagination: {
-        total: parseInt(countResult.rows[0].count),
-        limit: pagination.limit,
-        offset: pagination.offset,
-        page: pagination.page,
-        totalPages: Math.ceil(parseInt(countResult.rows[0].count) / pagination.limit),
-        hasMore: (pagination.offset + pagination.limit) < parseInt(countResult.rows[0].count)
-      }
+      pagination: buildPagination(paging, parseInt(countResult.rows[0].count))
     }, `Found ${allItems.length} trashed/given away items`);
   } catch (error) {
     logger.error('Error fetching trashed loot:', error);
