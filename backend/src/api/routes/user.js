@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../../controllers/userController');
 const authController = require('../../controllers/authController');
+const settingsController = require('../../controllers/settingsController');
 const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
 
@@ -22,8 +23,8 @@ router.get('/active-characters', verifyToken, userController.getActiveCharacters
 router.get('/all', verifyToken, checkRole(['DM']), userController.getAllUsers);
 router.put('/reset-password', verifyToken, checkRole(['DM']), userController.resetPassword);
 router.put('/delete-user', verifyToken, checkRole(['DM']), userController.deleteUser);
-router.put('/update-setting', verifyToken, checkRole(['DM']), userController.updateSetting);
-router.get('/settings', verifyToken, checkRole(['DM']), userController.getSettings);
+router.put('/update-setting', verifyToken, checkRole(['DM']), settingsController.updateSetting);
+router.get('/settings', verifyToken, checkRole(['DM']), settingsController.getAllSettings);
 router.get('/all-characters', verifyToken, checkRole(['DM']), userController.getAllCharacters);
 router.put('/update-any-character', verifyToken, checkRole(['DM']), userController.updateAnyCharacter);
 // Moved here from the CSRF-exempt /api/auth mount (Phase 5b): state-changing
