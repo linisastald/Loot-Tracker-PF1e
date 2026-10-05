@@ -1,34 +1,22 @@
-import React, { useEffect, useState } from 'react';
-import api from '../../../utils/api';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     Alert,
     Box,
     Button,
-    Card,
-    CardContent,
-    CardHeader,
     Checkbox,
-    Chip,
     CircularProgress,
-    Collapse,
     Dialog,
     DialogActions,
     DialogContent,
     DialogTitle,
-    Divider,
     FormControl,
     FormControlLabel,
-    Grid,
-    IconButton,
-    InputLabel,
     List,
     ListItem,
     ListItemText,
-    MenuItem,
     Paper,
     Radio,
     RadioGroup,
-    Select,
     TextField,
     Typography
 } from '@mui/material';
@@ -37,309 +25,157 @@ import {
     Announcement as AnnouncementIcon,
     Cancel as CancelIcon,
     Delete as DeleteIcon,
-    CheckCircle as ConfirmIcon,
-    Edit as EditIcon,
-    Event as EventIcon,
     ExpandLess as ExpandLessIcon,
     ExpandMore as ExpandMoreIcon,
     FilterList as FilterListIcon,
     Group as GroupIcon,
-    NotificationImportant as ReminderIcon,
     Refresh as RefreshIcon,
-    Restore as RestoreIcon,
     Send as SendIcon,
-    Settings as SettingsIcon,
-    Visibility as ViewIcon
+    Settings as SettingsIcon
 } from '@mui/icons-material';
-import { format, addMonths } from 'date-fns';
-import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { useSnackbar } from 'notistack';
+import api from '../../../utils/api';
+import { getErrorMessage } from '../../../utils/apiErrors';
+import { SessionListItem, fetchSessionList } from '../../../utils/sessionsApi';
 import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
+import CreateSessionDialog from './sessionManagement/CreateSessionDialog';
+import EditSessionDialog from './sessionManagement/EditSessionDialog';
+import SessionCard, { BusyAction, BusyActionType } from './sessionManagement/SessionCard';
+import SessionDefaultsDialog from './sessionManagement/SessionDefaultsDialog';
+import SessionFilterPanel from './sessionManagement/SessionFilterPanel';
+import {
+    SESSION_DEFAULTS_STORAGE_KEY,
+    SessionDefaults,
+    SessionFilters,
+    defaultFilters,
+    filterSessions,
+    loadSessionDefaults
+} from './sessionManagement/sessionConfig';
 
-interface TimezoneResponse {
-    timezone: string;
+/** One row of GET /sessions/:id/attendance/detailed. */
+interface AttendanceRecord {
+    username: string;
+    character_name?: string | null;
+    response_type?: string | null;
+    late_arrival_time?: string | null;
+    early_departure_time?: string | null;
+    notes?: string | null;
+    response_timestamp?: string | null;
 }
 
-interface ApiResponse<T> {
-    data?: T;
-}
-
-interface SessionCreateData {
-    title: string;
-    start_time: string;
-    end_time: string;
-    description: string;
-    minimum_players: number;
-    auto_announce_hours: number;
-    reminder_hours: number;
-    confirmation_hours: number;
-    recurring_pattern?: string;
-    recurring_day_of_week?: number;
-    recurring_interval?: number;
-    recurring_end_date?: string;
-    recurring_end_count?: number;
+interface NotificationCheckResult {
+    count?: number;
+    results?: { status: string }[];
 }
 
 const SessionManagement = () => {
     const [loading, setLoading] = useState(true);
-    const [sessions, setSessions] = useState([]);
-    const [selectedSession, setSelectedSession] = useState(null);
+    const [refreshing, setRefreshing] = useState(false);
+    const [sessions, setSessions] = useState<SessionListItem[]>([]);
     const [error, setError] = useState('');
     const { enqueueSnackbar } = useSnackbar();
 
     // Campaign timezone hook
-    const { timezone: currentTimezone, loading: timezoneLoading } = useCampaignTimezone();
+    const { timezone: currentTimezone } = useCampaignTimezone();
 
-    // Dialog states
-    const [attendanceDialog, setAttendanceDialog] = useState(false);
-    const [reminderDialog, setReminderDialog] = useState(false);
-    const [confirmDialog, setConfirmDialog] = useState(false);
+    // Dialog targets: each dialog is open while its target is set
+    const [attendanceView, setAttendanceView] = useState<{ session: SessionListItem; records: AttendanceRecord[] } | null>(null);
+    const [reminderSession, setReminderSession] = useState<SessionListItem | null>(null);
+    const [sessionToCancel, setSessionToCancel] = useState<SessionListItem | null>(null);
+    const [editingSession, setEditingSession] = useState<SessionListItem | null>(null);
     const [createSessionDialog, setCreateSessionDialog] = useState(false);
-    const [cancelDialog, setCancelDialog] = useState(false);
-    const [cancelReason, setCancelReason] = useState('');
-    const [sessionToCancel, setSessionToCancel] = useState(null);
     const [settingsDialog, setSettingsDialog] = useState(false);
+    const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
 
-    // Default session settings (defined first so they can be used below)
-    const [defaultSettings, setDefaultSettings] = useState({
-        minimumPlayers: 3,
-        autoAnnounceHours: 168,      // 1 week
-        reminderHours: 48,            // 2 days
-        confirmationHours: 48         // 2 days
-    });
-
-    // Create session dialog state
-    const [sessionTitle, setSessionTitle] = useState('');
-    const [startTime, setStartTime] = useState(new Date());
-    const [endTime, setEndTime] = useState(new Date(new Date().setHours(new Date().getHours() + 5)));
-    const [endTimeManuallySet, setEndTimeManuallySet] = useState(false);
-    const [description, setDescription] = useState('');
-    const [minimumPlayers, setMinimumPlayers] = useState(defaultSettings.minimumPlayers);
-    const [autoAnnounceHours, setAutoAnnounceHours] = useState(defaultSettings.autoAnnounceHours);
-    const [reminderHours, setReminderHours] = useState(defaultSettings.reminderHours);
-    const [confirmationHours, setConfirmationHours] = useState(defaultSettings.confirmationHours);
-
-    // Edit session dialog state
-    const [editSessionDialog, setEditSessionDialog] = useState(false);
-    const [editingSession, setEditingSession] = useState(null);
-    const [editTitle, setEditTitle] = useState('');
-    const [editStartTime, setEditStartTime] = useState(new Date());
-    const [editEndTime, setEditEndTime] = useState(new Date());
-    const [editDescription, setEditDescription] = useState('');
-    const [savingEdit, setSavingEdit] = useState(false);
-
-    // Recurring session state
-    const [isRecurring, setIsRecurring] = useState(false);
-    const [recurringPattern, setRecurringPattern] = useState('weekly');
-    const [recurringDayOfWeek, setRecurringDayOfWeek] = useState(0); // 0 = Sunday
-    const [recurringInterval, setRecurringInterval] = useState(1);
-    const [recurringEndDate, setRecurringEndDate] = useState(null);
-    const [recurringEndCount, setRecurringEndCount] = useState(12);
-
-    // Reminder dialog settings
+    const [cancelReason, setCancelReason] = useState('');
     const [reminderType, setReminderType] = useState('all');
     const [sendingReminder, setSendingReminder] = useState(false);
+    const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
+    const [checkingNotifications, setCheckingNotifications] = useState(false);
 
-    // Session action states
-    const [announcingSession, setAnnouncingSession] = useState(null);
-    const [cancelingSession, setCancelingSession] = useState(null);
-    const [confirmingSession, setConfirmingSession] = useState(null);
-    const [uncancelingSession, setUncancelingSession] = useState(null);
+    const [defaultSettings, setDefaultSettings] = useState<SessionDefaults>(loadSessionDefaults);
 
     // Bulk delete state
     const [selectedSessionIds, setSelectedSessionIds] = useState<number[]>([]);
-    const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
     const [deletingSessions, setDeletingSessions] = useState(false);
-    const [checkingNotifications, setCheckingNotifications] = useState(false);
 
     // Filter state
     const [showFilters, setShowFilters] = useState(false);
-    const [filterStatus, setFilterStatus] = useState({
-        scheduled: true,
-        confirmed: true,
-        completed: true,
-        cancelled: false
-    });
-    const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
-    const [dateTo, setDateTo] = useState(format(addMonths(new Date(), 2), 'yyyy-MM-dd'));
+    const [filters, setFilters] = useState<SessionFilters>(defaultFilters);
 
-    useEffect(() => {
-        fetchSessions();
-
-        // Load default settings from localStorage
-        const savedDefaults = localStorage.getItem('sessionDefaults');
-        if (savedDefaults) {
-            try {
-                const parsed = JSON.parse(savedDefaults);
-                setDefaultSettings(parsed);
-            } catch (err) {
-                // Failed to load saved defaults - using hardcoded defaults
-            }
+    const fetchSessions = useCallback(async () => {
+        try {
+            setSessions(await fetchSessionList());
+            setError('');
+        } catch (err) {
+            setError('Failed to load sessions. Please try again.');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
         }
     }, []);
 
-    // Update form fields when defaultSettings changes (after loading from localStorage)
     useEffect(() => {
-        setMinimumPlayers(defaultSettings.minimumPlayers);
-        setAutoAnnounceHours(defaultSettings.autoAnnounceHours);
-        setReminderHours(defaultSettings.reminderHours);
-        setConfirmationHours(defaultSettings.confirmationHours);
-    }, [defaultSettings]);
+        fetchSessions();
+    }, [fetchSessions]);
 
-    const fetchSessions = async () => {
-        try {
-            setLoading(true);
-            // Get all sessions (not just upcoming) for management
-            const response = await api.get('/sessions/enhanced');
-            // Handle both response.data.data and response.data formats for compatibility
-            setSessions(response.data?.data || response.data || []);
-            setError('');
-        } catch (err) {
-            // Fallback to legacy endpoint if enhanced fails
-            try {
-                const fallbackResponse = await api.get('/sessions');
-                setSessions(fallbackResponse.data || []);
-                setError('');
-            } catch (fallbackErr) {
-                setError('Failed to load sessions. Please try again.');
-            }
-        } finally {
-            setLoading(false);
-        }
+    const handleRefresh = () => {
+        setRefreshing(true);
+        fetchSessions();
     };
 
-    const handleCreateSession = async () => {
+    /** Run one per-session API action: busy spinner, snackbar, then refresh the list. */
+    const runSessionAction = async (
+        id: number,
+        type: BusyActionType,
+        request: () => Promise<unknown>,
+        successMessage: string,
+        failureMessage: string
+    ) => {
         try {
-            if (!sessionTitle || !startTime || !endTime) {
-                enqueueSnackbar('Please fill in all required fields', { variant: 'error' });
-                return;
-            }
-
-            if (endTime <= startTime) {
-                enqueueSnackbar('End time must be after start time', { variant: 'error' });
-                return;
-            }
-
-            if (isRecurring && recurringPattern !== 'custom' && (recurringDayOfWeek < 0 || recurringDayOfWeek > 6)) {
-                enqueueSnackbar('Please select a valid day of the week for recurring sessions', { variant: 'error' });
-                return;
-            }
-
-            const sessionData: SessionCreateData = {
-                title: sessionTitle,
-                start_time: startTime.toISOString(),
-                end_time: endTime.toISOString(),
-                description: description,
-                minimum_players: minimumPlayers,
-                auto_announce_hours: autoAnnounceHours,
-                reminder_hours: reminderHours,
-                confirmation_hours: confirmationHours
-            };
-
-            // Add recurring fields if enabled
-            if (isRecurring) {
-                sessionData.recurring_pattern = recurringPattern;
-                sessionData.recurring_day_of_week = recurringDayOfWeek;
-                sessionData.recurring_interval = recurringInterval;
-                if (recurringEndDate) {
-                    sessionData.recurring_end_date = recurringEndDate.toISOString();
-                }
-                sessionData.recurring_end_count = recurringEndCount;
-            }
-
-            const endpoint = isRecurring ? '/sessions/recurring' : '/sessions';
-            await api.post(endpoint, sessionData);
-
-            const message = isRecurring
-                ? `Recurring session template created with ${recurringEndCount} instances`
-                : 'Session created successfully';
-            enqueueSnackbar(message, { variant: 'success' });
-
-            // Reset form and close dialog
-            resetSessionForm();
-
-            // Refresh sessions
+            setBusyAction({ id, type });
+            await request();
+            enqueueSnackbar(successMessage, { variant: 'success' });
             fetchSessions();
         } catch (err) {
-            const error = err as { response?: { data?: { message?: string } } };
-            const errorMessage = error.response?.data?.message || 'Failed to create session';
-            enqueueSnackbar(errorMessage, { variant: 'error' });
-        }
-    };
-
-    const handleStartTimeChange = (newStartTime) => {
-        setStartTime(newStartTime);
-
-        // If end time hasn't been manually set, auto-update it to match the new start date
-        if (!endTimeManuallySet && newStartTime) {
-            const currentEndTime = endTime || new Date();
-            const newEndTime = new Date(newStartTime);
-
-            // Preserve the time portion from the current end time
-            newEndTime.setHours(currentEndTime.getHours());
-            newEndTime.setMinutes(currentEndTime.getMinutes());
-
-            // Overnight sessions: if the preserved clock time lands at or before
-            // the new start (e.g. 11 PM start, 4 AM end), the session crosses
-            // midnight — roll the end to the next day instead of producing an
-            // end time before the start
-            if (newEndTime <= newStartTime) {
-                newEndTime.setDate(newEndTime.getDate() + 1);
-            }
-
-            setEndTime(newEndTime);
-        }
-    };
-
-    const handleEndTimeChange = (newEndTime) => {
-        setEndTime(newEndTime);
-        setEndTimeManuallySet(true);
-    };
-
-    const resetSessionForm = () => {
-        setSessionTitle('');
-        setStartTime(new Date());
-        setEndTime(new Date(new Date().setHours(new Date().getHours() + 5)));
-        setEndTimeManuallySet(false);
-        setDescription('');
-        setMinimumPlayers(defaultSettings.minimumPlayers);
-        setAutoAnnounceHours(defaultSettings.autoAnnounceHours);
-        setReminderHours(defaultSettings.reminderHours);
-        setConfirmationHours(defaultSettings.confirmationHours);
-
-        // Reset recurring fields
-        setIsRecurring(false);
-        setRecurringPattern('weekly');
-        setRecurringDayOfWeek(0);
-        setRecurringInterval(1);
-        setRecurringEndDate(null);
-        setRecurringEndCount(12);
-
-        setCreateSessionDialog(false);
-    };
-
-    const handleAnnounceSession = async (sessionId) => {
-        try {
-            setAnnouncingSession(sessionId);
-            await api.post(`/sessions/${sessionId}/announce`);
-            enqueueSnackbar('Session announcement posted successfully', { variant: 'success' });
-            fetchSessions(); // Refresh to get updated data
-        } catch (err) {
-            enqueueSnackbar('Failed to post announcement', { variant: 'error' });
+            enqueueSnackbar(getErrorMessage(err, failureMessage), { variant: 'error' });
         } finally {
-            setAnnouncingSession(null);
+            setBusyAction(null);
         }
+    };
+
+    const handleRunAction = (sessionId: number, type: Exclude<BusyActionType, 'cancel'>) => {
+        if (type === 'announce') {
+            runSessionAction(sessionId, type, () => api.post(`/sessions/${sessionId}/announce`),
+                'Session announcement posted successfully', 'Failed to post announcement');
+        } else if (type === 'confirm') {
+            runSessionAction(sessionId, type, () => api.put(`/sessions/${sessionId}`, { status: 'confirmed' }),
+                'Session confirmed successfully', 'Failed to confirm session');
+        } else {
+            runSessionAction(sessionId, type, () => api.post(`/sessions/${sessionId}/uncancel`),
+                'Session has been reinstated', 'Failed to uncancel session');
+        }
+    };
+
+    const handleCancelSession = async () => {
+        if (!sessionToCancel) return;
+        const target = sessionToCancel;
+        const reason = cancelReason || 'Cancelled by DM';
+        setSessionToCancel(null);
+        setCancelReason('');
+        await runSessionAction(target.id, 'cancel',
+            () => api.put(`/sessions/${target.id}`, { status: 'cancelled', cancel_reason: reason }),
+            'Session cancelled successfully', 'Failed to cancel session');
     };
 
     const handleCheckNotifications = async () => {
         try {
             setCheckingNotifications(true);
-            const response = await api.post('/sessions/check-notifications');
-            const result = response.data?.data || response.data || {};
+            const response: { data?: NotificationCheckResult } = await api.post('/sessions/check-notifications');
+            const result = response?.data || {};
 
             if (result.count === 0) {
                 enqueueSnackbar('No sessions need notifications at this time', { variant: 'info' });
@@ -352,7 +188,7 @@ const SessionManagement = () => {
                 } else {
                     enqueueSnackbar(`Posted ${successCount} announcements, ${errorCount} failed`, { variant: 'warning' });
                 }
-                fetchSessions(); // Refresh to get updated data
+                fetchSessions();
             }
         } catch (err) {
             enqueueSnackbar('Failed to check notifications', { variant: 'error' });
@@ -362,193 +198,44 @@ const SessionManagement = () => {
     };
 
     const handleSendReminder = async () => {
+        if (!reminderSession) return;
         try {
             setSendingReminder(true);
-            await api.post(`/sessions/${selectedSession.id}/remind`, {
-                reminder_type: reminderType
-            });
+            await api.post(`/sessions/${reminderSession.id}/remind`, { reminder_type: reminderType });
             enqueueSnackbar('Reminder sent successfully', { variant: 'success' });
         } catch (err) {
             enqueueSnackbar('Failed to send reminder', { variant: 'error' });
         } finally {
             setSendingReminder(false);
-            setReminderDialog(false);
+            setReminderSession(null);
         }
     };
 
-    const handleConfirmSession = async (sessionId) => {
+    const viewAttendance = async (sessionId: number) => {
         try {
-            setConfirmingSession(sessionId);
-            await api.put(`/sessions/${sessionId}`, { status: 'confirmed' });
-            enqueueSnackbar('Session confirmed successfully', { variant: 'success' });
-            fetchSessions();
-        } catch (err) {
-            enqueueSnackbar('Failed to confirm session', { variant: 'error' });
-        } finally {
-            setConfirmingSession(null);
-        }
-    };
-
-    const handleCancelSession = async () => {
-        try {
-            if (!sessionToCancel) return;
-
-            setCancelingSession(sessionToCancel.id);
-            await api.put(`/sessions/${sessionToCancel.id}`, {
-                status: 'cancelled',
-                cancel_reason: cancelReason || 'Cancelled by DM'
-            });
-            enqueueSnackbar('Session cancelled successfully', { variant: 'success' });
-            fetchSessions();
-        } catch (err) {
-            enqueueSnackbar('Failed to cancel session', { variant: 'error' });
-        } finally {
-            setCancelingSession(null);
-            setCancelDialog(false);
-            setCancelReason('');
-            setSessionToCancel(null);
-        }
-    };
-
-    const openCancelDialog = (session) => {
-        setSessionToCancel(session);
-        setCancelReason('');
-        setCancelDialog(true);
-    };
-
-    const openEditDialog = (session) => {
-        setEditingSession(session);
-        setEditTitle(session.title || '');
-        setEditStartTime(session.start_time ? new Date(session.start_time) : new Date());
-        setEditEndTime(session.end_time ? new Date(session.end_time) : new Date());
-        setEditDescription(session.description || '');
-        setEditSessionDialog(true);
-    };
-
-    const handleUpdateSession = async () => {
-        try {
-            if (!editingSession) return;
-
-            if (!editTitle || !editStartTime || !editEndTime) {
-                enqueueSnackbar('Please fill in all required fields', { variant: 'error' });
-                return;
+            // The api utility returns the response body: { success, data: rows }
+            const response: { data?: AttendanceRecord[] } = await api.get(`/sessions/${sessionId}/attendance/detailed`);
+            const session = sessions.find(s => s.id === sessionId);
+            if (session) {
+                setAttendanceView({ session, records: Array.isArray(response?.data) ? response.data : [] });
             }
-
-            if (editEndTime <= editStartTime) {
-                enqueueSnackbar('End time must be after start time', { variant: 'error' });
-                return;
-            }
-
-            setSavingEdit(true);
-            // Backend updates the linked Discord announcement automatically
-            await api.put(`/sessions/${editingSession.id}`, {
-                title: editTitle,
-                start_time: editStartTime.toISOString(),
-                end_time: editEndTime.toISOString(),
-                description: editDescription
-            });
-
-            enqueueSnackbar('Session updated successfully', { variant: 'success' });
-            setEditSessionDialog(false);
-            setEditingSession(null);
-            fetchSessions();
-        } catch (err) {
-            const error = err as { response?: { data?: { message?: string } } };
-            const errorMessage = error.response?.data?.message || 'Failed to update session';
-            enqueueSnackbar(errorMessage, { variant: 'error' });
-        } finally {
-            setSavingEdit(false);
-        }
-    };
-
-    const handleUncancelSession = async (sessionId) => {
-        try {
-            setUncancelingSession(sessionId);
-            await api.post(`/sessions/${sessionId}/uncancel`);
-            enqueueSnackbar('Session has been reinstated', { variant: 'success' });
-            fetchSessions();
-        } catch (err) {
-            const error = err as { response?: { data?: { message?: string } } };
-            const errorMessage = error.response?.data?.message || 'Failed to uncancel session';
-            enqueueSnackbar(errorMessage, { variant: 'error' });
-        } finally {
-            setUncancelingSession(null);
-        }
-    };
-
-    const viewAttendance = async (sessionId) => {
-        try {
-            const response = await api.get(`/sessions/${sessionId}/attendance/detailed`);
-            setSelectedSession({
-                ...sessions.find(s => s.id === sessionId),
-                detailedAttendance: response.data.data
-            });
-            setAttendanceDialog(true);
         } catch (err) {
             enqueueSnackbar('Failed to load attendance details', { variant: 'error' });
         }
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'scheduled': return 'primary';
-            case 'confirmed': return 'success';
-            case 'cancelled': return 'error';
-            case 'completed': return 'default';
-            default: return 'default';
+    const saveDefaultSettings = (newDefaults: SessionDefaults) => {
+        try {
+            localStorage.setItem(SESSION_DEFAULTS_STORAGE_KEY, JSON.stringify(newDefaults));
+            setDefaultSettings(newDefaults);
+            setSettingsDialog(false);
+            enqueueSnackbar('Default settings saved', { variant: 'success' });
+        } catch (err) {
+            enqueueSnackbar('Failed to save default settings', { variant: 'error' });
         }
     };
 
-    const getStatusLabel = (status) => {
-        switch (status) {
-            case 'scheduled': return 'Scheduled';
-            case 'confirmed': return 'Confirmed';
-            case 'cancelled': return 'Cancelled';
-            case 'completed': return 'Completed';
-            default: return status;
-        }
-    };
-
-    // Filter sessions based on current filter settings
-    const filteredSessions = sessions.filter(session => {
-        // Filter by status
-        const status = session.status || 'scheduled';
-        if (!filterStatus[status]) {
-            return false;
-        }
-
-        // Filter by date range
-        const sessionDate = new Date(session.start_time);
-        const fromDate = dateFrom ? new Date(dateFrom) : null;
-        const toDate = dateTo ? new Date(dateTo + 'T23:59:59') : null;
-
-        if (fromDate && sessionDate < fromDate) {
-            return false;
-        }
-        if (toDate && sessionDate > toDate) {
-            return false;
-        }
-
-        return true;
-    });
-
-    const handleStatusFilterChange = (status) => {
-        setFilterStatus(prev => ({
-            ...prev,
-            [status]: !prev[status]
-        }));
-    };
-
-    const resetFilters = () => {
-        setFilterStatus({
-            scheduled: true,
-            confirmed: true,
-            completed: true,
-            cancelled: false
-        });
-        setDateFrom(format(new Date(), 'yyyy-MM-dd'));
-        setDateTo(format(addMonths(new Date(), 2), 'yyyy-MM-dd'));
-    };
+    const filteredSessions = filterSessions(sessions, filters);
 
     const toggleSessionSelected = (sessionId: number) => {
         setSelectedSessionIds(prev =>
@@ -589,201 +276,6 @@ const SessionManagement = () => {
         fetchSessions();
     };
 
-    const renderSessionCard = (session) => {
-        const isUpcoming = new Date(session.start_time) > new Date();
-        const attendanceTotal = (session.confirmed_count || 0) + (session.declined_count || 0) + (session.maybe_count || 0);
-
-        return (
-            <Card key={session.id} variant="outlined" sx={{ mb: 2 }}>
-                <CardHeader
-                    avatar={
-                        <Checkbox
-                            checked={selectedSessionIds.includes(session.id)}
-                            onChange={() => toggleSessionSelected(session.id)}
-                            slotProps={{ input: { 'aria-label': `Select session ${session.title || 'Game Session'}` } }}
-                        />
-                    }
-                    title={session.title || 'Game Session'}
-                    subtitle={currentTimezone && formatInCampaignTimezone(session.start_time, currentTimezone, 'PPpp z')}
-                    action={
-                        <Chip
-                            label={getStatusLabel(session.status)}
-                            color={getStatusColor(session.status)}
-                            size="small"
-                        />
-                    }
-                />
-                <CardContent>
-                    <Grid container spacing={2}>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <Typography variant="body2" sx={{
-                                color: "text.secondary"
-                            }}>
-                                Description: {session.description || 'No description'}
-                            </Typography>
-                            <Typography variant="body2" sx={{ mt: 1 }}>
-                                Min Players: {session.minimum_players || 3}
-                            </Typography>
-                            <Typography variant="body2" sx={{
-                                color: "text.secondary"
-                            }}>
-                                Responses: {attendanceTotal} total
-                            </Typography>
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                                {/* Edit Session */}
-                                {session.status !== 'cancelled' && session.status !== 'completed' && (
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => openEditDialog(session)}
-                                        title="Edit Session Details"
-                                        color="primary"
-                                    >
-                                        <EditIcon />
-                                    </IconButton>
-                                )}
-
-                                {/* View Attendance */}
-                                <IconButton
-                                    size="small"
-                                    onClick={() => viewAttendance(session.id)}
-                                    title="View Attendance Details"
-                                >
-                                    <ViewIcon />
-                                </IconButton>
-
-                                {/* Announce Session */}
-                                {isUpcoming && session.status === 'scheduled' && (
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => handleAnnounceSession(session.id)}
-                                        disabled={announcingSession === session.id}
-                                        title="Post Discord Announcement"
-                                        color="primary"
-                                    >
-                                        {announcingSession === session.id ?
-                                            <CircularProgress size={20} /> : <AnnouncementIcon />}
-                                    </IconButton>
-                                )}
-
-                                {/* Send Reminder */}
-                                {isUpcoming && session.status !== 'cancelled' && (
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => {
-                                            setSelectedSession(session);
-                                            setReminderDialog(true);
-                                        }}
-                                        title="Send Reminder"
-                                        color="info"
-                                    >
-                                        <ReminderIcon />
-                                    </IconButton>
-                                )}
-
-                                {/* Confirm Session */}
-                                {isUpcoming && session.status === 'scheduled' &&
-                                 (session.confirmed_count || 0) >= (session.minimum_players || 3) && (
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => handleConfirmSession(session.id)}
-                                        disabled={confirmingSession === session.id}
-                                        title="Confirm Session"
-                                        color="success"
-                                    >
-                                        {confirmingSession === session.id ?
-                                            <CircularProgress size={20} /> : <ConfirmIcon />}
-                                    </IconButton>
-                                )}
-
-                                {/* Cancel Session */}
-                                {isUpcoming && session.status !== 'cancelled' && (
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => openCancelDialog(session)}
-                                        disabled={cancelingSession === session.id}
-                                        title="Cancel Session"
-                                        color="error"
-                                    >
-                                        {cancelingSession === session.id ?
-                                            <CircularProgress size={20} /> : <CancelIcon />}
-                                    </IconButton>
-                                )}
-
-                                {/* Uncancel Session */}
-                                {isUpcoming && session.status === 'cancelled' && (
-                                    <IconButton
-                                        size="small"
-                                        onClick={() => handleUncancelSession(session.id)}
-                                        disabled={uncancelingSession === session.id}
-                                        title="Reinstate Session"
-                                        color="success"
-                                    >
-                                        {uncancelingSession === session.id ?
-                                            <CircularProgress size={20} /> : <RestoreIcon />}
-                                    </IconButton>
-                                )}
-                            </Box>
-                        </Grid>
-                    </Grid>
-
-                    {/* Attendance Summary */}
-                    <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                        {session.confirmed_names && (
-                            <Typography variant="body2">
-                                ✅ <strong>Attending ({session.confirmed_count || 0}):</strong> {session.confirmed_names}
-                            </Typography>
-                        )}
-                        {!session.confirmed_names && (session.confirmed_count || 0) > 0 && (
-                            <Typography variant="body2">
-                                ✅ {session.confirmed_count} confirmed
-                            </Typography>
-                        )}
-                        {session.maybe_names && (
-                            <Typography variant="body2">
-                                ❓ <strong>Maybe ({session.maybe_count || 0}):</strong> {session.maybe_names}
-                            </Typography>
-                        )}
-                        {!session.maybe_names && (session.maybe_count || 0) > 0 && (
-                            <Typography variant="body2">
-                                ❓ {session.maybe_count} maybe
-                            </Typography>
-                        )}
-                        {session.declined_names && (
-                            <Typography variant="body2">
-                                ❌ <strong>Declined ({session.declined_count || 0}):</strong> {session.declined_names}
-                            </Typography>
-                        )}
-                        {!session.declined_names && (session.declined_count || 0) > 0 && (
-                            <Typography variant="body2">
-                                ❌ {session.declined_count} declined
-                            </Typography>
-                        )}
-                        {!session.confirmed_names && !session.maybe_names && !session.declined_names &&
-                         (session.confirmed_count || 0) === 0 && (session.maybe_count || 0) === 0 && (session.declined_count || 0) === 0 && (
-                            <Typography variant="body2" sx={{
-                                color: "text.secondary"
-                            }}>
-                                No responses yet
-                            </Typography>
-                        )}
-                    </Box>
-                </CardContent>
-            </Card>
-        );
-    };
-
-    const saveDefaultSettings = () => {
-        try {
-            localStorage.setItem('sessionDefaults', JSON.stringify(defaultSettings));
-            setSettingsDialog(false);
-            enqueueSnackbar('Default settings saved', { variant: 'success' });
-        } catch (err) {
-            enqueueSnackbar('Failed to save default settings', { variant: 'error' });
-        }
-    };
-
     if (loading) {
         return (
             <Box
@@ -798,6 +290,17 @@ const SessionManagement = () => {
             </Box>
         );
     }
+
+    const emptyState = (title: string, hint: string) => (
+        <Paper sx={{ p: 3, textAlign: 'center' }}>
+            <Typography variant="h6" sx={{ color: "text.secondary" }}>
+                {title}
+            </Typography>
+            <Typography variant="body1" sx={{ color: "text.secondary", mt: 1 }}>
+                {hint}
+            </Typography>
+        </Paper>
+    );
 
     return (
         <Box>
@@ -850,8 +353,9 @@ const SessionManagement = () => {
                     </Button>
                     <Button
                         variant="outlined"
-                        startIcon={<RefreshIcon />}
-                        onClick={fetchSessions}
+                        startIcon={refreshing ? <CircularProgress size={16} /> : <RefreshIcon />}
+                        onClick={handleRefresh}
+                        disabled={refreshing}
                     >
                         Refresh
                     </Button>
@@ -864,129 +368,21 @@ const SessionManagement = () => {
                     You can change this in Campaign Settings.
                 </Alert>
             )}
-            {/* Filters Panel */}
-            <Collapse in={showFilters}>
-                <Paper sx={{ p: 2, mb: 3 }}>
-                    <Grid container spacing={2} sx={{
-                        alignItems: "center"
-                    }}>
-                        <Grid size={12}>
-                            <Typography variant="subtitle1" gutterBottom>
-                                Session Status
-                            </Typography>
-                            <Box
-                                sx={{
-                                    display: "flex",
-                                    gap: 2,
-                                    flexWrap: "wrap"
-                                }}>
-                                <FormControlLabel
-                                    control={
-                                        <Checkbox
-                                            checked={filterStatus.scheduled}
-                                            onChange={() => handleStatusFilterChange('scheduled')}
-                                        />
-                                    }
-                                    label="Scheduled"
-                                />
-                                <FormControlLabel
-                                    control={
-                                        <Checkbox
-                                            checked={filterStatus.confirmed}
-                                            onChange={() => handleStatusFilterChange('confirmed')}
-                                        />
-                                    }
-                                    label="Confirmed"
-                                />
-                                <FormControlLabel
-                                    control={
-                                        <Checkbox
-                                            checked={filterStatus.completed}
-                                            onChange={() => handleStatusFilterChange('completed')}
-                                        />
-                                    }
-                                    label="Completed"
-                                />
-                                <FormControlLabel
-                                    control={
-                                        <Checkbox
-                                            checked={filterStatus.cancelled}
-                                            onChange={() => handleStatusFilterChange('cancelled')}
-                                        />
-                                    }
-                                    label="Cancelled"
-                                />
-                            </Box>
-                        </Grid>
-                        <Grid size={{xs: 12, sm: 5}}>
-                            <TextField
-                                label="From Date"
-                                type="date"
-                                fullWidth
-                                value={dateFrom}
-                                onChange={(e) => setDateFrom(e.target.value)}
-                                slotProps={{ inputLabel: { shrink: true } }}
-                            />
-                        </Grid>
-                        <Grid size={{xs: 12, sm: 5}}>
-                            <TextField
-                                label="To Date"
-                                type="date"
-                                fullWidth
-                                value={dateTo}
-                                onChange={(e) => setDateTo(e.target.value)}
-                                slotProps={{ inputLabel: { shrink: true } }}
-                            />
-                        </Grid>
-                        <Grid size={{xs: 12, sm: 2}}>
-                            <Button
-                                variant="outlined"
-                                fullWidth
-                                onClick={resetFilters}
-                            >
-                                Reset
-                            </Button>
-                        </Grid>
-                    </Grid>
-                </Paper>
-            </Collapse>
+            <SessionFilterPanel
+                open={showFilters}
+                filters={filters}
+                onChange={setFilters}
+                onReset={() => setFilters(defaultFilters())}
+            />
             {error && (
                 <Alert severity="error" sx={{ mb: 3 }}>
                     {error}
                 </Alert>
             )}
             {sessions.length === 0 ? (
-                <Paper sx={{ p: 3, textAlign: 'center' }}>
-                    <Typography variant="h6" sx={{
-                        color: "text.secondary"
-                    }}>
-                        No sessions found
-                    </Typography>
-                    <Typography
-                        variant="body1"
-                        sx={{
-                            color: "text.secondary",
-                            mt: 1
-                        }}>
-                        Create a session from the Sessions page to see it here.
-                    </Typography>
-                </Paper>
+                emptyState('No sessions found', 'Create a session from the Sessions page to see it here.')
             ) : filteredSessions.length === 0 ? (
-                <Paper sx={{ p: 3, textAlign: 'center' }}>
-                    <Typography variant="h6" sx={{
-                        color: "text.secondary"
-                    }}>
-                        No sessions match your filters
-                    </Typography>
-                    <Typography
-                        variant="body1"
-                        sx={{
-                            color: "text.secondary",
-                            mt: 1
-                        }}>
-                        Try adjusting your filter settings to see more sessions.
-                    </Typography>
-                </Paper>
+                emptyState('No sessions match your filters', 'Try adjusting your filter settings to see more sessions.')
             ) : (
                 <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
@@ -1013,83 +409,94 @@ const SessionManagement = () => {
                             </Button>
                         )}
                     </Box>
-                    {filteredSessions.map(renderSessionCard)}
+                    {filteredSessions.map(session => (
+                        <SessionCard
+                            key={session.id}
+                            session={session}
+                            timezone={currentTimezone}
+                            selected={selectedSessionIds.includes(session.id)}
+                            busyAction={busyAction}
+                            onToggleSelected={toggleSessionSelected}
+                            onEdit={setEditingSession}
+                            onViewAttendance={viewAttendance}
+                            onRemind={setReminderSession}
+                            onOpenCancel={(target) => {
+                                setSessionToCancel(target);
+                                setCancelReason('');
+                            }}
+                            onRunAction={handleRunAction}
+                        />
+                    ))}
                 </Box>
             )}
             {/* Attendance Details Dialog */}
             <Dialog
-                open={attendanceDialog}
-                onClose={() => setAttendanceDialog(false)}
+                open={!!attendanceView}
+                onClose={() => setAttendanceView(null)}
                 maxWidth="md"
                 fullWidth
             >
                 <DialogTitle>
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 1
-                        }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                         <GroupIcon />
-                        Attendance Details: {selectedSession?.title}
+                        Attendance Details: {attendanceView?.session.title}
                     </Box>
                 </DialogTitle>
                 <DialogContent>
-                    {selectedSession?.detailedAttendance && (
-                        <List>
-                            {selectedSession.detailedAttendance.map((attendee, index) => (
-                                <ListItem key={index} divider>
-                                    <ListItemText
-                                        primary={`${attendee.username} ${attendee.character_name ? `(${attendee.character_name})` : ''}`}
-                                        secondary={
-                                            <Box>
-                                                <Typography variant="body2">
-                                                    Status: {attendee.response_type}
-                                                </Typography>
-                                                {attendee.late_arrival_time && (
-                                                    <Typography variant="body2">
-                                                        Late Arrival: {attendee.late_arrival_time}
-                                                    </Typography>
-                                                )}
-                                                {attendee.early_departure_time && (
-                                                    <Typography variant="body2">
-                                                        Early Departure: {attendee.early_departure_time}
-                                                    </Typography>
-                                                )}
-                                                {attendee.notes && (
-                                                    <Typography variant="body2">
-                                                        Notes: {attendee.notes}
-                                                    </Typography>
-                                                )}
-                                                <Typography variant="caption" sx={{
-                                                    color: "text.secondary"
-                                                }}>
-                                                    Responded: {currentTimezone && formatInCampaignTimezone(attendee.response_timestamp, currentTimezone, 'PPp')}
-                                                </Typography>
-                                            </Box>
-                                        }
-                                    />
-                                </ListItem>
-                            ))}
-                        </List>
+                    {attendanceView && attendanceView.records.length === 0 && (
+                        <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                            No attendance has been recorded for this session.
+                        </Typography>
                     )}
+                    <List>
+                        {attendanceView?.records.map((attendee, index) => (
+                            <ListItem key={index} divider>
+                                <ListItemText
+                                    primary={`${attendee.username} ${attendee.character_name ? `(${attendee.character_name})` : ''}`}
+                                    secondary={
+                                        <Box>
+                                            <Typography variant="body2">
+                                                Status: {attendee.response_type}
+                                            </Typography>
+                                            {attendee.late_arrival_time && (
+                                                <Typography variant="body2">
+                                                    Late Arrival: {attendee.late_arrival_time}
+                                                </Typography>
+                                            )}
+                                            {attendee.early_departure_time && (
+                                                <Typography variant="body2">
+                                                    Early Departure: {attendee.early_departure_time}
+                                                </Typography>
+                                            )}
+                                            {attendee.notes && (
+                                                <Typography variant="body2">
+                                                    Notes: {attendee.notes}
+                                                </Typography>
+                                            )}
+                                            <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                                                Responded: {currentTimezone && formatInCampaignTimezone(attendee.response_timestamp, currentTimezone, 'PPp')}
+                                            </Typography>
+                                        </Box>
+                                    }
+                                />
+                            </ListItem>
+                        ))}
+                    </List>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setAttendanceDialog(false)}>Close</Button>
+                    <Button onClick={() => setAttendanceView(null)}>Close</Button>
                 </DialogActions>
             </Dialog>
             {/* Send Reminder Dialog */}
-            <Dialog open={reminderDialog} onClose={() => setReminderDialog(false)}>
+            <Dialog open={!!reminderSession} onClose={() => setReminderSession(null)}>
                 <DialogTitle>Send Session Reminder</DialogTitle>
                 <DialogContent>
                     <Typography variant="body1" gutterBottom>
-                        Send a reminder for: {selectedSession?.title}
+                        Send a reminder for: {reminderSession?.title}
                     </Typography>
-                    <Typography variant="body2" gutterBottom sx={{
-                        color: "text.secondary"
-                    }}>
-                        {selectedSession?.start_time && currentTimezone &&
-                            formatInCampaignTimezone(selectedSession.start_time, currentTimezone, 'PPpp z')}
+                    <Typography variant="body2" gutterBottom sx={{ color: "text.secondary" }}>
+                        {reminderSession?.start_time && currentTimezone &&
+                            formatInCampaignTimezone(reminderSession.start_time, currentTimezone, 'PPpp z')}
                     </Typography>
 
                     <FormControl component="fieldset" sx={{ mt: 2 }}>
@@ -1100,26 +507,14 @@ const SessionManagement = () => {
                             value={reminderType}
                             onChange={(e) => setReminderType(e.target.value)}
                         >
-                            <FormControlLabel
-                                value="all"
-                                control={<Radio />}
-                                label="Everyone (general reminder)"
-                            />
-                            <FormControlLabel
-                                value="non_responders"
-                                control={<Radio />}
-                                label="Non-responders only"
-                            />
-                            <FormControlLabel
-                                value="maybe_responders"
-                                control={<Radio />}
-                                label="Maybe responders only"
-                            />
+                            <FormControlLabel value="all" control={<Radio />} label="Everyone (general reminder)" />
+                            <FormControlLabel value="non_responders" control={<Radio />} label="Non-responders only" />
+                            <FormControlLabel value="maybe_responders" control={<Radio />} label="Maybe responders only" />
                         </RadioGroup>
                     </FormControl>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setReminderDialog(false)}>Cancel</Button>
+                    <Button onClick={() => setReminderSession(null)}>Cancel</Button>
                     <Button
                         onClick={handleSendReminder}
                         disabled={sendingReminder}
@@ -1131,7 +526,7 @@ const SessionManagement = () => {
                 </DialogActions>
             </Dialog>
             {/* Cancel Session Dialog */}
-            <Dialog open={cancelDialog} onClose={() => setCancelDialog(false)} maxWidth="sm" fullWidth>
+            <Dialog open={!!sessionToCancel} onClose={() => setSessionToCancel(null)} maxWidth="sm" fullWidth>
                 <DialogTitle>Cancel Session</DialogTitle>
                 <DialogContent>
                     <Typography variant="body1" gutterBottom>
@@ -1151,429 +546,79 @@ const SessionManagement = () => {
                     />
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setCancelDialog(false)}>Back</Button>
+                    <Button onClick={() => setSessionToCancel(null)}>Back</Button>
                     <Button
                         onClick={handleCancelSession}
-                        disabled={cancelingSession}
                         variant="contained"
                         color="error"
-                        startIcon={cancelingSession ? <CircularProgress size={16} /> : <CancelIcon />}
+                        startIcon={<CancelIcon />}
                     >
                         Cancel Session
                     </Button>
                 </DialogActions>
             </Dialog>
-            {/* Create Session Dialog */}
             <LocalizationProvider dateAdapter={AdapterDateFns}>
-                <Dialog open={createSessionDialog} onClose={() => setCreateSessionDialog(false)} maxWidth="md" fullWidth>
-                    <DialogTitle>Create New Session</DialogTitle>
-                    <DialogContent>
-                        <TextField
-                            autoFocus
-                            margin="dense"
-                            label="Session Title"
-                            fullWidth
-                            value={sessionTitle}
-                            onChange={(e) => setSessionTitle(e.target.value)}
-                            required
-                            sx={{ mb: 3 }}
-                        />
+                <CreateSessionDialog
+                    open={createSessionDialog}
+                    defaults={defaultSettings}
+                    onClose={() => setCreateSessionDialog(false)}
+                    onCreated={() => {
+                        setCreateSessionDialog(false);
+                        fetchSessions();
+                    }}
+                />
 
-                        <Grid container spacing={3} size={12} sx={{ mb: 3 }}>
-                            <Grid size={{xs: 12, md: 6}}>
-                                <DateTimePicker
-                                    label="Start Time"
-                                    value={startTime}
-                                    onChange={handleStartTimeChange}
-                                    slotProps={{ textField: { fullWidth: true } }}
-                                />
-                            </Grid>
-                            <Grid size={{xs: 12, md: 6}}>
-                                <DateTimePicker
-                                    label="End Time"
-                                    value={endTime}
-                                    onChange={handleEndTimeChange}
-                                    slotProps={{
-                                        textField: {
-                                            fullWidth: true,
-                                            error: !!(startTime && endTime && endTime <= startTime),
-                                            helperText: startTime && endTime && endTime <= startTime
-                                                ? 'End time must be after start time'
-                                                : undefined
-                                        }
-                                    }}
-                                />
-                            </Grid>
-                        </Grid>
-
-                        <TextField
-                            label="Description (Optional)"
-                            fullWidth
-                            multiline
-                            rows={4}
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            sx={{ mb: 3 }}
-                        />
-
-                        <Grid container spacing={3} size={12} sx={{ mb: 3 }}>
-                            <Grid size={{xs: 12, md: 4}}>
-                                <TextField
-                                    label="Minimum Players"
-                                    type="number"
-                                    fullWidth
-                                    value={minimumPlayers}
-                                    onChange={(e) => setMinimumPlayers(Math.max(1, parseInt(e.target.value) || 3))}
-                                    slotProps={{ htmlInput: { min: 1, max: 10 } }}
-                                />
-                            </Grid>
-                            <Grid size={{xs: 12, md: 4}}>
-                                <TextField
-                                    label="Auto-Announce Hours Before"
-                                    type="number"
-                                    fullWidth
-                                    value={autoAnnounceHours}
-                                    onChange={(e) => setAutoAnnounceHours(Math.max(1, parseInt(e.target.value) || 168))}
-                                    slotProps={{ htmlInput: { min: 1, max: 720 } }}
-                                    helperText="Hours before session to post announcement (168 = 1 week)"
-                                />
-                            </Grid>
-                            <Grid size={{xs: 12, md: 4}}>
-                                <TextField
-                                    label="Reminder Hours Before"
-                                    type="number"
-                                    fullWidth
-                                    value={reminderHours}
-                                    onChange={(e) => setReminderHours(Math.max(1, parseInt(e.target.value) || 48))}
-                                    slotProps={{ htmlInput: { min: 1, max: 336 } }}
-                                    helperText="Hours before session to send reminder (48 = 2 days)"
-                                />
-                            </Grid>
-                        </Grid>
-                        <Grid container spacing={3} sx={{ mt: 1 }} size={12}>
-                            <Grid size={{xs: 12, md: 6}}>
-                                <TextField
-                                    label="Confirmation Hours Before"
-                                    type="number"
-                                    fullWidth
-                                    value={confirmationHours}
-                                    onChange={(e) => setConfirmationHours(Math.max(1, parseInt(e.target.value) || 48))}
-                                    slotProps={{ htmlInput: { min: 1, max: 336 } }}
-                                    helperText="Hours before session to check attendance. Will confirm if enough players, cancel if not (48 = 2 days)"
-                                />
-                            </Grid>
-                        </Grid>
-
-                        <Divider sx={{ my: 3 }} />
-
-                        {/* Recurring Session Options */}
-                        <Box sx={{
-                            mb: 3
-                        }}>
-                            <FormControlLabel
-                                control={
-                                    <Checkbox
-                                        checked={isRecurring}
-                                        onChange={(e) => setIsRecurring(e.target.checked)}
-                                    />
-                                }
-                                label="Make this a recurring session"
-                            />
-                        </Box>
-
-                        {isRecurring && (
-                            <Box sx={{ pl: 3, border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, mb: 3 }}>
-                                <Typography variant="subtitle2" gutterBottom>
-                                    Recurring Session Options
-                                </Typography>
-
-                                <Grid container spacing={2} size={12} sx={{ mb: 2 }}>
-                                    <Grid size={{xs: 12, md: 6}}>
-                                        <FormControl fullWidth>
-                                            <InputLabel id="recurring-pattern-label">Frequency</InputLabel>
-                                            <Select
-                                                labelId="recurring-pattern-label"
-                                                value={recurringPattern}
-                                                onChange={(e) => setRecurringPattern(e.target.value)}
-                                                label="Frequency"
-                                            >
-                                                <MenuItem value="weekly">Weekly</MenuItem>
-                                                <MenuItem value="biweekly">Every Other Week</MenuItem>
-                                                <MenuItem value="monthly">Monthly</MenuItem>
-                                                <MenuItem value="custom">Custom Interval</MenuItem>
-                                            </Select>
-                                        </FormControl>
-                                    </Grid>
-
-                                    <Grid size={{xs: 12, md: 6}}>
-                                        <FormControl fullWidth>
-                                            <InputLabel id="day-of-week-label">Day of Week</InputLabel>
-                                            <Select
-                                                labelId="day-of-week-label"
-                                                value={recurringDayOfWeek}
-                                                onChange={(e) => setRecurringDayOfWeek(e.target.value)}
-                                                label="Day of Week"
-                                            >
-                                                <MenuItem value={0}>Sunday</MenuItem>
-                                                <MenuItem value={1}>Monday</MenuItem>
-                                                <MenuItem value={2}>Tuesday</MenuItem>
-                                                <MenuItem value={3}>Wednesday</MenuItem>
-                                                <MenuItem value={4}>Thursday</MenuItem>
-                                                <MenuItem value={5}>Friday</MenuItem>
-                                                <MenuItem value={6}>Saturday</MenuItem>
-                                            </Select>
-                                        </FormControl>
-                                    </Grid>
-                                </Grid>
-
-                                {recurringPattern === 'custom' && (
-                                    <Grid container spacing={2} size={12} sx={{ mb: 2 }}>
-                                        <Grid size={{xs: 12, md: 6}}>
-                                            <TextField
-                                                label="Interval (weeks)"
-                                                type="number"
-                                                fullWidth
-                                                value={recurringInterval}
-                                                onChange={(e) => setRecurringInterval(Math.max(1, parseInt(e.target.value) || 1))}
-                                                slotProps={{ htmlInput: { min: 1, max: 52 } }}
-                                                helperText="Number of weeks between sessions"
-                                            />
-                                        </Grid>
-                                    </Grid>
-                                )}
-
-                                <Grid container spacing={2} size={12}>
-                                    <Grid size={{xs: 12, md: 6}}>
-                                        <TextField
-                                            label="Number of Sessions"
-                                            type="number"
-                                            fullWidth
-                                            value={recurringEndCount}
-                                            onChange={(e) => setRecurringEndCount(Math.max(1, parseInt(e.target.value) || 12))}
-                                            slotProps={{ htmlInput: { min: 1, max: 100 } }}
-                                            helperText="How many sessions to create"
-                                        />
-                                    </Grid>
-
-                                    <Grid size={{xs: 12, md: 6}}>
-                                        <DatePicker
-                                            label="End Date (Optional)"
-                                            value={recurringEndDate}
-                                            onChange={setRecurringEndDate}
-                                            slotProps={{
-                                                textField: {
-                                                    fullWidth: true,
-                                                    helperText: "Stop generating sessions after this date"
-                                                }
-                                            }}
-                                        />
-                                    </Grid>
-                                </Grid>
-
-                                <Typography
-                                    variant="body2"
-                                    sx={{
-                                        color: "text.secondary",
-                                        mt: 2
-                                    }}>
-                                    {isRecurring && (
-                                        <>
-                                            This will create {recurringEndCount} sessions occurring
-                                            {recurringPattern === 'weekly' && ' weekly'}
-                                            {recurringPattern === 'biweekly' && ' every other week'}
-                                            {recurringPattern === 'monthly' && ' monthly'}
-                                            {recurringPattern === 'custom' && ` every ${recurringInterval} week${recurringInterval > 1 ? 's' : ''}`}
-                                            {recurringDayOfWeek !== null && (
-                                                ` on ${['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'][recurringDayOfWeek]}`
-                                            )}
-                                            {recurringEndDate && `, ending no later than ${format(recurringEndDate, 'MMMM d, yyyy')}`}
-                                            .
-                                        </>
-                                    )}
-                                </Typography>
-                            </Box>
-                        )}
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={resetSessionForm}>Cancel</Button>
-                        <Button onClick={handleCreateSession} color="primary" variant="contained">
-                            {isRecurring ? `Create ${recurringEndCount} Recurring Sessions` : 'Create Session'}
-                        </Button>
-                    </DialogActions>
-                </Dialog>
-
-                {/* Bulk Delete Confirmation Dialog */}
-                <Dialog open={bulkDeleteDialog} onClose={() => !deletingSessions && setBulkDeleteDialog(false)} maxWidth="sm" fullWidth>
-                    <DialogTitle>Delete {selectedSessionIds.length} Session{selectedSessionIds.length === 1 ? '' : 's'}?</DialogTitle>
-                    <DialogContent>
-                        <Alert severity="warning" sx={{ mb: 2 }}>
-                            This permanently deletes the selected sessions, their attendance records, and any linked Discord announcements. This cannot be undone.
-                        </Alert>
-                        <List dense>
-                            {sessions
-                                .filter(session => selectedSessionIds.includes(session.id))
-                                .map(session => (
-                                    <ListItem key={session.id}>
-                                        <ListItemText
-                                            primary={session.title || 'Game Session'}
-                                            secondary={currentTimezone && formatInCampaignTimezone(session.start_time, currentTimezone, 'PPpp z')}
-                                        />
-                                    </ListItem>
-                                ))}
-                        </List>
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setBulkDeleteDialog(false)} disabled={deletingSessions}>Cancel</Button>
-                        <Button
-                            onClick={handleBulkDelete}
-                            color="error"
-                            variant="contained"
-                            disabled={deletingSessions}
-                            startIcon={deletingSessions ? <CircularProgress size={16} /> : <DeleteIcon />}
-                        >
-                            Delete
-                        </Button>
-                    </DialogActions>
-                </Dialog>
-
-                {/* Edit Session Dialog */}
-                <Dialog open={editSessionDialog} onClose={() => setEditSessionDialog(false)} maxWidth="md" fullWidth>
-                    <DialogTitle>Edit Session</DialogTitle>
-                    <DialogContent>
-                        {currentTimezone && (
-                            <Alert severity="info" sx={{ mt: 1, mb: 2 }}>
-                                Times are entered in your browser's local timezone. Sessions display in <strong>{currentTimezone}</strong>.
-                            </Alert>
-                        )}
-                        <TextField
-                            autoFocus
-                            margin="dense"
-                            label="Session Title"
-                            fullWidth
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            required
-                            sx={{ mb: 3 }}
-                        />
-
-                        <Grid container spacing={3} size={12} sx={{ mb: 3 }}>
-                            <Grid size={{xs: 12, md: 6}}>
-                                <DateTimePicker
-                                    label="Start Time"
-                                    value={editStartTime}
-                                    onChange={setEditStartTime}
-                                    slotProps={{ textField: { fullWidth: true } }}
-                                />
-                            </Grid>
-                            <Grid size={{xs: 12, md: 6}}>
-                                <DateTimePicker
-                                    label="End Time"
-                                    value={editEndTime}
-                                    onChange={setEditEndTime}
-                                    slotProps={{
-                                        textField: {
-                                            fullWidth: true,
-                                            error: !!(editStartTime && editEndTime && editEndTime <= editStartTime),
-                                            helperText: editStartTime && editEndTime && editEndTime <= editStartTime
-                                                ? 'End time must be after start time'
-                                                : undefined
-                                        }
-                                    }}
-                                />
-                            </Grid>
-                        </Grid>
-
-                        <TextField
-                            label="Description (Optional)"
-                            fullWidth
-                            multiline
-                            rows={4}
-                            value={editDescription}
-                            onChange={(e) => setEditDescription(e.target.value)}
-                        />
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setEditSessionDialog(false)}>Cancel</Button>
-                        <Button
-                            onClick={handleUpdateSession}
-                            color="primary"
-                            variant="contained"
-                            disabled={savingEdit}
-                            startIcon={savingEdit ? <CircularProgress size={16} /> : undefined}
-                        >
-                            Save Changes
-                        </Button>
-                    </DialogActions>
-                </Dialog>
-
-                {/* Default Settings Dialog */}
-                <Dialog open={settingsDialog} onClose={() => setSettingsDialog(false)} maxWidth="md" fullWidth>
-                    <DialogTitle>Default Session Settings</DialogTitle>
-                    <DialogContent>
-                        <Typography
-                            variant="body2"
-                            gutterBottom
-                            sx={{
-                                color: "text.secondary",
-                                mb: 3
-                            }}>
-                            These defaults will pre-fill when creating new sessions
-                        </Typography>
-
-                        <Grid container spacing={3}>
-                            <Grid size={{ xs: 12, md: 6 }}>
-                                <TextField
-                                    label="Default Minimum Players"
-                                    type="number"
-                                    fullWidth
-                                    value={defaultSettings.minimumPlayers}
-                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, minimumPlayers: Math.max(1, parseInt(e.target.value) || 3) })}
-                                    slotProps={{ htmlInput: { min: 1, max: 10 } }}
-                                />
-                            </Grid>
-                            <Grid size={{ xs: 12, md: 6 }}>
-                                <TextField
-                                    label="Default Auto-Announce Hours Before"
-                                    type="number"
-                                    fullWidth
-                                    value={defaultSettings.autoAnnounceHours}
-                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, autoAnnounceHours: Math.max(1, parseInt(e.target.value) || 168) })}
-                                    slotProps={{ htmlInput: { min: 1, max: 720 } }}
-                                    helperText="168 hours = 1 week"
-                                />
-                            </Grid>
-                            <Grid size={{ xs: 12, md: 6 }}>
-                                <TextField
-                                    label="Default Reminder Hours Before"
-                                    type="number"
-                                    fullWidth
-                                    value={defaultSettings.reminderHours}
-                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, reminderHours: Math.max(1, parseInt(e.target.value) || 48) })}
-                                    slotProps={{ htmlInput: { min: 1, max: 336 } }}
-                                    helperText="48 hours = 2 days"
-                                />
-                            </Grid>
-                            <Grid size={{ xs: 12, md: 6 }}>
-                                <TextField
-                                    label="Default Confirmation Hours Before"
-                                    type="number"
-                                    fullWidth
-                                    value={defaultSettings.confirmationHours}
-                                    onChange={(e) => setDefaultSettings({ ...defaultSettings, confirmationHours: Math.max(1, parseInt(e.target.value) || 48) })}
-                                    slotProps={{ htmlInput: { min: 1, max: 336 } }}
-                                    helperText="48 hours = 2 days. Checks attendance and auto-confirms or auto-cancels."
-                                />
-                            </Grid>
-                        </Grid>
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => setSettingsDialog(false)}>Cancel</Button>
-                        <Button onClick={saveDefaultSettings} variant="contained" color="primary">
-                            Save Defaults
-                        </Button>
-                    </DialogActions>
-                </Dialog>
+                <EditSessionDialog
+                    session={editingSession}
+                    timezone={currentTimezone}
+                    onClose={() => setEditingSession(null)}
+                    onSaved={() => {
+                        setEditingSession(null);
+                        fetchSessions();
+                    }}
+                />
             </LocalizationProvider>
+
+            {/* Bulk Delete Confirmation Dialog */}
+            <Dialog open={bulkDeleteDialog} onClose={() => !deletingSessions && setBulkDeleteDialog(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Delete {selectedSessionIds.length} Session{selectedSessionIds.length === 1 ? '' : 's'}?</DialogTitle>
+                <DialogContent>
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                        This permanently deletes the selected sessions, their attendance records, and any linked Discord announcements. This cannot be undone.
+                    </Alert>
+                    <List dense>
+                        {sessions
+                            .filter(session => selectedSessionIds.includes(session.id))
+                            .map(session => (
+                                <ListItem key={session.id}>
+                                    <ListItemText
+                                        primary={session.title || 'Game Session'}
+                                        secondary={currentTimezone && formatInCampaignTimezone(session.start_time, currentTimezone, 'PPpp z')}
+                                    />
+                                </ListItem>
+                            ))}
+                    </List>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setBulkDeleteDialog(false)} disabled={deletingSessions}>Cancel</Button>
+                    <Button
+                        onClick={handleBulkDelete}
+                        color="error"
+                        variant="contained"
+                        disabled={deletingSessions}
+                        startIcon={deletingSessions ? <CircularProgress size={16} /> : <DeleteIcon />}
+                    >
+                        Delete
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <SessionDefaultsDialog
+                open={settingsDialog}
+                defaults={defaultSettings}
+                onClose={() => setSettingsDialog(false)}
+                onSave={saveDefaultSettings}
+            />
         </Box>
     );
 };

@@ -4,18 +4,6 @@ import { BrowserRouter } from 'react-router-dom';
 import React from 'react';
 import { SnackbarProvider } from 'notistack';
 
-// Provide a robust ResizeObserver shim. MUI's TextareaAutosize (used by
-// multiline TextField in the Create + Cancel dialogs) instantiates one and
-// calls .observe() at layout-effect time. The global setupTests stub doesn't
-// always survive how MUI grabs the constructor, so re-declare it here.
-class MockResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-(globalThis as any).ResizeObserver = MockResizeObserver;
-(window as any).ResizeObserver = MockResizeObserver;
-
 // ---------------------------------------------------------------------------
 // Module mocks (must come before importing the SUT)
 // ---------------------------------------------------------------------------
@@ -190,8 +178,8 @@ const setupDefaultGetMock = (sessions: any[] = mockSessions) => {
     if (url === '/sessions/enhanced') return Promise.resolve({ data: sessions });
     if (url === '/sessions') return Promise.resolve({ data: sessions });
     if (/\/sessions\/\d+\/attendance\/detailed/.test(url)) {
-      // attendance endpoint: component reads response.data.data
-      return Promise.resolve({ data: { data: mockAttendanceDetails } });
+      // The api utility returns the body { success, data: rows }
+      return Promise.resolve({ success: true, data: mockAttendanceDetails });
     }
     return Promise.resolve({ data: [] });
   });
@@ -271,22 +259,26 @@ describe('SessionManagement', () => {
       expect(screen.getByText('Min Players Met Session')).toBeInTheDocument();
     });
 
-    it('falls back to /sessions when /sessions/enhanced fails', async () => {
+    it('shows an error and does not retry a legacy endpoint when /sessions/enhanced fails', async () => {
       (api.get as any).mockImplementation((url: string) => {
         if (url === '/sessions/enhanced') return Promise.reject(new Error('boom'));
-        if (url === '/sessions') return Promise.resolve({ data: mockSessions });
-        return Promise.resolve({ data: [] });
+        return Promise.resolve({ data: mockSessions });
       });
 
       renderSessionManagement();
 
-      await waitFor(() => {
-        expect(api.get).toHaveBeenCalledWith('/sessions');
-      });
+      expect(await screen.findByText(/failed to load sessions/i)).toBeInTheDocument();
+      expect(api.get).not.toHaveBeenCalledWith('/sessions');
+    });
+
+    it('shows each session start time under its title', async () => {
+      renderSessionManagement();
 
       await waitFor(() => {
         expect(screen.getByText('Weekly Game Night')).toBeInTheDocument();
       });
+      // formatInCampaignTimezone is stubbed to "formatted:<iso>"
+      expect(screen.getByText(`formatted:${mockSessions[0].start_time}`)).toBeInTheDocument();
     });
   });
 
@@ -609,8 +601,7 @@ describe('SessionManagement', () => {
       const createBtn = within(dialog).getByRole('button', { name: /^create session$/i });
       fireEvent.click(createBtn);
 
-      // Give the handler a tick to run
-      await new Promise(r => setTimeout(r, 50));
+      expect(await screen.findByText(/please fill in all required fields/i)).toBeInTheDocument();
       expect(api.post).not.toHaveBeenCalled();
     });
   });
@@ -899,6 +890,217 @@ describe('SessionManagement', () => {
       await waitFor(() => {
         expect(screen.getByText('Failed to post announcement')).toBeInTheDocument();
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 17. Bulk delete
+  // -------------------------------------------------------------------------
+  describe('Bulk delete', () => {
+    const selectAndOpenDelete = async (titles: string[]) => {
+      renderSessionManagement();
+      await waitFor(() => {
+        expect(screen.getByText('Weekly Game Night')).toBeInTheDocument();
+      });
+      for (const title of titles) {
+        fireEvent.click(screen.getByRole('checkbox', { name: `Select session ${title}` }));
+      }
+      fireEvent.click(screen.getByRole('button', { name: /delete selected/i }));
+      return await screen.findByRole('dialog');
+    };
+
+    it('deletes every selected session and refreshes the list', async () => {
+      (api.delete as any).mockResolvedValue({ success: true });
+      const dialog = await selectAndOpenDelete(['Weekly Game Night', 'Boss Fight Session']);
+
+      fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }));
+
+      await waitFor(() => {
+        expect(api.delete).toHaveBeenCalledWith('/sessions/1');
+        expect(api.delete).toHaveBeenCalledWith('/sessions/2');
+      });
+      expect(await screen.findByText('Deleted 2 sessions')).toBeInTheDocument();
+      expect(screen.queryByText(/failed to delete/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /delete selected/i })).not.toBeInTheDocument();
+    });
+
+    it('keeps the failed ids selected and reports both outcomes on partial failure', async () => {
+      (api.delete as any).mockImplementation((url: string) =>
+        url === '/sessions/2' ? Promise.reject(new Error('nope')) : Promise.resolve({ success: true })
+      );
+      const dialog = await selectAndOpenDelete(['Weekly Game Night', 'Boss Fight Session']);
+
+      fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }));
+
+      expect(await screen.findByText('Deleted 1 session')).toBeInTheDocument();
+      expect(await screen.findByText('Failed to delete 1 session')).toBeInTheDocument();
+      // Only the failed session stays selected
+      await waitFor(() => expect(screen.getByText('Delete Selected (1)')).toBeInTheDocument());
+    });
+
+    it('select-all-visible selects only the sessions that pass the filters', async () => {
+      renderSessionManagement();
+      await waitFor(() => {
+        expect(screen.getByText('Weekly Game Night')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /select all visible sessions/i }));
+
+      // 3 of the 4 fixtures are visible (the cancelled one is filtered out)
+      expect(screen.getByRole('button', { name: /delete selected \(3\)/i })).toBeInTheDocument();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 18. Edit session
+  // -------------------------------------------------------------------------
+  describe('Edit Session', () => {
+    const openEdit = async () => {
+      renderSessionManagement();
+      await waitFor(() => {
+        expect(screen.getByText('Weekly Game Night')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getAllByRole('button', { name: /edit session details/i })[0]);
+      return await screen.findByRole('dialog');
+    };
+
+    it('PUTs the edited fields as ISO strings and refreshes', async () => {
+      (api.put as any).mockResolvedValueOnce({ success: true });
+      const dialog = await openEdit();
+
+      expect((within(dialog).getByLabelText(/session title/i) as HTMLInputElement).value).toBe('Weekly Game Night');
+      fireEvent.change(within(dialog).getByLabelText(/session title/i), { target: { value: 'Renamed Night' } });
+      const endDate = new Date(mockSessions[0].start_time);
+      endDate.setUTCHours(endDate.getUTCHours() + 3);
+      fireEvent.change(within(dialog).getByTestId('dtp-End Time'), { target: { value: endDate.toISOString() } });
+      fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/sessions/1', {
+          title: 'Renamed Night',
+          start_time: mockSessions[0].start_time,
+          end_time: endDate.toISOString(),
+          description: 'Standard session',
+        });
+      });
+      expect(await screen.findByText('Session updated successfully')).toBeInTheDocument();
+      await waitFor(() => {
+        const enhancedCalls = (api.get as any).mock.calls.filter((c: any[]) => c[0] === '/sessions/enhanced');
+        expect(enhancedCalls.length).toBe(2);
+      });
+    });
+
+    it('refuses to save when the end is not after the start', async () => {
+      const dialog = await openEdit();
+
+      // The fixture's end_time equals its start_time
+      fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+      expect((await screen.findAllByText(/end time must be after start time/i)).length).toBeGreaterThan(0);
+      expect(api.put).not.toHaveBeenCalled();
+    });
+
+    it('surfaces the server message when the update is rejected', async () => {
+      (api.put as any).mockRejectedValueOnce({ response: { data: { message: 'Session is locked' } } });
+      const dialog = await openEdit();
+      const endDate = new Date(mockSessions[0].start_time);
+      endDate.setUTCHours(endDate.getUTCHours() + 3);
+      fireEvent.change(within(dialog).getByTestId('dtp-End Time'), { target: { value: endDate.toISOString() } });
+
+      fireEvent.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+      expect(await screen.findByText('Session is locked')).toBeInTheDocument();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 19. Defaults dialog and recurring details
+  // -------------------------------------------------------------------------
+  describe('Defaults dialog', () => {
+    it('Cancel discards edits and the create form keeps the saved defaults', async () => {
+      localStorage.setItem('sessionDefaults', JSON.stringify({ minimumPlayers: 4 }));
+      renderSessionManagement();
+      await waitFor(() => {
+        expect(screen.getByText('Weekly Game Night')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /defaults/i }));
+      let dialog = await screen.findByRole('dialog');
+      // A partial saved object is merged over the hardcoded defaults
+      expect((within(dialog).getByLabelText(/default minimum players/i) as HTMLInputElement).value).toBe('4');
+      expect((within(dialog).getByLabelText(/default reminder hours before/i) as HTMLInputElement).value).toBe('48');
+
+      fireEvent.change(within(dialog).getByLabelText(/default minimum players/i), { target: { value: '9' } });
+      fireEvent.click(within(dialog).getByRole('button', { name: /^cancel$/i }));
+      await waitFor(() => {
+        expect(screen.queryByText('Default Session Settings')).not.toBeInTheDocument();
+      });
+
+      await openCreateSessionDialog();
+      dialog = screen.getByRole('dialog');
+      expect((within(dialog).getByLabelText(/^minimum players/i) as HTMLInputElement).value).toBe('4');
+      expect(localStorage.getItem('sessionDefaults')).toBe(JSON.stringify({ minimumPlayers: 4 }));
+    });
+  });
+
+  describe('Recurring details', () => {
+    it('defaults the weekday to the start date and reports the created instance count', async () => {
+      (api.post as any).mockResolvedValueOnce({ data: { template: { id: 1 }, instances: [{}, {}, {}] } });
+      renderSessionManagement();
+      await waitFor(() => {
+        expect(screen.getByText('Weekly Game Night')).toBeInTheDocument();
+      });
+      await openCreateSessionDialog();
+      const dialog = screen.getByRole('dialog');
+
+      fireEvent.change(within(dialog).getByLabelText(/session title/i), { target: { value: 'Weekday Follow' } });
+      const startDate = new Date();
+      startDate.setUTCDate(startDate.getUTCDate() + 20);
+      startDate.setUTCHours(20, 0, 0, 0);
+      const endDate = new Date(startDate);
+      endDate.setUTCHours(23, 0, 0, 0);
+      fireEvent.change(within(dialog).getByTestId('dtp-Start Time'), { target: { value: startDate.toISOString() } });
+      fireEvent.change(within(dialog).getByTestId('dtp-End Time'), { target: { value: endDate.toISOString() } });
+      fireEvent.click(within(dialog).getByRole('checkbox', { name: /make this a recurring session/i }));
+      fireEvent.click(within(dialog).getByRole('button', { name: /create 12 recurring sessions/i }));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalled();
+      });
+      const [, payload] = (api.post as any).mock.calls[0];
+      expect(payload.recurring_day_of_week).toBe(startDate.getDay());
+      expect(await screen.findByText('Recurring session template created with 3 instances')).toBeInTheDocument();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 20. Filters
+  // -------------------------------------------------------------------------
+  describe('Date filter bounds', () => {
+    it('includes a session that starts on the From date (local midnight bound)', async () => {
+      const today = new Date();
+      today.setHours(9, 0, 0, 0);
+      setupDefaultGetMock([{ ...mockSessions[0], id: 10, title: 'Today Morning Game', start_time: today.toISOString() }]);
+      renderSessionManagement();
+
+      expect(await screen.findByText('Today Morning Game')).toBeInTheDocument();
+    });
+  });
+
+  describe('Attendance details', () => {
+    it('says so when nobody has responded', async () => {
+      (api.get as any).mockImplementation((url: string) => {
+        if (url === '/sessions/enhanced') return Promise.resolve({ data: mockSessions });
+        return Promise.resolve({ success: true, data: [] });
+      });
+      renderSessionManagement();
+      await waitFor(() => {
+        expect(screen.getByText('Weekly Game Night')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getAllByRole('button', { name: /view attendance details/i })[0]);
+
+      expect(await screen.findByText(/no attendance has been recorded/i)).toBeInTheDocument();
     });
   });
 });

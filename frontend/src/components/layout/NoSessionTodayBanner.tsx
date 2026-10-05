@@ -12,7 +12,7 @@
 // Fails quiet: any fetch error renders nothing. Never gates any action.
 import React, { useEffect, useState } from 'react';
 import { Alert } from '@mui/material';
-import api from '../../utils/api';
+import { fetchSessionList } from '../../utils/sessionsApi';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCampaign } from '../../contexts/CampaignContext';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
@@ -52,17 +52,10 @@ const NoSessionTodayBanner: React.FC = () => {
 
     const fetchSessions = async (): Promise<void> => {
       try {
-        let data: unknown;
-        try {
-          // Same source as the sessions page, fallback included.
-          const response: any = await api.get('/sessions/enhanced');
-          data = response.data;
-        } catch {
-          const fallback: any = await api.get('/sessions');
-          data = fallback.data;
-        }
+        // Same source as the sessions page, with the upcoming-only fallback.
+        const list = await fetchSessionList({ fallbackToUpcoming: true });
         if (isMounted) {
-          setSessions(Array.isArray(data) ? (data as SessionLike[]) : []);
+          setSessions(list);
         }
       } catch {
         // Fail quiet — the banner simply never appears.
