@@ -168,7 +168,6 @@ This directory also contains various other Python utilities for database managem
 
 - `aonsearch.py` - Archives of Nethys search functionality
 - `itemsearch.py` - Item search utilities
-- `itemupdate.py` - Item update operations
 - `generate_test_data.sql` - Test data generation
 - `update_mod_caster_levels.py` - Caster level updates for modifications
 
