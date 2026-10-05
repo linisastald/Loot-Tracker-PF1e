@@ -129,6 +129,8 @@ describe('consumablesController', () => {
         query: jest.fn()
           // UPDATE wand charges
           .mockResolvedValueOnce({ rows: [updatedWand] })
+          // SELECT active character
+          .mockResolvedValueOnce({ rows: [{ id: 42 }] })
           // INSERT consumableuse
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
@@ -145,8 +147,10 @@ describe('consumablesController', () => {
       expect(mockClient.query.mock.calls[0][1]).toEqual([1]);
 
       // Verify usage log insert
-      expect(mockClient.query.mock.calls[1][0]).toContain('INSERT INTO consumableuse');
-      expect(mockClient.query.mock.calls[1][1]).toEqual([1, 1]); // lootid, user id
+      expect(mockClient.query.mock.calls[1][0]).toContain('FROM characters');
+      expect(mockClient.query.mock.calls[1][1]).toEqual([1]); // user id
+      expect(mockClient.query.mock.calls[2][0]).toContain('INSERT INTO consumableuse');
+      expect(mockClient.query.mock.calls[2][1]).toEqual([1, 42]); // lootid, character id (not user id)
 
       expect(res.success).toHaveBeenCalledWith(
         updatedWand,
@@ -170,6 +174,7 @@ describe('consumablesController', () => {
       const mockClient = {
         query: jest.fn()
           .mockResolvedValueOnce({ rows: [updatedPotion] })
+          .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
@@ -204,6 +209,7 @@ describe('consumablesController', () => {
       const mockClient = {
         query: jest.fn()
           .mockResolvedValueOnce({ rows: [updatedScroll] })
+          .mockResolvedValueOnce({ rows: [] })
           .mockResolvedValueOnce({ rows: [] }),
         release: jest.fn(),
       };
@@ -216,6 +222,34 @@ describe('consumablesController', () => {
         updatedScroll,
         'scroll consumed successfully'
       );
+    });
+
+    it('F-0272: records NULL for who when the user has no active character (e.g. a DM)', async () => {
+      const req = createMockReq({ body: { itemid: 10, type: 'potion' } });
+      const res = createMockRes();
+      const mockClient = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [{ id: 5, status: 'Kept Party' }] })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [] }),
+        release: jest.fn(),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
+      await consumablesController.useConsumable(req, res);
+
+      expect(mockClient.query.mock.calls[2][1]).toEqual([5, null]);
+      expect(res.success).toHaveBeenCalled();
+    });
+
+    it('F-0272: history keeps uses with no recorded character (LEFT JOIN)', async () => {
+      const req = createMockReq();
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await consumablesController.getConsumableUseHistory(req, res);
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/LEFT JOIN characters/);
     });
 
     it('should return not found when consumable has no uses left', async () => {
