@@ -63,7 +63,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
   const [unprocessedLootCount, setUnprocessedLootCount] = useState(0);
   const [unidentifiedLootCount, setUnidentifiedLootCount] = useState(0);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
-  const [versionInfo, setVersionInfo] = useState({ fullVersion: '0.7.1', version: '0.7.1', buildNumber: 0 });
+  const [versionInfo, setVersionInfo] = useState({ fullVersion: 'unknown', version: 'unknown', buildNumber: 0 });
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -428,7 +428,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed, mobileOpen, onMobileClose, onLog
               fontSize: '0.75rem',
               fontWeight: 500
             }}>
-            v{versionInfo.fullVersion}
+            {versionInfo.fullVersion === 'unknown' ? 'version unknown' : `v${versionInfo.fullVersion}`}
           </Typography>
         </Box>
       )}
