@@ -10,12 +10,16 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
-const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const logger = require('./src/utils/logger');
 const dotenv = require('dotenv');
 const pool = require('./src/config/db');
 const apiResponseMiddleware = require('./src/middleware/apiResponseMiddleware');
 const crypto = require('crypto');
+const { errorHandler, apiNotFoundHandler } = require('./src/middleware/errorHandler');
+const { parseAllowedOrigins, createOriginCheck, hasWildcard } = require('./src/config/cors');
+const { detectHostIp } = require('./src/utils/hostIp');
 const sessionSchedulerService = require('./src/services/scheduler/SessionSchedulerService');
 const discordBrokerService = require('./src/services/discordBrokerService');
 const discordOutboxService = require('./src/services/discordOutboxService');
@@ -69,58 +73,19 @@ const port = SERVER.PORT;
 // Trust proxy for rate limiting (required when behind reverse proxy/load balancer)
 app.set('trust proxy', 1);
 
-// Middleware for logging unhandled errors in route handlers
-const errorHandler = (err, req, res, next) => {
-  // Handle CSRF token errors (must return 'invalid csrf token' for frontend compatibility)
-  if (err.code === 'EBADCSRFTOKEN' || err.message === 'invalid csrf token') {
-    logger.warn('CSRF token validation failed', { method: req.method, path: req.path });
-    return res.status(403).json({
-      success: false,
-      message: 'invalid csrf token'
-    });
-  }
-
-  logger.error('Unhandled Error', {
-    message: err.message,
-    stack: err.stack,
-    method: req.method,
-    path: req.path
-  });
-
-  // Send error response
-  res.status(500).json({
-    success: false,
-    message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-};
-
-// Detect host IP for Docker networking (Linux containers only)
-let hostIp;
-try {
-  hostIp = execSync("getent hosts host.docker.internal | awk '{ print $1 }' || hostname -i").toString().trim();
-  logger.info(`Detected HOST_IP: ${hostIp}`);
-} catch (err) {
-  logger.error('Failed to detect host IP:', err);
-  hostIp = '127.0.0.1';
-}
+// Detect host IP for Docker networking (Linux containers only); the broker
+// callback URL is built from it. Always an address, never an empty string.
+const hostIp = detectHostIp();
+logger.info(`Detected HOST_IP: ${hostIp}`);
 process.env.HOST_IP = hostIp;
-const allowedOrigins = process.env.ALLOWED_ORIGINS ?
-  process.env.ALLOWED_ORIGINS.split(',') :
-  ['http://localhost:3000'];
-// Configure CORS
-const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, etc)
-    if (!origin) return callback(null, true);
 
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
-      callback(null, true);
-    } else {
-      logger.warn(`CORS blocked request from origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+// Configure CORS
+const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
+if (hasWildcard(allowedOrigins)) {
+  logger.warn("ALLOWED_ORIGINS contains '*': every site may make credentialed cross-origin requests. List the exact origins instead.");
+}
+const corsOptions = {
+  origin: createOriginCheck(allowedOrigins),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'Cache-Control']
@@ -203,7 +168,7 @@ app.use(apiResponseMiddleware);
 // This app uses JWT (not sessions), so we create a lightweight client ID cookie.
 app.use((req, res, next) => {
   if (!req.cookies || !req.cookies._csrf_sid) {
-    const sid = require('crypto').randomBytes(16).toString('hex');
+    const sid = crypto.randomBytes(16).toString('hex');
     res.cookie('_csrf_sid', sid, {
       httpOnly: true,
       sameSite: COOKIES.SAME_SITE,
@@ -218,8 +183,8 @@ app.use((req, res, next) => {
 });
 
 // CSRF configuration using csrf-csrf (double submit cookie pattern)
-const csrfSecret = process.env.CSRF_SECRET || require('crypto').randomBytes(32).toString('hex');
-const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
+const csrfSecret = process.env.CSRF_SECRET || crypto.randomBytes(32).toString('hex');
+const { generateCsrfToken, doubleCsrfProtection: csrfProtection } = doubleCsrf({
   getSecret: () => csrfSecret,
   getSessionIdentifier: (req) => req.cookies?._csrf_sid || '',
   cookieName: '_csrf',
@@ -232,25 +197,6 @@ const { generateCsrfToken, doubleCsrfProtection } = doubleCsrf({
   // csrf-csrf v4 renamed getTokenFromRequest -> getCsrfTokenFromRequest
   getCsrfTokenFromRequest: (req) => req.headers['x-csrf-token'],
   ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
-});
-const csrfProtection = doubleCsrfProtection;
-
-// API info route
-app.get('/api', (req, res) => {
-  res.success({ version: '1.0.0' }, 'Welcome to the Pathfinder Loot Tracker API');
-});
-
-// Debug endpoint to inspect cookies (no auth required)
-app.get('/api/debug/cookies', (req, res) => {
-  res.json({
-    cookieHeader: req.headers.cookie || null,
-    cookieHeaderLength: req.headers.cookie ? req.headers.cookie.length : 0,
-    parsedCookies: req.cookies ? Object.keys(req.cookies) : [],
-    hasAuthToken: !!(req.cookies && req.cookies.authToken),
-    authTokenLength: req.cookies && req.cookies.authToken ? req.cookies.authToken.length : 0,
-    origin: req.headers.origin || null,
-    host: req.headers.host || null,
-  });
 });
 
 // Health check endpoint (no middleware needed)
@@ -356,8 +302,6 @@ const selectiveCSRFProtection = (req, res, next) => {
   return csrfProtection(req, res, next);
 };
 
-// Add debug logging to see if routes are being registered
-logger.info('Registering Discord routes with selective CSRF protection');
 app.use('/api/discord', selectiveCSRFProtection, discordRoutes);
 app.use('/api/settings', csrfProtection, settingsRoutes);
 app.use('/api/consumables', csrfProtection, consumablesRoutes);
@@ -393,14 +337,16 @@ app.use('/api/spellcasting', csrfProtection, spellcastingRoutes);
 app.use('/api/campaigns', csrfProtection, campaignRoutes);
 app.use('/api/invites', csrfProtection, inviteRoutes);
 
+// Any /api path no router handled: JSON 404 (every method, every NODE_ENV)
+app.use('/api', apiNotFoundHandler);
+
 // Serve React frontend static files (production)
 if (process.env.NODE_ENV === 'production') {
-  const path = require('path');
   const frontendBuildPath = path.join(__dirname, 'frontend/build');
   
   // Log the path for debugging
   logger.info(`Frontend build path: ${frontendBuildPath}`);
-  logger.info(`Frontend build exists: ${require('fs').existsSync(frontendBuildPath)}`);
+  logger.info(`Frontend build exists: ${fs.existsSync(frontendBuildPath)}`);
   
   // Serve static files from React build with caching.
   // index.html must NEVER be cached: it references content-hashed chunk names
@@ -417,27 +363,12 @@ if (process.env.NODE_ENV === 'production') {
     },
   }));
 
-  // Vite-hashed assets can be cached aggressively
-  app.use('/assets', express.static(path.join(frontendBuildPath, 'assets'), {
-    maxAge: '1y',
-    immutable: true,
-  }));
-  
   // Handle React routing - serve index.html for non-API routes.
   // Express 5 / path-to-regexp v8 rejects the bare '*' wildcard; '/{*splat}' is
   // the equivalent optional named catch-all (matches '/' and every sub-path).
   app.get('/{*splat}', (req, res) => {
-    // Skip API routes
-    if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'API endpoint not found',
-        path: req.path 
-      });
-    }
-    
     const indexPath = path.join(frontendBuildPath, 'index.html');
-    if (require('fs').existsSync(indexPath)) {
+    if (fs.existsSync(indexPath)) {
       // Same no-cache rule as above: a cached index breaks every deploy
       res.sendFile(indexPath, { headers: { 'Cache-Control': 'no-cache' } });
     } else {
@@ -445,7 +376,7 @@ if (process.env.NODE_ENV === 'production') {
         success: false,
         message: 'Frontend not found',
         path: frontendBuildPath,
-        exists: require('fs').existsSync(frontendBuildPath)
+        exists: fs.existsSync(frontendBuildPath)
       });
     }
   });
