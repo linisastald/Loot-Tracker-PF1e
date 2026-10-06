@@ -5,6 +5,7 @@
 // per-class spell level (parsed from the positional `class` array), favoring
 // common (Core) and specialization-school spells, with a tunable "fullness".
 const catalog = require('./spellbookCatalog');
+const { clamp, weightedIndex } = require('./random');
 
 // Class → spell source. Arcanists have no spell tags of their own (they cast off
 // the wizard list), so they map to the Wizard tag. `fullCaster` drives the
@@ -30,8 +31,6 @@ const FULLNESS = {
   full: { cantrips: 18, perLevel: 6, falloff: 0.8 },
   exhaustive: { cantrips: 40, perLevel: 14, falloff: 0.92 },
 };
-
-const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 // Caster level for generation/persistence: an integer in 1-20 (junk becomes 1).
 const clampCasterLevel = (value) => clamp(parseInt(value, 10) || 1, 1, 20);
@@ -88,15 +87,8 @@ const weightedSampleN = (pool, n, weightFn) => {
   const items = pool.map(p => ({ p, w: Math.max(0, weightFn(p)) })).filter(x => x.w > 0);
   const chosen = [];
   while (chosen.length < n && items.length) {
-    const total = items.reduce((s, x) => s + x.w, 0);
-    if (total <= 0) break;
-    let r = Math.random() * total;
-    let idx = 0;
-    for (; idx < items.length; idx++) {
-      if (r < items[idx].w) break;
-      r -= items[idx].w;
-    }
-    if (idx >= items.length) idx = items.length - 1;
+    const idx = weightedIndex(items.map(x => x.w));
+    if (idx < 0) break;
     chosen.push(items[idx].p);
     items.splice(idx, 1);
   }

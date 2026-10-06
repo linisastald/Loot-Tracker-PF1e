@@ -4,7 +4,8 @@
 const dbUtils = require('../../utils/dbUtils');
 
 /**
- * Sample one random catalog item of the given types within [minValue, maxValue].
+ * Sample one random catalog item of the given types within [minValue, maxValue]
+ * (value > 0 is always required).
  * @param {string[]} types - item.type values to allow
  * @returns {Promise<object|null>}
  */
@@ -24,17 +25,7 @@ const sampleItem = async (types, minValue, maxValue) => {
  * Sample one random base weapon/armor with base value <= maxBaseValue
  * (used as the foundation for a synthesized magic item).
  */
-const sampleBaseItem = async (type, maxBaseValue) => {
-  const result = await dbUtils.executeQuery(
-    `SELECT id, name, type, subtype, value, weight
-     FROM item
-     WHERE type = $1 AND value > 0 AND value <= $2
-     ORDER BY RANDOM()
-     LIMIT 1`,
-    [type, maxBaseValue]
-  );
-  return result.rows[0] || null;
-};
+const sampleBaseItem = (type, maxBaseValue) => sampleItem([type], 0, maxBaseValue);
 
 /**
  * Get the "+N" enhancement (Power) mod for a target ('weapon' or 'armor').

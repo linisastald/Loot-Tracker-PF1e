@@ -22,12 +22,21 @@ jest.mock('../lootCatalog', () => ({
   getEnhancementMod: jest.fn(),
 }));
 
+// Keep the real pricing but make it spy-able so a test can force an overshoot.
+jest.mock('../../calculateFinalValue', () => ({
+  ...jest.requireActual('../../calculateFinalValue'),
+  calculateFinalValue: jest.fn(),
+}));
+
 const dbUtils = require('../../../utils/dbUtils');
+const { calculateFinalValue } = require('../../calculateFinalValue');
 const catalog = require('../lootCatalog');
 const service = require('../lootGeneratorService');
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // real pricing unless a test overrides it (the jest config resets mock implementations)
+  calculateFinalValue.mockImplementation(jest.requireActual('../../calculateFinalValue').calculateFinalValue);
   // default settings: medium track, modifier 1
   dbUtils.executeQuery.mockResolvedValue({
     rows: [
@@ -189,6 +198,50 @@ describe('generate', () => {
 });
 
 describe('fillItemsBudget', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('never lets a synthesized +N item exceed the band it was fitted to (downgrades N)', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.1); // weapon
+    catalog.getEnhancementMod.mockImplementation(async (target, plus) => ({
+      id: 400 + plus, name: `+${plus}`, plus, type: 'Power', valuecalc: null, target, subtarget: null,
+    }));
+    // The table says +2 fits the 9000 gp band, but the real pricing overshoots it.
+    calculateFinalValue.mockImplementation((base, target, subtype, mods) => (mods[0].plus === 2 ? 9500 : 2400));
+
+    const { items } = await service.fillItemsBudget(9000, { magicGear: 1 }, false);
+
+    expect(items[0].name).toBe('+1 Longsword');
+    expect(items[0].value).toBe(2400);
+    expect(catalog.getEnhancementMod).toHaveBeenCalledWith('weapon', 2);
+    expect(catalog.getEnhancementMod).toHaveBeenCalledWith('weapon', 1);
+    expect(items.reduce((s, it) => s + it.value, 0)).toBeLessThanOrEqual(9000);
+  });
+
+  it('skips synthesized gear whose real price overshoots every candidate N', async () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0.1);
+    catalog.getEnhancementMod.mockImplementation(async (target, plus) => ({
+      id: 400 + plus, name: `+${plus}`, plus, type: 'Power', valuecalc: null, target, subtarget: null,
+    }));
+    calculateFinalValue.mockReturnValue(1e6);
+
+    const { items } = await service.fillItemsBudget(3000, { magicGear: 1 }, false);
+
+    expect(items.every(it => it.category !== 'magicGear')).toBe(true);
+    expect(items.reduce((s, it) => s + it.value, 0)).toBeLessThanOrEqual(3000);
+  });
+
+  it('keeps the band floor on the plain-gear fallback instead of draining tiny items', async () => {
+    catalog.sampleItem.mockImplementation(async () => null);
+
+    const { items, leftover } = await service.fillItemsBudget(1000, { magic: 1 }, false);
+
+    expect(items).toEqual([]);
+    expect(leftover).toBe(1000);
+    const gearCall = catalog.sampleItem.mock.calls.find(c => c[0][0] === 'gear');
+    expect(gearCall[1]).toBe(80); // 8% of the remaining budget, not MIN_ITEM_VALUE (2)
+    expect(gearCall[2]).toBe(1000);
+  });
+
   it('marks magic items unidentified with a spellcraft DC and generic name', async () => {
     catalog.sampleItem.mockResolvedValue({
       id: 50, name: 'Potion of Cure Light Wounds', type: 'magic', subtype: null, value: 50, casterlevel: 1, weight: 0,
