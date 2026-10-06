@@ -38,8 +38,12 @@ class AppraisalService {
     let believedValue;
 
     if (totalRoll >= 20) {
-      believedValue = actualValue; // Accurate appraisal
-    } else if (totalRoll >= 15) {
+      // Successful appraisal: the exact value, never rounded. Rounding exists
+      // only so that a wrong (failed) appraisal does not look obviously wrong.
+      return actualValue;
+    }
+
+    if (totalRoll >= 15) {
       believedValue = actualValue * (Math.random() * (1.2 - 0.8) + 0.8); // +/- 20%
     } else {
       believedValue = actualValue * (Math.random() * (3 - 0.1) + 0.1); // Wildly inaccurate
