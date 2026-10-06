@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Button, Container } from '@mui/material';
+import { Alert, Box, Button, Container } from '@mui/material';
 import CustomLootTable from '../../common/CustomLootTable';
 import CustomSplitStackDialog from '../../common/dialogs/CustomSplitStackDialog';
 import CustomUpdateDialog from '../../common/dialogs/CustomUpdateDialog';
@@ -7,6 +7,7 @@ import useLootManagement from '../../../hooks/useLootManagement';
 import lootService from '../../../services/lootService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useIsDM } from '../../../contexts/CampaignContext';
+import { getErrorMessage } from '../../../utils/apiErrors';
 import { notifyLootCountsChanged } from '../../../utils/events';
 import { LootActionKey, LootManagementConfig, LootStatus } from '../../../types/game';
 
@@ -18,6 +19,7 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
   const { user: authUser } = useAuth();
   const isDM = useIsDM();
   const [updateError, setUpdateError] = React.useState('');
+  const [actionError, setActionError] = React.useState('');
   const {
     loot,
     selectedItems,
@@ -49,12 +51,17 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
   // utility closures that called fetchLoot() without awaiting, leaving
   // the timing of the refresh ambiguous (and in one earlier incarnation,
   // refreshing the wrong hook instance's state entirely).
-  const performStatusChange = async (status: LootStatus) => {
+  const performStatusChange = async (status: LootStatus, needsCharacter = false) => {
     if (selectedItems.length === 0) return;
+    setActionError('');
     try {
       // Never send the user id as a character id: without an active
       // character the loot keeps its current holder.
       const activeCharacterId = (authUser as any)?.activeCharacterId;
+      if (needsCharacter && !activeCharacterId) {
+        setActionError('You need an active character to keep loot for yourself.');
+        return;
+      }
       await lootService.updateLootStatus({
         lootIds: selectedItems,
         status,
@@ -67,19 +74,23 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
       // for the next route change.
       notifyLootCountsChanged();
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error(`Error updating loot status to ${status}:`, error);
+      setActionError(getErrorMessage(error, `Failed to update loot status to ${status}`));
     }
   };
 
   const actionHandlers: Record<LootActionKey, () => void | Promise<void>> = {
     appraise: async () => {
-      await handleAppraise();
-      setSelectedItems([]);
+      setActionError('');
+      try {
+        await handleAppraise();
+        setSelectedItems([]);
+      } catch (error) {
+        setActionError(getErrorMessage(error, 'Failed to appraise the selected items'));
+      }
     },
     sell: () => performStatusChange('Pending Sale' as LootStatus),
     trash: () => performStatusChange('Trashed' as LootStatus),
-    keepSelf: () => performStatusChange('Kept Character' as LootStatus),
+    keepSelf: () => performStatusChange('Kept Character' as LootStatus, true),
     keepParty: () => performStatusChange('Kept Party' as LootStatus),
   };
 
@@ -110,14 +121,9 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
       await fetchLoot();
       setOpenUpdateDialog(false);
       setSelectedItems([]);
-    } catch (error: any) {
-      // eslint-disable-next-line no-console
-      console.error('Error updating item:', error);
-      // Keep the dialog open and show why the update failed instead of
-      // failing silently (the previous behavior left users guessing).
-      setUpdateError(
-        error?.response?.data?.message || 'Failed to update item. Please try again.'
-      );
+    } catch (error) {
+      // Keep the dialog open and show why the update failed.
+      setUpdateError(getErrorMessage(error, 'Failed to update item. Please try again.'));
     }
   };
 
@@ -137,6 +143,12 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
         ...config.containerProps?.sx
       }}
     >
+      {actionError && (
+        <Alert severity="error" onClose={() => setActionError('')} sx={{ mb: 2 }}>
+          {actionError}
+        </Alert>
+      )}
+
       <CustomLootTable
         loot={loot.summary}
         individualLoot={loot.individual}
@@ -170,16 +182,14 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
         >
           {/* Render configured action buttons */}
           {config.actions.map((action, index) => (
-            action.showCondition !== false && (
-              <Button
-                key={index}
-                variant={action.variant}
-                color={action.color}
-                onClick={() => actionHandlers[action.actionKey]()}
-              >
-                {action.label}
-              </Button>
-            )
+            <Button
+              key={index}
+              variant={action.variant}
+              color={action.color}
+              onClick={() => actionHandlers[action.actionKey]()}
+            >
+              {action.label}
+            </Button>
           ))}
 
           {/* Conditional system buttons */}

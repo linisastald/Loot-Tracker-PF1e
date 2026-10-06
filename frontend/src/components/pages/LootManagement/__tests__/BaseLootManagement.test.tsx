@@ -216,3 +216,68 @@ describe('BaseLootManagement status actions (F-1577)', () => {
   });
 });
 
+
+describe('BaseLootManagement action feedback (F-1372, F-1371)', () => {
+  const actionConfig: any = {
+    ...config,
+    actions: [
+      { label: 'Sell', color: 'primary', variant: 'contained', actionKey: 'sell' },
+      { label: 'Keep Self', color: 'primary', variant: 'contained', actionKey: 'keepSelf' },
+      { label: 'Appraise', color: 'primary', variant: 'contained', actionKey: 'appraise' },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsDM = false;
+    mockHookReturn.openUpdateDialog = false;
+    mockHookReturn.handleAppraise = vi.fn().mockResolvedValue(undefined);
+  });
+
+  it('shows the server message when a status change fails and keeps the selection', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 7 } });
+    (lootService.updateLootStatus as any).mockRejectedValueOnce({
+      response: { data: { message: 'Cannot change status of sold loot' } },
+    });
+
+    render(<BaseLootManagement config={actionConfig} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sell' }));
+
+    expect(await screen.findByText('Cannot change status of sold loot')).toBeInTheDocument();
+    expect(setSelectedItems).not.toHaveBeenCalledWith([]);
+  });
+
+  it('blocks Keep Self without an active character instead of sending a status change', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player' } });
+
+    render(<BaseLootManagement config={actionConfig} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep Self' }));
+
+    expect(await screen.findByText(/active character/i)).toBeInTheDocument();
+    expect(lootService.updateLootStatus).not.toHaveBeenCalled();
+  });
+
+  it('sends the active character with Keep Self', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 7 } });
+
+    render(<BaseLootManagement config={actionConfig} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep Self' }));
+
+    await waitFor(() => expect(lootService.updateLootStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'Kept Character', characterId: 7 }),
+    ));
+  });
+
+  it('shows why an appraisal failed and keeps the selection', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 2, role: 'Player', activeCharacterId: 7 } });
+    mockHookReturn.handleAppraise = vi.fn().mockRejectedValue({
+      response: { data: { message: 'You can only appraise as your own character' } },
+    });
+
+    render(<BaseLootManagement config={actionConfig} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Appraise' }));
+
+    expect(await screen.findByText('You can only appraise as your own character')).toBeInTheDocument();
+    expect(setSelectedItems).not.toHaveBeenCalledWith([]);
+  });
+});

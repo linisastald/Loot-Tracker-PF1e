@@ -111,22 +111,23 @@ const useLootManagement = (statusToFetch) => {
   };
 
   // Special function for handling appraise in UnprocessedLoot
+  // Errors propagate so the page can tell the user (a user id is never sent
+  // as a character id: appraising needs an active character).
   const handleAppraise = async () => {
-    try {
-      if (!authUser || !authUser.id) {
-        return;
-      }
-
-      await lootService.appraiseLoot({
-        lootIds: selectedItems,
-        characterId: authUser.activeCharacterId || authUser.id,
-        appraisalRolls: selectedItems.map(() => Math.floor(Math.random() * 20) + 1)
-      });
-
-      fetchLoot();
-    } catch {
-      // Error appraising loot
+    if (!authUser || !authUser.id) {
+      return;
     }
+    if (!authUser.activeCharacterId) {
+      throw new Error('You need an active character to appraise items.');
+    }
+
+    await lootService.appraiseLoot({
+      lootIds: selectedItems,
+      characterId: authUser.activeCharacterId,
+      appraisalRolls: selectedItems.map(() => Math.floor(Math.random() * 20) + 1)
+    });
+
+    await fetchLoot();
   };
 
   return {

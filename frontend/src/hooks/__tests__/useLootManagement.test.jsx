@@ -517,7 +517,7 @@ describe('useLootManagement', () => {
       });
     });
 
-    it('should use authUser.id as fallback if no activeCharacterId', async () => {
+    it('never sends the user id as a character id when there is no active character', async () => {
       useAuth.mockReturnValue({
         user: { id: 5, username: 'nochar', role: 'Player' },
       });
@@ -535,14 +535,10 @@ describe('useLootManagement', () => {
       });
 
       await act(async () => {
-        await result.current.handleAppraise();
+        await expect(result.current.handleAppraise()).rejects.toThrow(/active character/i);
       });
 
-      expect(lootService.appraiseLoot).toHaveBeenCalledWith(
-        expect.objectContaining({
-          characterId: 5, // falls back to user.id
-        })
-      );
+      expect(lootService.appraiseLoot).not.toHaveBeenCalled();
     });
 
     it('should not call appraiseLoot if authUser is null', async () => {
@@ -607,7 +603,7 @@ describe('useLootManagement', () => {
       expect(lootService.getAllLoot).toHaveBeenCalled();
     });
 
-    it('should handle appraisal errors gracefully', async () => {
+    it('should let appraisal errors reach the caller', async () => {
       lootService.appraiseLoot.mockRejectedValue(new Error('Appraisal failed'));
 
       const { result } = renderHook(() => useLootManagement(null));
@@ -620,9 +616,8 @@ describe('useLootManagement', () => {
         result.current.setSelectedItems([1]);
       });
 
-      // Should not throw
       await act(async () => {
-        await result.current.handleAppraise();
+        await expect(result.current.handleAppraise()).rejects.toThrow('Appraisal failed');
       });
     });
   });

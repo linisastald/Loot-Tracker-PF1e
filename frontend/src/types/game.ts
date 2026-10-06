@@ -193,7 +193,6 @@ export interface LootManagementAction {
   color: 'primary' | 'secondary' | 'error' | 'warning' | 'info' | 'success';
   variant: 'contained' | 'outlined' | 'text';
   actionKey: LootActionKey;
-  showCondition?: boolean;
 }
 
 export interface LootManagementConfig {
@@ -201,7 +200,6 @@ export interface LootManagementConfig {
   showColumns: LootTableColumnConfig;
   showFilters: LootTableFilterConfig;
   actions: LootManagementAction[];
-  hasFilters?: boolean;
   containerProps?: {
     sx?: any;
   };
