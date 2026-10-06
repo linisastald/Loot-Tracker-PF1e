@@ -63,21 +63,6 @@ module.exports = {
   // Business logic settings
   GAME: {
     QUICK_INVITE_EXPIRY_HOURS: parseInt(process.env.QUICK_INVITE_EXPIRY_HOURS) || 4,
-    DEFAULT_APPRAISAL_BONUS: parseInt(process.env.DEFAULT_APPRAISAL_BONUS) || 0,
     SIMILARITY_THRESHOLD: parseFloat(process.env.SIMILARITY_THRESHOLD) || 0.3,
-  },
-
-  // File upload settings (if applicable)
-  UPLOADS: {
-    MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024, // 10MB
-    ALLOWED_EXTENSIONS: process.env.ALLOWED_EXTENSIONS ? 
-      process.env.ALLOWED_EXTENSIONS.split(',') : 
-      ['.jpg', '.jpeg', '.png', '.pdf'],
-  },
-
-  // External API settings
-  EXTERNAL_APIS: {
-    OPENAI_TIMEOUT: parseInt(process.env.OPENAI_TIMEOUT) || 30000, // 30 seconds
-    OPENAI_MAX_RETRIES: parseInt(process.env.OPENAI_MAX_RETRIES) || 3,
   }
 };
