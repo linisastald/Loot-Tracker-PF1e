@@ -90,10 +90,7 @@ const mockExistingMod = {
 };
 
 const setupDefaultMocks = () => {
-  // Component fetches at mount: getAllLoot + getMods
-  (lootService.getAllLoot as any).mockResolvedValue({
-    data: { summary: [], individual: [], count: 0 },
-  });
+  // Component fetches only the mod list at mount
   (lootService.getMods as any).mockResolvedValue({
     data: { mods: [] },
   });
@@ -190,9 +187,10 @@ describe('AddItemMod', () => {
       renderAddItemMod();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
         expect(lootService.getMods).toHaveBeenCalled();
       });
+      // The loot list is not needed on a catalog page (F-1330/F-1331)
+      expect(lootService.getAllLoot).not.toHaveBeenCalled();
 
       // "Add New Item" heading is rendered when on Items tab in add mode
       expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
@@ -352,13 +350,13 @@ describe('AddItemMod', () => {
       });
     });
 
-    it('refreshes the items list after a successful create', async () => {
+    it('does not reload the loot list after a successful create', async () => {
       (api.post as any).mockResolvedValueOnce({ data: { id: 101 } });
 
       renderAddItemMod();
 
       await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalledTimes(1);
+        expect(lootService.getMods).toHaveBeenCalledTimes(1);
       });
 
       fireEvent.change(getInputByLabelText(/^Item Name/), {
@@ -370,9 +368,9 @@ describe('AddItemMod', () => {
       fireEvent.click(screen.getByRole('button', { name: /add item/i }));
 
       await waitFor(() => {
-        // Initial mount call + post-create refresh call
-        expect(lootService.getAllLoot).toHaveBeenCalledTimes(2);
+        expect(api.post).toHaveBeenCalledTimes(1);
       });
+      expect(lootService.getAllLoot).not.toHaveBeenCalled();
     });
   });
 
@@ -688,6 +686,28 @@ describe('AddItemMod', () => {
       });
     });
 
+    it('offers each subtarget once and only those matching the target (F-1336)', async () => {
+      (api.post as any).mockResolvedValueOnce({ data: { id: 8 } });
+
+      await switchToModsTab();
+
+      fireEvent.change(getInputByLabelText(/^Mod Name/), { target: { value: 'Light Plate' } });
+      await selectMuiOption(/^Type/, 'Material');
+      await selectMuiOption(/^Target/, 'Armor');
+      await selectMuiOption(/^Subtarget/, 'Light Armor');
+
+      fireEvent.click(screen.getByRole('button', { name: /add mod/i }));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith(
+          '/admin/mods',
+          expect.objectContaining({ target: 'armor', subtarget: 'light' }),
+        );
+      });
+      // The selected option is shown as Light Armor, not Light Weapon
+      expect(screen.queryByText('Light Weapon')).not.toBeInTheDocument();
+    });
+
     it('sends plus=null when Plus is blank', async () => {
       (api.post as any).mockResolvedValueOnce({ data: { id: 6 } });
 
@@ -853,12 +873,7 @@ describe('AddItemMod', () => {
       });
     });
 
-    it('treats negative value as a number (component does not enforce non-negativity)', async () => {
-      // Documents current behaviour: the component performs no min/max clamping;
-      // it simply parseFloats whatever the user types. This protects against
-      // future regressions if validation is added.
-      (api.post as any).mockResolvedValueOnce({ data: { id: 70 } });
-
+    it('rejects a negative value without posting (matches the backend min of 0) (F-1323)', async () => {
       renderAddItemMod();
 
       await waitFor(() => {
@@ -873,12 +888,26 @@ describe('AddItemMod', () => {
 
       fireEvent.click(screen.getByRole('button', { name: /add item/i }));
 
+      expect(await screen.findByText('Item value cannot be negative')).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('rejects a negative weight without posting', async () => {
+      renderAddItemMod();
+
       await waitFor(() => {
-        expect(api.post).toHaveBeenCalledWith(
-          '/admin/items',
-          expect.objectContaining({ value: -5 }),
-        );
+        expect(screen.getByRole('heading', { name: /add new item/i })).toBeInTheDocument();
       });
+
+      fireEvent.change(getInputByLabelText(/^Item Name/), { target: { value: 'Feather' } });
+      await selectMuiOption(/^Type/, 'Other');
+      fireEvent.change(getInputByLabelText(/^Value/), { target: { value: '5' } });
+      fireEvent.change(getInputByLabelText(/^Weight/), { target: { value: '-1' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /add item/i }));
+
+      expect(await screen.findByText('Item weight cannot be negative')).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
     });
   });
 
