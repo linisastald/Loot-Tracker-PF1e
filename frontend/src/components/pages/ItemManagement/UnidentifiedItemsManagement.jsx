@@ -1,6 +1,5 @@
 // frontend/src/components/pages/ItemManagement/UnidentifiedItemsManagement.js
 import React, {useEffect, useState} from 'react';
-import api from '../../../utils/api';
 import lootService from '../../../services/lootService';
 import {
     Alert,
@@ -27,6 +26,7 @@ import {
 import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 import { notifyLootCountsChanged } from '../../../utils/events';
+import { getErrorMessage } from '../../../utils/apiErrors';
 
 const UnidentifiedItemsManagement = () => {
     const { timezone } = useCampaignTimezone();
@@ -67,12 +67,8 @@ const UnidentifiedItemsManagement = () => {
                 fetchItemsByIds(itemIds);
             }
 
-            if (modIds.length > 0) {
-                fetchModsByIds(modIds);
-            } else {
-                // If no specific mods, fetch all mods as fallback
-                fetchAllMods();
-            }
+            // No specific mods: fetch them all
+            fetchMods(modIds.length > 0 ? modIds : undefined);
         }
     }, [unidentifiedItems]);
 
@@ -82,115 +78,51 @@ const UnidentifiedItemsManagement = () => {
             if (response.data && Array.isArray(response.data.items)) {
                 setUnidentifiedItems(response.data.items);
             } else {
-                console.error('Unexpected data structure:', response.data);
                 setUnidentifiedItems([]);
                 setError('Invalid data structure received from server');
             }
-        } catch (error) {
-            console.error('Error fetching unidentified items:', error);
+        } catch (err) {
             setUnidentifiedItems([]);
-            setError('Failed to fetch unidentified items');
+            setError(getErrorMessage(err, 'Failed to fetch unidentified items'));
         }
     };
 
-    // New function to fetch items by IDs using the new endpoint
     const fetchItemsByIds = async (itemIds) => {
         try {
-            // Use the new endpoint
             const response = await lootService.getItemsByIds(itemIds);
-
-            // Create a map for easier lookups
-            const newItemsMap = {};
-
-            // Check if the data is in the expected format
-            if (response.data && response.data.items && Array.isArray(response.data.items)) {
-                response.data.items.forEach(item => {
-                    newItemsMap[item.id] = item;
-                });
-            } else if (Array.isArray(response.data)) {
-                response.data.forEach(item => {
-                    newItemsMap[item.id] = item;
-                });
-            } else {
-                console.error('Unexpected response format:', response.data);
-            }
-
-            setItemsMap(newItemsMap);
-        } catch (error) {
-            console.error('Error fetching items by IDs:', error);
-            // Fallback to the old method if the new endpoint fails
-            fetchItemsIndividually(itemIds);
-        }
-    };
-
-    // Fetch items by IDs using the proper endpoint
-    const fetchItemsIndividually = async (itemIds) => {
-        try {
-            const response = await lootService.getItemsByIds(itemIds);
-            const items = response.data.items || [];
-            
+            const items = Array.isArray(response.data?.items) ? response.data.items : [];
             const newItemsMap = {};
             items.forEach(item => {
                 newItemsMap[item.id] = item;
             });
-
             setItemsMap(newItemsMap);
-        } catch (error) {
-            console.error('Error fetching items by IDs:', error);
+        } catch (err) {
+            setError(getErrorMessage(err, 'Failed to load the linked items'));
         }
     };
 
-    // New function to fetch mods by IDs using the new endpoint
-    const fetchModsByIds = async (modIds) => {
-        try {
-            // Use the new endpoint
-            const response = await lootService.getModsByIds(modIds);
-
-            // Check if response.data is an array or has a mods property that's an array
+    // Mods for the given ids, or every mod when no ids are given
+    const fetchMods = async (modIds) => {
+        const load = async (ids) => {
+            const response = ids ? await lootService.getModsByIds(ids) : await lootService.getMods();
             const modsArray = Array.isArray(response.data) ? response.data :
-                (response.data && Array.isArray(response.data.mods) ? response.data.mods : []);
-
-            const modsWithDisplayNames = modsArray.map(mod => ({
-                ...mod,
-                displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
-            }));
-
-            // Create a map for easier lookups
+                (Array.isArray(response.data?.mods) ? response.data.mods : []);
             const newModsMap = {};
-            modsWithDisplayNames.forEach(mod => {
+            modsArray.forEach(mod => {
                 newModsMap[mod.id] = mod;
             });
-
             setModsMap(newModsMap);
-        } catch (error) {
-            console.error('Error fetching mods by IDs:', error);
-            // Fallback to fetching all mods
-            fetchAllMods();
-        }
-    };
+        };
 
-    const fetchAllMods = async () => {
         try {
-            const response = await lootService.getMods();
-
-            // Check if response.data is an array or has a mods property that's an array
-            const modsArray = Array.isArray(response.data) ? response.data :
-                (response.data && Array.isArray(response.data.mods) ? response.data.mods : []);
-
-            const modsWithDisplayNames = modsArray.map(mod => ({
-                ...mod,
-                displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
-            }));
-
-            // Create a map for easier lookups
-            const newModsMap = {};
-            modsWithDisplayNames.forEach(mod => {
-                newModsMap[mod.id] = mod;
-            });
-
-            setModsMap(newModsMap);
-        } catch (error) {
-            console.error('Error fetching all mods:', error);
+            await load(modIds);
+        } catch (err) {
+            if (modIds) {
+                // The id lookup failed: try the full list once
+                await fetchMods();
+                return;
+            }
+            setError(getErrorMessage(err, 'Failed to load the mods'));
         }
     };
 
@@ -222,9 +154,8 @@ const UnidentifiedItemsManagement = () => {
                     setError(errorMessage);
                 }
             );
-        } catch (error) {
-            console.error('Error updating item', error);
-            setError('Failed to update item');
+        } catch (err) {
+            setError(getErrorMessage(err, 'Failed to update item'));
         }
     };
 
