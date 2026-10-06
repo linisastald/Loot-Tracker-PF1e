@@ -713,6 +713,26 @@ describe('userController', () => {
       await userController.updateCharacter(req, res);
 
       expect(res.success).toHaveBeenCalledWith(updatedChar, 'Character updated successfully');
+
+      // UPDATE params: [name, bonus, birthday, deathday, active, id, userId]; omitted fields keep their stored values
+      expect(mockClient.query.mock.calls[0][1]).toEqual([
+        'Valeros the Bold', 7, mockCharacter.birthday, mockCharacter.deathday, true, 10, 1,
+      ]);
+    });
+
+    it('writes an empty-string birthday as NULL but keeps an omitted deathday (F-0206)', async () => {
+      const req = createMockReq({ body: { id: 10, birthday: '' } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ ...mockCharacter, deathday: '4710-03-01' }] });
+      const mockClient = { query: jest.fn().mockResolvedValueOnce({ rows: [mockCharacter] }) };
+      dbUtils.executeTransaction.mockImplementationOnce(async (cb) => cb(mockClient));
+
+      await userController.updateCharacter(req, res);
+
+      const params = mockClient.query.mock.calls[0][1];
+      expect(params[2]).toBeNull();
+      expect(params[3]).toBe('4710-03-01');
     });
 
     it('should activate character and deactivate others', async () => {
