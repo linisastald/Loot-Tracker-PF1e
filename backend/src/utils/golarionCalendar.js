@@ -59,6 +59,43 @@ const addDays = (date, n) => {
 };
 
 /**
+ * Move a date back by a whole number of days, handling month/year rollover
+ * with leap-aware month lengths.
+ * @param {{year:number, month:number, day:number}} date
+ * @param {number} n - days to subtract (>= 0)
+ * @returns {{year:number, month:number, day:number}}
+ */
+const subtractDays = (date, n) => {
+  let { year, month, day } = date;
+  for (let i = 0; i < n; i++) {
+    day--;
+    if (day < 1) {
+      month--;
+      if (month < 1) {
+        month = 12;
+        year--;
+      }
+      day = getMonthDays(year, month);
+    }
+  }
+  return { year, month, day };
+};
+
+/**
+ * Whether the value is a real Golarion date: integer year, month 1-12 and a
+ * day within that month (leap-aware).
+ * @param {{year:number, month:number, day:number}} date
+ * @returns {boolean}
+ */
+const isValidDate = (date) => {
+  if (!date || !Number.isInteger(date.year) || !Number.isInteger(date.month) || !Number.isInteger(date.day)) {
+    return false;
+  }
+  if (date.month < 1 || date.month > 12) return false;
+  return date.day >= 1 && date.day <= getMonthDays(date.year, date.month);
+};
+
+/**
  * Compare two Golarion dates chronologically.
  * @param {{year:number, month:number, day:number}} a
  * @param {{year:number, month:number, day:number}} b
@@ -98,6 +135,8 @@ module.exports = {
   isLeapYear,
   getMonthDays,
   addDays,
+  subtractDays,
+  isValidDate,
   compareDates,
   calculateDaysBetween,
 };

@@ -6,6 +6,8 @@ const {
   isLeapYear,
   getMonthDays,
   addDays,
+  subtractDays,
+  isValidDate,
   compareDates,
   calculateDaysBetween,
 } = require('../golarionCalendar');
@@ -81,6 +83,43 @@ describe('golarionCalendar', () => {
 
     it('advances a full common year (365 days) back to the same date', () => {
       expect(addDays({ year: 4722, month: 1, day: 1 }, 365)).toEqual({ year: 4723, month: 1, day: 1 });
+    });
+  });
+
+  describe('subtractDays', () => {
+    it('returns the same date for 0 days', () => {
+      expect(subtractDays({ year: 4722, month: 3, day: 5 }, 0)).toEqual({ year: 4722, month: 3, day: 5 });
+    });
+
+    it('rolls back across a month and a year boundary', () => {
+      expect(subtractDays({ year: 4722, month: 3, day: 1 }, 1)).toEqual({ year: 4722, month: 2, day: 28 });
+      expect(subtractDays({ year: 4723, month: 1, day: 1 }, 1)).toEqual({ year: 4722, month: 12, day: 31 });
+    });
+
+    it('is leap-aware (4720 is a leap year)', () => {
+      expect(subtractDays({ year: 4720, month: 3, day: 1 }, 1)).toEqual({ year: 4720, month: 2, day: 29 });
+    });
+
+    it('is the inverse of addDays', () => {
+      const start = { year: 4720, month: 1, day: 10 };
+      expect(subtractDays(addDays(start, 400), 400)).toEqual(start);
+    });
+  });
+
+  describe('isValidDate', () => {
+    it('accepts real dates including the leap day', () => {
+      expect(isValidDate({ year: 4722, month: 12, day: 31 })).toBe(true);
+      expect(isValidDate({ year: 4720, month: 2, day: 29 })).toBe(true);
+    });
+
+    it('rejects out-of-range and non-integer parts', () => {
+      expect(isValidDate({ year: 4722, month: 2, day: 29 })).toBe(false);
+      expect(isValidDate({ year: 4722, month: 13, day: 1 })).toBe(false);
+      expect(isValidDate({ year: 4722, month: 1, day: 40 })).toBe(false);
+      expect(isValidDate({ year: 4722, month: 1, day: 0 })).toBe(false);
+      expect(isValidDate({ year: '4722', month: 1, day: 1 })).toBe(false);
+      expect(isValidDate({ year: 4722, month: 1.5, day: 1 })).toBe(false);
+      expect(isValidDate(null)).toBe(false);
     });
   });
 
