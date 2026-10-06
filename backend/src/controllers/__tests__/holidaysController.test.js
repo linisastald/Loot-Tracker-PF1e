@@ -74,14 +74,24 @@ describe('holidaysController', () => {
       }));
     });
 
-    it('defaults an unknown category to Cultural', async () => {
-      const req = createMockReq({ body: { name: 'X', category: 'Bogus' } });
+    it('defaults a missing category to Cultural', async () => {
+      const req = createMockReq({ body: { name: 'X' } });
       const res = createMockRes();
       GolarionHoliday.create.mockResolvedValueOnce({});
 
       await holidaysController.createHoliday(req, res);
 
       expect(GolarionHoliday.create).toHaveBeenCalledWith(expect.objectContaining({ category: 'Cultural' }));
+    });
+
+    it('rejects a supplied category that is not allowed', async () => {
+      const req = createMockReq({ body: { name: 'X', category: 'Bogus' } });
+      const res = createMockRes();
+
+      await holidaysController.createHoliday(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Category must be one of'));
+      expect(GolarionHoliday.create).not.toHaveBeenCalled();
     });
 
     it('rejects a missing name', async () => {
@@ -143,8 +153,66 @@ describe('holidaysController', () => {
 
       await holidaysController.updateHoliday(req, res);
 
-      expect(res.validationError).toHaveBeenCalledWith('Official holidays cannot be edited');
+      expect(res.forbidden).toHaveBeenCalledWith('Official holidays cannot be changed');
       expect(GolarionHoliday.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps the stored category and text fields when a PUT omits them', async () => {
+      GolarionHoliday.getById.mockResolvedValueOnce({
+        id: 5, isCustom: true, category: 'Civic', deity: 'Abadar', region: 'Absalom',
+        description: 'old', movableRule: 'rule',
+      });
+      GolarionHoliday.update.mockResolvedValueOnce({ id: 5 });
+      const req = createMockReq({ params: { id: '5' }, body: { name: 'New', month: 3, day: 2 } });
+      const res = createMockRes();
+
+      await holidaysController.updateHoliday(req, res);
+
+      expect(GolarionHoliday.update).toHaveBeenCalledWith(5, expect.objectContaining({
+        category: 'Civic', deity: 'Abadar', region: 'Absalom', description: 'old', movableRule: 'rule',
+      }));
+    });
+
+    it('lets a PUT clear a text field with an empty string', async () => {
+      GolarionHoliday.getById.mockResolvedValueOnce({ id: 5, isCustom: true, category: 'Civic', deity: 'Abadar' });
+      GolarionHoliday.update.mockResolvedValueOnce({ id: 5 });
+      const req = createMockReq({ params: { id: '5' }, body: { name: 'New', deity: '' } });
+
+      await holidaysController.updateHoliday(req, createMockRes());
+
+      expect(GolarionHoliday.update).toHaveBeenCalledWith(5, expect.objectContaining({ deity: null }));
+    });
+
+    it('rejects a mistyped category on update instead of overwriting', async () => {
+      GolarionHoliday.getById.mockResolvedValueOnce({ id: 5, isCustom: true, category: 'Civic' });
+      const req = createMockReq({ params: { id: '5' }, body: { name: 'New', category: 'Relgious' } });
+      const res = createMockRes();
+
+      await holidaysController.updateHoliday(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Category must be one of'));
+      expect(GolarionHoliday.update).not.toHaveBeenCalled();
+    });
+
+    it('reports 404 when the update matches no row', async () => {
+      GolarionHoliday.getById.mockResolvedValueOnce({ id: 5, isCustom: true });
+      GolarionHoliday.update.mockResolvedValueOnce(null);
+      const res = createMockRes();
+
+      await holidaysController.updateHoliday(createMockReq({ params: { id: '5' }, body: { name: 'x' } }), res);
+
+      expect(res.notFound).toHaveBeenCalled();
+    });
+
+    it('returns 404 (not 403) for a holiday that row-level security hides (another campaign)', async () => {
+      GolarionHoliday.getById.mockResolvedValueOnce(null);
+      const req = createMockReq({ params: { id: '99' }, body: { name: 'x' } });
+      const res = createMockRes();
+
+      await holidaysController.updateHoliday(req, res);
+
+      expect(res.notFound).toHaveBeenCalled();
+      expect(res.forbidden).not.toHaveBeenCalled();
     });
 
     it('returns not found for a missing holiday', async () => {
@@ -188,8 +256,29 @@ describe('holidaysController', () => {
 
       await holidaysController.deleteHoliday(req, res);
 
-      expect(res.validationError).toHaveBeenCalledWith('Official holidays cannot be deleted');
+      expect(res.forbidden).toHaveBeenCalledWith('Official holidays cannot be changed');
       expect(GolarionHoliday.remove).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for a custom holiday of another campaign (hidden by RLS)', async () => {
+      GolarionHoliday.getById.mockResolvedValueOnce(null);
+      const req = createMockReq({ params: { id: '7' } });
+      const res = createMockRes();
+
+      await holidaysController.deleteHoliday(req, res);
+
+      expect(res.notFound).toHaveBeenCalled();
+      expect(res.forbidden).not.toHaveBeenCalled();
+    });
+
+    it('reports 404 when the delete matches no row', async () => {
+      GolarionHoliday.getById.mockResolvedValueOnce({ id: 5, isCustom: true });
+      GolarionHoliday.remove.mockResolvedValueOnce(null);
+      const res = createMockRes();
+
+      await holidaysController.deleteHoliday(createMockReq({ params: { id: '5' } }), res);
+
+      expect(res.notFound).toHaveBeenCalled();
     });
   });
 });
