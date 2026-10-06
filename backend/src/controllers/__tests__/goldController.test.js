@@ -71,6 +71,8 @@ function createMockRes() {
 }
 
 describe('goldController', () => {
+  let mockClient;
+
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -79,7 +81,12 @@ describe('goldController', () => {
     // but its implementation gets cleared. We re-set a default that returns empty rows.
     dbUtils.executeQuery.mockResolvedValue({ rows: [] });
 
+    // Transactions run their callback against a mock client
+    mockClient = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+    dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
+
     // Gold model methods
+    Gold.getBalance.mockResolvedValue({ platinum: 10, gold: 200, silver: 50, copper: 80 });
     Gold.create.mockResolvedValue({ id: 1 });
     Gold.findAll.mockResolvedValue({
       transactions: [],
@@ -96,78 +103,41 @@ describe('goldController', () => {
   // ─── createGoldEntry ───────────────────────────────────────────────
 
   describe('createGoldEntry', () => {
+    const dmReq = (goldEntries) => ({ user: { id: 1 }, campaignRole: 'DM', body: { goldEntries } });
+    const loot = (extra = {}) => ({ sessionDate: '2024-06-15', transactionType: 'Loot', notes: 'n', ...extra });
+
     it('should create a valid gold entry (Loot deposit)', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            {
-              sessionDate: '2024-06-15',
-              transactionType: 'Loot',
-              platinum: 5,
-              gold: 100,
-              silver: 30,
-              copper: 10,
-              notes: 'Dragon hoard',
-            },
-          ],
-        },
-      };
       const res = createMockRes();
+      Gold.create.mockResolvedValue({ id: 1, transaction_type: 'Loot', gold: 100 });
 
-      // Mock current totals check
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ total_platinum: '10', total_gold: '200', total_silver: '50', total_copper: '80' }],
-      });
-
-      Gold.create.mockResolvedValue({
-        id: 1,
-        session_date: '2024-06-15',
-        transaction_type: 'Loot',
-        platinum: 5,
-        gold: 100,
-        silver: 30,
-        copper: 10,
-        notes: 'Dragon hoard',
-      });
-
-      await goldController.createGoldEntry(req, res);
+      await goldController.createGoldEntry(dmReq([loot({ platinum: 5, gold: 100, silver: 30, copper: 10 })]), res);
 
       expect(Gold.create).toHaveBeenCalledTimes(1);
+      // the insert runs on the transaction client
+      expect(Gold.create.mock.calls[0][1]).toBe(mockClient);
       expect(res.created).toHaveBeenCalled();
       const createdData = res.created.mock.calls[0][0];
       expect(createdData).toHaveLength(1);
       expect(createdData[0].transaction_type).toBe('Loot');
     });
 
-    it('should negate amounts for Withdrawal transaction type', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            {
-              sessionDate: '2024-06-15',
-              transactionType: 'Withdrawal',
-              platinum: 0,
-              gold: 50,
-              silver: 0,
-              copper: 0,
-              notes: 'Bought supplies',
-            },
-          ],
-        },
-      };
+    it('should take the per-campaign ledger lock before reading the balance through the transaction client', async () => {
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ total_platinum: '10', total_gold: '200', total_silver: '50', total_copper: '80' }],
-      });
+      await goldController.createGoldEntry(dmReq([loot({ gold: 1 })]), res);
 
-      Gold.create.mockResolvedValue({ id: 2, transaction_type: 'Withdrawal', gold: -50 });
+      expect(dbUtils.executeTransaction).toHaveBeenCalledTimes(1);
+      const [sql, params] = mockClient.query.mock.calls[0];
+      expect(sql).toContain('pg_advisory_xact_lock');
+      expect(params).toHaveLength(2);
+      expect(Gold.getBalance).toHaveBeenCalledWith(mockClient);
+      expect(mockClient.query.mock.invocationCallOrder[0]).toBeLessThan(Gold.getBalance.mock.invocationCallOrder[0]);
+    });
 
-      await goldController.createGoldEntry(req, res);
+    it('should negate amounts for Withdrawal transaction type', async () => {
+      const res = createMockRes();
+
+      await goldController.createGoldEntry(dmReq([loot({ transactionType: 'Withdrawal', gold: 50 })]), res);
 
       const createArg = Gold.create.mock.calls[0][0];
       expect(createArg.gold).toBe(-50);
@@ -176,32 +146,10 @@ describe('goldController', () => {
     });
 
     it('should negate amounts for Purchase transaction type', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            {
-              sessionDate: '2024-06-15',
-              transactionType: 'Purchase',
-              platinum: 2,
-              gold: 30,
-              silver: 5,
-              copper: 10,
-              notes: 'Magic item',
-            },
-          ],
-        },
-      };
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ total_platinum: '10', total_gold: '200', total_silver: '50', total_copper: '80' }],
-      });
-
-      Gold.create.mockResolvedValue({ id: 3 });
-
-      await goldController.createGoldEntry(req, res);
+      await goldController.createGoldEntry(
+        dmReq([loot({ transactionType: 'Purchase', platinum: 2, gold: 30, silver: 5, copper: 10 })]), res);
 
       const createArg = Gold.create.mock.calls[0][0];
       expect(createArg.platinum).toBe(-2);
@@ -211,152 +159,93 @@ describe('goldController', () => {
     });
 
     it('should negate amounts for Party Loot Purchase transaction type', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            {
-              sessionDate: '2024-06-15',
-              transactionType: 'Party Loot Purchase',
-              platinum: 0,
-              gold: 75,
-              silver: 0,
-              copper: 0,
-              notes: 'Party fund purchase',
-            },
-          ],
-        },
-      };
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ total_platinum: '10', total_gold: '200', total_silver: '50', total_copper: '80' }],
-      });
+      await goldController.createGoldEntry(dmReq([loot({ transactionType: 'Party Loot Purchase', gold: 75 })]), res);
 
-      Gold.create.mockResolvedValue({ id: 4 });
-
-      await goldController.createGoldEntry(req, res);
-
-      const createArg = Gold.create.mock.calls[0][0];
-      expect(createArg.gold).toBe(-75);
+      expect(Gold.create.mock.calls[0][0].gold).toBe(-75);
     });
 
     it('should reject when goldEntries is missing from body', async () => {
-      const req = { body: {} };
       const res = createMockRes();
 
-      await goldController.createGoldEntry(req, res);
+      await goldController.createGoldEntry({ body: {} }, res);
 
-      // controllerFactory.createHandler validates requiredFields and catches ValidationError
       expect(res.validationError).toHaveBeenCalled();
       expect(Gold.create).not.toHaveBeenCalled();
     });
 
     it('should reject when goldEntries is not an array', async () => {
-      const req = { body: { goldEntries: 'not-an-array' } };
       const res = createMockRes();
 
-      await goldController.createGoldEntry(req, res);
+      await goldController.createGoldEntry({ body: { goldEntries: 'not-an-array' } }, res);
 
-      expect(res.validationError).toHaveBeenCalled();
+      expect(res.validationError).toHaveBeenCalledWith('Gold entries array is required');
       expect(Gold.create).not.toHaveBeenCalled();
     });
 
     it('should reject when goldEntries is an empty array', async () => {
-      const req = { body: { goldEntries: [] } };
       const res = createMockRes();
 
-      await goldController.createGoldEntry(req, res);
+      await goldController.createGoldEntry({ body: { goldEntries: [] } }, res);
 
-      expect(res.validationError).toHaveBeenCalled();
+      expect(res.validationError).toHaveBeenCalledWith('Gold entries array is required');
       expect(Gold.create).not.toHaveBeenCalled();
     });
 
     it('should reject withdrawal that would cause negative balance', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            {
-              sessionDate: '2024-06-15',
-              transactionType: 'Withdrawal',
-              platinum: 0,
-              gold: 999,
-              silver: 0,
-              copper: 0,
-              notes: 'Too much',
-            },
-          ],
-        },
-      };
       const res = createMockRes();
+      // Current balance only 200 gold; withdrawal of 999 would leave -799
+      await goldController.createGoldEntry(dmReq([loot({ transactionType: 'Withdrawal', gold: 999 })]), res);
 
-      // Current balance only 200 gold; withdrawal of 999 negated = -999, total = 200 + (-999) < 0
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ total_platinum: '10', total_gold: '200', total_silver: '50', total_copper: '80' }],
-      });
-
-      await goldController.createGoldEntry(req, res);
-
-      expect(res.validationError).toHaveBeenCalled();
+      expect(res.validationError).toHaveBeenCalledWith('Transaction would result in negative currency balance');
       expect(Gold.create).not.toHaveBeenCalled();
     });
 
-    it('should handle multiple entries in a single request', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            { sessionDate: '2024-06-15', transactionType: 'Loot', gold: 50, notes: 'First' },
-            { sessionDate: '2024-06-15', transactionType: 'Loot', gold: 30, notes: 'Second' },
-          ],
-        },
-      };
+    it('should track a running balance across entries in one request', async () => {
       const res = createMockRes();
+      Gold.getBalance.mockResolvedValue({ platinum: 0, gold: 100, silver: 0, copper: 0 });
 
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }],
-      });
+      // each withdrawal alone fits in 100 gold, together they do not
+      await goldController.createGoldEntry(dmReq([
+        loot({ transactionType: 'Withdrawal', gold: 60 }),
+        loot({ transactionType: 'Withdrawal', gold: 60 }),
+      ]), res);
 
+      expect(res.validationError).toHaveBeenCalledWith('Transaction would result in negative currency balance');
+      expect(Gold.getBalance).toHaveBeenCalledTimes(1);
+      expect(res.created).not.toHaveBeenCalled();
+    });
+
+    it('should let an earlier deposit in the same request fund a later withdrawal', async () => {
+      const res = createMockRes();
+      Gold.getBalance.mockResolvedValue({ platinum: 0, gold: 0, silver: 0, copper: 0 });
+
+      await goldController.createGoldEntry(dmReq([
+        loot({ gold: 50 }),
+        loot({ transactionType: 'Withdrawal', gold: 50 }),
+      ]), res);
+
+      expect(Gold.create).toHaveBeenCalledTimes(2);
+      expect(res.created).toHaveBeenCalled();
+    });
+
+    it('should handle multiple entries in a single request', async () => {
+      const res = createMockRes();
       Gold.create
         .mockResolvedValueOnce({ id: 1, notes: 'First' })
         .mockResolvedValueOnce({ id: 2, notes: 'Second' });
 
-      await goldController.createGoldEntry(req, res);
+      await goldController.createGoldEntry(dmReq([loot({ gold: 50 }), loot({ gold: 30 })]), res);
 
       expect(Gold.create).toHaveBeenCalledTimes(2);
-      expect(res.created).toHaveBeenCalled();
-      const createdData = res.created.mock.calls[0][0];
-      expect(createdData).toHaveLength(2);
+      expect(res.created.mock.calls[0][0]).toHaveLength(2);
     });
 
     it('should default missing currency values to 0', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            {
-              sessionDate: '2024-06-15',
-              transactionType: 'Loot',
-              gold: 10,
-              notes: 'Partial entry',
-            },
-          ],
-        },
-      };
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ total_platinum: '0', total_gold: '0', total_silver: '0', total_copper: '0' }],
-      });
-
-      Gold.create.mockResolvedValue({ id: 1 });
-
-      await goldController.createGoldEntry(req, res);
+      await goldController.createGoldEntry(dmReq([loot({ gold: 10 })]), res);
 
       const createArg = Gold.create.mock.calls[0][0];
       expect(createArg.platinum).toBe(0);
@@ -365,110 +254,90 @@ describe('goldController', () => {
       expect(createArg.gold).toBe(10);
     });
 
-    it('should force a player\'s active character and ignore any character_id in the body', async () => {
-      const req = {
-        user: { id: 7 },
-        campaignRole: 'Player',
-        body: {
-          goldEntries: [
-            { sessionDate: '2024-06-15', transactionType: 'Withdrawal', gold: 10, notes: 'My share', character_id: 999 },
-          ],
-        },
-      };
+    it.each([
+      ['fractional', 1.5],
+      ['non-numeric', 'abc'],
+      ['NaN', NaN],
+    ])('should reject a %s amount before touching the ledger', async (_label, bad) => {
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockImplementation((sql) => {
-        if (sql.includes('FROM characters WHERE user_id')) {
-          return Promise.resolve({ rows: [{ id: 42 }] }); // player's active character
-        }
-        if (sql.includes('SUM(platinum)')) {
-          return Promise.resolve({ rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }] });
-        }
-        return Promise.resolve({ rows: [] });
-      });
-      Gold.create.mockResolvedValue({ id: 1 });
+      await goldController.createGoldEntry(dmReq([loot({ gold: bad })]), res);
 
-      await goldController.createGoldEntry(req, res);
-
-      const createArg = Gold.create.mock.calls[0][0];
-      expect(createArg.character_id).toBe(42); // forced to active character, not the body's 999
-    });
-
-    it('should attribute to the DM-selected character when provided', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            { sessionDate: '2024-06-15', transactionType: 'Withdrawal', gold: 10, notes: 'Paid Alice', character_id: 5 },
-          ],
-        },
-      };
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockImplementation((sql) => {
-        if (sql.includes('SELECT 1 FROM characters')) {
-          return Promise.resolve({ rows: [{ '?column?': 1 }] }); // character exists
-        }
-        if (sql.includes('SUM(platinum)')) {
-          return Promise.resolve({ rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }] });
-        }
-        return Promise.resolve({ rows: [] });
-      });
-      Gold.create.mockResolvedValue({ id: 1 });
-
-      await goldController.createGoldEntry(req, res);
-
-      const createArg = Gold.create.mock.calls[0][0];
-      expect(createArg.character_id).toBe(5);
-    });
-
-    it('should reject when a DM selects a character that does not exist', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            { sessionDate: '2024-06-15', transactionType: 'Withdrawal', gold: 10, notes: 'Bad', character_id: 12345 },
-          ],
-        },
-      };
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockImplementation((sql) => {
-        if (sql.includes('SELECT 1 FROM characters')) {
-          return Promise.resolve({ rows: [] }); // not found
-        }
-        return Promise.resolve({ rows: [{ total_platinum: '0', total_gold: '100', total_silver: '0', total_copper: '0' }] });
-      });
-
-      await goldController.createGoldEntry(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith('Selected character not found');
+      expect(res.validationError).toHaveBeenCalledWith('gold must be a whole number');
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
       expect(Gold.create).not.toHaveBeenCalled();
     });
 
-    it('should return 500 when Gold.create throws an error', async () => {
-      const req = {
-        user: { id: 1 },
-        campaignRole: 'DM',
-        body: {
-          goldEntries: [
-            { sessionDate: '2024-06-15', transactionType: 'Loot', gold: 10, notes: 'Fail test' },
-          ],
-        },
-      };
+    it('should accept numeric strings for amounts', async () => {
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ total_platinum: '0', total_gold: '0', total_silver: '0', total_copper: '0' }],
-      });
+      await goldController.createGoldEntry(dmReq([loot({ gold: '25' })]), res);
 
-      Gold.create.mockRejectedValue(new Error('Database connection lost'));
+      expect(Gold.create.mock.calls[0][0].gold).toBe(25);
+    });
+
+    it("should force a player's active character and ignore any character_id in the body", async () => {
+      const req = {
+        user: { id: 7 },
+        campaignRole: 'Player',
+        body: { goldEntries: [loot({ transactionType: 'Withdrawal', gold: 10, character_id: 999 })] },
+      };
+      const res = createMockRes();
+      dbUtils.executeQuery.mockImplementation((sql) =>
+        Promise.resolve(sql.includes('FROM characters WHERE user_id') ? { rows: [{ id: 42 }] } : { rows: [] }));
 
       await goldController.createGoldEntry(req, res);
 
-      expect(res.error).toHaveBeenCalledWith('Error creating gold entry', 500);
+      expect(Gold.create.mock.calls[0][0].character_id).toBe(42); // forced to active character, not the body's 999
+    });
+
+    it('should record a player with no active character as character_id null', async () => {
+      const req = {
+        user: { id: 7 },
+        campaignRole: 'Player',
+        body: { goldEntries: [loot({ transactionType: 'Withdrawal', gold: 10, character_id: 999 })] },
+      };
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] }); // no active character
+
+      await goldController.createGoldEntry(req, res);
+
+      expect(Gold.create.mock.calls[0][0].character_id).toBeNull();
+      expect(res.created).toHaveBeenCalled();
+    });
+
+    it('should attribute to the DM-selected character when provided', async () => {
+      const res = createMockRes();
+      dbUtils.executeQuery.mockImplementation((sql) =>
+        Promise.resolve(sql.includes('SELECT 1 FROM characters') ? { rows: [{ '?column?': 1 }] } : { rows: [] }));
+
+      await goldController.createGoldEntry(dmReq([loot({ transactionType: 'Withdrawal', gold: 10, character_id: 5 })]), res);
+
+      expect(Gold.create.mock.calls[0][0].character_id).toBe(5);
+    });
+
+    it('should reject when a DM selects a character that does not exist', async () => {
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] }); // not found
+
+      await goldController.createGoldEntry(dmReq([loot({ transactionType: 'Withdrawal', gold: 10, character_id: 12345 })]), res);
+
+      expect(res.validationError).toHaveBeenCalledWith('Selected character not found');
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      expect(Gold.create).not.toHaveBeenCalled();
+    });
+
+    it('should return 500 and no created entries when an insert fails part-way', async () => {
+      const res = createMockRes();
+      Gold.create
+        .mockResolvedValueOnce({ id: 1 })
+        .mockRejectedValueOnce(new Error('Database connection lost'));
+
+      await goldController.createGoldEntry(dmReq([loot({ gold: 1 }), loot({ gold: 2 })]), res);
+
+      // the error propagates out of the single transaction (which rolls back the first insert)
+      expect(res.error).toHaveBeenCalledWith('Internal server error');
+      expect(res.created).not.toHaveBeenCalled();
     });
   });
 
@@ -601,7 +470,7 @@ describe('goldController', () => {
 
       await goldController.getAllGoldEntries(req, res);
 
-      expect(res.error).toHaveBeenCalledWith('Error fetching gold entries', 500);
+      expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
   });
 
@@ -675,7 +544,7 @@ describe('goldController', () => {
 
       await goldController.getGoldOverviewTotals(req, res);
 
-      expect(res.error).toHaveBeenCalledWith('Error fetching gold overview totals', 500);
+      expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
   });
 
@@ -770,171 +639,106 @@ describe('goldController', () => {
   // ─── balance ───────────────────────────────────────────────────────
 
   describe('balance', () => {
-    it('should convert copper to silver and silver to gold', async () => {
-      const req = { user: { id: 1 } };
-      const res = createMockRes();
+    const req = { user: { id: 9 } };
+    const totals = (copper, silver, gold) => Gold.getBalance.mockResolvedValue({ platinum: 0, gold, silver, copper });
 
+    it('should convert copper to silver and silver to gold', async () => {
+      const res = createMockRes();
       // 125 copper = 12 silver + 5 copper leftover
       // 37 existing silver + 12 from copper = 49 silver = 4 gold + 9 silver leftover
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({
-          rows: [{ total_copper: '125', total_silver: '37', total_gold: '100' }],
-        })
-        .mockResolvedValueOnce({
-          rows: [{
-            id: 1,
-            session_date: new Date().toISOString(),
-            transaction_type: 'Balance',
-            platinum: 0,
-            gold: 4,
-            silver: -28,
-            copper: -120,
-            notes: 'Balanced currencies',
-          }],
-        });
+      totals(125, 37, 100);
+      Gold.create.mockResolvedValue({ id: 1, transaction_type: 'Balance' });
 
       await goldController.balance(req, res);
 
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
+      const [entry, client] = Gold.create.mock.calls[0];
+      expect(client).toBe(mockClient);
+      expect(entry).toMatchObject({
+        transactionType: 'Balance',
+        platinum: 0,
+        gold: 4,        // silverToGold
+        silver: -28,    // 9 - 37
+        copper: -120,   // 5 - 125
+        who: 9,         // attributed to the caller
+      });
+      expect(res.success).toHaveBeenCalledWith({ id: 1, transaction_type: 'Balance' }, 'Currencies balanced successfully');
+    });
 
-      // Verify the INSERT query parameters
-      const insertCall = dbUtils.executeQuery.mock.calls[1];
-      const params = insertCall[1];
-      expect(params[1]).toBe('Balance');  // transaction_type
-      expect(params[2]).toBe(0);          // platinum
-      expect(params[3]).toBe(4);          // gold (silverToGold)
-      expect(params[4]).toBe(-28);        // silver (9 - 37 = -28)
-      expect(params[5]).toBe(-120);       // copper (5 - 125 = -120)
+    it('should read the totals under the ledger lock in one transaction', async () => {
+      const res = createMockRes();
+      totals(30, 5, 100);
 
-      expect(res.success).toHaveBeenCalled();
-      const successMsg = res.success.mock.calls[0][1];
-      expect(successMsg).toBe('Currencies balanced successfully');
+      await goldController.balance(req, res);
+
+      expect(dbUtils.executeTransaction).toHaveBeenCalledTimes(1);
+      expect(mockClient.query.mock.calls[0][0]).toContain('pg_advisory_xact_lock');
+      expect(Gold.getBalance).toHaveBeenCalledWith(mockClient);
     });
 
     it('should skip balancing when currencies are already balanced', async () => {
-      const req = { user: { id: 1 } };
       const res = createMockRes();
-
-      // 5 copper, 3 silver, 100 gold - nothing to convert
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ total_copper: '5', total_silver: '3', total_gold: '100' }],
-      });
+      totals(5, 3, 100); // nothing to convert
 
       await goldController.balance(req, res);
 
-      // Only one query (the SELECT), no INSERT
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      expect(Gold.create).not.toHaveBeenCalled();
       expect(res.success).toHaveBeenCalledWith(null, 'No balancing needed');
     });
 
     it('should reject balancing when any denomination is negative', async () => {
-      const req = { user: { id: 1 } };
       const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ total_copper: '10', total_silver: '-5', total_gold: '100' }],
-      });
+      totals(10, -5, 100);
 
       await goldController.balance(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
         'Cannot balance currencies when any denomination is negative'
       );
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      expect(Gold.create).not.toHaveBeenCalled();
     });
 
     it('should handle zero balances gracefully', async () => {
-      const req = { user: { id: 1 } };
       const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ total_copper: '0', total_silver: '0', total_gold: '0' }],
-      });
+      totals(0, 0, 0);
 
       await goldController.balance(req, res);
 
-      expect(res.success).toHaveBeenCalledWith(null, 'No balancing needed');
-    });
-
-    it('should handle null totals from database', async () => {
-      const req = { user: { id: 1 } };
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ total_copper: null, total_silver: null, total_gold: null }],
-      });
-
-      await goldController.balance(req, res);
-
-      // All zeros after parseInt(...) || 0, so no balancing needed
       expect(res.success).toHaveBeenCalledWith(null, 'No balancing needed');
     });
 
     it('should convert only copper when resulting silver total is below 10', async () => {
-      const req = { user: { id: 1 } };
       const res = createMockRes();
-
       // 30 copper = 3 silver + 0 copper; total silver becomes 5 + 3 = 8, which is < 10
-      // So silverToGold = 0, only copper-to-silver conversion happens
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({
-          rows: [{ total_copper: '30', total_silver: '5', total_gold: '100' }],
-        })
-        .mockResolvedValueOnce({
-          rows: [{
-            id: 1,
-            transaction_type: 'Balance',
-            platinum: 0,
-            gold: 0,
-            silver: 3,
-            copper: -30,
-            notes: 'Balanced currencies',
-          }],
-        });
+      totals(30, 5, 100);
 
       await goldController.balance(req, res);
 
-      const params = dbUtils.executeQuery.mock.calls[1][1];
-      expect(params[3]).toBe(0);   // gold stays 0 (8 silver < 10)
-      expect(params[4]).toBe(3);   // silver: 8 - 5 = 3
-      expect(params[5]).toBe(-30); // copper: 0 - 30 = -30
-
-      expect(res.success).toHaveBeenCalled();
+      const entry = Gold.create.mock.calls[0][0];
+      expect(entry.gold).toBe(0);    // gold stays 0 (8 silver < 10)
+      expect(entry.silver).toBe(3);  // 8 - 5
+      expect(entry.copper).toBe(-30);
     });
 
-    it('should return 500 when database query fails', async () => {
-      const req = { user: { id: 1 } };
+    it('should return 500 when the database fails', async () => {
       const res = createMockRes();
-
-      dbUtils.executeQuery.mockRejectedValue(new Error('Connection refused'));
+      dbUtils.executeTransaction.mockRejectedValue(new Error('Connection refused'));
 
       await goldController.balance(req, res);
 
-      expect(res.error).toHaveBeenCalledWith('Error balancing currencies', 500);
+      expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
 
     it('should handle large currency values correctly', async () => {
-      const req = { user: { id: 1 } };
       const res = createMockRes();
-
-      // 9999 copper = 999 silver + 9 copper
-      // 9999 silver + 999 = 10998 silver = 1099 gold + 8 silver
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({
-          rows: [{ total_copper: '9999', total_silver: '9999', total_gold: '5000' }],
-        })
-        .mockResolvedValueOnce({
-          rows: [{ id: 1, transaction_type: 'Balance' }],
-        });
+      // 9999 copper = 999 silver + 9 copper; 9999 silver + 999 = 10998 silver = 1099 gold + 8 silver
+      totals(9999, 9999, 5000);
 
       await goldController.balance(req, res);
 
-      const params = dbUtils.executeQuery.mock.calls[1][1];
-      expect(params[3]).toBe(1099); // gold: floor(10998 / 10)
-      expect(params[4]).toBe(10998 % 10 - 9999); // silver: 8 - 9999 = -9991
-      expect(params[5]).toBe(9 - 9999); // copper: 9 - 9999 = -9990
-
-      expect(res.success).toHaveBeenCalled();
+      const entry = Gold.create.mock.calls[0][0];
+      expect(entry.gold).toBe(1099);
+      expect(entry.silver).toBe(8 - 9999);
+      expect(entry.copper).toBe(9 - 9999);
     });
   });
 });
