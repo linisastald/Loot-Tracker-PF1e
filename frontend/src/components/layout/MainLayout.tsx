@@ -3,11 +3,13 @@ import Sidebar from './Sidebar';
 import CampaignSelector from './CampaignSelector';
 import NoSessionTodayBanner from './NoSessionTodayBanner';
 import NoCampaignNotice from './NoCampaignNotice';
-import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography, useMediaQuery, useTheme} from '@mui/material';
-import {Outlet, useLocation, useNavigate} from 'react-router-dom';
+import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography} from '@mui/material';
+import {Outlet, useLocation} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useCampaign } from '../../contexts/CampaignContext';
+import { APP_BAR_HEIGHT, drawerWidthFor } from './layoutConstants';
+import { getPageTitle } from './pageTitles';
 
 interface MainLayoutProps {
   onLogout: () => void;
@@ -16,62 +18,18 @@ interface MainLayoutProps {
 const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const navigate = useNavigate();
   const location = useLocation();
   const { config } = useConfig();
-  const { hasNoCampaign } = useCampaign();
+  const { hasNoCampaign, currentCampaign } = useCampaign();
+  // Unknown pages and the browser tab fall back to the active campaign's name
+  const appName = currentCampaign?.name || config.groupName;
+  const drawerWidth = drawerWidthFor(isCollapsed);
 
-  // Update document title when config changes
   useEffect(() => {
-    document.title = config.groupName;
-  }, [config.groupName]);
+    document.title = appName;
+  }, [appName]);
 
-  // Get current page title based on route
-  const getPageTitle = () => {
-      const path = location.pathname;
-
-      switch (path) {
-          case '/loot-entry':
-              return 'Loot Entry';
-          case '/gold-transactions':
-              return 'Gold Transactions';
-          case '/user-settings':
-              return 'User Settings';
-          case '/character-user-management':
-              return 'Character & User Management';
-          case '/consumables':
-              return 'Consumables';
-          case '/golarion-calendar':
-              return 'Calendar';
-          case '/loot-generator':
-              return 'Loot Generator';
-          case '/spellbook-generator':
-              return 'Spellbook Generator';
-          case '/task-management':
-              return 'Task Management';
-          case '/tasks':
-              return 'Session Tasks';
-          case '/identify':
-              return 'Identify Items';
-          case '/character-loot-ledger':
-              return 'Character Loot Ledger';
-          case '/infamy':
-              return 'Infamy';
-          case '/harrow':
-              return 'Harrow Points';
-          case '/city-services':
-              return 'City Services';
-          case '/system-admin':
-              return 'System Admin';
-          default:
-              if (path.includes('/loot-management')) return 'Loot Management';
-              if (path.includes('/item-management')) return 'Item Management';
-              if (path.includes('/character-user-management')) return 'Character & User Management';
-              return config.groupName;
-      }
-  };
+  const pageTitle = getPageTitle(location.pathname) ?? appName;
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
@@ -95,7 +53,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
             duration: theme.transitions.duration.leavingScreen,
           }),
           marginLeft: 0,
-          width: { xs: '100%', md: `calc(100% - ${isCollapsed ? 64 : 240}px)` },
+          width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
         }}
       >
         <AppBar
@@ -103,15 +61,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
           color="default"
           elevation={0}
           sx={{
-            width: { xs: '100%', md: `calc(100% - ${isCollapsed ? 64 : 240}px)` },
-            ml: { md: isCollapsed ? '64px' : '240px' },
+            width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
+            ml: { md: `${drawerWidth}px` },
             backgroundColor: 'background.paper',
             borderBottom: '1px solid',
             borderColor: 'divider',
             zIndex: (theme) => theme.zIndex.drawer - 1,
           }}
         >
-          <Toolbar sx={{ minHeight: { xs: 56, md: 64 } }}>
+          <Toolbar sx={{ minHeight: APP_BAR_HEIGHT }}>
             <IconButton
               color="inherit"
               aria-label="Open navigation menu"
@@ -122,7 +80,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
               <MenuIcon />
             </IconButton>
             <Typography variant="h6" noWrap component="div">
-              {getPageTitle()}
+              {pageTitle}
             </Typography>
             <Box sx={{ flexGrow: 1 }} />
             <CampaignSelector />
@@ -134,7 +92,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
           sx={{
             flexGrow: 1,
             p: { xs: 1, md: 3 },
-            mt: { xs: '56px', md: '64px' },
+            mt: { xs: `${APP_BAR_HEIGHT.xs}px`, md: `${APP_BAR_HEIGHT.md}px` },
             overflow: 'auto',
           }}
         >

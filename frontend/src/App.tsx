@@ -1,6 +1,5 @@
-// src/App.js
 import CssBaseline from '@mui/material/CssBaseline';
-import React, {Suspense, useEffect, useState} from 'react';
+import React, {Suspense, useCallback, useEffect, useState} from 'react';
 import {BrowserRouter as Router, Navigate, Route, Routes} from 'react-router-dom';
 import {ThemeProvider} from '@mui/material/styles';
 import {Box, CircularProgress} from '@mui/material';
@@ -9,6 +8,7 @@ import {Box, CircularProgress} from '@mui/material';
 import Login from './components/pages/Login';
 import MainLayout from './components/layout/MainLayout';
 import ProtectedRoute from './components/hoc/ProtectedRoute';
+import RoleRoute from './components/hoc/RoleRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import CampaignThemeProvider from './components/CampaignThemeProvider';
 
@@ -43,58 +43,137 @@ const SystemAdmin = React.lazy(() => import('./components/pages/SystemAdmin'));
 import theme from './theme';
 import api from './utils/api';
 import { ConfigProvider } from './contexts/ConfigContext';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, AuthUser } from './contexts/AuthContext';
 import { CampaignProvider } from './contexts/CampaignContext';
 import { SnackbarProvider } from 'notistack';
 
+interface PageRoute {
+  path: string;
+  Page: React.ComponentType;
+  /** Wrap in a role guard; only for pages that are DM-only / superadmin-only in the sidebar and on the server. */
+  require?: 'dm' | 'superadmin';
+}
+
+// Every page under the authenticated layout. Each one gets its own keyed
+// ErrorBoundary below, so a crash is contained to that page and navigating away
+// clears it.
+const PAGE_ROUTES: PageRoute[] = [
+  { path: 'loot-entry', Page: LootEntry },
+  { path: 'loot-management/*', Page: LootManagement },
+  { path: 'gold-transactions', Page: GoldTransactions },
+  { path: 'user-settings', Page: UserSettings },
+  { path: 'character-user-management/*', Page: CharacterAndUserManagement, require: 'dm' },
+  { path: 'item-management/*', Page: ItemManagement, require: 'dm' },
+  { path: 'golarion-calendar', Page: GolarionCalendar },
+  { path: 'loot-generator', Page: LootGenerator, require: 'dm' },
+  { path: 'spellbook-generator', Page: SpellbookGenerator, require: 'dm' },
+  { path: 'consumables', Page: Consumables },
+  { path: 'tasks', Page: Tasks },
+  { path: 'identify', Page: Identify },
+  { path: 'infamy', Page: Infamy },
+  { path: 'ships', Page: ShipManagement },
+  { path: 'outposts', Page: OutpostManagement },
+  { path: 'crew', Page: CrewManagement },
+  { path: 'harrow', Page: HarrowTracker },
+  { path: 'sessions', Page: SessionsPage },
+  { path: 'session-management', Page: SessionManagement, require: 'dm' },
+  { path: 'task-management', Page: TaskManagement, require: 'dm' },
+  { path: 'city-services', Page: CityServices },
+  { path: 'system-admin', Page: SystemAdmin, require: 'superadmin' },
+];
+
+// Old URLs that now live under /loot-management
+const LEGACY_REDIRECTS: Array<[string, string]> = [
+  ['unprocessed-loot', '/loot-management/unprocessed'],
+  ['kept-party', '/loot-management/kept-party'],
+  ['kept-character', '/loot-management/kept-character'],
+  ['sold-loot', '/loot-management/sold'],
+  ['given-away-or-trashed', '/loot-management/trashed'],
+];
+
+// GET /auth/status, as returned by the api utility (unwrapped body)
+interface AuthStatusResponse {
+  success?: boolean;
+  data?: { user?: AuthUser };
+}
+
+const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+const renderPageRoute = ({ path, Page, require }: PageRoute) => {
+  const page = <ErrorBoundary key={path}><Page /></ErrorBoundary>;
+  return (
+    <Route
+      key={path}
+      path={path}
+      element={require ? <RoleRoute require={require}>{page}</RoleRoute> : page}
+    />
+  );
+};
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Client-side leftovers of a session. The auth cookie itself is HTTP-only and
+  // only the server can clear it.
+  const clearClientSession = useCallback(() => {
+    localStorage.removeItem('user');
+    localStorage.removeItem('csrfToken');
+    localStorage.removeItem('activeCampaignId');
+    setIsAuthenticated(false);
+    setUser(null);
+  }, []);
+
+  // Returns false when a user-initiated logout could not reach the server, in
+  // which case the session cookie is still valid and the user stays signed in.
+  const handleLogout = useCallback(async (): Promise<boolean> => {
+    try {
+      await api.post('/auth/logout');
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      // 401: the session is already gone, which is what logging out wants
+      if (status !== 401) {
+        return false;
+      }
+    }
+    clearClientSession();
+    return true;
+  }, [clearClientSession]);
 
   useEffect(() => {
     let isMounted = true;
-    
-    // First check localStorage for user data
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
-        if (isMounted) {
-          setIsAuthenticated(true);
-          setUser(userData);
-        }
-      } catch (e) {
-        console.error('Error parsing stored user data:', e);
-        localStorage.removeItem('user');
-      }
-    }
 
-    // Then verify with server that the token is still valid
+    // The user is only trusted once the server confirms the session; nothing
+    // is read from localStorage.
     const checkAuthStatus = async () => {
       try {
-        const response: any = await api.get('/auth/status');
+        // The api utility returns the unwrapped body: { success, message, data: { user } }
+        const response = await api.get('/auth/status') as unknown as AuthStatusResponse;
 
-        // The api utility's response interceptor returns response.data directly,
-        // so `response` here is the unwrapped body: { success, message, data: { user } }
-        if (response?.success && response?.data?.user && isMounted) {
-          setIsAuthenticated(true);
-          setUser(response.data.user);
-          localStorage.setItem('user', JSON.stringify(response.data.user));
+        if (response?.success && response?.data?.user) {
+          if (isMounted) {
+            setIsAuthenticated(true);
+            setUser(response.data.user);
+          }
           // Slide the 24h session window so active users aren't logged out mid-use
           api.post('/auth/refresh').catch(() => {});
         } else if (isMounted) {
-          // Server responded but user is not authenticated - log out
-          handleLogout();
+          // Server answered but there is no signed-in user
+          clearClientSession();
         }
       } catch (error: unknown) {
-        // Log out on auth failures (401) and CSRF/authorization failures (403)
-        if (error && typeof error === 'object' && 'response' in error) {
-          const axiosError = error as any;
-          const status = axiosError.response?.status;
-          if ((status === 401 || status === 403) && isMounted) {
-            handleLogout();
-          }
+        if (!isMounted) return;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 401 || status === 403) {
+          // Session invalid: also ask the server to drop the cookie
+          await handleLogout();
+          clearClientSession();
+        } else {
+          // Could not verify (network, 5xx, rate limit): do not assume a session,
+          // but do not log the user out server-side or wipe their stored selections
+          setIsAuthenticated(false);
+          setUser(null);
         }
       } finally {
         if (isMounted) {
@@ -105,84 +184,59 @@ function App() {
 
     checkAuthStatus();
 
-    // Keep long-lived tabs alive: re-issue the token periodically while open.
-    // Failures are ignored; an expired token just means the next API call
-    // redirects to login with the "session expired" message.
-    const refreshInterval = setInterval(() => {
-      api.post('/auth/refresh').catch(() => {});
-    }, 6 * 60 * 60 * 1000); // every 6 hours
-
     return () => {
       isMounted = false;
-      clearInterval(refreshInterval);
     };
-  }, []);
+  }, [clearClientSession, handleLogout]);
 
-  // Re-read the user (e.g. the active character changed); failures keep the cached user
+  // Keep long-lived tabs alive while signed in: re-issue the token periodically.
+  // Failures are ignored; an expired token just means the next API call
+  // redirects to login with the "session expired" message.
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    const refreshInterval = setInterval(() => {
+      api.post('/auth/refresh').catch(() => {});
+    }, REFRESH_INTERVAL_MS);
+    return () => clearInterval(refreshInterval);
+  }, [isAuthenticated]);
+
+  // Re-read the user (e.g. the active character changed); failures keep the current user
   const refreshUser = async () => {
     try {
-      const response: any = await api.get('/auth/status');
+      const response = await api.get('/auth/status') as unknown as AuthStatusResponse;
       if (response?.success && response?.data?.user) {
         setUser(response.data.user);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
       }
     } catch {
-      // keep the cached user
+      // keep the current user
     }
   };
 
-  const handleLogin = (user: any) => {
-    // Only store user info, token is in HTTP-only cookie
-    localStorage.setItem('user', JSON.stringify(user));
+  const handleLogin = (loggedInUser: AuthUser) => {
+    // The token is in an HTTP-only cookie
     setIsAuthenticated(true);
-    setUser(user);
-    // No need to set Authorization header, cookie will be sent automatically
+    setUser(loggedInUser);
   };
-  const handleLogout = async () => {
-    try {
-      // Clear local storage
-      localStorage.removeItem('user');
-
-      // Log out from server to clear the HTTP-only cookie
-      await api.post('/auth/logout').catch(() => {
-        // Logout request failed, but user was logged out locally
-      });
-    } catch (error) {
-      console.error('Error during logout:', error);
-    }
-
-    // Update the local state
-    setIsAuthenticated(false);
-    setUser(null);
-  };
-
-
-  // Show loading spinner while checking authentication
-  if (authLoading) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            height: '100vh',
-            backgroundColor: 'background.default'
-          }}
-        >
-          <CircularProgress size={40} role="status" aria-label="Loading application" />
-        </Box>
-      </ThemeProvider>
-    );
-  }
 
   return (
     <ErrorBoundary>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        {/* Required for enqueueSnackbar everywhere (SessionManagement, SessionsPage, ...) —
-            without a mounted provider those calls are silent no-ops */}
+        {authLoading ? (
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              height: '100vh',
+              backgroundColor: 'background.default'
+            }}
+          >
+            <CircularProgress size={40} role="status" aria-label="Loading application" />
+          </Box>
+        ) : (
+        /* Required for enqueueSnackbar everywhere (SessionManagement, SessionsPage, ...) —
+            without a mounted provider those calls are silent no-ops */
         <SnackbarProvider maxSnack={3} autoHideDuration={5000}>
         <ConfigProvider>
           <AuthProvider user={user} isAuthenticated={isAuthenticated} onRefreshUser={refreshUser}>
@@ -211,35 +265,14 @@ function App() {
 
             {/* Protected routes using the ProtectedRoute component */}
             <Route path="/" element={<ProtectedRoute isAuthenticated={isAuthenticated}><MainLayout onLogout={handleLogout} /></ProtectedRoute>}>
-              <Route path="loot-entry" element={<ErrorBoundary><LootEntry /></ErrorBoundary>} />
-              <Route path="loot-management/*" element={<ErrorBoundary><LootManagement /></ErrorBoundary>} />
-              {/* Redirects for old URLs */}
-              <Route path="unprocessed-loot" element={<Navigate to="/loot-management/unprocessed" replace />} />
-              <Route path="kept-party" element={<Navigate to="/loot-management/kept-party" replace />} />
-              <Route path="kept-character" element={<Navigate to="/loot-management/kept-character" replace />} />
-              <Route path="sold-loot" element={<Navigate to="/loot-management/sold" replace />} />
-              <Route path="given-away-or-trashed" element={<Navigate to="/loot-management/trashed" replace />} />
-              <Route path="gold-transactions" element={<ErrorBoundary><GoldTransactions /></ErrorBoundary>} />
-              <Route path="user-settings" element={<ErrorBoundary><UserSettings /></ErrorBoundary>} />
-              <Route path="character-user-management/*" element={<ErrorBoundary><CharacterAndUserManagement /></ErrorBoundary>} />
-              <Route path="item-management/*" element={<ErrorBoundary><ItemManagement /></ErrorBoundary>} />
-              <Route path="golarion-calendar" element={<ErrorBoundary><GolarionCalendar /></ErrorBoundary>} />
-              <Route path="loot-generator" element={<ErrorBoundary><LootGenerator /></ErrorBoundary>} />
-              <Route path="spellbook-generator" element={<ErrorBoundary><SpellbookGenerator /></ErrorBoundary>} />
-              <Route path="consumables" element={<ErrorBoundary><Consumables /></ErrorBoundary>} />
-              <Route path="tasks" element={<ErrorBoundary><Tasks /></ErrorBoundary>} />
-              <Route path="identify" element={<ErrorBoundary><Identify /></ErrorBoundary>} />
-              <Route path="infamy" element={<ErrorBoundary><Infamy /></ErrorBoundary>} />
-              <Route path="ships" element={<ErrorBoundary><ShipManagement /></ErrorBoundary>} />
-              <Route path="outposts" element={<ErrorBoundary><OutpostManagement /></ErrorBoundary>} />
-              <Route path="crew" element={<ErrorBoundary><CrewManagement /></ErrorBoundary>} />
-              <Route path="harrow" element={<ErrorBoundary><HarrowTracker /></ErrorBoundary>} />
-              <Route path="sessions" element={<ErrorBoundary><SessionsPage /></ErrorBoundary>} />
-              <Route path="session-management" element={<ErrorBoundary><SessionManagement /></ErrorBoundary>} />
-              <Route path="task-management" element={<ErrorBoundary><TaskManagement /></ErrorBoundary>} />
-              <Route path="city-services" element={<ErrorBoundary><CityServices /></ErrorBoundary>} />
-              <Route path="system-admin" element={<ErrorBoundary><SystemAdmin /></ErrorBoundary>} />
+              {PAGE_ROUTES.map(renderPageRoute)}
+              {LEGACY_REDIRECTS.map(([from, to]) => (
+                <Route key={from} path={from} element={<Navigate to={to} replace />} />
+              ))}
             </Route>
+
+            {/* Unknown URL: "/" sends signed-in users to Loot Entry and everyone else to login */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </Suspense>
           </Router>
@@ -248,6 +281,7 @@ function App() {
           </AuthProvider>
         </ConfigProvider>
         </SnackbarProvider>
+        )}
       </ThemeProvider>
     </ErrorBoundary>
   );
