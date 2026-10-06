@@ -608,10 +608,25 @@ describe('spellcastingController', () => {
       await spellcastingController.getAvailableSpells(req, res);
 
       expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT id, name, spelllevel, school, class FROM spells'),
+        expect.stringContaining('SELECT id, name, spelllevel, school, class'),
         []
       );
       expect(res.success).toHaveBeenCalledWith(mockSpells, 'Found 1 spells');
+    });
+
+    it('selects only castable spells: level and class list required, no .MOD rows, one row per name', async () => {
+      const req = createMockReq({ query: {} });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await spellcastingController.getAvailableSpells(req, res);
+
+      const sql = dbUtils.executeQuery.mock.calls[0][0];
+      expect(sql).toContain('spelllevel IS NOT NULL');
+      expect(sql).toContain('CARDINALITY(class)');
+      expect(sql).toContain('.MOD');
+      expect(sql).toContain('DISTINCT ON');
+      expect(sql).toContain('ORDER BY name LIMIT 50');
     });
 
     it('should filter spells by search term', async () => {

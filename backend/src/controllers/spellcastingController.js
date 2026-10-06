@@ -3,6 +3,7 @@ const SpellcastingService = require('../models/SpellcastingService');
 const City = require('../models/City');
 const controllerFactory = require('../utils/controllerFactory');
 const dbUtils = require('../utils/dbUtils');
+const { castableSpellsSource } = require('../utils/castableSpells');
 const logger = require('../utils/logger');
 
 /**
@@ -225,21 +226,25 @@ const deleteService = async (req, res) => {
 const getAvailableSpells = async (req, res) => {
   const { search, max_level } = req.query;
 
-  let query = 'SELECT id, name, spelllevel, school, class FROM spells WHERE 1=1';
+  // Only real, castable spells (see utils/castableSpells): no level-less monster
+  // variants, no .MOD rows, one row per name.
+  const conditions = [];
   const params = [];
   let paramIndex = 1;
 
   if (search && search.trim()) {
-    query += ` AND LOWER(name) LIKE LOWER($${paramIndex++})`;
+    conditions.push(`LOWER(name) LIKE LOWER($${paramIndex++})`);
     params.push(`%${search.trim()}%`);
   }
 
   if (max_level !== undefined) {
-    query += ` AND spelllevel <= $${paramIndex++}`;
+    conditions.push(`spelllevel <= $${paramIndex++}`);
     params.push(parseInt(max_level));
   }
 
-  query += ' ORDER BY name LIMIT 50';
+  const query = `SELECT id, name, spelllevel, school, class
+     FROM ${castableSpellsSource(conditions.join(' AND ') || 'TRUE')} AS s
+     ORDER BY name LIMIT 50`;
 
   const result = await dbUtils.executeQuery(query, params);
   controllerFactory.sendSuccessResponse(res, result.rows, `Found ${result.rows.length} spells`);
