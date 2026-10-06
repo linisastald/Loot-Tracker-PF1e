@@ -166,7 +166,16 @@ const parseItemDescription = async (req, res) => {
     );
   }
 
-  const parsedData = await ItemParsingService.parseItemDescription(description, req.user.id);
+  let parsedData;
+  try {
+    parsedData = await ItemParsingService.parseItemDescription(description, req.user.id);
+  } catch (error) {
+    // Timeout / upstream failure of the OpenAI call: a clean status and message the UI can show
+    if (error.name === 'ItemParsingUnavailableError') {
+      return res.error(error.message, error.status || 502);
+    }
+    throw error;
+  }
 
   return controllerFactory.sendSuccessResponse(res, parsedData, 'Item description parsed successfully');
 };

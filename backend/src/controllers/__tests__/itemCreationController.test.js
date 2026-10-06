@@ -361,6 +361,21 @@ describe('itemCreationController', () => {
       expect(res.success).toHaveBeenCalledWith(parsedData, 'Item description parsed successfully');
     });
 
+    it('answers a parser outage (timeout, upstream failure) with its own status and message', async () => {
+      const outage = new Error('The item parser timed out. Try again or enter the item manually.');
+      outage.name = 'ItemParsingUnavailableError';
+      outage.status = 504;
+      ItemParsingService.parseItemDescription.mockRejectedValue(outage);
+      const res = createMockRes();
+
+      await itemCreationController.parseItemDescription(createMockReq({
+        body: { description: '+1 Sword' },
+      }), res);
+
+      expect(res.error).toHaveBeenCalledTimes(1);
+      expect(res.error).toHaveBeenCalledWith(outage.message, 504);
+    });
+
     it('rejects an over-long description before calling OpenAI', async () => {
       const res = createMockRes();
 
