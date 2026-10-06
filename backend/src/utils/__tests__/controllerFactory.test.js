@@ -75,6 +75,46 @@ describe('controllerFactory', () => {
       expect(res.error).toHaveBeenCalledWith('Internal server error');
     });
 
+    it('logs unexpected errors with their stack, method and path', async () => {
+      const logger = require('../logger');
+      const err = new Error('Database failure');
+      const wrapped = controllerFactory.createHandler(jest.fn().mockRejectedValue(err), { errorMessage: 'Error doing x' });
+
+      await wrapped({ method: 'POST', originalUrl: '/api/things/5?token=secret', path: '/5' }, res);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Error doing x: Database failure'),
+        expect.objectContaining({ stack: err.stack, method: 'POST', path: '/api/things/5' })
+      );
+      expect(JSON.stringify(logger.error.mock.calls)).not.toContain('secret');
+    });
+
+    it('does not log typed client errors at error level', async () => {
+      const logger = require('../logger');
+      const wrapped = controllerFactory.createHandler(
+        jest.fn().mockRejectedValue(controllerFactory.createNotFoundError('nope'))
+      );
+
+      await wrapped({}, res);
+
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(res.notFound).toHaveBeenCalledWith('nope');
+    });
+
+    it('does not respond a second time when the handler already sent a response', async () => {
+      res.headersSent = true;
+      const wrapped = controllerFactory.createHandler(jest.fn().mockRejectedValue(new Error('late failure')));
+
+      await expect(wrapped({}, res)).resolves.toBeUndefined();
+
+      expect(res.error).not.toHaveBeenCalled();
+      expect(res.validationError).not.toHaveBeenCalled();
+    });
+
+    it('no longer exposes the unused createCrudController', () => {
+      expect(controllerFactory.createCrudController).toBeUndefined();
+    });
+
     it('should validate required fields when configured', async () => {
       const handler = jest.fn();
       const wrapped = controllerFactory.createHandler(handler, {
