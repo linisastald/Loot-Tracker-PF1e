@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -190,6 +190,152 @@ describe('CrewManagement', () => {
       await user.click(within(dialog).getByRole('button', { name: 'Move' }));
       await waitFor(() => expect(crewService.moveCrewToLocation).toHaveBeenCalled());
       expect(crewService.moveCrewToLocation).toHaveBeenCalledWith(1, 'outpost', 1, null);
+    });
+  });
+
+  describe('mutations', () => {
+    const openRowAction = async (user: ReturnType<typeof userEvent.setup>, name: string, title: string) => {
+      const row = (await screen.findByText(name)).closest('tr') as HTMLElement;
+      await user.click(within(row).getByTitle(title));
+      return screen.findByRole('dialog');
+    };
+
+    it('creates a crew member on a ship', async () => {
+      const user = userEvent.setup();
+      renderCrewManagement();
+      await user.click(await screen.findByRole('button', { name: /Add Crew Member/i }));
+      const dialog = await screen.findByRole('dialog');
+      await user.type(within(dialog).getByLabelText(/^Name/), 'Newbie Nate');
+      await user.click(within(dialog).getByLabelText(/Location/));
+      await user.click(await screen.findByRole('option', { name: /Man's Promise/ }));
+      await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+      await waitFor(() => expect(crewService.createCrew).toHaveBeenCalled());
+      expect(crewService.createCrew).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Newbie Nate', location_type: 'ship', location_id: 1 })
+      );
+    });
+
+    it('requires a location when creating', async () => {
+      const user = userEvent.setup();
+      renderCrewManagement();
+      await user.click(await screen.findByRole('button', { name: /Add Crew Member/i }));
+      const dialog = await screen.findByRole('dialog');
+      await user.type(within(dialog).getByLabelText(/^Name/), 'No Home');
+      await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+      // The error is rendered inside the dialog, not behind it
+      expect(await within(dialog).findByText('Location is required')).toBeInTheDocument();
+      expect(crewService.createCrew).not.toHaveBeenCalled();
+    });
+
+    it('shows the server error inside the dialog when a save fails', async () => {
+      vi.mocked(crewService.updateCrew).mockRejectedValueOnce({
+        response: { data: { message: 'Selected ship does not exist' } },
+      });
+      const user = userEvent.setup();
+      renderCrewManagement();
+      const dialog = await openRowAction(user, 'Barnabas Bligh', 'Edit');
+      await user.click(within(dialog).getByRole('button', { name: 'Update' }));
+
+      expect(await within(dialog).findByText('Selected ship does not exist')).toBeInTheDocument();
+    });
+
+    it('deletes a crew member after confirmation', async () => {
+      const user = userEvent.setup();
+      renderCrewManagement();
+      const dialog = await openRowAction(user, 'Crimson Cogward', 'Delete');
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() => expect(crewService.deleteCrew).toHaveBeenCalledWith(2));
+    });
+
+    it('marks a crew member dead with the Golarion date, not the real-world date', async () => {
+      const user = userEvent.setup();
+      renderCrewManagement();
+      const dialog = await openRowAction(user, 'Barnabas Bligh', 'Update Status');
+      await user.click(within(dialog).getByRole('button', { name: 'Update Status' }));
+
+      await waitFor(() => expect(crewService.markCrewDead).toHaveBeenCalled());
+      expect(crewService.markCrewDead).toHaveBeenCalledWith(1, '4722-01-15');
+    });
+
+    it('marks a crew member departed with a reason', async () => {
+      const user = userEvent.setup();
+      renderCrewManagement();
+      const dialog = await openRowAction(user, 'Barnabas Bligh', 'Update Status');
+      await user.click(within(dialog).getByRole('combobox'));
+      await user.click(await screen.findByRole('option', { name: 'Departed' }));
+      await user.type(within(dialog).getByLabelText(/Reason for Departure/), 'Deserted');
+      await user.click(within(dialog).getByRole('button', { name: 'Update Status' }));
+
+      await waitFor(() => expect(crewService.markCrewDeparted).toHaveBeenCalled());
+      expect(crewService.markCrewDeparted).toHaveBeenCalledWith(1, '4722-01-15', 'Deserted');
+    });
+
+    it('lists deceased crew with the stored date shown verbatim', async () => {
+      const user = userEvent.setup();
+      renderCrewManagement();
+      await user.click(await screen.findByRole('tab', { name: /Deceased\/Departed/i }));
+
+      expect(await screen.findByText('Badger Medlar')).toBeInTheDocument();
+      expect(screen.getByText('2024-01-01')).toBeInTheDocument();
+      expect(screen.getByText('Deceased')).toBeInTheDocument();
+    });
+  });
+
+  describe('recruitment', () => {
+    const startRecruit = async (user: ReturnType<typeof userEvent.setup>, roll: string) => {
+      await user.click(await screen.findByRole('button', { name: /Recruit Crew/i }));
+      const dialog = await screen.findByRole('dialog');
+      await user.type(within(dialog).getByLabelText(/Total Roll Result/), roll);
+      await user.click(within(dialog).getByRole('button', { name: /Make Recruitment Check/i }));
+      return dialog;
+    };
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('does not recruit when the roll misses the DC', async () => {
+      const user = userEvent.setup();
+      renderCrewManagement();
+      const dialog = await startRecruit(user, '15');
+
+      expect(await within(dialog).findByText(/Recruitment failed/)).toBeInTheDocument();
+      expect(crewService.createCrew).not.toHaveBeenCalled();
+    });
+
+    it('recruits 1d4+2 crew on a successful roll, all at the chosen location', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0); // 1d4 = 1 -> 3 recruits
+      const user = userEvent.setup();
+      renderCrewManagement();
+      await startRecruit(user, '22');
+
+      await waitFor(() => expect(crewService.createCrew).toHaveBeenCalledTimes(3));
+      expect(crewService.createCrew).toHaveBeenCalledWith(
+        expect.objectContaining({
+          location_type: 'ship',
+          location_id: 1,
+          ship_position: 'Crew',
+          description: 'Convinced to join via Diplomacy check',
+        })
+      );
+      expect(await screen.findByText(/You recruited 3 crew members/)).toBeInTheDocument();
+    });
+
+    it('reports how many recruits were added when a request fails midway', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      vi.mocked(crewService.createCrew)
+        .mockResolvedValueOnce({ data: {} })
+        .mockRejectedValueOnce({ response: { data: { message: 'boom' } } });
+      const user = userEvent.setup();
+      renderCrewManagement();
+      await startRecruit(user, '22');
+
+      expect(await screen.findByText(/Only 1 of 3 recruits were added/)).toBeInTheDocument();
+      // The roster is refreshed so the partial batch is visible
+      expect(crewService.getAllCrew).toHaveBeenCalledTimes(2);
     });
   });
 });

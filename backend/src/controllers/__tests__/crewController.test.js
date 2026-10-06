@@ -25,61 +25,7 @@ const crewController = require('../crewController');
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createMockRes() {
-  const res = {};
-  res.status = jest.fn().mockReturnValue(res);
-  res.json = jest.fn().mockReturnValue(res);
-
-  res.success = jest.fn((data = null, message = 'Operation successful') => {
-    res.status(200);
-    res.json({ success: true, message, data });
-    return res;
-  });
-
-  res.created = jest.fn((data = null, message = 'Resource created successfully') => {
-    res.status(201);
-    res.json({ success: true, message, data });
-    return res;
-  });
-
-  res.error = jest.fn((message = 'An error occurred', statusCode = 500, errors = null) => {
-    res.status(statusCode);
-    res.json({ success: false, message, errors });
-    return res;
-  });
-
-  res.validationError = jest.fn((errors) => {
-    const message = typeof errors === 'string' ? errors : 'Validation error';
-    res.status(400);
-    res.json({ success: false, message });
-    return res;
-  });
-
-  res.notFound = jest.fn((message = 'Resource not found') => {
-    res.status(404);
-    res.json({ success: false, message });
-    return res;
-  });
-
-  res.forbidden = jest.fn((message = 'Access forbidden') => {
-    res.status(403);
-    res.json({ success: false, message });
-    return res;
-  });
-
-  return res;
-}
-
-function createMockReq(overrides = {}) {
-  return {
-    body: {},
-    params: {},
-    query: {},
-    cookies: {},
-    user: { id: 1, role: 'Player' },
-    ...overrides,
-  };
-}
+const { createMockRes, createMockReq } = require('../../../tests/utils/mockHttp');
 
 const mockCrew = {
   id: 1,
@@ -100,6 +46,7 @@ const mockCrew = {
 describe('crewController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Crew.locationExists.mockResolvedValue(true);
   });
 
   // ---------------------------------------------------------------
@@ -574,6 +521,122 @@ describe('crewController', () => {
       await crewController.deleteCrew(req, res);
 
       expect(res.notFound).toHaveBeenCalledWith('Crew member not found');
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // Read handlers and input validation (W20)
+  // ---------------------------------------------------------------
+  describe('getCrewByLocation', () => {
+    it('rejects a missing location', async () => {
+      const res = createMockRes();
+      await crewController.getCrewByLocation(createMockReq({ query: {} }), res);
+      expect(res.validationError).toHaveBeenCalledWith('Location type and location ID are required');
+    });
+
+    it('rejects an unknown location type', async () => {
+      const res = createMockRes();
+      await crewController.getCrewByLocation(
+        createMockReq({ query: { location_type: 'tavern', location_id: '1' } }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith('Location type must be either "ship" or "outpost"');
+    });
+
+    it('returns crew at the location', async () => {
+      const res = createMockRes();
+      Crew.getByLocation.mockResolvedValue([mockCrew]);
+      await crewController.getCrewByLocation(
+        createMockReq({ query: { location_type: 'ship', location_id: '1' } }), res
+      );
+      expect(Crew.getByLocation).toHaveBeenCalledWith('ship', 1);
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ count: 1 }), 'Crew retrieved successfully'
+      );
+    });
+  });
+
+  describe('getDeceasedCrew', () => {
+    it('returns the deceased/departed list with a count', async () => {
+      const res = createMockRes();
+      Crew.getDeceased.mockResolvedValue([{ id: 9, is_alive: false }]);
+      await crewController.getDeceasedCrew(createMockReq(), res);
+      expect(res.success).toHaveBeenCalledWith(
+        { crew: [{ id: 9, is_alive: false }], count: 1 },
+        'Deceased/departed crew retrieved successfully'
+      );
+    });
+  });
+
+  describe('input validation', () => {
+    it('createCrew rejects a non-integer location_id', async () => {
+      const res = createMockRes();
+      await crewController.createCrew(
+        createMockReq({ body: { name: 'X', location_type: 'ship', location_id: 'abc' } }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith('Location ID must be a positive integer');
+      expect(Crew.create).not.toHaveBeenCalled();
+    });
+
+    it('createCrew rejects a location that does not exist', async () => {
+      const res = createMockRes();
+      Crew.locationExists.mockResolvedValue(false);
+      await crewController.createCrew(
+        createMockReq({ body: { name: 'X', location_type: 'ship', location_id: 99 } }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith('Selected ship does not exist');
+      expect(Crew.create).not.toHaveBeenCalled();
+    });
+
+    it('moveCrewToLocation rejects a location that does not exist', async () => {
+      const res = createMockRes();
+      Crew.locationExists.mockResolvedValue(false);
+      await crewController.moveCrewToLocation(
+        createMockReq({ params: { id: '1' }, body: { location_type: 'outpost', location_id: 99 } }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith('Selected outpost does not exist');
+      expect(Crew.moveToLocation).not.toHaveBeenCalled();
+    });
+
+    it('markCrewDead rejects an invalid date', async () => {
+      const res = createMockRes();
+      await crewController.markCrewDead(
+        createMockReq({ params: { id: '1' }, body: { death_date: 'not-a-date' } }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith('death_date is not a valid date');
+      expect(Crew.markDead).not.toHaveBeenCalled();
+    });
+
+    it('markCrewDeparted rejects an invalid date', async () => {
+      const res = createMockRes();
+      await crewController.markCrewDeparted(
+        createMockReq({ params: { id: '1' }, body: { departure_date: '4715-13-45' } }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith('departure_date is not a valid date');
+      expect(Crew.markDeparted).not.toHaveBeenCalled();
+    });
+
+    it('updateCrew rejects a blank name', async () => {
+      const res = createMockRes();
+      await crewController.updateCrew(
+        createMockReq({ params: { id: '1' }, body: { name: '  ' } }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith('Crew member name cannot be blank');
+      expect(Crew.update).not.toHaveBeenCalled();
+    });
+
+    it('updateCrew passes a partial body through untouched (no nulling of omitted fields)', async () => {
+      const res = createMockRes();
+      Crew.update.mockResolvedValue({ ...mockCrew, name: 'New' });
+      await crewController.updateCrew(
+        createMockReq({ params: { id: '1' }, body: { name: 'New' } }), res
+      );
+      expect(Crew.update).toHaveBeenCalledWith('1', { name: 'New' });
+    });
+  });
+
+  describe('getCrewById route removal', () => {
+    it('no longer exports getCrewById (endpoint had no caller)', () => {
+      expect(crewController.getCrewById).toBeUndefined();
     });
   });
 });
