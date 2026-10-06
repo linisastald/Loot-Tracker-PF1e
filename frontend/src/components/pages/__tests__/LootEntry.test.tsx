@@ -25,8 +25,9 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 // DM gating and item-entry defaults come from the current campaign
 let mockCampaignSettings: Record<string, unknown> = {};
+let mockIsDM = false;
 vi.mock('../../../contexts/CampaignContext', () => ({
-  useIsDM: () => false,
+  useIsDM: () => mockIsDM,
   useCampaign: () => ({ campaignSettings: mockCampaignSettings }),
 }));
 
@@ -42,6 +43,8 @@ vi.mock('../EntryForm', () => ({
   default: ({ entry, index, onRemove, hasOpenAiKey, initialItemOptions }: any) => (
     <div data-testid={`entry-form-${index}`}>
       <span>Entry {index}: {entry.type}</span>
+      {entry.error && <span data-testid={`error-${index}`}>{entry.error}</span>}
+      <span data-testid={`name-${index}`}>{String(entry.data.name ?? '')}</span>
       <span data-testid={`quantity-${index}`}>{String(entry.data.quantity ?? '')}</span>
       <span data-testid={`openai-${index}`}>{String(hasOpenAiKey)}</span>
       <span data-testid={`options-${index}`}>{(initialItemOptions || []).length}</span>
@@ -53,6 +56,7 @@ vi.mock('../EntryForm', () => ({
 import LootEntry from '../LootEntry';
 import { validateLootEntries, prepareEntryForSubmission, fetchInitialData } from '../../../utils/lootEntryUtils';
 import api from '../../../utils/api';
+import { APP_EVENTS } from '../../../utils/events';
 
 const renderLootEntry = () => {
   return render(
@@ -66,6 +70,7 @@ describe('LootEntry', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCampaignSettings = {};
+    mockIsDM = false;
     (api.get as any).mockResolvedValue({ data: { hasKey: false } });
   });
 
@@ -193,6 +198,92 @@ describe('LootEntry', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/no valid entries to submit/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('submission', () => {
+    const itemEntry = (name: string, id: number) => ({ id, type: 'item', data: { name }, error: null });
+
+    it('prepares each valid entry for submission (without any active-character plumbing)', async () => {
+      const entry = itemEntry('Sword', 1);
+      (validateLootEntries as any).mockReturnValue({ validEntries: [entry], invalidEntries: [] });
+      (prepareEntryForSubmission as any).mockResolvedValue({ id: 1 });
+      renderLootEntry();
+
+      fireEvent.click(screen.getAllByRole('button', { name: /submit/i })[0]);
+
+      await waitFor(() => expect(prepareEntryForSubmission).toHaveBeenCalledTimes(1));
+      expect((prepareEntryForSubmission as any).mock.calls[0]).toEqual([entry]);
+    });
+
+    it('clears a previous error and success message at the start of a submit', async () => {
+      (validateLootEntries as any).mockReturnValue({ validEntries: [], invalidEntries: [] });
+      renderLootEntry();
+      fireEvent.click(screen.getAllByRole('button', { name: /submit/i })[0]);
+      await screen.findByText(/no valid entries to submit/i);
+
+      (validateLootEntries as any).mockReturnValue({ validEntries: [itemEntry('Sword', 1)], invalidEntries: [] });
+      (prepareEntryForSubmission as any).mockResolvedValue({ id: 1 });
+      fireEvent.click(screen.getAllByRole('button', { name: /submit/i })[0]);
+
+      await screen.findByText(/successfully processed 1 entries/i);
+      expect(screen.queryByText(/no valid entries to submit/i)).not.toBeInTheDocument();
+    });
+
+    it('keeps only the failed entries (with the server reason) after a partial failure and refreshes the badges', async () => {
+      const ok = itemEntry('Sword', 1);
+      const bad = itemEntry('Axe', 2);
+      (validateLootEntries as any).mockReturnValue({ validEntries: [ok, bad], invalidEntries: [] });
+      (prepareEntryForSubmission as any).mockImplementation(async (entry: { data: { name: string } }) => {
+        if (entry.data.name === 'Axe') {
+          throw { response: { data: { message: 'Quantity is too large' } } };
+        }
+        return { id: 1 };
+      });
+      const onChanged = vi.fn();
+      window.addEventListener(APP_EVENTS.LOOT_COUNTS_CHANGED, onChanged);
+      renderLootEntry();
+
+      fireEvent.click(screen.getAllByRole('button', { name: /submit/i })[0]);
+
+      await screen.findByText(/successfully processed 1 entries/i);
+      await screen.findByText(/1 entries were not submitted/i);
+      expect(onChanged).toHaveBeenCalled();
+      window.removeEventListener(APP_EVENTS.LOOT_COUNTS_CHANGED, onChanged);
+      // only the failed row is left, carrying the server's reason
+      expect(screen.queryByTestId('entry-form-1')).not.toBeInTheDocument();
+      expect(screen.getByTestId('name-0').textContent).toBe('Axe');
+      expect(screen.getByTestId('error-0').textContent).toBe('Quantity is too large');
+    });
+
+    it('keeps every entry and shows an error when all of them fail', async () => {
+      (validateLootEntries as any).mockReturnValue({ validEntries: [itemEntry('Sword', 1)], invalidEntries: [] });
+      (prepareEntryForSubmission as any).mockRejectedValue(new Error('Network Error'));
+      renderLootEntry();
+
+      fireEvent.click(screen.getAllByRole('button', { name: /submit/i })[0]);
+
+      await screen.findByText(/1 entries were not submitted/i);
+      expect(screen.getByTestId('name-0').textContent).toBe('Sword');
+      expect(screen.queryByText(/successfully processed/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('DM character list', () => {
+    it('loads the active characters for a DM only', async () => {
+      mockIsDM = true;
+      (api.get as any).mockImplementation((url: string) =>
+        Promise.resolve(url === '/user/active-characters' ? { data: [{ id: 3, name: 'Valeros' }] } : { data: { hasKey: false } }));
+      renderLootEntry();
+
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith('/user/active-characters'));
+    });
+
+    it('does not request the character list for a player', async () => {
+      renderLootEntry();
+
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith('/settings/openai-key'));
+      expect(api.get).not.toHaveBeenCalledWith('/user/active-characters');
     });
   });
 

@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {fetchInitialData, prepareEntryForSubmission, validateLootEntries} from '../../utils/lootEntryUtils';
+import {getErrorMessage} from '../../utils/apiErrors';
 import useLootEntryForm from '../../hooks/useLootEntryForm';
 import {notifyLootCountsChanged} from '../../utils/events';
 import {Alert, Box, Button, Container, Paper, Typography} from '@mui/material';
@@ -19,18 +20,16 @@ const LootEntry = () => {
         setSuccess,
         handleAddEntry,
         handleRemoveEntry,
-        handleEntryChange,
-        resetForm
+        handleEntryChange
     } = useLootEntryForm({defaultQuantity: getDefaultItemQuantity(campaignSettings)});
 
-    const [activeCharacterId, setActiveCharacterId] = useState(null);
     const [itemOptions, setItemOptions] = useState([]);
     const [characters, setCharacters] = useState([]);
     const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
     const isDM = useIsDM();
 
     useEffect(() => {
-        fetchInitialData(setItemOptions, setActiveCharacterId);
+        fetchInitialData(setItemOptions);
     }, []);
 
     // Smart Item Detection needs an OpenAI key: ask once for the whole form
@@ -64,6 +63,8 @@ const LootEntry = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
+        setSuccess('');
 
         const {validEntries, invalidEntries} = validateLootEntries(entries);
 
@@ -72,35 +73,49 @@ const LootEntry = () => {
             return;
         }
 
-        try {
-            const processedEntries = await Promise.all(
-                validEntries.map(entry => prepareEntryForSubmission(entry, activeCharacterId))
-            );
+        // One request per entry: some may be saved while others fail, so settle them all and
+        // keep only the failures in the form (re-submitting a saved entry would duplicate it).
+        const results = await Promise.allSettled(
+            validEntries.map(entry => prepareEntryForSubmission(entry))
+        );
 
-            const processedCount = processedEntries.filter(entry => entry).length;
-
-            setSuccess(`Successfully processed ${processedCount} entries.`);
-
-            // New unprocessed loot rows just got created — refresh sidebar badges.
-            if (processedCount > 0) {
-                notifyLootCountsChanged();
+        const failedEntries = [];
+        let savedCount = 0;
+        results.forEach((result, i) => {
+            if (result.status === 'fulfilled') {
+                if (result.value) savedCount += 1;
+            } else {
+                failedEntries.push({
+                    ...validEntries[i],
+                    error: getErrorMessage(result.reason, 'Failed to submit this entry. Please try again.')
+                });
             }
+        });
 
-            // Keep only invalid entries in the form
-            setEntries(invalidEntries);
+        if (savedCount > 0) {
+            setSuccess(`Successfully processed ${savedCount} entries.`);
+            // New unprocessed loot rows just got created: refresh sidebar badges.
+            notifyLootCountsChanged();
+        }
 
-            if (invalidEntries.length > 0) {
-                setError(`${invalidEntries.length} entries were not submitted due to errors.`);
-            }
-        } catch (error) {
-            console.error('Error submitting entries', error);
-            setError('An error occurred while submitting entries. Please try again.');
+        // Keep only the entries that were not saved
+        const remaining = [...invalidEntries, ...failedEntries];
+        setEntries(remaining);
+
+        if (remaining.length > 0) {
+            setError(`${remaining.length} entries were not submitted due to errors.`);
         }
     };
 
     // The action bar is rendered both stickied to the top and to the bottom so
     // the buttons stay reachable no matter how far you've scrolled while adding
     // a long list of entries.
+    const actions: Array<{label: string; color: 'primary' | 'secondary'; onClick: (e) => void; type?: 'submit'}> = [
+        {label: 'Add Item Entry', color: 'primary', onClick: () => handleAddEntry('item')},
+        {label: 'Add Gold Entry', color: 'secondary', onClick: () => handleAddEntry('gold')},
+        {label: 'Submit', color: 'primary', onClick: handleSubmit, type: 'submit'},
+    ];
+
     const renderActionBar = (placement: 'top' | 'bottom') => (
         <Box sx={{
             position: 'sticky',
@@ -118,34 +133,19 @@ const LootEntry = () => {
                     flexDirection: { xs: 'column', sm: 'row' },
                     gap: 1,
                 }}>
-                    <Button
-                        variant="outlined"
-                        color="primary"
-                        onClick={() => handleAddEntry('item')}
-                        fullWidth
-                        sx={{ flex: { sm: 1 } }}
-                    >
-                        Add Item Entry
-                    </Button>
-                    <Button
-                        variant="outlined"
-                        color="secondary"
-                        onClick={() => handleAddEntry('gold')}
-                        fullWidth
-                        sx={{ flex: { sm: 1 } }}
-                    >
-                        Add Gold Entry
-                    </Button>
-                    <Button
-                        type="submit"
-                        variant="outlined"
-                        color="primary"
-                        onClick={handleSubmit}
-                        fullWidth
-                        sx={{ flex: { sm: 1 } }}
-                    >
-                        Submit
-                    </Button>
+                    {actions.map(({label, color, onClick, type}) => (
+                        <Button
+                            key={label}
+                            type={type}
+                            variant="outlined"
+                            color={color}
+                            onClick={onClick}
+                            fullWidth
+                            sx={{ flex: { sm: 1 } }}
+                        >
+                            {label}
+                        </Button>
+                    ))}
                 </Box>
             </Paper>
         </Box>
@@ -161,7 +161,7 @@ const LootEntry = () => {
             <form onSubmit={handleSubmit}>
                 {entries.map((entry, index) => (
                     <EntryForm
-                        key={index}
+                        key={entry.id ?? index}
                         entry={entry}
                         index={index}
                         onRemove={() => handleRemoveEntry(index)}

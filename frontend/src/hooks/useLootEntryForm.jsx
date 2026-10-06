@@ -1,6 +1,11 @@
 import {useEffect, useState} from 'react';
 
+// Stable row identity: rows are removed and filtered, so an array index is not a usable React key
+let nextEntryId = 1;
+const newEntryId = () => nextEntryId++;
+
 const newItemEntry = (quantity) => ({
+  id: newEntryId(),
   type: 'item',
   data: {
     sessionDate: new Date(),
@@ -20,6 +25,7 @@ const newItemEntry = (quantity) => ({
 });
 
 const newGoldEntry = () => ({
+  id: newEntryId(),
   type: 'gold',
   data: {
     sessionDate: new Date(),

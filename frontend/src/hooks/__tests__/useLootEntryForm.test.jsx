@@ -397,4 +397,19 @@ describe('useLootEntryForm', () => {
       expect(result.current.entries[1].data.name).toBe('');
     });
   });
+
+  describe('stable row ids (used as React keys)', () => {
+    it('gives every row a unique id that survives removing an earlier row', () => {
+      const { result } = renderHook(() => useLootEntryForm());
+      act(() => { result.current.handleAddEntry('gold'); });
+      act(() => { result.current.handleAddEntry('item'); });
+
+      const ids = result.current.entries.map(e => e.id);
+      expect(new Set(ids).size).toBe(3);
+
+      act(() => { result.current.handleRemoveEntry(0); });
+
+      expect(result.current.entries.map(e => e.id)).toEqual([ids[1], ids[2]]);
+    });
+  });
 });
