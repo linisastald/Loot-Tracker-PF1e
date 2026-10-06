@@ -27,7 +27,6 @@ const renderPage = () =>
 
 const PREVIEW = {
   coins: { platinum: 5, gold: 200, silver: 0, copper: 0 },
-  coinsGp: 250,
   items: [
     { name: '+1 Longsword', unidentifiedName: 'Masterwork Longsword', type: 'weapon', size: 'Medium', value: 2315, quantity: 1, itemId: 2, modIds: [417], unidentified: true, spellcraftDc: 18, masterwork: false },
     { name: 'Trinket', type: 'gear', size: 'Medium', value: 100, quantity: 2, itemId: 1, modIds: null, unidentified: false, spellcraftDc: null, masterwork: false },
@@ -80,6 +79,17 @@ describe('LootGenerator', () => {
     expect(screen.getByText('Trinket')).toBeInTheDocument();
     expect(screen.getByText(/Total ≈ 2,765 gp/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Send to Pending Loot/i })).toBeInTheDocument();
+  });
+
+    it('recalculates the Total chip after an item is removed', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /Generate Treasure/i }));
+    await waitFor(() => expect(screen.getByText(/Total ≈ 2,765 gp/)).toBeInTheDocument());
+
+    // remove the +1 Longsword (2315 gp)
+    fireEvent.click(screen.getAllByLabelText('remove item')[0]);
+
+    expect(screen.getByText(/Total ≈ 450 gp/)).toBeInTheDocument();
   });
 
   it('commits the preview to pending loot', async () => {
