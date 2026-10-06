@@ -1,6 +1,6 @@
 /**
  * Unit tests for calendarController
- * Tests getCurrentDate, setCurrentDate, advanceDay, getNotes, saveNote
+ * Tests getCurrentDate, setCurrentDate, advanceDay, advanceDays and the note handlers
  */
 
 jest.mock('../../utils/dbUtils', () => ({
@@ -119,7 +119,7 @@ describe('calendarController', () => {
 
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
       expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3)',
+        'INSERT INTO golarion_current_date (year, month, day) VALUES ($1, $2, $3) ON CONFLICT (campaign_id) DO NOTHING',
         [4722, 1, 1]
       );
       expect(res.success).toHaveBeenCalledWith(
@@ -241,7 +241,7 @@ describe('calendarController', () => {
       await calendarController.setCurrentDate(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        'Year, month, and day must be integers'
+        'A valid date (year, month, day integers) is required'
       );
     });
 
@@ -255,7 +255,7 @@ describe('calendarController', () => {
       await calendarController.setCurrentDate(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        'Month must be between 1 and 12'
+        'Date month must be between 1 and 12'
       );
     });
 
@@ -269,7 +269,7 @@ describe('calendarController', () => {
       await calendarController.setCurrentDate(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        'Month must be between 1 and 12'
+        'Date month must be between 1 and 12'
       );
     });
 
@@ -283,7 +283,7 @@ describe('calendarController', () => {
       await calendarController.setCurrentDate(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        'Day must be between 1 and 28 for this month'
+        'Date day must be between 1 and 28 for this month'
       );
     });
 
@@ -297,7 +297,7 @@ describe('calendarController', () => {
       await calendarController.setCurrentDate(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        expect.stringContaining('Day must be between 1 and')
+        expect.stringContaining('Date day must be between 1 and')
       );
     });
 
@@ -512,7 +512,7 @@ describe('calendarController', () => {
       const mockClient = mockAdvanceClient({ year: 4723, month: 3, day: 10 });
       dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
       mockRegionRead('Varisia');
-      // generateMissingWeather existence checks (runs after commit)
+      // weather existence checks (runs after commit)
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '0' }] });
 
       await calendarController.advanceDays(req, res);
@@ -876,6 +876,229 @@ describe('calendarController', () => {
 
       expect(res.notFound).toHaveBeenCalled();
       expect(GolarionNote.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // Weather generation on date changes (F-0174)
+  // ---------------------------------------------------------------
+  describe('weather generation on date changes', () => {
+    // Weather existence checks report "no weather yet" (count 0) unless the
+    // date is listed in `existing`; every other query (settings) misses, so the
+    // region falls back to Varisia and the forecast horizon to 7 days.
+    function mockWeatherQueries({ existing = [], region } = {}) {
+      dbUtils.executeQuery.mockImplementation(async (sql, params) => {
+        if (String(sql).includes('golarion_weather')) {
+          const key = `${params[0]}-${params[1]}-${params[2]}`;
+          return { rows: [{ count: existing.includes(key) ? '1' : '0' }] };
+        }
+        if (region && String(sql).includes('campaign_settings')) return { rows: [{ value: region }] };
+        return { rows: [] };
+      });
+    }
+
+    function clientReturning(...rowSets) {
+      const query = jest.fn();
+      rowSets.forEach((rows) => query.mockResolvedValueOnce({ rows }));
+      query.mockResolvedValue({ rows: [] });
+      return { query, release: jest.fn() };
+    }
+
+    const generatedDates = () => generateWeatherForNextDay.mock.calls.map(([d]) => `${d.year}-${d.month}-${d.day}`);
+
+    it('forward advance fills every day after the old date through the forecast horizon, in the campaign region', async () => {
+      mockWeatherQueries({ region: 'Cheliax' });
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(clientReturning([{ year: 4723, month: 3, day: 5 }])));
+
+      await calendarController.advanceDay(createMockReq(), createMockRes());
+
+      // new current day 3-6, horizon 7 days -> 3-13; the old day (3-5) is not regenerated
+      expect(generatedDates()).toEqual([
+        '4723-3-6', '4723-3-7', '4723-3-8', '4723-3-9', '4723-3-10', '4723-3-11', '4723-3-12', '4723-3-13',
+      ]);
+      generateWeatherForNextDay.mock.calls.forEach(([, region]) => expect(region).toBe('Cheliax'));
+    });
+
+    it('skips days that already have weather (including locked days)', async () => {
+      mockWeatherQueries({ existing: ['4723-3-7', '4723-3-9'] });
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(clientReturning([{ year: 4723, month: 3, day: 5 }])));
+
+      await calendarController.advanceDay(createMockReq(), createMockRes());
+
+      expect(generatedDates()).not.toContain('4723-3-7');
+      expect(generatedDates()).not.toContain('4723-3-9');
+      expect(generatedDates()).toContain('4723-3-6');
+      expect(generatedDates()).toHaveLength(6);
+    });
+
+    it('generates nothing when every day in the window already has weather (count 1)', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(clientReturning([{ year: 4723, month: 3, day: 5 }])));
+
+      await calendarController.advanceDay(createMockReq(), createMockRes());
+
+      expect(generateWeatherForNextDay).not.toHaveBeenCalled();
+    });
+
+    it('a multi-day advance covers the jumped days plus the horizon', async () => {
+      mockWeatherQueries();
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(clientReturning([{ year: 4723, month: 3, day: 10 }])));
+
+      await calendarController.advanceDays(createMockReq({ body: { days: 3 } }), createMockRes());
+
+      // 3-11..3-12 skipped days, 3-13 new current day, horizon to 3-20
+      expect(generatedDates()[0]).toBe('4723-3-11');
+      expect(generatedDates().at(-1)).toBe('4723-3-20');
+      expect(generatedDates()).toHaveLength(10);
+    });
+
+    it('a backwards set regenerates the window starting at the new current day', async () => {
+      mockWeatherQueries();
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(clientReturning([{ year: 4723, month: 3, day: 15 }])));
+
+      await calendarController.setCurrentDate(
+        createMockReq({ user: { role: 'DM', id: 1 }, body: { year: 4723, month: 3, day: 10 } }),
+        createMockRes()
+      );
+
+      expect(generatedDates()[0]).toBe('4723-3-10');
+      expect(generatedDates().at(-1)).toBe('4723-3-17');
+      expect(generatedDates()).toHaveLength(8);
+    });
+
+    it('a same-day set regenerates the current day plus the horizon', async () => {
+      mockWeatherQueries();
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(clientReturning([{ year: 4723, month: 3, day: 10 }])));
+
+      await calendarController.setCurrentDate(
+        createMockReq({ user: { role: 'DM', id: 1 }, body: { year: 4723, month: 3, day: 10 } }),
+        createMockRes()
+      );
+
+      expect(generatedDates()[0]).toBe('4723-3-10');
+      expect(generatedDates()).toHaveLength(8);
+    });
+
+    it('first initialisation (no stored date) generates the current day plus the horizon', async () => {
+      mockWeatherQueries();
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(clientReturning([])));
+
+      await calendarController.advanceDay(createMockReq(), createMockRes());
+
+      expect(generatedDates()[0]).toBe('4722-1-1');
+      expect(generatedDates().at(-1)).toBe('4722-1-8');
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // Date row handling (F-0251)
+  // ---------------------------------------------------------------
+  describe('date row locking and initialisation', () => {
+    it.each([
+      ['advanceDay', () => calendarController.advanceDay(createMockReq(), createMockRes())],
+      ['advanceDays', () => calendarController.advanceDays(createMockReq({ body: { days: 2 } }), createMockRes())],
+      ['setCurrentDate', () => calendarController.setCurrentDate(
+        createMockReq({ user: { role: 'DM', id: 1 }, body: { year: 4723, month: 3, day: 11 } }), createMockRes())],
+    ])('%s locks the current-date row before reading it', async (_name, run) => {
+      const client = { query: jest.fn().mockResolvedValue({ rows: [{ year: 4723, month: 3, day: 10 }] }), release: jest.fn() };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ count: '1' }] });
+
+      await run();
+
+      expect(client.query.mock.calls[0][0]).toMatch(/FROM golarion_current_date.*FOR UPDATE/s);
+    });
+
+    it('initialises the default date idempotently so a concurrent first load cannot fail', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
+
+      await calendarController.getCurrentDate(createMockReq(), createMockRes());
+
+      expect(dbUtils.executeQuery.mock.calls[1][0]).toContain('ON CONFLICT (campaign_id) DO NOTHING');
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // Note create/update branches (F-0175)
+  // ---------------------------------------------------------------
+  describe('note permission and span branches', () => {
+    const existingNote = {
+      id: 5,
+      startDate: { year: 4723, month: 3, day: 1 },
+      endDate: { year: 4723, month: 3, day: 3 },
+      note: 'old',
+      dmOnly: true,
+    };
+
+    it('a player cannot change dmOnly on update (existing value is kept)', async () => {
+      GolarionNote.getById.mockResolvedValueOnce({ ...existingNote, dmOnly: false });
+      GolarionNote.update.mockResolvedValueOnce({});
+      const req = createMockReq({ user: { role: 'Player', id: 2 }, params: { id: '5' }, body: { note: 'x', dmOnly: true } });
+
+      await calendarController.updateNote(req, createMockRes());
+
+      expect(GolarionNote.update).toHaveBeenCalledWith(5, expect.objectContaining({ dmOnly: false }));
+    });
+
+    it('a DM can change dmOnly on update', async () => {
+      GolarionNote.getById.mockResolvedValueOnce({ ...existingNote, dmOnly: false });
+      GolarionNote.update.mockResolvedValueOnce({});
+      const req = createMockReq({ user: { role: 'DM', id: 1 }, params: { id: '5' }, body: { dmOnly: true } });
+
+      await calendarController.updateNote(req, createMockRes());
+
+      expect(GolarionNote.update).toHaveBeenCalledWith(5, expect.objectContaining({ dmOnly: true }));
+    });
+
+    it('recomputes the end date when days and startDate are supplied', async () => {
+      GolarionNote.getById.mockResolvedValueOnce({ ...existingNote, dmOnly: false });
+      GolarionNote.update.mockResolvedValueOnce({});
+      const req = createMockReq({
+        user: { role: 'DM', id: 1 },
+        params: { id: '5' },
+        body: { startDate: { year: 4723, month: 12, day: 30 }, days: 4 },
+      });
+
+      await calendarController.updateNote(req, createMockRes());
+
+      expect(GolarionNote.update).toHaveBeenCalledWith(5, expect.objectContaining({
+        start: { year: 4723, month: 12, day: 30 },
+        end: { year: 4724, month: 1, day: 2 },
+      }));
+    });
+
+    it.each([0, 367, 'abc'])('updateNote rejects days=%s', async (days) => {
+      GolarionNote.getById.mockResolvedValueOnce({ ...existingNote, dmOnly: false });
+      const req = createMockReq({ user: { role: 'DM', id: 1 }, params: { id: '5' }, body: { days } });
+      const res = createMockRes();
+
+      await calendarController.updateNote(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('days must be an integer between 1 and 366');
+      expect(GolarionNote.update).not.toHaveBeenCalled();
+    });
+
+    it.each([0, 367, 'abc'])('createNote rejects days=%s', async (days) => {
+      const req = createMockReq({
+        user: { role: 'DM', id: 1 },
+        body: { startDate: { year: 4723, month: 3, day: 1 }, note: 'x', days },
+      });
+      const res = createMockRes();
+
+      await calendarController.createNote(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('days must be an integer between 1 and 366');
+      expect(GolarionNote.create).not.toHaveBeenCalled();
+    });
+
+    it('updateNote rejects blank note text', async () => {
+      GolarionNote.getById.mockResolvedValueOnce({ ...existingNote, dmOnly: false });
+      const req = createMockReq({ user: { role: 'DM', id: 1 }, params: { id: '5' }, body: { note: '  ' } });
+      const res = createMockRes();
+
+      await calendarController.updateNote(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('Note text is required');
     });
   });
 });

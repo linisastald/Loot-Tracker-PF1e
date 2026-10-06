@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -33,6 +33,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import LocationCityIcon from '@mui/icons-material/LocationCity';
 import api from '../../utils/api';
+import { getErrorMessage } from '../../utils/apiErrors';
 import { availabilityItemLabel } from '../../utils/availabilityPricing';
 import lootService from '../../services/lootService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -45,8 +46,6 @@ interface City {
   purchase_limit: number;
   max_spell_level: number;
   population?: number;
-  region?: string;
-  alignment?: string;
 }
 
 interface Item {
@@ -59,19 +58,18 @@ interface Item {
 interface Mod {
   id: number;
   name: string;
-  plus?: number;
 }
 
 interface Spell {
   id: number;
   name: string;
   spelllevel: number;
-  school?: string;
-  class?: any;
 }
 
 interface ItemSearchResult {
   found: boolean;
+  too_expensive?: boolean;
+  message?: string;
   roll_result: number;
   availability: {
     threshold: number;
@@ -79,8 +77,6 @@ interface ItemSearchResult {
     description: string;
     base_percentage?: number;
     caster_level_penalty?: number;
-    item_caster_level?: number;
-    settlement_caster_level?: number;
   };
   item_value: number;
   item_name: string;
@@ -96,21 +92,13 @@ interface SpellcastingResult {
   spell_name: string;
   spell_level: number;
   caster_level: number;
-  min_caster_level?: number;
   settlement_caster_level?: number;
   caster_level_check?: {
     threshold: number;
     roll?: number;
-    ceiling?: number;
-    reason?: string;
   };
   city: City;
   message?: string;
-}
-
-interface User {
-  id: number;
-  activeCharacterId?: number;
 }
 
 interface TabPanelProps {
@@ -127,29 +115,79 @@ const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
   );
 };
 
-const SETTLEMENT_SIZES = [
-  'Thorp',
-  'Hamlet',
-  'Village',
-  'Small Town',
-  'Large Town',
-  'Small City',
-  'Large City',
-  'Metropolis',
+interface Settlement {
+  size: string;
+  baseValue: string;
+  purchaseLimit: string;
+  /** Highest spell level of services in this app (house rule, see the reference note). */
+  maxSpell: string;
+  maxSpellNote?: string;
+  /** House-rule effective caster level (mirrors the backend City model). */
+  casterLevel: number;
+  population: string;
+}
+
+// One table drives the size dropdown, the effective caster level lookup and the
+// quick reference. Base value, purchase limit and population follow the
+// GameMastery Guide; maxSpell and casterLevel are this app's house rules.
+const SETTLEMENTS: Settlement[] = [
+  { size: 'Thorp', baseValue: '50', purchaseLimit: '500', maxSpell: 'None', casterLevel: 1, population: '1-20' },
+  { size: 'Hamlet', baseValue: '200', purchaseLimit: '1,000', maxSpell: 'None', casterLevel: 2, population: '21-60' },
+  {
+    size: 'Village', baseValue: '500', purchaseLimit: '2,500', maxSpell: 'None', maxSpellNote: '(1st: 5% chance)',
+    casterLevel: 3, population: '61-200',
+  },
+  { size: 'Small Town', baseValue: '1,000', purchaseLimit: '5,000', maxSpell: '1st', casterLevel: 5, population: '201-2,000' },
+  { size: 'Large Town', baseValue: '2,000', purchaseLimit: '10,000', maxSpell: '2nd', casterLevel: 7, population: '2,001-5,000' },
+  { size: 'Small City', baseValue: '4,000', purchaseLimit: '25,000', maxSpell: '3rd-4th', casterLevel: 9, population: '5,001-10,000' },
+  { size: 'Large City', baseValue: '8,000', purchaseLimit: '50,000', maxSpell: '5th-6th', casterLevel: 12, population: '10,001-25,000' },
+  {
+    size: 'Metropolis', baseValue: '16,000', purchaseLimit: '100,000', maxSpell: '7th-8th', maxSpellNote: '(9th: 1% chance)',
+    casterLevel: 15, population: '25,001+',
+  },
 ];
 
-// House-rule effective caster level by settlement size (mirrors backend City model).
+const SETTLEMENT_SIZES = SETTLEMENTS.map((s) => s.size);
+
 // Gates availability of high-caster-level items and high-CL spellcasting services.
-const SETTLEMENT_CASTER_LEVELS: Record<string, number> = {
-  'Thorp': 1,
-  'Hamlet': 2,
-  'Village': 3,
-  'Small Town': 5,
-  'Large Town': 7,
-  'Small City': 9,
-  'Large City': 12,
-  'Metropolis': 15,
+const SETTLEMENT_CASTER_LEVELS: Record<string, number> = Object.fromEntries(
+  SETTLEMENTS.map((s) => [s.size, s.casterLevel])
+);
+
+const SEARCH_DEBOUNCE_MS = 250;
+
+// Minimum caster level for a spell of the given level (2 x level - 1, at least 1).
+const getMinCasterLevel = (spellLevel: number): number => (spellLevel <= 1 ? 1 : spellLevel * 2 - 1);
+
+/** Unwrap an api response that may or may not still carry the axios envelope. */
+const bodyOf = <T,>(response: unknown): T => {
+  const wrapped = response as { data?: T } | null | undefined;
+  return (wrapped?.data ?? response) as T;
 };
+
+const modsFrom = (response: unknown): Mod[] => {
+  const body = bodyOf<{ mods?: unknown } | unknown[]>(response);
+  const list = Array.isArray(body) ? body : (body as { mods?: unknown } | undefined)?.mods;
+  return Array.isArray(list) ? (list as Mod[]) : [];
+};
+
+const DetailRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <TableRow>
+    <TableCell>
+      <strong>{label}:</strong>
+    </TableCell>
+    <TableCell>{children}</TableCell>
+  </TableRow>
+);
+
+const CityStat: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <Grid size={{ xs: 6, md: 3 }}>
+    <Typography variant="caption" color="text.secondary">
+      {label}
+    </Typography>
+    <Typography variant="body1">{children}</Typography>
+  </Grid>
+);
 
 const CityServices: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
@@ -177,75 +215,88 @@ const CityServices: React.FC = () => {
   const [spellcastingResult, setSpellcastingResult] = useState<SpellcastingResult | null>(null);
   const [spellcastingLoading, setSpellcastingLoading] = useState(false);
 
-
   // Messages
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Debounce timers and request counters so a slow earlier search can never
+  // overwrite the results of a newer one.
+  const itemTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const itemRequest = useRef(0);
+  const spellRequest = useRef(0);
+
+  const fetchCities = useCallback(async () => {
+    try {
+      const response = await api.get('/cities');
+      setCities(bodyOf<City[]>(response));
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load cities'));
+    }
+  }, []);
+
+  const fetchMods = useCallback(async () => {
+    try {
+      setMods(modsFrom(await lootService.getMods()));
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load item modifications'));
+    }
+  }, []);
+
   useEffect(() => {
     fetchCities();
     fetchMods();
-  }, []);
+    return () => {
+      if (itemTimer.current) clearTimeout(itemTimer.current);
+      if (spellTimer.current) clearTimeout(spellTimer.current);
+    };
+  }, [fetchCities, fetchMods]);
 
-  const fetchCities = async () => {
-    try {
-      const response: any = await api.get('/cities');
-      setCities(response.data || response);
-    } catch (err) {
-      console.error('Failed to fetch cities:', err);
-    }
-  };
-
-  const handleItemSearch = async (searchText: string) => {
+  const runItemSearch = async (searchText: string) => {
+    const request = ++itemRequest.current;
     if (!searchText || searchText.length < 2) {
       setItems([]);
+      setItemsLoading(false);
       return;
     }
 
     setItemsLoading(true);
     try {
       const response = await lootService.suggestItems({ query: searchText });
+      if (request !== itemRequest.current) return;
       // API returns { suggestions: [...], count: number }
-      const allItems = response.data.suggestions || [];
-      setItems(allItems);
+      setItems(response.data.suggestions || []);
     } catch (err) {
-      console.error('Error searching items:', err);
+      if (request !== itemRequest.current) return;
       setItems([]);
+      setError(getErrorMessage(err, 'Failed to search items'));
     } finally {
-      setItemsLoading(false);
+      if (request === itemRequest.current) setItemsLoading(false);
     }
   };
 
-  const fetchMods = async () => {
-    try {
-      const response: any = await api.get('/item-creation/mods');
-      const result = response.data || response;
-      setMods(result.mods || result || []);
-    } catch (err) {
-      console.error('Failed to fetch mods:', err);
-    }
-  };
-
-  const searchSpells = async (searchTerm: string) => {
+  const runSpellSearch = async (searchTerm: string) => {
+    const request = ++spellRequest.current;
     if (!searchTerm || searchTerm.length < 2) {
       setSpells([]);
       return;
     }
 
     try {
-      const response: any = await api.get('/spellcasting/spells', {
+      const response = await api.get('/spellcasting/spells', {
         params: { search: searchTerm },
       });
-      setSpells(response.data || response);
+      if (request !== spellRequest.current) return;
+      setSpells(bodyOf<Spell[]>(response));
     } catch (err) {
-      console.error('Failed to search spells:', err);
+      if (request !== spellRequest.current) return;
+      setError(getErrorMessage(err, 'Failed to search spells'));
     }
   };
 
-  // Calculate minimum caster level for a spell
-  const getMinCasterLevel = (spellLevel: number): number => {
-    if (spellLevel <= 1) return 1;
-    return spellLevel * 2 - 1;
+  const scheduleSearch = (timer: React.MutableRefObject<ReturnType<typeof setTimeout> | null>, run: () => void) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(run, SEARCH_DEBOUNCE_MS);
   };
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -254,15 +305,33 @@ const CityServices: React.FC = () => {
     setSuccess('');
   };
 
-  const handleItemAvailabilityCheck = async () => {
+  /**
+   * Shared start of both checks: clears messages and the previous result, then
+   * validates the city name. Returns false (with the error set) when the check
+   * must not run.
+   */
+  const beginCheck = (clearResult: () => void): boolean => {
     setError('');
     setSuccess('');
-    setItemSearchResult(null);
+    clearResult();
 
     if (!cityName.trim()) {
       setError('Please enter a city name');
-      return;
+      return false;
     }
+    return true;
+  };
+
+  /** POST a city check; the response always carries the resolved city. */
+  const postCityCheck = async <T extends { city: City }>(url: string, body: Record<string, unknown>): Promise<T> => {
+    const response = await api.post(url, { ...body, city_name: cityName.trim(), city_size: citySize });
+    const data = bodyOf<T>(response);
+    setSelectedCity(data.city);
+    return data;
+  };
+
+  const handleItemAvailabilityCheck = async () => {
+    if (!beginCheck(() => setItemSearchResult(null))) return;
 
     if (!selectedItem) {
       setError('Please select an item');
@@ -272,17 +341,12 @@ const CityServices: React.FC = () => {
     setItemSearchLoading(true);
 
     try {
-      const response: any = await api.post('/item-search/check', {
+      const data = await postCityCheck<ItemSearchResult>('/item-search/check', {
         item_id: selectedItem.id,
         mod_ids: selectedMods.map((m) => m.id),
-        city_name: cityName.trim(),
-        city_size: citySize,
         character_id: activeUser?.activeCharacterId,
       });
-
-      const data = response.data || response;
       setItemSearchResult(data);
-      setSelectedCity(data.city);
 
       if (data.found) {
         setSuccess(`Success! ${data.item_name} was found in ${data.city.name}!`);
@@ -293,22 +357,15 @@ const CityServices: React.FC = () => {
         // Item wasn't found this time, but could be found with another roll
         setError(`${data.item_name} was not found in ${data.city.name}. Try again in 1 week.`);
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to check item availability');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to check item availability'));
     } finally {
       setItemSearchLoading(false);
     }
   };
 
   const handleSpellcastingCheck = async () => {
-    setError('');
-    setSuccess('');
-    setSpellcastingResult(null);
-
-    if (!cityName.trim()) {
-      setError('Please enter a city name');
-      return;
-    }
+    if (!beginCheck(() => setSpellcastingResult(null))) return;
 
     if (!selectedSpell) {
       setError('Please select a spell');
@@ -323,30 +380,23 @@ const CityServices: React.FC = () => {
     setSpellcastingLoading(true);
 
     try {
-      const response: any = await api.post('/spellcasting/check', {
+      // Lookup only: nothing is purchased or recorded from this page.
+      const data = await postCityCheck<SpellcastingResult>('/spellcasting/check', {
         spell_id: selectedSpell.id,
         spell_name: selectedSpell.name,
         spell_level: selectedSpell.spelllevel,
         caster_level: casterLevel,
-        city_name: cityName.trim(),
-        city_size: citySize,
-        character_id: activeUser?.activeCharacterId,
-        purchase: false,
       });
-
-      const data = response.data || response;
       setSpellcastingResult(data);
-      setSelectedCity(data.city);
 
       if (data.available) {
         // Show special message for level 9 spells if provided by backend
-        const message = data.message || `${data.spell_name} is available for ${data.cost} gp`;
-        setSuccess(message);
+        setSuccess(data.message || `${data.spell_name} is available for ${data.cost} gp`);
       } else {
         setError(data.message || 'Spell not available');
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to check spellcasting service');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to check spellcasting service'));
     } finally {
       setSpellcastingLoading(false);
     }
@@ -359,9 +409,7 @@ const CityServices: React.FC = () => {
           <LocationCityIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
           City Services
         </Typography>
-        <Typography variant="body1" sx={{
-          color: "text.secondary"
-        }}>
+        <Typography variant="body1" color="text.secondary">
           Check item availability and spellcasting services in settlements
         </Typography>
       </Box>
@@ -382,7 +430,7 @@ const CityServices: React.FC = () => {
         </Tabs>
       </Paper>
       {/* City Selection - Common to both tabs */}
-      <Paper sx={{ p: 3, mb: 3 }}>
+      <Paper sx={{ p: 3, mb: 3 }} data-testid="settlement-information">
         <Typography variant="h6" gutterBottom>
           Settlement Information
         </Typography>
@@ -395,8 +443,14 @@ const CityServices: React.FC = () => {
                 typeof option === 'string' ? option : `${option.name} (${option.size})`
               }
               value={selectedCity}
+              // The text box shows exactly what was typed or picked: after a
+              // check the selected city changes and MUI would otherwise reset
+              // the text to "Name (Size)".
+              inputValue={cityName}
               onInputChange={(event, newValue, reason) => {
-                setCityName(newValue);
+                if (reason === 'input' || reason === 'clear') {
+                  setCityName(newValue);
+                }
                 // Clear selected city when user types manually (not when selecting from list)
                 if (reason === 'input') {
                   setSelectedCity(null);
@@ -443,48 +497,11 @@ const CityServices: React.FC = () => {
         {selectedCity && (
           <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
             <Grid container spacing={2}>
-              <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
-                  Base Value
-                </Typography>
-                <Typography variant="body1">{selectedCity.base_value.toLocaleString()} gp</Typography>
-              </Grid>
-              <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
-                  Purchase Limit
-                </Typography>
-                <Typography variant="body1">{selectedCity.purchase_limit.toLocaleString()} gp</Typography>
-              </Grid>
-              <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
-                  Max Spell Level
-                </Typography>
-                <Typography variant="body1">{selectedCity.max_spell_level}</Typography>
-              </Grid>
-              <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
-                  Effective Caster Level
-                </Typography>
-                <Typography variant="body1">{SETTLEMENT_CASTER_LEVELS[selectedCity.size] ?? '—'}</Typography>
-              </Grid>
-              <Grid size={{xs: 6, md: 3}}>
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
-                  Population
-                </Typography>
-                <Typography variant="body1">
-                  {selectedCity.population?.toLocaleString() || 'Unknown'}
-                </Typography>
-              </Grid>
+              <CityStat label="Base Value">{selectedCity.base_value.toLocaleString()} gp</CityStat>
+              <CityStat label="Purchase Limit">{selectedCity.purchase_limit.toLocaleString()} gp</CityStat>
+              <CityStat label="Max Spell Level">{selectedCity.max_spell_level}</CityStat>
+              <CityStat label="Effective Caster Level">{SETTLEMENT_CASTER_LEVELS[selectedCity.size] ?? '—'}</CityStat>
+              <CityStat label="Population">{selectedCity.population?.toLocaleString() || 'Unknown'}</CityStat>
             </Grid>
           </Box>
         )}
@@ -505,9 +522,13 @@ const CityServices: React.FC = () => {
                 }}
                 value={selectedItem}
                 inputValue={itemInputValue}
-                onInputChange={(_, newInputValue) => {
+                onInputChange={(_, newInputValue, reason) => {
                   setItemInputValue(newInputValue);
-                  handleItemSearch(newInputValue);
+                  // Search only on typing/clearing, not when MUI resets the text
+                  // to the label of the option just chosen.
+                  if (reason === 'input' || reason === 'clear') {
+                    scheduleSearch(itemTimer, () => runItemSearch(newInputValue));
+                  }
                 }}
                 onChange={(_, newValue) => {
                   if (newValue && typeof newValue === 'object') {
@@ -560,75 +581,35 @@ const CityServices: React.FC = () => {
               <TableContainer>
                 <Table>
                   <TableBody>
-                    <TableRow>
-                      <TableCell>
-                        <strong>Item:</strong>
-                      </TableCell>
-                      <TableCell>{itemSearchResult.item_name}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>
-                        <strong>Value:</strong>
-                      </TableCell>
-                      <TableCell>{itemSearchResult.item_value.toLocaleString()} gp</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>
-                        <strong>City:</strong>
-                      </TableCell>
-                      <TableCell>
-                        {itemSearchResult.city.name} ({itemSearchResult.city.size})
-                      </TableCell>
-                    </TableRow>
+                    <DetailRow label="Item">{itemSearchResult.item_name}</DetailRow>
+                    <DetailRow label="Value">{itemSearchResult.item_value.toLocaleString()} gp</DetailRow>
+                    <DetailRow label="City">
+                      {itemSearchResult.city.name} ({itemSearchResult.city.size})
+                    </DetailRow>
                     {(itemSearchResult.item_caster_level ?? 0) > 0 && (
-                      <TableRow>
-                        <TableCell>
-                          <strong>Caster Level:</strong>
-                        </TableCell>
-                        <TableCell>
-                          Item CL {itemSearchResult.item_caster_level} vs. settlement CL{' '}
-                          {itemSearchResult.settlement_caster_level}
-                          {(itemSearchResult.availability.caster_level_penalty ?? 0) > 0 && (
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                color: "warning.main",
-                                display: "block"
-                              }}>
-                              −{itemSearchResult.availability.caster_level_penalty}% caster-level penalty
-                              {' '}(base {itemSearchResult.availability.base_percentage}%)
-                            </Typography>
-                          )}
-                        </TableCell>
-                      </TableRow>
+                      <DetailRow label="Caster Level">
+                        Item CL {itemSearchResult.item_caster_level} vs. settlement CL{' '}
+                        {itemSearchResult.settlement_caster_level}
+                        {(itemSearchResult.availability.caster_level_penalty ?? 0) > 0 && (
+                          <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+                            −{itemSearchResult.availability.caster_level_penalty}% caster-level penalty
+                            {' '}(base {itemSearchResult.availability.base_percentage}%)
+                          </Typography>
+                        )}
+                      </DetailRow>
                     )}
-                    <TableRow>
-                      <TableCell>
-                        <strong>Availability:</strong>
-                      </TableCell>
-                      <TableCell>
-                        {itemSearchResult.availability.percentage}% ({itemSearchResult.availability.description})
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>
-                        <strong>Roll:</strong>
-                      </TableCell>
-                      <TableCell>
-                        {itemSearchResult.roll_result} / {itemSearchResult.availability.threshold}
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>
-                        <strong>Result:</strong>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={itemSearchResult.found ? 'FOUND' : 'NOT FOUND'}
-                          color={itemSearchResult.found ? 'success' : 'error'}
-                        />
-                      </TableCell>
-                    </TableRow>
+                    <DetailRow label="Availability">
+                      {itemSearchResult.availability.percentage}% ({itemSearchResult.availability.description})
+                    </DetailRow>
+                    <DetailRow label="Roll">
+                      {itemSearchResult.roll_result} / {itemSearchResult.availability.threshold}
+                    </DetailRow>
+                    <DetailRow label="Result">
+                      <Chip
+                        label={itemSearchResult.found ? 'FOUND' : 'NOT FOUND'}
+                        color={itemSearchResult.found ? 'success' : 'error'}
+                      />
+                    </DetailRow>
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -652,12 +633,13 @@ const CityServices: React.FC = () => {
                   setSelectedSpell(newValue);
                   // Set default caster level to minimum for the spell
                   if (newValue) {
-                    const minCL = getMinCasterLevel(newValue.spelllevel);
-                    setCasterLevel(minCL);
+                    setCasterLevel(getMinCasterLevel(newValue.spelllevel));
                   }
                 }}
-                onInputChange={(event, value) => {
-                  searchSpells(value);
+                onInputChange={(event, value, reason) => {
+                  if (reason === 'input' || reason === 'clear') {
+                    scheduleSearch(spellTimer, () => runSpellSearch(value));
+                  }
                 }}
                 renderInput={(params) => (
                   <TextField
@@ -709,107 +691,48 @@ const CityServices: React.FC = () => {
               <TableContainer>
                 <Table>
                   <TableBody>
-                    <TableRow>
-                      <TableCell>
-                        <strong>Spell:</strong>
-                      </TableCell>
-                      <TableCell>
-                        {spellcastingResult.spell_name} (Level {spellcastingResult.spell_level})
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>
-                        <strong>Caster Level:</strong>
-                      </TableCell>
-                      <TableCell>{spellcastingResult.caster_level}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>
-                        <strong>City:</strong>
-                      </TableCell>
-                      <TableCell>
-                        {spellcastingResult.city.name} ({spellcastingResult.city.size})
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>
-                        <strong>Max Spell Level:</strong>
-                      </TableCell>
-                      <TableCell>{spellcastingResult.city.max_spell_level}</TableCell>
-                    </TableRow>
+                    <DetailRow label="Spell">
+                      {spellcastingResult.spell_name} (Level {spellcastingResult.spell_level})
+                    </DetailRow>
+                    <DetailRow label="Caster Level">{spellcastingResult.caster_level}</DetailRow>
+                    <DetailRow label="City">
+                      {spellcastingResult.city.name} ({spellcastingResult.city.size})
+                    </DetailRow>
+                    <DetailRow label="Max Spell Level">{spellcastingResult.city.max_spell_level}</DetailRow>
                     {spellcastingResult.settlement_caster_level !== undefined && (
-                      <TableRow>
-                        <TableCell>
-                          <strong>Settlement Caster Level:</strong>
-                        </TableCell>
-                        <TableCell>
-                          {spellcastingResult.settlement_caster_level}
-                          {spellcastingResult.caster_level_check?.roll !== undefined && (
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                color: "text.secondary",
-                                display: "block"
-                              }}>
-                              Higher-CL find roll: {spellcastingResult.caster_level_check.roll}/100
-                              {' '}(needed {spellcastingResult.caster_level_check.threshold} or less)
-                            </Typography>
-                          )}
-                        </TableCell>
-                      </TableRow>
+                      <DetailRow label="Settlement Caster Level">
+                        {spellcastingResult.settlement_caster_level}
+                        {spellcastingResult.caster_level_check?.roll !== undefined && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            Higher-CL find roll: {spellcastingResult.caster_level_check.roll}/100
+                            {' '}(needed {spellcastingResult.caster_level_check.threshold} or less)
+                          </Typography>
+                        )}
+                      </DetailRow>
                     )}
-                    {spellcastingResult.available ? (
+                    {spellcastingResult.available && (
                       <>
-                        <TableRow>
-                          <TableCell>
-                            <strong>Cost:</strong>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="h6" color="primary">
-                              {spellcastingResult.cost} gp
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>
-                            <strong>Formula:</strong>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="caption" sx={{
-                              color: "text.secondary"
-                            }}>
-                              {spellcastingResult.formula}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                color: "warning.main",
-                                display: "block",
-                                mt: 0.5
-                              }}>
-                              Note: Material costs not included
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell>
-                            <strong>Status:</strong>
-                          </TableCell>
-                          <TableCell>
-                            <Chip label="AVAILABLE" color="success" />
-                          </TableCell>
-                        </TableRow>
+                        <DetailRow label="Cost">
+                          <Typography variant="h6" color="primary">
+                            {spellcastingResult.cost} gp
+                          </Typography>
+                        </DetailRow>
+                        <DetailRow label="Formula">
+                          <Typography variant="caption" color="text.secondary">
+                            {spellcastingResult.formula}
+                          </Typography>
+                          <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 0.5 }}>
+                            Note: Material costs not included
+                          </Typography>
+                        </DetailRow>
                       </>
-                    ) : (
-                      <TableRow>
-                        <TableCell>
-                          <strong>Status:</strong>
-                        </TableCell>
-                        <TableCell>
-                          <Chip label="NOT AVAILABLE" color="error" />
-                        </TableCell>
-                      </TableRow>
                     )}
+                    <DetailRow label="Status">
+                      <Chip
+                        label={spellcastingResult.available ? 'AVAILABLE' : 'NOT AVAILABLE'}
+                        color={spellcastingResult.available ? 'success' : 'error'}
+                      />
+                    </DetailRow>
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -828,13 +751,10 @@ const CityServices: React.FC = () => {
               Settlement Quick Reference
             </Typography>
             {referenceOpen && (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "text.secondary",
-                  mb: 2
-                }}>
-                Based on Pathfinder 1st Edition settlement rules
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Base value, purchase limit and population follow the Pathfinder 1st Edition GameMastery Guide.
+                Max spell level and effective caster level are this app&apos;s house rules (the GameMastery Guide
+                lists 1st-level spellcasting for a thorp up to 8th for a metropolis).
               </Typography>
             )}
           </Box>
@@ -847,111 +767,32 @@ const CityServices: React.FC = () => {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>
-                  <strong>Settlement</strong>
-                </TableCell>
-                <TableCell align="right">
-                  <strong>Base Value</strong>
-                </TableCell>
-                <TableCell align="right">
-                  <strong>Purchase Limit</strong>
-                </TableCell>
-                <TableCell align="center">
-                  <strong>Max Spell Level</strong>
-                </TableCell>
-                <TableCell align="center">
-                  <strong>Eff. Caster Level</strong>
-                </TableCell>
-                <TableCell align="right">
-                  <strong>Typical Population</strong>
-                </TableCell>
+                <TableCell><strong>Settlement</strong></TableCell>
+                <TableCell align="right"><strong>Base Value</strong></TableCell>
+                <TableCell align="right"><strong>Purchase Limit</strong></TableCell>
+                <TableCell align="center"><strong>Max Spell Level (house rule)</strong></TableCell>
+                <TableCell align="center"><strong>Eff. Caster Level (house rule)</strong></TableCell>
+                <TableCell align="right"><strong>Typical Population</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              <TableRow>
-                <TableCell>Thorp</TableCell>
-                <TableCell align="right">50 gp</TableCell>
-                <TableCell align="right">500 gp</TableCell>
-                <TableCell align="center">None</TableCell>
-                <TableCell align="center">1</TableCell>
-                <TableCell align="right">1-20</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Hamlet</TableCell>
-                <TableCell align="right">200 gp</TableCell>
-                <TableCell align="right">1,000 gp</TableCell>
-                <TableCell align="center">None</TableCell>
-                <TableCell align="center">2</TableCell>
-                <TableCell align="right">21-60</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Village</TableCell>
-                <TableCell align="right">500 gp</TableCell>
-                <TableCell align="right">2,500 gp</TableCell>
-                <TableCell align="center">
-                  None
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      display: "block",
-                      color: "text.secondary"
-                    }}>
-                    (1st: 5% chance)
-                  </Typography>
-                </TableCell>
-                <TableCell align="center">3</TableCell>
-                <TableCell align="right">20-200</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Small Town</TableCell>
-                <TableCell align="right">1,000 gp</TableCell>
-                <TableCell align="right">5,000 gp</TableCell>
-                <TableCell align="center">1st</TableCell>
-                <TableCell align="center">5</TableCell>
-                <TableCell align="right">201-2,000</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Large Town</TableCell>
-                <TableCell align="right">2,000 gp</TableCell>
-                <TableCell align="right">10,000 gp</TableCell>
-                <TableCell align="center">2nd</TableCell>
-                <TableCell align="center">7</TableCell>
-                <TableCell align="right">2,001-5,000</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Small City</TableCell>
-                <TableCell align="right">4,000 gp</TableCell>
-                <TableCell align="right">25,000 gp</TableCell>
-                <TableCell align="center">3rd-4th</TableCell>
-                <TableCell align="center">9</TableCell>
-                <TableCell align="right">5,001-10,000</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Large City</TableCell>
-                <TableCell align="right">8,000 gp</TableCell>
-                <TableCell align="right">50,000 gp</TableCell>
-                <TableCell align="center">5th-6th</TableCell>
-                <TableCell align="center">12</TableCell>
-                <TableCell align="right">10,001-25,000</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Metropolis</TableCell>
-                <TableCell align="right">16,000 gp</TableCell>
-                <TableCell align="right">100,000 gp</TableCell>
-                <TableCell align="center">
-                  7th-8th
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      display: "block",
-                      color: "text.secondary"
-                    }}>
-                    (9th: 1% chance)
-                  </Typography>
-                </TableCell>
-                <TableCell align="center">15</TableCell>
-                <TableCell align="right">25,001+</TableCell>
-              </TableRow>
+              {SETTLEMENTS.map((s) => (
+                <TableRow key={s.size}>
+                  <TableCell>{s.size}</TableCell>
+                  <TableCell align="right">{s.baseValue} gp</TableCell>
+                  <TableCell align="right">{s.purchaseLimit} gp</TableCell>
+                  <TableCell align="center">
+                    {s.maxSpell}
+                    {s.maxSpellNote && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {s.maxSpellNote}
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell align="center">{s.casterLevel}</TableCell>
+                  <TableCell align="right">{s.population}</TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </TableContainer>

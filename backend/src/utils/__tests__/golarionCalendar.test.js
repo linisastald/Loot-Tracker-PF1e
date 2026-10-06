@@ -5,7 +5,6 @@
 const {
   isLeapYear,
   getMonthDays,
-  getYearDays,
   addDays,
   compareDates,
   calculateDaysBetween,
@@ -46,13 +45,6 @@ describe('golarionCalendar', () => {
       expect(getMonthDays(4722, 1)).toBe(31);
       expect(getMonthDays(4722, 4)).toBe(30); // Gozran
       expect(getMonthDays(4722, 12)).toBe(31); // Kuthona
-    });
-  });
-
-  describe('getYearDays', () => {
-    it('returns 366 for leap years and 365 otherwise', () => {
-      expect(getYearDays(4720)).toBe(366);
-      expect(getYearDays(4722)).toBe(365);
     });
   });
 

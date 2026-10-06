@@ -36,13 +36,6 @@ const getMonthDays = (year, month) => {
 };
 
 /**
- * Number of days in a given Golarion year (365, or 366 in leap years).
- * @param {number} year
- * @returns {number}
- */
-const getYearDays = (year) => (isLeapYear(year) ? 366 : 365);
-
-/**
  * Advance a date by a whole number of days, handling month/year rollover
  * with leap-aware month lengths.
  * @param {{year:number, month:number, day:number}} date
@@ -104,7 +97,6 @@ module.exports = {
   MONTH_DAYS,
   isLeapYear,
   getMonthDays,
-  getYearDays,
   addDays,
   compareDates,
   calculateDaysBetween,
