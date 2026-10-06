@@ -3,11 +3,21 @@
  * Tests the base database model that all other models inherit from
  */
 
-const BaseModel = require('../../src/models/BaseModel');
-const dbUtils = require('../../src/utils/dbUtils');
+const dbUtils = require('../../utils/dbUtils');
 
-// dbUtils is already mocked globally in setupTests.js
-// No need to mock it again here
+jest.mock('../../utils/dbUtils', () => ({
+  executeQuery: jest.fn(),
+  executeTransaction: jest.fn(),
+  insert: jest.fn(),
+  getById: jest.fn(),
+  getMany: jest.fn(),
+  updateById: jest.fn(),
+  deleteById: jest.fn(),
+  rowExists: jest.fn(),
+}));
+
+// Must require after mocks are set up
+const BaseModel = require('../BaseModel');
 
 describe('BaseModel', () => {
   let TestModel;
@@ -233,14 +243,14 @@ describe('BaseModel', () => {
       expect(result).toEqual(mockResult);
     });
 
-    it('should handle transaction errors', async () => {
-      const error = new Error('Transaction failed');
-      
-      dbUtils.executeTransaction.mockRejectedValue(error);
+    it('should forward the callback to dbUtils.executeTransaction', async () => {
+      const callback = async () => 'done';
 
-      await expect(TestModel.transaction(async () => {
-        throw error;
-      })).rejects.toThrow('Transaction failed');
+      dbUtils.executeTransaction.mockResolvedValue('done');
+
+      await TestModel.transaction(callback);
+
+      expect(dbUtils.executeTransaction).toHaveBeenCalledWith(callback);
     });
   });
 

@@ -18,8 +18,8 @@
     "test:unit": "jest --config=jest.unit.config.js",
     "test:unit:watch": "jest --config=jest.unit.config.js --watch",
     "test:unit:coverage": "jest --config=jest.unit.config.js --coverage",
-    "test:integration": "USE_REAL_DB_FOR_TESTS=true jest --testPathPatterns=integration",
-    "test:api": "USE_REAL_DB_FOR_TESTS=true jest --testPathPatterns=tests/api",
+    "test:integration": "cross-env USE_REAL_DB_FOR_TESTS=true jest --testPathPatterns=integration",
+    "test:api": "cross-env USE_REAL_DB_FOR_TESTS=true jest --testPathPatterns=tests/api",
     "test:setup": "node scripts/test-setup.js setup",
     "test:teardown": "node scripts/test-setup.js teardown",
     "test:reset": "npm run test:teardown && npm run test:setup"
@@ -30,7 +30,6 @@
   "dependencies": {
     "axios": "^1.20.0",
     "bcryptjs": "^3.0.3",
-    "body-parser": "^2.3.0",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",

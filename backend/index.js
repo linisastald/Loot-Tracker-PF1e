@@ -4,7 +4,6 @@
 // any require that loads dotenv. dotenv honors this env var natively.
 process.env.DOTENV_CONFIG_QUIET = 'true';
 const express = require('express');
-const bodyParser = require('body-parser');
 const compression = require('compression');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -177,11 +176,11 @@ const limiter = rateLimit({
 app.use(compression());
 
 // Apply middlewares with size limits to prevent DoS attacks
-app.use(bodyParser.json({
+app.use(express.json({
   limit: '10mb',  // Limit JSON body size
   strict: true    // Only accept arrays and objects
 }));
-app.use(bodyParser.urlencoded({
+app.use(express.urlencoded({
   extended: true,
   limit: '10mb'   // Limit URL-encoded body size
 }));
