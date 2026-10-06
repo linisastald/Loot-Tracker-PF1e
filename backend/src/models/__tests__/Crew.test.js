@@ -106,8 +106,15 @@ describe('Crew model', () => {
   });
 
   describe('update', () => {
+    const existingRow = {
+      id: 1, name: 'Bosun', race: 'Human', age: 30, description: 'Gruff',
+      location_type: 'ship', location_id: 4, ship_position: 'bosun',
+    };
+
     it('should clear ship_position when moving to outpost', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [existingRow] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] });
 
       await Crew.update(1, {
         name: 'Guard', race: 'Human', age: 30,
@@ -115,8 +122,29 @@ describe('Crew model', () => {
         ship_position: 'captain',
       });
 
-      const values = dbUtils.executeQuery.mock.calls[0][1];
+      const values = dbUtils.executeQuery.mock.calls[1][1];
       expect(values[6]).toBeNull(); // ship_position
+    });
+
+    it('keeps stored values for fields missing from a partial body', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [existingRow] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+      await Crew.update(1, { name: 'Renamed' });
+
+      const values = dbUtils.executeQuery.mock.calls[1][1];
+      expect(values).toEqual(['Renamed', 'Human', 30, 'Gruff', 'ship', 4, 'bosun', 1]);
+    });
+
+    it('turns an explicitly blank optional field into NULL', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [existingRow] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+      await Crew.update(1, { description: '' });
+
+      expect(dbUtils.executeQuery.mock.calls[1][1][3]).toBeNull();
     });
 
     it('should return null when crew not found', async () => {
@@ -125,6 +153,21 @@ describe('Crew model', () => {
       const result = await Crew.update(999, { name: 'Ghost', location_type: 'ship', location_id: 1 });
 
       expect(result).toBeNull();
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('locationExists', () => {
+    it('queries the ships table for ship locations', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ '?column?': 1 }] });
+      await expect(Crew.locationExists('ship', 3)).resolves.toBe(true);
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('FROM ships');
+    });
+
+    it('returns false for unknown id or type', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+      await expect(Crew.locationExists('outpost', 99)).resolves.toBe(false);
+      await expect(Crew.locationExists('tavern', 1)).resolves.toBe(false);
     });
   });
 

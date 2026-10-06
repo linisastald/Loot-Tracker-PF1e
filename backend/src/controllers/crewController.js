@@ -3,6 +3,50 @@ const Crew = require('../models/Crew');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 
+const LOCATION_TYPES = ['ship', 'outpost'];
+
+/**
+ * Validate a (location_type, location_id) pair and return the id as an integer.
+ * @param {*} type - 'ship' or 'outpost'
+ * @param {*} id - ship / outpost id
+ * @param {Object} [opts]
+ * @param {boolean} [opts.mustExist=true] - also check the ship/outpost exists
+ * @return {Promise<number>} The parsed location id
+ */
+const validateLocation = async (type, id, { mustExist = true } = {}) => {
+  if (!type || !id) {
+    throw controllerFactory.createValidationError('Location type and location ID are required');
+  }
+  if (!LOCATION_TYPES.includes(type)) {
+    throw controllerFactory.createValidationError('Location type must be either "ship" or "outpost"');
+  }
+  const locationId = Number(id);
+  if (!Number.isInteger(locationId) || locationId <= 0) {
+    throw controllerFactory.createValidationError('Location ID must be a positive integer');
+  }
+  if (mustExist && !(await Crew.locationExists(type, locationId))) {
+    throw controllerFactory.createValidationError(`Selected ${type} does not exist`);
+  }
+  return locationId;
+};
+
+/**
+ * Parse an optional date body field; defaults to now when absent.
+ * @param {*} value - Raw body value
+ * @param {string} field - Field name for the error message
+ * @return {Date}
+ */
+const parseOptionalDate = (value, field) => {
+  if (!value) {
+    return new Date();
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw controllerFactory.createValidationError(`${field} is not a valid date`);
+  }
+  return date;
+};
+
 /**
  * Create a new crew member
  */
@@ -13,13 +57,7 @@ const createCrew = async (req, res) => {
     throw controllerFactory.createValidationError('Crew member name is required');
   }
 
-  if (!location_type || !location_id) {
-    throw controllerFactory.createValidationError('Location type and location ID are required');
-  }
-
-  if (!['ship', 'outpost'].includes(location_type)) {
-    throw controllerFactory.createValidationError('Location type must be either "ship" or "outpost"');
-  }
+  const locationId = await validateLocation(location_type, location_id);
 
   const crewData = {
     name,
@@ -27,7 +65,7 @@ const createCrew = async (req, res) => {
     age: age || null,
     description: description || null,
     location_type,
-    location_id,
+    location_id: locationId,
     ship_position: location_type === 'ship' ? ship_position : null,
     is_alive: true
   };
@@ -38,7 +76,7 @@ const createCrew = async (req, res) => {
     userId: req.user.id,
     crewId: crew.id,
     locationType: location_type,
-    locationId: location_id
+    locationId
   });
 
   controllerFactory.sendCreatedResponse(res, crew, 'Crew member created successfully');
@@ -49,7 +87,7 @@ const createCrew = async (req, res) => {
  */
 const getAllCrew = async (req, res) => {
   const crew = await Crew.getAllWithLocation();
-  
+
   controllerFactory.sendSuccessResponse(res, {
     crew,
     count: crew.length
@@ -62,48 +100,43 @@ const getAllCrew = async (req, res) => {
 const getCrewByLocation = async (req, res) => {
   const { location_type, location_id } = req.query;
 
-  if (!location_type || !location_id) {
-    throw controllerFactory.createValidationError('Location type and location ID are required');
-  }
+  const locationId = await validateLocation(location_type, location_id, { mustExist: false });
 
-  const crew = await Crew.getByLocation(location_type, location_id);
+  const crew = await Crew.getByLocation(location_type, locationId);
 
   controllerFactory.sendSuccessResponse(res, {
     crew,
     count: crew.length,
-    location: { type: location_type, id: location_id }
+    location: { type: location_type, id: locationId }
   }, 'Crew retrieved successfully');
 };
 
 /**
- * Get crew member by ID
- */
-const getCrewById = async (req, res) => {
-  const { id } = req.params;
-  
-  const crew = await Crew.findById(id);
-  
-  if (!crew) {
-    throw controllerFactory.createNotFoundError('Crew member not found');
-  }
-
-  controllerFactory.sendSuccessResponse(res, crew, 'Crew member retrieved successfully');
-};
-
-/**
- * Update crew member
+ * Update crew member. Only the fields present in the body are changed (the
+ * model keeps stored values for the rest).
  */
 const updateCrew = async (req, res) => {
   const { id } = req.params;
   const updateData = req.body;
 
-  if (!id) {
-    throw controllerFactory.createValidationError('Crew member ID is required');
+  if (updateData.name !== undefined && !String(updateData.name).trim()) {
+    throw controllerFactory.createValidationError('Crew member name cannot be blank');
   }
 
-  // Validate location_type if provided
-  if (updateData.location_type && !['ship', 'outpost'].includes(updateData.location_type)) {
+  if (updateData.location_type !== undefined && !LOCATION_TYPES.includes(updateData.location_type)) {
     throw controllerFactory.createValidationError('Location type must be either "ship" or "outpost"');
+  }
+  if (updateData.location_id !== undefined) {
+    const locationId = Number(updateData.location_id);
+    if (!Number.isInteger(locationId) || locationId <= 0) {
+      throw controllerFactory.createValidationError('Location ID must be a positive integer');
+    }
+    updateData.location_id = locationId;
+  }
+  // Only check the target exists when the caller supplies the whole pair.
+  if (updateData.location_type !== undefined && updateData.location_id !== undefined
+      && !(await Crew.locationExists(updateData.location_type, updateData.location_id))) {
+    throw controllerFactory.createValidationError(`Selected ${updateData.location_type} does not exist`);
   }
 
   // Clear ship_position if moving to outpost
@@ -112,7 +145,7 @@ const updateCrew = async (req, res) => {
   }
 
   const crew = await Crew.update(id, updateData);
-  
+
   if (!crew) {
     throw controllerFactory.createNotFoundError('Crew member not found');
   }
@@ -127,59 +160,55 @@ const updateCrew = async (req, res) => {
 };
 
 /**
- * Mark crew member as dead
+ * Build a handler that retires a crew member (dead or departed): validate the
+ * optional date, call the model, 404 when missing, log and respond.
+ * @param {Object} cfg
+ * @param {string} cfg.dateField - Body field holding the date
+ * @param {string} cfg.logLabel - Log message prefix
+ * @param {string} cfg.message - Success message
+ * @param {Function} cfg.apply - (id, date, body) => Promise<crew|null>
+ * @param {Function} [cfg.extraLog] - (body) => extra log fields
  */
-const markCrewDead = async (req, res) => {
+const markCrewStatus = ({ dateField, logLabel, message, apply, extraLog }) => async (req, res) => {
   const { id } = req.params;
-  const { death_date } = req.body;
+  const date = parseOptionalDate(req.body[dateField], dateField);
 
-  if (!id) {
-    throw controllerFactory.createValidationError('Crew member ID is required');
-  }
-
-  const deathDate = death_date ? new Date(death_date) : new Date();
-  const crew = await Crew.markDead(id, deathDate);
+  const crew = await apply(id, date, req.body);
 
   if (!crew) {
     throw controllerFactory.createNotFoundError('Crew member not found');
   }
 
-  logger.info(`Crew member marked as dead: ${crew.name}`, {
+  logger.info(`${logLabel}: ${crew.name}`, {
     userId: req.user.id,
     crewId: crew.id,
-    deathDate
+    [dateField]: date,
+    ...(extraLog ? extraLog(req.body) : {})
   });
 
-  controllerFactory.sendSuccessResponse(res, crew, 'Crew member marked as deceased');
+  controllerFactory.sendSuccessResponse(res, crew, message);
 };
+
+/**
+ * Mark crew member as dead
+ */
+const markCrewDead = markCrewStatus({
+  dateField: 'death_date',
+  logLabel: 'Crew member marked as dead',
+  message: 'Crew member marked as deceased',
+  apply: (id, date) => Crew.markDead(id, date)
+});
 
 /**
  * Mark crew member as departed
  */
-const markCrewDeparted = async (req, res) => {
-  const { id } = req.params;
-  const { departure_date, departure_reason } = req.body;
-
-  if (!id) {
-    throw controllerFactory.createValidationError('Crew member ID is required');
-  }
-
-  const departureDate = departure_date ? new Date(departure_date) : new Date();
-  const crew = await Crew.markDeparted(id, departureDate, departure_reason);
-
-  if (!crew) {
-    throw controllerFactory.createNotFoundError('Crew member not found');
-  }
-
-  logger.info(`Crew member marked as departed: ${crew.name}`, {
-    userId: req.user.id,
-    crewId: crew.id,
-    departureDate,
-    reason: departure_reason
-  });
-
-  controllerFactory.sendSuccessResponse(res, crew, 'Crew member marked as departed');
-};
+const markCrewDeparted = markCrewStatus({
+  dateField: 'departure_date',
+  logLabel: 'Crew member marked as departed',
+  message: 'Crew member marked as departed',
+  apply: (id, date, body) => Crew.markDeparted(id, date, body.departure_reason),
+  extraLog: (body) => ({ reason: body.departure_reason })
+});
 
 /**
  * Move crew member to new location
@@ -188,19 +217,9 @@ const moveCrewToLocation = async (req, res) => {
   const { id } = req.params;
   const { location_type, location_id, ship_position } = req.body;
 
-  if (!id) {
-    throw controllerFactory.createValidationError('Crew member ID is required');
-  }
+  const locationId = await validateLocation(location_type, location_id);
 
-  if (!location_type || !location_id) {
-    throw controllerFactory.createValidationError('Location type and location ID are required');
-  }
-
-  if (!['ship', 'outpost'].includes(location_type)) {
-    throw controllerFactory.createValidationError('Location type must be either "ship" or "outpost"');
-  }
-
-  const crew = await Crew.moveToLocation(id, location_type, location_id, ship_position);
+  const crew = await Crew.moveToLocation(id, location_type, locationId, ship_position);
 
   if (!crew) {
     throw controllerFactory.createNotFoundError('Crew member not found');
@@ -210,7 +229,7 @@ const moveCrewToLocation = async (req, res) => {
     userId: req.user.id,
     crewId: crew.id,
     newLocationType: location_type,
-    newLocationId: location_id,
+    newLocationId: locationId,
     newPosition: ship_position
   });
 
@@ -222,7 +241,7 @@ const moveCrewToLocation = async (req, res) => {
  */
 const getDeceasedCrew = async (req, res) => {
   const crew = await Crew.getDeceased();
-  
+
   controllerFactory.sendSuccessResponse(res, {
     crew,
     count: crew.length
@@ -235,17 +254,13 @@ const getDeceasedCrew = async (req, res) => {
 const deleteCrew = async (req, res) => {
   const { id } = req.params;
 
-  if (!id) {
-    throw controllerFactory.createValidationError('Crew member ID is required');
-  }
-
   const success = await Crew.delete(id);
-  
+
   if (!success) {
     throw controllerFactory.createNotFoundError('Crew member not found');
   }
 
-  logger.info(`Crew member deleted`, {
+  logger.info('Crew member deleted', {
     userId: req.user.id,
     crewId: id
   });
@@ -274,10 +289,6 @@ exports.getAllCrew = controllerFactory.createHandler(getAllCrew, {
 
 exports.getCrewByLocation = controllerFactory.createHandler(getCrewByLocation, {
   errorMessage: 'Error fetching crew by location'
-});
-
-exports.getCrewById = controllerFactory.createHandler(getCrewById, {
-  errorMessage: 'Error fetching crew member'
 });
 
 exports.updateCrew = controllerFactory.createHandler(updateCrew, {
