@@ -173,4 +173,54 @@ describe('Consumables', () => {
       expect(screen.getByText(/no scrolls available/i)).toBeInTheDocument();
     });
   });
+
+  it('sends the type of the section a row is in, not one guessed from its name (F-1114)', async () => {
+    (api.get as any).mockResolvedValue({
+      data: {
+        wands: [{ id: 9, name: 'Wand of Scroll of Doom', quantity: 1, charges: 5 }],
+        potionsScrolls: [],
+      },
+    });
+    (api.post as any).mockResolvedValue({ data: {} });
+    renderConsumables();
+
+    await waitFor(() => expect(screen.getByText('Wand of Scroll of Doom')).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Use' })[0]);
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/consumables/use', { itemid: 9, type: 'wand' });
+    });
+  });
+
+  it('shows the server message when using a consumable fails (F-1116)', async () => {
+    (api.post as any).mockRejectedValue({ response: { data: { message: 'Consumable not found or no uses left' } } });
+    renderConsumables();
+
+    await waitFor(() => expect(screen.getByText('Potion of Healing')).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Use' })[0]);
+
+    expect(await screen.findByText('Consumable not found or no uses left')).toBeInTheDocument();
+  });
+
+  it('shows an error when the consumables cannot be loaded (F-1116)', async () => {
+    (api.get as any).mockRejectedValue(new Error('network'));
+    renderConsumables();
+
+    expect(await screen.findByText('Failed to load consumables')).toBeInTheDocument();
+  });
+
+  it('keeps the charges dialog open and explains a failed update (F-1116)', async () => {
+    (api.get as any).mockResolvedValue({
+      data: { wands: [{ id: 3, name: 'Wand of Fireball', quantity: 1, charges: null }], potionsScrolls: [] },
+    });
+    (api.put as any).mockRejectedValue({ response: { data: { message: 'Charges must be between 1 and 50' } } });
+    renderConsumables();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Enter Charges' }));
+    fireEvent.change(screen.getByLabelText('Charges'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    expect(await screen.findByText('Charges must be between 1 and 50')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update' })).toBeInTheDocument();
+  });
 });

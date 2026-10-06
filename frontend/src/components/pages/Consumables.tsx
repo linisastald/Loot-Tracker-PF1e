@@ -1,7 +1,9 @@
-// src/components/Consumables.tsx
-import React, { useEffect, useState } from 'react';
+// src/components/pages/Consumables.tsx
+import React, { useCallback, useEffect, useState } from 'react';
 import api from '../../utils/api';
+import { getErrorMessage } from '../../utils/apiErrors';
 import {
+  Alert,
   Button,
   Collapse,
   Container,
@@ -28,9 +30,7 @@ import {
 import {
   KeyboardArrowDown,
   KeyboardArrowUp,
-  Search as SearchIcon,
-  BatteryFull as BatteryFullIcon,
-  BatteryAlert as BatteryAlertIcon
+  Search as SearchIcon
 } from '@mui/icons-material';
 
 interface Wand {
@@ -46,6 +46,13 @@ interface PotionScroll {
   quantity: number;
 }
 
+interface ConsumablesResponse {
+  wands: Wand[];
+  potionsScrolls: PotionScroll[];
+}
+
+type ConsumableType = 'wand' | 'potion' | 'scroll';
+
 interface OpenSections {
   wands: boolean;
   potions: boolean;
@@ -58,6 +65,9 @@ interface SortState<T> {
   key: keyof T;
   direction: SortDirection;
 }
+
+// Maximum charges for wands
+const MAX_WAND_CHARGES = 50;
 
 // Sort a copy of the list by the given key. Numbers sort numerically, strings
 // case-insensitively, and null/undefined values (e.g. wands with unset charges)
@@ -75,30 +85,126 @@ const sortItems = <T,>(items: T[], key: keyof T, direction: SortDirection): T[] 
   });
 };
 
-interface SortableHeaderCellProps {
-  label: string;
-  columnKey: string;
-  activeKey: string;
-  direction: SortDirection;
-  onSort: (key: string) => void;
-}
+const renderChargeProgress = (charges: number | null | undefined): React.ReactElement | null => {
+  if (charges === null || charges === undefined) return null;
 
-const SortableHeaderCell: React.FC<SortableHeaderCellProps> = ({
-  label, columnKey, activeKey, direction, onSort,
-}) => {
-  const active = activeKey === columnKey;
+  const percentage = (charges / MAX_WAND_CHARGES) * 100;
+  const color = !charges || percentage <= 25 ? 'error' : percentage <= 75 ? 'warning' : 'success';
+
   return (
-    <TableCell sortDirection={active ? direction : false}>
-      <TableSortLabel
-        active={active}
-        direction={active ? direction : 'asc'}
-        onClick={() => onSort(columnKey)}
-      >
-        {label}
-      </TableSortLabel>
-    </TableCell>
+    <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+      <Box sx={{ width: '100%', mr: 1 }}>
+        <LinearProgress
+          variant="determinate"
+          value={percentage}
+          color={color}
+          sx={{ height: 10, borderRadius: 5 }}
+        />
+      </Box>
+      <Box sx={{ minWidth: 35 }}>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          {charges}/{MAX_WAND_CHARGES}
+        </Typography>
+      </Box>
+    </Box>
   );
 };
+
+interface ColumnDef<T> {
+  label: string;
+  /** Property to sort on; omitted for non-sortable columns. */
+  sortKey?: keyof T & string;
+  width?: Record<string, string>;
+  render: (row: T) => React.ReactNode;
+}
+
+interface ConsumableSectionProps<T extends { name: string }> {
+  title: string;
+  /** Singular lower-case noun pair used in the empty-state text, e.g. "wands". */
+  noun: string;
+  open: boolean;
+  onToggle: () => void;
+  items: T[];
+  rowKey: (row: T) => number;
+  columns: ColumnDef<T>[];
+  sort: SortState<T>;
+  onSort: (key: keyof T) => void;
+  searching: boolean;
+  renderAction: (row: T) => React.ReactNode;
+}
+
+const ConsumableSection = <T extends { name: string }>({
+  title, noun, open, onToggle, items, rowKey, columns, sort, onSort, searching, renderAction,
+}: ConsumableSectionProps<T>): React.ReactElement => (
+  <Paper sx={{ p: { xs: 1, md: 2 }, mb: 2 }}>
+    <Typography variant="h6" onClick={onToggle} style={{ cursor: 'pointer' }}>
+      {title}
+      <IconButton>
+        {open ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+      </IconButton>
+    </Typography>
+    <Collapse in={open}>
+      <TableContainer>
+        <Table>
+          <TableHead>
+            <TableRow>
+              {columns.map((col) => {
+                const sortKey = col.sortKey;
+                const active = sortKey !== undefined && sort.key === sortKey;
+                return (
+                  <TableCell key={col.label} sortDirection={active ? sort.direction : false}>
+                    {sortKey === undefined ? col.label : (
+                      <TableSortLabel
+                        active={active}
+                        direction={active ? sort.direction : 'asc'}
+                        onClick={() => onSort(sortKey)}
+                      >
+                        {col.label}
+                      </TableSortLabel>
+                    )}
+                  </TableCell>
+                );
+              })}
+              <TableCell>Action</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {items.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={columns.length + 1} align="center">
+                  {searching ? `No matching ${noun} found` : `No ${noun} available`}
+                </TableCell>
+              </TableRow>
+            ) : (
+              items.map((row) => (
+                <TableRow key={rowKey(row)}>
+                  {columns.map((col) => (
+                    <TableCell key={col.label} sx={col.width ? { width: col.width } : undefined}>
+                      {col.render(row)}
+                    </TableCell>
+                  ))}
+                  <TableCell>{renderAction(row)}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Collapse>
+  </Paper>
+);
+
+// Toggle sort: clicking the active column flips direction, a new column starts ascending
+const nextSort = <T,>(prev: SortState<T>, key: keyof T): SortState<T> => ({
+  key,
+  direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+});
+
+const quantityColumn = <T extends { quantity: number }>(): ColumnDef<T> =>
+  ({ label: 'Quantity', sortKey: 'quantity' as keyof T & string, render: (row) => row.quantity });
+
+const nameColumn = <T extends { name: string }>(): ColumnDef<T> =>
+  ({ label: 'Name', sortKey: 'name' as keyof T & string, render: (row) => row.name });
 
 const Consumables: React.FC = () => {
   const [wands, setWands] = useState<Wand[]>([]);
@@ -107,64 +213,49 @@ const Consumables: React.FC = () => {
   const [openChargesDialog, setOpenChargesDialog] = useState<boolean>(false);
   const [selectedWand, setSelectedWand] = useState<Wand | null>(null);
   const [newCharges, setNewCharges] = useState<string>('');
+  const [error, setError] = useState<string>('');
+  const [dialogError, setDialogError] = useState<string>('');
   const [openSections, setOpenSections] = useState<OpenSections>({wands: true, potions: true, scrolls: true});
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [wandSort, setWandSort] = useState<SortState<Wand>>({key: 'name', direction: 'asc'});
   const [potionSort, setPotionSort] = useState<SortState<PotionScroll>>({key: 'name', direction: 'asc'});
   const [scrollSort, setScrollSort] = useState<SortState<PotionScroll>>({key: 'name', direction: 'asc'});
 
-  // Maximum charges for wands
-  const MAX_WAND_CHARGES = 50;
+  const fetchConsumables = useCallback(async (isCancelled: () => boolean = () => false): Promise<void> => {
+    try {
+      const response = await api.get('/consumables') as unknown as { data: ConsumablesResponse };
+      if (isCancelled()) return;
+      const { wands: wandRows, potionsScrolls } = response.data;
+      setWands(wandRows);
+      setPotions(potionsScrolls.filter(item => item.name.toLowerCase().includes('potion of')));
+      setScrolls(potionsScrolls.filter(item => item.name.toLowerCase().includes('scroll of')));
+    } catch (err) {
+      if (!isCancelled()) setError(getErrorMessage(err, 'Failed to load consumables'));
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-
-    const loadConsumables = async () => {
-      try {
-        const response = await api.get(`/consumables`);
-        if (cancelled) return;
-        setWands(response.data.wands);
-        const potionItems = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('potion of'));
-        const scrollItems = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('scroll of'));
-        setPotions(potionItems);
-        setScrolls(scrollItems);
-      } catch (error) {
-        if (!cancelled) console.error('Error fetching consumables:', error);
-      }
-    };
-
-    loadConsumables();
+    fetchConsumables(() => cancelled);
     return () => { cancelled = true; };
-  }, []);
+  }, [fetchConsumables]);
 
-  const fetchConsumables = async () => {
+  // The type comes from the section the row is rendered in, never from its name.
+  const handleUseConsumable = async (itemid: number, type: ConsumableType): Promise<void> => {
+    setError('');
     try {
-      const response = await api.get(`/consumables`);
-      setWands(response.data.wands);
-      const potionItems = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('potion of'));
-      const scrollItems = response.data.potionsScrolls.filter(item => item.name.toLowerCase().includes('scroll of'));
-      setPotions(potionItems);
-      setScrolls(scrollItems);
-    } catch (error) {
-      console.error('Error fetching consumables:', error);
-    }
-  };
-
-  const handleUseConsumable = async (itemid: number, name: string): Promise<void> => {
-    try {
-      const type = name.toLowerCase().includes('potion of') ? 'potion' :
-        name.toLowerCase().includes('scroll of') ? 'scroll' : 'wand';
-      await api.post(`/consumables/use`, {itemid, type});
+      await api.post('/consumables/use', {itemid, type});
       // Refresh after server processes the update
       await fetchConsumables();
-    } catch (error) {
-      console.error('Error using consumable:', error);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to use consumable'));
     }
   };
 
   const handleOpenChargesDialog = (wand: Wand): void => {
     setSelectedWand(wand);
     setNewCharges(wand.charges?.toString() || '');
+    setDialogError('');
     setOpenChargesDialog(true);
   };
 
@@ -172,18 +263,20 @@ const Consumables: React.FC = () => {
     setOpenChargesDialog(false);
     setSelectedWand(null);
     setNewCharges('');
+    setDialogError('');
   };
 
   const handleUpdateCharges = async (): Promise<void> => {
+    if (!selectedWand) return;
     try {
-      await api.put(`/consumables/wandcharges`, {
-        id: selectedWand!.id,
+      await api.put('/consumables/wandcharges', {
+        id: selectedWand.id,
         charges: parseInt(newCharges),
       });
       handleCloseChargesDialog();
-      fetchConsumables();
-    } catch (error) {
-      console.error('Error updating wand charges:', error);
+      await fetchConsumables();
+    } catch (err) {
+      setDialogError(getErrorMessage(err, 'Failed to update wand charges'));
     }
   };
 
@@ -199,61 +292,42 @@ const Consumables: React.FC = () => {
     );
   };
 
-  // Calculate progress color based on charges percentage
-  const getChargeProgressColor = (charges: number | null | undefined): 'success' | 'warning' | 'error' => {
-    if (!charges) return 'error';
-    const percentage = (charges / MAX_WAND_CHARGES) * 100;
-    if (percentage > 75) return 'success';
-    if (percentage > 25) return 'warning';
-    return 'error';
-  };
-
-  // Render charge progress bar
-  const renderChargeProgress = (charges: number | null | undefined): React.ReactElement | null => {
-    if (charges === null || charges === undefined) return null;
-
-    const percentage = (charges / MAX_WAND_CHARGES) * 100;
-    const color = getChargeProgressColor(charges);
-
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-        <Box sx={{ width: '100%', mr: 1 }}>
-          <LinearProgress
-            variant="determinate"
-            value={percentage}
-            color={color}
-            sx={{ height: 10, borderRadius: 5 }}
-          />
-        </Box>
-        <Box sx={{ minWidth: 35 }}>
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>
-            {charges}/{MAX_WAND_CHARGES}
-          </Typography>
-        </Box>
-      </Box>
-    );
-  };
-
-  // Toggle sort: clicking the active column flips direction, a new column starts ascending
-  const handleSort = <T,>(
-    setter: React.Dispatch<React.SetStateAction<SortState<T>>>,
-    key: string,
-  ): void => {
-    setter(prev => ({
-      key: key as keyof T,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
-    }));
-  };
-
   // Filter then sort each section
   const filteredWands = sortItems(filterItems(wands), wandSort.key, wandSort.direction);
   const filteredPotions = sortItems(filterItems(potions), potionSort.key, potionSort.direction);
   const filteredScrolls = sortItems(filterItems(scrolls), scrollSort.key, scrollSort.direction);
 
+  const wandColumns: ColumnDef<Wand>[] = [
+    quantityColumn<Wand>(),
+    nameColumn<Wand>(),
+    {
+      label: 'Charges',
+      sortKey: 'charges',
+      width: { xs: '35%', md: '30%' },
+      render: (wand) => wand.charges !== null ? (
+        <Tooltip title={`${wand.charges} out of ${MAX_WAND_CHARGES} charges remaining`}>
+          <Box>{renderChargeProgress(wand.charges)}</Box>
+        </Tooltip>
+      ) : (
+        <Button onClick={() => handleOpenChargesDialog(wand)}>Enter Charges</Button>
+      ),
+    },
+  ];
+
+  const renderUseButton = (disabled: boolean, onClick: () => void): React.ReactNode => (
+    <Button onClick={onClick} variant="outlined" color="primary" disabled={disabled}>
+      Use
+    </Button>
+  );
+
   return (
     <Container maxWidth={false} component="main">
+      {error && (
+        <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
       <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
         {/* Search Bar */}
         <TextField
@@ -276,171 +350,62 @@ const Consumables: React.FC = () => {
         />
       </Paper>
 
-      {/* Wands Section */}
-      <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
-        <Typography variant="h6" onClick={() => toggleSection('wands')} style={{cursor: 'pointer'}}>
-          Wands
-          <IconButton>
-            {openSections.wands ? <KeyboardArrowUp/> : <KeyboardArrowDown/>}
-          </IconButton>
-        </Typography>
-        <Collapse in={openSections.wands}>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <SortableHeaderCell label="Quantity" columnKey="quantity" activeKey={wandSort.key} direction={wandSort.direction} onSort={(k) => handleSort(setWandSort, k)} />
-                  <SortableHeaderCell label="Name" columnKey="name" activeKey={wandSort.key} direction={wandSort.direction} onSort={(k) => handleSort(setWandSort, k)} />
-                  <SortableHeaderCell label="Charges" columnKey="charges" activeKey={wandSort.key} direction={wandSort.direction} onSort={(k) => handleSort(setWandSort, k)} />
-                  <TableCell>Action</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredWands.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} align="center">
-                      {searchQuery ? "No matching wands found" : "No wands available"}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredWands.map((wand) => (
-                    <TableRow key={wand.id}>
-                      <TableCell>{wand.quantity}</TableCell>
-                      <TableCell>{wand.name}</TableCell>
-                      <TableCell sx={{ width: { xs: '35%', md: '30%' } }}>
-                        {wand.charges !== null ? (
-                          <Tooltip title={`${wand.charges} out of ${MAX_WAND_CHARGES} charges remaining`}>
-                            <Box>
-                              {renderChargeProgress(wand.charges)}
-                            </Box>
-                          </Tooltip>
-                        ) : (
-                          <Button onClick={() => handleOpenChargesDialog(wand)}>
-                            Enter Charges
-                          </Button>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          onClick={() => handleUseConsumable(wand.id, wand.name)}
-                          variant="outlined"
-                          color="primary"
-                          disabled={!wand.charges || wand.charges < 1}
-                        >
-                          Use
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Collapse>
-      </Paper>
+      <ConsumableSection<Wand>
+        title="Wands"
+        noun="wands"
+        open={openSections.wands}
+        onToggle={() => toggleSection('wands')}
+        items={filteredWands}
+        rowKey={(wand) => wand.id}
+        columns={wandColumns}
+        sort={wandSort}
+        onSort={(key) => setWandSort(prev => nextSort(prev, key))}
+        searching={!!searchQuery}
+        renderAction={(wand) => renderUseButton(
+          !wand.charges || wand.charges < 1,
+          () => handleUseConsumable(wand.id, 'wand'),
+        )}
+      />
 
-      {/* Potions Section */}
-      <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
-        <Typography variant="h6" onClick={() => toggleSection('potions')} style={{cursor: 'pointer'}}>
-          Potions
-          <IconButton>
-            {openSections.potions ? <KeyboardArrowUp/> : <KeyboardArrowDown/>}
-          </IconButton>
-        </Typography>
-        <Collapse in={openSections.potions}>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <SortableHeaderCell label="Quantity" columnKey="quantity" activeKey={potionSort.key} direction={potionSort.direction} onSort={(k) => handleSort(setPotionSort, k)} />
-                  <SortableHeaderCell label="Name" columnKey="name" activeKey={potionSort.key} direction={potionSort.direction} onSort={(k) => handleSort(setPotionSort, k)} />
-                  <TableCell>Action</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredPotions.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} align="center">
-                      {searchQuery ? "No matching potions found" : "No potions available"}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredPotions.map((potion) => (
-                    <TableRow key={potion.itemid}>
-                      <TableCell>{potion.quantity}</TableCell>
-                      <TableCell>{potion.name}</TableCell>
-                      <TableCell>
-                        <Button
-                          onClick={() => handleUseConsumable(potion.itemid, potion.name)}
-                          variant="outlined"
-                          color="primary"
-                          disabled={potion.quantity < 1}
-                        >
-                          Use
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Collapse>
-      </Paper>
+      <ConsumableSection<PotionScroll>
+        title="Potions"
+        noun="potions"
+        open={openSections.potions}
+        onToggle={() => toggleSection('potions')}
+        items={filteredPotions}
+        rowKey={(potion) => potion.itemid}
+        columns={[quantityColumn<PotionScroll>(), nameColumn<PotionScroll>()]}
+        sort={potionSort}
+        onSort={(key) => setPotionSort(prev => nextSort(prev, key))}
+        searching={!!searchQuery}
+        renderAction={(potion) => renderUseButton(
+          potion.quantity < 1,
+          () => handleUseConsumable(potion.itemid, 'potion'),
+        )}
+      />
 
-      {/* Scrolls Section */}
-      <Paper sx={{p: { xs: 1, md: 2 }, mb: 2}}>
-        <Typography variant="h6" onClick={() => toggleSection('scrolls')} style={{cursor: 'pointer'}}>
-          Scrolls
-          <IconButton>
-            {openSections.scrolls ? <KeyboardArrowUp/> : <KeyboardArrowDown/>}
-          </IconButton>
-        </Typography>
-        <Collapse in={openSections.scrolls}>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <SortableHeaderCell label="Quantity" columnKey="quantity" activeKey={scrollSort.key} direction={scrollSort.direction} onSort={(k) => handleSort(setScrollSort, k)} />
-                  <SortableHeaderCell label="Name" columnKey="name" activeKey={scrollSort.key} direction={scrollSort.direction} onSort={(k) => handleSort(setScrollSort, k)} />
-                  <TableCell>Action</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredScrolls.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} align="center">
-                      {searchQuery ? "No matching scrolls found" : "No scrolls available"}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredScrolls.map((scroll) => (
-                    <TableRow key={scroll.itemid}>
-                      <TableCell>{scroll.quantity}</TableCell>
-                      <TableCell>{scroll.name}</TableCell>
-                      <TableCell>
-                        <Button
-                          onClick={() => handleUseConsumable(scroll.itemid, scroll.name)}
-                          variant="outlined"
-                          color="primary"
-                          disabled={scroll.quantity < 1}
-                        >
-                          Use
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Collapse>
-      </Paper>
+      <ConsumableSection<PotionScroll>
+        title="Scrolls"
+        noun="scrolls"
+        open={openSections.scrolls}
+        onToggle={() => toggleSection('scrolls')}
+        items={filteredScrolls}
+        rowKey={(scroll) => scroll.itemid}
+        columns={[quantityColumn<PotionScroll>(), nameColumn<PotionScroll>()]}
+        sort={scrollSort}
+        onSort={(key) => setScrollSort(prev => nextSort(prev, key))}
+        searching={!!searchQuery}
+        renderAction={(scroll) => renderUseButton(
+          scroll.quantity < 1,
+          () => handleUseConsumable(scroll.itemid, 'scroll'),
+        )}
+      />
 
       {/* Charges Dialog */}
       <Dialog open={openChargesDialog} onClose={handleCloseChargesDialog}>
         <DialogTitle>Enter Charges</DialogTitle>
         <DialogContent>
+          {dialogError && <Alert severity="error" sx={{ mb: 1 }}>{dialogError}</Alert>}
           <TextField
             autoFocus
             margin="dense"

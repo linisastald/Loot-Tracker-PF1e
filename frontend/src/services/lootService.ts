@@ -288,12 +288,6 @@ const lootService = {
   identifyItems: (data: IdentificationData): Promise<ApiResponse> =>
     api.post('/appraisal/identify', data),
 
-  /**
-   * Get item appraisals
-   */
-  getItemAppraisals: (itemId: number): Promise<ApiResponse> =>
-    api.get(`/appraisal/item/${itemId}`),
-
   // ===== Utility Methods =====
 
   /**

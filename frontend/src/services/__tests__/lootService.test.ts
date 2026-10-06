@@ -364,13 +364,6 @@ describe('lootService', () => {
     });
   });
 
-  describe('getItemAppraisals', () => {
-    it('should GET /appraisal/item/:itemId', async () => {
-      await lootService.getItemAppraisals(42);
-      expect(api.get).toHaveBeenCalledWith('/appraisal/item/42');
-    });
-  });
-
   // ===== Utility Methods =====
 
   describe('calculateValue', () => {

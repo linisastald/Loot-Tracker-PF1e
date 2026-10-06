@@ -40,7 +40,6 @@ const lootService = {
   appraiseLoot: jest.fn(),
   getUnidentifiedItems: jest.fn(),
   identifyItems: jest.fn(),
-  getItemAppraisals: jest.fn(),
   
   // Utility Methods
   calculateValue: jest.fn(),
