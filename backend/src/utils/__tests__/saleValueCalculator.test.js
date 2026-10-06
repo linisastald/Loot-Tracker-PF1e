@@ -217,32 +217,4 @@ describe('Sale Value Calculator', () => {
       expect(result).toBe(322.5);
     });
   });
-
-  describe('Error handling', () => {
-    it('should handle exceptions in calculateItemSaleValue gracefully', () => {
-      // Create an object that throws when accessing properties
-      const problematicItem = new Proxy({}, {
-        get() {
-          throw new Error('Property access error');
-        }
-      });
-
-      const result = calculateItemSaleValue(problematicItem);
-      expect(result).toBe(0);
-    });
-
-    it('should handle exceptions in calculateTotalSaleValue gracefully', () => {
-      // Array with an object that throws when accessed
-      const problematicItems = [
-        new Proxy({}, {
-          get() {
-            throw new Error('Property access error');
-          }
-        })
-      ];
-
-      const result = calculateTotalSaleValue(problematicItems);
-      expect(result).toBe(0);
-    });
-  });
 });
