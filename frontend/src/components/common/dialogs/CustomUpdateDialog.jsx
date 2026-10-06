@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormHelperText,
   Grid,
   InputLabel,
   MenuItem,
@@ -14,7 +15,9 @@ import {
   TextField
 } from '@mui/material';
 
-const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, onUpdateSubmit, error = ''}) => {
+// lockUnidentified: a non-DM editing an item that is still unidentified. The server
+// rejects un-ticking it there (identifying goes through Identify or a DM).
+const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, onUpdateSubmit, error = '', lockUnidentified = false}) => {
     return (
         <Dialog open={open} onClose={onClose}>
             <DialogTitle>Update Entry</DialogTitle>
@@ -45,7 +48,7 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                         />
                     </Grid>
                     <Grid size={{xs: 12, sm: 6}}>
-                        <FormControl fullWidth>
+                        <FormControl fullWidth disabled={lockUnidentified}>
                             <InputLabel>Magical?</InputLabel>
                             <Select
                                 name="unidentified"
@@ -56,6 +59,9 @@ const CustomUpdateDialog = ({open, onClose, updatedEntry = {}, onUpdateChange, o
                                 <MenuItem value={false}>Identified</MenuItem>
                                 <MenuItem value={true}>Unidentified</MenuItem>
                             </Select>
+                            {lockUnidentified && (
+                                <FormHelperText>Use Identify to identify this item.</FormHelperText>
+                            )}
                         </FormControl>
                     </Grid>
                     <Grid size={{xs: 12, sm: 6}}>

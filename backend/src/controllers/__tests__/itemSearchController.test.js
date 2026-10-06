@@ -1,6 +1,6 @@
 /**
  * Unit tests for itemSearchController
- * Tests item availability checks, search CRUD operations
+ * Tests item availability checks and the search history listing
  */
 
 jest.mock('../../models/ItemSearch');
@@ -465,60 +465,156 @@ describe('itemSearchController', () => {
   });
 
   // -------------------------------------------------------------------
-  // getSearchById
+  // d100 roll and found/not-found outcome (F-0189)
   // -------------------------------------------------------------------
-  describe('getSearchById', () => {
-    it('should return a search record when found', async () => {
-      const mockSearch = { id: 1, item_value: 500, found: true };
-      const req = createMockReq({ params: { id: '1' } });
-      const res = createMockRes();
+  describe('checkItemAvailability roll', () => {
+    const baseBody = { city_name: 'Sandpoint', city_size: 'Small Town' };
+    let randomSpy;
 
-      ItemSearch.findById.mockResolvedValue(mockSearch);
-
-      await itemSearchController.getSearchById(req, res);
-
-      expect(ItemSearch.findById).toHaveBeenCalledWith('1');
-      expect(res.success).toHaveBeenCalledWith(mockSearch, 'Search retrieved');
+    beforeEach(() => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ year: 4712, month: 3, day: 15 }] });
+      City.getOrCreate.mockResolvedValue(mockCity);
+      City.getEffectiveCasterLevel.mockReturnValue(5);
+      ItemSearch.calculateCasterLevelPenalty.mockReturnValue(0);
+      ItemSearch.calculateAvailability.mockReturnValue({
+        threshold: 40, percentage: 40, description: '40%', reason: 'available',
+      });
+      ItemSearch.create.mockImplementation(async (data) => ({ id: 1, ...data }));
     });
 
-    it('should return 404 when search not found', async () => {
-      const req = createMockReq({ params: { id: '999' } });
+    afterEach(() => {
+      if (randomSpy) randomSpy.mockRestore();
+    });
+
+    // Math.random() = (roll - 1) / 100 gives a d100 of exactly "roll"
+    const rollOf = (roll) => { randomSpy = jest.spyOn(Math, 'random').mockReturnValue((roll - 1) / 100); };
+
+    it('finds the item when the roll equals the threshold', async () => {
+      rollOf(40);
       const res = createMockRes();
 
-      ItemSearch.findById.mockResolvedValue(null);
+      await itemSearchController.checkItemAvailability(createMockReq({ body: baseBody }), res);
 
-      await itemSearchController.getSearchById(req, res);
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ found: true, roll_result: 40 }),
+        'Item found!'
+      );
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({
+        found: true, roll_result: 40, availability_threshold: 40,
+      }));
+    });
 
-      expect(res.notFound).toHaveBeenCalledWith('Search record not found');
+    it('does not find the item when the roll is one above the threshold', async () => {
+      rollOf(41);
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({ body: baseBody }), res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ found: false, roll_result: 41 }),
+        'Item not found'
+      );
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ found: false, roll_result: 41 }));
+    });
+
+    it('rolls 1 as found and 100 as not found for a 40% threshold', async () => {
+      rollOf(1);
+      let res = createMockRes();
+      await itemSearchController.checkItemAvailability(createMockReq({ body: baseBody }), res);
+      expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ found: true, roll_result: 1 }), 'Item found!');
+
+      randomSpy.mockRestore();
+      rollOf(100);
+      res = createMockRes();
+      await itemSearchController.checkItemAvailability(createMockReq({ body: baseBody }), res);
+      expect(res.success).toHaveBeenCalledWith(expect.objectContaining({ found: false, roll_result: 100 }), 'Item not found');
     });
   });
 
   // -------------------------------------------------------------------
-  // deleteSearch
+  // Input validation (F-0370)
   // -------------------------------------------------------------------
-  describe('deleteSearch', () => {
-    it('should delete a search record successfully', async () => {
-      const req = createMockReq({ params: { id: '1' } });
-      const res = createMockRes();
+  describe('checkItemAvailability input validation', () => {
+    const baseBody = { city_name: 'Sandpoint', city_size: 'Small Town' };
 
-      ItemSearch.findById.mockResolvedValue({ id: 1 });
-      ItemSearch.delete.mockResolvedValue(true);
-
-      await itemSearchController.deleteSearch(req, res);
-
-      expect(ItemSearch.delete).toHaveBeenCalledWith('1');
-      expect(res.success).toHaveBeenCalledWith(null, 'Search record deleted successfully');
+    beforeEach(() => {
+      dbUtils.executeQuery.mockReset();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ year: 4712, month: 3, day: 15 }] });
+      City.getOrCreate.mockResolvedValue(mockCity);
+      City.getEffectiveCasterLevel.mockReturnValue(5);
+      ItemSearch.calculateCasterLevelPenalty.mockReturnValue(0);
+      ItemSearch.calculateAvailability.mockReturnValue({
+        threshold: 40, percentage: 40, description: '40%', reason: 'available',
+      });
+      ItemSearch.create.mockImplementation(async (data) => ({ id: 1, ...data }));
     });
 
-    it('should return 404 when deleting non-existent search', async () => {
-      const req = createMockReq({ params: { id: '999' } });
+    it.each([
+      ['a non-numeric item_id', { item_id: 'abc' }],
+      ['a non-array mod_ids', { mod_ids: '1,2' }],
+      ['a non-numeric mod id', { mod_ids: [1, 'x'] }],
+      ['a non-string city_name', { city_name: { $ne: 1 } }],
+    ])('rejects %s with a validation error', async (_label, body) => {
       const res = createMockRes();
 
-      ItemSearch.findById.mockResolvedValue(null);
+      await itemSearchController.checkItemAvailability(createMockReq({ body: { ...baseBody, ...body } }), res);
 
-      await itemSearchController.deleteSearch(req, res);
+      expect(res.validationError).toHaveBeenCalledTimes(1);
+      expect(City.getOrCreate).not.toHaveBeenCalled();
+      expect(ItemSearch.create).not.toHaveBeenCalled();
+    });
 
-      expect(res.notFound).toHaveBeenCalledWith('Search record not found');
+    it('rejects a character that is not in the current campaign', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({
+        campaignId: 3, body: { ...baseBody, character_id: 777 },
+      }), res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(expect.stringContaining('FROM characters'), [777, 3]);
+      expect(res.validationError).toHaveBeenCalledWith('Character not found in the current campaign');
+      expect(ItemSearch.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects another player's character for a player", async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 5, user_id: 99 }] });
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({
+        campaignId: 3, campaignRole: 'Player', body: { ...baseBody, character_id: 5 },
+      }), res);
+
+      expect(res.forbidden).toHaveBeenCalledTimes(1);
+      expect(ItemSearch.create).not.toHaveBeenCalled();
+    });
+
+    it('records the search for the caller\'s own character', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 5, user_id: 1 }] })
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] });
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({
+        campaignId: 3, campaignRole: 'Player', body: { ...baseBody, character_id: '5' },
+      }), res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ character_id: 5 }));
+    });
+
+    it('lets a DM search as any character of the campaign', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 5, user_id: 99 }] })
+        .mockResolvedValueOnce({ rows: [{ year: 4712, month: 3, day: 15 }] });
+      const res = createMockRes();
+
+      await itemSearchController.checkItemAvailability(createMockReq({
+        campaignId: 3, campaignRole: 'DM', body: { ...baseBody, character_id: 5 },
+      }), res);
+
+      expect(res.forbidden).not.toHaveBeenCalled();
+      expect(ItemSearch.create).toHaveBeenCalledWith(expect.objectContaining({ character_id: 5 }));
     });
   });
 });

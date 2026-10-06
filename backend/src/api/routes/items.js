@@ -11,10 +11,8 @@ router.use(verifyToken);
 // Basic CRUD operations
 router.get('/', itemController.getAllLoot);
 router.get('/search', itemController.searchLoot);
-router.get('/:id', itemController.getLootById);
 router.put('/dm-update/:id', itemController.updateLootItemAsDM);
 router.put('/:id', itemController.updateLootItem);
-router.delete('/:id', itemController.deleteLootItem);
 
 // Bulk operations with validation
 router.patch('/status', createValidationMiddleware('updateLootStatus'), itemController.updateLootStatus);

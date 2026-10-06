@@ -27,6 +27,17 @@ export const ITEM_SIZES: string[] = [
   'Colossal',
 ];
 
+// Every status a loot row can have; mirrors ValidationService.LOOT_STATUSES in the backend.
+export const LOOT_STATUSES: string[] = [
+  'Unprocessed',
+  'Kept Party',
+  'Kept Character',
+  'Pending Sale',
+  'Sold',
+  'Given Away',
+  'Trashed',
+];
+
 export const GOLD_TRANSACTION_TYPES: string[] = [
   'Deposit',
   'Withdrawal',

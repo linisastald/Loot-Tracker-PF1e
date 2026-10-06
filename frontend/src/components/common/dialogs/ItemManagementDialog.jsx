@@ -1,5 +1,5 @@
-// frontend/src/components/common/dialogs/ItemManagementDialog.js
-import React, {useEffect, useState} from 'react';
+// frontend/src/components/common/dialogs/ItemManagementDialog.jsx
+import React, {useEffect, useRef, useState} from 'react';
 import {
   Alert,
   Autocomplete,
@@ -14,9 +14,52 @@ import {
   Select,
   TextField
 } from '@mui/material';
-import api from '../../../utils/api';
 import lootService from '../../../services/lootService';
 import {spellcraftDCFor} from '../../../utils/utils';
+import {ITEM_SIZES, ITEM_TYPES, LOOT_STATUSES} from '../../../utils/itemOptions';
+
+// Wait this long after the last keystroke before asking for item suggestions.
+const ITEM_SEARCH_DEBOUNCE_MS = 250;
+
+// Fields where an empty Select value means "not set" and is stored as null.
+const NULLABLE_FIELDS = ['unidentified', 'masterwork', 'cursed', 'type', 'size', 'status', 'whohas'];
+
+// Yes / No / None select for a nullable boolean field.
+const TriStateSelect = ({label, field, item, onChange}) => (
+    <FormControl fullWidth margin="normal">
+        <InputLabel id={`${field}-label`}>{label}</InputLabel>
+        <Select
+            labelId={`${field}-label`}
+            label={label}
+            value={item[field] === null || item[field] === undefined ? '' : item[field]}
+            onChange={(e) => onChange(field, e.target.value)}
+        >
+            <MenuItem value="">None</MenuItem>
+            <MenuItem value={true}>Yes</MenuItem>
+            <MenuItem value={false}>No</MenuItem>
+        </Select>
+    </FormControl>
+);
+
+// Select over a list of string options (plus "None").
+const OptionSelect = ({label, field, item, onChange, options}) => (
+    <FormControl fullWidth margin="normal">
+        <InputLabel id={`${field}-label`}>{label}</InputLabel>
+        <Select
+            labelId={`${field}-label`}
+            label={label}
+            value={item[field] || ''}
+            onChange={(e) => onChange(field, e.target.value)}
+        >
+            <MenuItem value="">None</MenuItem>
+            {options.map(({value, label: optionLabel}) => (
+                <MenuItem key={value} value={value}>{optionLabel}</MenuItem>
+            ))}
+        </Select>
+    </FormControl>
+);
+
+const asOptions = (values) => values.map((value) => ({value, label: value}));
 
 const ItemManagementDialog = ({
                                   open,
@@ -29,22 +72,25 @@ const ItemManagementDialog = ({
     const [itemOptions, setItemOptions] = useState([]);
     const [itemsLoading, setItemsLoading] = useState(false);
     const [itemInputValue, setItemInputValue] = useState('');
-    const [items, setItems] = useState([]);
     const [mods, setMods] = useState([]);
     // The catalog row for the currently linked itemid (separate from the
     // user's loot list). Used to drive the Autocomplete `value` prop and to
     // recompute the spellcraft DC when itemid or modids change.
     const [linkedCatalogItem, setLinkedCatalogItem] = useState(null);
     const [error, setError] = useState(null);
+    const searchTimer = useRef(null);
+    const searchRequestId = useRef(0);
 
     // Initialize the form when the dialog opens or item changes
     useEffect(() => {
         setUpdatedItem(item || {});
         if (open && item) {
             fetchMods();
-            fetchItems();
         }
     }, [open, item]);
+
+    // Drop a pending suggestion lookup when the dialog goes away.
+    useEffect(() => () => clearTimeout(searchTimer.current), []);
 
     // Load the linked catalog item when the dialog opens or the itemid changes.
     // Drives both the Autocomplete display (`value` + `inputValue`) AND the
@@ -92,77 +138,75 @@ const ItemManagementDialog = ({
 
     // Recompute the spellcraft DC whenever the linked catalog item or the
     // selected mods change, with the same rule the unidentified-items list uses
-    // (spellcraftDCFor in utils/utils.ts).
+    // (spellcraftDCFor in utils/utils.ts). A DC the DM already saved is kept as
+    // long as the item and mods are still the ones the dialog was opened with,
+    // so simply opening the dialog and editing notes cannot overwrite it.
     useEffect(() => {
         if (!open || !linkedCatalogItem) return;
         const selectedModIds = Array.isArray(updatedItem?.modids) ? updatedItem.modids : [];
-        const modsById = Object.fromEntries(mods.map(m => [m.id, m]));
-        const newDC = spellcraftDCFor(linkedCatalogItem, selectedModIds, modsById);
+        const identityKey = (itemId, modIds) => `${itemId}|${[...(modIds || [])].sort((a, b) => a - b).join(',')}`;
+        const unchanged = identityKey(linkedCatalogItem.id, selectedModIds) === identityKey(item?.itemid, item?.modids);
+        const storedDC = item?.spellcraft_dc;
+        const newDC = unchanged && storedDC
+            ? storedDC
+            : spellcraftDCFor(linkedCatalogItem, selectedModIds, Object.fromEntries(mods.map(m => [m.id, m])));
         setUpdatedItem(prev =>
             prev?.spellcraft_dc === newDC ? prev : { ...prev, spellcraft_dc: newDC }
         );
-    }, [open, linkedCatalogItem, updatedItem?.modids, mods]);
+    }, [open, item, linkedCatalogItem, updatedItem?.modids, mods]);
 
-    const fetchItems = async () => {
+    const fetchMods = async () => {
         try {
-            const response = await lootService.getAllLoot();
-            // API returns { summary: [], individual: [], count: number }
-            const allItems = [...(response.data.summary || []), ...(response.data.individual || [])];
-            setItems(allItems);
+            const response = await lootService.getMods();
+
+            // Check if response.data is an array or has a mods property that's an array
+            const modsArray = Array.isArray(response.data) ? response.data :
+                (response.data && Array.isArray(response.data.mods) ? response.data.mods : []);
+
+            const modsWithDisplayNames = modsArray.map(mod => ({
+                ...mod,
+                displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
+            }));
+
+            setMods(modsWithDisplayNames);
         } catch (error) {
-            console.error('Error fetching all items:', error);
+            console.error('Error fetching mods:', error);
+            setMods([]);
         }
     };
 
-    const fetchMods = async () => {
-    try {
-        const response = await lootService.getMods();
-
-        // Check if response.data is an array or has a mods property that's an array
-        const modsArray = Array.isArray(response.data) ? response.data :
-                         (response.data && Array.isArray(response.data.mods) ? response.data.mods : []);
-
-        const modsWithDisplayNames = modsArray.map(mod => ({
-            ...mod,
-            displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
-        }));
-
-        setMods(modsWithDisplayNames);
-    } catch (error) {
-        console.error('Error fetching mods:', error);
-        setMods([]);
-    }
-};
-
-    const handleItemSearch = async (searchText) => {
+    // Debounced suggestion lookup. Only the newest request may update the
+    // options, so a slow earlier response cannot overwrite a later one.
+    const handleItemSearch = (searchText) => {
+        clearTimeout(searchTimer.current);
         if (!searchText || searchText.length < 2) {
+            searchRequestId.current += 1;
+            setItemsLoading(false);
             setItemOptions([]);
             return;
         }
 
-        setItemsLoading(true);
-        try {
-            const response = await lootService.suggestItems({query: searchText});
-            // API returns { suggestions: [...], count: number }
-            const allItems = response.data.suggestions || [];
-            setItemOptions(allItems);
-        } catch (error) {
-            console.error('Error fetching items:', error);
-        } finally {
-            setItemsLoading(false);
-        }
+        searchTimer.current = setTimeout(async () => {
+            const requestId = ++searchRequestId.current;
+            setItemsLoading(true);
+            try {
+                const response = await lootService.suggestItems({query: searchText});
+                if (requestId !== searchRequestId.current) return;
+                // API returns { suggestions: [...], count: number }
+                setItemOptions(response.data.suggestions || []);
+            } catch (error) {
+                console.error('Error fetching items:', error);
+            } finally {
+                if (requestId === searchRequestId.current) setItemsLoading(false);
+            }
+        }, ITEM_SEARCH_DEBOUNCE_MS);
     };
 
     const handleItemUpdateChange = (field, value) => {
-        setUpdatedItem(prevItem => {
-            if (field === 'modids') {
-                return {...prevItem, [field]: value};
-            }
-            if (['unidentified', 'masterwork', 'cursed', 'type', 'size', 'status', 'whohas'].includes(field)) {
-                return {...prevItem, [field]: value === '' ? null : value};
-            }
-            return {...prevItem, [field]: value};
-        });
+        setUpdatedItem(prevItem => ({
+            ...prevItem,
+            [field]: value === '' && NULLABLE_FIELDS.includes(field) ? null : value
+        }));
     };
 
     const [calculatingValue, setCalculatingValue] = useState(false);
@@ -226,9 +270,9 @@ const ItemManagementDialog = ({
                 session_date: updatedItem.session_date || null,
                 quantity: updatedItem.quantity !== '' ? parseInt(updatedItem.quantity, 10) : null,
                 name: updatedItem.name || null,
-                unidentified: updatedItem.unidentified === '' ? null : updatedItem.unidentified,
-                masterwork: updatedItem.masterwork === '' ? null : updatedItem.masterwork,
-                cursed: updatedItem.cursed === '' ? null : updatedItem.cursed,
+                unidentified: updatedItem.unidentified,
+                masterwork: updatedItem.masterwork,
+                cursed: updatedItem.cursed,
                 type: updatedItem.type || null,
                 size: updatedItem.size || null,
                 status: updatedItem.status || null,
@@ -289,86 +333,12 @@ const ItemManagementDialog = ({
                     onChange={(e) => handleItemUpdateChange('name', e.target.value)}
                     margin="normal"
                 />
-                <FormControl fullWidth margin="normal">
-                    <InputLabel>Unidentified</InputLabel>
-                    <Select
-                        value={updatedItem.unidentified === null ? '' : updatedItem.unidentified}
-                        onChange={(e) => handleItemUpdateChange('unidentified', e.target.value === '' ? null : e.target.value)}
-                    >
-                        <MenuItem value="">None</MenuItem>
-                        <MenuItem value={true}>Yes</MenuItem>
-                        <MenuItem value={false}>No</MenuItem>
-                    </Select>
-                </FormControl>
-                <FormControl fullWidth margin="normal">
-                    <InputLabel>Masterwork</InputLabel>
-                    <Select
-                        value={updatedItem.masterwork === null ? '' : updatedItem.masterwork}
-                        onChange={(e) => handleItemUpdateChange('masterwork', e.target.value === '' ? null : e.target.value)}
-                    >
-                        <MenuItem value="">None</MenuItem>
-                        <MenuItem value={true}>Yes</MenuItem>
-                        <MenuItem value={false}>No</MenuItem>
-                    </Select>
-                </FormControl>
-                <FormControl fullWidth margin="normal">
-                    <InputLabel>Cursed</InputLabel>
-                    <Select
-                        value={updatedItem.cursed === null ? '' : updatedItem.cursed}
-                        onChange={(e) => handleItemUpdateChange('cursed', e.target.value === '' ? null : e.target.value)}
-                    >
-                        <MenuItem value="">None</MenuItem>
-                        <MenuItem value={true}>Yes</MenuItem>
-                        <MenuItem value={false}>No</MenuItem>
-                    </Select>
-                </FormControl>
-                <FormControl fullWidth margin="normal">
-                    <InputLabel>Type</InputLabel>
-                    <Select
-                        value={updatedItem.type || ''}
-                        onChange={(e) => handleItemUpdateChange('type', e.target.value === '' ? null : e.target.value)}
-                    >
-                        <MenuItem value="">None</MenuItem>
-                        <MenuItem value="weapon">Weapon</MenuItem>
-                        <MenuItem value="armor">Armor</MenuItem>
-                        <MenuItem value="magic">Magic</MenuItem>
-                        <MenuItem value="gear">Gear</MenuItem>
-                        <MenuItem value="trade good">Trade Good</MenuItem>
-                        <MenuItem value="other">Other</MenuItem>
-                    </Select>
-                </FormControl>
-                <FormControl fullWidth margin="normal">
-                    <InputLabel>Size</InputLabel>
-                    <Select
-                        value={updatedItem.size || ''}
-                        onChange={(e) => handleItemUpdateChange('size', e.target.value === '' ? null : e.target.value)}
-                    >
-                        <MenuItem value="">None</MenuItem>
-                        <MenuItem value="Fine">Fine</MenuItem>
-                        <MenuItem value="Diminutive">Diminutive</MenuItem>
-                        <MenuItem value="Tiny">Tiny</MenuItem>
-                        <MenuItem value="Small">Small</MenuItem>
-                        <MenuItem value="Medium">Medium</MenuItem>
-                        <MenuItem value="Large">Large</MenuItem>
-                        <MenuItem value="Huge">Huge</MenuItem>
-                        <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-                        <MenuItem value="Colossal">Colossal</MenuItem>
-                    </Select>
-                </FormControl>
-                <FormControl fullWidth margin="normal">
-                    <InputLabel>Status</InputLabel>
-                    <Select
-                        value={updatedItem.status || ''}
-                        onChange={(e) => handleItemUpdateChange('status', e.target.value === '' ? null : e.target.value)}
-                    >
-                        <MenuItem value="">None</MenuItem>
-                        <MenuItem value="Pending Sale">Pending Sale</MenuItem>
-                        <MenuItem value="Kept Self">Kept Self</MenuItem>
-                        <MenuItem value="Kept Party">Kept Party</MenuItem>
-                        <MenuItem value="Trashed">Trashed</MenuItem>
-                        <MenuItem value="Sold">Sold</MenuItem>
-                    </Select>
-                </FormControl>
+                <TriStateSelect label="Unidentified" field="unidentified" item={updatedItem} onChange={handleItemUpdateChange}/>
+                <TriStateSelect label="Masterwork" field="masterwork" item={updatedItem} onChange={handleItemUpdateChange}/>
+                <TriStateSelect label="Cursed" field="cursed" item={updatedItem} onChange={handleItemUpdateChange}/>
+                <OptionSelect label="Type" field="type" item={updatedItem} onChange={handleItemUpdateChange} options={ITEM_TYPES}/>
+                <OptionSelect label="Size" field="size" item={updatedItem} onChange={handleItemUpdateChange} options={asOptions(ITEM_SIZES)}/>
+                <OptionSelect label="Status" field="status" item={updatedItem} onChange={handleItemUpdateChange} options={asOptions(LOOT_STATUSES)}/>
                 <Autocomplete
                     disablePortal
                     options={itemOptions}
@@ -389,9 +359,10 @@ const ItemManagementDialog = ({
                         return option?.name || '';
                     }}
                     inputValue={itemInputValue}
-                    onInputChange={(_, newInputValue) => {
+                    onInputChange={(_, newInputValue, reason) => {
                         setItemInputValue(newInputValue);
-                        handleItemSearch(newInputValue);
+                        // 'reset' is MUI syncing the text to the selected item, not typing
+                        if (reason !== 'reset') handleItemSearch(newInputValue);
                     }}
                     onChange={(_, newValue) => {
                         if (newValue && typeof newValue === 'object') {

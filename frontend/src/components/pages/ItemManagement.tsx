@@ -1,6 +1,6 @@
-// frontend/src/components/pages/ItemManagement.js
-import React, {useState} from 'react';
-import {Box, Container, Paper, Tab, Tabs, Typography} from '@mui/material';
+// frontend/src/components/pages/ItemManagement.tsx
+import React from 'react';
+import {Box, Container, Paper, Tab, Tabs} from '@mui/material';
 import {Route, Routes, useLocation, useNavigate} from 'react-router-dom';
 
 import GeneralItemManagement from './ItemManagement/GeneralItemManagement';
@@ -9,40 +9,38 @@ import PendingSaleManagement from './ItemManagement/PendingSaleManagement';
 import AddItemMod from './ItemManagement/AddItemMod';
 import SearchHistoryManagement from './ItemManagement/SearchHistoryManagement';
 
-const ItemManagement = () => {
+const BASE_PATH = '/item-management';
+
+interface ItemManagementTab {
+    label: string;
+    // Path segment under /item-management ('' for the index tab)
+    segment: string;
+    element: React.ReactElement;
+}
+
+// One list drives the tab bar, the routes and the tab <-> URL mapping.
+const TABS: ItemManagementTab[] = [
+    {label: 'General', segment: '', element: <GeneralItemManagement/>},
+    {label: 'Unidentified Items', segment: 'unidentified', element: <UnidentifiedItemsManagement/>},
+    {label: 'Pending Sale', segment: 'pending-sale', element: <PendingSaleManagement/>},
+    {label: 'Add Item/Mod', segment: 'add-item-mod', element: <AddItemMod/>},
+    {label: 'Search History', segment: 'search-history', element: <SearchHistoryManagement/>},
+];
+
+const tabPath = (tab: ItemManagementTab): string => (tab.segment ? `${BASE_PATH}/${tab.segment}` : BASE_PATH);
+
+const ItemManagement: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState(() => {
-        // Determine active tab based on current path
-        const path = location.pathname;
-        if (path.includes('/unidentified')) return 1;
-        if (path.includes('/pending-sale')) return 2;
-        if (path.includes('/add-item-mod')) return 3;
-        if (path.includes('/search-history')) return 4;
-        return 0;
-    });
 
-    const handleTabChange = (event, newValue) => {
-        setActiveTab(newValue);
-        switch (newValue) {
-            case 0:
-                navigate('/item-management');
-                break;
-            case 1:
-                navigate('/item-management/unidentified');
-                break;
-            case 2:
-                navigate('/item-management/pending-sale');
-                break;
-            case 3:
-                navigate('/item-management/add-item-mod');
-                break;
-            case 4:
-                navigate('/item-management/search-history');
-                break;
-            default:
-                navigate('/item-management');
-        }
+    // The URL is the single source of truth for the selected tab.
+    const activeTab = Math.max(
+        0,
+        TABS.findIndex((tab) => tab.segment !== '' && location.pathname.includes(`/${tab.segment}`))
+    );
+
+    const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+        navigate(tabPath(TABS[newValue] ?? TABS[0]));
     };
 
     return (
@@ -50,20 +48,14 @@ const ItemManagement = () => {
             <Paper sx={{p: 2, mb: 2}}>
                 <Box sx={{borderBottom: 1, borderColor: 'divider', mb: 2}}>
                     <Tabs value={activeTab} onChange={handleTabChange} aria-label="item management tabs">
-                        <Tab label="General"/>
-                        <Tab label="Unidentified Items"/>
-                        <Tab label="Pending Sale"/>
-                        <Tab label="Add Item/Mod"/>
-                        <Tab label="Search History"/>
+                        {TABS.map((tab) => <Tab key={tab.label} label={tab.label}/>)}
                     </Tabs>
                 </Box>
 
                 <Routes>
-                    <Route path="/" element={<GeneralItemManagement/>}/>
-                    <Route path="/unidentified" element={<UnidentifiedItemsManagement/>}/>
-                    <Route path="/pending-sale" element={<PendingSaleManagement/>}/>
-                    <Route path="/add-item-mod" element={<AddItemMod/>}/>
-                    <Route path="/search-history" element={<SearchHistoryManagement/>}/>
+                    {TABS.map((tab) => (
+                        <Route key={tab.label} path={tab.segment ? `/${tab.segment}` : '/'} element={tab.element}/>
+                    ))}
                 </Routes>
             </Paper>
         </Container>
