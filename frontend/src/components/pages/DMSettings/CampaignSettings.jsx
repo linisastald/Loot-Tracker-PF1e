@@ -7,6 +7,7 @@
 // nav) picks the change up immediately.
 import React, {useEffect, useState} from 'react';
 import api from '../../../utils/api';
+import {getErrorMessage} from '../../../utils/apiErrors';
 import {useSnackbar} from 'notistack';
 import {useCampaign} from '../../../contexts/CampaignContext';
 import {
@@ -28,10 +29,14 @@ import {
     Paper
 } from '@mui/material';
 
-// Derive the Average Party Level (APL) from the shared character level and the
-// party size, mirroring backend utils/partyLevel (CRB p.397: <=3 chars -> -1,
-// 4-5 -> 0, >=6 -> +1; clamped to a minimum of 1). Used for live previews; the
-// backend stays the source of truth for persisted/announced values.
+const DEFAULT_CHARACTER_LEVEL = 5;
+const MAX_CHARACTER_LEVEL = 30;
+
+// Derive the Average Party Level (APL) from a character level and the party
+// size, mirroring backend utils/partyLevel (CRB p.397: <=3 chars -> -1,
+// 4-5 -> 0, >=6 -> +1; clamped to a minimum of 1). Only used for previews of
+// values that are not saved yet (the draft level, the next level); the saved
+// APL comes from the party-level endpoint.
 const deriveApl = (characterLevel, characterCount) => {
     const level = parseInt(characterLevel) || 0;
     let adjustment = 0;
@@ -42,6 +47,17 @@ const deriveApl = (characterLevel, characterCount) => {
     return Math.max(1, level + adjustment);
 };
 
+const secondaryText = {color: 'text.secondary', mb: 2};
+
+// One titled card of the settings page
+const SettingsSection = ({title, description, children}) => (
+    <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
+        <Typography variant="h6" gutterBottom>{title}</Typography>
+        {description && <Typography variant="body2" sx={secondaryText}>{description}</Typography>}
+        {children}
+    </Paper>
+);
+
 const CampaignSettings = () => {
     const {currentCampaign, campaignSettings, refresh} = useCampaign();
     const {enqueueSnackbar} = useSnackbar();
@@ -50,10 +66,12 @@ const CampaignSettings = () => {
 
     // Infamy system states
     const [infamyEnabled, setInfamyEnabled] = useState(false);
-    // The shared character level every PC is at (stored as 'average_party_level').
-    const [averagePartyLevel, setAveragePartyLevel] = useState(5);
-    // Active party size, used to derive the APL from the character level.
+    // Draft of the shared character level (stored as 'average_party_level'); only
+    // the text field edits it. The SAVED level is derived from the settings map.
+    const [averagePartyLevel, setAveragePartyLevel] = useState(DEFAULT_CHARACTER_LEVEL);
+    // Saved party picture from GET /campaigns/current/party-level
     const [characterCount, setCharacterCount] = useState(0);
+    const [savedApl, setSavedApl] = useState(null);
 
     // Level Up (confirmation dialog because it can ping Discord)
     const [levelUpDialogOpen, setLevelUpDialogOpen] = useState(false);
@@ -65,6 +83,9 @@ const CampaignSettings = () => {
     // Region states
     const [region, setRegion] = useState('Varisia');
     const [availableRegions, setAvailableRegions] = useState([]);
+
+    // The saved character level, as last confirmed by the server
+    const savedLevel = parseInt(campaignSettings?.average_party_level) || DEFAULT_CHARACTER_LEVEL;
 
     // The campaign name lives on the campaign record itself (campaigns.name),
     // not in the settings map.
@@ -82,14 +103,13 @@ const CampaignSettings = () => {
         if (typeof campaignSettings?.region === 'string' && campaignSettings.region) {
             setRegion(campaignSettings.region);
         }
-        // APL is per-campaign (string in the settings map); absent keeps the default
+        // Level is per-campaign (string in the settings map); absent keeps the default
         if (typeof campaignSettings?.average_party_level === 'string' && campaignSettings.average_party_level) {
-            setAveragePartyLevel(parseInt(campaignSettings.average_party_level) || 5);
+            setAveragePartyLevel(parseInt(campaignSettings.average_party_level) || DEFAULT_CHARACTER_LEVEL);
         }
     }, [campaignSettings]);
 
-    // Active party size drives the APL size adjustment; the character level
-    // comes from the settings map (handled above). Re-fetched after a level-up.
+    // Active party size and the saved APL. Re-fetched after a level change.
     const fetchPartyLevel = async () => {
         try {
             const response = await api.get('/campaigns/current/party-level');
@@ -97,9 +117,12 @@ const CampaignSettings = () => {
             if (typeof data.character_count === 'number') {
                 setCharacterCount(data.character_count);
             }
-        } catch (error) {
-            // Non-fatal: the page still works, the APL preview just assumes no
-            // size adjustment until the count loads.
+            if (typeof data.apl === 'number') {
+                setSavedApl(data.apl);
+            }
+        } catch {
+            // Non-fatal: the page still works, the APL falls back to a local
+            // derivation until the count loads.
         }
     };
 
@@ -112,7 +135,7 @@ const CampaignSettings = () => {
                 if (regionsResponse.data) {
                     setAvailableRegions(regionsResponse.data);
                 }
-            } catch (error) {
+            } catch {
                 enqueueSnackbar('Error loading settings. Please try again.', {variant: 'error'});
             }
         };
@@ -122,6 +145,12 @@ const CampaignSettings = () => {
         // enqueueSnackbar is stable; run once on mount
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Persist one per-campaign setting, then refresh the shared context
+    const saveCampaignSetting = async (name, value) => {
+        await api.put('/campaigns/current/settings', {name, value});
+        await refresh();
+    };
 
     const handleCampaignNameChange = async () => {
         if (!campaignName || campaignName.trim() === '') {
@@ -134,90 +163,57 @@ const CampaignSettings = () => {
             await refresh();
             enqueueSnackbar('Campaign name updated successfully', {variant: 'success'});
         } catch (err) {
-            enqueueSnackbar(
-                err.response?.data?.message || 'Error updating campaign name',
-                {variant: 'error'}
-            );
+            enqueueSnackbar(getErrorMessage(err, 'Error updating campaign name'), {variant: 'error'});
         }
     };
 
-    const handleInfamySystemChange = async (event) => {
+    // Optimistic on/off switch for a '1'/'0' campaign setting: reverts on failure
+    const makeToggleHandler = (name, current, setter, label) => async (event) => {
         const isEnabled = event.target.checked;
-        const previous = infamyEnabled;
-        setInfamyEnabled(isEnabled);
+        setter(isEnabled);
         try {
-            await api.put('/campaigns/current/settings', {
-                name: 'infamy_system_enabled',
-                value: isEnabled ? '1' : '0'
-            });
-            await refresh();
-            enqueueSnackbar(
-                `Infamy system ${isEnabled ? 'enabled' : 'disabled'} successfully`,
-                {variant: 'success'}
-            );
+            await saveCampaignSetting(name, isEnabled ? '1' : '0');
+            enqueueSnackbar(`${label} ${isEnabled ? 'enabled' : 'disabled'} successfully`, {variant: 'success'});
         } catch (err) {
-            setInfamyEnabled(previous);
-            enqueueSnackbar(
-                err.response?.data?.message || 'Error updating infamy system setting',
-                {variant: 'error'}
-            );
+            setter(current);
+            enqueueSnackbar(getErrorMessage(err, `Error updating ${label} setting`), {variant: 'error'});
         }
     };
 
-    const handleHarrowSystemChange = async (event) => {
-        const isEnabled = event.target.checked;
-        const previous = harrowEnabled;
-        setHarrowEnabled(isEnabled);
-        try {
-            await api.put('/campaigns/current/settings', {
-                name: 'harrow_system_enabled',
-                value: isEnabled ? '1' : '0'
-            });
-            await refresh();
-            enqueueSnackbar(
-                `Harrow Point Tracker ${isEnabled ? 'enabled' : 'disabled'} successfully`,
-                {variant: 'success'}
-            );
-        } catch (err) {
-            setHarrowEnabled(previous);
-            enqueueSnackbar(
-                err.response?.data?.message || 'Error updating Harrow Point Tracker setting',
-                {variant: 'error'}
-            );
-        }
-    };
+    const handleInfamySystemChange = makeToggleHandler(
+        'infamy_system_enabled', infamyEnabled, setInfamyEnabled, 'Infamy system'
+    );
+    const handleHarrowSystemChange = makeToggleHandler(
+        'harrow_system_enabled', harrowEnabled, setHarrowEnabled, 'Harrow Point Tracker'
+    );
 
     const handleAveragePartyLevelChange = async () => {
         const level = parseInt(averagePartyLevel);
         // 1-30 matches the backend validator (levels 1-20 plus mythic-adjusted)
-        if (isNaN(level) || level < 1 || level > 30) {
-            enqueueSnackbar('Character level must be a number between 1 and 30', {variant: 'error'});
+        if (isNaN(level) || level < 1 || level > MAX_CHARACTER_LEVEL) {
+            enqueueSnackbar(`Character level must be a number between 1 and ${MAX_CHARACTER_LEVEL}`, {variant: 'error'});
             return;
         }
         try {
-            await api.put('/campaigns/current/settings', {
-                name: 'average_party_level',
-                value: level
-            });
-            await refresh();
+            await saveCampaignSetting('average_party_level', level);
             await fetchPartyLevel();
             enqueueSnackbar('Character level updated successfully', {variant: 'success'});
         } catch (err) {
-            enqueueSnackbar(
-                err.response?.data?.message || 'Error updating character level',
-                {variant: 'error'}
-            );
+            enqueueSnackbar(getErrorMessage(err, 'Error updating character level'), {variant: 'error'});
         }
     };
 
-    const currentLevel = parseInt(averagePartyLevel) || 0;
-    const currentApl = deriveApl(averagePartyLevel, characterCount);
-    const atMaxLevel = currentLevel >= 30;
+    const atMaxLevel = savedLevel >= MAX_CHARACTER_LEVEL;
+    // Prefer the server's APL for the saved level; derive it only until that loads
+    const currentApl = savedApl ?? deriveApl(savedLevel, characterCount);
+    const draftApl = deriveApl(averagePartyLevel, characterCount);
 
     const handleLevelUp = async () => {
         setLevelingUp(true);
         try {
-            const response = await api.post('/campaigns/current/level-up');
+            // expectedLevel makes a second DM's concurrent click fail instead of
+            // levelling the party twice
+            const response = await api.post('/campaigns/current/level-up', {expectedLevel: savedLevel});
             const data = response.data || response;
             await refresh();
             await fetchPartyLevel();
@@ -228,10 +224,12 @@ const CampaignSettings = () => {
                 {variant: 'success'}
             );
         } catch (err) {
-            enqueueSnackbar(
-                err.response?.data?.message || 'Error leveling up the party',
-                {variant: 'error'}
-            );
+            // The server's message explains a stale level ("... has changed (now N);
+            // refresh and try again"); reload so the page shows the current level
+            enqueueSnackbar(getErrorMessage(err, 'Error leveling up the party'), {variant: 'error'});
+            setLevelUpDialogOpen(false);
+            await refresh();
+            await fetchPartyLevel();
         } finally {
             setLevelingUp(false);
         }
@@ -239,20 +237,20 @@ const CampaignSettings = () => {
 
     const handleRegionChange = async () => {
         try {
-            await api.put('/campaigns/current/settings', {
-                name: 'region',
-                value: region
-            });
+            await saveCampaignSetting('region', region);
+        } catch (err) {
+            enqueueSnackbar(getErrorMessage(err, 'Error updating region'), {variant: 'error'});
+            return;
+        }
 
-            // Initialize weather for the new region
+        // The region is saved at this point; weather initialization is a separate step
+        try {
             await api.post(`/weather/initialize/${region}`);
-
-            await refresh();
             enqueueSnackbar('Region updated successfully and weather initialized', {variant: 'success'});
         } catch (err) {
             enqueueSnackbar(
-                err.response?.data?.message || 'Error updating region',
-                {variant: 'error'}
+                `Region saved, but weather initialization failed: ${getErrorMessage(err, 'unknown error')}`,
+                {variant: 'warning'}
             );
         }
     };
@@ -262,10 +260,7 @@ const CampaignSettings = () => {
             <Typography variant="h6" gutterBottom>
                 {currentCampaign ? `Campaign Settings — ${currentCampaign.name}` : 'Campaign Settings'}
             </Typography>
-            <Typography variant="body2" sx={{
-                color: "text.secondary",
-                mb: 2
-            }}>
+            <Typography variant="body2" sx={secondaryText}>
                 These settings apply only to the current campaign.
             </Typography>
             <Box
@@ -290,15 +285,10 @@ const CampaignSettings = () => {
                     Update Campaign Name
                 </Button>
             </Box>
-            <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
-                <Typography variant="h6" gutterBottom>Campaign Region</Typography>
-                <Typography variant="body2" sx={{
-                    color: "text.secondary",
-                    mb: 2
-                }}>
-                    The region affects weather patterns and conditions in your campaign.
-                </Typography>
-
+            <SettingsSection
+                title="Campaign Region"
+                description="The region affects weather patterns and conditions in your campaign."
+            >
                 <FormControl fullWidth margin="normal">
                     <InputLabel>Region</InputLabel>
                     <Select
@@ -322,21 +312,16 @@ const CampaignSettings = () => {
                 >
                     Update Region
                 </Button>
-            </Paper>
-            <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
-                <Typography variant="h6" gutterBottom>Party Level</Typography>
-                <Typography variant="body2" sx={{
-                    color: "text.secondary",
-                    mb: 2
-                }}>
-                    The level every character in the party is at. "Level Up" raises it by one
-                    and, when Discord integration is enabled, announces the new level to your
-                    campaign channel. The Average Party Level (APL) is derived from this level
-                    and the party size (Core Rulebook p.397).
-                </Typography>
-
+            </SettingsSection>
+            <SettingsSection
+                title="Party Level"
+                description={'The level every character in the party is at. "Level Up" raises it by one ' +
+                    'and, when Discord integration is enabled, announces the new level to your ' +
+                    'campaign channel. The Average Party Level (APL) is derived from this level ' +
+                    'and the party size (Core Rulebook p.397).'}
+            >
                 <Typography variant="body1">
-                    Character level: <strong>{currentLevel || '—'}</strong>
+                    Character level: <strong>{savedLevel}</strong>
                 </Typography>
                 <Typography variant="body2" sx={{
                     color: "text.secondary"
@@ -344,7 +329,7 @@ const CampaignSettings = () => {
                     Active characters: <strong>{characterCount}</strong>
                 </Typography>
                 <Typography variant="body1" sx={{mb: 2}}>
-                    Average Party Level (APL): <strong>{currentLevel ? currentApl : '—'}</strong>
+                    Average Party Level (APL): <strong>{currentApl}</strong>
                 </Typography>
 
                 <Button
@@ -363,13 +348,11 @@ const CampaignSettings = () => {
                             display: "block",
                             mt: 1
                         }}>
-                        The party is already at the maximum level (30).
+                        The party is already at the maximum level ({MAX_CHARACTER_LEVEL}).
                     </Typography>
                 )}
-            </Paper>
-            <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
-                <Typography variant="h6" gutterBottom>Infamy System</Typography>
-
+            </SettingsSection>
+            <SettingsSection title="Infamy System">
                 <FormControlLabel
                     control={
                         <Switch
@@ -386,10 +369,7 @@ const CampaignSettings = () => {
                         mt: 3
                     }}>
                         <Typography variant="subtitle1" gutterBottom>Character Level</Typography>
-                        <Typography variant="body2" sx={{
-                            color: "text.secondary",
-                            mb: 2
-                        }}>
+                        <Typography variant="body2" sx={secondaryText}>
                             The shared character level (same value the "Level Up" button raises).
                             Infamy check DC = 15 + (2 × APL), where the APL is derived from this
                             level and the {characterCount}-character party size.
@@ -398,12 +378,12 @@ const CampaignSettings = () => {
                         <TextField
                             label="Character Level"
                             type="number"
-                            slotProps={{ input: { inputProps: { min: 1, max: 30 } } }}
+                            slotProps={{ input: { inputProps: { min: 1, max: MAX_CHARACTER_LEVEL } } }}
                             value={averagePartyLevel}
                             onChange={(e) => setAveragePartyLevel(e.target.value)}
                             fullWidth
                             margin="normal"
-                            helperText="Enter a value between 1 and 30"
+                            helperText={`Enter a value between 1 and ${MAX_CHARACTER_LEVEL}`}
                         />
 
                         <Button
@@ -424,23 +404,18 @@ const CampaignSettings = () => {
                                     borderRadius: 1
                                 }}>
                                 <Typography variant="body2">
-                                    APL: <strong>{currentApl}</strong> · Current Infamy Check DC: <strong>{15 + (2 * currentApl)}</strong>
+                                    APL: <strong>{draftApl}</strong> · Current Infamy Check DC: <strong>{15 + (2 * draftApl)}</strong>
                                 </Typography>
                             </Box>
                         )}
                     </Box>
                 )}
-            </Paper>
-            <Paper sx={{p: 3, mb: 3, maxWidth: 500}}>
-                <Typography variant="h6" gutterBottom>Harrow Point Tracker</Typography>
-                <Typography variant="body2" sx={{
-                    color: "text.secondary",
-                    mb: 2
-                }}>
-                    Curse of the Crimson Throne flavor module. Tracks each PC's Harrow Point
-                    balance for the current chapter.
-                </Typography>
-
+            </SettingsSection>
+            <SettingsSection
+                title="Harrow Point Tracker"
+                description={"Curse of the Crimson Throne flavor module. Tracks each PC's Harrow Point " +
+                    'balance for the current chapter.'}
+            >
                 <FormControlLabel
                     control={
                         <Switch
@@ -451,13 +426,13 @@ const CampaignSettings = () => {
                     }
                     label="Enable Harrow Point Tracker"
                 />
-            </Paper>
+            </SettingsSection>
             <Dialog open={levelUpDialogOpen} onClose={() => !levelingUp && setLevelUpDialogOpen(false)}>
                 <DialogTitle>Level Up Party?</DialogTitle>
                 <DialogContent>
                     <DialogContentText>
-                        This will raise every character to <strong>level {currentLevel + 1}</strong>
-                        {' '}(Average Party Level <strong>{deriveApl(currentLevel + 1, characterCount)}</strong>).
+                        This will raise every character to <strong>level {savedLevel + 1}</strong>
+                        {' '}(Average Party Level <strong>{deriveApl(savedLevel + 1, characterCount)}</strong>).
                         If Discord integration is enabled, an announcement will be posted to your
                         campaign channel (tagging the campaign role).
                     </DialogContentText>

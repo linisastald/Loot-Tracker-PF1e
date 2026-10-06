@@ -115,7 +115,7 @@ describe('CampaignSettings', () => {
       ).toBeInTheDocument();
     });
 
-    it('reads per-campaign values from the campaign context and only fetches the region list', async () => {
+    it('reads per-campaign values from the campaign context and fetches only the region list and the party-level picture', async () => {
       campaignContextValue = makeContext({ region: 'Cheliax', infamy_system_enabled: '1' });
       renderCampaignSettings();
 
@@ -137,13 +137,26 @@ describe('CampaignSettings', () => {
         expect(api.get).toHaveBeenCalledWith('/weather/regions');
       });
 
-      // No legacy per-campaign settings GETs remain — including the old
-      // global APL endpoint (APL is in the campaign settings map now)
-      const calls = (api.get as any).mock.calls.map((c: any[]) => c[0]);
-      expect(calls).not.toContain('/settings/average-party-level');
-      expect(calls).not.toContain('/settings/campaign-name');
-      expect(calls).not.toContain('/settings/region');
-      expect(calls).not.toContain('/settings/infamy-system');
+      // Exactly these two GETs on mount: no legacy per-campaign settings GETs
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith('/campaigns/current/party-level');
+      });
+      const calls = (api.get as any).mock.calls.map((c: any[]) => c[0]).sort();
+      expect(calls).toEqual(['/campaigns/current/party-level', '/weather/regions']);
+    });
+
+    it('shows the server APL for the saved level and the party size', async () => {
+      campaignContextValue = makeContext({ average_party_level: '7' });
+      (api.get as any).mockImplementation(buildGetMock({
+        '/campaigns/current/party-level': { data: { character_level: 7, character_count: 6, apl: 8 } },
+      }));
+      renderCampaignSettings();
+
+      await waitFor(() => {
+        expect(screen.getByText(/active characters:/i)).toHaveTextContent('6');
+      });
+      expect(screen.getByText(/average party level \(apl\):/i)).toHaveTextContent('8');
+      expect(screen.getByText(/character level:/i)).toHaveTextContent('7');
     });
   });
 
@@ -230,6 +243,33 @@ describe('CampaignSettings', () => {
       expect(
         await screen.findByText(/region updated successfully and weather initialized/i)
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('Region update steps', () => {
+    it('keeps the saved region and says only the weather initialization failed', async () => {
+      (api.post as any).mockRejectedValue({ response: { data: { message: 'weather service down' } } });
+      renderCampaignSettings();
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith('/weather/regions'));
+
+      fireEvent.click(screen.getByRole('button', { name: /update region/i }));
+
+      expect(
+        await screen.findByText(/region saved, but weather initialization failed: weather service down/i)
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/error updating region/i)).not.toBeInTheDocument();
+      expect(refreshMock).toHaveBeenCalled();
+    });
+
+    it('reports a failed save as a region error and skips the weather initialization', async () => {
+      (api.put as any).mockRejectedValue({ response: { data: { message: 'not allowed' } } });
+      renderCampaignSettings();
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith('/weather/regions'));
+
+      fireEvent.click(screen.getByRole('button', { name: /update region/i }));
+
+      expect(await screen.findByText('not allowed')).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
     });
   });
 
@@ -417,20 +457,72 @@ describe('CampaignSettings', () => {
   });
 
   describe('level up', () => {
-    it('levels up the party after confirming the dialog', async () => {
-      (api.post as any).mockResolvedValue({ data: { character_level: 6, apl: 6, character_count: 4, average_party_level: 6, discordSent: true } });
+    const openLevelUpDialog = async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^level up$/i }));
+      return screen.findByRole('dialog');
+    };
+
+    it('levels up the party after confirming the dialog, sending the level it shows', async () => {
+      (api.post as any).mockResolvedValue({ data: { character_level: 6, apl: 6, character_count: 4, discordSent: true } });
       renderCampaignSettings();
 
-      // Open the confirmation dialog from the Party Level section
-      fireEvent.click(screen.getByRole('button', { name: /^level up$/i }));
-
-      const dialog = await screen.findByRole('dialog');
+      const dialog = await openLevelUpDialog();
+      expect(within(dialog).getByText(/level 6/i)).toBeInTheDocument();
       fireEvent.click(within(dialog).getByRole('button', { name: /^level up$/i }));
 
       await waitFor(() => {
-        expect(api.post).toHaveBeenCalledWith('/campaigns/current/level-up');
+        expect(api.post).toHaveBeenCalledWith('/campaigns/current/level-up', { expectedLevel: 5 });
       });
+      expect(await screen.findByText('Characters leveled up to level 6 (APL 6) — Discord notified')).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       expect(refreshMock).toHaveBeenCalled();
+      // the party-level picture is re-read after the level-up
+      const partyLevelGets = (api.get as any).mock.calls.filter((c: any[]) => c[0] === '/campaigns/current/party-level');
+      expect(partyLevelGets).toHaveLength(2);
+    });
+
+    it('is not fooled by an unsaved draft in the Character Level field', async () => {
+      campaignContextValue = makeContext({ infamy_system_enabled: '1' });
+      (api.post as any).mockResolvedValue({ data: { character_level: 6, apl: 6, discordSent: false } });
+      renderCampaignSettings();
+
+      fireEvent.change(getInputByLabel(/^Character Level/), { target: { value: '9' } });
+      const dialog = await openLevelUpDialog();
+
+      // still the SAVED level 5 -> 6, not the typed 9 -> 10
+      expect(within(dialog).getByText(/level 6/i)).toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole('button', { name: /^level up$/i }));
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith('/campaigns/current/level-up', { expectedLevel: 5 });
+      });
+    });
+
+    it('explains a stale level (another DM leveled first), closes the dialog and reloads the level', async () => {
+      (api.post as any).mockRejectedValue({
+        response: { status: 400, data: { message: 'The party level has changed (now 6); refresh and try again' } },
+      });
+      renderCampaignSettings();
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith('/campaigns/current/party-level'));
+      refreshMock.mockClear();
+      (api.get as any).mockClear();
+
+      const dialog = await openLevelUpDialog();
+      fireEvent.click(within(dialog).getByRole('button', { name: /^level up$/i }));
+
+      expect(await screen.findByText('The party level has changed (now 6); refresh and try again')).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(refreshMock).toHaveBeenCalledTimes(1);
+      expect(api.get).toHaveBeenCalledWith('/campaigns/current/party-level');
+    });
+
+    it('shows a generic message when the level-up fails without a server message', async () => {
+      (api.post as any).mockRejectedValue(new Error('network'));
+      renderCampaignSettings();
+
+      const dialog = await openLevelUpDialog();
+      fireEvent.click(within(dialog).getByRole('button', { name: /^level up$/i }));
+
+      expect(await screen.findByText('Error leveling up the party')).toBeInTheDocument();
     });
 
     it('disables Level Up at the maximum level', () => {

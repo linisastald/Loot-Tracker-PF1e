@@ -26,6 +26,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { Palette as PaletteIcon } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import api from '../../../utils/api';
+import { getErrorMessage } from '../../../utils/apiErrors';
 import { useCampaign } from '../../../contexts/CampaignContext';
 import { themeOptions } from '../../../theme';
 import {
@@ -45,6 +46,23 @@ const BASE_PRIMARY: string = basePalette.primary?.main ?? '#5c8db8';
 const BASE_SECONDARY: string = basePalette.secondary?.main ?? '#c77a9e';
 const BASE_BACKGROUND_DEFAULT: string = basePalette.background?.default ?? '#121212';
 const BASE_BACKGROUND_PAPER: string = basePalette.background?.paper ?? '#1e1e1e';
+
+type ColorKey = 'primary' | 'secondary' | 'background_default' | 'background_paper';
+
+// One entry per editable colour: the override key, its label and the base theme value
+const COLOR_FIELDS: Array<{ key: ColorKey; label: string; base: string }> = [
+  { key: 'primary', label: 'Primary color', base: BASE_PRIMARY },
+  { key: 'secondary', label: 'Secondary color', base: BASE_SECONDARY },
+  { key: 'background_default', label: 'Page background', base: BASE_BACKGROUND_DEFAULT },
+  { key: 'background_paper', label: 'Surface background (cards, tables)', base: BASE_BACKGROUND_PAPER },
+];
+
+const EMPTY_COLORS: Record<ColorKey, string> = {
+  primary: '',
+  secondary: '',
+  background_default: '',
+  background_paper: '',
+};
 
 interface ColorFieldProps {
   label: string;
@@ -93,10 +111,7 @@ const CampaignThemeSettings: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
 
   const [mode, setMode] = useState<ModeChoice>('default');
-  const [primary, setPrimary] = useState('');
-  const [secondary, setSecondary] = useState('');
-  const [backgroundDefault, setBackgroundDefault] = useState('');
-  const [backgroundPaper, setBackgroundPaper] = useState('');
+  const [colors, setColors] = useState<Record<ColorKey, string>>(EMPTY_COLORS);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
 
@@ -108,29 +123,20 @@ const CampaignThemeSettings: React.FC = () => {
       (campaignSettings as Record<string, unknown>)?.theme
     );
     setMode(stored?.mode ?? 'default');
-    setPrimary(stored?.primary ?? '');
-    setSecondary(stored?.secondary ?? '');
-    setBackgroundDefault(stored?.background_default ?? '');
-    setBackgroundPaper(stored?.background_paper ?? '');
+    setColors({ ...EMPTY_COLORS, ...stored });
   }, [campaignSettings]);
 
-  const primaryInvalid = primary !== '' && !isValidHexColor(primary);
-  const secondaryInvalid = secondary !== '' && !isValidHexColor(secondary);
-  const backgroundDefaultInvalid = backgroundDefault !== '' && !isValidHexColor(backgroundDefault);
-  const backgroundPaperInvalid = backgroundPaper !== '' && !isValidHexColor(backgroundPaper);
-  const anyInvalid =
-    primaryInvalid || secondaryInvalid || backgroundDefaultInvalid || backgroundPaperInvalid;
+  const anyInvalid = COLOR_FIELDS.some(({ key }) => colors[key] !== '' && !isValidHexColor(colors[key]));
 
   // Only the keys the DM actually set go into the saved value.
   const draftOverride = useMemo(() => {
     const draft: CampaignThemeOverride = {};
     if (mode !== 'default') draft.mode = mode;
-    if (isValidHexColor(primary)) draft.primary = primary;
-    if (isValidHexColor(secondary)) draft.secondary = secondary;
-    if (isValidHexColor(backgroundDefault)) draft.background_default = backgroundDefault;
-    if (isValidHexColor(backgroundPaper)) draft.background_paper = backgroundPaper;
+    for (const { key } of COLOR_FIELDS) {
+      if (isValidHexColor(colors[key])) draft[key] = colors[key];
+    }
     return draft;
-  }, [mode, primary, secondary, backgroundDefault, backgroundPaper]);
+  }, [mode, colors]);
 
   // Live preview: render the swatch row inside the would-be theme.
   const previewTheme = useMemo(() => buildCampaignTheme(draftOverride), [draftOverride]);
@@ -140,11 +146,8 @@ const CampaignThemeSettings: React.FC = () => {
       await api.put('/campaigns/current/settings', { name: 'theme', value });
       await refresh();
       return true;
-    } catch (err: any) {
-      enqueueSnackbar(
-        err.response?.data?.message || 'Failed to update campaign theme',
-        { variant: 'error' }
-      );
+    } catch (err: unknown) {
+      enqueueSnackbar(getErrorMessage(err, 'Failed to update campaign theme'), { variant: 'error' });
       return false;
     }
   };
@@ -165,10 +168,7 @@ const CampaignThemeSettings: React.FC = () => {
     const ok = await saveThemeSetting(null);
     if (ok) {
       setMode('default');
-      setPrimary('');
-      setSecondary('');
-      setBackgroundDefault('');
-      setBackgroundPaper('');
+      setColors(EMPTY_COLORS);
       enqueueSnackbar('Campaign theme reset to default', { variant: 'success' });
     }
     setResetting(false);
@@ -204,30 +204,15 @@ const CampaignThemeSettings: React.FC = () => {
           </Select>
         </FormControl>
 
-        <ColorField
-          label="Primary color"
-          value={primary}
-          baseValue={BASE_PRIMARY}
-          onChange={setPrimary}
-        />
-        <ColorField
-          label="Secondary color"
-          value={secondary}
-          baseValue={BASE_SECONDARY}
-          onChange={setSecondary}
-        />
-        <ColorField
-          label="Page background"
-          value={backgroundDefault}
-          baseValue={BASE_BACKGROUND_DEFAULT}
-          onChange={setBackgroundDefault}
-        />
-        <ColorField
-          label="Surface background (cards, tables)"
-          value={backgroundPaper}
-          baseValue={BASE_BACKGROUND_PAPER}
-          onChange={setBackgroundPaper}
-        />
+        {COLOR_FIELDS.map(({ key, label, base }) => (
+          <ColorField
+            key={key}
+            label={label}
+            value={colors[key]}
+            baseValue={base}
+            onChange={(value) => setColors((prev) => ({ ...prev, [key]: value }))}
+          />
+        ))}
 
         <Typography variant="subtitle2" gutterBottom>
           Preview
