@@ -21,7 +21,12 @@ jest.mock('../../utils/logger', () => ({
   debug: jest.fn(),
 }));
 
+jest.mock('../../utils/partyLevel', () => ({
+  getPartyLevelInfo: jest.fn(),
+}));
+
 const dbUtils = require('../../utils/dbUtils');
+const partyLevel = require('../../utils/partyLevel');
 const infamyController = require('../infamyController');
 
 // ---------------------------------------------------------------------------
@@ -480,8 +485,7 @@ describe('infamyController', () => {
       const res = createMockRes();
 
       // Mock Math.random to return a deterministic value (0.5 -> 1d3 = 2)
-      const originalRandom = Math.random;
-      Math.random = jest.fn().mockReturnValue(0.5);
+      const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [{ infamy: 25, disrepute: 10 }] })  // SELECT ship_infamy
@@ -490,19 +494,21 @@ describe('infamyController', () => {
         .mockResolvedValueOnce({ rows: [] })  // UPDATE disrepute
         .mockResolvedValueOnce({ rows: [] }); // INSERT history
 
-      await infamyController.sacrificeCrew(req, res);
+      try {
+        await infamyController.sacrificeCrew(req, res);
 
-      // 0.5 * 3 = 1.5, floor = 1, +1 = 2
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          crewName: 'Scurvy Pete',
-          disreputeGained: 2,
-          newDisrepute: 12,
-        }),
-        expect.stringContaining('Scurvy Pete')
-      );
-
-      Math.random = originalRandom;
+        // 0.5 * 3 = 1.5, floor = 1, +1 = 2
+        expect(res.success).toHaveBeenCalledWith(
+          expect.objectContaining({
+            crewName: 'Scurvy Pete',
+            disreputeGained: 2,
+            newDisrepute: 12,
+          }),
+          expect.stringContaining('Scurvy Pete')
+        );
+      } finally {
+        randomSpy.mockRestore();
+      }
     });
 
     it('should reject if infamy is below 20 (Despicable threshold)', async () => {
@@ -689,6 +695,256 @@ describe('infamyController', () => {
       await infamyController.setFavoredPort(req, res);
 
       expect(res.validationError).toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // gainInfamy (W20: previously untested)
+  // ---------------------------------------------------------------
+  describe('gainInfamy', () => {
+    // Route queries by SQL text so the test does not depend on call order.
+    function mockGainQueries({
+      date = { year: 4715, month: 6, day: 15 },
+      todayAttempts = [],
+      todayRerolls = [],
+      infamy = { infamy: 5, disrepute: 5 },
+      portTotal = 0,
+      plunder = [],
+      favoredBonus,
+    } = {}) {
+      const written = [];
+      dbUtils.executeQuery.mockImplementation(async (sql, params) => {
+        if (sql.includes('golarion_current_date')) return { rows: date ? [date] : [] };
+        if (sql.includes("reason = 'Boasting at port'")) return { rows: todayAttempts };
+        if (sql.includes("reason = 'Reroll for Infamy'")) return { rows: todayRerolls };
+        if (sql.includes('SELECT * FROM ship_infamy')) return { rows: infamy ? [infamy] : [] };
+        if (sql.includes('FROM port_visits')) return { rows: [{ total_gained: portTotal }] };
+        if (sql.includes('FROM loot')) return { rows: plunder };
+        if (sql.includes('FROM favored_ports')) {
+          return { rows: favoredBonus === undefined ? [] : [{ bonus: favoredBonus }] };
+        }
+        written.push({ sql, params });
+        return { rows: [] };
+      });
+      return written;
+    }
+
+    function mockClient() {
+      const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+      return client;
+    }
+
+    beforeEach(() => {
+      partyLevel.getPartyLevelInfo.mockResolvedValue({ apl: 3 }); // DC = 15 + 2*3 = 21
+    });
+
+    const gainReq = (body) => createMockReq({ body, user: { id: 1 }, campaignId: 1 });
+
+    it('requires a port', async () => {
+      const res = createMockRes();
+      await infamyController.gainInfamy(gainReq({ skillCheck: 25, plunderSpent: 0 }), res);
+      expect(res.validationError).toHaveBeenCalled();
+    });
+
+    it('awards 1/2/3 infamy for success by 0/5/10 and records history and the port visit', async () => {
+      const written = mockGainQueries();
+      const res = createMockRes();
+
+      await infamyController.gainInfamy(
+        gainReq({ port: 'Port Peril', skillCheck: 31, skillUsed: 'Intimidate', plunderSpent: 0 }), res
+      );
+
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ infamyGained: 3, newInfamy: 8, newDisrepute: 8, dc: 21, skillCheck: 31 }),
+        expect.stringContaining('Gained 3 Infamy at Port Peril')
+      );
+      expect(written.some((w) => w.sql.includes('INSERT INTO infamy_history'))).toBe(true);
+      expect(written.some((w) => w.sql.includes('INSERT INTO port_visits'))).toBe(true);
+    });
+
+    it('adds favored-port bonus and 2 per plunder to the check', async () => {
+      mockGainQueries({ favoredBonus: 2, plunder: [{ id: 1, quantity: 5 }] });
+      mockClient();
+      const res = createMockRes();
+
+      await infamyController.gainInfamy(
+        gainReq({ port: 'Port Peril', skillCheck: 10, skillUsed: 'Bluff', plunderSpent: 4 }), res
+      );
+
+      // 10 + 4*2 + 2 = 20 < 21 -> failure
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Failed to gain Infamy'));
+    });
+
+    it('caps the gain so a port never exceeds 5 infamy per threshold', async () => {
+      mockGainQueries({ portTotal: 4 });
+      const res = createMockRes();
+
+      await infamyController.gainInfamy(
+        gainReq({ port: 'Port Peril', skillCheck: 40, skillUsed: 'Intimidate', plunderSpent: 0 }), res
+      );
+
+      expect(res.success).toHaveBeenCalledWith(
+        expect.objectContaining({ infamyGained: 1 }), expect.any(String)
+      );
+    });
+
+    it('rejects a port that already reached its 5-infamy cap', async () => {
+      mockGainQueries({ portTotal: 5 });
+      const res = createMockRes();
+
+      await infamyController.gainInfamy(
+        gainReq({ port: 'Port Peril', skillCheck: 40, plunderSpent: 0 }), res
+      );
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        expect.stringContaining('maximum Infamy contribution')
+      );
+    });
+
+    it('rejects spending more plunder than available and does not open a transaction', async () => {
+      mockGainQueries({ plunder: [{ id: 1, quantity: 2 }] });
+      const res = createMockRes();
+
+      await infamyController.gainInfamy(
+        gainReq({ port: 'Port Peril', skillCheck: 20, plunderSpent: 5 }), res
+      );
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        expect.stringContaining('Not enough plunder available')
+      );
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('consumes a whole plunder stack inside the transaction', async () => {
+      mockGainQueries({ plunder: [{ id: 11, quantity: 3 }, { id: 12, quantity: 4 }] });
+      const client = mockClient();
+      const res = createMockRes();
+
+      await infamyController.gainInfamy(
+        gainReq({ port: 'Port Peril', skillCheck: 30, plunderSpent: 3 }), res
+      );
+
+      expect(client.query).toHaveBeenCalledTimes(1);
+      expect(client.query).toHaveBeenCalledWith(
+        "UPDATE loot SET status = 'Spent on Infamy' WHERE id = $1", [11]
+      );
+    });
+
+    it('splits a stack when only part of it is spent', async () => {
+      mockGainQueries({ plunder: [{ id: 21, quantity: 5 }] });
+      const client = mockClient();
+      const res = createMockRes();
+
+      await infamyController.gainInfamy(
+        gainReq({ port: 'Port Peril', skillCheck: 30, plunderSpent: 2 }), res
+      );
+
+      expect(client.query).toHaveBeenCalledWith('UPDATE loot SET quantity = $1 WHERE id = $2', [3, 21]);
+      const insert = client.query.mock.calls.find((c) => c[0].startsWith('INSERT INTO loot'));
+      expect(insert[1]).toEqual(['Plunder', 7807, 2, 'Spent on Infamy', 1]);
+    });
+
+    it('rejects a second attempt the same day after a success', async () => {
+      mockGainQueries({ todayAttempts: [{ infamy_change: 1 }] });
+      const res = createMockRes();
+      await infamyController.gainInfamy(gainReq({ port: 'Port Peril', skillCheck: 30, plunderSpent: 0 }), res);
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('already gained Infamy today'));
+    });
+
+    it('requires 3 plunder for a reroll after a failed attempt', async () => {
+      mockGainQueries({ todayAttempts: [{ infamy_change: 0 }] });
+      const res = createMockRes();
+      await infamyController.gainInfamy(
+        gainReq({ port: 'Port Peril', skillCheck: 30, plunderSpent: 1, reroll: true }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith('Reroll requires at least 3 plunder to be spent.');
+    });
+
+    it('rejects a reroll on the first attempt of the day', async () => {
+      mockGainQueries();
+      const res = createMockRes();
+      await infamyController.gainInfamy(
+        gainReq({ port: 'Port Peril', skillCheck: 30, plunderSpent: 3, reroll: true }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('cannot use the reroll option'));
+    });
+
+    it('fails when the calendar is not initialised', async () => {
+      mockGainQueries({ date: null });
+      const res = createMockRes();
+      await infamyController.gainInfamy(gainReq({ port: 'Port Peril', skillCheck: 30, plunderSpent: 0 }), res);
+      expect(res.validationError).toHaveBeenCalledWith('Calendar system not initialized');
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // Read handlers (W20: previously untested)
+  // ---------------------------------------------------------------
+  describe('getAvailableImpositions', () => {
+    it('returns an empty set when there is no infamy record', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      const res = createMockRes();
+      await infamyController.getAvailableImpositions(createMockReq(), res);
+      expect(res.success).toHaveBeenCalledWith(
+        { impositions: [], infamy: 0, disrepute: 0 }, 'No infamy yet'
+      );
+    });
+
+    it('groups impositions by threshold, applying the Vile free-Disgraceful discount', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ infamy: 55, disrepute: 3 }] })
+        .mockResolvedValueOnce({ rows: [
+          { id: 1, name: 'A', threshold_required: 10, cost: 4 },
+          { id: 2, name: 'B', threshold_required: 30, cost: 10 },
+          { id: 3, name: 'C', threshold_required: 55, cost: 20 },
+        ] });
+      const res = createMockRes();
+
+      await infamyController.getAvailableImpositions(createMockReq(), res);
+
+      const data = res.success.mock.calls[0][0];
+      expect(data.impositions.disgraceful[0]).toMatchObject({ displayCost: 0, isAvailable: true });
+      expect(data.impositions.notorious[0]).toMatchObject({ displayCost: 5, isAvailable: false });
+      expect(data.impositions.vile[0]).toMatchObject({ displayCost: 20, isAvailable: false });
+    });
+  });
+
+  describe('getInfamyHistory', () => {
+    it('returns the page of history with pagination totals', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] })
+        .mockResolvedValueOnce({ rows: [{ total: '7' }] });
+      const res = createMockRes();
+
+      await infamyController.getInfamyHistory(createMockReq({ query: { limit: '2', offset: '4' } }), res);
+
+      expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([2, 4]);
+      expect(res.success).toHaveBeenCalledWith(
+        { history: [{ id: 1 }, { id: 2 }], pagination: { total: 7, limit: 2, offset: 4 } },
+        'Infamy history retrieved'
+      );
+    });
+  });
+
+  describe('getPortVisits', () => {
+    it('structures visits by port and threshold', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [
+        { port_name: 'Port Peril', threshold: 0, total_gained: 3 },
+        { port_name: 'Port Peril', threshold: 10, total_gained: 1 },
+        { port_name: 'Quent', threshold: 0, total_gained: 5 },
+      ] });
+      const res = createMockRes();
+
+      await infamyController.getPortVisits(createMockReq(), res);
+
+      expect(res.success).toHaveBeenCalledWith(
+        { ports: [
+          { name: 'Port Peril', thresholds: { 0: 3, 10: 1 } },
+          { name: 'Quent', thresholds: { 0: 5 } },
+        ] },
+        'Port visits retrieved'
+      );
     });
   });
 });
