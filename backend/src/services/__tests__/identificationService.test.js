@@ -654,7 +654,7 @@ describe('IdentificationService', () => {
             if (query.includes('name FROM mod')) return { rows: [{ name: '+1' }] };
             if (query.includes('INSERT INTO identify')) return {};
             if (query.includes('UPDATE loot')) return {};
-            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros' }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
             return { rows: [] };
           }),
         };
@@ -664,6 +664,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifyItems({
         items: [10, 11],
         characterId: 2,
+        actor: { userId: 5, isDM: false },
         spellcraftRolls: [20, 10], // Item 10: roll 20 >= DC 20 (success), Item 11: roll 10 < DC 20 (fail)
       });
 
@@ -691,7 +692,7 @@ describe('IdentificationService', () => {
               // All items already attempted
               return { rows: [{ id: 1 }] };
             }
-            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros' }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
             return { rows: [] };
           }),
         };
@@ -701,6 +702,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifyItems({
         items: [10, 11],
         characterId: 2,
+        actor: { userId: 5, isDM: false },
         spellcraftRolls: [18, 18],
       });
 
@@ -727,7 +729,7 @@ describe('IdentificationService', () => {
             if (query.includes('FROM identify')) return { rows: [] };
             if (query.includes('INSERT INTO identify')) return {};
             if (query.includes('UPDATE loot')) return {};
-            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros' }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
             return { rows: [] };
           }),
         };
@@ -737,6 +739,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifyItems({
         items: [10, 11],
         characterId: 2,
+        actor: { userId: 5, isDM: false },
         spellcraftRolls: [18, 18],
       });
 
@@ -780,6 +783,103 @@ describe('IdentificationService', () => {
       expect(result.count.failed).toBe(0);
     });
 
+    it('rejects a character that belongs to another user (F-0690)', async () => {
+      const queries = [];
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn().mockImplementation((query) => {
+            queries.push(query);
+            if (query.includes('FROM characters')) return { rows: [{ user_id: 99 }] };
+            return { rows: [] };
+          }),
+        };
+        return await callback(mockClient);
+      });
+
+      await expect(
+        IdentificationService.identifyItems({
+          items: [10],
+          characterId: 2,
+          spellcraftRolls: [30],
+          actor: { userId: 5, isDM: false },
+        })
+      ).rejects.toThrow('your own character');
+      expect(queries.some((q) => q.includes('INSERT INTO identify'))).toBe(false);
+    });
+
+    it('rejects a non-DM call without an actor and a missing character row', async () => {
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+        return await callback(mockClient);
+      });
+
+      await expect(
+        IdentificationService.identifyItems({ items: [10], characterId: 2, spellcraftRolls: [30] })
+      ).rejects.toThrow('your own character');
+    });
+
+    it('lets a DM identify as any character', async () => {
+      const queries = [];
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn().mockImplementation((query) => {
+            queries.push(query);
+            if (query.includes('golarion_current_date')) return { rows: [{ year: 4718, month: 3, day: 14 }] };
+            if (query.includes('FROM loot')) return { rows: [{ id: 10, name: 'Unknown', itemid: 5, modids: [] }] };
+            if (query.includes('FROM item')) return { rows: [{ id: 5, name: 'Sword', type: 'weapon', casterlevel: 1 }] };
+            return { rows: [] };
+          }),
+        };
+        return await callback(mockClient);
+      });
+
+      const result = await IdentificationService.identifyItems({
+        items: [10],
+        characterId: 2,
+        spellcraftRolls: [30],
+        actor: { userId: 1, isDM: true },
+      });
+
+      expect(result.identified).toHaveLength(1);
+      expect(queries.some((q) => q.includes('SELECT user_id FROM characters'))).toBe(false);
+    });
+
+    it('isolates each item in a savepoint so a database error does not poison the batch (F-0691)', async () => {
+      const queries = [];
+      dbUtils.executeTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn().mockImplementation((query, params) => {
+            queries.push(query);
+            if (query.includes('golarion_current_date')) return { rows: [{ year: 4718, month: 3, day: 14 }] };
+            if (query.includes('FROM loot')) {
+              if (params[0] === 10) throw new Error('db exploded');
+              return { rows: [{ id: 11, name: 'Unknown', itemid: 5, modids: [] }] };
+            }
+            if (query.includes('FROM item')) return { rows: [{ id: 5, name: 'Sword', type: 'weapon', casterlevel: 1 }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'V', user_id: 5 }] };
+            return { rows: [] };
+          }),
+        };
+        return await callback(mockClient);
+      });
+
+      const result = await IdentificationService.identifyItems({
+        items: [10, 11],
+        characterId: 2,
+        spellcraftRolls: [30, 30],
+        actor: { userId: 5, isDM: false },
+      });
+
+      expect(result.failed).toHaveLength(1);
+      expect(result.identified).toHaveLength(1);
+      expect(queries.filter((q) => q === 'SAVEPOINT identify_item')).toHaveLength(2);
+      expect(queries).toContain('ROLLBACK TO SAVEPOINT identify_item');
+      expect(queries.filter((q) => q === 'RELEASE SAVEPOINT identify_item')).toHaveLength(1);
+      // the rollback comes before the next item's savepoint
+      expect(queries.indexOf('ROLLBACK TO SAVEPOINT identify_item'))
+        .toBeLessThan(queries.lastIndexOf('SAVEPOINT identify_item'));
+    });
+
     it('should validate items array', async () => {
       await expect(
         IdentificationService.identifyItems({
@@ -806,7 +906,7 @@ describe('IdentificationService', () => {
             if (query.includes('FROM identify')) return { rows: [] };
             if (query.includes('INSERT INTO identify')) return {};
             if (query.includes('UPDATE loot')) return {};
-            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros' }] };
+            if (query.includes('FROM characters')) return { rows: [{ name: 'Valeros', user_id: 5 }] };
             return { rows: [] };
           }),
         };
@@ -816,6 +916,7 @@ describe('IdentificationService', () => {
       const result = await IdentificationService.identifyItems({
         items: [10],
         characterId: 2,
+        actor: { userId: 5, isDM: false },
         spellcraftRolls: [18],
       });
 
@@ -842,6 +943,35 @@ describe('IdentificationService', () => {
       expect(result.total).toBe(1);
       expect(result.limit).toBe(10);
       expect(result.offset).toBe(0);
+    });
+
+    it('hides the real item identity from non-DM callers (F-0693)', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+      await IdentificationService.getUnidentifiedItems({ isDM: false });
+
+      const itemsQuery = dbUtils.executeQuery.mock.calls[0][0];
+      const selected = itemsQuery.slice(itemsQuery.indexOf('SELECT'), itemsQuery.indexOf('FROM loot'));
+      expect(selected).not.toContain('*');
+      expect(selected).not.toContain('base_item_name');
+      ['itemid', 'modids', 'value', 'cursed', 'dm_notes', 'spellcraft_dc'].forEach((col) => {
+        expect(selected).not.toContain(col);
+      });
+      expect(selected).toContain('l.name');
+    });
+
+    it('gives DMs the full row including the base item', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+      await IdentificationService.getUnidentifiedItems({ isDM: true });
+
+      const itemsQuery = dbUtils.executeQuery.mock.calls[0][0];
+      expect(itemsQuery).toContain('l.*');
+      expect(itemsQuery).toContain('base_item_name');
     });
 
     it('should use default limit and offset when not provided', async () => {

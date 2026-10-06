@@ -74,10 +74,20 @@ describe('AppraisalService', () => {
   });
 
   describe('calculateBelievedValue', () => {
-    it('is the exact value when the total roll is >= 20 (before rounding)', () => {
-      // total 15 + 5 = 20; tier 3 rounding with no snap leaves 100 unchanged
-      mockRandom(0.9, 0.9);
-      expect(AppraisalService.calculateBelievedValue(100, 5, 15)).toBe(100);
+    it('is the exact value when the total roll is >= 20, never rounded', () => {
+      // Random values that would force rounding and snapping if it were applied
+      mockRandom(0.1, 0.5);
+      [12, 19, 1250.5, 7.25, 0.07].forEach((value) => {
+        expect(AppraisalService.calculateBelievedValue(value, 5, 15)).toBe(value);
+      });
+      expect(AppraisalService.calculateBelievedValue(19, 0, 20)).toBe(19);
+    });
+
+    it('still rounds a failed appraisal', () => {
+      // total 5: wild tier, factor 0.1 + 0.5 * 2.9 = 1.55 -> 29.45, then tier 3
+      // (random 0.9) with the snap roll missing -> whole number
+      mockRandom(0.5, 0.9, 0.9);
+      expect(AppraisalService.calculateBelievedValue(19, 0, 5)).toBe(29);
     });
 
     it('stays within +/-20% (rounding aside) for a total roll of 15-19', () => {

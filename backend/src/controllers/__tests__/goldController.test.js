@@ -127,11 +127,9 @@ describe('goldController', () => {
       await goldController.createGoldEntry(dmReq([loot({ gold: 1 })]), res);
 
       expect(dbUtils.executeTransaction).toHaveBeenCalledTimes(1);
-      const [sql, params] = mockClient.query.mock.calls[0];
-      expect(sql).toContain('pg_advisory_xact_lock');
-      expect(params).toHaveLength(2);
+      expect(Gold.lockLedger).toHaveBeenCalledWith(mockClient);
       expect(Gold.getBalance).toHaveBeenCalledWith(mockClient);
-      expect(mockClient.query.mock.invocationCallOrder[0]).toBeLessThan(Gold.getBalance.mock.invocationCallOrder[0]);
+      expect(Gold.lockLedger.mock.invocationCallOrder[0]).toBeLessThan(Gold.getBalance.mock.invocationCallOrder[0]);
     });
 
     it('should negate amounts for Withdrawal transaction type', async () => {
@@ -671,7 +669,7 @@ describe('goldController', () => {
       await goldController.balance(req, res);
 
       expect(dbUtils.executeTransaction).toHaveBeenCalledTimes(1);
-      expect(mockClient.query.mock.calls[0][0]).toContain('pg_advisory_xact_lock');
+      expect(Gold.lockLedger).toHaveBeenCalledWith(mockClient);
       expect(Gold.getBalance).toHaveBeenCalledWith(mockClient);
     });
 

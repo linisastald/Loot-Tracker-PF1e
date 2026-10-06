@@ -2,6 +2,11 @@
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 const ValidationService = require('./validationService');
+const controllerFactory = require('../utils/controllerFactory');
+
+/** Columns of an unidentified loot row that a non-DM may see. */
+const PLAYER_UNIDENTIFIED_COLUMNS =
+  'l.id, l.session_date, l.quantity, l.name, l.unidentified, l.masterwork, l.type, l.size, l.status, l.whohas, l.lastupdate, l.notes';
 
 /**
  * Roll value recorded/used internally for a DM identification (auto-success).
@@ -59,27 +64,19 @@ class IdentificationService {
    * @returns {Promise<number>} - The effective caster level
    */
   static async calculateEffectiveCasterLevel(client, item, lootItem) {
-    let effectiveCasterLevel;
-    
-    // For weapons and armor with mods, use mod caster levels
+    // Base item caster level, unless a weapon/armor carries mods with their own
+    let effectiveCasterLevel = item.casterlevel || 1;
+
     if ((item.type === 'weapon' || item.type === 'armor') && lootItem.modids && lootItem.modids.length > 0) {
-      // Fetch mod details with caster levels
       const modsResult = await client.query(
-        'SELECT casterlevel FROM mod WHERE id = ANY($1) AND casterlevel IS NOT NULL', 
+        'SELECT casterlevel FROM mod WHERE id = ANY($1) AND casterlevel IS NOT NULL',
         [lootItem.modids]
       );
       const modCasterLevels = modsResult.rows.map(row => row.casterlevel);
-      
+
       if (modCasterLevels.length > 0) {
-        // Use the highest caster level from mods
         effectiveCasterLevel = Math.max(...modCasterLevels);
-      } else {
-        // Fallback to base item caster level
-        effectiveCasterLevel = item.casterlevel || 1;
       }
-    } else {
-      // For other items or items without mods, use base item caster level
-      effectiveCasterLevel = item.casterlevel || 1;
     }
 
     return effectiveCasterLevel;
@@ -254,7 +251,7 @@ class IdentificationService {
    * @returns {Promise<Object>} - Identification results
    */
   static async identifyItems(identifyData) {
-    const { items, characterId, spellcraftRolls, dmIdentify = false } = identifyData;
+    const { items, characterId, spellcraftRolls, dmIdentify = false, actor = {} } = identifyData;
 
     // Validate inputs
     ValidationService.validateItems(items);
@@ -266,6 +263,15 @@ class IdentificationService {
     }
 
     return await dbUtils.executeTransaction(async (client) => {
+      // Without DM rights a character may only be used by its owner; otherwise a
+      // player could burn another player's daily attempt.
+      if (characterId && !actor.isDM) {
+        const owner = await client.query('SELECT user_id FROM characters WHERE id = $1', [characterId]);
+        if (owner.rows.length === 0 || !actor.userId || owner.rows[0].user_id !== actor.userId) {
+          throw controllerFactory.createAuthorizationError('You can only identify items as your own character');
+        }
+      }
+
       const golarionDate = await this.getCurrentGolarionDate(client);
 
       const updatedItems = [];
@@ -273,6 +279,9 @@ class IdentificationService {
       const alreadyAttemptedItems = [];
 
       for (let i = 0; i < items.length; i++) {
+        // A failing statement aborts the whole PostgreSQL transaction; a
+        // savepoint per item keeps one bad item from poisoning the batch.
+        await client.query('SAVEPOINT identify_item');
         try {
           const result = await this.identifySingleItem(client, {
             itemId: items[i],
@@ -292,7 +301,9 @@ class IdentificationService {
           } else {
             failedItems.push(result);
           }
+          await client.query('RELEASE SAVEPOINT identify_item');
         } catch (error) {
+          await client.query('ROLLBACK TO SAVEPOINT identify_item');
           logger.error(`Error identifying item ${items[i]}: ${error.message}`);
           failedItems.push({
             id: items[i],
@@ -334,19 +345,21 @@ class IdentificationService {
    * @returns {Promise<Array>} - Array of unidentified items
    */
   static async getUnidentifiedItems(options = {}) {
-    const { limit = 50, offset = 0, identifiableOnly = false } = options;
-
-    logger.info(`IdentificationService.getUnidentifiedItems called with identifiableOnly: ${identifiableOnly}`);
+    const { limit = 50, offset = 0, identifiableOnly = false, isDM = false } = options;
 
     // If identifiableOnly is true, only return items that have itemid (can actually be identified)
     const whereClause = identifiableOnly 
       ? 'WHERE l.unidentified = true AND l.itemid IS NOT NULL'
       : 'WHERE l.unidentified = true';
-    
-    logger.info(`Using where clause: ${whereClause}`);
+
+    // Players only get what they can already see: the real item identity
+    // (itemid, base item name, mods, value, curse state, DM notes) stays hidden.
+    const columns = isDM
+      ? 'l.*, i.name as base_item_name, i.type as item_type'
+      : PLAYER_UNIDENTIFIED_COLUMNS;
 
     const query = `
-      SELECT l.*, i.name as base_item_name, i.type as item_type
+      SELECT ${columns}
       FROM loot l
       LEFT JOIN item i ON l.itemid = i.id
       ${whereClause}

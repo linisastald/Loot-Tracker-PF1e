@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import lootService from '../../services/lootService';
 import { notifyLootCountsChanged } from '../../utils/events';
+import { getErrorMessage } from '../../utils/apiErrors';
+import { handleSelectItem } from '../../utils/utils';
 import {
   Alert,
   Box,
@@ -40,50 +42,64 @@ interface LootItem {
   row_type?: string;
 }
 
-interface LootData {
-  summary: LootItem[];
-  individual: LootItem[];
-}
-
-interface User {
-  id: number;
-  username?: string;
-  role: string;
-  activeCharacterId?: number;
-}
-
 interface SortConfig {
   key: string;
   direction: 'asc' | 'desc';
 }
 
+interface IdentifiedRow {
+  itemId: number;
+  oldName: string;
+  newName: string;
+  spellcraftRoll: number;
+  cursedDetected?: boolean;
+}
+
+interface FailedRow {
+  itemId: number;
+  name: string;
+  spellcraftRoll?: number;
+  /** Set when the server could not process the item at all (not just a low roll) */
+  error?: string;
+}
+
+/** Result of POST /appraisal/identify (IdentificationService.identifyItems). */
+interface IdentifyResponse {
+  identified?: Array<{
+    id: number;
+    oldName?: string;
+    newName: string;
+    spellcraftRoll: number;
+    cursedDetected?: boolean;
+  }>;
+  failed?: Array<{
+    id: number;
+    name?: string;
+    spellcraftRoll?: number;
+    error?: string;
+  }>;
+  alreadyAttempted?: Array<{ id: number; message?: string }>;
+}
+
+const rollD20 = (): number => Math.floor(Math.random() * 20) + 1;
+
+/** Append the rows whose itemId is not already listed. */
+const appendUnique = <T extends { itemId: number }>(previous: T[], added: T[]): T[] => [
+  ...previous,
+  ...added.filter(row => !previous.some(existing => existing.itemId === row.itemId)),
+];
+
 const Identify: React.FC = () => {
-  const [loot, setLoot] = useState<LootData>({ summary: [], individual: [] });
+  const [items, setItems] = useState<LootItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [spellcraftValue, setSpellcraftValue] = useState<string>('');
-  const [activeUser, setActiveUser] = useState<User | null>(null);
   const [openItems, setOpenItems] = useState<Record<number, boolean>>({});
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     key: '',
     direction: 'asc',
   });
-  const [identifiedItems, setIdentifiedItems] = useState<
-    Array<{
-      itemId: number;
-      oldName: string;
-      newName: string;
-      spellcraftRoll: number;
-      cursedDetected?: boolean;
-    }>
-  >([]);
-  const [failedItems, setFailedItems] = useState<
-    Array<{
-      itemId: number;
-      name: string;
-      spellcraftRoll: number;
-      requiredDC?: number;
-    }>
-  >([]);
+  const [identifiedItems, setIdentifiedItems] = useState<IdentifiedRow[]>([]);
+  const [failedItems, setFailedItems] = useState<FailedRow[]>([]);
   const [takeTen, setTakeTen] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
@@ -92,9 +108,6 @@ const Identify: React.FC = () => {
   const isDMUser = useIsDM();
 
   useEffect(() => {
-    if (authUser) {
-      setActiveUser(authUser as User);
-    }
     fetchLoot();
 
     const savedSpellcraft = localStorage.getItem('spellcraftBonus');
@@ -105,17 +118,10 @@ const Identify: React.FC = () => {
 
   const fetchLoot = async (): Promise<void> => {
     try {
-      // Use the loot service to get unidentified items that can be identified
-      const params = { identifiableOnly: 'true' };
-      const response = await lootService.getUnidentifiedItems(params);
-
-      // The endpoint returns { items: [], pagination: {} }
-      // Convert to the expected format for the component
-      const items = response.data.items || [];
-      setLoot({
-        summary: [], // No summary for identify page
-        individual: items, // Backend already filters for unidentified=true AND itemid IS NOT NULL
-      });
+      // The endpoint returns { items: [], pagination: {} }: unidentified items
+      // that can actually be identified (the backend filters on itemid)
+      const response = await lootService.getUnidentifiedItems({ identifiableOnly: 'true' });
+      setItems(response.data?.items || []);
     } catch {
       setError('Error fetching unidentified items. Please try again later.');
     }
@@ -129,227 +135,99 @@ const Identify: React.FC = () => {
   };
 
   const handleIdentify = async (itemsToIdentify: number[]): Promise<void> => {
+    setError('');
+    setSuccess('');
+
+    if (!itemsToIdentify || itemsToIdentify.length === 0) {
+      setError('No items selected for identification');
+      return;
+    }
+
+    const activeCharacterId = authUser?.activeCharacterId;
+    if (!isDMUser && !activeCharacterId) {
+      setError('Active character required for identification');
+      return;
+    }
+
     try {
-      setError('');
-      setSuccess('');
+      // A DM identification (automatic success) sends no roll; the server decides
+      // from the caller's DM rights. Players roll a d20 (or take 10) plus bonus.
+      const bonus = parseInt(spellcraftValue || '0', 10) || 0;
+      const response = await lootService.identifyItems({
+        items: itemsToIdentify,
+        characterId: isDMUser ? null : activeCharacterId ?? null,
+        ...(isDMUser
+          ? { dmIdentify: true }
+          : {
+              spellcraftRolls: itemsToIdentify.map(() => (takeTen ? 10 : rollD20()) + bonus),
+            }),
+      });
+      const result: IdentifyResponse = response.data || {};
 
-      // Make sure we have valid items and a user with a character
-      if (!itemsToIdentify || itemsToIdentify.length === 0) {
-        setError('No items selected for identification');
-        return;
+      if (result.alreadyAttempted?.length) {
+        setError(`You've already attempted to identify ${result.alreadyAttempted.length} item(s) today.`);
       }
 
-      if (!isDMUser && (!activeUser || !activeUser.activeCharacterId)) {
-        setError('Active character required for identification');
-        return;
+      const nameOf = (id: number) => items.find(i => i.id === id)?.name;
+
+      if (result.identified?.length) {
+        const rows: IdentifiedRow[] = result.identified.map(item => ({
+          itemId: item.id,
+          oldName: item.oldName || nameOf(item.id) || 'Unknown',
+          newName: item.newName,
+          spellcraftRoll: item.spellcraftRoll,
+          cursedDetected: item.cursedDetected,
+        }));
+        setIdentifiedItems(prev => appendUnique(prev, rows));
       }
 
-      // Prepare identification data for each item
-      const identifyData = itemsToIdentify
-        .map(itemId => {
-          const lootItem = loot.individual.find(i => i.id === itemId);
-          if (!lootItem) return null;
-
-          // DM identification (automatic success): no roll is sent; the
-          // server decides from the caller's DM rights.
-          if (isDMUser) {
-            return {
-              itemId,
-              spellcraftRoll: undefined,
-            };
-          }
-
-          // Calculate spellcraft roll for players
-          const spellcraftBonus = parseInt(spellcraftValue || '0');
-          let spellcraftRoll;
-
-          if (takeTen) {
-            spellcraftRoll = 10 + spellcraftBonus;
-          } else {
-            // Random roll
-            const diceRoll = Math.floor(Math.random() * 20) + 1;
-            spellcraftRoll = diceRoll + spellcraftBonus;
-          }
-
-          return {
-            itemId,
-            spellcraftRoll,
-          };
-        })
-        .filter(item => item !== null); // Remove any null entries
-
-      // Collect all items to identify
-      if (identifyData.length === 0) {
-        setError('No valid items to identify');
-        return;
+      if (result.failed?.length) {
+        const rows: FailedRow[] = result.failed.map(item => ({
+          itemId: item.id,
+          name: item.name || nameOf(item.id) || 'Unknown',
+          spellcraftRoll: item.spellcraftRoll,
+          error: item.error,
+        }));
+        setFailedItems(prev => appendUnique(prev, rows));
       }
 
-      try {
-        // Send identification request to the server
-        const response = await lootService.identifyItems({
-          items: identifyData.map(item => item.itemId),
-          characterId: isDMUser ? null : activeUser?.activeCharacterId,
-          ...(isDMUser
-            ? { dmIdentify: true }
-            : { spellcraftRolls: identifyData.map(item => item.spellcraftRoll as number) }),
-        });
+      // Refresh loot data after identification attempts
+      await fetchLoot();
+      // Notify the sidebar so the unidentified-items badge drops in real time.
+      notifyLootCountsChanged();
 
-        // Handle response for already-attempted items
-        if (
-          response.data &&
-          response.data.alreadyAttempted &&
-          response.data.alreadyAttempted.length > 0
-        ) {
-          setError(
-            `You've already attempted to identify ${response.data.alreadyAttempted.length} item(s) today.`
-          );
-        }
-
-        // Process successful identifications
-        if (
-          response.data &&
-          response.data.identified &&
-          response.data.identified.length > 0
-        ) {
-          const successfulIdentifications = response.data.identified.map(
-            item => {
-              const originalItem = loot.individual.find(i => i.id === item.id);
-              return {
-                itemId: item.id,
-                oldName:
-                  item.oldName ||
-                  (originalItem ? originalItem.name : 'Unknown'),
-                newName: item.newName,
-                spellcraftRoll: item.spellcraftRoll,
-                requiredDC: item.requiredDC,
-              };
-            }
-          );
-
-          // Update identifiedItems state, avoiding duplicates
-          setIdentifiedItems(prev => {
-            const newItems = successfulIdentifications.filter(
-              newItem =>
-                !prev.some(
-                  existingItem => existingItem.itemId === newItem.itemId
-                )
-            );
-            return [...prev, ...newItems];
-          });
-        }
-
-        // Process failed identifications
-        if (
-          response.data &&
-          response.data.failed &&
-          response.data.failed.length > 0
-        ) {
-          const failedIdentifications = response.data.failed.map(item => {
-            return {
-              itemId: item.id,
-              name: item.name,
-              spellcraftRoll: item.spellcraftRoll,
-              requiredDC: item.requiredDC,
-            };
-          });
-
-          // Update failedItems state, avoiding duplicates
-          setFailedItems(prev => {
-            const newItems = failedIdentifications.filter(
-              newItem =>
-                !prev.some(
-                  existingItem => existingItem.itemId === newItem.itemId
-                )
-            );
-            return [...prev, ...newItems];
-          });
-        }
-
-        // Refresh loot data after identification attempts
-        await fetchLoot();
-        // Notify the sidebar so the unidentified-items badge drops in real time.
-        notifyLootCountsChanged();
-
-        // Set success message
-        const successCount = response.data?.identified?.length || 0;
-        const failCount = response.data?.failed?.length || 0;
-        if (successCount > 0 || failCount > 0) {
-          let message = '';
-          if (successCount > 0) {
-            message += `Successfully identified ${successCount} item(s).`;
-          }
-          if (failCount > 0) {
-            if (message) message += ' ';
-            message += `Failed to identify ${failCount} item(s).`;
-          }
-          setSuccess(message);
-        }
-      } catch (apiError) {
-        // Handle API errors explicitly
-
-        if (apiError.response && apiError.response.data) {
-          const errorData = apiError.response.data;
-          if (
-            errorData.message &&
-            errorData.message.includes('already attempted today')
-          ) {
-            setError(
-              'You have already attempted to identify these items today.'
-            );
-          } else if (errorData.message) {
-            setError(errorData.message);
-          } else {
-            setError('Error identifying items. Please try again.');
-          }
-        } else {
-          setError('Server error during identification. Please try again.');
-        }
+      const successCount = result.identified?.length || 0;
+      const failCount = result.failed?.length || 0;
+      if (successCount > 0 || failCount > 0) {
+        const parts: string[] = [];
+        if (successCount > 0) parts.push(`Successfully identified ${successCount} item(s).`);
+        if (failCount > 0) parts.push(`Failed to identify ${failCount} item(s).`);
+        setSuccess(parts.join(' '));
       }
-
-      setSelectedItems([]);
-    } catch (identifyError: unknown) {
-      // Error identifying items
-
-      // Clear selected items to prevent retrying with the same bad data
-      setSelectedItems([]);
-
-      // Handle error response from API
-      if (
-        identifyError &&
-        typeof identifyError === 'object' &&
-        'response' in identifyError
-      ) {
-        const errorResponse = identifyError.response as {
-          data?: { message?: string };
-        };
-        if (errorResponse.data?.message) {
-          setError(errorResponse.data.message);
-        } else {
-          setError('Failed to identify items. Please try again.');
-        }
+    } catch (apiError) {
+      const message = getErrorMessage(apiError, '');
+      if (message.includes('already attempted today')) {
+        setError('You have already attempted to identify these items today.');
       } else {
-        setError('Error identifying items. Please try again.');
+        setError(message || 'Error identifying items. Please try again.');
       }
+    } finally {
+      // Clear the selection so a bad selection is not retried by accident
+      setSelectedItems([]);
     }
   };
 
-  // Items are already filtered by the backend to be unidentified with itemid
-  // For identify page, we need to convert individual items to summary format for CustomLootTable
-  const filteredLoot = {
-    summary: loot.individual.map(
-      item =>
-        (({
-          ...item,
-          row_type: 'summary' as const,
-          quantity: item.quantity || 1,
-
-          character_names: item.character_name
-            ? [item.character_name]
-            : ([] as string[])
-        }) as any)
-    ), // Type assertion to handle CustomLootTable expectations
-    individual: loot.individual,
-  };
+  // CustomLootTable renders summary rows; here every unidentified item is its own row
+  const summaryRows = useMemo(
+    () =>
+      items.map(item => ({
+        ...item,
+        row_type: 'summary' as const,
+        quantity: item.quantity || 1,
+        character_names: item.character_name ? [item.character_name] : ([] as string[]),
+      })),
+    [items]
+  );
 
   return (
     <Container maxWidth={false} component="main">
@@ -365,18 +243,12 @@ const Identify: React.FC = () => {
       )}
 
       <CustomLootTable
-        loot={filteredLoot.summary}
-        individualLoot={filteredLoot.individual}
+        loot={summaryRows}
+        individualLoot={items}
         selectedItems={selectedItems}
         openItems={openItems}
         setOpenItems={setOpenItems}
-        handleSelectItem={(id: number) => {
-          setSelectedItems(prevSelectedItems =>
-            prevSelectedItems.includes(id)
-              ? prevSelectedItems.filter(itemId => itemId !== id)
-              : [...prevSelectedItems, id]
-          );
-        }}
+        handleSelectItem={(id: number) => handleSelectItem(id, setSelectedItems)}
         sortConfig={sortConfig}
         setSortConfig={setSortConfig}
         showColumns={{
@@ -416,8 +288,8 @@ const Identify: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {identifiedItems.map((item, index) => (
-                  <TableRow key={index}>
+                {identifiedItems.map(item => (
+                  <TableRow key={item.itemId}>
                     <TableCell>{item.oldName}</TableCell>
                     <TableCell>{item.newName}</TableCell>
                     <TableCell>{item.spellcraftRoll}</TableCell>
@@ -449,11 +321,11 @@ const Identify: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {failedItems.map((item, index) => (
-                  <TableRow key={index}>
+                {failedItems.map(item => (
+                  <TableRow key={item.itemId}>
                     <TableCell>{item.name}</TableCell>
-                    <TableCell>{item.spellcraftRoll}</TableCell>
-                    <TableCell>Failed (roll too low)</TableCell>
+                    <TableCell>{item.error ? '-' : item.spellcraftRoll}</TableCell>
+                    <TableCell>{item.error ? `Error: ${item.error}` : 'Failed (roll too low)'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -509,10 +381,8 @@ const Identify: React.FC = () => {
         <Button
           variant="outlined"
           color="secondary"
-          onClick={() =>
-            handleIdentify(filteredLoot.individual.map(item => item.id))
-          }
-          disabled={filteredLoot.individual.length === 0}
+          onClick={() => handleIdentify(items.map(item => item.id))}
+          disabled={items.length === 0}
         >
           Identify All
         </Button>

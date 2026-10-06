@@ -64,4 +64,12 @@ describe('appraisalController.identifyItems', () => {
     });
     expect(arg.dmIdentify).toBe(false);
   });
+
+  it('passes the acting user and DM state for the character ownership check (F-0690)', async () => {
+    const player = await run({ user: { id: 2, role: 'Player' }, campaignRole: 'Player' });
+    expect(player.actor).toEqual({ userId: 2, isDM: false });
+    IdentificationService.identifyItems.mockClear();
+    const dm = await run({ user: { id: 1, role: 'DM' }, campaignRole: 'DM' });
+    expect(dm.actor).toEqual({ userId: 1, isDM: true });
+  });
 });

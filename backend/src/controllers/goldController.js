@@ -2,25 +2,11 @@
 const Gold = require('../models/Gold');
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
-const campaignContext = require('../utils/campaignContext');
 const GoldDistributionService = require('../services/goldDistributionService');
 const { hasDmRights } = require('../utils/roleUtils');
 
 const CURRENCIES = ['platinum', 'gold', 'silver', 'copper'];
 const DEBIT_TYPES = ['Withdrawal', 'Purchase', 'Party Loot Purchase'];
-
-// Two-key advisory lock (key space, campaign id) that serializes every write to
-// a campaign's gold ledger, so concurrent balance checks cannot both pass.
-const GOLD_LEDGER_LOCK_KEY = 7301;
-
-/**
- * Take the per-campaign gold ledger lock for the rest of the transaction.
- * @param {Object} client - pg client inside a transaction
- */
-const lockGoldLedger = async (client) => {
-    const campaignKey = parseInt(campaignContext.getCampaignId(), 10) || 0;
-    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [GOLD_LEDGER_LOCK_KEY, campaignKey]);
-};
 
 /**
  * Parse one denomination of a request entry into an integer (missing = 0).
@@ -91,7 +77,7 @@ const createGoldEntry = async (req, res) => {
     // as a running total, so concurrent requests cannot both overdraw and a
     // failure part-way leaves no earlier entry committed.
     const createdEntries = await dbUtils.executeTransaction(async (client) => {
-        await lockGoldLedger(client);
+        await Gold.lockLedger(client);
 
         const running = await Gold.getBalance(client);
         const created = [];
@@ -177,7 +163,7 @@ const balance = async (req, res) => {
     // Read the totals and insert the balancing row under the ledger lock so two
     // concurrent calls (or a balance racing a withdrawal) cannot both apply.
     const created = await dbUtils.executeTransaction(async (client) => {
-        await lockGoldLedger(client);
+        await Gold.lockLedger(client);
 
         const totals = await Gold.getBalance(client);
         const totalCopper = totals.copper;

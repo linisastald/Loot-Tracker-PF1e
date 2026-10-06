@@ -1,6 +1,11 @@
 // src/models/Gold.js
 const BaseModel = require('./BaseModel');
 const dbUtils = require('../utils/dbUtils');
+const campaignContext = require('../utils/campaignContext');
+
+// Two-key advisory lock (key space, campaign id) that serializes every write to
+// a campaign's gold ledger, so concurrent balance checks cannot both pass.
+const GOLD_LEDGER_LOCK_KEY = 7301;
 
 class GoldModel extends BaseModel {
   constructor() {
@@ -55,46 +60,48 @@ class GoldModel extends BaseModel {
   }
 
   /**
+   * Take the per-campaign gold ledger lock for the rest of the transaction.
+   * @param {Object} client - pg client inside a transaction
+   */
+  async lockLedger(client) {
+    const campaignKey = parseInt(campaignContext.getCampaignId(), 10) || 0;
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [GOLD_LEDGER_LOCK_KEY, campaignKey]);
+  }
+
+  /**
    * Get all gold transactions with date filtering and pagination
    * @param {Object} options - Query options (e.g., date range, pagination)
    * @return {Promise<Object>} - Object with transactions and pagination info
    */
   async findAll(options = {}) {
     const { startDate, endDate, page = 1, limit = 50 } = options;
-    
+
     // Calculate offset for pagination
     const offset = (page - 1) * limit;
-    
-    // Build count query
-    let countQuery = 'SELECT COUNT(*) as total FROM gold';
-    const countValues = [];
-    let countParamCount = 1;
-    
-    // Build main query
-    let query = 'SELECT * FROM gold';
-    const values = [];
-    let paramCount = 1;
 
-    // Add WHERE clauses if options are provided
-    if (startDate && endDate) {
-      const whereClause = ` WHERE session_date BETWEEN $${paramCount} AND $${paramCount + 1}`;
-      query += whereClause;
-      countQuery += whereClause;
-      
-      values.push(startDate, endDate);
-      countValues.push(startDate, endDate);
-      paramCount += 2;
-      countParamCount += 2;
+    // Each date bound is optional on its own. The end date is inclusive of the
+    // whole day (session_date is a TIMESTAMP, so BETWEEN would drop every entry
+    // made later on the end date).
+    const conditions = [];
+    const filterValues = [];
+    if (startDate) {
+      filterValues.push(startDate);
+      conditions.push(`session_date >= $${filterValues.length}`);
     }
+    if (endDate) {
+      filterValues.push(endDate);
+      conditions.push(`session_date < ($${filterValues.length}::date + 1)`);
+    }
+    const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
 
-    // Add ORDER BY and LIMIT clauses
-    query += ` ORDER BY session_date DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
-    values.push(limit, offset);
+    // id DESC is the tiebreaker: many rows share one session_date, and without
+    // it pages can repeat or skip rows.
+    const query = `SELECT * FROM gold${whereClause} ORDER BY session_date DESC, id DESC LIMIT $${filterValues.length + 1} OFFSET $${filterValues.length + 2}`;
+    const countQuery = `SELECT COUNT(*) as total FROM gold${whereClause}`;
 
-    // Execute both queries
     const [transactionResult, countResult] = await Promise.all([
-      dbUtils.executeQuery(query, values, 'Error fetching gold transactions'),
-      dbUtils.executeQuery(countQuery, countValues, 'Error counting gold transactions')
+      dbUtils.executeQuery(query, [...filterValues, limit, offset], 'Error fetching gold transactions'),
+      dbUtils.executeQuery(countQuery, filterValues, 'Error counting gold transactions')
     ]);
 
     const total = parseInt(countResult.rows[0].total);
