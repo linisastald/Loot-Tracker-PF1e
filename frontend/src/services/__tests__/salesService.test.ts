@@ -22,7 +22,6 @@ vi.mock('../../utils/api', () => ({
 import api from '../../utils/api';
 import {
   calculateSaleValues,
-  calculateItemSaleValue,
   calculateTotalSaleValue,
 } from '../salesService';
 
@@ -116,57 +115,6 @@ describe('salesService', () => {
       const result = await calculateSaleValues(items as any);
       expect(result.validCount).toBe(1);
       expect(result.invalidCount).toBe(1);
-    });
-  });
-
-  describe('calculateItemSaleValue', () => {
-    it('should call calculateSaleValues with a single-item array', async () => {
-      const item = createMockItem({ value: 200 });
-      const mockResult = {
-        items: [{ id: 1, saleValue: 100, canSell: true, name: 'Longsword', type: 'Weapon', value: 200, quantity: 1, totalSaleValue: 100 }],
-        totalSaleValue: 100,
-        validCount: 1,
-        invalidCount: 0,
-        summary: { validTotal: 100, invalidTotal: 0 },
-      };
-      vi.mocked(api.post).mockResolvedValueOnce({ data: mockResult });
-
-      const result = await calculateItemSaleValue(item as any);
-      expect(api.post).toHaveBeenCalledWith('/sales/calculate', { items: [item] });
-      expect(result).toBe(100);
-    });
-
-    it('should return 0 when items array in response is empty', async () => {
-      const emptyResult = {
-        items: [],
-        totalSaleValue: 0,
-        validCount: 0,
-        invalidCount: 0,
-        summary: { validTotal: 0, invalidTotal: 0 },
-      };
-      vi.mocked(api.post).mockResolvedValueOnce({ data: emptyResult });
-
-      const result = await calculateItemSaleValue(createMockItem() as any);
-      expect(result).toBe(0);
-    });
-
-    it('should return 0 when item saleValue is 0', async () => {
-      const mockResult = {
-        items: [{ id: 1, saleValue: 0, canSell: false, name: 'Junk', type: 'Misc', value: 0, quantity: 1, totalSaleValue: 0 }],
-        totalSaleValue: 0,
-        validCount: 0,
-        invalidCount: 1,
-        summary: { validTotal: 0, invalidTotal: 0 },
-      };
-      vi.mocked(api.post).mockResolvedValueOnce({ data: mockResult });
-
-      const result = await calculateItemSaleValue(createMockItem({ value: 0 }) as any);
-      expect(result).toBe(0);
-    });
-
-    it('should propagate API errors', async () => {
-      vi.mocked(api.post).mockRejectedValueOnce(new Error('Network Failure'));
-      await expect(calculateItemSaleValue(createMockItem() as any)).rejects.toThrow('Network Failure');
     });
   });
 
