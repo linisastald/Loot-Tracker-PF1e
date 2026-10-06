@@ -26,6 +26,12 @@ interface LootItemCardProps {
   showColumns: Record<string, boolean>;
 }
 
+const chipSx = { height: 20, fontSize: '0.7rem' };
+
+const Meta: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Typography variant="caption" sx={{ color: 'text.secondary' }}>{children}</Typography>
+);
+
 const LootItemCard: React.FC<LootItemCardProps> = ({
   item,
   individualItems,
@@ -58,55 +64,43 @@ const LootItemCard: React.FC<LootItemCardProps> = ({
                 </Typography>
               </Tooltip>
               {item.quantity > 1 && (
-                <Chip label={`x${item.quantity}`} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                <Chip label={`x${item.quantity}`} size="small" variant="outlined" sx={chipSx} />
               )}
               {item.unidentified && (
-                <Chip label="Unidentified" size="small" color="warning" sx={{ height: 20, fontSize: '0.7rem' }} />
+                <Chip label="Unidentified" size="small" color="warning" sx={chipSx} />
               )}
               {item.statuspage === 'Pending Sale' && (
-                <Chip label="Pending Sale" size="small" color="info" sx={{ height: 20, fontSize: '0.7rem' }} />
+                <Chip label="Pending Sale" size="small" color="info" sx={chipSx} />
               )}
             </Box>
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.75 }}>
               {showColumns.type && item.type && (
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>{item.type}</Typography>
+                <Meta>{item.type}</Meta>
               )}
               {showColumns.size && item.size && (
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>{item.size}</Typography>
+                <Meta>{item.size}</Meta>
               )}
               {showColumns.whoHasIt && item.character_name && (
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>{item.character_name}</Typography>
+                <Meta>{item.character_name}</Meta>
               )}
             </Box>
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 0.5 }}>
               {showColumns.believedValue && (
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
+                <Meta>
                   Value: <FormatBelievedValue item={item} />
-                </Typography>
+                </Meta>
               )}
               {showColumns.averageAppraisal && item.average_appraisal != null && (
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
+                <Meta>
                   Avg: <FormatAverageAppraisal item={item} />
-                </Typography>
+                </Meta>
               )}
               {showColumns.sessionDate && item.session_date && (
-                <Typography variant="caption" sx={{
-                  color: "text.secondary"
-                }}>
+                <Meta>
                   {formatLootDate(item.session_date)}
-                </Typography>
+                </Meta>
               )}
             </Box>
           </Box>
