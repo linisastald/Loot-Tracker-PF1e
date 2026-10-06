@@ -4,7 +4,6 @@
  */
 
 const TestDatabase = require('../tests/testDatabase');
-const { Pool } = require('pg');
 
 async function setupTestEnvironment() {
   console.log('🔧 Setting up test environment...');

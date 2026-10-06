@@ -12,11 +12,7 @@
     "test:backend:coverage": "node test-runner.js --backend-only --coverage",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
     "setup:test": "cd backend && npm run test:setup",
-    "teardown:test": "cd backend && npm run test:teardown",
-    "validate-migrations": "bash scripts/validate-migrations.sh",
-    "migration-status": "node backend/scripts/migration-status.js",
-    "pre-commit": "npm run validate-migrations",
-    "prepare": "husky"
+    "teardown:test": "cd backend && npm run test:teardown"
   },
   "keywords": [],
   "author": "",

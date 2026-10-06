@@ -10,6 +10,7 @@
     "start": "node index.js",
     "dev": "cross-env NODE_ENV=development nodemon index.js",
     "migrate": "node scripts/run-migration.js",
+    "rls:check": "node scripts/rls-leak-test.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
