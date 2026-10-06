@@ -360,9 +360,24 @@ describe('ItemParsingService', () => {
       });
 
       expect(result).toBe(2315);
+      // one query for all mods, not one per mod
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('id = ANY($1)');
+      expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([[10]]);
       expect(calculateFinalValue).toHaveBeenCalledWith(
         15, 'weapon', 'melee', [modDetail], true, null, null, 'medium', 4
       );
+    });
+
+    it('rejects an unknown mod id instead of silently dropping all mod pricing', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 10, plus: 1, valuecalc: null }] });
+
+      await expect(ItemParsingService.calculateItemValue({
+        itemValue: 15,
+        itemType: 'weapon',
+        mods: [{ id: 10 }, { id: 999 }],
+      })).rejects.toThrow('invalid mod IDs');
+      expect(calculateFinalValue).not.toHaveBeenCalled();
     });
 
     it('should handle no mods', async () => {
@@ -377,71 +392,6 @@ describe('ItemParsingService', () => {
       expect(result).toBe(15);
       // calculateFinalValue called with empty modDetails
       expect(calculateFinalValue.mock.calls[0][3]).toEqual([]);
-    });
-  });
-
-  // ========================================================================
-  // searchItems
-  // ========================================================================
-  describe('searchItems', () => {
-    it('should search items with query and return paginated results', async () => {
-      const items = [{ id: 1, name: 'Longsword' }];
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: items }) // items query
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count query
-
-      const result = await ItemParsingService.searchItems({ query: 'Sword' });
-
-      expect(result.items).toEqual(items);
-      expect(result.total).toBe(1);
-      expect(result.limit).toBe(20);
-      expect(result.offset).toBe(0);
-    });
-
-    it('should apply type filter', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-      await ItemParsingService.searchItems({ type: 'weapon' });
-
-      const [query, params] = dbUtils.executeQuery.mock.calls[0];
-      expect(query).toContain('type = $');
-      expect(params).toContain('weapon');
-    });
-
-    it('should apply subtype filter', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-      await ItemParsingService.searchItems({ subtype: 'melee' });
-
-      const [query, params] = dbUtils.executeQuery.mock.calls[0];
-      expect(query).toContain('subtype = $');
-      expect(params).toContain('melee');
-    });
-
-    it('should apply custom limit and offset', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
-
-      const result = await ItemParsingService.searchItems({ limit: 5, offset: 10 });
-
-      expect(result.limit).toBe(5);
-      expect(result.offset).toBe(10);
-    });
-
-    it('should parse total count as integer', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [{ count: '42' }] });
-
-      const result = await ItemParsingService.searchItems({});
-
-      expect(result.total).toBe(42);
-      expect(typeof result.total).toBe('number');
     });
   });
 
@@ -477,32 +427,6 @@ describe('ItemParsingService', () => {
       await ItemParsingService.suggestItems('Sw', 5);
 
       expect(dbUtils.executeQuery.mock.calls[0][1][1]).toBe(5);
-    });
-  });
-
-  // ========================================================================
-  // suggestMods
-  // ========================================================================
-  describe('suggestMods', () => {
-    it('should return mod suggestions filtered by item context', async () => {
-      const mods = [{ id: 10, name: 'Flaming' }];
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: mods });
-
-      const result = await ItemParsingService.suggestMods('Flam', 'weapon', 'melee');
-
-      expect(result).toEqual(mods);
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('ILIKE'),
-        ['%Flam%', 'weapon', 'melee', 10]
-      );
-    });
-
-    it('should return empty array for input shorter than 2 chars', async () => {
-      expect(await ItemParsingService.suggestMods('F', 'weapon', 'melee')).toEqual([]);
-    });
-
-    it('should return empty array for null input', async () => {
-      expect(await ItemParsingService.suggestMods(null, 'weapon', 'melee')).toEqual([]);
     });
   });
 });

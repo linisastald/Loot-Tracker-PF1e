@@ -4,6 +4,7 @@ const { parseItemDescriptionWithGPT } = require('./parseItemDescriptionWithGPT')
 const { calculateFinalValue } = require('./calculateFinalValue');
 const logger = require('../utils/logger');
 const ValidationService = require('./validationService');
+const controllerFactory = require('../utils/controllerFactory');
 const { GAME } = require('../config/constants');
 
 /**
@@ -126,25 +127,25 @@ class ItemParsingService {
     if (itemId) ValidationService.validateItemId(itemId);
     if (itemType) ValidationService.validateRequiredString(itemType, 'itemType');
 
-    // Fetch mod details if mods are provided
+    // Fetch all mod details in one query; an unknown id is an error rather than
+    // a silent fallback to the unmodified base value.
     let modDetails = [];
-    if (mods && Array.isArray(mods) && mods.length > 0) {
-      modDetails = await Promise.all(mods.map(async (mod) => {
-        const result = await dbUtils.executeQuery(
-          'SELECT id, plus, valuecalc FROM mod WHERE id = $1', 
-          [mod.id]
-        );
-        return result.rows[0];
-      }));
+    if (Array.isArray(mods) && mods.length > 0) {
+      const modIds = [...new Set(mods.map((mod) => mod.id))];
+      const result = await dbUtils.executeQuery(
+        'SELECT id, name, plus, valuecalc FROM mod WHERE id = ANY($1)',
+        [modIds]
+      );
+      if (result.rows.length !== modIds.length) {
+        throw controllerFactory.createValidationError('One or more invalid mod IDs provided');
+      }
+      modDetails = result.rows;
     }
 
-    // Calculate final value using existing service
-    const finalValue = calculateFinalValue(
-      itemValue, itemType, itemSubtype, modDetails, 
+    return calculateFinalValue(
+      itemValue, itemType, itemSubtype, modDetails,
       isMasterwork, null, charges, size, weight
     );
-
-    return finalValue;
   }
 
   /**
@@ -228,68 +229,6 @@ class ItemParsingService {
   }
 
   /**
-   * Search items in database
-   * @param {Object} searchParams - Search parameters
-   * @param {string} searchParams.query - Search query
-   * @param {string} searchParams.type - Item type filter
-   * @param {string} searchParams.subtype - Item subtype filter
-   * @param {number} searchParams.limit - Result limit
-   * @param {number} searchParams.offset - Result offset
-   * @returns {Promise<Object>} - Search results with pagination
-   */
-  static async searchItems(searchParams) {
-    const { query, type, subtype, limit = 20, offset = 0 } = searchParams;
-
-    let sql = 'SELECT * FROM item';
-    const conditions = [];
-    const params = [];
-    let paramIndex = 1;
-
-    if (query) {
-      conditions.push(`(name ILIKE $${paramIndex} OR SIMILARITY(name, $${paramIndex + 1}) > 0.3)`);
-      params.push(`%${query}%`, query);
-      paramIndex += 2;
-    }
-
-    if (type) {
-      conditions.push(`type = $${paramIndex}`);
-      params.push(type);
-      paramIndex++;
-    }
-
-    if (subtype) {
-      conditions.push(`subtype = $${paramIndex}`);
-      params.push(subtype);
-      paramIndex++;
-    }
-
-    if (conditions.length > 0) {
-      sql += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    sql += ` ORDER BY ${query ? 'SIMILARITY(name, $2) DESC,' : ''} name LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    params.push(limit, offset);
-
-    // Count query
-    let countSql = 'SELECT COUNT(*) FROM item';
-    if (conditions.length > 0) {
-      countSql += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    const [itemsResult, countResult] = await Promise.all([
-      dbUtils.executeQuery(sql, params),
-      dbUtils.executeQuery(countSql, params.slice(0, -2)) // Remove limit and offset for count
-    ]);
-
-    return {
-      items: itemsResult.rows,
-      total: parseInt(countResult.rows[0].count),
-      limit,
-      offset
-    };
-  }
-
-  /**
    * Suggest similar items based on partial input
    * @param {string} partialName - Partial item name
    * @param {number} limit - Maximum suggestions to return
@@ -305,36 +244,6 @@ class ItemParsingService {
       ORDER BY LENGTH(name), name
       LIMIT $2
     `, [`%${partialName}%`, limit]);
-
-    return result.rows;
-  }
-
-  /**
-   * Suggest similar mods based on partial input and item context
-   * @param {string} partialName - Partial mod name
-   * @param {string} itemType - Item type for context
-   * @param {string} itemSubtype - Item subtype for context
-   * @param {number} limit - Maximum suggestions to return
-   * @returns {Promise<Array>} - Array of suggested mods
-   */
-  static async suggestMods(partialName, itemType, itemSubtype, limit = 10) {
-    if (!partialName || partialName.length < 2) return [];
-
-    const result = await dbUtils.executeQuery(`
-      SELECT id, name, plus, type, target, subtarget
-      FROM mod
-      WHERE name ILIKE $1
-        AND (target = $2 OR target IS NULL)
-        AND (subtarget = $3 OR subtarget IS NULL)
-      ORDER BY CASE
-                   WHEN target = $2 AND subtarget = $3 THEN 1
-                   WHEN target = $2 AND subtarget IS NULL THEN 2
-                   WHEN target = $2 THEN 3
-                   ELSE 4
-                   END,
-               LENGTH(name), name
-      LIMIT $4
-    `, [`%${partialName}%`, itemType, itemSubtype, limit]);
 
     return result.rows;
   }

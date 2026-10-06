@@ -11,148 +11,146 @@ const { getCampaignSetting } = require('../utils/campaignSettings');
 // separate rows, so a typo (e.g. 5000) cannot create thousands of loot rows.
 const MAX_AUTO_SPLIT_QUANTITY = 100;
 
+// Longest item description sent to the OpenAI parser.
+const MAX_PARSE_DESCRIPTION_LENGTH = 500;
+
+/**
+ * Session date for a new loot row: the date the client entered, else today.
+ * A plain YYYY-MM-DD is stored as written so the server time zone cannot shift it.
+ */
+const resolveSessionDate = (sessionDate) => {
+  const validated = ValidationService.validateDate(sessionDate, 'session_date', false);
+  if (!validated) return new Date();
+  const plainDate = typeof sessionDate === 'string' && sessionDate.match(/^\d{4}-\d{2}-\d{2}/);
+  return plainDate ? plainDate[0] : validated;
+};
+
 /**
  * Create new loot item
  */
 const createLoot = async (req, res) => {
-  const { name, quantity, notes, cursed, unidentified, itemId, modIds, customValue, charges, masterwork, type, size } = req.body;
+  const {
+    name, quantity, notes, cursed, unidentified, itemId, modIds, customValue,
+    charges, masterwork, type, size, session_date: sessionDate
+  } = req.body;
 
-  try {
-    // Validate required fields
-    const validatedName = ValidationService.validateRequiredString(name, 'name');
-    const validatedQuantity = ValidationService.validateQuantity(quantity);
+  // Validate required fields
+  const validatedName = ValidationService.validateRequiredString(name, 'name');
+  const validatedQuantity = ValidationService.validateQuantity(quantity);
 
-    // Validate optional fields
-    const validatedNotes = ValidationService.validateDescription(notes, 'notes');
-    const validatedCursed = ValidationService.validateBoolean(cursed, 'cursed');
-    const validatedUnidentified = ValidationService.validateBoolean(unidentified, 'unidentified');
-    const validatedMasterwork = ValidationService.validateBoolean(masterwork, 'masterwork');
-    const validatedCharges = charges ? parseInt(charges) : null;
-    const validatedType = type || null;
-    const validatedSize = size || null;
+  // Validate optional fields
+  const validatedNotes = ValidationService.validateDescription(notes, 'notes');
+  const validatedCursed = ValidationService.validateBoolean(cursed, 'cursed');
+  const validatedUnidentified = ValidationService.validateBoolean(unidentified, 'unidentified');
+  const validatedMasterwork = ValidationService.validateBoolean(masterwork, 'masterwork');
+  const validatedCharges = charges ? parseInt(charges) : null;
+  const validatedType = type || null;
+  const validatedSize = size || null;
+  const validatedItemId = itemId ? ValidationService.validateItemId(itemId) : null;
+  const validatedSessionDate = resolveSessionDate(sessionDate);
+  const validatedCustomValue = customValue === undefined
+    ? null
+    : ValidationService.validateOptionalNumber(customValue, 'customValue', { min: 0 });
 
-    if (customValue !== undefined) {
-      ValidationService.validateOptionalNumber(customValue, 'customValue', { min: 0 });
+  if (modIds !== undefined && modIds !== null && !Array.isArray(modIds)) {
+    throw controllerFactory.createValidationError('modIds must be an array of mod IDs');
+  }
+  const finalModIds = (modIds || []).map((id) => ValidationService.validateItemId(id));
+
+  // Per-campaign "auto-split stacks": a quantity N > 1 becomes N rows of
+  // quantity 1 (every other field, including wand charges, is copied as is).
+  // Only read when it can matter.
+  const autoSplit = Number.isInteger(validatedQuantity) && validatedQuantity > 1 &&
+    (await getCampaignSetting('auto_split_stacks_enabled', { defaultValue: '0' })) === '1';
+  if (autoSplit && validatedQuantity > MAX_AUTO_SPLIT_QUANTITY) {
+    throw controllerFactory.createValidationError(
+      `Auto-split stacks is on, so quantity cannot be more than ${MAX_AUTO_SPLIT_QUANTITY}. ` +
+      'Enter a smaller quantity or turn off Auto-Split Stacks in the campaign settings.'
+    );
+  }
+
+  // Every insert goes through the transaction client so the rows commit
+  // together; the response is sent after COMMIT (see dbUtils.executeTransaction).
+  const txResult = await dbUtils.executeTransaction(async (client) => {
+    let baseItem = null;
+    if (validatedItemId) {
+      const itemResult = await client.query('SELECT * FROM item WHERE id = $1', [validatedItemId]);
+      if (itemResult.rows.length === 0) {
+        throw controllerFactory.createValidationError('Invalid item ID provided');
+      }
+      baseItem = itemResult.rows[0];
     }
 
-    // Per-campaign "auto-split stacks": a quantity N > 1 becomes N rows of
-    // quantity 1 (every other field, including wand charges, is copied as is).
-    // Only read when it can matter.
-    const autoSplit = Number.isInteger(validatedQuantity) && validatedQuantity > 1 &&
-      (await getCampaignSetting('auto_split_stacks_enabled', { defaultValue: '0' })) === '1';
-    if (autoSplit && validatedQuantity > MAX_AUTO_SPLIT_QUANTITY) {
-      throw controllerFactory.createValidationError(
-        `Auto-split stacks is on, so quantity cannot be more than ${MAX_AUTO_SPLIT_QUANTITY}. ` +
-        'Enter a smaller quantity or turn off Auto-Split Stacks in the campaign settings.'
+    let modRows = [];
+    if (finalModIds.length > 0) {
+      const modResult = await client.query('SELECT * FROM mod WHERE id = ANY($1)', [finalModIds]);
+      if (modResult.rows.length !== finalModIds.length) {
+        throw controllerFactory.createValidationError('One or more invalid mod IDs provided');
+      }
+      modRows = modResult.rows;
+    }
+
+    // A value the user typed wins (0 included); otherwise price the catalog
+    // item with its mods, masterwork, size and charges.
+    let calculatedValue = validatedCustomValue;
+    if (calculatedValue === null && baseItem && baseItem.value !== null && baseItem.value !== undefined) {
+      calculatedValue = calculateFinalValue(
+        baseItem.value,
+        baseItem.type,
+        baseItem.subtype,
+        modRows,
+        validatedMasterwork,
+        baseItem.name,
+        validatedCharges,
+        validatedSize,
+        baseItem.weight
       );
     }
 
-    // Run the INSERT inside a transaction, but send the HTTP response only
-    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
-    // frontend can refetch before the commit is visible to other pool
-    // clients (MVCC) and see stale data.
-    const txResult = await dbUtils.executeTransaction(async (client) => {
-      let finalItemId = itemId;
-      let finalModIds = modIds || [];
-      let calculatedValue = customValue;
-
-      // If itemId is provided, validate it exists
-      if (itemId) {
-        ValidationService.validateItemId(itemId);
-        const itemCheck = await client.query('SELECT * FROM item WHERE id = $1', [itemId]);
-        if (itemCheck.rows.length === 0) {
-          throw controllerFactory.createValidationError('Invalid item ID provided');
-        }
-      }
-
-      // Validate mod IDs if provided
-      if (finalModIds && finalModIds.length > 0) {
-        const modCheck = await client.query('SELECT id FROM mod WHERE id = ANY($1)', [finalModIds]);
-        if (modCheck.rows.length !== finalModIds.length) {
-          throw controllerFactory.createValidationError('One or more invalid mod IDs provided');
-        }
-      }
-
-      // Calculate value if not provided as custom value
-      if (!customValue && finalItemId) {
-        const itemResult = await client.query('SELECT * FROM item WHERE id = $1', [finalItemId]);
-        const baseItem = itemResult.rows[0];
-
-        if (finalModIds.length > 0) {
-          const modsResult = await client.query('SELECT * FROM mod WHERE id = ANY($1)', [finalModIds]);
-          const modDetails = modsResult.rows;
-
-          calculatedValue = calculateFinalValue(
-            baseItem.value,
-            baseItem.type,
-            baseItem.subtype,
-            modDetails,
-            false, // isMasterwork
-            null,  // enhancement
-            null,  // charges
-            null,  // size
-            baseItem.weight
-          );
-        } else {
-          calculatedValue = baseItem.value;
-        }
-      }
-
-      // Create the loot entry
-      const lootData = {
-        name: validatedName,
-        quantity: validatedQuantity,
-        notes: validatedNotes,
-        cursed: validatedCursed,
-        unidentified: validatedUnidentified,
-        itemid: finalItemId,
-        modids: finalModIds,
-        value: calculatedValue,
-        charges: validatedCharges,
-        masterwork: validatedMasterwork,
-        type: validatedType,
-        size: validatedSize,
-        status: null,
-        session_date: new Date()
-      };
-
-      if (autoSplit) {
-        // All N rows go through the transaction client so they commit together
-        const columns = Object.keys(lootData);
-        const insertSql = `INSERT INTO "loot" (${columns.map((c) => `"${c}"`).join(', ')}) ` +
-          `VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-        const rowValues = columns.map((c) => (c === 'quantity' ? 1 : lootData[c]));
-        const createdRows = [];
-        for (let i = 0; i < validatedQuantity; i++) {
-          const inserted = await client.query(insertSql, rowValues);
-          createdRows.push(inserted.rows[0]);
-        }
-        return { createdLoot: createdRows[0], createdCount: createdRows.length, calculatedValue };
-      }
-
-      const createdLoot = await dbUtils.insert('loot', lootData);
-
-      return { createdLoot, createdCount: 1, calculatedValue };
-    });
-
-    logger.info(`New loot item created by user ${req.user.id}`, {
-      userId: req.user.id,
-      lootId: txResult.createdLoot.id,
-      itemName: validatedName,
+    const lootData = {
+      name: validatedName,
       quantity: validatedQuantity,
-      rowsCreated: txResult.createdCount,
-      value: txResult.calculatedValue
-    });
+      notes: validatedNotes,
+      cursed: validatedCursed,
+      unidentified: validatedUnidentified,
+      itemid: validatedItemId,
+      modids: finalModIds,
+      value: calculatedValue,
+      charges: validatedCharges,
+      masterwork: validatedMasterwork,
+      type: validatedType,
+      size: validatedSize,
+      status: null,
+      session_date: validatedSessionDate,
+      whoupdated: req.user.id
+    };
 
-    // A split returns the first created row (same shape as a single create)
-    const message = txResult.createdCount > 1
-      ? `${txResult.createdCount} loot items created successfully`
-      : 'Loot item created successfully';
-    return controllerFactory.sendSuccessResponse(res, txResult.createdLoot, message);
-  } catch (error) {
-    logger.error('Error creating loot item:', error);
-    throw error;
-  }
+    const columns = Object.keys(lootData);
+    const insertSql = `INSERT INTO "loot" (${columns.map((c) => `"${c}"`).join(', ')}) ` +
+      `VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+    const rowValues = columns.map((c) => (autoSplit && c === 'quantity' ? 1 : lootData[c]));
+    const createdRows = [];
+    for (let i = 0; i < (autoSplit ? validatedQuantity : 1); i++) {
+      const inserted = await client.query(insertSql, rowValues);
+      createdRows.push(inserted.rows[0]);
+    }
+    return { createdLoot: createdRows[0], createdCount: createdRows.length, calculatedValue };
+  });
+
+  logger.info(`New loot item created by user ${req.user.id}`, {
+    userId: req.user.id,
+    lootId: txResult.createdLoot.id,
+    itemName: validatedName,
+    quantity: validatedQuantity,
+    rowsCreated: txResult.createdCount,
+    value: txResult.calculatedValue
+  });
+
+  // A split returns the first created row (same shape as a single create)
+  const message = txResult.createdCount > 1
+    ? `${txResult.createdCount} loot items created successfully`
+    : 'Loot item created successfully';
+  return controllerFactory.sendSuccessResponse(res, txResult.createdLoot, message);
 };
 
 /**
@@ -161,68 +159,49 @@ const createLoot = async (req, res) => {
 const parseItemDescription = async (req, res) => {
   const { description } = req.body;
 
-  try {
-    const parsedData = await ItemParsingService.parseItemDescription(description, req.user.id);
-
-    return controllerFactory.sendSuccessResponse(res, parsedData, 'Item description parsed successfully');
-  } catch (error) {
-    logger.error('Error parsing item description:', error);
-    throw error;
+  // The text goes straight into a paid OpenAI call: cap it.
+  if (typeof description === 'string' && description.length > MAX_PARSE_DESCRIPTION_LENGTH) {
+    throw controllerFactory.createValidationError(
+      `description cannot exceed ${MAX_PARSE_DESCRIPTION_LENGTH} characters`
+    );
   }
+
+  const parsedData = await ItemParsingService.parseItemDescription(description, req.user.id);
+
+  return controllerFactory.sendSuccessResponse(res, parsedData, 'Item description parsed successfully');
 };
 
 /**
  * Calculate item value based on components
  */
 const calculateValue = async (req, res) => {
-  const valueData = req.body;
+  const calculatedValue = await ItemParsingService.calculateItemValue(req.body);
 
-  try {
-    const calculatedValue = await ItemParsingService.calculateItemValue(valueData);
-
-    return controllerFactory.sendSuccessResponse(res, { value: calculatedValue }, 'Item value calculated successfully');
-  } catch (error) {
-    logger.error('Error calculating item value:', error);
-    throw error;
-  }
+  return controllerFactory.sendSuccessResponse(res, { value: calculatedValue }, 'Item value calculated successfully');
 };
 
 /**
  * Get items by IDs for selection/reference
  */
 const getItemsById = async (req, res) => {
-  const { itemIds } = req.body;
+  const items = await ItemParsingService.getItemsByIds(req.body.itemIds);
 
-  try {
-    const items = await ItemParsingService.getItemsByIds(itemIds);
-
-    return controllerFactory.sendSuccessResponse(res, {
-      items,
-      count: items.length
-    }, `Retrieved ${items.length} items`);
-  } catch (error) {
-    logger.error('Error fetching items by IDs:', error);
-    throw error;
-  }
+  return controllerFactory.sendSuccessResponse(res, {
+    items,
+    count: items.length
+  }, `Retrieved ${items.length} items`);
 };
 
 /**
  * Get mods by IDs for selection/reference
  */
 const getModsById = async (req, res) => {
-  const { modIds } = req.body;
+  const mods = await ItemParsingService.getModsByIds(req.body.modIds);
 
-  try {
-    const mods = await ItemParsingService.getModsByIds(modIds);
-
-    return controllerFactory.sendSuccessResponse(res, {
-      mods,
-      count: mods.length
-    }, `Retrieved ${mods.length} mods`);
-  } catch (error) {
-    logger.error('Error fetching mods by IDs:', error);
-    throw error;
-  }
+  return controllerFactory.sendSuccessResponse(res, {
+    mods,
+    count: mods.length
+  }, `Retrieved ${mods.length} mods`);
 };
 
 /**
@@ -231,43 +210,14 @@ const getModsById = async (req, res) => {
 const getMods = async (req, res) => {
   const { target, subtarget, search } = req.query;
 
-  try {
-    const filters = {};
-    if (target) filters.target = target;
-    if (subtarget) filters.subtarget = subtarget;
-    if (search) filters.search = search;
+  const filters = {};
+  if (target) filters.target = target;
+  if (subtarget) filters.subtarget = subtarget;
+  if (search) filters.search = search;
 
-    const result = await ItemParsingService.getAllMods(filters);
+  const result = await ItemParsingService.getAllMods(filters);
 
-    return controllerFactory.sendSuccessResponse(res, result, `${result.count} mods retrieved`);
-  } catch (error) {
-    logger.error('Error fetching mods:', error);
-    throw error;
-  }
-};
-
-/**
- * Search items in database
- */
-const searchItems = async (req, res) => {
-  const searchParams = req.query;
-
-  try {
-    const result = await ItemParsingService.searchItems(searchParams);
-
-    return controllerFactory.sendSuccessResponse(res, {
-      items: result.items,
-      pagination: {
-        total: result.total,
-        limit: result.limit,
-        offset: result.offset,
-        hasMore: (result.offset + result.limit) < result.total
-      }
-    }, `Found ${result.items.length} items`);
-  } catch (error) {
-    logger.error('Error searching items:', error);
-    throw error;
-  }
+  return controllerFactory.sendSuccessResponse(res, result, `${result.count} mods retrieved`);
 };
 
 /**
@@ -276,216 +226,17 @@ const searchItems = async (req, res) => {
 const suggestItems = async (req, res) => {
   const { query, limit = 10 } = req.query;
 
-  try {
-    if (!query || query.length < 2) {
-      return controllerFactory.sendSuccessResponse(res, { suggestions: [] }, 'No suggestions for short queries');
-    }
-
-    const suggestions = await ItemParsingService.suggestItems(query, parseInt(limit));
-
-    return controllerFactory.sendSuccessResponse(res, {
-      suggestions,
-      count: suggestions.length,
-      query
-    }, `Found ${suggestions.length} item suggestions`);
-  } catch (error) {
-    logger.error('Error getting item suggestions:', error);
-    throw error;
+  if (!query || query.length < 2) {
+    return controllerFactory.sendSuccessResponse(res, { suggestions: [] }, 'No suggestions for short queries');
   }
-};
 
-/**
- * Get mod suggestions for autocomplete
- */
-const suggestMods = async (req, res) => {
-  const { query, itemType, itemSubtype, limit = 10 } = req.query;
+  const suggestions = await ItemParsingService.suggestItems(query, parseInt(limit));
 
-  try {
-    if (!query || query.length < 2) {
-      return controllerFactory.sendSuccessResponse(res, { suggestions: [] }, 'No suggestions for short queries');
-    }
-
-    const suggestions = await ItemParsingService.suggestMods(
-      query, 
-      itemType, 
-      itemSubtype, 
-      parseInt(limit)
-    );
-
-    return controllerFactory.sendSuccessResponse(res, {
-      suggestions,
-      count: suggestions.length,
-      query,
-      context: { itemType, itemSubtype }
-    }, `Found ${suggestions.length} mod suggestions`);
-  } catch (error) {
-    logger.error('Error getting mod suggestions:', error);
-    throw error;
-  }
-};
-
-/**
- * Bulk create loot items from parsed data
- */
-const bulkCreateLoot = async (req, res) => {
-  const { items } = req.body;
-  ValidationService.validateItems(items, 'items');
-
-  try {
-    // Run the INSERTs inside a transaction, but send the HTTP response only
-    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
-    // frontend can refetch before the commit is visible to other pool
-    // clients (MVCC) and see stale data.
-    const { createdItems, errors } = await dbUtils.executeTransaction(async (client) => {
-      const createdItems = [];
-      const errors = [];
-
-      for (let i = 0; i < items.length; i++) {
-        try {
-          const itemData = items[i];
-
-          // Validate each item
-          const validatedName = ValidationService.validateRequiredString(itemData.name, `items[${i}].name`);
-          const validatedQuantity = ValidationService.validateQuantity(itemData.quantity);
-
-          let calculatedValue = itemData.customValue;
-
-          // Calculate value if not provided
-          if (!calculatedValue && itemData.itemId) {
-            const itemResult = await client.query('SELECT * FROM item WHERE id = $1', [itemData.itemId]);
-            const baseItem = itemResult.rows[0];
-
-            if (baseItem && itemData.modIds && itemData.modIds.length > 0) {
-              const modsResult = await client.query('SELECT * FROM mod WHERE id = ANY($1)', [itemData.modIds]);
-              const modDetails = modsResult.rows;
-
-              calculatedValue = calculateFinalValue(
-                baseItem.value,
-                baseItem.type,
-                baseItem.subtype,
-                modDetails,
-                false, null, null, null, baseItem.weight
-              );
-            } else if (baseItem) {
-              calculatedValue = baseItem.value;
-            }
-          }
-
-          const lootData = {
-            name: validatedName,
-            quantity: validatedQuantity,
-            notes: ValidationService.validateDescription(itemData.notes, 'notes'),
-            cursed: ValidationService.validateBoolean(itemData.cursed, 'cursed'),
-            unidentified: ValidationService.validateBoolean(itemData.unidentified, 'unidentified'),
-            itemid: itemData.itemId,
-            modids: itemData.modIds || [],
-            value: calculatedValue,
-            charges: itemData.charges ? parseInt(itemData.charges) : null,
-            masterwork: ValidationService.validateBoolean(itemData.masterwork, 'masterwork'),
-            type: itemData.type || null,
-            size: itemData.size || null,
-            status: null,
-            session_date: new Date()
-          };
-
-          const createdLoot = await dbUtils.insert('loot', lootData);
-          createdItems.push(createdLoot);
-
-        } catch (error) {
-          logger.error(`Error creating bulk loot item ${i}:`, error);
-          errors.push({
-            index: i,
-            item: items[i],
-            error: error.message
-          });
-        }
-      }
-
-      return { createdItems, errors };
-    });
-
-    logger.info(`Bulk created ${createdItems.length} loot items by user ${req.user.id}`, {
-      userId: req.user.id,
-      createdCount: createdItems.length,
-      errorCount: errors.length,
-      totalRequested: items.length
-    });
-
-    return controllerFactory.sendSuccessResponse(res, {
-      created: createdItems,
-      errors: errors.length > 0 ? errors : undefined,
-      summary: {
-        successful: createdItems.length,
-        failed: errors.length,
-        total: items.length
-      }
-    }, `${createdItems.length} loot items created successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`);
-  } catch (error) {
-    logger.error('Error in bulk create loot:', error);
-    throw error;
-  }
-};
-
-/**
- * Create loot from template/preset
- */
-const createFromTemplate = async (req, res) => {
-  const { templateId, quantity = 1, customizations = {} } = req.body;
-
-  ValidationService.validateItemId(templateId);
-  ValidationService.validateQuantity(quantity);
-
-  try {
-    // Run the INSERT inside a transaction, but send the HTTP response only
-    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
-    // frontend can refetch before the commit is visible to other pool
-    // clients (MVCC) and see stale data.
-    const createdLoot = await dbUtils.executeTransaction(async (client) => {
-      // Get template item
-      const templateResult = await client.query(
-        'SELECT * FROM item WHERE id = $1',
-        [templateId]
-      );
-
-      if (templateResult.rows.length === 0) {
-        throw controllerFactory.createNotFoundError('Template item not found');
-      }
-
-      const template = templateResult.rows[0];
-
-      // Apply customizations
-      const lootData = {
-        name: customizations.name || template.name,
-        quantity: quantity,
-        notes: customizations.notes || null,
-        cursed: customizations.cursed || false,
-        unidentified: customizations.unidentified || false,
-        itemid: templateId,
-        modids: customizations.modIds || [],
-        value: customizations.value || template.value,
-        charges: customizations.charges ? parseInt(customizations.charges) : null,
-        masterwork: customizations.masterwork || false,
-        type: customizations.type || template.type || null,
-        size: customizations.size || null,
-        status: null,
-        session_date: new Date()
-      };
-
-      return await dbUtils.insert('loot', lootData);
-    });
-
-    logger.info(`Loot created from template ${templateId} by user ${req.user.id}`, {
-      userId: req.user.id,
-      templateId,
-      lootId: createdLoot.id,
-      quantity
-    });
-
-    return controllerFactory.sendSuccessResponse(res, createdLoot, 'Loot item created from template');
-  } catch (error) {
-    logger.error('Error creating loot from template:', error);
-    throw error;
-  }
+  return controllerFactory.sendSuccessResponse(res, {
+    suggestions,
+    count: suggestions.length,
+    query
+  }, `Found ${suggestions.length} item suggestions`);
 };
 
 // Export controller functions with factory wrappers
@@ -493,44 +244,28 @@ module.exports = {
   createLoot: controllerFactory.createHandler(createLoot, {
     errorMessage: 'Error creating loot item'
   }),
-  
+
   parseItemDescription: controllerFactory.createHandler(parseItemDescription, {
     errorMessage: 'Error parsing item description'
   }),
-  
+
   calculateValue: controllerFactory.createHandler(calculateValue, {
     errorMessage: 'Error calculating item value'
   }),
-  
+
   getItemsById: controllerFactory.createHandler(getItemsById, {
     errorMessage: 'Error fetching items by IDs'
   }),
-  
+
   getModsById: controllerFactory.createHandler(getModsById, {
     errorMessage: 'Error fetching mods by IDs'
   }),
-  
+
   getMods: controllerFactory.createHandler(getMods, {
     errorMessage: 'Error fetching mods'
   }),
-  
-  searchItems: controllerFactory.createHandler(searchItems, {
-    errorMessage: 'Error searching items'
-  }),
-  
+
   suggestItems: controllerFactory.createHandler(suggestItems, {
     errorMessage: 'Error getting item suggestions'
-  }),
-  
-  suggestMods: controllerFactory.createHandler(suggestMods, {
-    errorMessage: 'Error getting mod suggestions'
-  }),
-  
-  bulkCreateLoot: controllerFactory.createHandler(bulkCreateLoot, {
-    errorMessage: 'Error bulk creating loot items'
-  }),
-  
-  createFromTemplate: controllerFactory.createHandler(createFromTemplate, {
-    errorMessage: 'Error creating loot from template'
   })
 };
