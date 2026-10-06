@@ -1,213 +1,190 @@
 #!/usr/bin/env python3
 """
-Script to scrape d20pfsrd.com for magic weapon/armor special ability caster levels
-and update the mod table in the database.
+Fill in mod.casterlevel for global Power-type mods (weapon/armor special abilities)
+by reading the caster level from d20pfsrd.com.
+
+SAFETY
+  * Default is a DRY RUN: scrapes and prints what would change, writes nothing.
+  * --apply writes, in ONE transaction, after you type the database name to confirm.
+  * Only global catalog rows are touched (campaign_id IS NULL), and only rows whose
+    casterlevel is still NULL. Scraped values outside 1-30 are rejected.
+  * Credentials come only from environment variables (DB_PASSWORD is required;
+    DB_HOST, DB_PORT, DB_NAME, DB_USER are optional). The target database is
+    always the one you name; nothing is discovered automatically.
+  * Requires the mod.casterlevel column; the script aborts if it is missing.
+
+Usage:
+    DB_PASSWORD=... python utilities/update_mod_caster_levels.py            # dry run
+    DB_PASSWORD=... python utilities/update_mod_caster_levels.py --apply    # write
 """
 
-import requests
-import re
-import time
-import psycopg2
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin, quote
+import argparse
 import logging
 import os
+import re
+import sys
+import time
+from urllib.parse import urljoin
 
-# Database configuration
-DB_CONFIG = {
-    'host': 'localhost',
-    'database': 'loot_tracking',
-    'user': 'loot_user',
-    'password': os.getenv('DB_PASSWORD')
-}
+import psycopg2
+import requests
+from bs4 import BeautifulSoup
 
-# Validate required environment variables
-if not DB_CONFIG['password']:
-    logger.error("DB_PASSWORD environment variable is not set")
-    raise ValueError("DB_PASSWORD environment variable is required")
-
-# Base URLs for different mod types
-BASE_URLS = {
-    'weapon': 'https://www.d20pfsrd.com/magic-items/magic-weapons/magic-weapon-special-abilities/',
-    'armor': 'https://www.d20pfsrd.com/magic-items/magic-armor/magic-armor-and-shield-special-abilities/'
-}
-
-# Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def get_mod_names_from_db():
-    """Get all Power-type mod names that need caster level data."""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cursor = conn.cursor()
-        
-        # Update enhancement bonuses first
-        cursor.execute("""
-            UPDATE mod 
-            SET casterlevel = plus * 3 
-            WHERE name ~ '^\\+[1-5]$' 
-            AND type = 'Power' 
-            AND casterlevel IS NULL
-        """)
-        
-        enhancement_updated = cursor.rowcount
-        if enhancement_updated > 0:
-            logger.info(f"Updated {enhancement_updated} enhancement bonus mods")
-        
-        # Get unique mod names for Power type mods that don't have caster level
-        cursor.execute("""
-            SELECT DISTINCT name, target 
-            FROM mod 
-            WHERE type = 'Power' 
-            AND casterlevel IS NULL 
-            AND name NOT LIKE '+%'
-            ORDER BY name
-        """)
-        
-        results = cursor.fetchall()
-        conn.commit()
-        conn.close()
-        
-        return results
-    except Exception as e:
-        logger.error(f"Database error getting mod names: {e}")
-        return []
+USER_AGENT = 'LootTrackerMaintenance/1.0 (one-off caster level lookup; contact: repo owner)'
+REQUEST_TIMEOUT = 10
+REQUEST_DELAY_SECONDS = 1
+MIN_CL, MAX_CL = 1, 30
+
+BASE_URLS = {
+    'weapon': 'https://www.d20pfsrd.com/magic-items/magic-weapons/magic-weapon-special-abilities/',
+    'armor': 'https://www.d20pfsrd.com/magic-items/magic-armor/magic-armor-and-shield-special-abilities/',
+}
+
+
+def db_config():
+    """Connection settings from the environment only. Never hardcode credentials."""
+    password = os.environ.get('DB_PASSWORD')
+    if not password:
+        logger.error('DB_PASSWORD environment variable is required')
+        sys.exit(2)
+    return {
+        'host': os.environ.get('DB_HOST', 'localhost'),
+        'port': int(os.environ.get('DB_PORT', '5432')),
+        'dbname': os.environ.get('DB_NAME', 'loot_tracking'),
+        'user': os.environ.get('DB_USER', 'loot_user'),
+        'password': password,
+    }
+
 
 def normalize_name_for_url(name):
-    """Convert mod name to URL-friendly format."""
-    # Remove special characters and convert to lowercase
+    """Convert a mod name to the d20pfsrd URL slug."""
     normalized = re.sub(r'[^\w\s-]', '', name.lower())
-    # Replace spaces with hyphens
     normalized = re.sub(r'\s+', '-', normalized)
-    # Remove multiple hyphens
     normalized = re.sub(r'-+', '-', normalized)
     return normalized.strip('-')
 
-def scrape_caster_level(mod_name, target):
-    """Scrape caster level for a specific mod from d20pfsrd."""
+
+def scrape_caster_level(session, mod_name, target):
+    """Return the caster level found on the mod's page, or None."""
     if target not in BASE_URLS:
-        logger.warning(f"Unknown target type: {target}")
-        return None
-    
-    # Normalize the mod name for URL
-    url_name = normalize_name_for_url(mod_name)
-    url = urljoin(BASE_URLS[target], url_name + '/')
-    
-    try:
-        logger.info(f"Scraping {mod_name} ({target}): {url}")
-        
-        # Add delay to be respectful to the server
-        time.sleep(1)
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code == 404:
-            logger.warning(f"Page not found for {mod_name}")
-            return None
-        
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Look for caster level patterns
-        text = soup.get_text()
-        
-        # Pattern to match "CL 9th", "CL 10th", etc.
-        cl_pattern = r'\bCL\s+(\d+)(?:st|nd|rd|th)?\b'
-        matches = re.findall(cl_pattern, text, re.IGNORECASE)
-        
-        if matches:
-            # Take the first match (usually the main caster level)
-            caster_level = int(matches[0])
-            logger.info(f"Found CL {caster_level} for {mod_name}")
-            return caster_level
-        
-        # Alternative pattern: "Caster Level: 9"
-        alt_pattern = r'Caster\s+Level:?\s+(\d+)'
-        alt_matches = re.findall(alt_pattern, text, re.IGNORECASE)
-        
-        if alt_matches:
-            caster_level = int(alt_matches[0])
-            logger.info(f"Found Caster Level {caster_level} for {mod_name}")
-            return caster_level
-        
-        logger.warning(f"No caster level found for {mod_name}")
-        return None
-        
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request error for {mod_name}: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Error scraping {mod_name}: {e}")
+        logger.warning('Unknown target type for %s: %s', mod_name, target)
         return None
 
-def update_mod_caster_level(mod_name, target, caster_level):
-    """Update the caster level for a mod in the database."""
+    url = urljoin(BASE_URLS[target], normalize_name_for_url(mod_name) + '/')
+    logger.info('Looking up %s (%s): %s', mod_name, target, url)
+    time.sleep(REQUEST_DELAY_SECONDS)
+
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            UPDATE mod 
-            SET casterlevel = %s 
-            WHERE name = %s AND target = %s AND type = 'Power'
-        """, (caster_level, mod_name, target))
-        
-        rows_affected = cursor.rowcount
-        conn.commit()
-        conn.close()
-        
-        logger.info(f"Updated {rows_affected} rows for {mod_name} ({target}) with CL {caster_level}")
-        return rows_affected > 0
-        
-    except Exception as e:
-        logger.error(f"Database error updating {mod_name}: {e}")
-        return False
+        response = session.get(url, timeout=REQUEST_TIMEOUT)
+        if response.status_code == 404:
+            logger.warning('Page not found for %s', mod_name)
+            return None
+        response.raise_for_status()
+    except requests.exceptions.RequestException as exc:
+        logger.error('Request error for %s: %s', mod_name, exc)
+        return None
+
+    text = BeautifulSoup(response.content, 'html.parser').get_text()
+    # "CL 9th" style first, then "Caster Level: 9". Only the first match is used.
+    match = (re.search(r'\bCL\s+(\d+)(?:st|nd|rd|th)?\b', text, re.IGNORECASE)
+             or re.search(r'Caster\s+Level:?\s+(\d+)', text, re.IGNORECASE))
+    if not match:
+        logger.warning('No caster level found for %s', mod_name)
+        return None
+
+    caster_level = int(match.group(1))
+    if not MIN_CL <= caster_level <= MAX_CL:
+        logger.warning('Rejecting out-of-range CL %s for %s', caster_level, mod_name)
+        return None
+    return caster_level
+
 
 def main():
-    """Main execution function."""
-    logger.info("Starting caster level scraping process")
-    
-    # Get mod names that need caster level data
-    logger.info("Getting mod names from database...")
-    mod_names = get_mod_names_from_db()
-    
-    if not mod_names:
-        logger.info("No mods found that need caster level data")
-        return
-    
-    logger.info(f"Found {len(mod_names)} mods to process")
-    
-    success_count = 0
-    failure_count = 0
-    
-    for mod_name, target in mod_names:
-        try:
-            caster_level = scrape_caster_level(mod_name, target)
-            
-            if caster_level is not None:
-                if update_mod_caster_level(mod_name, target, caster_level):
-                    success_count += 1
-                else:
-                    failure_count += 1
-            else:
-                failure_count += 1
-                
-        except KeyboardInterrupt:
-            logger.info("Process interrupted by user")
-            break
-        except Exception as e:
-            logger.error(f"Unexpected error processing {mod_name}: {e}")
-            failure_count += 1
-    
-    logger.info(f"Process completed:")
-    logger.info(f"  Special abilities successful: {success_count}")
-    logger.info(f"  Special abilities failed: {failure_count}")
-    logger.info(f"  Total processed: {success_count + failure_count}")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--apply', action='store_true',
+                        help='write the changes (default is a dry run that writes nothing)')
+    args = parser.parse_args()
 
-if __name__ == "__main__":
-    main()
+    config = db_config()
+    conn = psycopg2.connect(**config)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'mod' AND column_name = 'casterlevel'
+            """)
+            if cur.fetchone() is None:
+                logger.error('mod.casterlevel does not exist in %s; nothing to do', config['dbname'])
+                return 1
+
+            # Plain enhancement bonuses (+1..+5) follow a rule: CL = 3 x bonus.
+            cur.execute("""
+                SELECT count(*) FROM mod
+                WHERE name ~ '^\\+[1-5]$' AND type = 'Power'
+                  AND casterlevel IS NULL AND campaign_id IS NULL
+            """)
+            enhancement_rows = cur.fetchone()[0]
+
+            cur.execute("""
+                SELECT DISTINCT name, target FROM mod
+                WHERE type = 'Power' AND casterlevel IS NULL AND campaign_id IS NULL
+                  AND name NOT LIKE '+%'
+                ORDER BY name
+            """)
+            pending = cur.fetchall()
+
+        logger.info('%d enhancement-bonus rows and %d named mods need a caster level',
+                    enhancement_rows, len(pending))
+
+        session = requests.Session()
+        session.headers['User-Agent'] = USER_AGENT
+        found = []
+        for mod_name, target in pending:
+            caster_level = scrape_caster_level(session, mod_name, target)
+            if caster_level is not None:
+                found.append((mod_name, target, caster_level))
+                logger.info('  %s (%s) -> CL %d', mod_name, target, caster_level)
+
+        logger.info('%d of %d mods resolved', len(found), len(pending))
+        if not args.apply:
+            logger.info('Dry run: nothing written. Re-run with --apply to write.')
+            return 0
+        if enhancement_rows == 0 and not found:
+            logger.info('Nothing to write.')
+            return 0
+
+        answer = input("Type the database name '%s' to write these changes: " % config['dbname'])
+        if answer.strip() != config['dbname']:
+            logger.info('Confirmation did not match; nothing written.')
+            return 1
+
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE mod SET casterlevel = plus * 3
+                WHERE name ~ '^\\+[1-5]$' AND type = 'Power'
+                  AND casterlevel IS NULL AND campaign_id IS NULL
+            """)
+            logger.info('Updated %d enhancement bonus rows', cur.rowcount)
+            for mod_name, target, caster_level in found:
+                cur.execute("""
+                    UPDATE mod SET casterlevel = %s
+                    WHERE name = %s AND target = %s AND type = 'Power'
+                      AND casterlevel IS NULL AND campaign_id IS NULL
+                """, (caster_level, mod_name, target))
+                logger.info('Updated %d rows for %s (%s)', cur.rowcount, mod_name, target)
+        conn.commit()
+        logger.info('Committed.')
+        return 0
+    except KeyboardInterrupt:
+        logger.info('Interrupted; nothing committed.')
+        return 1
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+if __name__ == '__main__':
+    sys.exit(main())
