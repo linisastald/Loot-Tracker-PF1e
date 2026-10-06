@@ -1,912 +1,550 @@
 // backend/src/controllers/infamyController.js
+//
+// Skulls & Shackles Infamy / Disrepute system. Infamy only grows through port
+// boasting and DM adjustments; Disrepute is the spendable pool (impositions,
+// crew sacrifice). All SQL lives in models/Infamy.js; the threshold and
+// discount tables live in utils/infamyRules.js.
+//
+// Every mutation runs in ONE transaction that first locks the campaign's
+// ship_infamy row (Infamy.getOrCreate with lock), so concurrent requests
+// cannot overspend disrepute or plunder, pass the once-per-day / per-port
+// limits twice, or leave history out of step with the totals. Mutations are
+// rejected while the campaign's infamy_system_enabled setting is not '1'.
+
 const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const campaignSettings = require('../utils/campaignSettings');
 const partyLevel = require('../utils/partyLevel');
+const golarionCalendar = require('../utils/golarionCalendar');
+const rules = require('../utils/infamyRules');
+const Infamy = require('../models/Infamy');
 const { hasDmRights } = require('../utils/roleUtils');
+
+const MAX_SKILL_CHECK = 100;
+const MAX_HISTORY_PAGE = 100;
+const DEFAULT_HISTORY_PAGE = 20;
+const MAX_PORT_INFAMY = 5;
+const REROLL_PLUNDER = 3;
+
+const { createValidationError } = controllerFactory;
+
+/** Reject the request when the infamy system is disabled for this campaign. */
+const requireEnabled = async () => {
+  const raw = await campaignSettings.getCampaignSetting('infamy_system_enabled', { defaultValue: '0' });
+  if (raw !== '1') {
+    throw controllerFactory.createAuthorizationError('The infamy system is not enabled for this campaign');
+  }
+};
+
+/**
+ * Parse an optional integer body value into [0, max]. Missing values become
+ * `fallback`; anything that is not a whole number in range is a 400.
+ */
+const parseBoundedInt = (value, label, { fallback = 0, max = Number.MAX_SAFE_INTEGER } = {}) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  const num = typeof value === 'string' ? Number(value.trim()) : value;
+  if (typeof num !== 'number' || !Number.isInteger(num) || num < 0 || num > max) {
+    throw createValidationError(`${label} must be a whole number between 0 and ${max}`);
+  }
+  return num;
+};
+
+/** Parse a required, trimmed, length-limited string body value. */
+const parseText = (value, label, maxLength = 255) => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw createValidationError(`${label} is required`);
+  }
+  const text = value.trim();
+  if (text.length > maxLength) {
+    throw createValidationError(`${label} must be at most ${maxLength} characters`);
+  }
+  return text;
+};
+
+/** Parse a positive integer id (accepts numeric strings). */
+const parseId = (value, label) => {
+  const num = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+  if (!Number.isInteger(num) || num <= 0) {
+    throw createValidationError(`${label} is required`);
+  }
+  return num;
+};
+
+/** Current Golarion date or a validation error when the calendar is not set up. */
+const requireGolarionDate = async (client) => {
+  const date = await Infamy.getCurrentGolarionDate(client);
+  if (!date) throw createValidationError('Calendar system not initialized');
+  return date;
+};
+
+const parseGolarionDateString = (value) => {
+  const [year, month, day] = String(value).split('-').map(Number);
+  if (![year, month, day].every(Number.isInteger)) return null;
+  return { year, month, day };
+};
 
 /**
  * Get the current infamy status for the ship
  */
 const getInfamyStatus = async (req, res) => {
-    try {
-        // Get the current infamy info
-        const infamyResult = await dbUtils.executeQuery(
-            'SELECT * FROM ship_infamy WHERE id = 1'
-        );
+  const { infamy, disrepute } = await Infamy.getOrCreate(null);
+  const favoredPorts = await Infamy.getFavoredPorts(null);
 
-        // If there's no record yet, create one
-        if (infamyResult.rows.length === 0) {
-            await dbUtils.executeQuery(
-                'INSERT INTO ship_infamy (id, infamy, disrepute) VALUES (1, 0, 0)'
-            );
-
-            return controllerFactory.sendSuccessResponse(res, {
-                infamy: 0,
-                disrepute: 0,
-                threshold: 'None',
-                favored_ports: []
-            }, 'Infamy status retrieved');
-        }
-
-        // Get the current record
-        const infamyStatus = infamyResult.rows[0];
-
-        // Get the ship's favored ports
-        const favoredPortsResult = await dbUtils.executeQuery(
-            'SELECT port_name, bonus FROM favored_ports ORDER BY bonus DESC'
-        );
-
-        // Determine threshold based on infamy value
-        let threshold = 'None';
-        if (infamyStatus.infamy >= 55) threshold = 'Vile';
-        else if (infamyStatus.infamy >= 40) threshold = 'Loathsome';
-        else if (infamyStatus.infamy >= 30) threshold = 'Notorious';
-        else if (infamyStatus.infamy >= 20) threshold = 'Despicable';
-        else if (infamyStatus.infamy >= 10) threshold = 'Disgraceful';
-
-        controllerFactory.sendSuccessResponse(res, {
-            infamy: infamyStatus.infamy,
-            disrepute: infamyStatus.disrepute,
-            threshold,
-            favored_ports: favoredPortsResult.rows
-        }, 'Infamy status retrieved');
-    } catch (error) {
-        logger.error('Error getting infamy status:', error);
-        throw error;
-    }
+  controllerFactory.sendSuccessResponse(res, {
+    infamy,
+    disrepute,
+    threshold: rules.getThresholdName(infamy),
+    favored_ports: favoredPorts.map(({ port_name, bonus }) => ({ port_name, bonus })),
+  }, 'Infamy status retrieved');
 };
 
 /**
  * Get available impositions based on current infamy threshold
  */
 const getAvailableImpositions = async (req, res) => {
-    try {
-        // Get current infamy
-        const infamyResult = await dbUtils.executeQuery(
-            'SELECT infamy, disrepute FROM ship_infamy WHERE id = 1'
-        );
+  const status = await Infamy.find(null);
 
-        if (infamyResult.rows.length === 0) {
-            return controllerFactory.sendSuccessResponse(res, {
-                impositions: [],
-                infamy: 0,
-                disrepute: 0
-            }, 'No infamy yet');
-        }
+  if (!status) {
+    return controllerFactory.sendSuccessResponse(res, {
+      impositions: rules.groupImpositions([]),
+      infamy: 0,
+      disrepute: 0,
+    }, 'No infamy yet');
+  }
 
-        const { infamy, disrepute } = infamyResult.rows[0];
+  const { infamy, disrepute } = status;
+  const impositions = (await Infamy.getImpositionsUpTo(null, infamy)).map((imp) => {
+    const displayCost = rules.getDiscountedCost(infamy, imp);
+    return { ...imp, displayCost, isAvailable: disrepute >= displayCost };
+  });
 
-        // Get available impositions based on infamy thresholds
-        const query = `
-            SELECT * FROM impositions 
-            WHERE threshold_required <= $1
-            ORDER BY threshold_required DESC, cost ASC
-        `;
+  controllerFactory.sendSuccessResponse(res, {
+    impositions: rules.groupImpositions(impositions),
+    infamy,
+    disrepute,
+  }, 'Available impositions retrieved');
+};
 
-        const impositionsResult = await dbUtils.executeQuery(query, [infamy]);
+/**
+ * Decide from today's history whether this request is a legal attempt.
+ * One attempt per in-game day, plus one reroll (3 plunder) after a failure.
+ * @return {Promise<boolean>} true when this is the reroll attempt
+ */
+const checkDailyAttempt = async (client, golarionDate, reroll) => {
+  const attempts = await Infamy.getAttemptsOnDate(client, 'Boasting at port', golarionDate);
+  const rerolls = await Infamy.getAttemptsOnDate(client, 'Reroll for Infamy', golarionDate);
 
-        // Process impositions for display
-        const impositions = impositionsResult.rows.map(imp => {
-            // Determine if the imposition is available (enough disrepute)
-            const isAvailable = disrepute >= imp.cost;
-
-            // Apply price discounts based on thresholds
-            let displayCost = imp.cost;
-
-            // Threshold-based discounts
-            if (infamy >= 55 && imp.threshold_required <= 10) {
-                // Disgraceful impositions are free at Vile threshold
-                displayCost = 0;
-            } else if (infamy >= 55 && imp.threshold_required <= 30) {
-                // Notorious impositions half price at Vile threshold
-                displayCost = Math.floor(imp.cost / 2);
-            } else if (infamy >= 40 && imp.threshold_required <= 20) {
-                // Despicable impositions half price at Loathsome threshold
-                displayCost = Math.floor(imp.cost / 2);
-            } else if (infamy >= 30 && imp.threshold_required <= 10) {
-                // Disgraceful impositions half price at Notorious threshold
-                displayCost = Math.floor(imp.cost / 2);
-            }
-
-            return {
-                ...imp,
-                displayCost,
-                isAvailable: disrepute >= displayCost
-            };
-        });
-
-        // Group by threshold category
-        const groupedImpositions = {
-            disgraceful: impositions.filter(imp => imp.threshold_required <= 10),
-            despicable: impositions.filter(imp => imp.threshold_required > 10 && imp.threshold_required <= 20),
-            notorious: impositions.filter(imp => imp.threshold_required > 20 && imp.threshold_required <= 30),
-            loathsome: impositions.filter(imp => imp.threshold_required > 30 && imp.threshold_required <= 40),
-            vile: impositions.filter(imp => imp.threshold_required > 40)
-        };
-
-        controllerFactory.sendSuccessResponse(res, {
-            impositions: groupedImpositions,
-            infamy,
-            disrepute
-        }, 'Available impositions retrieved');
-    } catch (error) {
-        logger.error('Error getting available impositions:', error);
-        throw error;
+  if (attempts.length === 0) {
+    if (reroll) {
+      throw createValidationError('You cannot use the reroll option on your first attempt. Make a regular attempt first.');
     }
+    return false;
+  }
+
+  if (attempts[0].infamy_change > 0 || rerolls.length > 0) {
+    throw createValidationError('You have already gained Infamy today or used your reroll. Try again tomorrow (in-game).');
+  }
+  if (!reroll) {
+    throw createValidationError('You failed to gain Infamy today. You may try again with the reroll option by spending 3 plunder.');
+  }
+  return true;
 };
 
 /**
  * Gain infamy at a port
  */
 const gainInfamy = async (req, res) => {
-    const { port, skillCheck, skillUsed, plunderSpent, reroll } = req.body;
-    const userId = req.user.id;
+  const userId = req.user.id;
+  const port = parseText(req.body.port, 'Port name');
+  const skillCheck = parseBoundedInt(req.body.skillCheck, 'skillCheck', { max: MAX_SKILL_CHECK });
+  const plunderSpent = parseBoundedInt(req.body.plunderSpent, 'plunderSpent');
+  const reroll = req.body.reroll === true || req.body.reroll === 'true';
+  const skillUsed = typeof req.body.skillUsed === 'string' ? req.body.skillUsed.slice(0, 50) : null;
 
-    try {
-        if (!port) {
-            throw controllerFactory.createValidationError('Port name is required');
-        }
+  if (skillCheck === 0 && plunderSpent === 0) {
+    throw createValidationError('Skill check result or plunder spent is required');
+  }
 
-        if (!skillCheck && plunderSpent === 0) {
-            throw controllerFactory.createValidationError('Skill check result or plunder spent is required');
-        }
+  await requireEnabled();
 
-        // Check if already attempted today using the calendar system
-        const currentDateResult = await dbUtils.executeQuery('SELECT * FROM golarion_current_date LIMIT 1');
-        if (currentDateResult.rows.length === 0) {
-            throw controllerFactory.createValidationError('Calendar system not initialized');
-        }
+  // Infamy check DC uses the size-adjusted Average Party Level (S&S rule
+  // DC = 15 + 2 x APL). The stored setting is the shared character level;
+  // partyLevel derives the true APL from it and the active party size.
+  const { apl } = await partyLevel.getPartyLevelInfo(req.campaignId);
+  const dc = 15 + (2 * apl);
 
-        const currentDate = currentDateResult.rows[0];
-        const golarionDateStr = `${currentDate.year}-${currentDate.month}-${currentDate.day}`;
+  const result = await dbUtils.executeTransaction(async (client) => {
+    const { infamy: currentInfamy, disrepute: currentDisrepute } =
+      await Infamy.getOrCreate(client, { lock: true });
+    const currentThreshold = rules.getThresholdValue(currentInfamy);
 
-        // Check for previous infamy check today using Golarion date
-        const todayCheckQuery = `
-            SELECT * FROM infamy_history 
-            WHERE reason = 'Boasting at port' 
-            AND golarion_date = $1
-        `;
+    const date = await requireGolarionDate(client);
+    const golarionDate = Infamy.formatGolarionDate(date);
 
-        const todayCheckResult = await dbUtils.executeQuery(todayCheckQuery, [golarionDateStr]);
-
-        // Check if a reroll was already used today
-        const todayRerollQuery = `
-            SELECT * FROM infamy_history 
-            WHERE reason = 'Reroll for Infamy' 
-            AND golarion_date = $1
-        `;
-
-        const todayRerollResult = await dbUtils.executeQuery(todayRerollQuery, [golarionDateStr]);
-        const hasRerollToday = todayRerollResult.rows.length > 0;
-
-        // If there's a failed attempt but no reroll yet, allow a reroll attempt
-        if (todayCheckResult.rows.length > 0) {
-            // If the previous attempt was successful or a reroll was already used, no more attempts
-            const previousAttempt = todayCheckResult.rows[0];
-            if (previousAttempt.infamy_change > 0 || hasRerollToday) {
-                throw controllerFactory.createValidationError('You have already gained Infamy today or used your reroll. Try again tomorrow (in-game).');
-            }
-
-            // If requesting a reroll, allow it; otherwise reject
-            if (!reroll) {
-                throw controllerFactory.createValidationError('You failed to gain Infamy today. You may try again with the reroll option by spending 3 plunder.');
-            }
-
-            // This is a reroll attempt - ensure 3 plunder is spent for the reroll
-            if (reroll) {
-                // Deduct 3 plunder automatically for the reroll
-                // Note: Frontend should handle this in the UI, but we ensure it here as well
-                if (plunderSpent < 3) {
-                    throw controllerFactory.createValidationError('Reroll requires at least 3 plunder to be spent.');
-                }
-
-                logger.info(`Processing reroll attempt for user ${userId} at port ${port} with ${plunderSpent} plunder`);
-            } else {
-                throw controllerFactory.createValidationError('You failed to gain Infamy today. You may try again with the reroll option by spending 3 plunder.');
-            }
-        } else if (reroll) {
-            // If they try to use reroll on first attempt, reject
-            throw controllerFactory.createValidationError('You cannot use the reroll option on your first attempt. Make a regular attempt first.');
-        }
-
-        // Infamy check DC uses the size-adjusted Average Party Level (S&S rule
-        // DC = 15 + 2 x APL). The stored setting is the shared character level;
-        // partyLevel derives the true APL from it and the active party size.
-        const { apl } = await partyLevel.getPartyLevelInfo(req.campaignId);
-
-        // Get current infamy and threshold
-        const infamyResult = await dbUtils.executeQuery(
-            'SELECT * FROM ship_infamy WHERE id = 1'
-        );
-
-        // If no record exists, create one
-        let currentInfamy = 0;
-        let currentDisrepute = 0;
-        let currentThreshold = 0;
-
-        if (infamyResult.rows.length === 0) {
-            await dbUtils.executeQuery(
-                'INSERT INTO ship_infamy (id, infamy, disrepute) VALUES (1, 0, 0)'
-            );
-        } else {
-            currentInfamy = infamyResult.rows[0].infamy;
-            currentDisrepute = infamyResult.rows[0].disrepute;
-
-            // Determine threshold based on infamy value
-            if (currentInfamy >= 55) currentThreshold = 55;
-            else if (currentInfamy >= 40) currentThreshold = 40;
-            else if (currentInfamy >= 30) currentThreshold = 30;
-            else if (currentInfamy >= 20) currentThreshold = 20;
-            else if (currentInfamy >= 10) currentThreshold = 10;
-        }
-
-        // Check if port has reached its maximum infamy for the current threshold
-        const portVisitQuery = `
-            SELECT SUM(infamy_gained) as total_gained
-            FROM port_visits
-            WHERE port_name = $1 AND threshold = $2
-        `;
-
-        const portVisitResult = await dbUtils.executeQuery(portVisitQuery, [port, currentThreshold]);
-        const totalGained = portVisitResult.rows[0]?.total_gained || 0;
-
-        if (totalGained >= 5) {
-            throw controllerFactory.createValidationError(
-                'This port has reached its maximum Infamy contribution for your current threshold. Visit another port or reach the next threshold.'
-            );
-        }
-
-        // Check if plunder is available and remove it if spent
-        if (plunderSpent > 0) {
-            // Query for available plunder in loot table
-            const plunderQuery = `
-                SELECT id, quantity
-                FROM loot
-                WHERE itemid = 7807  -- Item ID for Plunder
-                AND status IS NULL
-                ORDER BY id ASC
-            `;
-
-            const plunderResult = await dbUtils.executeQuery(plunderQuery);
-
-            // Calculate total available plunder
-            let availablePlunder = 0;
-            for (const item of plunderResult.rows) {
-                availablePlunder += parseInt(item.quantity) || 0;
-            }
-
-            if (availablePlunder < plunderSpent) {
-                throw controllerFactory.createValidationError(
-                    `Not enough plunder available. You have ${availablePlunder} but tried to spend ${plunderSpent}.`
-                );
-            }
-
-            // Remove the plunder
-            let remainingToSpend = plunderSpent;
-
-            await dbUtils.executeTransaction(async (client) => {
-                for (const item of plunderResult.rows) {
-                    if (remainingToSpend <= 0) break;
-
-                    const itemQuantity = parseInt(item.quantity) || 0;
-
-                    if (itemQuantity <= remainingToSpend) {
-                        // Use the entire stack
-                        await client.query(
-                            "UPDATE loot SET status = 'Spent on Infamy' WHERE id = $1",
-                            [item.id]
-                        );
-                        remainingToSpend -= itemQuantity;
-                    } else {
-                        // Split the stack
-                        await client.query(
-                            "UPDATE loot SET quantity = $1 WHERE id = $2",
-                            [itemQuantity - remainingToSpend, item.id]
-                        );
-
-                        // Create a new entry for the spent portion
-                        await client.query(
-                            "INSERT INTO loot (name, itemid, quantity, session_date, status, whoupdated) VALUES ($1, $2, $3, CURRENT_DATE, $4, $5)",
-                            ['Plunder', 7807, remainingToSpend, 'Spent on Infamy', userId]
-                        );
-
-                        remainingToSpend = 0;
-                    }
-                }
-            });
-        }
-
-        // Calculate DC for the check: 15 + 2 × APL
-        const dc = 15 + (2 * apl);
-
-        // Get bonuses from favored ports
-        const favoredPortQuery = 'SELECT bonus FROM favored_ports WHERE port_name = $1';
-        const favoredPortResult = await dbUtils.executeQuery(favoredPortQuery, [port]);
-        const favoredBonus = favoredPortResult.rows[0]?.bonus || 0;
-
-        // Calculate skill check
-        const plunderBonus = plunderSpent * 2;
-        const totalCheck = (parseInt(skillCheck) || 0) + plunderBonus + favoredBonus;
-
-        // Determine how much infamy is gained
-        let infamyGained = 0;
-        let successLevel = null;
-        const isRerollAttempt = reroll && todayCheckResult.rows.length > 0;
-        const historyReason = isRerollAttempt ? 'Reroll for Infamy' : 'Boasting at port';
-
-        if (totalCheck >= dc + 10) {
-            infamyGained = 3;
-            successLevel = "Success by 10+";
-        } else if (totalCheck >= dc + 5) {
-            infamyGained = 2;
-            successLevel = "Success by 5+";
-        } else if (totalCheck >= dc) {
-            infamyGained = 1;
-            successLevel = "Success";
-        }
-
-        // Ensure we don't exceed the 5 infamy per port limit
-        if (infamyGained > 0) {
-            infamyGained = Math.min(infamyGained, 5 - totalGained);
-        }
-
-        // Record the attempt in history regardless of success
-        await dbUtils.executeQuery(
-            'INSERT INTO infamy_history (infamy_change, reason, port, user_id, golarion_date) VALUES ($1, $2, $3, $4, $5)',
-            [infamyGained, historyReason, port, userId, golarionDateStr]
-        );
-
-        // If no infamy gained, return error but the attempt is still recorded
-        if (infamyGained === 0) {
-            if (isRerollAttempt) {
-                throw controllerFactory.createValidationError(
-                    'Your reroll attempt failed. You have used all your attempts for today (in-game).'
-                );
-            } else {
-                throw controllerFactory.createValidationError(
-                    'Failed to gain Infamy at this port. The attempt has been recorded, but you may try a reroll by spending 3 plunder.'
-                );
-            }
-        }
-
-        // Update infamy and disrepute
-        const newInfamy = currentInfamy + infamyGained;
-        const newDisrepute = currentDisrepute + infamyGained;
-
-        await dbUtils.executeQuery(
-            'UPDATE ship_infamy SET infamy = $1, disrepute = $2 WHERE id = 1',
-            [newInfamy, newDisrepute]
-        );
-
-        // Record the port visit
-        await dbUtils.executeQuery(
-            'INSERT INTO port_visits (port_name, threshold, infamy_gained, skill_used, plunder_spent, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
-            [port, currentThreshold, infamyGained, skillUsed, plunderSpent, userId]
-        );
-
-        // Check if a new threshold was reached
-        let newThreshold = null;
-        if (currentInfamy < 10 && newInfamy >= 10) newThreshold = 'Disgraceful';
-        else if (currentInfamy < 20 && newInfamy >= 20) newThreshold = 'Despicable';
-        else if (currentInfamy < 30 && newInfamy >= 30) newThreshold = 'Notorious';
-        else if (currentInfamy < 40 && newInfamy >= 40) newThreshold = 'Loathsome';
-        else if (currentInfamy < 55 && newInfamy >= 55) newThreshold = 'Vile';
-
-        controllerFactory.sendSuccessResponse(res, {
-            infamyGained,
-            newInfamy,
-            newDisrepute,
-            newThreshold,
-            skillCheck: totalCheck,
-            dc,
-            isRerollAttempt
-        }, `${isRerollAttempt ? 'Reroll successful! ' : ''}Gained ${infamyGained} Infamy at ${port}`);
-    } catch (error) {
-        logger.error('Error gaining infamy:', error);
-        throw error;
+    const isRerollAttempt = await checkDailyAttempt(client, golarionDate, reroll);
+    if (isRerollAttempt) {
+      if (plunderSpent < REROLL_PLUNDER) {
+        throw createValidationError('Reroll requires at least 3 plunder to be spent.');
+      }
+      logger.info(`Processing reroll attempt for user ${userId} at port ${port} with ${plunderSpent} plunder`);
     }
+
+    // A port contributes at most 5 infamy per threshold
+    const totalGained = await Infamy.getPortTotal(client, port, currentThreshold);
+    if (totalGained >= MAX_PORT_INFAMY) {
+      throw createValidationError(
+        'This port has reached its maximum Infamy contribution for your current threshold. Visit another port or reach the next threshold.'
+      );
+    }
+
+    if (plunderSpent > 0) {
+      const spent = await Infamy.spendPlunder(client, plunderSpent, userId);
+      if (!spent.ok) {
+        throw createValidationError(
+          `Not enough plunder available. You have ${spent.available} but tried to spend ${plunderSpent}.`
+        );
+      }
+    }
+
+    const favoredBonus = await Infamy.getFavoredBonus(client, port);
+    const totalCheck = skillCheck + (plunderSpent * 2) + favoredBonus;
+
+    let infamyGained = 0;
+    if (totalCheck >= dc + 10) infamyGained = 3;
+    else if (totalCheck >= dc + 5) infamyGained = 2;
+    else if (totalCheck >= dc) infamyGained = 1;
+    infamyGained = Math.min(infamyGained, MAX_PORT_INFAMY - totalGained);
+
+    // The attempt is recorded (and any plunder stays spent) whether or not it succeeds
+    await Infamy.addHistory(client, {
+      infamyChange: infamyGained,
+      disreputeChange: 0,
+      reason: isRerollAttempt ? 'Reroll for Infamy' : 'Boasting at port',
+      port,
+      userId,
+      golarionDate,
+    });
+
+    let newInfamy = currentInfamy;
+    let newDisrepute = currentDisrepute;
+    if (infamyGained > 0) {
+      ({ infamy: newInfamy, disrepute: newDisrepute } =
+        await Infamy.applyChange(client, infamyGained, infamyGained));
+      await Infamy.addPortVisit(client, {
+        port, threshold: currentThreshold, infamyGained, skillUsed, plunderSpent, userId,
+      });
+    }
+
+    return {
+      infamyGained,
+      newInfamy,
+      newDisrepute,
+      newThreshold: rules.crossedThreshold(currentInfamy, newInfamy),
+      skillCheck: totalCheck,
+      dc,
+      isRerollAttempt,
+    };
+  });
+
+  // A failed check is a normal game outcome (the attempt and plunder were
+  // committed), so it is a success response with infamyGained 0.
+  let message;
+  if (result.infamyGained > 0) {
+    message = `${result.isRerollAttempt ? 'Reroll successful! ' : ''}Gained ${result.infamyGained} Infamy at ${port}`;
+  } else if (result.isRerollAttempt) {
+    message = 'Your reroll attempt failed. You have used all your attempts for today (in-game).';
+  } else {
+    message = 'Failed to gain Infamy at this port. The attempt has been recorded, but you may try a reroll by spending 3 plunder.';
+  }
+  controllerFactory.sendSuccessResponse(res, result, message);
 };
 
 /**
  * Purchase an imposition with disrepute
  */
 const purchaseImposition = async (req, res) => {
-    const { impositionId } = req.body;
-    const userId = req.user.id;
+  const userId = req.user.id;
+  const impositionId = parseId(req.body.impositionId, 'Imposition ID');
 
-    try {
-        if (!impositionId) {
-            throw controllerFactory.createValidationError('Imposition ID is required');
-        }
+  await requireEnabled();
 
-        // Get imposition details
-        const impositionQuery = 'SELECT * FROM impositions WHERE id = $1';
-        const impositionResult = await dbUtils.executeQuery(impositionQuery, [impositionId]);
+  const purchase = await dbUtils.executeTransaction(async (client) => {
+    const imposition = await Infamy.getImposition(client, impositionId);
+    if (!imposition) throw controllerFactory.createNotFoundError('Imposition not found');
 
-        if (impositionResult.rows.length === 0) {
-            throw controllerFactory.createNotFoundError('Imposition not found');
-        }
+    const status = await Infamy.find(client);
+    if (!status) throw createValidationError('No infamy record found');
+    const { infamy, disrepute } = await Infamy.getOrCreate(client, { lock: true });
 
-        const imposition = impositionResult.rows[0];
-
-        // Get current infamy and disrepute
-        const infamyResult = await dbUtils.executeQuery(
-            'SELECT infamy, disrepute FROM ship_infamy WHERE id = 1'
-        );
-
-        if (infamyResult.rows.length === 0) {
-            throw controllerFactory.createValidationError('No infamy record found');
-        }
-
-        const { infamy, disrepute } = infamyResult.rows[0];
-
-        // Check if the party has enough infamy to use this imposition
-        if (infamy < imposition.threshold_required) {
-            throw controllerFactory.createValidationError(
-                'Your Infamy is too low to purchase this imposition'
-            );
-        }
-
-        // Calculate actual cost after threshold discounts
-        let actualCost = imposition.cost;
-
-        // Apply threshold-based discounts
-        if (infamy >= 55 && imposition.threshold_required <= 10) {
-            // Disgraceful impositions are free at Vile threshold
-            actualCost = 0;
-        } else if (infamy >= 55 && imposition.threshold_required <= 30) {
-            // Notorious impositions half price at Vile threshold
-            actualCost = Math.floor(imposition.cost / 2);
-        } else if (infamy >= 40 && imposition.threshold_required <= 20) {
-            // Despicable impositions half price at Loathsome threshold
-            actualCost = Math.floor(imposition.cost / 2);
-        } else if (infamy >= 30 && imposition.threshold_required <= 10) {
-            // Disgraceful impositions half price at Notorious threshold
-            actualCost = Math.floor(imposition.cost / 2);
-        }
-
-        // Check if they have enough disrepute
-        if (disrepute < actualCost) {
-            throw controllerFactory.createValidationError(
-                'Not enough Disrepute to purchase this imposition'
-            );
-        }
-
-        // Update disrepute
-        const newDisrepute = disrepute - actualCost;
-        await dbUtils.executeQuery(
-            'UPDATE ship_infamy SET disrepute = $1 WHERE id = 1',
-            [newDisrepute]
-        );
-
-        // Record purchase in history
-        await dbUtils.executeQuery(
-            'INSERT INTO imposition_uses (imposition_id, cost_paid, user_id) VALUES ($1, $2, $3)',
-            [impositionId, actualCost, userId]
-        );
-
-        // Record in general history
-        await dbUtils.executeQuery(
-            'INSERT INTO infamy_history (infamy_change, disrepute_change, reason, user_id) VALUES ($1, $2, $3, $4)',
-            [0, -actualCost, `Purchased imposition: ${imposition.name}`, userId]
-        );
-
-        controllerFactory.sendSuccessResponse(res, {
-            imposition,
-            costPaid: actualCost,
-            newDisrepute,
-            effect: imposition.effect
-        }, `Successfully purchased imposition: ${imposition.name}`);
-    } catch (error) {
-        logger.error('Error purchasing imposition:', error);
-        throw error;
+    if (infamy < imposition.threshold_required) {
+      throw createValidationError('Your Infamy is too low to purchase this imposition');
     }
+
+    const actualCost = rules.getDiscountedCost(infamy, imposition);
+    if (disrepute < actualCost) {
+      throw createValidationError('Not enough Disrepute to purchase this imposition');
+    }
+
+    const { disrepute: newDisrepute } = await Infamy.applyChange(client, 0, -actualCost);
+    await Infamy.recordImpositionUse(client, impositionId, actualCost, userId);
+    await Infamy.addHistory(client, {
+      disreputeChange: -actualCost,
+      reason: `Purchased imposition: ${imposition.name}`,
+      userId,
+    });
+    return { imposition, actualCost, newDisrepute };
+  });
+
+  controllerFactory.sendSuccessResponse(res, {
+    imposition: purchase.imposition,
+    costPaid: purchase.actualCost,
+    newDisrepute: purchase.newDisrepute,
+    effect: purchase.imposition.effect,
+  }, `Successfully purchased imposition: ${purchase.imposition.name}`);
 };
 
 /**
- * Get infamy history
+ * Get infamy history (paged; limit 1-100, default 20)
  */
 const getInfamyHistory = async (req, res) => {
-    const { limit = 20, offset = 0 } = req.query;
+  const limit = req.query.limit === undefined ? DEFAULT_HISTORY_PAGE : Number(req.query.limit);
+  const offset = req.query.offset === undefined ? 0 : Number(req.query.offset);
 
-    try {
-        // Get history entries with user names
-        const historyQuery = `
-            SELECT ih.*, u.username as username
-            FROM infamy_history ih
-            LEFT JOIN users u ON ih.user_id = u.id
-            ORDER BY ih.created_at DESC
-            LIMIT $1 OFFSET $2
-        `;
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw createValidationError('limit must be a positive whole number');
+  }
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw createValidationError('offset must be a non-negative whole number');
+  }
+  const pageSize = Math.min(limit, MAX_HISTORY_PAGE);
 
-        const historyResult = await dbUtils.executeQuery(historyQuery, [
-            parseInt(limit),
-            parseInt(offset)
-        ]);
+  const { rows, total } = await Infamy.getHistoryPage(pageSize, offset);
 
-        // Get total count for pagination
-        const countQuery = 'SELECT COUNT(*) as total FROM infamy_history';
-        const countResult = await dbUtils.executeQuery(countQuery);
-
-        controllerFactory.sendSuccessResponse(res, {
-            history: historyResult.rows,
-            pagination: {
-                total: parseInt(countResult.rows[0].total),
-                limit: parseInt(limit),
-                offset: parseInt(offset)
-            }
-        }, 'Infamy history retrieved');
-    } catch (error) {
-        logger.error('Error getting infamy history:', error);
-        throw error;
-    }
+  controllerFactory.sendSuccessResponse(res, {
+    history: rows,
+    pagination: { total, limit: pageSize, offset },
+  }, 'Infamy history retrieved');
 };
 
 /**
  * Get port visit history
  */
 const getPortVisits = async (req, res) => {
-    try {
-        // Get port visits grouped by port and threshold
-        const portVisitsQuery = `
-            SELECT port_name, threshold, SUM(infamy_gained) as total_gained
-            FROM port_visits
-            GROUP BY port_name, threshold
-            ORDER BY port_name, threshold
-        `;
+  const rows = await Infamy.getPortTotals();
 
-        const portVisitsResult = await dbUtils.executeQuery(portVisitsQuery);
-
-        // Structure the data by port
-        const ports = {};
-        portVisitsResult.rows.forEach(row => {
-            if (!ports[row.port_name]) {
-                ports[row.port_name] = {
-                    name: row.port_name,
-                    thresholds: {}
-                };
-            }
-
-            ports[row.port_name].thresholds[row.threshold] = row.total_gained;
-        });
-
-        controllerFactory.sendSuccessResponse(res, {
-            ports: Object.values(ports)
-        }, 'Port visits retrieved');
-    } catch (error) {
-        logger.error('Error getting port visits:', error);
-        throw error;
+  const ports = {};
+  rows.forEach((row) => {
+    if (!ports[row.port_name]) {
+      ports[row.port_name] = { name: row.port_name, thresholds: {} };
     }
+    ports[row.port_name].thresholds[row.threshold] = row.total_gained;
+  });
+
+  controllerFactory.sendSuccessResponse(res, { ports: Object.values(ports) }, 'Port visits retrieved');
 };
 
 /**
  * Set a port as a favored port
  */
 const setFavoredPort = async (req, res) => {
-    const { port } = req.body;
-    const userId = req.user.id;
+  const userId = req.user.id;
+  const port = parseText(req.body.port, 'Port name');
 
-    try {
-        if (!port) {
-            throw controllerFactory.createValidationError('Port name is required');
-        }
+  await requireEnabled();
 
-        // Get current infamy
-        const infamyResult = await dbUtils.executeQuery(
-            'SELECT infamy FROM ship_infamy WHERE id = 1'
-        );
+  // Always +2 for the new port; the existing ports are bumped below
+  const newPortBonus = 2;
 
-        if (infamyResult.rows.length === 0) {
-            throw controllerFactory.createValidationError('No infamy record found');
-        }
+  const updatedFavoredPorts = await dbUtils.executeTransaction(async (client) => {
+    if (!(await Infamy.find(client))) throw createValidationError('No infamy record found');
+    const { infamy } = await Infamy.getOrCreate(client, { lock: true });
+    const maxFavoredPorts = rules.getMaxFavoredPorts(infamy);
 
-        const { infamy } = infamyResult.rows[0];
+    const favoredPorts = await Infamy.getFavoredPorts(client);
 
-        // Determine how many favored ports they can have based on threshold
-        let maxFavoredPorts = 0;
-        if (infamy >= 55) maxFavoredPorts = 3;
-        else if (infamy >= 30) maxFavoredPorts = 2;
-        else if (infamy >= 10) maxFavoredPorts = 1;
-
-        // Get current favored ports
-        const favoredPortsQuery = 'SELECT * FROM favored_ports ORDER BY bonus DESC';
-        const favoredPortsResult = await dbUtils.executeQuery(favoredPortsQuery);
-        const favoredPorts = favoredPortsResult.rows;
-
-        // Check if this port is already favored
-        const existingPort = favoredPorts.find(p => p.port_name === port);
-        if (existingPort) {
-            throw controllerFactory.createValidationError('This port is already a favored port');
-        }
-
-        // Check if they've reached their limit
-        if (favoredPorts.length >= maxFavoredPorts) {
-            throw controllerFactory.createValidationError(
-                `You can only have ${maxFavoredPorts} favored port(s) at your current Infamy threshold`
-            );
-        }
-
-        // Always set the new port's bonus to +2, regardless of which port it is
-        const newPortBonus = 2;
-
-        // Insert new favored port
-        await dbUtils.executeQuery(
-            'INSERT INTO favored_ports (port_name, bonus, user_id) VALUES ($1, $2, $3)',
-            [port, newPortBonus, userId]
-        );
-
-        // Update existing ports' bonuses if applicable
-        if (favoredPorts.length > 0) {
-            // Sort by bonus to ensure we're updating ports in the correct order
-            const sortedPorts = [...favoredPorts].sort((a, b) => b.bonus - a.bonus);
-
-            if (favoredPorts.length === 1) {
-                // If this is the second port, the first port gets upgraded to +4
-                await dbUtils.executeQuery(
-                    'UPDATE favored_ports SET bonus = $1 WHERE port_name = $2',
-                    [4, sortedPorts[0].port_name]
-                );
-            } else if (favoredPorts.length === 2) {
-                // If this is the third port:
-                // First port (highest bonus) gets upgraded to +6
-                await dbUtils.executeQuery(
-                    'UPDATE favored_ports SET bonus = $1 WHERE port_name = $2',
-                    [6, sortedPorts[0].port_name]
-                );
-
-                // Second port (second highest bonus) gets upgraded to +4
-                await dbUtils.executeQuery(
-                    'UPDATE favored_ports SET bonus = $1 WHERE port_name = $2',
-                    [4, sortedPorts[1].port_name]
-                );
-            }
-        }
-
-        // Re-fetch favored ports to get updated bonuses
-        const updatedPortsResult = await dbUtils.executeQuery(favoredPortsQuery);
-        const updatedFavoredPorts = updatedPortsResult.rows;
-
-        controllerFactory.sendSuccessResponse(res, {
-            port,
-            bonus: newPortBonus,
-            favoredPorts: updatedFavoredPorts
-        }, `${port} set as a favored port with +${newPortBonus} bonus`);
-    } catch (error) {
-        logger.error('Error setting favored port:', error);
-        throw error;
+    if (favoredPorts.some((p) => p.port_name === port)) {
+      throw createValidationError('This port is already a favored port');
     }
+    if (favoredPorts.length >= maxFavoredPorts) {
+      throw createValidationError(
+        `You can only have ${maxFavoredPorts} favored port(s) at your current Infamy threshold`
+      );
+    }
+
+    await Infamy.addFavoredPort(client, port, newPortBonus, userId);
+
+    // Existing ports are upgraded: 2nd port -> first becomes +4; 3rd port ->
+    // first +6 and second +4.
+    const sortedPorts = [...favoredPorts].sort((a, b) => b.bonus - a.bonus);
+    if (favoredPorts.length === 1) {
+      await Infamy.setFavoredPortBonus(client, sortedPorts[0].port_name, 4);
+    } else if (favoredPorts.length === 2) {
+      await Infamy.setFavoredPortBonus(client, sortedPorts[0].port_name, 6);
+      await Infamy.setFavoredPortBonus(client, sortedPorts[1].port_name, 4);
+    }
+
+    return Infamy.getFavoredPorts(client);
+  });
+
+  controllerFactory.sendSuccessResponse(res, {
+    port,
+    bonus: newPortBonus,
+    favoredPorts: updatedFavoredPorts,
+  }, `${port} set as a favored port with +${newPortBonus} bonus`);
 };
+
+/**
+ * Whether any recorded sacrifice happened within the last in-game week.
+ * Dates are stored as unpadded 'Y-M-D' text, so they are compared as Golarion
+ * dates, never as strings.
+ */
+const sacrificedWithinWeek = (sacrificeDates, today) =>
+  sacrificeDates.some((value) => {
+    const date = parseGolarionDateString(value);
+    return date && golarionCalendar.compareDates(golarionCalendar.addDays(date, 7), today) > 0;
+  });
 
 /**
  * Sacrifice a crew member or prisoner for disrepute (Despicable 20+ feature)
  */
 const sacrificeCrew = async (req, res) => {
-    const { crewName } = req.body;
-    const userId = req.user.id;
+  const userId = req.user.id;
+  const crewName = parseText(req.body.crewName, 'Crew member name');
 
-    try {
-        if (!crewName) {
-            throw controllerFactory.createValidationError('Crew member name is required');
-        }
+  await requireEnabled();
 
-        // Get current infamy
-        const infamyResult = await dbUtils.executeQuery(
-            'SELECT infamy, disrepute FROM ship_infamy WHERE id = 1'
-        );
+  const outcome = await dbUtils.executeTransaction(async (client) => {
+    if (!(await Infamy.find(client))) throw createValidationError('No infamy record found');
+    const { infamy } = await Infamy.getOrCreate(client, { lock: true });
 
-        if (infamyResult.rows.length === 0) {
-            throw controllerFactory.createValidationError('No infamy record found');
-        }
-
-        const { infamy, disrepute } = infamyResult.rows[0];
-
-        // Check if they have enough infamy to do this (Despicable 20+ required)
-        if (infamy < 20) {
-            throw controllerFactory.createValidationError(
-                'You need at least 20 Infamy (Despicable threshold) to sacrifice crew members'
-            );
-        }
-
-        // Get current Golarion date
-        const currentDateResult = await dbUtils.executeQuery('SELECT * FROM golarion_current_date LIMIT 1');
-        if (currentDateResult.rows.length === 0) {
-            throw controllerFactory.createValidationError('Calendar system not initialized');
-        }
-
-        const currentDate = currentDateResult.rows[0];
-        const currentGolarionDate = new Date(currentDate.year, currentDate.month, currentDate.day);
-        const oneWeekAgo = new Date(currentGolarionDate);
-        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-        // Format dates for checking DB (simpler to compare as strings)
-        const oneWeekAgoStr = `${oneWeekAgo.getFullYear()}-${oneWeekAgo.getMonth()}-${oneWeekAgo.getDate()}`;
-        const golarionDateStr = `${currentDate.year}-${currentDate.month}-${currentDate.day}`;
-
-        // Check when they last used this feature (can only be used once per week)
-        const lastSacrificeQuery = `
-            SELECT * FROM infamy_history 
-            WHERE reason LIKE 'Sacrificed crew member%' 
-            AND golarion_date > $1
-        `;
-
-        const lastSacrificeResult = await dbUtils.executeQuery(lastSacrificeQuery, [oneWeekAgoStr]);
-
-        if (lastSacrificeResult.rows.length > 0) {
-            throw controllerFactory.createValidationError(
-                'This feature can only be used once per week (in-game time)'
-            );
-        }
-
-        // Roll 1d3 for disrepute gain
-        const disreputeGain = Math.floor(Math.random() * 3) + 1;
-
-        // Update disrepute
-        const newDisrepute = disrepute + disreputeGain;
-        await dbUtils.executeQuery(
-            'UPDATE ship_infamy SET disrepute = $1 WHERE id = 1',
-            [newDisrepute]
-        );
-
-        // Record in history
-        await dbUtils.executeQuery(
-            'INSERT INTO infamy_history (infamy_change, disrepute_change, reason, user_id, golarion_date) VALUES ($1, $2, $3, $4, $5)',
-            [0, disreputeGain, `Sacrificed crew member: ${crewName}`, userId, golarionDateStr]
-        );
-
-        controllerFactory.sendSuccessResponse(res, {
-            crewName,
-            disreputeGained: disreputeGain,
-            newDisrepute
-        }, `Sacrificed ${crewName} for ${disreputeGain} Disrepute points`);
-    } catch (error) {
-        logger.error('Error sacrificing crew member:', error);
-        throw error;
+    if (infamy < 20) {
+      throw createValidationError('You need at least 20 Infamy (Despicable threshold) to sacrifice crew members');
     }
+
+    const date = await requireGolarionDate(client);
+    const recent = await Infamy.getRecentSacrificeDates(client);
+    if (sacrificedWithinWeek(recent, date)) {
+      throw createValidationError('This feature can only be used once per week (in-game time)');
+    }
+
+    // Roll 1d3 for disrepute gain
+    const disreputeGain = Math.floor(Math.random() * 3) + 1;
+    const { disrepute: newDisrepute } = await Infamy.applyChange(client, 0, disreputeGain);
+
+    await Infamy.addHistory(client, {
+      disreputeChange: disreputeGain,
+      reason: `Sacrificed crew member: ${crewName}`,
+      userId,
+      golarionDate: Infamy.formatGolarionDate(date),
+    });
+    return { disreputeGain, newDisrepute };
+  });
+
+  controllerFactory.sendSuccessResponse(res, {
+    crewName,
+    disreputeGained: outcome.disreputeGain,
+    newDisrepute: outcome.newDisrepute,
+  }, `Sacrificed ${crewName} for ${outcome.disreputeGain} Disrepute points`);
+};
+
+/** Parse an optional whole-number adjustment (negative allowed). */
+const parseDelta = (value, label) => {
+  if (value === undefined || value === null || value === '') return 0;
+  const num = typeof value === 'string' ? Number(value.trim()) : value;
+  if (!Number.isSafeInteger(num)) throw createValidationError(`${label} must be a whole number`);
+  return num;
 };
 
 const adjustInfamy = async (req, res) => {
-    const { infamyChange, disreputeChange, reason } = req.body;
-    const userId = req.user.id;
+  const { infamyChange, disreputeChange } = req.body;
+  const userId = req.user.id;
 
-    try {
-        // Verify DM rights (per-campaign role; superadmins pass)
-        if (!hasDmRights(req)) {
-            throw controllerFactory.createAuthorizationError('Only DMs can manually adjust infamy/disrepute');
-        }
+  // Defence in depth: the route is already behind checkRole('DM')
+  if (!hasDmRights(req)) {
+    throw controllerFactory.createAuthorizationError('Only DMs can manually adjust infamy/disrepute');
+  }
 
-        // Validate input
-        if ((infamyChange === undefined || infamyChange === null) &&
-            (disreputeChange === undefined || disreputeChange === null)) {
-            throw controllerFactory.createValidationError('At least one of infamyChange or disreputeChange must be provided');
-        }
+  const provided = (value) => value !== undefined && value !== null;
+  if (!provided(infamyChange) && !provided(disreputeChange)) {
+    throw createValidationError('At least one of infamyChange or disreputeChange must be provided');
+  }
+  const infamyDelta = parseDelta(infamyChange, 'infamyChange');
+  const disreputeDelta = parseDelta(disreputeChange, 'disreputeChange');
+  const reason = parseText(req.body.reason, 'Reason', 200);
 
-        if (!reason) {
-            throw controllerFactory.createValidationError('Reason is required for infamy/disrepute adjustment');
-        }
+  await requireEnabled();
 
-        // Get current infamy and disrepute
-        const infamyResult = await dbUtils.executeQuery(
-            'SELECT * FROM ship_infamy WHERE id = 1'
-        );
+  const outcome = await dbUtils.executeTransaction(async (client) => {
+    const current = await Infamy.getOrCreate(client, { lock: true });
 
-        // If no record exists, create one
-        let currentInfamy = 0;
-        let currentDisrepute = 0;
+    // Clamp at 0, and record the change that actually happened
+    const appliedInfamy = Math.max(0, current.infamy + infamyDelta) - current.infamy;
+    const appliedDisrepute = Math.max(0, current.disrepute + disreputeDelta) - current.disrepute;
 
-        if (infamyResult.rows.length === 0) {
-            await dbUtils.executeQuery(
-                'INSERT INTO ship_infamy (id, infamy, disrepute) VALUES (1, 0, 0)'
-            );
-        } else {
-            currentInfamy = infamyResult.rows[0].infamy;
-            currentDisrepute = infamyResult.rows[0].disrepute;
-        }
+    const updated = await Infamy.applyChange(client, appliedInfamy, appliedDisrepute);
+    await Infamy.addHistory(client, {
+      infamyChange: appliedInfamy,
+      disreputeChange: appliedDisrepute,
+      reason: `DM Adjustment: ${reason}`,
+      userId,
+    });
+    return { current, updated, appliedInfamy, appliedDisrepute };
+  });
 
-        // Calculate new values
-        const infamyDelta = parseInt(infamyChange) || 0;
-        const disreputeDelta = parseInt(disreputeChange) || 0;
-
-        const newInfamy = Math.max(0, currentInfamy + infamyDelta);
-        const newDisrepute = Math.max(0, currentDisrepute + disreputeDelta);
-
-        // Update infamy and disrepute
-        await dbUtils.executeQuery(
-            'UPDATE ship_infamy SET infamy = $1, disrepute = $2 WHERE id = 1',
-            [newInfamy, newDisrepute]
-        );
-
-        // Record in history
-        await dbUtils.executeQuery(
-            'INSERT INTO infamy_history (infamy_change, disrepute_change, reason, user_id) VALUES ($1, $2, $3, $4)',
-            [infamyDelta, disreputeDelta, `DM Adjustment: ${reason}`, userId]
-        );
-
-        // Check if a new threshold was reached
-        let newThreshold = null;
-        if (currentInfamy < 10 && newInfamy >= 10) newThreshold = 'Disgraceful';
-        else if (currentInfamy < 20 && newInfamy >= 20) newThreshold = 'Despicable';
-        else if (currentInfamy < 30 && newInfamy >= 30) newThreshold = 'Notorious';
-        else if (currentInfamy < 40 && newInfamy >= 40) newThreshold = 'Loathsome';
-        else if (currentInfamy < 55 && newInfamy >= 55) newThreshold = 'Vile';
-
-        controllerFactory.sendSuccessResponse(res, {
-            previousInfamy: currentInfamy,
-            infamyChange: infamyDelta,
-            newInfamy,
-            previousDisrepute: currentDisrepute,
-            disreputeChange: disreputeDelta,
-            newDisrepute,
-            newThreshold
-        }, `Infamy ${infamyDelta >= 0 ? 'increased' : 'decreased'} by ${Math.abs(infamyDelta)} and Disrepute ${disreputeDelta >= 0 ? 'increased' : 'decreased'} by ${Math.abs(disreputeDelta)}`);
-    } catch (error) {
-        logger.error('Error adjusting infamy:', error);
-        throw error;
-    }
+  const { current, updated, appliedInfamy, appliedDisrepute } = outcome;
+  controllerFactory.sendSuccessResponse(res, {
+    previousInfamy: current.infamy,
+    infamyChange: appliedInfamy,
+    newInfamy: updated.infamy,
+    previousDisrepute: current.disrepute,
+    disreputeChange: appliedDisrepute,
+    newDisrepute: updated.disrepute,
+    newThreshold: rules.crossedThreshold(current.infamy, updated.infamy),
+  }, `Infamy ${appliedInfamy >= 0 ? 'increased' : 'decreased'} by ${Math.abs(appliedInfamy)} and Disrepute ${appliedDisrepute >= 0 ? 'increased' : 'decreased'} by ${Math.abs(appliedDisrepute)}`);
 };
 
-// Define validation rules
-const gainInfamyValidation = {
-    requiredFields: ['port']
-};
-
-const purchaseImpositionValidation = {
-    requiredFields: ['impositionId']
-};
-
-const setFavoredPortValidation = {
-    requiredFields: ['port']
-};
-
-const sacrificeCrewValidation = {
-    requiredFields: ['crewName']
-};
-
-const adjustInfamyValidation = {
-    requiredFields: ['reason']
-};
-
-// Create handlers with validation and error handling
+// Create handlers with validation and error handling. requiredFields is the
+// single missing-field check; the handlers then validate type and range.
 module.exports = {
-    getInfamyStatus: controllerFactory.createHandler(getInfamyStatus, {
-        errorMessage: 'Error getting infamy status'
-    }),
+  getInfamyStatus: controllerFactory.createHandler(getInfamyStatus, {
+    errorMessage: 'Error getting infamy status'
+  }),
 
-    getAvailableImpositions: controllerFactory.createHandler(getAvailableImpositions, {
-        errorMessage: 'Error getting available impositions'
-    }),
+  getAvailableImpositions: controllerFactory.createHandler(getAvailableImpositions, {
+    errorMessage: 'Error getting available impositions'
+  }),
 
-    gainInfamy: controllerFactory.createHandler(gainInfamy, {
-        errorMessage: 'Error gaining infamy',
-        validation: gainInfamyValidation
-    }),
+  gainInfamy: controllerFactory.createHandler(gainInfamy, {
+    errorMessage: 'Error gaining infamy',
+    validation: { requiredFields: ['port'] }
+  }),
 
-    adjustInfamy: controllerFactory.createHandler(adjustInfamy, {
-        errorMessage: 'Error adjusting infamy',
-        validation: adjustInfamyValidation
-    }),
+  adjustInfamy: controllerFactory.createHandler(adjustInfamy, {
+    errorMessage: 'Error adjusting infamy',
+    validation: { requiredFields: ['reason'] }
+  }),
 
-    purchaseImposition: controllerFactory.createHandler(purchaseImposition, {
-        errorMessage: 'Error purchasing imposition',
-        validation: purchaseImpositionValidation
-    }),
+  purchaseImposition: controllerFactory.createHandler(purchaseImposition, {
+    errorMessage: 'Error purchasing imposition',
+    validation: { requiredFields: ['impositionId'] }
+  }),
 
-    getInfamyHistory: controllerFactory.createHandler(getInfamyHistory, {
-        errorMessage: 'Error getting infamy history'
-    }),
+  getInfamyHistory: controllerFactory.createHandler(getInfamyHistory, {
+    errorMessage: 'Error getting infamy history'
+  }),
 
-    getPortVisits: controllerFactory.createHandler(getPortVisits, {
-        errorMessage: 'Error getting port visits'
-    }),
+  getPortVisits: controllerFactory.createHandler(getPortVisits, {
+    errorMessage: 'Error getting port visits'
+  }),
 
-    setFavoredPort: controllerFactory.createHandler(setFavoredPort, {
-        errorMessage: 'Error setting favored port',
-        validation: setFavoredPortValidation
-    }),
+  setFavoredPort: controllerFactory.createHandler(setFavoredPort, {
+    errorMessage: 'Error setting favored port',
+    validation: { requiredFields: ['port'] }
+  }),
 
-    sacrificeCrew: controllerFactory.createHandler(sacrificeCrew, {
-        errorMessage: 'Error sacrificing crew member',
-        validation: sacrificeCrewValidation
-    })
+  sacrificeCrew: controllerFactory.createHandler(sacrificeCrew, {
+    errorMessage: 'Error sacrificing crew member',
+    validation: { requiredFields: ['crewName'] }
+  })
 };
