@@ -665,6 +665,19 @@ describe('authController', () => {
       );
     });
 
+    it.each(['ABC123', 'ABC1234'])('rejects the short invite code %s before any lookup (F-0582)', async (inviteCode) => {
+      const req = createMockReq({ body: { ...validBody, inviteCode } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ value: 'invite-only' }] });
+
+      await authController.registerUser(req, res);
+
+      expect(res.validationError).toHaveBeenCalledWith('Invite codes are exactly 8 letters and numbers');
+      expect(Invite.findByCode).not.toHaveBeenCalled();
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+    });
+
     it('should reject registration entirely in closed mode', async () => {
       const req = createMockReq({
         body: { ...validBody, inviteCode: 'WHATEVER1' },

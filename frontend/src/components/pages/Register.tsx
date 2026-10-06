@@ -5,6 +5,7 @@ import {useNavigate} from 'react-router-dom';
 import api from '../../utils/api';
 import {getErrorMessage} from '../../utils/apiErrors';
 import {isValidEmail} from '../../utils/validation';
+import {INVITE_CODE_FORMAT_MESSAGE, INVITE_CODE_LENGTH, isValidInviteCode} from '../../utils/inviteCode';
 import type {AuthUser} from '../../contexts/AuthContext';
 import {
   Box,
@@ -35,9 +36,6 @@ interface RegisterProps {
     /** Signs the freshly registered user in (App state + cached user) */
     onLogin?: (user: AuthUser) => void;
 }
-
-// Invite codes are 8 alphanumeric characters (legacy codes were 6)
-const INVITE_CODE_PATTERN = /^[A-Z0-9]{6,8}$/;
 
 const Register: React.FC<RegisterProps> = ({onLogin}) => {
     const [username, setUsername] = useState('');
@@ -93,7 +91,7 @@ const Register: React.FC<RegisterProps> = ({onLogin}) => {
             [password.length > 64, 'Password cannot exceed 64 characters'],
             // Invite code handling: required when invite-only, optional when open
             [mode === 'invite-only' && !inviteCode, 'An invite code is required for registration'],
-            [!!inviteCode && !INVITE_CODE_PATTERN.test(inviteCode), 'Invite codes are 6-8 letters and numbers'],
+            [!!inviteCode && !isValidInviteCode(inviteCode), INVITE_CODE_FORMAT_MESSAGE],
         ];
         return rules.find(([failed]) => failed)?.[1] ?? null;
     };
@@ -229,7 +227,7 @@ const Register: React.FC<RegisterProps> = ({onLogin}) => {
                             : "Invite code (optional — joins you to your group's campaign)"}
                         value={inviteCode}
                         onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                        slotProps={{ htmlInput: {maxLength: 8} }}
+                        slotProps={{ htmlInput: {maxLength: INVITE_CODE_LENGTH} }}
                         helperText={inviteRequired ? 'Registration requires an invite code from your DM' : undefined}
                     />
 

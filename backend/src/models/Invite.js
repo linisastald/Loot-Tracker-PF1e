@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
+const { CODE_LENGTH } = require('../utils/inviteCode');
 
 /**
  * Invite code format (Phase 3b invite overhaul):
@@ -12,13 +13,11 @@ const logger = require('../utils/logger');
  * 256 evenly, so mapping each crypto.randomBytes byte with modulo introduces
  * no bias. 32^8 ≈ 1.1 * 10^12 possible codes.
  *
- * Legacy codes generated before this overhaul are 6 characters from
- * Math.random()'s base-36 alphabet; unused ones remain redeemable (the
- * registration route accepts 6-8 character codes) but are never generated
- * anymore.
+ * Legacy codes generated before this overhaul (6-7 characters from
+ * Math.random()'s base-36 alphabet) were retired by migration 067; the
+ * registration and redeem endpoints accept exactly CODE_LENGTH characters.
  */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const CODE_LENGTH = 8;
 
 /** UNIQUE-violation collision retries before giving up. */
 const MAX_CODE_ATTEMPTS = 5;

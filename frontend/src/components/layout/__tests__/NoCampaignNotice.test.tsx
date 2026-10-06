@@ -49,11 +49,11 @@ describe('NoCampaignNotice', () => {
     expect(switchCampaignMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a malformed code without calling the API', () => {
+  it.each(['ab', 'abcdef', 'abcdefg'])('rejects the code %s without calling the API', (code) => {
     render(<NoCampaignNotice onLogout={onLogout} />);
-    fireEvent.change(screen.getByLabelText(/invite code/i), { target: { value: 'ab' } });
+    fireEvent.change(screen.getByLabelText(/invite code/i), { target: { value: code } });
     fireEvent.click(screen.getByRole('button', { name: /join campaign/i }));
-    expect(screen.getByText(/6-8 letters and numbers/i)).toBeInTheDocument();
+    expect(screen.getByText(/exactly 8 letters and numbers/i)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 

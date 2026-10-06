@@ -6,8 +6,8 @@ import React, { useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Paper, TextField, Typography } from '@mui/material';
 import api from '../../utils/api';
 import { useCampaign } from '../../contexts/CampaignContext';
+import { INVITE_CODE_FORMAT_MESSAGE, INVITE_CODE_LENGTH, isValidInviteCode } from '../../utils/inviteCode';
 
-const INVITE_CODE_PATTERN = /^[A-Z0-9]{6,8}$/;
 
 interface NoCampaignNoticeProps {
   onLogout: () => void;
@@ -21,8 +21,8 @@ const NoCampaignNotice: React.FC<NoCampaignNoticeProps> = ({ onLogout }) => {
 
   const handleJoin = async () => {
     const code = inviteCode.trim().toUpperCase();
-    if (!INVITE_CODE_PATTERN.test(code)) {
-      setError('Invite codes are 6-8 letters and numbers');
+    if (!isValidInviteCode(code)) {
+      setError(INVITE_CODE_FORMAT_MESSAGE);
       return;
     }
     setJoining(true);
@@ -58,7 +58,7 @@ const NoCampaignNotice: React.FC<NoCampaignNoticeProps> = ({ onLogout }) => {
         label="Invite Code"
         value={inviteCode}
         onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-        slotProps={{ htmlInput: { maxLength: 8 } }}
+        slotProps={{ htmlInput: { maxLength: INVITE_CODE_LENGTH } }}
         disabled={joining}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {

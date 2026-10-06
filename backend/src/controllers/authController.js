@@ -9,6 +9,7 @@ const emailService = require('../services/emailService');
 const campaignContext = require('../utils/campaignContext');
 const Invite = require('../models/Invite');
 const { assertRedeemable } = require('../utils/inviteRules');
+const { CODE_PATTERN, CODE_FORMAT_MESSAGE } = require('../utils/inviteCode');
 const { AUTH } = require('../config/constants');
 const { AUTH_COOKIE_OPTIONS, issueAuthCookie, isTokenRevokedByPasswordChange } = require('../utils/authSession');
 require('dotenv').config();
@@ -187,6 +188,9 @@ const registerUser = async (req, res) => {
 
     let invite = null;
     if (inviteCode) {
+        if (!CODE_PATTERN.test(inviteCode.trim().toUpperCase())) {
+            throw controllerFactory.createValidationError(CODE_FORMAT_MESSAGE);
+        }
         // CROSS-CAMPAIGN LOOKUP REQUIRED: /auth/register is unauthenticated,
         // so no campaign context exists (the GUC would be empty, matching no rows) — a
         // campaign-2 invite would be invisible here. This is the one place

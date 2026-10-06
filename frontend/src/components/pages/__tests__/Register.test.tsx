@@ -168,17 +168,17 @@ describe('Register', () => {
       });
     });
 
-    it('rejects invite codes that are not 6-8 alphanumeric characters', async () => {
+    it.each(['ABC', 'ABCDEF', 'ABCDEFG'])('rejects the invite code %s (not exactly 8 alphanumeric characters)', async (code) => {
       renderComponent();
       await fillBasicFields();
 
       const inviteField = screen.getByLabelText(/invite code \(optional/i);
-      fireEvent.change(inviteField, { target: { value: 'ABC' } });
+      fireEvent.change(inviteField, { target: { value: code } });
 
       fireEvent.click(screen.getByRole('button', { name: /register/i }));
 
       expect(
-        await screen.findByText(/invite codes are 6-8 letters and numbers/i)
+        await screen.findByText(/invite codes are exactly 8 letters and numbers/i)
       ).toBeInTheDocument();
       expect(api.post).not.toHaveBeenCalled();
     });
@@ -243,7 +243,7 @@ describe('Register', () => {
       });
     });
 
-    it('accepts legacy 6-character invite codes', async () => {
+    it('rejects retired 6-character invite codes without calling the API', async () => {
       renderComponent();
       await fillBasicFields();
 
@@ -252,12 +252,8 @@ describe('Register', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: /register/i }));
 
-      await waitFor(() => {
-        expect(api.post).toHaveBeenCalledWith(
-          '/auth/register',
-          expect.objectContaining({ inviteCode: 'ABC123' })
-        );
-      });
+      expect(await screen.findByText(/invite codes are exactly 8 letters and numbers/i)).toBeInTheDocument();
+      expect(api.post).not.toHaveBeenCalled();
     });
   });
 

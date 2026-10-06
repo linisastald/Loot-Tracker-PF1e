@@ -14,18 +14,12 @@ const controllerFactory = require('../utils/controllerFactory');
 const campaignContext = require('../utils/campaignContext');
 const logger = require('../utils/logger');
 const { assertRedeemable } = require('../utils/inviteRules');
+const { CODE_PATTERN, CODE_FORMAT_MESSAGE } = require('../utils/inviteCode');
 const { GAME } = require('../config/constants');
 
 /** Custom invite expiry bounds (hours). 720 hours = 30 days. */
 const MIN_EXPIRES_IN_HOURS = 1;
 const MAX_EXPIRES_IN_HOURS = 720;
-
-/**
- * Redeemable code shape after server-side uppercasing: new codes are 8 chars
- * from the unambiguous uppercase alphabet, legacy pre-overhaul codes are
- * 6 base-36 chars — 6-8 alphanumeric covers both.
- */
-const REDEEM_CODE_PATTERN = /^[A-Z0-9]{6,8}$/;
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -102,7 +96,7 @@ const generateCustomInvite = async (req, res) => {
  * user may redeem a code (verifyToken only at the route layer; CSRF comes
  * from the mount).
  *
- * Body: { code } — 6-8 alphanumeric, uppercased server-side.
+ * Body: { code } — exactly 8 alphanumeric characters, uppercased server-side.
  *
  * Response data: { campaign: { id, name, slug }, role: 'Player' }
  */
@@ -110,10 +104,10 @@ const redeemInvite = async (req, res) => {
     const { code } = req.body;
 
     const normalizedCode = typeof code === 'string' ? code.trim().toUpperCase() : '';
-    if (!REDEEM_CODE_PATTERN.test(normalizedCode)) {
-        // A code that can't possibly exist gets the same message as an
-        // unknown one — no need to hit the database
-        throw controllerFactory.createValidationError('Invalid or used invite code');
+    if (!CODE_PATTERN.test(normalizedCode)) {
+        // A code that can't possibly exist is rejected without a database
+        // lookup; the shape is not a secret, so the message says what is wrong
+        throw controllerFactory.createValidationError(CODE_FORMAT_MESSAGE);
     }
 
     // CROSS-CAMPAIGN LOOKUP REQUIRED: invites are RLS-scoped to their own

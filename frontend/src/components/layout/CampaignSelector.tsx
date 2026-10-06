@@ -29,8 +29,8 @@ import { useSnackbar } from 'notistack';
 import api from '../../utils/api';
 import { useCampaign } from '../../contexts/CampaignContext';
 import { getErrorMessage } from '../../utils/apiErrors';
+import { INVITE_CODE_FORMAT_MESSAGE, INVITE_CODE_LENGTH, isValidInviteCode } from '../../utils/inviteCode';
 
-const INVITE_CODE_PATTERN = /^[A-Z0-9]{6,8}$/;
 
 interface RedeemInviteResponse {
   campaign: {
@@ -156,8 +156,8 @@ const CampaignSelector: React.FC = () => {
 
   const handleJoin = async () => {
     const code = inviteCode.trim().toUpperCase();
-    if (!INVITE_CODE_PATTERN.test(code)) {
-      joinDialog.setError('Invite codes are 6-8 letters and numbers');
+    if (!isValidInviteCode(code)) {
+      joinDialog.setError(INVITE_CODE_FORMAT_MESSAGE);
       return;
     }
 
@@ -280,7 +280,7 @@ const CampaignSelector: React.FC = () => {
           label="Invite Code"
           value={inviteCode}
           onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-          slotProps={{ htmlInput: { maxLength: 8, style: { textTransform: 'uppercase' } } }}
+          slotProps={{ htmlInput: { maxLength: INVITE_CODE_LENGTH, style: { textTransform: 'uppercase' } } }}
           placeholder="e.g. ABCD1234"
           disabled={joinDialog.busy}
           onKeyDown={(e) => {

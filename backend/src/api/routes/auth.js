@@ -6,6 +6,7 @@ const authController = require('../../controllers/authController');
 const verifyToken = require('../../middleware/auth');
 const logger = require('../../utils/logger');
 const { AUTH, RATE_LIMIT } = require('../../config/constants');
+const { CODE_LENGTH } = require('../../utils/inviteCode');
 
 /**
  * /api/auth is mounted before the global limiter in index.js, so this router
@@ -67,12 +68,11 @@ router.post('/register', [
       .withMessage(`Username must be at least ${AUTH.USERNAME_MIN_LENGTH} characters long`).escape(),
   body('password').isString().isLength({min: AUTH.PASSWORD_MIN_LENGTH})
       .withMessage(`Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters long`),
-  // New invite codes are exactly 8 characters (see models/Invite.js), but
-  // legacy 6-character codes generated before the Phase 3b overhaul may
-  // still sit unused in production — accept both.
+  // Invite codes are exactly CODE_LENGTH characters (see utils/inviteCode.js);
+  // legacy 6-7 character codes were retired by migration 067.
   body('inviteCode').if(body('inviteCode').exists())
-      .isString().trim().isLength({min: 6, max: 8}).escape()
-      .withMessage('Invite code must be 6 to 8 characters long')
+      .isString().trim().isLength({min: CODE_LENGTH, max: CODE_LENGTH}).escape()
+      .withMessage(`Invite code must be exactly ${CODE_LENGTH} characters long`)
 ], handleValidation, authController.registerUser);
 
 router.get('/check-dm', authController.checkForDm);

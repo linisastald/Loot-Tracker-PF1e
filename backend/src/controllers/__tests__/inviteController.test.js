@@ -411,6 +411,8 @@ describe('inviteController', () => {
 
     it.each([
       ['too short', 'AB12'],
+      ['6 characters (legacy)', 'ABC123'],
+      ['7 characters (legacy)', 'ABC1234'],
       ['too long', 'ABCDEFGH2'],
       ['non-alphanumeric', 'ABC-123!'],
       ['non-string', 12345678],
@@ -421,7 +423,7 @@ describe('inviteController', () => {
 
       await inviteController.redeemInvite(req, res);
 
-      expect(res.validationError).toHaveBeenCalledWith('Invalid or used invite code');
+      expect(res.validationError).toHaveBeenCalledWith('Invite codes are exactly 8 letters and numbers');
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
 

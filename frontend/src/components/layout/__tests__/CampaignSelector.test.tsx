@@ -151,14 +151,14 @@ describe('CampaignSelector', () => {
       expect(switchCampaignMock).toHaveBeenCalledWith(5);
     });
 
-    it('rejects codes that are not 6-8 alphanumeric characters client-side', async () => {
+    it.each(['AB!', 'ABCDEF', 'ABCDEFG'])('rejects the code %s (not exactly 8 alphanumeric characters) client-side', async (code) => {
       renderSelector();
       openJoinDialog();
 
-      fireEvent.change(screen.getByLabelText(/invite code/i), { target: { value: 'AB!' } });
+      fireEvent.change(screen.getByLabelText(/invite code/i), { target: { value: code } });
       fireEvent.click(screen.getByRole('button', { name: 'Join' }));
 
-      expect(await screen.findByText('Invite codes are 6-8 letters and numbers')).toBeInTheDocument();
+      expect(await screen.findByText('Invite codes are exactly 8 letters and numbers')).toBeInTheDocument();
       expect(api.post).not.toHaveBeenCalled();
     });
 
