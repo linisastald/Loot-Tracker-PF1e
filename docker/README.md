@@ -20,7 +20,7 @@ See `build_image.sh --help` for dev/stable builds and the Discord broker image.
 
 ## Deployment
 
-Deployment compose/app definitions (TrueNAS yaml, `docker-compose.discord-broker.yml`) are kept outside this folder or out of version control because they contain environment-specific values and secrets. This repository does not ship a compose file for the application itself. See `database/DATABASE_SETUP.md` for how a fresh database is initialised.
+The application is deployed from app definitions (for example TrueNAS apps) that are kept outside git because they contain environment-specific values and secrets; this repository does not ship a compose file for the application itself. The one tracked compose file is `../docker-compose.discord-broker.yml` (repository root), which runs the Discord broker image and takes its secrets from environment variables. The backend applies pending migrations (`backend/migrations/`, tracked in `schema_migrations_v2`) on every start and should connect as the non-owner `loot_app` role so row-level security is enforced. See `database/DATABASE_SETUP.md` for how a fresh database is initialised.
 
 ## Security Notes
 

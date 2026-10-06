@@ -1,6 +1,6 @@
 # Pathfinder 1e Loot Tracker
 
-A full-stack web application for managing loot, gold, crew, ships, and campaigns in Pathfinder 1st Edition tabletop RPG sessions. Supports multiple campaign instances (Rise of the Runelords, Skulls & Shackles) with separate databases.
+A full-stack web application for managing loot, gold, crew, ships, and campaigns in Pathfinder 1st Edition tabletop RPG sessions. Supports multiple campaigns (for example Rise of the Runelords and Skulls & Shackles) in a single database: every campaign-scoped table carries a `campaign_id`, and PostgreSQL row-level security keeps campaigns isolated from each other.
 
 ## Features
 
@@ -36,24 +36,25 @@ A full-stack web application for managing loot, gold, crew, ships, and campaigns
 - **Outpost Management** - Track outposts and assigned crew
 
 ### Administration
-- **Character & User Management** - User accounts with role-based access (DM/Player)
+- **Character & User Management** - User accounts with per-campaign roles (DM/Player) plus a superadmin flag
 - **Item & Mod Database** - Manage the item and modification database
 - **Discord Integration** - Session announcements, RSVP via reactions
 - **User Settings** - Password, email, Discord ID, active character selection
 
 ## Tech Stack
 
-- **Frontend**: React 19, TypeScript, Material-UI v7, Vite
-- **Backend**: Node.js, Express, JWT auth (HTTP-only cookies)
-- **Database**: PostgreSQL 16 with automatic migrations
+- **Frontend**: React 19, TypeScript, Material-UI v9, React Router 7, Vite
+- **Backend**: Node.js 25, Express, JWT auth (HTTP-only cookies), CSRF protection (double-submit cookie via `csrf-csrf`)
+- **Database**: PostgreSQL 16 with automatic migrations (tracked in `schema_migrations_v2`) and row-level security; the app connects as a non-owner role (`DB_APP_USER`)
 - **Infrastructure**: Docker (single container serving API + frontend)
-- **External**: OpenAI API (item parsing), Discord webhooks (session notifications)
+- **External**: OpenAI API (item parsing), a separate Discord broker service (`discord-handler/`) for session announcements and RSVP
 
 ## Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose
+- Docker
 - Git
+- Node.js 25 and npm (only to run the tests or work on the code; the image build does not need them on the host)
 
 ### Build & Deploy
 
@@ -68,34 +69,41 @@ bash build_image.sh --stable
 bash build_image.sh --branch feature/my-feature
 ```
 
-See `docs/build_image.md` for full build script documentation.
+The script pulls the branch from the remote (so push first), builds `docker/Dockerfile.backend` and tags the image. Dev builds are tagged `vX.Y.Z-dev.N` in git; `--stable` commits the version bump and tags `vX.Y.Z`. Add `--discord-broker` to also build the Discord broker image (`discord-handler/Dockerfile`). Run `bash build_image.sh --help` for every option.
+
+Deployment definitions (for example TrueNAS app definitions) are kept outside git because they hold environment-specific values and secrets. The optional Discord broker is deployed with `docker-compose.discord-broker.yml`. The backend applies pending migrations from `backend/migrations/` on every start. A fresh database is set up as described in `database/DATABASE_SETUP.md`.
 
 ### Environment Variables
 
-The application requires the following environment variables (set in your container definition or .env):
+The main variables are below. `backend/.env.example` and `docker/.env.docker.example` list all of them with comments; generate random secrets with `docker/generate-secrets.sh`.
 
-| Variable           | Description                                        |
-|--------------------|-----------------------------------------------------|
-| `DB_USER`          | PostgreSQL username                                 |
-| `DB_HOST`          | Database host                                       |
-| `DB_NAME`          | Database name                                       |
-| `DB_PASSWORD`      | Database password                                   |
-| `DB_PORT`          | Database port (default: 5432)                       |
-| `JWT_SECRET`       | Secret for JWT token signing                        |
-| `OPENAI_API_KEY`   | OpenAI API key (optional, for Smart Item Detection) |
-| `ALLOWED_ORIGINS`  | CORS allowed origins                                |
-| `LOG_DIR`          | Log directory path                                  |
+| Variable           | Description                                                                 |
+|--------------------|------------------------------------------------------------------------------|
+| `DB_USER`          | PostgreSQL owner username (also used by the migration runner)               |
+| `DB_HOST`          | Database host                                                                |
+| `DB_NAME`          | Database name                                                                |
+| `DB_PASSWORD`      | Database owner password                                                      |
+| `DB_PORT`          | Database port (default: 5432)                                                |
+| `DB_APP_USER`, `DB_APP_PASSWORD` | Non-owner application role (`loot_app`); set both so row-level security is enforced |
+| `JWT_SECRET`       | Secret for JWT token signing                                                 |
+| `CSRF_SECRET`      | Secret for CSRF tokens (random per process if unset, which invalidates tokens on every restart) |
+| `OPENAI_API_KEY`   | OpenAI API key (optional, for Smart Item Detection)                          |
+| `ALLOWED_ORIGINS`  | CORS allowed origins                                                         |
+| `FRONTEND_URL`     | Public URL of the app (used in emailed links)                                |
+| `EMAIL_SERVICE`, `EMAIL_USER`, `EMAIL_PASS` or `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | Outgoing mail for password reset (optional) |
+| `DISCORD_BROKER_URL`, `DISCORD_BROKER_SECRET`, `DISCORD_CALLBACK_URL` | Discord broker integration (optional; leave the URL unset to disable) |
+| `LOG_DIR`          | Log directory path                                                           |
 
 ## Development
 
 ### Running Tests
 
 ```bash
-# Backend tests (Jest, ~533 tests)
-cd backend && npm test
+# Backend unit tests (Jest, database mocked with the MockPool in backend/tests/utils)
+cd backend && npx jest --config jest.unit.config.js
 
-# Frontend tests (Vitest, ~17 tests)
-cd frontend && npx vitest run
+# Frontend tests (Vitest) and type check
+cd frontend && npx vitest run && npx tsc --noEmit
 ```
 
 ### Project Structure
@@ -110,19 +118,24 @@ backend/
     middleware/       # Auth, CSRF, validation
     utils/            # Helpers (logger, db, controllerFactory)
   migrations/         # SQL migrations (auto-run on startup)
+  tests/              # Shared Jest setup and mock pg pool
 frontend/
   src/
     components/       # React components (pages, layout, common)
-    contexts/         # React contexts (Auth, Config)
+    contexts/         # React contexts (Auth, Campaign, Config)
     hooks/            # Custom hooks
     services/         # API service layer
     utils/            # Utilities (api, auth, date helpers)
 database/
   init.sql            # Initial schema
   *_data.sql          # Seed data (items, mods, spells, weather)
+  setup_app_role.sql  # Creates the non-owner app role used with row-level security
+discord-handler/      # Discord broker service (separate image)
 docker/
   Dockerfile.backend  # Production Docker image
   generate-secrets.sh # Random secret generator
+docker-compose.discord-broker.yml  # Discord broker deployment
+build_image.sh        # Build / release script
 ```
 
 ## License
