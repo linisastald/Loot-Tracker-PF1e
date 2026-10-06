@@ -117,6 +117,34 @@ describe('SpellcastingService model', () => {
       });
     });
 
+    describe('forced rolls tie the outcome to the roll (village 5%, 9th level 1%)', () => {
+      // roll = floor(Math.random() * 100) + 1
+      it.each([
+        [0.0, 1, true],
+        [0.04, 5, true],
+        [0.05, 6, false],
+        [0.99, 100, false],
+      ])('village 1st-level: Math.random %p gives roll %p -> available %p', (random, roll, available) => {
+        jest.spyOn(Math, 'random').mockReturnValue(random);
+        const result = SpellcastingService.isSpellAvailable(1, 0);
+        expect(result.roll).toBe(roll);
+        expect(result.available).toBe(available);
+        expect(result.reason).toBe(available ? 'village_spellcaster_found' : 'village_no_spellcaster');
+      });
+
+      it.each([
+        [0.0, 1, true],
+        [0.01, 2, false],
+        [0.99, 100, false],
+      ])('9th level in a metropolis: Math.random %p gives roll %p -> available %p', (random, roll, available) => {
+        jest.spyOn(Math, 'random').mockReturnValue(random);
+        const result = SpellcastingService.isSpellAvailable(9, 9);
+        expect(result.roll).toBe(roll);
+        expect(result.available).toBe(available);
+        expect(result.reason).toBe(available ? 'level_9_found' : 'level_9_not_found');
+      });
+    });
+
     describe('9th-level spell special handling', () => {
       it('should roll d100 with only 1% chance in Metropolis (max 9)', () => {
         const result = SpellcastingService.isSpellAvailable(9, 9);
@@ -176,6 +204,19 @@ describe('SpellcastingService model', () => {
       expect(result.roll).toBeGreaterThanOrEqual(1);
       expect(result.roll).toBeLessThanOrEqual(100);
       expect(['cl_higher_found', 'cl_higher_not_found']).toContain(result.reason);
+    });
+
+    it.each([
+      [0.69, 70, true],
+      [0.7, 71, false],
+    ])('above the ceiling the outcome follows the roll (Math.random %p, roll %p -> available %p)', (random, roll, available) => {
+      jest.spyOn(Math, 'random').mockReturnValue(random);
+      // CL 12, min 5, settlement 9 => 3 over => threshold 70
+      const result = SpellcastingService.checkCasterLevelAvailability(12, 5, 9);
+      expect(result.threshold).toBe(70);
+      expect(result.roll).toBe(roll);
+      expect(result.available).toBe(available);
+      expect(result.reason).toBe(available ? 'cl_higher_found' : 'cl_higher_not_found');
     });
 
     it('should floor the find chance at 1% for extreme requests', () => {
@@ -251,35 +292,6 @@ describe('SpellcastingService model', () => {
       expect(query).toContain('s.city_id = $1');
       expect(query).toContain('s.character_id = $2');
       expect(values).toEqual([1, 2]);
-    });
-  });
-
-  describe('findById', () => {
-    it('should return service with joined city details', async () => {
-      const mockService = { id: 1, spell_name: 'Heal', city_name: 'Absalom' };
-      dbUtils.executeQuery.mockResolvedValue({ rows: [mockService] });
-
-      const result = await SpellcastingService.findById(1);
-
-      expect(result).toEqual(mockService);
-    });
-
-    it('should return null when not found', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      expect(await SpellcastingService.findById(999)).toBeNull();
-    });
-  });
-
-  describe('delete', () => {
-    it('should return true on success', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rowCount: 1 });
-      expect(await SpellcastingService.delete(1)).toBe(true);
-    });
-
-    it('should return false when not found', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rowCount: 0 });
-      expect(await SpellcastingService.delete(999)).toBe(false);
     });
   });
 });

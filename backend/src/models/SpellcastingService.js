@@ -201,40 +201,6 @@ exports.getAll = async (options = {}) => {
 };
 
 /**
- * Get service by ID
- * @param {number} id
- * @return {Promise<Object|null>} Service record or null
- */
-exports.findById = async (id) => {
-  const query = `
-    SELECT
-      s.*,
-      c.name as city_name,
-      c.size as city_size,
-      c.max_spell_level as city_max_spell_level,
-      ch.name as character_name
-    FROM spellcasting_service s
-    JOIN city c ON s.city_id = c.id
-    LEFT JOIN characters ch ON s.character_id = ch.id
-    WHERE s.id = $1
-  `;
-
-  const result = await dbUtils.executeQuery(query, [id]);
-  return result.rows.length > 0 ? result.rows[0] : null;
-};
-
-/**
- * Delete a service record
- * @param {number} id
- * @return {Promise<boolean>} Success status
- */
-exports.delete = async (id) => {
-  const query = 'DELETE FROM spellcasting_service WHERE id = $1';
-  const result = await dbUtils.executeQuery(query, [id]);
-  return result.rowCount > 0;
-};
-
-/**
  * Export helper functions
  */
 exports.calculateCost = calculateCost;
