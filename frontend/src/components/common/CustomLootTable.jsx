@@ -24,7 +24,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
-import { styled } from '@mui/system';
+import { styled } from '@mui/material/styles';
 import api from '../../utils/api';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../utils/timezoneUtils';

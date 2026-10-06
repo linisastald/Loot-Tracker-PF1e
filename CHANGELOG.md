@@ -12,15 +12,31 @@ All notable changes to this project are documented in this file.
 ### Changed
 - **The Tasks page explains what it could not deal.** After assigning, an info note lists any task that had nobody eligible, or that was left out because everyone was already full, with a hint to mark it "Must deal" if it has to go out.
 
-### Notes
-- Includes database migrations 059 and 060, which run automatically on server start.
+### Security
+- **Discord broker calls are authenticated.** Backend and broker now share `DISCORD_BROKER_SECRET` (set the same value on both; with `NODE_ENV=production` an unset secret rejects broker traffic).
+- **Discord and global secrets are superadmin-only.** Campaign DMs can no longer change the bot token, and the settings endpoints no longer return token or key fragments.
+- **Campaign access is stricter.** A user with no campaign membership no longer falls back to another campaign; city create/update/delete and the global settings endpoints are superadmin-only; DM identification needs DM rights; stored mod value formulas are no longer evaluated.
+- **Sessions end when a password changes** (migration 066).
+- **Dependency updates:** axios (all three packages), nodemailer 10, and patched moment, ip-address, proxy-addr and compression (npm audit reports 0 vulnerabilities for the backend).
 
-## [0.15.1]
+### Fixed
+- **An RSVP can no longer cancel a session through a database trigger**; cancellation only happens through the scheduled confirmation check.
+- **Scroll, wand and potion catalog prices corrected** (migration 065, wand values stay per charge), plus further seed-data corrections (migration 075).
+- **Fresh installs get the same schema as production:** extended ship columns (migration 064) and `mod.casterlevel` (migration 077).
+- **Discord session announcements are retried** instead of being marked sent when Discord is not configured.
+
+### Removed
+- Unused database tables `fame`, `fame_history` and `golarion_calendar_notes` (migration 076), obsolete deployment files (the nginx image, `Dockerfile.full`, the per-campaign compose file) and stale utility scripts.
+
+### Notes
+- Includes database migrations 059 onward (numbers are final only at release), which run automatically on server start.
+
+## [0.15.1] - 2026-09-11
 
 ### Security
 - **Dependency security updates.** Cleared all 33 open Dependabot alerts (16 high, 17 moderate) across the app, the frontend, and the Discord broker. Notable runtime packages: the email library (nodemailer 9.1.1), the client-side router (react-router 7.18.3), and query-string parsing (qs 6.16.0); the rest are build and test tooling. No intended change to how the app works.
 
-## [0.15.0]
+## [0.15.0] - 2026-09-11
 
 ### Added
 - **DMs can edit the session task lists.** A new DM Settings > Task Management page lets the DM add, edit, delete, and reorder the pre-session, during-session, and post-session tasks the Tasks page deals out, per campaign. Each task can be dealt to more than one person ("copies", like the two Loot Masters), can be held back until a minimum number of characters are present (like the extra-chairs task at 6+), and one task can be flagged as the one that names next session's Snack Master. A "Restore defaults" button puts the stock list back. Existing campaigns start with the same tasks they had before.
@@ -36,7 +52,7 @@ All notable changes to this project are documented in this file.
 ### Notes
 - Includes database migrations (056, 057, 058) that run automatically on server start.
 
-## [0.14.1]
+## [0.14.1] - 2026-06-26
 
 ### Changed
 - **Date fields use a consistent calendar picker.** The Session Date fields on the Loot Entry and Gold pages now use the same date picker as the rest of the app — a calendar field you fill in section by section (month / day / year) — instead of the browser's built-in date box, so entering dates looks and behaves the same everywhere.
@@ -50,7 +66,7 @@ All notable changes to this project are documented in this file.
 ### Notes
 - The Discord broker runs as a separate service; its container must be rebuilt to pick up the broker-side updates above.
 
-## [0.14.0]
+## [0.14.0] - 2026-06-25
 
 ### Added
 - **"Level Up" button for the party (DM only).** On the DM Campaign Settings page, a new Party Level section shows the party's shared **character level** alongside the derived **Average Party Level (APL)**, and a Level Up button that raises the character level by one. The APL is calculated the standard Pathfinder way (Core Rulebook p.397) from the character level and the number of active characters: 3 or fewer characters give APL −1, four or five no change, six or more APL +1. If Discord integration is enabled, the announcement tells players which level to level up to. A confirmation dialog guards the action since it pings Discord.
@@ -70,7 +86,7 @@ All notable changes to this project are documented in this file.
 ### Notes
 - Includes database migration (055) that runs automatically on server start.
 
-## [0.13.3]
+## [0.13.3] - 2026-06-14
 
 ### Fixed
 - **Discord session responses now work in every campaign.** When a newer campaign posted a session attendance message, players who clicked to respond got "This channel is not configured for session attendance tracking." Each campaign's Discord channel is now registered for interactions, and channels for campaigns created later are picked up automatically (within ~30 seconds) without a restart.
@@ -79,6 +95,30 @@ All notable changes to this project are documented in this file.
 
 ### Notes
 - Includes database migration (054) that runs automatically on server start.
+
+## [0.13.2] - 2026-06-12
+
+### Added
+- **Harrow Point Tracker** for Curse of the Crimson Throne campaigns (campaign-flavor module).
+
+## [0.13.1] - 2026-06-11
+
+### Fixed
+- Repaired legacy production schema drift across 16 tables (migration 051) and the legacy invites table shape (migration 050).
+
+### Changed
+- Dropped 16 structurally redundant indexes (migration 052).
+
+### Notes
+- Includes database migrations (050, 051, 052) that run automatically on server start.
+
+## [0.13.0] - 2026-06-11
+
+### Added
+- **Multi-campaign support.** One installation now hosts several campaigns: campaign context and row-level security, a campaign selector with per-campaign themes and settings, an overhauled invite and join-by-code system, a campaigns admin plane and a role-check hardening sweep (migration 044 onward).
+
+### Notes
+- Includes database migrations that run automatically on server start.
 
 ## [0.12.2]
 

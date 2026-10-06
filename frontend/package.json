@@ -11,7 +11,6 @@
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^9.1.1",
     "@mui/material": "^9.1.2",
-    "@mui/system": "^9.1.2",
     "@mui/x-date-pickers": "^9.7.0",
     "axios": "^1.20.0",
     "date-fns": "^4.1.0",
@@ -27,12 +26,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage",
-    "test:ci": "vitest run --coverage",
-    "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
-    "lint:fix": "eslint src --ext .ts,.tsx --fix",
-    "prepare": "husky"
+    "lint": "eslint src --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint src --fix"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
@@ -45,37 +40,14 @@
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
     "@vitejs/plugin-react": "^6.0.3",
-    "@vitest/ui": "^4.1.11",
     "eslint": "^9.32.0",
-    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.3",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
-    "lint-staged": "^17.0.8",
     "prettier": "^3.6.2",
     "typescript": "^6.0.3",
     "vite": "^8.1.0",
     "vitest": "^4.1.11"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{js,jsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,css,md}": [
-      "prettier --write"
-    ]
-  },
-  "browserslist": [
-    ">0.2%",
-    "not dead",
-    "not op_mini all"
-  ],
-  "overrides": {}
+  }
 }
