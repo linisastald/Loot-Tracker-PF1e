@@ -591,6 +591,59 @@ describe('GolarionCalendar', () => {
       );
     });
 
+    it('a DM can add the first holiday of a campaign that has none', async () => {
+      mockIsDM = true;
+      mockCalendarData({ holidays: [] });
+      renderCalendar();
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Holidays' }));
+      expect(await screen.findByText(/No holidays defined/i)).toBeInTheDocument();
+      fireEvent.click(await screen.findByRole('button', { name: /Add Holiday/i }));
+      fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: 'First Feast' } });
+      const buttons = screen.getAllByRole('button', { name: /Add Holiday/i });
+      fireEvent.click(buttons[buttons.length - 1]);
+
+      await waitFor(() =>
+        expect(api.post).toHaveBeenCalledWith(
+          '/calendar/holidays',
+          expect.objectContaining({ name: 'First Feast' })
+        )
+      );
+    });
+
+    it('players do not get an Add Holiday button when there are no holidays', async () => {
+      mockIsDM = false;
+      mockCalendarData({ holidays: [] });
+      renderCalendar();
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Holidays' }));
+      expect(await screen.findByText(/No holidays defined/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Add Holiday/i })).not.toBeInTheDocument();
+    });
+
+    it('official holidays are read-only: no edit or delete controls, even for a DM', async () => {
+      mockIsDM = true;
+      mockCalendarData({ holidays: [{ ...HOLIDAY, id: 4, name: 'Swallowtail Festival', isCustom: false }] });
+      renderCalendar();
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Holidays' }));
+      expect(await screen.findByText(/Swallowtail Festival/)).toBeInTheDocument();
+      expect(screen.queryByLabelText('edit holiday')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('delete holiday')).not.toBeInTheDocument();
+    });
+
+    it('shows the server message when deleting a holiday is refused', async () => {
+      mockIsDM = true;
+      mockCalendarData({ holidays: [HOLIDAY] });
+      (api.delete as any).mockRejectedValueOnce({ response: { data: { message: 'Official holidays cannot be changed' } } });
+      renderCalendar();
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Holidays' }));
+      fireEvent.click(await screen.findByLabelText('delete holiday'));
+
+      expect(await screen.findByText('Official holidays cannot be changed')).toBeInTheDocument();
+    });
+
     it('a DM can delete a custom holiday', async () => {
       mockIsDM = true;
       mockCalendarData({ holidays: [HOLIDAY] });

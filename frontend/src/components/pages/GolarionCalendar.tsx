@@ -1538,7 +1538,7 @@ const GolarionCalendar: React.FC = () => {
                 </Paper>
             ))}
             {/* Holidays tab: per-category visibility + reference list + DM management */}
-            {activeTab === 2 && (holidays.length > 0 ? (
+            {activeTab === 2 && (
                 <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
                     <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1}}>
                         <Typography variant="h5" color="primary" sx={{display: 'flex', alignItems: 'center'}}>
@@ -1554,6 +1554,9 @@ const GolarionCalendar: React.FC = () => {
                         )}
                     </Box>
 
+                    {holidays.length === 0 ? (
+                        <Typography variant="body2" sx={{color: "text.secondary"}}>No holidays defined.</Typography>
+                    ) : (<>
                     <Box sx={{display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 1}}>
                         <Typography
                             variant="caption"
@@ -1637,14 +1640,9 @@ const GolarionCalendar: React.FC = () => {
                             Movable holidays (solstices, weekday-based, etc.) have no fixed day and aren't shown on the grid.
                         </Typography>
                     )}
+                    </>)}
                 </Paper>
-            ) : (
-                <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
-                    <Typography variant="body2" sx={{
-                        color: "text.secondary"
-                    }}>No holidays defined.</Typography>
-                </Paper>
-            ))}
+            )}
             <Dialog
                 open={confirmDialogOpen}
                 onClose={() => setConfirmDialogOpen(false)}
