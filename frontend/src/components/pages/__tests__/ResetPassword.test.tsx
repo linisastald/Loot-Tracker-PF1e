@@ -84,6 +84,7 @@ describe('ResetPassword', () => {
       ['', '', 'Both password fields are required'],
       ['longenough1', 'different123', 'Passwords do not match'],
       ['short', 'short', 'Password must be at least 8 characters long'],
+      ['x'.repeat(65), 'x'.repeat(65), 'Password cannot exceed 64 characters'],
     ])('rejects %j / %j without calling the API', async (a, b, message) => {
       renderWithToken('valid-token-123');
       fill(a, b);
@@ -108,6 +109,39 @@ describe('ResetPassword', () => {
         expect(mockNavigate).toHaveBeenCalledWith('/login');
       } finally {
         vi.useRealTimers();
+      }
+    });
+
+    it('does not redirect to login after the page is left within the 3 second delay (F-1399)', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { unmount } = renderWithToken('valid-token-123');
+        fill('brandnewpass', 'brandnewpass');
+        expect(await screen.findByText('Password reset successfully')).toBeInTheDocument();
+
+        unmount();
+        await act(async () => { vi.advanceTimersByTime(5000); });
+        expect(mockNavigate).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('removes the token from the address bar and still uses it for the reset (F-1398)', async () => {
+      const replaceSpy = vi.spyOn(window.history, 'replaceState');
+      try {
+        renderWithToken('valid-token-123');
+        expect(replaceSpy).toHaveBeenCalled();
+        const url = String(replaceSpy.mock.calls[0][2]);
+        expect(url).not.toContain('token');
+
+        fill('brandnewpass', 'brandnewpass');
+        await waitFor(() => expect(api.post).toHaveBeenCalledWith('/auth/reset-password', {
+          token: 'valid-token-123',
+          newPassword: 'brandnewpass',
+        }));
+      } finally {
+        replaceSpy.mockRestore();
       }
     });
 

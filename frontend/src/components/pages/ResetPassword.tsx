@@ -1,41 +1,50 @@
 // frontend/src/components/pages/ResetPassword.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../utils/api';
 import { getErrorMessage } from '../../utils/apiErrors';
+import PasswordField from '../common/PasswordField';
 import {
     Box,
     Button,
     Container,
-    IconButton,
-    InputAdornment,
     Link,
     Paper,
-    TextField,
     Typography,
     Alert
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+
+// Mirrors the server policy (AUTH.PASSWORD_MIN_LENGTH / PASSWORD_MAX_LENGTH)
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 64;
 
 const ResetPassword: React.FC = () => {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+    const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const token = searchParams.get('token');
+    // Keep the token in state: it is removed from the address bar below so it
+    // does not linger in browser history or URL logs while it is still valid.
+    const [token] = useState(() => searchParams.get('token'));
 
     useEffect(() => {
         if (!token) {
             setError('Invalid reset link. Please request a new password reset.');
+            return;
         }
+        window.history.replaceState(window.history.state, '', window.location.pathname);
     }, [token]);
+
+    // Do not yank the user back to /login after they have left the page
+    useEffect(() => () => {
+        if (redirectTimer.current) clearTimeout(redirectTimer.current);
+    }, []);
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -53,8 +62,13 @@ const ResetPassword: React.FC = () => {
                 return;
             }
 
-            if (newPassword.length < 8) {
-                setError('Password must be at least 8 characters long');
+            if (newPassword.length < PASSWORD_MIN_LENGTH) {
+                setError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters long`);
+                return;
+            }
+
+            if (newPassword.length > PASSWORD_MAX_LENGTH) {
+                setError(`Password cannot exceed ${PASSWORD_MAX_LENGTH} characters`);
                 return;
             }
 
@@ -68,7 +82,7 @@ const ResetPassword: React.FC = () => {
             setSuccess(response.data.message);
             
             // Redirect to login after 3 seconds
-            setTimeout(() => {
+            redirectTimer.current = setTimeout(() => {
                 navigate('/login');
             }, 3000);
 
@@ -77,14 +91,6 @@ const ResetPassword: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    };
-
-    const togglePasswordVisibility = () => {
-        setShowPassword(!showPassword);
-    };
-
-    const toggleConfirmPasswordVisibility = () => {
-        setShowConfirmPassword(!showConfirmPassword);
     };
 
     if (!token) {
@@ -128,55 +134,27 @@ const ResetPassword: React.FC = () => {
                 </Typography>
 
                 <form onSubmit={handleSubmit} noValidate>
-                <TextField
+                <PasswordField
                     variant="outlined"
                     margin="normal"
                     required
                     fullWidth
                     label="New Password"
-                    type={showPassword ? 'text' : 'password'}
                     autoFocus
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     disabled={loading}
-                    slotProps={{ input: {
-                        endAdornment: (
-                            <InputAdornment position="end">
-                                <IconButton
-                                    aria-label={showPassword ? "Hide password" : "Show password"}
-                                    onClick={togglePasswordVisibility}
-                                    edge="end"
-                                >
-                                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                                </IconButton>
-                            </InputAdornment>
-                        ),
-                    } }}
                 />
 
-                <TextField
+                <PasswordField
                     variant="outlined"
                     margin="normal"
                     required
                     fullWidth
                     label="Confirm New Password"
-                    type={showConfirmPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     disabled={loading}
-                    slotProps={{ input: {
-                        endAdornment: (
-                            <InputAdornment position="end">
-                                <IconButton
-                                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                                    onClick={toggleConfirmPasswordVisibility}
-                                    edge="end"
-                                >
-                                    {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
-                                </IconButton>
-                            </InputAdornment>
-                        ),
-                    } }}
                 />
 
                 {error && (
