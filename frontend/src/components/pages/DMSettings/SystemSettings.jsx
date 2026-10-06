@@ -1,4 +1,4 @@
-// frontend/src/components/pages/DMSettings/SystemSettings.js
+// frontend/src/components/pages/DMSettings/SystemSettings.jsx
 // Multi-campaign Phase 4c: the Discord channel/role/enabled flag, the
 // campaign timezone, and auto-appraisal are per-campaign — they read from
 // useCampaign().campaignSettings and write to PUT /campaigns/current/settings.
@@ -9,8 +9,10 @@
 // PUT /user/update-setting. Registration mode lives on the System Admin page;
 // the legacy global 'theme' toggle was removed (the app uses the static base
 // theme plus per-campaign overrides).
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import api from '../../../utils/api';
+import {getErrorMessage} from '../../../utils/apiErrors';
+import {clearTimezoneCache} from '../../../utils/timezoneUtils';
 import {useSnackbar} from 'notistack';
 import {useCampaign} from '../../../contexts/CampaignContext';
 import {
@@ -27,7 +29,6 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Snackbar,
   Switch,
   TextField,
   Typography
@@ -40,15 +41,45 @@ import {
 } from '@mui/icons-material';
 import CampaignThemeSettings from './CampaignThemeSettings';
 
-const SystemSettings = () => {
+// The test-data card is only offered on the test instance (and only to the
+// superadmin; the server enforces both).
+const TEST_DATA_HOSTNAME = 'test.kempsonandko.com';
+const DEFAULT_TIMEZONE = 'America/New_York';
+const CAMPAIGN_SETTINGS_ENDPOINT = '/campaigns/current/settings';
+
+// Per-campaign values as the form edits them, derived from the context's
+// settings map (values are stored as strings).
+const readCampaignValues = (settings) => {
+    const quantity = parseInt(settings?.default_browser_quantity, 10);
+    return {
+        channelId: typeof settings?.discord_channel_id === 'string' ? settings.discord_channel_id : '',
+        roleId: typeof settings?.campaign_role_id === 'string' ? settings.campaign_role_id : '',
+        enabled: settings?.discord_integration_enabled === '1',
+        autoAppraisalEnabled: settings?.auto_appraisal_enabled !== undefined
+            ? settings.auto_appraisal_enabled === '1'
+            : true,
+        defaultBrowserQuantity: quantity > 0 ? quantity : 1,
+        defaultQuantityEnabled: settings?.default_quantity_enabled === '1',
+        autoSplitStacksEnabled: settings?.auto_split_stacks_enabled === '1',
+        timezone: (typeof settings?.campaign_timezone === 'string' && settings.campaign_timezone)
+            ? settings.campaign_timezone
+            : DEFAULT_TIMEZONE
+    };
+};
+
+const GENERAL_SWITCHES = [
+    {key: 'autoAppraisalEnabled', label: 'Auto-Appraisal (this campaign only)'},
+    {key: 'autoSplitStacksEnabled', label: 'Auto-Split Stacks'}
+];
+
+const flag = (value) => (value ? '1' : '0');
+
+const SystemSettings = ({testDataHostname = TEST_DATA_HOSTNAME}) => {
     const {currentCampaign, campaignSettings, isSuperadmin, refresh} = useCampaign();
     const {enqueueSnackbar} = useSnackbar();
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
     const [isLoadingDiscord, setIsLoadingDiscord] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [snackbarOpen, setSnackbarOpen] = useState(false);
-    const [snackbarMessage, setSnackbarMessage] = useState('');
     const [isGeneratingTestData, setIsGeneratingTestData] = useState(false);
 
     // Timezone settings
@@ -74,14 +105,10 @@ const SystemSettings = () => {
         autoSplitStacksEnabled: false
     });
 
-    // Set original values for comparison later
-    const [originalSettings, setOriginalSettings] = useState({
-        botToken: '',
-        channelId: '',
-        roleId: '',
-        enabled: false,
-        openaiKey: ''
-    });
+    // The values last loaded from / saved to the server. Used both to decide
+    // which fields changed and to tell unsaved edits apart from untouched
+    // fields when the campaign context refreshes.
+    const savedRef = useRef(null);
 
     // Saved secrets are never echoed back into their fields. The server only
     // says whether one exists; the input stays empty (write-only) and shows a
@@ -95,35 +122,29 @@ const SystemSettings = () => {
     }, [isSuperadmin]);
 
     // Per-campaign values come from the campaign context (GET /campaigns/current
-    // settings map, values stored as strings). Re-sync whenever the context
-    // refreshes (e.g. after a save).
+    // settings map). Re-sync whenever the context refreshes, but only the fields
+    // the user has not edited: a field still equal to the previously loaded
+    // value is replaced, an unsaved edit is kept.
     useEffect(() => {
-        const channelId = typeof campaignSettings?.discord_channel_id === 'string'
-            ? campaignSettings.discord_channel_id : '';
-        const roleId = typeof campaignSettings?.campaign_role_id === 'string'
-            ? campaignSettings.campaign_role_id : '';
-        const enabled = campaignSettings?.discord_integration_enabled === '1';
+        const next = readCampaignValues(campaignSettings);
+        const prev = savedRef.current;
+        const sync = (current, key) => (prev === null || current === prev[key]) ? next[key] : current;
 
-        setDiscordSettings(prev => ({...prev, channelId, roleId, enabled}));
-        setOriginalSettings(prev => ({...prev, channelId, roleId, enabled}));
-
-        const parsedQuantity = parseInt(campaignSettings?.default_browser_quantity, 10);
-        setDefaultSettings(prev => ({
-            ...prev,
-            autoAppraisalEnabled: campaignSettings?.auto_appraisal_enabled !== undefined
-                ? campaignSettings.auto_appraisal_enabled === '1'
-                : true,
-            defaultBrowserQuantity: parsedQuantity > 0 ? parsedQuantity : 1,
-            defaultQuantityEnabled: campaignSettings?.default_quantity_enabled === '1',
-            autoSplitStacksEnabled: campaignSettings?.auto_split_stacks_enabled === '1'
+        setDiscordSettings(d => ({
+            ...d,
+            channelId: sync(d.channelId, 'channelId'),
+            roleId: sync(d.roleId, 'roleId'),
+            enabled: sync(d.enabled, 'enabled')
         }));
-
-        const timezone = (typeof campaignSettings?.campaign_timezone === 'string' && campaignSettings.campaign_timezone)
-            ? campaignSettings.campaign_timezone
-            : 'America/New_York';
-        setCurrentTimezone(timezone);
-        // Don't clobber an in-progress selection on unrelated refreshes
-        setSelectedTimezone(prev => prev || timezone);
+        setDefaultSettings(d => ({
+            autoAppraisalEnabled: sync(d.autoAppraisalEnabled, 'autoAppraisalEnabled'),
+            defaultBrowserQuantity: sync(d.defaultBrowserQuantity, 'defaultBrowserQuantity'),
+            defaultQuantityEnabled: sync(d.defaultQuantityEnabled, 'defaultQuantityEnabled'),
+            autoSplitStacksEnabled: sync(d.autoSplitStacksEnabled, 'autoSplitStacksEnabled')
+        }));
+        setCurrentTimezone(next.timezone);
+        setSelectedTimezone(selected => sync(selected, 'timezone'));
+        savedRef.current = next;
     }, [campaignSettings]);
 
     const fetchData = async () => {
@@ -156,9 +177,9 @@ const SystemSettings = () => {
 
     // Discord settings handlers
     const handleSaveDiscordSettings = async () => {
+        let touchedCampaignSettings = false;
         try {
             setIsLoadingDiscord(true);
-            let touchedCampaignSettings = false;
 
             // Only send the token if the user typed a replacement; an empty
             // field means "keep the saved token" (shared by all campaigns)
@@ -169,35 +190,22 @@ const SystemSettings = () => {
                     // Trim: a pasted token often carries a trailing newline/space
                     value: discordSettings.botToken.trim()
                 });
+                setDiscordSettings(prev => ({...prev, botToken: ''}));
+                setHasSavedBotToken(true);
             }
 
-            // Channel ID, role ID, and the enabled flag are per-campaign
-
-            // Only update channel ID if it's changed
-            if (discordSettings.channelId !== originalSettings.channelId) {
-                await api.put('/campaigns/current/settings', {
-                    name: 'discord_channel_id',
-                    value: discordSettings.channelId
-                });
+            // Channel ID, role ID, and the enabled flag are per-campaign;
+            // only the fields that changed are written
+            const saved = savedRef.current;
+            const changes = [
+                ['channelId', 'discord_channel_id', discordSettings.channelId],
+                ['roleId', 'campaign_role_id', discordSettings.roleId],
+                ['enabled', 'discord_integration_enabled', flag(discordSettings.enabled)]
+            ].filter(([key]) => discordSettings[key] !== saved[key]);
+            for (const [key, name, value] of changes) {
+                await api.put(CAMPAIGN_SETTINGS_ENDPOINT, {name, value});
                 touchedCampaignSettings = true;
-            }
-
-            // Only update role ID if it's changed
-            if (discordSettings.roleId !== originalSettings.roleId) {
-                await api.put('/campaigns/current/settings', {
-                    name: 'campaign_role_id',
-                    value: discordSettings.roleId
-                });
-                touchedCampaignSettings = true;
-            }
-
-            // Only update enabled status if it's changed
-            if (discordSettings.enabled !== originalSettings.enabled) {
-                await api.put('/campaigns/current/settings', {
-                    name: 'discord_integration_enabled',
-                    value: discordSettings.enabled ? '1' : '0'
-                });
-                touchedCampaignSettings = true;
+                savedRef.current = {...savedRef.current, [key]: discordSettings[key]};
             }
 
             // Only send the OpenAI key if the superadmin typed a replacement;
@@ -208,81 +216,41 @@ const SystemSettings = () => {
                     name: 'openai_key',
                     value: discordSettings.openaiKey.trim()
                 });
-            }
-
-            // Update original settings for next comparison
-            setOriginalSettings({
-                botToken: '',
-                channelId: discordSettings.channelId,
-                roleId: discordSettings.roleId,
-                enabled: discordSettings.enabled,
-                openaiKey: ''
-            });
-
-            // After a successful secret save, reset the field to placeholder
-            // mode - never echo the saved value back into the input.
-            if (typedBotToken) {
-                setDiscordSettings(prev => ({...prev, botToken: ''}));
-                setHasSavedBotToken(true);
-            }
-            if (typedOpenAiKey) {
                 setDiscordSettings(prev => ({...prev, openaiKey: ''}));
                 setHasSavedOpenAiKey(true);
             }
 
+            enqueueSnackbar('Discord settings updated successfully', {variant: 'success'});
+        } catch (err) {
+            enqueueSnackbar(getErrorMessage(err, 'Error updating Discord settings'), {variant: 'error'});
+        } finally {
+            setIsLoadingDiscord(false);
+            // Also after a partial failure: the writes that did succeed must show up
             if (touchedCampaignSettings) {
                 await refresh();
             }
-
-            enqueueSnackbar('Discord settings updated successfully', {variant: 'success'});
-        } catch (err) {
-            enqueueSnackbar(
-                err.response?.data?.message || 'Error updating Discord settings',
-                {variant: 'error'}
-            );
-        } finally {
-            setIsLoadingDiscord(false);
         }
     };
 
-    // General settings handler
+    // General settings handler (per-campaign)
     const handleSaveGeneralSettings = async () => {
+        const updates = [
+            ['default_quantity_enabled', flag(defaultSettings.defaultQuantityEnabled)],
+            // The quantity is only saved while the default is enabled and valid
+            ...(defaultSettings.defaultQuantityEnabled && defaultSettings.defaultBrowserQuantity > 0
+                ? [['default_browser_quantity', String(defaultSettings.defaultBrowserQuantity)]]
+                : []),
+            ['auto_appraisal_enabled', flag(defaultSettings.autoAppraisalEnabled)],
+            ['auto_split_stacks_enabled', flag(defaultSettings.autoSplitStacksEnabled)]
+        ];
         try {
-            // Only update settings if they've been changed from defaults
-
-            // Item-entry defaults (per-campaign)
-            await api.put('/campaigns/current/settings', {
-                name: 'default_quantity_enabled',
-                value: defaultSettings.defaultQuantityEnabled ? '1' : '0'
-            });
-
-            // Only save default browser quantity if enabled and valid
-            if (defaultSettings.defaultQuantityEnabled && defaultSettings.defaultBrowserQuantity > 0) {
-                await api.put('/campaigns/current/settings', {
-                    name: 'default_browser_quantity',
-                    value: defaultSettings.defaultBrowserQuantity.toString()
-                });
+            for (const [name, value] of updates) {
+                await api.put(CAMPAIGN_SETTINGS_ENDPOINT, {name, value});
             }
-
-            // Save auto-appraisal setting (per-campaign)
-            await api.put('/campaigns/current/settings', {
-                name: 'auto_appraisal_enabled',
-                value: defaultSettings.autoAppraisalEnabled ? '1' : '0'
-            });
-
-            // Save auto-split stacks setting (per-campaign)
-            await api.put('/campaigns/current/settings', {
-                name: 'auto_split_stacks_enabled',
-                value: defaultSettings.autoSplitStacksEnabled ? '1' : '0'
-            });
-
             await refresh();
             enqueueSnackbar('General settings updated successfully', {variant: 'success'});
         } catch (err) {
-            enqueueSnackbar(
-                err.response?.data?.message || 'Error updating general settings',
-                {variant: 'error'}
-            );
+            enqueueSnackbar(getErrorMessage(err, 'Error updating general settings'), {variant: 'error'});
         }
     };
 
@@ -290,19 +258,18 @@ const SystemSettings = () => {
     const handleSaveTimezone = async () => {
         setSavingTimezone(true);
         try {
-            await api.put('/campaigns/current/settings', {
+            await api.put(CAMPAIGN_SETTINGS_ENDPOINT, {
                 name: 'campaign_timezone',
                 value: selectedTimezone
             });
 
             setCurrentTimezone(selectedTimezone);
+            // Pages formatting times in the campaign timezone cache it for 5 minutes
+            clearTimezoneCache();
             await refresh();
             enqueueSnackbar('Campaign timezone updated successfully!', {variant: 'success'});
         } catch (err) {
-            enqueueSnackbar(
-                err.response?.data?.message || 'Failed to update timezone',
-                {variant: 'error'}
-            );
+            enqueueSnackbar(getErrorMessage(err, 'Failed to update timezone'), {variant: 'error'});
         } finally {
             setSavingTimezone(false);
         }
@@ -311,22 +278,20 @@ const SystemSettings = () => {
     const handleGenerateTestData = async () => {
         setIsGeneratingTestData(true);
         try {
+            // The api utility returns the response body: { success, data: { message, summary } }
             const response = await api.post('/test-data/generate');
-            
-            setSuccess(response.data.message || 'Test data generated successfully!');
-            setSnackbarMessage(`Test data generated: ${response.data.data.summary.loot} loot items, ${response.data.data.summary.gold} gold transactions, ${response.data.data.summary.users} users, ${response.data.data.summary.ships} ships, ${response.data.data.summary.crew} crew members`);
-            setSnackbarOpen(true);
-            setError('');
-        } catch (error) {
-            setError(error.response?.data?.message || 'Error generating test data. Please try again.');
-            setSuccess('');
+            const summary = response?.data?.summary;
+            enqueueSnackbar(
+                summary
+                    ? `Test data generated: ${summary.loot} loot items, ${summary.gold} gold transactions, ${summary.users} users, ${summary.ships} ships, ${summary.crew} crew members`
+                    : (response?.data?.message || 'Test data generated successfully!'),
+                {variant: 'success'}
+            );
+        } catch (err) {
+            enqueueSnackbar(getErrorMessage(err, 'Error generating test data. Please try again.'), {variant: 'error'});
         } finally {
             setIsGeneratingTestData(false);
         }
-    };
-
-    const handleSnackbarClose = () => {
-        setSnackbarOpen(false);
     };
 
     if (isLoading) {
@@ -347,7 +312,6 @@ const SystemSettings = () => {
     return (
         <div>
             <Typography variant="h6" gutterBottom>System Settings</Typography>
-            {success && <Alert severity="success" sx={{mt: 2, mb: 2}}>{success}</Alert>}
             {error && <Alert severity="error" sx={{mt: 2, mb: 2}}>{error}</Alert>}
             <Grid container spacing={3}>
                 {/* Discord Integration Settings */}
@@ -472,35 +436,22 @@ const SystemSettings = () => {
                                 )}
                             </Box>
 
-                            <Box sx={{mb: 2}}>
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={defaultSettings.autoAppraisalEnabled}
-                                            onChange={(e) => setDefaultSettings({
-                                                ...defaultSettings,
-                                                autoAppraisalEnabled: e.target.checked
-                                            })}
-                                        />
-                                    }
-                                    label="Auto-Appraisal (this campaign only)"
-                                />
-                            </Box>
-
-                            <Box sx={{mb: 2}}>
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={defaultSettings.autoSplitStacksEnabled}
-                                            onChange={(e) => setDefaultSettings({
-                                                ...defaultSettings,
-                                                autoSplitStacksEnabled: e.target.checked
-                                            })}
-                                        />
-                                    }
-                                    label="Auto-Split Stacks"
-                                />
-                            </Box>
+                            {GENERAL_SWITCHES.map(({key, label}) => (
+                                <Box key={key} sx={{mb: 2}}>
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                checked={defaultSettings[key]}
+                                                onChange={(e) => setDefaultSettings({
+                                                    ...defaultSettings,
+                                                    [key]: e.target.checked
+                                                })}
+                                            />
+                                        }
+                                        label={label}
+                                    />
+                                </Box>
+                            ))}
 
                             <Button
                                 variant="outlined"
@@ -596,7 +547,7 @@ const SystemSettings = () => {
                 </Grid>
 
                 {/* Test Data Generation - Only show on test instance */}
-                {window.location.hostname === 'test.kempsonandko.com' && (
+                {isSuperadmin && window.location.hostname === testDataHostname && (
                     <Grid size={12}>
                         <Card variant="outlined">
                             <CardHeader 
@@ -635,12 +586,6 @@ const SystemSettings = () => {
                     </Grid>
                 )}
             </Grid>
-            <Snackbar
-                open={snackbarOpen}
-                autoHideDuration={3000}
-                onClose={handleSnackbarClose}
-                message={snackbarMessage}
-            />
         </div>
     );
 };

@@ -60,6 +60,7 @@ vi.mock('../../../../hooks/useCampaignTimezone', () => ({
 vi.mock('../../../../utils/timezoneUtils', () => ({
   formatInCampaignTimezone: (date: string | Date) => `formatted:${date}`,
   fetchCampaignTimezone: vi.fn().mockResolvedValue('America/New_York'),
+  clearTimezoneCache: vi.fn(),
 }));
 
 // CampaignThemeSettings needs CampaignContext (tested on its own); stub it out
@@ -69,6 +70,7 @@ vi.mock('../CampaignThemeSettings', () => ({
 
 import api from '../../../../utils/api';
 import SystemSettings from '../SystemSettings';
+import { clearTimezoneCache } from '../../../../utils/timezoneUtils';
 
 // /settings/discord only reports whether the (global) bot token is set; the
 // channel/role/enabled values are per-campaign and come from the context.
@@ -112,8 +114,17 @@ const makeGetMock = (opts: {
   });
 };
 
-const renderSystemSettings = () =>
+const renderSystemSettings = (props: { testDataHostname?: string } = {}) =>
   render(
+    <BrowserRouter>
+      <SnackbarProvider maxSnack={3}>
+        <SystemSettings {...props} />
+      </SnackbarProvider>
+    </BrowserRouter>,
+  );
+
+const rerenderSystemSettings = (utils: ReturnType<typeof renderSystemSettings>) =>
+  utils.rerender(
     <BrowserRouter>
       <SnackbarProvider maxSnack={3}>
         <SystemSettings />
@@ -643,9 +654,8 @@ describe('SystemSettings', () => {
   // 10. Test data generation - hostname-gated
   // -----------------------------------------------------------------------
   it('does not show the Test Data Generation card when not on the test host', async () => {
-    // The default jsdom hostname is 'localhost', not 'test.kempsonandko.com',
-    // so the card should be hidden. (Stubbing window.location.hostname in jsdom
-    // is brittle, so we only assert the default-host behavior here.)
+    // The default jsdom hostname is 'localhost', not 'test.kempsonandko.com'
+    campaignContextValue = makeContext({}, true);
     renderSystemSettings();
 
     await waitFor(() => {
@@ -654,6 +664,125 @@ describe('SystemSettings', () => {
 
     expect(screen.queryByText(/Test Data Generation/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Generate Test Data/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the Test Data Generation card from a campaign DM even on the test host', async () => {
+    renderSystemSettings({ testDataHostname: 'localhost' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/System Settings/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Test Data Generation/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the card to the superadmin on the test host and reports a successful run (F-1144, F-1207)', async () => {
+    campaignContextValue = makeContext({}, true);
+    // The api interceptor returns the response body: { success, data: { message, summary } }
+    (api.post as any).mockResolvedValue({
+      success: true,
+      data: {
+        message: 'Test data generated successfully',
+        summary: { loot: 57, gold: 40, users: 4, ships: 5, crew: 13 },
+      },
+    });
+
+    renderSystemSettings({ testDataHostname: 'localhost' });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Generate Test Data/i }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/test-data/generate');
+    });
+    expect(await screen.findByText(/57 loot items/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Error generating test data/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the server message when test data generation fails', async () => {
+    campaignContextValue = makeContext({}, true);
+    (api.post as any).mockRejectedValue({ response: { data: { message: 'Test data generation is only available on test instances' } } });
+
+    renderSystemSettings({ testDataHostname: 'localhost' });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Generate Test Data/i }));
+
+    expect(await screen.findByText(/only available on test instances/i)).toBeInTheDocument();
+  });
+
+  // -----------------------------------------------------------------------
+  // 10b. Saved vs draft values, partial saves, timezone cache
+  // -----------------------------------------------------------------------
+  it('selects the saved campaign timezone when the settings arrive after the first render (F-1194)', async () => {
+    campaignContextValue = makeContext();
+    delete campaignContextValue.campaignSettings.campaign_timezone;
+    const utils = renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: /Timezone/i })).toBeInTheDocument();
+    });
+
+    campaignContextValue = makeContext({ campaign_timezone: 'Europe/London' });
+    rerenderSystemSettings(utils);
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: /Timezone/i })).toHaveTextContent('London');
+    });
+    expect(screen.getByRole('button', { name: /Save Timezone/i })).toBeDisabled();
+  });
+
+  it('keeps unsaved Discord edits when the campaign context refreshes (F-1193)', async () => {
+    const utils = renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Channel ID/i)).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByLabelText(/Channel ID/i), { target: { value: 'typed-not-saved' } });
+
+    // e.g. the timezone card was saved and refreshed the context
+    campaignContextValue = makeContext({ campaign_timezone: 'Europe/London', auto_appraisal_enabled: '0' });
+    rerenderSystemSettings(utils);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Auto-Appraisal/i)).not.toBeChecked();
+    });
+    expect(screen.getByLabelText(/Channel ID/i)).toHaveValue('typed-not-saved');
+  });
+
+  it('clears the frontend timezone cache after saving the campaign timezone (F-1203)', async () => {
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: /Timezone/i })).toBeInTheDocument();
+    });
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Timezone/i }));
+    const listbox = await screen.findByRole('listbox');
+    fireEvent.click(within(listbox).getByText('London'));
+    fireEvent.click(screen.getByRole('button', { name: /Save Timezone/i }));
+
+    await waitFor(() => {
+      expect(clearTimezoneCache).toHaveBeenCalled();
+    });
+  });
+
+  it('refreshes the campaign context when a later write of a multi-step Discord save fails (F-1199)', async () => {
+    campaignContextValue = makeContext({}, true);
+    (api.put as any).mockImplementation((url: string, body: { name: string }) =>
+      body.name === 'openai_key'
+        ? Promise.reject({ response: { data: { message: 'openai_key is invalid' } } })
+        : Promise.resolve({ data: { success: true } }),
+    );
+
+    renderSystemSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Channel ID/i)).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByLabelText(/Channel ID/i), { target: { value: 'chan-new' } });
+    fireEvent.change(screen.getByLabelText(/OpenAI API Key/i), { target: { value: 'sk-bad' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save Discord Settings/i }));
+
+    expect(await screen.findByText(/openai_key is invalid/i)).toBeInTheDocument();
+    // the channel write already went through, so the context must reflect it
+    expect(refreshMock).toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
