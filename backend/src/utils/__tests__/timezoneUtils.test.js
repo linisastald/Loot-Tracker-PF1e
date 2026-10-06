@@ -61,6 +61,25 @@ describe('timezoneUtils', () => {
     });
   });
 
+  describe('single timezone list (F-0815)', () => {
+    it('derives VALID_TIMEZONES from the option list, in the same order', () => {
+      expect(VALID_TIMEZONES).toEqual(getTimezoneOptions().map(o => o.value));
+    });
+
+    it('returns a fresh copy so callers cannot alter the shared list', () => {
+      const options = getTimezoneOptions();
+      options.pop();
+      expect(getTimezoneOptions()).toHaveLength(VALID_TIMEZONES.length);
+    });
+
+    it('does not write an info log for every Intl-validated lookup', () => {
+      const logger = require('../logger');
+      logger.info.mockClear();
+      isValidTimezone('Europe/London');
+      expect(logger.info).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getTimezoneOptions', () => {
     it('should return array of timezone options', () => {
       const options = getTimezoneOptions();
@@ -124,6 +143,26 @@ describe('timezoneUtils', () => {
       const result = await getCampaignTimezone();
 
       expect(result).toBe('America/New_York');
+    });
+
+    it('does not cache the default after a transient DB error (F-0814)', async () => {
+      dbUtils.executeQuery
+        .mockRejectedValueOnce(new Error('DB down'))
+        .mockResolvedValueOnce({ rows: [{ value: 'America/Chicago' }] });
+
+      expect(await getCampaignTimezone()).toBe('America/New_York');
+      // The database recovered: the next call must read the real setting
+      expect(await getCampaignTimezone()).toBe('America/Chicago');
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
+    });
+
+    it('still caches the default when the stored value is invalid', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ value: 'Invalid/Timezone' }] });
+
+      await getCampaignTimezone();
+      await getCampaignTimezone();
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -142,14 +142,48 @@ describe('ValidationService', () => {
     });
   });
 
-  describe('validateEmail', () => {
-    it('should accept valid email and lowercase', () => {
-      expect(ValidationService.validateEmail('Test@Example.com')).toBe('test@example.com');
+  describe.each([
+    ['validateItemId', 'item ID'],
+    ['validateCharacterId', 'character ID'],
+    ['validateQuantity', 'quantity'],
+  ])('%s (F-0626)', (method, label) => {
+    it('accepts a positive number and returns it as a number', () => {
+      expect(ValidationService[method](7)).toBe(7);
+      expect(ValidationService[method]('12')).toBe(12);
     });
 
-    it('should reject invalid email', () => {
-      expect(() => ValidationService.validateEmail('not-an-email')).toThrow('Invalid email format');
-      expect(() => ValidationService.validateEmail('')).toThrow('email is required');
+    it('rejects zero with a "cannot be zero" message naming the field', () => {
+      expect(() => ValidationService[method](0)).toThrow(`${label} cannot be zero`);
+    });
+
+    it('rejects negative numbers', () => {
+      expect(() => ValidationService[method](-3)).toThrow(`${label} must be at least 1`);
+    });
+
+    it('rejects NaN, empty, null and non-numeric strings', () => {
+      expect(() => ValidationService[method](NaN)).toThrow(`${label} is required and must be a valid number`);
+      expect(() => ValidationService[method]('')).toThrow(`${label} is required and must be a valid number`);
+      expect(() => ValidationService[method](null)).toThrow(`${label} is required and must be a valid number`);
+      expect(() => ValidationService[method](undefined)).toThrow(`${label} is required and must be a valid number`);
+      expect(() => ValidationService[method]('abc')).toThrow(`${label} is required and must be a valid number`);
+    });
+  });
+
+  describe('LOOT_STATUSES (F-0777)', () => {
+    it('is the single status list accepted by validateLootStatus', () => {
+      expect(ValidationService.LOOT_STATUSES).toEqual([
+        'Unprocessed', 'Kept Party', 'Kept Character', 'Pending Sale', 'Sold', 'Given Away', 'Trashed'
+      ]);
+      ValidationService.LOOT_STATUSES.forEach((status) => {
+        expect(ValidationService.validateLootStatus(status)).toBe(status);
+      });
+    });
+  });
+
+  describe('removed helpers (F-0778)', () => {
+    it('no longer exposes validateEmail (nothing used it); the shared pattern stays', () => {
+      expect(ValidationService.validateEmail).toBeUndefined();
+      expect(ValidationService.EMAIL_PATTERN.test('a@b.co')).toBe(true);
     });
   });
 

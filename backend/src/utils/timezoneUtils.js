@@ -8,23 +8,26 @@
 const campaignSettings = require('./campaignSettings');
 const logger = require('./logger');
 
-// Valid IANA timezone identifiers commonly used in North America
-const VALID_TIMEZONES = [
-    'America/New_York',      // Eastern Time
-    'America/Chicago',       // Central Time
-    'America/Denver',        // Mountain Time
-    'America/Phoenix',       // Arizona (no DST)
-    'America/Los_Angeles',   // Pacific Time
-    'America/Anchorage',     // Alaska Time
-    'America/Honolulu',      // Hawaii Time
-    'America/Toronto',       // Eastern Time (Canada)
-    'America/Vancouver',     // Pacific Time (Canada)
-    'America/Edmonton',      // Mountain Time (Canada)
-    'America/Winnipeg',      // Central Time (Canada)
-    'America/Halifax',       // Atlantic Time (Canada)
-    'America/St_Johns',      // Newfoundland Time (Canada)
-    'UTC'                    // Coordinated Universal Time
+// Timezones offered in the UI: IANA identifiers commonly used in North America.
+// This is the single list; VALID_TIMEZONES below is derived from it.
+const TIMEZONE_OPTIONS = [
+    { value: 'America/New_York', label: 'Eastern Time (New York)' },
+    { value: 'America/Chicago', label: 'Central Time (Chicago)' },
+    { value: 'America/Denver', label: 'Mountain Time (Denver)' },
+    { value: 'America/Phoenix', label: 'Mountain Time - No DST (Phoenix)' },
+    { value: 'America/Los_Angeles', label: 'Pacific Time (Los Angeles)' },
+    { value: 'America/Anchorage', label: 'Alaska Time (Anchorage)' },
+    { value: 'America/Honolulu', label: 'Hawaii Time (Honolulu)' },
+    { value: 'America/Toronto', label: 'Eastern Time (Toronto)' },
+    { value: 'America/Vancouver', label: 'Pacific Time (Vancouver)' },
+    { value: 'America/Edmonton', label: 'Mountain Time (Edmonton)' },
+    { value: 'America/Winnipeg', label: 'Central Time (Winnipeg)' },
+    { value: 'America/Halifax', label: 'Atlantic Time (Halifax)' },
+    { value: 'America/St_Johns', label: 'Newfoundland Time (St. Johns)' },
+    { value: 'UTC', label: 'UTC (Coordinated Universal Time)' }
 ];
+
+const VALID_TIMEZONES = TIMEZONE_OPTIONS.map(option => option.value);
 
 // Per-campaign cache for the timezone setting: campaignId -> { timezone, fetchedAt }
 const timezoneCache = new Map();
@@ -76,10 +79,13 @@ async function getCampaignTimezone({ campaignId } = {}) {
             logger.warn(`No campaign_timezone setting found for campaign ${resolvedId}. Using default ${DEFAULT_TIMEZONE}`);
         }
     } catch (error) {
+        // Transient failure: answer with the default but do not cache it, so
+        // the next call reads the real setting once the database is back.
         logger.error(`Error fetching campaign timezone for campaign ${resolvedId}:`, error);
+        return DEFAULT_TIMEZONE;
     }
 
-    // Fallback to default
+    // The stored setting is missing or invalid: cache the default
     timezoneCache.set(resolvedId, { timezone: DEFAULT_TIMEZONE, fetchedAt: now });
     return DEFAULT_TIMEZONE;
 }
@@ -103,7 +109,7 @@ function isValidTimezone(timezone) {
     // This will throw if the timezone is invalid
     try {
         new Intl.DateTimeFormat('en-US', { timeZone: timezone });
-        logger.info(`Timezone validated using Intl.DateTimeFormat: ${timezone}`);
+        logger.debug(`Timezone validated using Intl.DateTimeFormat: ${timezone}`);
         return true;
     } catch (error) {
         logger.warn(`Timezone validation failed for: ${timezone}`, error);
@@ -133,22 +139,7 @@ function clearTimezoneCache(campaignId) {
  * @returns {Array<Object>} Array of timezone objects with value and label
  */
 function getTimezoneOptions() {
-    return [
-        { value: 'America/New_York', label: 'Eastern Time (New York)' },
-        { value: 'America/Chicago', label: 'Central Time (Chicago)' },
-        { value: 'America/Denver', label: 'Mountain Time (Denver)' },
-        { value: 'America/Phoenix', label: 'Mountain Time - No DST (Phoenix)' },
-        { value: 'America/Los_Angeles', label: 'Pacific Time (Los Angeles)' },
-        { value: 'America/Anchorage', label: 'Alaska Time (Anchorage)' },
-        { value: 'America/Honolulu', label: 'Hawaii Time (Honolulu)' },
-        { value: 'America/Toronto', label: 'Eastern Time (Toronto)' },
-        { value: 'America/Vancouver', label: 'Pacific Time (Vancouver)' },
-        { value: 'America/Edmonton', label: 'Mountain Time (Edmonton)' },
-        { value: 'America/Winnipeg', label: 'Central Time (Winnipeg)' },
-        { value: 'America/Halifax', label: 'Atlantic Time (Halifax)' },
-        { value: 'America/St_Johns', label: 'Newfoundland Time (St. Johns)' },
-        { value: 'UTC', label: 'UTC (Coordinated Universal Time)' }
-    ];
+    return TIMEZONE_OPTIONS.map(option => ({ ...option }));
 }
 
 module.exports = {
