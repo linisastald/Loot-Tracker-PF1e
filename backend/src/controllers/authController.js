@@ -466,7 +466,7 @@ const getUserStatus = async (req, res) => {
     // Protected by verifyToken.allowNoCampaign: a user without any campaign
     // arrives with req.campaignId === null and has no active character.
     const userResult = await dbUtils.executeQuery(
-        'SELECT id, username, role, email FROM users WHERE id = $1',
+        'SELECT id, username, role, email, discord_id FROM users WHERE id = $1',
         [req.user.id]
     );
     const userData = userResult.rows[0] || {};
@@ -479,6 +479,7 @@ const getUserStatus = async (req, res) => {
             username: req.user.username,
             role: req.user.role,
             email: userData.email,
+            discord_id: userData.discord_id || null,
             activeCharacterId
         }
     }, 'User is authenticated');

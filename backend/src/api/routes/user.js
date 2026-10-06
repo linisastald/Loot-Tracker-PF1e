@@ -6,11 +6,28 @@ const authController = require('../../controllers/authController');
 const settingsController = require('../../controllers/settingsController');
 const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
+const rateLimit = require('express-rate-limit');
+const logger = require('../../utils/logger');
+
+// Change-password and change-email both ask for the current password, so a
+// stolen session cookie could be used to guess it. Budget per user (not per
+// IP), shared by the two routes, on top of the global limiter.
+const credentialCheckLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `user:${req.user.id}`,
+  handler: (req, res) => {
+    logger.warn(`Credential check limit exceeded for user ID ${req.user.id} (${req.originalUrl})`);
+    res.status(429).json({success: false, message: 'Too many attempts, please try again later.'});
+  }
+});
 
 // General user routes - require authentication
 router.get('/me', verifyToken.allowNoCampaign, userController.getCurrentUser);
-router.put('/change-password', verifyToken.allowNoCampaign, userController.changePassword);
-router.put('/change-email', verifyToken.allowNoCampaign, userController.changeEmail);
+router.put('/change-password', verifyToken.allowNoCampaign, credentialCheckLimiter, userController.changePassword);
+router.put('/change-email', verifyToken.allowNoCampaign, credentialCheckLimiter, userController.changeEmail);
 router.put('/update-discord-id', verifyToken.allowNoCampaign, userController.updateDiscordId);
 router.get('/characters', verifyToken, userController.getCharacters);
 router.post('/characters', verifyToken, userController.addCharacter);

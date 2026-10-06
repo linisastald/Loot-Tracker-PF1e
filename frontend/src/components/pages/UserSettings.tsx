@@ -1,25 +1,29 @@
 import React, {useEffect, useState} from 'react';
 import api from '../../utils/api';
+import {getErrorMessage} from '../../utils/apiErrors';
+import {isValidEmail} from '../../utils/validation';
 import {
   Alert,
   Box,
   Button,
   Container,
   Grid,
-  IconButton,
-  InputAdornment,
   Paper,
   Tab,
   Tabs,
   TextField,
   Typography,
 } from '@mui/material';
-import {Visibility, VisibilityOff} from '@mui/icons-material';
+import PasswordField from '../common/PasswordField';
 import CharacterTab from './UserSettings/CharacterTab';
 
-function TabPanel(props) {
-    const {children, value, index, ...other} = props;
+interface TabPanelProps {
+    children?: React.ReactNode;
+    value: number;
+    index: number;
+}
 
+function TabPanel({children, value, index, ...other}: TabPanelProps) {
     return (
         <div
             role="tabpanel"
@@ -35,30 +39,57 @@ function TabPanel(props) {
     );
 }
 
-const UserSettings = () => {
-    const [user, setUser] = useState(null);
+interface AccountUser {
+    id: number;
+    username: string;
+    role: string;
+    email?: string | null;
+    discord_id?: string | null;
+}
+
+interface FormStatus {
+    error: string;
+    success: string;
+}
+
+const NO_STATUS: FormStatus = {error: '', success: ''};
+
+interface SettingsSectionProps {
+    title: string;
+    status: FormStatus;
+    children: React.ReactNode;
+}
+
+/** Card with a title and the error/success alerts shared by every account form. */
+const SettingsSection: React.FC<SettingsSectionProps> = ({title, status, children}) => (
+    <Grid size={{xs: 12, md: 6}}>
+        <Paper elevation={2} sx={{p: 3, height: '100%'}}>
+            <Typography variant="h6" gutterBottom>
+                {title}
+            </Typography>
+            {status.error && <Alert severity="error" sx={{mb: 2}}>{status.error}</Alert>}
+            {status.success && <Alert severity="success" sx={{mb: 2}}>{status.success}</Alert>}
+            {children}
+        </Paper>
+    </Grid>
+);
+
+const UserSettings: React.FC = () => {
+    const [user, setUser] = useState<AccountUser | null>(null);
     const [tabValue, setTabValue] = useState(0);
+
     const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [passwordError, setPasswordError] = useState('');
-    const [passwordSuccess, setPasswordSuccess] = useState('');
-    const [showOldPassword, setShowOldPassword] = useState(false);
-    const [showNewPassword, setShowNewPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [passwordStatus, setPasswordStatus] = useState<FormStatus>(NO_STATUS);
 
-    // New state for email change form
     const [currentEmail, setCurrentEmail] = useState('');
     const [newEmail, setNewEmail] = useState('');
     const [emailPassword, setEmailPassword] = useState('');
-    const [showEmailPassword, setShowEmailPassword] = useState(false);
-    const [emailError, setEmailError] = useState('');
-    const [emailSuccess, setEmailSuccess] = useState('');
+    const [emailStatus, setEmailStatus] = useState<FormStatus>(NO_STATUS);
 
-    // State for Discord ID
     const [discordId, setDiscordId] = useState('');
-    const [discordError, setDiscordError] = useState('');
-    const [discordSuccess, setDiscordSuccess] = useState('');
+    const [discordStatus, setDiscordStatus] = useState<FormStatus>(NO_STATUS);
 
     useEffect(() => {
         fetchUserData();
@@ -67,42 +98,48 @@ const UserSettings = () => {
     const fetchUserData = async () => {
         try {
             const response = await api.get('/auth/status');
-            if (response.data && response.data.user) {
-                setUser(response.data.user);
-                setCurrentEmail(response.data.user.email || '');
-                setDiscordId(response.data.user.discord_id || '');
+            const loaded: AccountUser | undefined = response.data?.user;
+            if (loaded) {
+                setUser(loaded);
+                setCurrentEmail(loaded.email || '');
+                // Only trust the field when the server sent it, so a response
+                // without it can never blank an id the user just saved.
+                if ('discord_id' in loaded) {
+                    setDiscordId(loaded.discord_id || '');
+                }
             }
-        } catch (error) {
-            console.error('Error fetching user data:', error);
+        } catch {
+            // The account details stay empty; every form still works.
         }
     };
 
-    const handleTabChange = (event, newValue) => {
+    const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
         setTabValue(newValue);
     };
 
-    const handleChangePassword = async (e) => {
+    const handleChangePassword = async (e: React.FormEvent) => {
         e.preventDefault();
-        setPasswordError('');
-        setPasswordSuccess('');
+        setPasswordStatus(NO_STATUS);
+
+        const fail = (error: string) => setPasswordStatus({error, success: ''});
 
         if (!oldPassword) {
-            setPasswordError('Current password is required');
+            fail('Current password is required');
             return;
         }
 
         if (!newPassword) {
-            setPasswordError('New password is required');
+            fail('New password is required');
             return;
         }
 
         if (newPassword.length < 8) {
-            setPasswordError('New password must be at least 8 characters long');
+            fail('New password must be at least 8 characters long');
             return;
         }
 
         if (newPassword !== confirmPassword) {
-            setPasswordError('New passwords do not match');
+            fail('New passwords do not match');
             return;
         }
 
@@ -112,36 +149,33 @@ const UserSettings = () => {
                 newPassword
             });
 
-            setPasswordSuccess('Password changed successfully');
+            setPasswordStatus({error: '', success: 'Password changed successfully'});
             setOldPassword('');
             setNewPassword('');
             setConfirmPassword('');
         } catch (error) {
-            console.error('Error changing password:', error);
-            setPasswordError(error.response?.data?.message || 'Error changing password');
+            fail(getErrorMessage(error, 'Error changing password'));
         }
     };
 
-    // New function to handle email change
-    const handleChangeEmail = async (e) => {
+    const handleChangeEmail = async (e: React.FormEvent) => {
         e.preventDefault();
-        setEmailError('');
-        setEmailSuccess('');
+        setEmailStatus(NO_STATUS);
 
-        // Validate email format
-        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        const fail = (error: string) => setEmailStatus({error, success: ''});
+
         if (!newEmail) {
-            setEmailError('New email is required');
+            fail('New email is required');
             return;
         }
 
-        if (!emailRegex.test(newEmail)) {
-            setEmailError('Please enter a valid email address');
+        if (!isValidEmail(newEmail)) {
+            fail('Please enter a valid email address');
             return;
         }
 
         if (!emailPassword) {
-            setEmailError('Password is required to change email');
+            fail('Password is required to change email');
             return;
         }
 
@@ -151,7 +185,7 @@ const UserSettings = () => {
                 password: emailPassword
             });
 
-            setEmailSuccess('Email changed successfully');
+            setEmailStatus({error: '', success: 'Email changed successfully'});
             setCurrentEmail(newEmail);
             setNewEmail('');
             setEmailPassword('');
@@ -159,19 +193,17 @@ const UserSettings = () => {
             // Refresh user data to get updated email
             fetchUserData();
         } catch (error) {
-            console.error('Error changing email:', error);
-            setEmailError(error.response?.data?.message || 'Error changing email');
+            fail(getErrorMessage(error, 'Error changing email'));
         }
     };
 
-    // Function to handle Discord ID update
+    // Takes the id explicitly so Unlink can send null without waiting for state to update
     const submitDiscordId = async (value: string) => {
-        setDiscordError('');
-        setDiscordSuccess('');
+        setDiscordStatus(NO_STATUS);
 
         // Validate Discord ID format (17-19 digit number)
         if (value && !/^\d{17,19}$/.test(value)) {
-            setDiscordError('Invalid Discord ID format. It should be a 17-19 digit number.');
+            setDiscordStatus({error: 'Invalid Discord ID format. It should be a 17-19 digit number.', success: ''});
             return;
         }
 
@@ -180,13 +212,15 @@ const UserSettings = () => {
                 discord_id: value || null
             });
 
-            setDiscordSuccess(value ? 'Discord ID linked successfully' : 'Discord ID unlinked successfully');
+            setDiscordStatus({
+                error: '',
+                success: value ? 'Discord ID linked successfully' : 'Discord ID unlinked successfully'
+            });
 
             // Refresh user data
             fetchUserData();
         } catch (error) {
-            console.error('Error updating Discord ID:', error);
-            setDiscordError(error.response?.data?.message || 'Error updating Discord ID');
+            setDiscordStatus({error: getErrorMessage(error, 'Error updating Discord ID'), success: ''});
         }
     };
 
@@ -212,199 +246,119 @@ const UserSettings = () => {
 
                 <TabPanel value={tabValue} index={0}>
                     <Grid container spacing={4}>
-                        {/* Change Password Section */}
-                        <Grid size={{xs: 12, md: 6}}>
-                            <Paper elevation={2} sx={{p: 3, height: '100%'}}>
-                                <Typography variant="h6" gutterBottom>
+                        <SettingsSection title="Change Password" status={passwordStatus}>
+                            <form onSubmit={handleChangePassword}>
+                                <PasswordField
+                                    margin="normal"
+                                    required
+                                    fullWidth
+                                    label="Current Password"
+                                    value={oldPassword}
+                                    onChange={(e) => setOldPassword(e.target.value)}
+                                />
+                                <PasswordField
+                                    margin="normal"
+                                    required
+                                    fullWidth
+                                    label="New Password"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                />
+                                <PasswordField
+                                    margin="normal"
+                                    required
+                                    fullWidth
+                                    label="Confirm New Password"
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                />
+                                <Button
+                                    type="submit"
+                                    variant="outlined"
+                                    color="primary"
+                                    sx={{mt: 2}}
+                                >
                                     Change Password
-                                </Typography>
-                                {passwordError && <Alert severity="error" sx={{mb: 2}}>{passwordError}</Alert>}
-                                {passwordSuccess && <Alert severity="success" sx={{mb: 2}}>{passwordSuccess}</Alert>}
-                                <form onSubmit={handleChangePassword}>
-                                    <TextField
-                                        margin="normal"
-                                        required
-                                        fullWidth
-                                        label="Current Password"
-                                        type={showOldPassword ? 'text' : 'password'}
-                                        value={oldPassword}
-                                        onChange={(e) => setOldPassword(e.target.value)}
-                                        slotProps={{ input: {
-                                            endAdornment: (
-                                                <InputAdornment position="end">
-                                                    <IconButton
-                                                        aria-label="toggle old password visibility"
-                                                        onClick={() => setShowOldPassword(!showOldPassword)}
-                                                        edge="end"
-                                                    >
-                                                        {showOldPassword ? <VisibilityOff/> : <Visibility/>}
-                                                    </IconButton>
-                                                </InputAdornment>
-                                            ),
-                                        } }}
-                                    />
-                                    <TextField
-                                        margin="normal"
-                                        required
-                                        fullWidth
-                                        label="New Password"
-                                        type={showNewPassword ? 'text' : 'password'}
-                                        value={newPassword}
-                                        onChange={(e) => setNewPassword(e.target.value)}
-                                        slotProps={{ input: {
-                                            endAdornment: (
-                                                <InputAdornment position="end">
-                                                    <IconButton
-                                                        aria-label="toggle new password visibility"
-                                                        onClick={() => setShowNewPassword(!showNewPassword)}
-                                                        edge="end"
-                                                    >
-                                                        {showNewPassword ? <VisibilityOff/> : <Visibility/>}
-                                                    </IconButton>
-                                                </InputAdornment>
-                                            ),
-                                        } }}
-                                    />
-                                    <TextField
-                                        margin="normal"
-                                        required
-                                        fullWidth
-                                        label="Confirm New Password"
-                                        type={showConfirmPassword ? 'text' : 'password'}
-                                        value={confirmPassword}
-                                        onChange={(e) => setConfirmPassword(e.target.value)}
-                                        slotProps={{ input: {
-                                            endAdornment: (
-                                                <InputAdornment position="end">
-                                                    <IconButton
-                                                        aria-label="toggle confirm password visibility"
-                                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                                        edge="end"
-                                                    >
-                                                        {showConfirmPassword ? <VisibilityOff/> : <Visibility/>}
-                                                    </IconButton>
-                                                </InputAdornment>
-                                            ),
-                                        } }}
-                                    />
-                                    <Button
-                                        type="submit"
-                                        variant="outlined"
-                                        color="primary"
-                                        sx={{mt: 2}}
-                                    >
-                                        Change Password
-                                    </Button>
-                                </form>
-                            </Paper>
-                        </Grid>
+                                </Button>
+                            </form>
+                        </SettingsSection>
 
-                        {/* Change Email Section */}
-                        <Grid size={{xs: 12, md: 6}}>
-                            <Paper elevation={2} sx={{p: 3, height: '100%'}}>
-                                <Typography variant="h6" gutterBottom>
+                        <SettingsSection title="Change Email" status={emailStatus}>
+                            <form onSubmit={handleChangeEmail}>
+                                <TextField
+                                    margin="normal"
+                                    fullWidth
+                                    label="Current Email"
+                                    value={currentEmail}
+                                    disabled
+                                />
+                                <TextField
+                                    margin="normal"
+                                    required
+                                    fullWidth
+                                    label="New Email"
+                                    type="email"
+                                    value={newEmail}
+                                    onChange={(e) => setNewEmail(e.target.value)}
+                                />
+                                <PasswordField
+                                    margin="normal"
+                                    required
+                                    fullWidth
+                                    label="Enter Password to Confirm"
+                                    value={emailPassword}
+                                    onChange={(e) => setEmailPassword(e.target.value)}
+                                />
+                                <Button
+                                    type="submit"
+                                    variant="outlined"
+                                    color="primary"
+                                    sx={{mt: 2}}
+                                >
                                     Change Email
-                                </Typography>
-                                {emailError && <Alert severity="error" sx={{mb: 2}}>{emailError}</Alert>}
-                                {emailSuccess && <Alert severity="success" sx={{mb: 2}}>{emailSuccess}</Alert>}
-                                <form onSubmit={handleChangeEmail}>
-                                    <TextField
-                                        margin="normal"
-                                        fullWidth
-                                        label="Current Email"
-                                        value={currentEmail}
-                                        disabled
-                                    />
-                                    <TextField
-                                        margin="normal"
-                                        required
-                                        fullWidth
-                                        label="New Email"
-                                        type="email"
-                                        value={newEmail}
-                                        onChange={(e) => setNewEmail(e.target.value)}
-                                    />
-                                    <TextField
-                                        margin="normal"
-                                        required
-                                        fullWidth
-                                        label="Enter Password to Confirm"
-                                        type={showEmailPassword ? 'text' : 'password'}
-                                        value={emailPassword}
-                                        onChange={(e) => setEmailPassword(e.target.value)}
-                                        slotProps={{ input: {
-                                            endAdornment: (
-                                                <InputAdornment position="end">
-                                                    <IconButton
-                                                        aria-label="toggle password visibility"
-                                                        onClick={() => setShowEmailPassword(!showEmailPassword)}
-                                                        edge="end"
-                                                    >
-                                                        {showEmailPassword ? <VisibilityOff/> : <Visibility/>}
-                                                    </IconButton>
-                                                </InputAdornment>
-                                            ),
-                                        } }}
-                                    />
+                                </Button>
+                            </form>
+                        </SettingsSection>
+
+                        <SettingsSection title="Discord Integration" status={discordStatus}>
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    color: "text.secondary",
+                                    mb: 2
+                                }}>
+                                Link your Discord account to track session attendance via Discord buttons.
+                            </Typography>
+                            <form onSubmit={handleUpdateDiscordId}>
+                                <TextField
+                                    margin="normal"
+                                    fullWidth
+                                    label="Discord ID"
+                                    value={discordId}
+                                    onChange={(e) => setDiscordId(e.target.value)}
+                                    placeholder="Right-click your name in Discord and Copy ID"
+                                    helperText="Your Discord ID is a 17-19 digit number. Enable Developer Mode in Discord to copy your ID."
+                                />
+                                <Box sx={{mt: 2, display: 'flex', gap: 1}}>
                                     <Button
                                         type="submit"
                                         variant="outlined"
                                         color="primary"
-                                        sx={{mt: 2}}
                                     >
-                                        Change Email
+                                        {discordId ? 'Update Discord ID' : 'Link Discord ID'}
                                     </Button>
-                                </form>
-                            </Paper>
-                        </Grid>
-
-                        {/* Discord ID Section */}
-                        <Grid size={{xs: 12, md: 6}}>
-                            <Paper elevation={2} sx={{p: 3, height: '100%'}}>
-                                <Typography variant="h6" gutterBottom>
-                                    Discord Integration
-                                </Typography>
-                                <Typography
-                                    variant="body2"
-                                    sx={{
-                                        color: "text.secondary",
-                                        mb: 2
-                                    }}>
-                                    Link your Discord account to track session attendance via Discord buttons.
-                                </Typography>
-                                {discordError && <Alert severity="error" sx={{mb: 2}}>{discordError}</Alert>}
-                                {discordSuccess && <Alert severity="success" sx={{mb: 2}}>{discordSuccess}</Alert>}
-                                <form onSubmit={handleUpdateDiscordId}>
-                                    <TextField
-                                        margin="normal"
-                                        fullWidth
-                                        label="Discord ID"
-                                        value={discordId}
-                                        onChange={(e) => setDiscordId(e.target.value)}
-                                        placeholder="Right-click your name in Discord and Copy ID"
-                                        helperText="Your Discord ID is a 17-19 digit number. Enable Developer Mode in Discord to copy your ID."
-                                    />
-                                    <Box sx={{mt: 2, display: 'flex', gap: 1}}>
+                                    {discordId && (
                                         <Button
-                                            type="submit"
                                             variant="outlined"
-                                            color="primary"
+                                            color="error"
+                                            onClick={handleUnlinkDiscordId}
                                         >
-                                            {discordId ? 'Update Discord ID' : 'Link Discord ID'}
+                                            Unlink
                                         </Button>
-                                        {discordId && (
-                                            <Button
-                                                variant="outlined"
-                                                color="error"
-                                                onClick={handleUnlinkDiscordId}
-                                            >
-                                                Unlink
-                                            </Button>
-                                        )}
-                                    </Box>
-                                </form>
-                            </Paper>
-                        </Grid>
+                                    )}
+                                </Box>
+                            </form>
+                        </SettingsSection>
 
                         {/* Account Information Section */}
                         <Grid size={12}>

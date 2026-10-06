@@ -987,6 +987,33 @@ describe('authController', () => {
       );
     });
 
+    it('should include the linked discord_id (null when unlinked) and select it from users', async () => {
+      const req = createMockReq({
+        user: { id: 1, username: 'testplayer', role: 'Player' },
+        campaignId: 1,
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({
+          rows: [{ id: 1, email: 'test@example.com', discord_id: '123456789012345678' }],
+        })
+        .mockResolvedValueOnce({ rows: [] });
+
+      await authController.getUserStatus(req, res);
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/discord_id/);
+      expect(res.success.mock.calls[0][0].user.discord_id).toBe('123456789012345678');
+
+      jest.clearAllMocks();
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ id: 1, email: 'test@example.com', discord_id: null }] })
+        .mockResolvedValueOnce({ rows: [] });
+      const res2 = createMockRes();
+      await authController.getUserStatus(req, res2);
+      expect(res2.success.mock.calls[0][0].user.discord_id).toBeNull();
+    });
+
     it('should return null activeCharacterId for a DM without an active character', async () => {
       const req = createMockReq({
         user: { id: 2, username: 'dm_user', role: 'DM' },

@@ -77,6 +77,43 @@ describe('UserSettings', () => {
     });
   });
 
+  it('shows the linked Discord id loaded from the account status', async () => {
+    renderUserSettings();
+
+    const field = await screen.findByLabelText(/^Discord ID/);
+    await waitFor(() => expect(field).toHaveValue('123456789012345678'));
+    expect(screen.getByRole('button', { name: /update discord id/i })).toBeInTheDocument();
+  });
+
+  it('keeps the saved Discord id when the refresh response does not carry one', async () => {
+    const noDiscordField = { data: { user: { id: 1, username: 'testuser', email: 'test@example.com', role: 'Player' } } };
+    (api.get as any).mockResolvedValue(noDiscordField);
+    (api.put as any).mockResolvedValue({ data: {} });
+    renderUserSettings();
+
+    const field = await screen.findByLabelText(/^Discord ID/);
+    fireEvent.change(field, { target: { value: '987654321098765432' } });
+    fireEvent.click(screen.getByRole('button', { name: /update discord id/i }));
+
+    expect(await screen.findByText('Discord ID linked successfully')).toBeInTheDocument();
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText(/^Discord ID/)).toHaveValue('987654321098765432');
+  });
+
+  it('toggles password visibility on each password field independently', async () => {
+    renderUserSettings();
+    await screen.findByRole('heading', { name: /change password/i });
+
+    const current = getPasswordInput(/^Current Password/);
+    const next = getPasswordInput(/^New Password/);
+    expect(current.type).toBe('password');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /show password/i })[0]);
+
+    expect(getPasswordInput(/^Current Password/).type).toBe('text');
+    expect(next.type).toBe('password');
+  });
+
   it('renders the settings tabs', async () => {
     renderUserSettings();
 

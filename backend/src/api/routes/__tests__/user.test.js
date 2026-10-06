@@ -119,4 +119,42 @@ describe('user routes', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe('credential-check throttle (F-1477)', () => {
+    const buildIsolatedApp = () => {
+      let router;
+      jest.isolateModules(() => {
+        // resetMocks wipes the factory implementation, so restore it in this registry
+        require('../../../middleware/checkRole').mockImplementation(() => (req, res, next) => next());
+        router = require('../user');
+      });
+      const app = express();
+      app.use(express.json());
+      app.use('/api/user', router);
+      return app;
+    };
+
+    it('limits change-password attempts per user with a JSON 429, while other routes stay open', async () => {
+      const isolated = buildIsolatedApp();
+      let last;
+      for (let i = 0; i < 11; i++) {
+        last = await request(isolated).put('/api/user/change-password').send({});
+      }
+      expect(last.status).toBe(429);
+      expect(last.body.success).toBe(false);
+
+      const other = await request(isolated).get('/api/user/me');
+      expect(other.status).toBe(200);
+    });
+
+    it('shares one budget between change-password and change-email', async () => {
+      const isolated = buildIsolatedApp();
+      for (let i = 0; i < 10; i++) {
+        const res = await request(isolated).put('/api/user/change-password').send({});
+        expect(res.status).toBe(200);
+      }
+      const res = await request(isolated).put('/api/user/change-email').send({});
+      expect(res.status).toBe(429);
+    });
+  });
 });
