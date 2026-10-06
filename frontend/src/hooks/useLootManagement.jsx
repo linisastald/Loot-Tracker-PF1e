@@ -13,6 +13,10 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useIsDM } from '../contexts/CampaignContext';
 
+// Columns requested from loot_view; 'appraisals' carries each character's believed value
+const LOOT_FIELDS =
+  'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,appraisals,lastupdate';
+
 const useLootManagement = (statusToFetch) => {
   const { user: authUser } = useAuth();
   const isDMUser = useIsDM();
@@ -35,7 +39,7 @@ const useLootManagement = (statusToFetch) => {
       if (!statusToFetch) {
         let params = {
           isDM: isDMUser,
-          fields: 'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+          fields: LOOT_FIELDS
         };
 
         if (!isDMUser) {
@@ -50,17 +54,17 @@ const useLootManagement = (statusToFetch) => {
         setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Kept Party') {
         const response = await lootService.getKeptPartyLoot({
-          fields: 'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+          fields: LOOT_FIELDS
         });
         setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Kept Self') {
         const response = await lootService.getKeptCharacterLoot({
-          fields: 'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+          fields: LOOT_FIELDS
         });
         setLoot(response.data || { summary: [], individual: [] });
       } else if (statusToFetch === 'Trash') {
         const response = await lootService.getTrashedLoot({
-          fields: 'id,name,quantity,statuspage,unidentified,character_name,session_date,value,type,row_type,size,masterwork,notes,average_appraisal,lastupdate'
+          fields: LOOT_FIELDS
         });
         setLoot(response.data || { summary: [], individual: [] });
       }
