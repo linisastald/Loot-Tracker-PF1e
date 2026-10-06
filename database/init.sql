@@ -208,6 +208,7 @@ CREATE TABLE mod (
     valuecalc VARCHAR(255),
     target VARCHAR(31),
     subtarget VARCHAR(31),
+    casterlevel INTEGER,
     campaign_id INTEGER REFERENCES campaigns(id)
 );
 
