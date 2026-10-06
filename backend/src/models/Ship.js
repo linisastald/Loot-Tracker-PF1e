@@ -2,6 +2,83 @@
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
 
+const DEFAULT_CARGO_MANIFEST = { items: [], passengers: [], impositions: [] };
+
+const SHIP_STATUSES = ['PC Active', 'Active', 'Docked', 'Lost', 'Sunk'];
+
+/**
+ * Every writable ships column, in INSERT order.
+ *  - kind 'text'   : blank/missing -> def (null clears an optional column)
+ *  - kind 'number' : only undefined/null -> def, so 0 is stored as 0
+ *  - kind 'bool'   : only undefined/null -> def
+ *  - kind 'json'   : stored with JSON.stringify
+ * The weapons column is fed by weapon_types or the legacy weapons list (see pickWeapons).
+ */
+const SHIP_FIELDS = [
+  { col: 'name', kind: 'text', def: undefined },
+  { col: 'location', kind: 'text', def: null },
+  { col: 'status', kind: 'text', def: 'Active' },
+  { col: 'is_squibbing', kind: 'bool', def: false },
+  { col: 'ship_type', kind: 'text', def: null },
+  { col: 'size', kind: 'text', def: 'Colossal' },
+  { col: 'cost', kind: 'number', def: 0 },
+  { col: 'max_speed', kind: 'number', def: 30 },
+  { col: 'acceleration', kind: 'number', def: 15 },
+  { col: 'propulsion', kind: 'text', def: null },
+  { col: 'min_crew', kind: 'number', def: 1 },
+  { col: 'max_crew', kind: 'number', def: 10 },
+  { col: 'cargo_capacity', kind: 'number', def: 10000 },
+  { col: 'max_passengers', kind: 'number', def: 10 },
+  { col: 'decks', kind: 'number', def: 1 },
+  { col: 'weapons', kind: 'json', def: [] },
+  { col: 'ramming_damage', kind: 'text', def: '1d8' },
+  { col: 'base_ac', kind: 'number', def: 10 },
+  { col: 'touch_ac', kind: 'number', def: 10 },
+  { col: 'hardness', kind: 'number', def: 0 },
+  { col: 'max_hp', kind: 'number', def: 100 },
+  { col: 'current_hp', kind: 'number', def: undefined }, // defaults to max_hp, see create()
+  { col: 'cmb', kind: 'number', def: 0 },
+  { col: 'cmd', kind: 'number', def: 10 },
+  { col: 'saves', kind: 'number', def: 0 },
+  { col: 'initiative', kind: 'number', def: 0 },
+  { col: 'plunder', kind: 'number', def: 0 },
+  { col: 'infamy', kind: 'number', def: 0 },
+  { col: 'disrepute', kind: 'number', def: 0 },
+  { col: 'sails_oars', kind: 'text', def: null },
+  { col: 'sailing_check_bonus', kind: 'number', def: 0 },
+  { col: 'officers', kind: 'json', def: [] },
+  { col: 'improvements', kind: 'json', def: [] },
+  { col: 'cargo_manifest', kind: 'json', def: DEFAULT_CARGO_MANIFEST },
+  { col: 'ship_notes', kind: 'text', def: null },
+  { col: 'captain_name', kind: 'text', def: null },
+  { col: 'flag_description', kind: 'text', def: null }
+];
+
+/**
+ * Value for the weapons column. A non-empty weapon_types (new format) wins, then the
+ * legacy weapons list, then an explicit (empty) weapon_types. undefined = not sent.
+ */
+const pickWeapons = (data) => {
+  if (Array.isArray(data.weapon_types) && data.weapon_types.length > 0) return data.weapon_types;
+  if (data.weapons !== undefined && data.weapons !== null) return data.weapons;
+  return data.weapon_types === null ? undefined : data.weapon_types;
+};
+
+const sourceValue = (data, field) => (field.col === 'weapons' ? pickWeapons(data) : data[field.col]);
+
+const isBlank = (value) => value === undefined || value === null || value === '';
+
+/** Parse a JSON column (string or already-parsed); a malformed value becomes the fallback. */
+const parseJson = (value, fallback) => {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch (e) {
+    logger.error('Error parsing ship JSON field:', e);
+    return fallback;
+  }
+};
+
 /**
  * Parse ship JSON fields and detect weapon formats
  * @param {Object} ship - Raw ship from database
@@ -10,45 +87,21 @@ const logger = require('../utils/logger');
 const parseShipData = (ship) => {
   if (!ship) return null;
 
-  // Parse JSON fields
-  const parsedShip = { ...ship };
+  const parsedShip = { ...ship, weapons: [], weapon_types: [] };
 
-  // Parse weapons and handle both formats
   if (ship.weapons) {
-    try {
-      const weaponsData = typeof ship.weapons === 'string' ? JSON.parse(ship.weapons) : ship.weapons;
-
-      // Check if it's the new format (weapon_types with quantities)
-      if (Array.isArray(weaponsData) && weaponsData.length > 0 && weaponsData[0].type && weaponsData[0].quantity !== undefined) {
-        parsedShip.weapon_types = weaponsData;
-        parsedShip.weapons = []; // Clear legacy format
-      } else {
-        // It's the legacy format (detailed weapons)
-        parsedShip.weapons = weaponsData;
-        parsedShip.weapon_types = []; // Clear new format
-      }
-    } catch (e) {
-      logger.error('Error parsing weapons data:', e);
-      parsedShip.weapons = [];
-      parsedShip.weapon_types = [];
+    const weaponsData = parseJson(ship.weapons, []);
+    // New format (weapon_types with quantities) vs legacy format (detailed weapons)
+    if (Array.isArray(weaponsData) && weaponsData.length > 0 && weaponsData[0].type && weaponsData[0].quantity !== undefined) {
+      parsedShip.weapon_types = weaponsData;
+    } else {
+      parsedShip.weapons = weaponsData;
     }
-  } else {
-    parsedShip.weapons = [];
-    parsedShip.weapon_types = [];
   }
 
-  // Parse other JSON fields
-  if (ship.officers) {
-    parsedShip.officers = typeof ship.officers === 'string' ? JSON.parse(ship.officers) : ship.officers;
-  }
-
-  if (ship.improvements) {
-    parsedShip.improvements = typeof ship.improvements === 'string' ? JSON.parse(ship.improvements) : ship.improvements;
-  }
-
-  if (ship.cargo_manifest) {
-    parsedShip.cargo_manifest = typeof ship.cargo_manifest === 'string' ? JSON.parse(ship.cargo_manifest) : ship.cargo_manifest;
-  }
+  if (ship.officers) parsedShip.officers = parseJson(ship.officers, []);
+  if (ship.improvements) parsedShip.improvements = parseJson(ship.improvements, []);
+  if (ship.cargo_manifest) parsedShip.cargo_manifest = parseJson(ship.cargo_manifest, DEFAULT_CARGO_MANIFEST);
 
   return parsedShip;
 };
@@ -71,194 +124,67 @@ exports.getAllWithCrewCount = async () => {
 };
 
 /**
- * Get ship by ID with crew
- * @param {number} shipId
- * @return {Promise<Object|null>} Ship with crew array
- */
-exports.getWithCrew = async (shipId) => {
-  const shipQuery = 'SELECT * FROM ships WHERE id = $1';
-  const shipResult = await dbUtils.executeQuery(shipQuery, [shipId]);
-
-  if (shipResult.rows.length === 0) {
-    return null;
-  }
-
-  const ship = parseShipData(shipResult.rows[0]);
-
-  const crewQuery = `
-    SELECT * FROM crew
-    WHERE location_type = 'ship' AND location_id = $1 AND is_alive = true
-    ORDER BY
-      CASE ship_position
-        WHEN 'captain' THEN 1
-        WHEN 'first mate' THEN 2
-        ELSE 3
-      END,
-      name
-  `;
-  const crewResult = await dbUtils.executeQuery(crewQuery, [shipId]);
-
-  return {
-    ...ship,
-    crew: crewResult.rows
-  };
-};
-
-/**
- * Create new ship
- * @param {Object} shipData 
+ * Create new ship. Missing values get the column defaults; an explicit 0 is kept.
+ * @param {Object} shipData
  * @return {Promise<Object>} Created ship
  */
 exports.create = async (shipData) => {
-  const query = `
-    INSERT INTO ships (
-      name, location, status, is_squibbing, ship_type, size, cost,
-      max_speed, acceleration, propulsion, min_crew, max_crew,
-      cargo_capacity, max_passengers, decks, weapons, ramming_damage,
-      base_ac, touch_ac, hardness, max_hp, current_hp,
-      cmb, cmd, saves, initiative,
-      plunder, infamy, disrepute, sails_oars, sailing_check_bonus,
-      officers, improvements, cargo_manifest,
-      ship_notes, captain_name, flag_description
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
-    RETURNING *
-  `;
-  
-  const values = [
-    shipData.name,
-    shipData.location || null,
-    shipData.status || 'Active',
-    shipData.is_squibbing || false,
-    shipData.ship_type || null,
-    shipData.size || 'Colossal',
-    shipData.cost || 0,
-    shipData.max_speed || 30,
-    shipData.acceleration || 15,
-    shipData.propulsion || null,
-    shipData.min_crew || 1,
-    shipData.max_crew || 10,
-    shipData.cargo_capacity || 10000,
-    shipData.max_passengers || 10,
-    shipData.decks || 1,
-    // Handle both weapon_types (new format) and weapons (legacy format)
-    JSON.stringify(shipData.weapon_types || shipData.weapons || []),
-    shipData.ramming_damage || '1d8',
-    shipData.base_ac || 10,
-    shipData.touch_ac || 10,
-    shipData.hardness || 0,
-    shipData.max_hp || 100,
-    shipData.current_hp || shipData.max_hp || 100,
-    shipData.cmb || 0,
-    shipData.cmd || 10,
-    shipData.saves || 0,
-    shipData.initiative || 0,
-    shipData.plunder || 0,
-    shipData.infamy || 0,
-    shipData.disrepute || 0,
-    shipData.sails_oars || null,
-    shipData.sailing_check_bonus || 0,
-    JSON.stringify(shipData.officers || []),
-    JSON.stringify(shipData.improvements || []),
-    JSON.stringify(shipData.cargo_manifest || {items: [], passengers: [], impositions: []}),
-    shipData.ship_notes || null,
-    shipData.captain_name || null,
-    shipData.flag_description || null
-  ];
-  
+  const values = SHIP_FIELDS.map((field) => {
+    let value = sourceValue(shipData, field);
+    if (field.col === 'current_hp') value = value ?? shipData.max_hp ?? 100;
+    if (field.kind === 'text') return isBlank(value) ? field.def : value;
+    const resolved = value ?? field.def;
+    return field.kind === 'json' ? JSON.stringify(resolved) : resolved;
+  });
+
+  const columns = SHIP_FIELDS.map(f => f.col).join(', ');
+  const placeholders = SHIP_FIELDS.map((_, i) => `$${i + 1}`).join(', ');
+  const query = `INSERT INTO ships (${columns}) VALUES (${placeholders}) RETURNING *`;
+
   const result = await dbUtils.executeQuery(query, values);
   return parseShipData(result.rows[0]);
 };
 
 /**
- * Update ship
- * @param {number} id 
- * @param {Object} shipData 
+ * Update ship. Only the fields present in shipData are written; everything else
+ * keeps its stored value. Optional text columns are cleared by '' or null.
+ * @param {number} id
+ * @param {Object} shipData
  * @return {Promise<Object|null>} Updated ship
  */
 exports.update = async (id, shipData) => {
-  const query = `
-    UPDATE ships 
-    SET name = $1, location = $2, status = $3, is_squibbing = $4, ship_type = $5,
-        size = $6, cost = $7, max_speed = $8, acceleration = $9,
-        propulsion = $10, min_crew = $11, max_crew = $12,
-        cargo_capacity = $13, max_passengers = $14, decks = $15,
-        weapons = $16, ramming_damage = $17, base_ac = $18, touch_ac = $19,
-        hardness = $20, max_hp = $21, current_hp = $22, cmb = $23, cmd = $24,
-        saves = $25, initiative = $26, plunder = $27, infamy = $28, disrepute = $29,
-        sails_oars = $30, sailing_check_bonus = $31, officers = $32, improvements = $33,
-        cargo_manifest = $34, ship_notes = $35, captain_name = $36, flag_description = $37,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = $38
-    RETURNING *
-  `;
-  
-  const values = [
-    shipData.name,
-    shipData.location,
-    shipData.status,
-    shipData.is_squibbing,
-    shipData.ship_type,
-    shipData.size,
-    shipData.cost,
-    shipData.max_speed,
-    shipData.acceleration,
-    shipData.propulsion,
-    shipData.min_crew,
-    shipData.max_crew,
-    shipData.cargo_capacity,
-    shipData.max_passengers,
-    shipData.decks,
-    // Handle both weapon_types (new format) and weapons (legacy format)
-    JSON.stringify(shipData.weapon_types || shipData.weapons || []),
-    shipData.ramming_damage,
-    shipData.base_ac,
-    shipData.touch_ac,
-    shipData.hardness,
-    shipData.max_hp,
-    shipData.current_hp,
-    shipData.cmb,
-    shipData.cmd,
-    shipData.saves,
-    shipData.initiative,
-    shipData.plunder || 0,
-    shipData.infamy || 0,
-    shipData.disrepute || 0,
-    shipData.sails_oars,
-    shipData.sailing_check_bonus || 0,
-    JSON.stringify(shipData.officers || []),
-    JSON.stringify(shipData.improvements || []),
-    JSON.stringify(shipData.cargo_manifest || {items: [], passengers: [], impositions: []}),
-    shipData.ship_notes,
-    shipData.captain_name,
-    shipData.flag_description,
-    id
-  ];
-  
+  const assignments = [];
+  const values = [];
+
+  SHIP_FIELDS.forEach((field) => {
+    const value = sourceValue(shipData, field);
+    if (value === undefined) return;
+    if (field.kind === 'json') {
+      values.push(JSON.stringify(value));
+    } else {
+      values.push(field.kind === 'text' && isBlank(value) ? null : value);
+    }
+    assignments.push(`${field.col} = $${values.length}`);
+  });
+
+  assignments.push('updated_at = CURRENT_TIMESTAMP');
+  values.push(id);
+
+  const query = `UPDATE ships SET ${assignments.join(', ')} WHERE id = $${values.length} RETURNING *`;
+
   const result = await dbUtils.executeQuery(query, values);
   return result.rows.length > 0 ? parseShipData(result.rows[0]) : null;
 };
 
 /**
  * Delete ship
- * @param {number} id 
+ * @param {number} id
  * @return {Promise<boolean>} Success status
  */
 exports.delete = async (id) => {
   const query = 'DELETE FROM ships WHERE id = $1';
   const result = await dbUtils.executeQuery(query, [id]);
   return result.rowCount > 0;
-};
-
-/**
- * Find ship by ID
- * @param {number} id
- * @return {Promise<Object|null>} Ship or null
- */
-exports.findById = async (id) => {
-  const query = 'SELECT * FROM ships WHERE id = $1';
-  const result = await dbUtils.executeQuery(query, [id]);
-  return result.rows.length > 0 ? parseShipData(result.rows[0]) : null;
 };
 
 /**
@@ -298,29 +224,31 @@ exports.repairShip = async (id, repairAmount) => {
 };
 
 /**
- * Get valid ship status options
+ * Get valid ship status options (matches the ships_status_check constraint)
  * @return {Array<string>} Array of valid status values
  */
-exports.getValidStatuses = () => {
-  return ['PC Active', 'Active', 'Docked', 'Lost', 'Sunk'];
-};
+exports.getValidStatuses = () => [...SHIP_STATUSES];
 
 /**
  * Get ship damage status based on current HP (separate from operational status)
- * @param {Object} ship 
+ * @param {Object} ship
  * @return {string} Ship damage status
  */
 exports.getShipDamageStatus = (ship) => {
-  if (!ship || ship.current_hp === undefined || ship.max_hp === undefined) {
+  if (!ship || ship.current_hp == null || ship.max_hp == null) {
     return 'Unknown';
   }
-  
-  if (ship.current_hp === 0) {
+
+  if (ship.current_hp <= 0) {
     return 'Destroyed';
   }
-  
+
+  if (ship.max_hp <= 0) {
+    return 'Unknown';
+  }
+
   const hpPercentage = (ship.current_hp / ship.max_hp) * 100;
-  
+
   if (hpPercentage === 100) {
     return 'Pristine';
   } else if (hpPercentage >= 75) {
@@ -333,5 +261,8 @@ exports.getShipDamageStatus = (ship) => {
     return 'Critical Damage';
   }
 };
+
+/** Names of every writable ships column (used by the schema test). */
+exports.COLUMNS = SHIP_FIELDS.map(f => f.col);
 
 module.exports = exports;
