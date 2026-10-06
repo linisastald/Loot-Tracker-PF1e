@@ -3,16 +3,11 @@
  *
  * Tests all settings endpoints:
  * - getDiscordSettings: retrieves Discord config; token never returned (is-set flag only)
- * - getCampaignName: retrieves campaign name with default fallback
  * - getAllSettings: superadmin-only, never returns secret values
  * - updateSetting: superadmin-only, allowlisted names, per-name validation, no secret logging
- * - getInfamySystem: retrieves infamy system flag
- * - getAveragePartyLevel: retrieves APL with default
- * - getRegion: retrieves region with default
  * - getOpenAiKey: reports whether a key is set (never the key)
  * - getCampaignTimezone: retrieves campaign timezone
  * - getTimezoneOptions: returns list of timezone options
- * - updateCampaignTimezone: DM-only, validates timezone, clears cache
  */
 
 jest.mock('../../utils/timezoneUtils', () => ({
@@ -22,13 +17,9 @@ jest.mock('../../utils/timezoneUtils', () => ({
   getTimezoneOptions: jest.fn(),
 }));
 
-jest.mock('../../services/scheduler/SessionSchedulerService', () => ({
-  restart: jest.fn().mockResolvedValue(undefined),
-}));
-
 const dbUtils = require('../../utils/dbUtils');
 const timezoneUtils = require('../../utils/timezoneUtils');
-const sessionSchedulerService = require('../../services/scheduler/SessionSchedulerService');
+const { PER_CAMPAIGN_SETTINGS } = require('../../utils/campaignSettings');
 const settingsController = require('../settingsController');
 
 function createMockRes() {
@@ -78,13 +69,19 @@ describe('settingsController', () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [
-          { name: 'discord_bot_token', value: 'MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.Gg1234.abcdefghijklmnop', value_type: 'text' },
-          { name: 'discord_channel_id', value: '123456789', value_type: 'text' },
-          { name: 'discord_integration_enabled', value: 'true', value_type: 'boolean' },
-        ],
-      });
+      // 1) global settings (bot token), 2) campaign_settings (per-campaign
+      // channel/enabled), 3) global fallback for the names missing per campaign
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({
+          rows: [{ name: 'discord_bot_token', value: 'MTIzNDU2Nzg5MDEyMzQ1Njc4OQ.Gg1234.abcdefghijklmnop', value_type: 'text' }],
+        })
+        .mockResolvedValueOnce({
+          rows: [{ name: 'discord_channel_id', value: 'campaign-channel', value_type: 'text' }],
+        })
+        .mockResolvedValueOnce({
+          // the fallback only asks for the names missing per campaign
+          rows: [{ name: 'discord_integration_enabled', value: 'true' }],
+        });
 
       await settingsController.getDiscordSettings(req, res);
 
@@ -95,8 +92,14 @@ describe('settingsController', () => {
       expect(JSON.stringify(data)).not.toContain('MTIz');
       expect(JSON.stringify(data)).not.toContain('mnop');
       expect(data.discord_bot_token_set).toBe(true);
-      expect(data.discord_channel_id).toBe('123456789');
+      // Per-campaign value wins; the global row only fills the missing name
+      expect(data.discord_channel_id).toBe('campaign-channel');
       expect(data.discord_integration_enabled).toBe('true');
+      const tables = dbUtils.executeQuery.mock.calls.map(([sql]) => sql);
+      expect(tables[0]).toContain('FROM settings');
+      expect(tables[1]).toContain('FROM campaign_settings');
+      expect(tables[2]).toContain('FROM settings');
+      expect(dbUtils.executeQuery.mock.calls[2][1]).toEqual([['discord_integration_enabled']]);
     });
 
     it('should handle missing Discord settings gracefully', async () => {
@@ -122,52 +125,6 @@ describe('settingsController', () => {
       await settingsController.getDiscordSettings(req, res);
 
       expect(res.error).toHaveBeenCalledWith('Internal server error');
-    });
-  });
-
-  // ─── getCampaignName ────────────────────────────────────────────
-
-  describe('getCampaignName', () => {
-    it('should return the current campaign name from campaigns.name (not the deprecated settings row)', async () => {
-      const req = createMockReq({ campaignId: 2 });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ name: 'Skulls & Shackles' }],
-      });
-
-      await settingsController.getCampaignName(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('FROM campaigns'),
-        [2]
-      );
-      expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('Skulls & Shackles');
-    });
-
-    it('should fall back to the static app name when the campaign row is missing', async () => {
-      const req = createMockReq({ campaignId: 99 });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await settingsController.getCampaignName(req, res);
-
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('Pathfinder Loot Tracker');
-    });
-
-    it('should fall back to the static app name when no campaign context is set', async () => {
-      const req = createMockReq({ campaignId: undefined });
-      const res = createMockRes();
-
-      await settingsController.getCampaignName(req, res);
-
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('Pathfinder Loot Tracker');
     });
   });
 
@@ -350,20 +307,7 @@ describe('settingsController', () => {
       expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual(['frontend_url', '', 'text']);
     });
 
-    it.each([
-      'campaign_timezone',
-      'region',
-      'weather_forecast_days',
-      'treasure_track',
-      'treasure_modifier',
-      'average_party_level',
-      'infamy_system_enabled',
-      'auto_appraisal_enabled',
-      'auto_task_generation',
-      'discord_integration_enabled',
-      'discord_channel_id',
-      'campaign_role_id',
-    ])('should reject the per-campaign setting %s with a pointer to the campaign endpoint', async (name) => {
+    it.each(PER_CAMPAIGN_SETTINGS)('should reject the per-campaign setting %s with a pointer to the campaign endpoint', async (name) => {
       const res = createMockRes();
 
       await settingsController.updateSetting(superReq({ name, value: '1' }), res);
@@ -500,116 +444,6 @@ describe('settingsController', () => {
     });
   });
 
-  // ─── getInfamySystem ────────────────────────────────────────────
-
-  describe('getInfamySystem', () => {
-    it('should return infamy system setting when enabled', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ name: 'infamy_system_enabled', value: '1', value_type: 'boolean' }],
-      });
-
-      await settingsController.getInfamySystem(req, res);
-
-      expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('1');
-    });
-
-    it('should return default "0" when not set', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await settingsController.getInfamySystem(req, res);
-
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('0');
-    });
-  });
-
-  // ─── getAveragePartyLevel ───────────────────────────────────────
-
-  describe('getAveragePartyLevel', () => {
-    it('should return the per-campaign average party level (campaign_settings read)', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ value: '12' }],
-      });
-
-      await settingsController.getAveragePartyLevel(req, res);
-
-      // The read is campaign-scoped, not a global settings fetch
-      const [query, params] = dbUtils.executeQuery.mock.calls[0];
-      expect(query).toContain('FROM campaign_settings');
-      expect(params).toContain('average_party_level');
-
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('12');
-    });
-
-    it('should fall back to the deprecated global row when no per-campaign row exists', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] })                 // campaign_settings: none
-        .mockResolvedValueOnce({ rows: [{ value: '8' }] });  // global fallback
-
-      await settingsController.getAveragePartyLevel(req, res);
-
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('8');
-    });
-
-    it('should return default "5" when not set in either table', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await settingsController.getAveragePartyLevel(req, res);
-
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('5');
-    });
-  });
-
-  // ─── getRegion ──────────────────────────────────────────────────
-
-  describe('getRegion', () => {
-    it('should return stored region', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ name: 'region', value: 'The Shackles', value_type: 'text' }],
-      });
-
-      await settingsController.getRegion(req, res);
-
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('The Shackles');
-    });
-
-    it('should return default "Varisia" when not set', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await settingsController.getRegion(req, res);
-
-      const data = res.success.mock.calls[0][0];
-      expect(data.value).toBe('Varisia');
-    });
-  });
-
   // ─── getOpenAiKey ───────────────────────────────────────────────
 
   describe('getOpenAiKey', () => {
@@ -687,179 +521,4 @@ describe('settingsController', () => {
     });
   });
 
-  // ─── updateCampaignTimezone ─────────────────────────────────────
-
-  describe('updateCampaignTimezone', () => {
-    it('should update timezone for DM user with valid timezone (per-campaign upsert)', async () => {
-      const req = createMockReq({
-        body: { timezone: 'America/Denver' },
-      });
-      const res = createMockRes();
-
-      timezoneUtils.isValidTimezone.mockReturnValue(true);
-      dbUtils.executeQuery.mockResolvedValue({
-        rows: [{ name: 'campaign_timezone', value: 'America/Denver', value_type: 'string' }],
-      });
-
-      await settingsController.updateCampaignTimezone(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
-      const [query, params] = dbUtils.executeQuery.mock.calls[0];
-      expect(query).toContain('INSERT INTO campaign_settings');
-      // No request campaign context in this unit test -> default campaign '1'
-      expect(params).toEqual(['1', 'campaign_timezone', 'America/Denver', 'string']);
-      expect(timezoneUtils.clearTimezoneCache).toHaveBeenCalledWith('1');
-      expect(sessionSchedulerService.restart).toHaveBeenCalled();
-      expect(res.success).toHaveBeenCalled();
-      const data = res.success.mock.calls[0][0];
-      expect(data.timezone).toBe('America/Denver');
-    });
-
-    it('should reject non-DM users', async () => {
-      const req = createMockReq({
-        user: { id: 2, role: 'Player' },
-        body: { timezone: 'America/Denver' },
-      });
-      const res = createMockRes();
-
-      await settingsController.updateCampaignTimezone(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith('Only DMs can update timezone settings');
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should reject when timezone is missing', async () => {
-      const req = createMockReq({
-        body: {},
-      });
-      const res = createMockRes();
-
-      await settingsController.updateCampaignTimezone(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith('Timezone is required');
-    });
-
-    it('should reject invalid timezone', async () => {
-      const req = createMockReq({
-        body: { timezone: 'Invalid/Timezone' },
-      });
-      const res = createMockRes();
-
-      timezoneUtils.isValidTimezone.mockReturnValue(false);
-      timezoneUtils.getTimezoneOptions.mockReturnValue([
-        { value: 'America/New_York', label: 'Eastern' },
-      ]);
-
-      await settingsController.updateCampaignTimezone(req, res);
-
-      expect(res.validationError).toHaveBeenCalled();
-      const errorMsg = res.validationError.mock.calls[0][0];
-      expect(errorMsg).toContain('Invalid timezone');
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should return 500 when database update fails', async () => {
-      const req = createMockReq({
-        body: { timezone: 'America/Denver' },
-      });
-      const res = createMockRes();
-
-      timezoneUtils.isValidTimezone.mockReturnValue(true);
-      dbUtils.executeQuery.mockRejectedValue(new Error('Update failed'));
-
-      await settingsController.updateCampaignTimezone(req, res);
-
-      expect(res.error).toHaveBeenCalledWith('Internal server error');
-    });
-  });
-
-  // ─── weather forecast days ──────────────────────────────────────
-
-  describe('getWeatherForecastDays', () => {
-    it('returns the configured value', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ name: 'weather_forecast_days', value: '10', value_type: 'integer' }],
-      });
-
-      await settingsController.getWeatherForecastDays(req, res);
-
-      expect(res.success).toHaveBeenCalledWith({ value: '10' }, 'Weather forecast days retrieved');
-    });
-
-    it('defaults to 7 when unset in both campaign_settings and the global fallback', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] }) // campaign_settings miss
-        .mockResolvedValueOnce({ rows: [] }); // global fallback miss
-
-      await settingsController.getWeatherForecastDays(req, res);
-
-      expect(res.success).toHaveBeenCalledWith({ value: '7' }, 'Weather forecast days retrieved');
-    });
-
-    it('falls back to the deprecated global row when no per-campaign row exists', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [] }) // campaign_settings miss
-        .mockResolvedValueOnce({ rows: [{ value: '21' }] }); // global hit
-
-      await settingsController.getWeatherForecastDays(req, res);
-
-      expect(res.success).toHaveBeenCalledWith({ value: '21' }, 'Weather forecast days retrieved');
-    });
-  });
-
-  describe('updateWeatherForecastDays', () => {
-    it('updates the per-campaign setting for a DM', async () => {
-      const req = createMockReq({ body: { days: 14 } });
-      const res = createMockRes();
-      dbUtils.executeQuery.mockResolvedValueOnce({
-        rows: [{ name: 'weather_forecast_days', value: '14', value_type: 'integer' }],
-      });
-
-      await settingsController.updateWeatherForecastDays(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO campaign_settings'),
-        ['1', 'weather_forecast_days', '14', 'integer']
-      );
-      expect(res.success).toHaveBeenCalledWith({ value: '14' }, 'Weather forecast days updated successfully');
-    });
-
-    it('rejects a non-DM user', async () => {
-      const req = createMockReq({ user: { role: 'Player', id: 2 }, body: { days: 14 } });
-      const res = createMockRes();
-
-      await settingsController.updateWeatherForecastDays(req, res);
-
-      expect(res.forbidden).toHaveBeenCalled();
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('rejects an out-of-range value', async () => {
-      const req = createMockReq({ body: { days: 999 } });
-      const res = createMockRes();
-
-      await settingsController.updateWeatherForecastDays(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Forecast days must be an integer between 0 and 60'
-      );
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('rejects a non-integer value', async () => {
-      const req = createMockReq({ body: { days: 'soon' } });
-      const res = createMockRes();
-
-      await settingsController.updateWeatherForecastDays(req, res);
-
-      expect(res.validationError).toHaveBeenCalled();
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-  });
 });

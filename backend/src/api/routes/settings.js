@@ -3,22 +3,15 @@ const router = express.Router();
 const settingsController = require('../../controllers/settingsController');
 const verifyToken = require('../../middleware/auth');
 
-// GET routes - all require authentication
+// All routes require authentication. The Discord bot token and the OpenAI key
+// are never returned (only "is set" flags). Global settings are read and written
+// through GET /user/settings and PUT /user/update-setting (superadmin only);
+// per-campaign settings through /campaigns/current/settings.
 router.get('/discord', verifyToken, settingsController.getDiscordSettings);
-router.get('/campaign-name', verifyToken, settingsController.getCampaignName);
-router.get('/infamy-system', verifyToken, settingsController.getInfamySystem);
-router.get('/average-party-level', verifyToken, settingsController.getAveragePartyLevel);
-router.get('/region', verifyToken, settingsController.getRegion);
 router.get('/openai-key', verifyToken, settingsController.getOpenAiKey);
-router.get('/weather-forecast-days', verifyToken, settingsController.getWeatherForecastDays);
 
 // Timezone routes
 router.get('/campaign-timezone', verifyToken, settingsController.getCampaignTimezone);
 router.get('/timezone-options', verifyToken, settingsController.getTimezoneOptions);
-
-// POST/PUT routes - require authentication (CSRF applied globally in index.js)
-// DM role check is handled inside the controller
-router.post('/campaign-timezone', verifyToken, settingsController.updateCampaignTimezone);
-router.post('/weather-forecast-days', verifyToken, settingsController.updateWeatherForecastDays);
 
 module.exports = router;

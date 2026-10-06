@@ -4,10 +4,7 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const timezoneUtils = require('../utils/timezoneUtils');
 const campaignSettings = require('../utils/campaignSettings');
-const { hasDmRights, isSuperadmin } = require('../utils/roleUtils');
-const Campaign = require('../models/Campaign');
-const { APP_NAME } = require('../config/constants');
-const { MAX_FORECAST_DAYS } = require('../utils/weatherForecast');
+const { isSuperadmin } = require('../utils/roleUtils');
 
 /**
  * Get Discord settings
@@ -29,20 +26,6 @@ const getDiscordSettings = async (req, res) => {
     delete settings.discord_bot_token;
 
     controllerFactory.sendSuccessResponse(res, settings, 'Discord settings retrieved');
-};
-
-/**
- * Get the current campaign's display name (campaigns.name, resolved from the
- * request's campaign context). The deprecated global 'campaign_name' settings
- * row is no longer read; falls back to the static APP_NAME when the campaign
- * row is missing.
- */
-const getCampaignName = async (req, res) => {
-    const campaignName = (req.campaignId
-        ? await Campaign.getNameById(req.campaignId)
-        : null) || APP_NAME;
-
-    controllerFactory.sendSuccessResponse(res, {value: campaignName}, 'Campaign name retrieved');
 };
 
 /**
@@ -269,105 +252,17 @@ const decryptValue = (encryptedValue) => {
 };
 
 /**
- * Get infamy system setting
- */
-const getInfamySystem = async (req, res) => {
-    try {
-        const infamySystem = await campaignSettings.getCampaignSetting('infamy_system_enabled', {
-            defaultValue: '0'
-        }) || '0';
-
-        controllerFactory.sendSuccessResponse(res, {value: infamySystem}, 'Infamy system setting retrieved');
-    } catch (error) {
-        logger.error('Error fetching infamy system setting:', error);
-        throw error;
-    }
-};
-
-/**
- * Get average party level (per-campaign setting with global fallback)
- */
-const getAveragePartyLevel = async (req, res) => {
-    try {
-        const apl = await campaignSettings.getCampaignSetting('average_party_level', {
-            defaultValue: '5'
-        }) || '5';
-
-        controllerFactory.sendSuccessResponse(res, {value: apl}, 'Average party level retrieved');
-    } catch (error) {
-        logger.error('Error fetching average party level setting:', error);
-        throw error;
-    }
-};
-
-/**
- * Get current region setting
- */
-const getRegion = async (req, res) => {
-    try {
-        const region = await campaignSettings.getCampaignSetting('region', {
-            defaultValue: 'Varisia'
-        }) || 'Varisia';
-
-        controllerFactory.sendSuccessResponse(res, {value: region}, 'Region setting retrieved');
-    } catch (error) {
-        logger.error('Error fetching region setting:', error);
-        throw error;
-    }
-};
-
-/**
- * Get the weather forecast horizon (days ahead of the current date that
- * weather is pre-generated and visible to DMs).
- */
-const getWeatherForecastDays = async (req, res) => {
-    const value = await campaignSettings.getCampaignSetting('weather_forecast_days', {
-        defaultValue: '7'
-    }) || '7';
-
-    controllerFactory.sendSuccessResponse(res, { value }, 'Weather forecast days retrieved');
-};
-
-/**
- * Update the weather forecast horizon. Requires DM role.
- */
-const updateWeatherForecastDays = async (req, res) => {
-    const { days } = req.body;
-
-    if (!hasDmRights(req)) {
-        throw controllerFactory.createAuthorizationError('Only DMs can update the weather forecast');
-    }
-
-    const parsed = parseInt(days, 10);
-    if (!Number.isInteger(parsed) || parsed < 0 || parsed > MAX_FORECAST_DAYS) {
-        throw controllerFactory.createValidationError(`Forecast days must be an integer between 0 and ${MAX_FORECAST_DAYS}`);
-    }
-
-    await campaignSettings.setCampaignSetting('weather_forecast_days', String(parsed), 'integer');
-
-    logger.info(`Weather forecast days updated to ${parsed}`, { userId: req.user.id });
-
-    controllerFactory.sendSuccessResponse(res, { value: String(parsed) }, 'Weather forecast days updated successfully');
-};
-
-/**
  * Report whether an OpenAI key is configured (the key itself is never returned)
  */
 const getOpenAiKey = async (req, res) => {
-    try {
-        const settings = await fetchSettingsByNames(['openai_key']);
-        const openaiKey = settings.openai_key;
+    const settings = await fetchSettingsByNames(['openai_key']);
 
-        // The key is a secret: never return it (not even partially) - only
-        // whether one is configured. This endpoint is open to every
-        // authenticated user (Smart Item Detection availability check).
-        controllerFactory.sendSuccessResponse(res, {
-            hasKey: !!openaiKey
-        }, 'OpenAI key setting retrieved');
-    } catch (error) {
-        logger.error('Error fetching OpenAI key setting:', error);
-        throw error;
-    }
+    // The key is a secret: never return it (not even partially) - only
+    // whether one is configured. This endpoint is open to every
+    // authenticated user (Smart Item Detection availability check).
+    controllerFactory.sendSuccessResponse(res, {
+        hasKey: !!settings.openai_key
+    }, 'OpenAI key setting retrieved');
 };
 
 /**
@@ -386,48 +281,6 @@ const getTimezoneOptions = async (req, res) => {
     controllerFactory.sendSuccessResponse(res, { options }, 'Timezone options retrieved');
 };
 
-/**
- * Update campaign timezone
- * Requires DM role
- */
-const updateCampaignTimezone = async (req, res) => {
-    const { timezone } = req.body;
-
-    // Validate user has DM permissions
-    if (!hasDmRights(req)) {
-        throw controllerFactory.createAuthorizationError('Only DMs can update timezone settings');
-    }
-
-    if (!timezone) {
-        throw controllerFactory.createValidationError('Timezone is required');
-    }
-
-    // Validate timezone using the same validation logic as timezoneUtils
-    if (!timezoneUtils.isValidTimezone(timezone)) {
-        const validOptions = timezoneUtils.getTimezoneOptions();
-        const validTimezones = validOptions.map(opt => opt.value).join(', ');
-        throw controllerFactory.createValidationError(
-            `Invalid timezone. Valid options are: ${validTimezones}`
-        );
-    }
-
-    // Update the per-campaign setting
-    await campaignSettings.setCampaignSetting('campaign_timezone', timezone, 'string');
-
-    // Clear this campaign's cached timezone and restart the scheduler
-    timezoneUtils.clearTimezoneCache(campaignSettings.resolveCampaignId());
-
-    const sessionSchedulerService = require('../services/scheduler/SessionSchedulerService');
-    await sessionSchedulerService.restart();
-
-    logger.info('Campaign timezone updated and scheduler restarted', {
-        timezone,
-        userId: req.user.id
-    });
-
-    controllerFactory.sendSuccessResponse(res, { timezone }, 'Campaign timezone updated successfully');
-};
-
 // Define validation rules
 const updateSettingValidation = {
     requiredFields: ['name']
@@ -439,10 +292,6 @@ module.exports = {
         errorMessage: 'Error fetching Discord settings'
     }),
 
-    getCampaignName: controllerFactory.createHandler(getCampaignName, {
-        errorMessage: 'Error fetching campaign name'
-    }),
-
     getAllSettings: controllerFactory.createHandler(getAllSettings, {
         errorMessage: 'Error fetching all settings'
     }),
@@ -452,29 +301,8 @@ module.exports = {
         validation: updateSettingValidation
     }),
 
-    getInfamySystem: controllerFactory.createHandler(getInfamySystem, {
-        errorMessage: 'Error fetching infamy system setting'
-    }),
-
-    getAveragePartyLevel: controllerFactory.createHandler(getAveragePartyLevel, {
-        errorMessage: 'Error fetching average party level setting'
-    }),
-
-    getRegion: controllerFactory.createHandler(getRegion, {
-        errorMessage: 'Error fetching region setting'
-    }),
-
-
     getOpenAiKey: controllerFactory.createHandler(getOpenAiKey, {
         errorMessage: 'Error fetching OpenAI key setting'
-    }),
-
-    getWeatherForecastDays: controllerFactory.createHandler(getWeatherForecastDays, {
-        errorMessage: 'Error fetching weather forecast days'
-    }),
-
-    updateWeatherForecastDays: controllerFactory.createHandler(updateWeatherForecastDays, {
-        errorMessage: 'Error updating weather forecast days'
     }),
 
     getCampaignTimezone: controllerFactory.createHandler(getCampaignTimezone, {
@@ -483,13 +311,5 @@ module.exports = {
 
     getTimezoneOptions: controllerFactory.createHandler(getTimezoneOptions, {
         errorMessage: 'Error retrieving timezone options'
-    }),
-
-    updateCampaignTimezone: controllerFactory.createHandler(updateCampaignTimezone, {
-        errorMessage: 'Error updating campaign timezone'
-    }),
-
-    // Export helper functions for internal use
-    fetchSettingsByNames,
-    decryptValue
+    })
 };
