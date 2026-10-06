@@ -6,7 +6,7 @@ These notes describe the production image built from `docker/Dockerfile.backend`
 
 - **Non-root execution**: the container runs as the `node` user.
 - **Minimal base image**: `node:25-alpine`, which keeps the attack surface small.
-- **Dev dependencies pruned**: the frontend is built in the image, then dev dependencies are pruned from the final layers.
+- **Dev dependencies pruned**: the frontend is built in the image, then dev dependencies are pruned from the working tree. The image is single-stage, so earlier layers still contain them (a multi-stage build would remove that; see the proposal in the W13 results).
 - **Root `.dockerignore`**: excludes documentation, tests, secrets (`.env*`), git metadata and IDE files from the build context.
 - **Security headers and rate limiting**: applied by the Express app itself (Helmet, express-rate-limit), not by a proxy inside the image.
 - **Secrets**: never bake secrets into the image; pass them as environment variables at deploy time.
