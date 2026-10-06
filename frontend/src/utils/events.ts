@@ -16,8 +16,6 @@ export const APP_EVENTS = {
   LOOT_COUNTS_CHANGED: 'app:loot-counts-changed',
 } as const;
 
-export type AppEventName = (typeof APP_EVENTS)[keyof typeof APP_EVENTS];
-
 /**
  * Notify listeners that loot counts may be stale and should be refetched.
  * Safe to call from any handler that mutates loot status / identification.
