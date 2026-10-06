@@ -234,6 +234,7 @@ CREATE TABLE loot (
     notes VARCHAR(511),
     spellcraft_dc INTEGER,
     dm_notes TEXT,
+    cursed BOOLEAN DEFAULT false,
     campaign_id INTEGER NOT NULL DEFAULT (NULLIF(current_setting('app.current_campaign', true), 'all')::int) REFERENCES campaigns(id)
 );
 
