@@ -399,10 +399,13 @@ const loginUser = async (req, res) => {
     }
 
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
+        // Indistinguishable from a wrong password (same message, status and
+        // timing), so the lock state is not an oracle for the account's existence
+        // or for a correct password; the reason stays in the server log.
         const remainingLockTime = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
-        throw controllerFactory.createAuthorizationError(
-            `Account is locked. Please try again in ${remainingLockTime} minute(s).`
-        );
+        logger.warn(`Login refused for locked account ${user.username}: ${remainingLockTime} minute(s) of lock remaining`);
+        await bcrypt.compare(password.normalize('NFC'), DUMMY_PASSWORD_HASH);
+        throw controllerFactory.createValidationError('Invalid username or password');
     }
 
     const isMatch = await bcrypt.compare(password.normalize('NFC'), user.password);

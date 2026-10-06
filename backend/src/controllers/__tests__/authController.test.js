@@ -227,24 +227,67 @@ describe('authController', () => {
       expect(res3.validationError).toHaveBeenCalled();
     });
 
-    it('should reject login when account is locked', async () => {
-      const lockedUser = {
+    describe('locked account (F-0228)', () => {
+      const lockedUser = () => ({
         ...validUser,
         locked_until: new Date(Date.now() + 300000).toISOString(), // locked 5 min from now
-      };
-      const req = createMockReq({
-        body: { username: 'testplayer', password: 'ValidPass123' },
       });
-      const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [lockedUser] });
+      it('answers a correct password with the generic wrong-password error and no session', async () => {
+        const req = createMockReq({ body: { username: 'testplayer', password: 'ValidPass123' } });
+        const res = createMockRes();
+        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [lockedUser()] });
+        bcrypt.compare.mockResolvedValue(true); // would be a match for the real hash
 
-      await authController.loginUser(req, res);
+        await authController.loginUser(req, res);
 
-      expect(res.forbidden).toHaveBeenCalledWith(
-        expect.stringContaining('Account is locked')
-      );
-      expect(bcrypt.compare).not.toHaveBeenCalled();
+        expect(res.validationError).toHaveBeenCalledWith('Invalid username or password');
+        expect(res.forbidden).not.toHaveBeenCalled();
+        expect(res.cookie).not.toHaveBeenCalled();
+        expect(res.success).not.toHaveBeenCalled();
+        // no attempt counter update and no reset of the lock
+        expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+      });
+
+      it('answers a wrong password with the same generic error', async () => {
+        const req = createMockReq({ body: { username: 'testplayer', password: 'WrongPass' } });
+        const res = createMockRes();
+        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [lockedUser()] });
+        bcrypt.compare.mockResolvedValue(false);
+
+        await authController.loginUser(req, res);
+
+        expect(res.validationError).toHaveBeenCalledWith('Invalid username or password');
+        expect(res.cookie).not.toHaveBeenCalled();
+      });
+
+      it('costs one bcrypt compare, like any failed login, and logs the lock server-side', async () => {
+        const req = createMockReq({ body: { username: 'testplayer', password: 'ValidPass123' } });
+        const res = createMockRes();
+        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [lockedUser()] });
+
+        await authController.loginUser(req, res);
+
+        expect(bcrypt.compare).toHaveBeenCalledTimes(1);
+        const logger = require('../../utils/logger');
+        expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('locked'));
+      });
+
+      it('lets the user in once the lock has expired', async () => {
+        const expired = { ...validUser, locked_until: new Date(Date.now() - 1000).toISOString() };
+        const req = createMockReq({ body: { username: 'testplayer', password: 'ValidPass123' } });
+        const res = createMockRes();
+        dbUtils.executeQuery
+          .mockResolvedValueOnce({ rows: [expired] })
+          .mockResolvedValue({ rows: [] });
+        bcrypt.compare.mockResolvedValue(true);
+        jwt.sign.mockReturnValue('tok');
+
+        await authController.loginUser(req, res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(res.cookie).toHaveBeenCalled();
+      });
     });
 
     it('should reject login for an invalid role', async () => {
