@@ -281,23 +281,118 @@ describe('itemController', () => {
       expect(res.success).toHaveBeenCalledTimes(1);
     });
 
-    it('should include characterId in update when provided with Kept Character status', async () => {
-      const mockClient = {
-        query: jest.fn().mockResolvedValue({ rows: [{ id: 1, name: 'Ring' }] }),
-        release: jest.fn(),
+    describe('characterId ownership (F-1370)', () => {
+      const charRow = (over = {}) => ({ id: 5, user_id: 1, active: true, ...over });
+      const txClient = (charRows, updateRows = [{ id: 1, name: 'Ring' }]) => {
+        const client = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: charRows })
+            .mockResolvedValueOnce({ rows: updateRows }),
+          release: jest.fn(),
+        };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        return client;
       };
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
 
-      const req = mockReq({
-        body: { lootIds: [1], status: 'Kept Character', characterId: 5 },
+      it('writes whohas when the caller owns an active character in this campaign', async () => {
+        const client = txClient([charRow()]);
+        const req = mockReq({
+          campaignId: 3,
+          body: { lootIds: [1], status: 'Kept Character', characterId: 5 },
+        });
+        const res = mockRes();
+
+        await itemController.updateLootStatus(req, res);
+
+        const [checkSql, checkParams] = client.query.mock.calls[0];
+        expect(checkSql).toContain('FROM characters WHERE id = $1');
+        expect(checkParams).toEqual([5, 3]);
+        const [query, params] = client.query.mock.calls[1];
+        expect(query).toContain('whohas = $2');
+        expect(params[1]).toBe(5);
+        expect(res.success).toHaveBeenCalledTimes(1);
       });
-      const res = mockRes();
 
-      await itemController.updateLootStatus(req, res);
+      it("rejects another player's character with 403 and writes nothing", async () => {
+        const client = txClient([charRow({ user_id: 99 })]);
+        const req = mockReq({ body: { lootIds: [1], status: 'Kept Character', characterId: 5 } });
+        const res = mockRes();
 
-      const [query, params] = mockClient.query.mock.calls[0];
-      expect(query).toContain('whohas = $2');
-      expect(params[1]).toBe(5);
+        await itemController.updateLootStatus(req, res);
+
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+        expect(res.forbidden.mock.calls[0][0]).toMatch(/your own/i);
+        expect(client.query).toHaveBeenCalledTimes(1);
+      });
+
+      it('rejects an inactive character for a player', async () => {
+        txClient([charRow({ active: false })]);
+        const req = mockReq({ body: { lootIds: [1], status: 'Kept Character', characterId: 5 } });
+        const res = mockRes();
+
+        await itemController.updateLootStatus(req, res);
+
+        expect(res.forbidden).toHaveBeenCalledTimes(1);
+      });
+
+      it('rejects a character from another campaign or a missing id with 400', async () => {
+        const client = txClient([]);
+        const req = mockReq({
+          campaignId: 3,
+          body: { lootIds: [1], status: 'Kept Character', characterId: 777 },
+        });
+        const res = mockRes();
+
+        await itemController.updateLootStatus(req, res);
+
+        expect(res.validationError).toHaveBeenCalledTimes(1);
+        expect(res.validationError.mock.calls[0][0]).toMatch(/character/i);
+        expect(client.query).toHaveBeenCalledTimes(1);
+      });
+
+      it('lets a DM act for any character in the current campaign', async () => {
+        const client = txClient([charRow({ user_id: 99 })]);
+        const req = mockReq({
+          user: { id: 2, role: 'DM' },
+          body: { lootIds: [1], status: 'Kept Character', characterId: 5 },
+        });
+        const res = mockRes();
+
+        await itemController.updateLootStatus(req, res);
+
+        expect(res.forbidden).not.toHaveBeenCalled();
+        expect(client.query.mock.calls[1][1][1]).toBe(5);
+        expect(res.success).toHaveBeenCalledTimes(1);
+      });
+
+      it('still rejects a DM naming a character outside the campaign', async () => {
+        txClient([]);
+        const req = mockReq({
+          user: { id: 2, role: 'DM' },
+          campaignId: 3,
+          body: { lootIds: [1], status: 'Sold', characterId: 777 },
+        });
+        const res = mockRes();
+
+        await itemController.updateLootStatus(req, res);
+
+        expect(res.validationError).toHaveBeenCalledTimes(1);
+      });
+
+      it('does no character lookup when characterId is not sent', async () => {
+        const client = {
+          query: jest.fn().mockResolvedValue({ rows: [{ id: 1, name: 'Ring' }] }),
+          release: jest.fn(),
+        };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const req = mockReq({ body: { lootIds: [1], status: 'Sold' } });
+        const res = mockRes();
+
+        await itemController.updateLootStatus(req, res);
+
+        expect(client.query).toHaveBeenCalledTimes(1);
+        expect(client.query.mock.calls[0][0]).not.toContain('whohas');
+      });
     });
 
     it('should reject invalid status values', async () => {

@@ -379,6 +379,25 @@ const updateLootStatus = async (req, res) => {
     // (MVCC). That causes the frontend to see stale data and the table to
     // appear "one update behind".
     const updatedRows = await dbUtils.executeTransaction(async (client) => {
+      // F-1370: whohas must point at a character of the current campaign, and a
+      // non-DM may only name their own active character.
+      if (characterId) {
+        let characterSql = 'SELECT id, user_id, active FROM characters WHERE id = $1';
+        const characterParams = [characterId];
+        if (Number.isInteger(req.campaignId)) {
+          characterSql += ' AND campaign_id = $2';
+          characterParams.push(req.campaignId);
+        }
+        const characterResult = await client.query(characterSql, characterParams);
+        const character = characterResult.rows[0];
+        if (!character) {
+          throw controllerFactory.createValidationError('Character not found in the current campaign');
+        }
+        if (!hasDmRights(req) && (character.user_id !== req.user.id || character.active === false)) {
+          throw controllerFactory.createAuthorizationError('You can only assign loot to your own active character');
+        }
+      }
+
       let updateQuery = 'UPDATE loot SET status = $1';
       const params = [status];
       let paramIndex = 2;
