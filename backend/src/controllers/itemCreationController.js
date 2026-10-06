@@ -5,6 +5,11 @@ const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
 const ItemParsingService = require('../services/itemParsingService');
 const { calculateFinalValue } = require('../services/calculateFinalValue');
+const { getCampaignSetting } = require('../utils/campaignSettings');
+
+// Largest quantity the "auto-split stacks" campaign setting will split into
+// separate rows, so a typo (e.g. 5000) cannot create thousands of loot rows.
+const MAX_AUTO_SPLIT_QUANTITY = 100;
 
 /**
  * Create new loot item
@@ -28,6 +33,18 @@ const createLoot = async (req, res) => {
 
     if (customValue !== undefined) {
       ValidationService.validateOptionalNumber(customValue, 'customValue', { min: 0 });
+    }
+
+    // Per-campaign "auto-split stacks": a quantity N > 1 becomes N rows of
+    // quantity 1 (every other field, including wand charges, is copied as is).
+    // Only read when it can matter.
+    const autoSplit = Number.isInteger(validatedQuantity) && validatedQuantity > 1 &&
+      (await getCampaignSetting('auto_split_stacks_enabled', { defaultValue: '0' })) === '1';
+    if (autoSplit && validatedQuantity > MAX_AUTO_SPLIT_QUANTITY) {
+      throw controllerFactory.createValidationError(
+        `Auto-split stacks is on, so quantity cannot be more than ${MAX_AUTO_SPLIT_QUANTITY}. ` +
+        'Enter a smaller quantity or turn off Auto-Split Stacks in the campaign settings.'
+      );
     }
 
     // Run the INSERT inside a transaction, but send the HTTP response only
@@ -99,9 +116,23 @@ const createLoot = async (req, res) => {
         session_date: new Date()
       };
 
+      if (autoSplit) {
+        // All N rows go through the transaction client so they commit together
+        const columns = Object.keys(lootData);
+        const insertSql = `INSERT INTO "loot" (${columns.map((c) => `"${c}"`).join(', ')}) ` +
+          `VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+        const rowValues = columns.map((c) => (c === 'quantity' ? 1 : lootData[c]));
+        const createdRows = [];
+        for (let i = 0; i < validatedQuantity; i++) {
+          const inserted = await client.query(insertSql, rowValues);
+          createdRows.push(inserted.rows[0]);
+        }
+        return { createdLoot: createdRows[0], createdCount: createdRows.length, calculatedValue };
+      }
+
       const createdLoot = await dbUtils.insert('loot', lootData);
 
-      return { createdLoot, calculatedValue };
+      return { createdLoot, createdCount: 1, calculatedValue };
     });
 
     logger.info(`New loot item created by user ${req.user.id}`, {
@@ -109,10 +140,15 @@ const createLoot = async (req, res) => {
       lootId: txResult.createdLoot.id,
       itemName: validatedName,
       quantity: validatedQuantity,
+      rowsCreated: txResult.createdCount,
       value: txResult.calculatedValue
     });
 
-    return controllerFactory.sendSuccessResponse(res, txResult.createdLoot, 'Loot item created successfully');
+    // A split returns the first created row (same shape as a single create)
+    const message = txResult.createdCount > 1
+      ? `${txResult.createdCount} loot items created successfully`
+      : 'Loot item created successfully';
+    return controllerFactory.sendSuccessResponse(res, txResult.createdLoot, message);
   } catch (error) {
     logger.error('Error creating loot item:', error);
     throw error;
