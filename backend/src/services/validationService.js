@@ -6,6 +6,9 @@ const { hasDmRights } = require('../utils/roleUtils');
  * Service for handling validation operations
  */
 class ValidationService {
+  /** Email shape accepted by registration, change-email and validateEmail. */
+  static EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
   /**
    * Validate DM permission (per-campaign role; superadmins always pass)
    * @param {Object} req - Express request object (after verifyToken)
@@ -185,9 +188,8 @@ class ValidationService {
    */
   static validateEmail(email) {
     const validatedEmail = this.validateRequiredString(email, 'email');
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    
-    if (!emailRegex.test(validatedEmail)) {
+
+    if (!ValidationService.EMAIL_PATTERN.test(validatedEmail)) {
       throw controllerFactory.createValidationError('Invalid email format');
     }
 

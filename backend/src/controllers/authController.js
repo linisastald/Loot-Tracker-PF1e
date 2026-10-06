@@ -11,6 +11,8 @@ const Invite = require('../models/Invite');
 const { assertRedeemable } = require('../utils/inviteRules');
 const { CODE_PATTERN, CODE_FORMAT_MESSAGE } = require('../utils/inviteCode');
 const { AUTH } = require('../config/constants');
+const { assertPasswordPolicy, hashPassword } = require('../utils/passwordPolicy');
+const ValidationService = require('../services/validationService');
 const { AUTH_COOKIE_OPTIONS, issueAuthCookie, isTokenRevokedByPasswordChange } = require('../utils/authSession');
 require('dotenv').config();
 
@@ -27,9 +29,6 @@ const FIRST_DM_BOOTSTRAP_LOCK_KEY = 727450001;
 
 /** Password-reset links stay valid for one hour. */
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
-
-/** bcrypt cost factor for stored passwords. */
-const BCRYPT_ROUNDS = 10;
 
 /**
  * Pre-computed bcrypt hash compared against when the username is unknown, so a
@@ -50,19 +49,6 @@ const assertStrings = (fields, names) => {
         }
     }
 };
-
-/** Enforce the password length policy. */
-const assertPasswordPolicy = (password) => {
-    if (!password || password.length < AUTH.PASSWORD_MIN_LENGTH) {
-        throw controllerFactory.createValidationError(`Password must be at least ${AUTH.PASSWORD_MIN_LENGTH} characters long`);
-    }
-    if (password.length > AUTH.PASSWORD_MAX_LENGTH) {
-        throw controllerFactory.createValidationError(`Password cannot exceed ${AUTH.PASSWORD_MAX_LENGTH} characters`);
-    }
-};
-
-/** NFC-normalize and bcrypt-hash a password. */
-const hashPassword = (password) => bcrypt.hash(password.normalize('NFC'), BCRYPT_ROUNDS);
 
 /** SHA-256 of a reset token: only the hash is stored, the raw token only travels in the link. */
 const hashResetToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -213,8 +199,7 @@ const registerUser = async (req, res) => {
         throw controllerFactory.createValidationError('Email is required');
     }
 
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!emailRegex.test(email)) {
+    if (!ValidationService.EMAIL_PATTERN.test(email)) {
         throw controllerFactory.createValidationError('Please enter a valid email address');
     }
 

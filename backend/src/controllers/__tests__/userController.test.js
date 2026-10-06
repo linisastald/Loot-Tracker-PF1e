@@ -26,7 +26,12 @@ jest.mock('jsonwebtoken', () => ({
   sign: jest.fn(),
 }));
 
+jest.mock('../../models/Campaign', () => ({
+  getMembership: jest.fn(),
+}));
+
 const dbUtils = require('../../utils/dbUtils');
+const Campaign = require('../../models/Campaign');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const userController = require('../userController');
@@ -272,6 +277,36 @@ describe('userController', () => {
 
       expect(res.validationError).toHaveBeenCalledWith(
         'Password cannot exceed 64 characters'
+      );
+    });
+
+    it.each([
+      ['an array', ['x']],
+      ['a number', 12345678],
+      ['an object', { a: 1 }],
+    ])('rejects a non-string password (%s) with 400, not a TypeError (F-0476)', async (_label, bad) => {
+      const res = createMockRes();
+
+      await userController.changePassword(
+        createMockReq({ body: { oldPassword: bad, newPassword: 'NewPass456' } }), res);
+      await userController.changePassword(
+        createMockReq({ body: { oldPassword: 'OldPass123', newPassword: bad } }), res);
+
+      expect(res.validationError).toHaveBeenCalledTimes(2);
+      expect(res.error).not.toHaveBeenCalled();
+      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+    });
+
+    it('uses the configurable password limits from the auth constants (F-0476)', async () => {
+      const { AUTH } = require('../../config/constants');
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [mockUser] });
+
+      await userController.changePassword(
+        createMockReq({ body: { oldPassword: 'OldPass123', newPassword: 'a'.repeat(AUTH.PASSWORD_MAX_LENGTH + 1) } }), res);
+
+      expect(res.validationError).toHaveBeenCalledWith(
+        `Password cannot exceed ${AUTH.PASSWORD_MAX_LENGTH} characters`
       );
     });
 
@@ -619,7 +654,7 @@ describe('userController', () => {
 
     it('should convert empty string dates to null', async () => {
       const req = createMockReq({
-        body: { name: 'Kyra', birthday: '', deathday: '' },
+        body: { name: 'Kyra', birthday: '', deathday: '', active: false },
       });
       const res = createMockRes();
 
@@ -633,9 +668,25 @@ describe('userController', () => {
 
       await userController.addCharacter(req, res);
 
-      // The INSERT query should have null for birthday/deathday params
+      // INSERT params: [userId, name, appraisal_bonus, birthday, deathday, active]
       const insertCall = mockClient.query.mock.calls[0];
-      expect(insertCall[1]).toContain(null); // birthday
+      expect(insertCall[1][3]).toBeNull();
+      expect(insertCall[1][4]).toBeNull();
+    });
+
+    it('defaults active to true (not NULL) when the field is omitted (F-0478)', async () => {
+      const req = createMockReq({ body: { name: 'Kyra' } });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+      const mockClient = { query: jest.fn().mockResolvedValue({ rows: [{ id: 12, name: 'Kyra' }] }) };
+      dbUtils.executeTransaction.mockImplementationOnce(async (cb) => cb(mockClient));
+
+      await userController.addCharacter(req, res);
+
+      // the owner's other characters are deactivated first, then the insert gets active = true
+      expect(mockClient.query.mock.calls[0][0]).toContain('UPDATE characters SET active = false');
+      expect(mockClient.query.mock.calls[1][1][5]).toBe(true);
     });
   });
 
@@ -791,17 +842,36 @@ describe('userController', () => {
       });
       const res = createMockRes();
 
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [mockUser] })   // user exists
-        .mockResolvedValueOnce({ rows: [] });           // UPDATE role
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [mockUser] });   // user exists
+      const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+      dbUtils.executeTransaction.mockImplementationOnce(async (cb) => cb(client));
 
       await userController.deleteUser(req, res);
 
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
+      expect(client.query).toHaveBeenCalledWith(
         expect.stringContaining("UPDATE users SET role = $1"),
         ['deleted', 1]
       );
       expect(res.success).toHaveBeenCalledWith(null, 'User deleted successfully');
+    });
+
+    it('deactivates the deleted account\'s characters in the same transaction, without deleting anything (F-0487)', async () => {
+      const req = createMockReq({
+        user: { id: 99, role: 'DM' },
+        isSuperadmin: true,
+        body: { userId: 1 },
+      });
+      const res = createMockRes();
+
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [mockUser] });
+      const client = { query: jest.fn().mockResolvedValue({ rows: [] }) };
+      dbUtils.executeTransaction.mockImplementationOnce(async (cb) => cb(client));
+
+      await userController.deleteUser(req, res);
+
+      expect(client.query).toHaveBeenCalledWith('UPDATE characters SET active = false WHERE user_id = $1', [1]);
+      const sql = client.query.mock.calls.map((call) => call[0]).join(' ');
+      expect(sql).not.toMatch(/DELETE/i);
     });
 
     it('should reject a non-superadmin, even a campaign DM', async () => {
@@ -914,25 +984,48 @@ describe('userController', () => {
   // updateAnyCharacter (DM only)
   // ---------------------------------------------------------------
   describe('updateAnyCharacter', () => {
+    /** DM request scoped to campaign 7. */
+    const dmReq = (body) => createMockReq({
+      user: { id: 99, role: 'DM' },
+      campaignId: 7,
+      body,
+    });
+
+    /** Wire the SELECT (character exists) and the transaction client. */
+    const arrange = ({ existing = mockCharacter, updated = mockCharacter, extraSelects = [] } = {}) => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: existing ? [existing] : [] });
+      extraSelects.forEach((rows) => dbUtils.executeQuery.mockResolvedValueOnce({ rows }));
+      const client = { query: jest.fn().mockResolvedValue({ rows: [updated] }) };
+      dbUtils.executeTransaction.mockImplementationOnce(async (cb) => cb(client));
+      return client;
+    };
+
+    /** The UPDATE characters statement the handler ran (last client query). */
+    const updateCall = (client) => client.query.mock.calls[client.query.mock.calls.length - 1];
+
     it('should update any character as DM', async () => {
-      const req = createMockReq({
-        user: { id: 99, role: 'DM' },
-        body: { id: 10, name: 'Valeros the Mighty', appraisal_bonus: 10 },
-      });
       const res = createMockRes();
-
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [mockCharacter] })   // character exists
-        .mockResolvedValueOnce({ rows: [] });                // name uniqueness
-
       const updatedChar = { ...mockCharacter, name: 'Valeros the Mighty', appraisal_bonus: 10 };
-      const mockClient = { query: jest.fn() };
-      mockClient.query.mockResolvedValueOnce({ rows: [updatedChar] });
-      dbUtils.executeTransaction.mockImplementationOnce(async (cb) => cb(mockClient));
+      const client = arrange({ updated: updatedChar, extraSelects: [[]] }); // name uniqueness: free
 
-      await userController.updateAnyCharacter(req, res);
+      await userController.updateAnyCharacter(dmReq({ id: 10, name: 'Valeros the Mighty', appraisal_bonus: 10 }), res);
 
       expect(res.success).toHaveBeenCalledWith(updatedChar, 'Character updated successfully');
+      const [sql, params] = updateCall(client);
+      expect(sql).toContain('UPDATE characters SET');
+      // name, bonus changed; birthday/deathday/active/user_id fall back to the stored values; scoped by id AND campaign
+      expect(params).toEqual(['Valeros the Mighty', 10, mockCharacter.birthday, mockCharacter.deathday, true, 1, 10, 7]);
+    });
+
+    it('looks the character up inside the request campaign', async () => {
+      const res = createMockRes();
+      arrange();
+
+      await userController.updateAnyCharacter(dmReq({ id: 10 }), res);
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toContain('campaign_id = $2');
+      expect(params).toEqual([10, 7]);
     });
 
     it('should reject non-DM users', async () => {
@@ -948,57 +1041,170 @@ describe('userController', () => {
     });
 
     it('should return notFound when character does not exist', async () => {
-      const req = createMockReq({
-        user: { id: 99, role: 'DM' },
-        body: { id: 999 },
-      });
       const res = createMockRes();
+      arrange({ existing: null });
 
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await userController.updateAnyCharacter(req, res);
+      await userController.updateAnyCharacter(dmReq({ id: 999 }), res);
 
       expect(res.notFound).toHaveBeenCalledWith('Character not found');
+      expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
     });
 
     it('should reject duplicate character name', async () => {
-      const req = createMockReq({
-        user: { id: 99, role: 'DM' },
-        body: { id: 10, name: 'Seelah' },
-      });
       const res = createMockRes();
-
       dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [mockCharacter] })              // character exists
-        .mockResolvedValueOnce({ rows: [{ id: 11, name: 'Seelah' }] }); // name taken
+        .mockResolvedValueOnce({ rows: [mockCharacter] })
+        .mockResolvedValueOnce({ rows: [{ id: 11, name: 'Seelah' }] });
 
-      await userController.updateAnyCharacter(req, res);
+      await userController.updateAnyCharacter(dmReq({ id: 10, name: 'Seelah' }), res);
 
       expect(res.validationError).toHaveBeenCalledWith('Character name already exists');
     });
 
-    it('should deactivate other characters when activating as DM', async () => {
-      const req = createMockReq({
-        user: { id: 99, role: 'DM' },
-        body: { id: 10, active: true },
+    describe('field whitelist (F-1155)', () => {
+      it.each([
+        ['campaign_id', 2],
+        ['created_at', '2020-01-01'],
+        ['password', 'x'],
+        ['is_superadmin', true],
+        ['role', 'DM'],
+        ['whohas', 5],
+      ])('rejects the unexpected field %s and writes nothing', async (field, value) => {
+        const res = createMockRes();
+
+        await userController.updateAnyCharacter(dmReq({ id: 10, name: 'Valeros', [field]: value }), res);
+
+        expect(res.validationError).toHaveBeenCalledWith(`Unexpected field: ${field}`);
+        expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
       });
-      const res = createMockRes();
 
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [mockCharacter] });
+      it('names every unexpected field in one message', async () => {
+        const res = createMockRes();
 
-      const mockClient = { query: jest.fn() };
-      mockClient.query
-        .mockResolvedValueOnce({ rows: [] })                          // deactivate others
-        .mockResolvedValueOnce({ rows: [{ ...mockCharacter, active: true }] });
+        await userController.updateAnyCharacter(dmReq({ id: 10, campaign_id: 2, role: 'DM' }), res);
 
-      dbUtils.executeTransaction.mockImplementationOnce(async (cb) => cb(mockClient));
+        expect(res.validationError).toHaveBeenCalledWith('Unexpected fields: campaign_id, role');
+      });
 
-      await userController.updateAnyCharacter(req, res);
+      it.each([
+        ['id', 'abc'],
+        ['id', 1.5],
+        ['id', -3],
+        ['name', ''],
+        ['name', '   '],
+        ['name', 42],
+        ['name', 'x'.repeat(256)],
+        ['appraisal_bonus', 'lots'],
+        ['appraisal_bonus', 1.5],
+        ['appraisal_bonus', null],
+        ['birthday', '15/01/4690'],
+        ['birthday', '4690-02-30'],
+        ['birthday', 20],
+        ['deathday', 'yesterday'],
+        ['active', 'yes'],
+        ['active', 1],
+        ['user_id', 'abc'],
+        ['user_id', 0],
+        ['user_id', 2.5],
+        ['user_id', null],
+      ])('rejects %s = %j before touching the database', async (field, value) => {
+        const res = createMockRes();
 
-      expect(mockClient.query).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE characters SET active = false WHERE user_id'),
-        [1, 10]
-      );
+        await userController.updateAnyCharacter(dmReq({ id: 10, [field]: value }), res);
+
+        expect(res.validationError).toHaveBeenCalled();
+        expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it('accepts exactly the fields the Character Management form sends', async () => {
+        const res = createMockRes();
+        const client = arrange({ extraSelects: [[]] });
+        Campaign.getMembership.mockResolvedValue({ role: 'Player' });
+
+        await userController.updateAnyCharacter(dmReq({
+          id: 10, name: 'Kyra', appraisal_bonus: 3, birthday: '4690-01-15', deathday: '', active: false, user_id: 2,
+        }), res);
+
+        expect(res.success).toHaveBeenCalled();
+        expect(updateCall(client)[1]).toEqual(['Kyra', 3, '4690-01-15', null, false, 2, 10, 7]);
+      });
+
+      it('saves a legacy NULL active (echoed back by the form) as false', async () => {
+        const res = createMockRes();
+        const client = arrange({ existing: { ...mockCharacter, active: null } });
+
+        await userController.updateAnyCharacter(dmReq({ id: 10, active: null }), res);
+
+        expect(updateCall(client)[1][4]).toBe(false);
+      });
+
+      it('writes an empty-string date as NULL and accepts a numeric-string bonus', async () => {
+        const res = createMockRes();
+        const client = arrange();
+
+        await userController.updateAnyCharacter(dmReq({ id: 10, birthday: '', appraisal_bonus: '4' }), res);
+
+        const params = updateCall(client)[1];
+        expect(params[1]).toBe(4);
+        expect(params[2]).toBeNull();
+      });
+    });
+
+    describe('owner change (F-0501, F-0502)', () => {
+      it('rejects a new owner who is not a member of the campaign', async () => {
+        const res = createMockRes();
+        dbUtils.executeQuery.mockResolvedValueOnce({ rows: [mockCharacter] });
+        Campaign.getMembership.mockResolvedValue(null);
+
+        await userController.updateAnyCharacter(dmReq({ id: 10, user_id: 55 }), res);
+
+        expect(Campaign.getMembership).toHaveBeenCalledWith(55, 7);
+        expect(res.validationError).toHaveBeenCalledWith('The new owner is not a member of this campaign');
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it('does not re-check membership when the owner is unchanged (a former member stays editable)', async () => {
+        const res = createMockRes();
+        arrange();
+
+        await userController.updateAnyCharacter(dmReq({ id: 10, user_id: 1, name: 'Valeros' }), res);
+
+        expect(Campaign.getMembership).not.toHaveBeenCalled();
+        expect(res.success).toHaveBeenCalled();
+      });
+    });
+
+    describe('one active character per owner (F-0500)', () => {
+      it('should deactivate the owner other characters when activating', async () => {
+        const res = createMockRes();
+        const client = arrange();
+
+        await userController.updateAnyCharacter(dmReq({ id: 10, active: true }), res);
+
+        expect(client.query.mock.calls[0][0]).toContain('UPDATE characters SET active = false WHERE user_id');
+        expect(client.query.mock.calls[0][1]).toEqual([1, 10, 7]);
+      });
+
+      it('deactivates the NEW owner other characters when an active character is reassigned without resending active', async () => {
+        const res = createMockRes();
+        const client = arrange();
+        Campaign.getMembership.mockResolvedValue({ role: 'Player' });
+
+        await userController.updateAnyCharacter(dmReq({ id: 10, user_id: 2 }), res); // stored row is active
+
+        expect(client.query.mock.calls[0][1]).toEqual([2, 10, 7]);
+      });
+
+      it('does not touch other characters when the result is inactive', async () => {
+        const res = createMockRes();
+        const client = arrange({ existing: { ...mockCharacter, active: false } });
+
+        await userController.updateAnyCharacter(dmReq({ id: 10, name: 'Valeros' }), res);
+
+        expect(client.query).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

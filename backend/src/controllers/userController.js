@@ -5,6 +5,36 @@ const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const { hasDmRights } = require('../utils/roleUtils');
 const { issueAuthCookie } = require('../utils/authSession');
+const { assertPasswordPolicy, hashPassword } = require('../utils/passwordPolicy');
+const campaignContext = require('../utils/campaignContext');
+const ValidationService = require('../services/validationService');
+const Campaign = require('../models/Campaign');
+
+/** Longest character name the characters.name column holds. */
+const MAX_CHARACTER_NAME_LENGTH = 255;
+
+/** Largest integer that fits a PostgreSQL INTEGER column. */
+const MAX_INT4 = 2147483647;
+
+/** Calendar date as sent by the date inputs (YYYY-MM-DD). */
+const CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Empty-string dates from the forms mean "no date". */
+const emptyToNull = (value) => (value === '' ? null : value);
+
+/**
+ * Throw when another character already uses this name.
+ * @param {string} name
+ * @param {number} [excludeId] - Character being renamed (ignored when absent)
+ */
+const assertCharacterNameFree = async (name, excludeId) => {
+    const existing = excludeId === undefined
+        ? await dbUtils.executeQuery('SELECT * FROM characters WHERE name = $1', [name])
+        : await dbUtils.executeQuery('SELECT * FROM characters WHERE name = $1 AND id != $2', [name, excludeId]);
+    if (existing.rows.length > 0) {
+        throw controllerFactory.createValidationError('Character name already exists');
+    }
+};
 
 /**
  * Change user email
@@ -12,6 +42,10 @@ const { issueAuthCookie } = require('../utils/authSession');
 const changeEmail = async (req, res) => {
     const {email, password} = req.body;
     const userId = req.user.id;
+
+    if (typeof email !== 'string' || typeof password !== 'string') {
+        throw controllerFactory.createValidationError('Email and password must be text');
+    }
 
     // Get the user
     const result = await dbUtils.executeQuery('SELECT * FROM users WHERE id = $1', [userId]);
@@ -27,8 +61,7 @@ const changeEmail = async (req, res) => {
     }
 
     // Validate email format
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!emailRegex.test(email)) {
+    if (!ValidationService.EMAIL_PATTERN.test(email)) {
         throw controllerFactory.createValidationError('Please enter a valid email address');
     }
 
@@ -64,6 +97,10 @@ const changePassword = async (req, res) => {
     const {oldPassword, newPassword} = req.body;
     const userId = req.user.id;
 
+    if (typeof oldPassword !== 'string' || typeof newPassword !== 'string') {
+        throw controllerFactory.createValidationError('Passwords must be text');
+    }
+
     // Get the user
     const result = await dbUtils.executeQuery('SELECT * FROM users WHERE id = $1', [userId]);
     const user = result.rows[0];
@@ -72,18 +109,10 @@ const changePassword = async (req, res) => {
         throw controllerFactory.createNotFoundError('User not found');
     }
 
-    // Validate new password length
-    if (!newPassword || newPassword.length < 8) {
-        throw controllerFactory.createValidationError('Password must be at least 8 characters long');
-    }
+    // Same policy (and env-configurable limits) as registration and token reset
+    assertPasswordPolicy(newPassword);
 
-    if (newPassword.length > 64) {
-        throw controllerFactory.createValidationError('Password cannot exceed 64 characters');
-    }
-
-    // Normalize passwords (Unicode normalization)
     const normalizedOldPassword = oldPassword.normalize('NFC');
-    const normalizedNewPassword = newPassword.normalize('NFC');
 
     // Check if old password is correct
     const isMatch = await bcrypt.compare(normalizedOldPassword, user.password);
@@ -92,7 +121,7 @@ const changePassword = async (req, res) => {
     }
 
     // Hash and update the new password
-    const hashedPassword = await bcrypt.hash(normalizedNewPassword, 10);
+    const hashedPassword = await hashPassword(newPassword);
     await dbUtils.executeQuery(
         'UPDATE users SET password = $1, password_changed_at = NOW() WHERE id = $2',
         [hashedPassword, userId]
@@ -175,27 +204,22 @@ const addCharacter = async (req, res) => {
     const {name, appraisal_bonus, birthday, deathday, active} = req.body;
     const userId = req.user.id;
 
-    // Check for name uniqueness
-    const existingNameCheck = await dbUtils.executeQuery(
-        'SELECT * FROM characters WHERE name = $1',
-        [name]
-    );
+    await assertCharacterNameFree(name);
 
-    if (existingNameCheck.rows.length > 0) {
-        throw controllerFactory.createValidationError('Character name already exists');
-    }
+    // Omitted `active` means the column default (true), not NULL
+    const isActive = active === undefined || active === null ? true : Boolean(active);
 
     // Handle date values - convert empty strings to null
-    const processedBirthday = birthday === '' ? null : birthday;
-    const processedDeathday = deathday === '' ? null : deathday;
+    const processedBirthday = emptyToNull(birthday);
+    const processedDeathday = emptyToNull(deathday);
 
-    // Run the INSERT inside a transaction, but send the HTTP response only
-    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
+    // Character writes run inside a transaction, but the HTTP response is sent
+    // only after executeTransaction resolves (i.e. after COMMIT). Otherwise the
     // frontend can refetch before the commit is visible to other pool
     // clients (MVCC) and see stale data.
     const newCharacter = await dbUtils.executeTransaction(async (client) => {
         // If this character is being set as active, deactivate other characters
-        if (active) {
+        if (isActive) {
             await client.query(
                 'UPDATE characters SET active = false WHERE user_id = $1',
                 [userId]
@@ -205,7 +229,7 @@ const addCharacter = async (req, res) => {
         // Insert the new character
         const result = await client.query(
             'INSERT INTO characters (user_id, name, appraisal_bonus, birthday, deathday, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [userId, name, appraisal_bonus || 0, processedBirthday || null, processedDeathday || null, active]
+            [userId, name, appraisal_bonus || 0, processedBirthday || null, processedDeathday || null, isActive]
         );
 
         return result.rows[0];
@@ -234,24 +258,14 @@ const updateCharacter = async (req, res) => {
 
     // Check for name uniqueness (excluding this character) only if name is provided
     if (name && name !== characterCheck.rows[0].name) {
-        const existingNameCheck = await dbUtils.executeQuery(
-            'SELECT * FROM characters WHERE name = $1 AND id != $2',
-            [name, id]
-        );
-
-        if (existingNameCheck.rows.length > 0) {
-            throw controllerFactory.createValidationError('Character name already exists');
-        }
+        await assertCharacterNameFree(name, id);
     }
 
     // Handle date values - convert empty strings to null
-    const processedBirthday = birthday === '' ? null : birthday;
-    const processedDeathday = deathday === '' ? null : deathday;
+    const processedBirthday = emptyToNull(birthday);
+    const processedDeathday = emptyToNull(deathday);
 
-    // Run the UPDATE inside a transaction, but send the HTTP response only
-    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
-    // frontend can refetch before the commit is visible to other pool
-    // clients (MVCC) and see stale data.
+    // Committed before responding (see addCharacter)
     const updatedCharacter = await dbUtils.executeTransaction(async (client) => {
         // If this character is being set as active, deactivate other characters
         if (active) {
@@ -337,11 +351,14 @@ const deleteUser = async (req, res) => {
         throw controllerFactory.createValidationError('You cannot delete your own account');
     }
 
-    // Mark user as deleted by changing role
-    await dbUtils.executeQuery(
-        'UPDATE users SET role = $1 WHERE id = $2',
-        ['deleted', userId]
-    );
+    // Soft delete: the account is deactivated (role = 'deleted', which verifyToken
+    // rejects), never removed. Its characters are deactivated in the same
+    // transaction, in every campaign, so a deleted account's character stops
+    // appearing in pickers, party-size and APL counts. Nothing is deleted.
+    await campaignContext.runWithCampaign('all', () => dbUtils.executeTransaction(async (client) => {
+        await client.query('UPDATE users SET role = $1 WHERE id = $2', ['deleted', userId]);
+        await client.query('UPDATE characters SET active = false WHERE user_id = $1', [userId]);
+    }));
 
     logger.info(`User ID ${userId} marked as deleted by DM ${req.user.id}`);
     controllerFactory.sendSuccessMessage(res, 'User deleted successfully');
@@ -393,71 +410,163 @@ const getAllCharacters = async (req, res) => {
     controllerFactory.sendSuccessResponse(res, result.rows, 'All characters retrieved successfully');
 };
 
+/** Fields the Character Management form may send to update-any-character. */
+const ANY_CHARACTER_FIELDS = ['id', 'name', 'appraisal_bonus', 'birthday', 'deathday', 'active', 'user_id'];
+
+/** A positive INTEGER id given as a number or a digit string; null when it is neither. */
+const parsePositiveInt = (value) => {
+    const parsed = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
+    return Number.isInteger(parsed) && parsed > 0 && parsed <= MAX_INT4 ? parsed : null;
+};
+
+/** A real calendar date in YYYY-MM-DD form (year 0001-9999). */
+const isCalendarDate = (value) => {
+    const match = typeof value === 'string' ? CALENDAR_DATE_PATTERN.exec(value) : null;
+    if (!match) return false;
+    const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+    if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+    const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+    return day <= daysInMonth;
+};
+
 /**
- * Update any character (DM only)
+ * Whitelist and validate the body of update-any-character.
+ *
+ * Only the fields the Character Management form sends are accepted; anything
+ * else (campaign_id, timestamps, ...) is rejected rather than ignored so a
+ * mistaken client finds out. Returns only the fields that were present, in
+ * their normalised form (empty-string dates become null).
+ *
+ * @param {Object} body - req.body
+ * @returns {{id: number, changes: Object}}
+ * @throws {Error} Validation error (400)
+ */
+const parseAnyCharacterBody = (body) => {
+    const unexpected = Object.keys(body || {}).filter((key) => !ANY_CHARACTER_FIELDS.includes(key));
+    if (unexpected.length > 0) {
+        throw controllerFactory.createValidationError(
+            unexpected.length === 1 ? `Unexpected field: ${unexpected[0]}` : `Unexpected fields: ${unexpected.join(', ')}`
+        );
+    }
+
+    const id = parsePositiveInt(body.id);
+    if (id === null) {
+        throw controllerFactory.createValidationError('Character id must be a positive integer');
+    }
+
+    const changes = {};
+
+    if (body.name !== undefined) {
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (!name || name.length > MAX_CHARACTER_NAME_LENGTH) {
+            throw controllerFactory.createValidationError(
+                `Name must be 1-${MAX_CHARACTER_NAME_LENGTH} characters`
+            );
+        }
+        changes.name = name;
+    }
+
+    if (body.appraisal_bonus !== undefined) {
+        const raw = typeof body.appraisal_bonus === 'string' && /^-?\d+$/.test(body.appraisal_bonus)
+            ? Number(body.appraisal_bonus)
+            : body.appraisal_bonus;
+        if (!Number.isInteger(raw) || Math.abs(raw) > MAX_INT4) {
+            throw controllerFactory.createValidationError('Appraisal bonus must be a whole number');
+        }
+        changes.appraisal_bonus = raw;
+    }
+
+    for (const field of ['birthday', 'deathday']) {
+        if (body[field] === undefined) continue;
+        const value = emptyToNull(body[field]);
+        if (value !== null && !isCalendarDate(value)) {
+            throw controllerFactory.createValidationError(`${field} must be a date (YYYY-MM-DD)`);
+        }
+        changes[field] = value;
+    }
+
+    if (body.active !== undefined) {
+        // Legacy rows can hold NULL, which the form echoes back; every query
+        // already treats NULL as inactive, so it is saved as false.
+        if (body.active !== null && typeof body.active !== 'boolean') {
+            throw controllerFactory.createValidationError('active must be true or false');
+        }
+        changes.active = body.active === true;
+    }
+
+    if (body.user_id !== undefined) {
+        const ownerId = parsePositiveInt(body.user_id);
+        if (ownerId === null) {
+            throw controllerFactory.createValidationError('user_id must be a positive integer');
+        }
+        changes.user_id = ownerId;
+    }
+
+    return {id, changes};
+};
+
+/**
+ * Update any character of the current campaign (DM only)
  */
 const updateAnyCharacter = async (req, res) => {
-    const {id, name, appraisal_bonus, birthday, deathday, active, user_id} = req.body;
-
     // Ensure DM permission (should be handled by middleware too)
     if (!hasDmRights(req)) {
         throw controllerFactory.createAuthorizationError('Only DMs can update any character');
     }
 
-    // Check if character exists
+    const {id, changes} = parseAnyCharacterBody(req.body);
+
+    // Check the character exists in this campaign
     const characterCheck = await dbUtils.executeQuery(
-        'SELECT * FROM characters WHERE id = $1',
-        [id]
+        'SELECT * FROM characters WHERE id = $1 AND campaign_id = $2',
+        [id, req.campaignId]
     );
 
     if (characterCheck.rows.length === 0) {
         throw controllerFactory.createNotFoundError('Character not found');
     }
 
-    const currentCharacter = characterCheck.rows[0];
+    const current = characterCheck.rows[0];
 
-    // Check for name uniqueness (excluding this character) only if name is provided
-    if (name && name !== currentCharacter.name) {
-        const existingNameCheck = await dbUtils.executeQuery(
-            'SELECT * FROM characters WHERE name = $1 AND id != $2',
-            [name, id]
-        );
+    if (changes.name !== undefined && changes.name !== current.name) {
+        await assertCharacterNameFree(changes.name, id);
+    }
 
-        if (existingNameCheck.rows.length > 0) {
-            throw controllerFactory.createValidationError('Character name already exists');
+    // Handing a character to another account: that account must belong to this
+    // campaign. An unchanged owner is not re-checked, so a character whose
+    // owner has since left stays editable.
+    if (changes.user_id !== undefined && changes.user_id !== current.user_id) {
+        const membership = await Campaign.getMembership(changes.user_id, req.campaignId);
+        if (!membership) {
+            throw controllerFactory.createValidationError('The new owner is not a member of this campaign');
         }
     }
 
-    // Handle date values - convert empty strings to null
-    const processedBirthday = birthday === '' ? null : birthday;
-    const processedDeathday = deathday === '' ? null : deathday;
+    const final = {
+        name: changes.name !== undefined ? changes.name : current.name,
+        appraisal_bonus: changes.appraisal_bonus !== undefined ? changes.appraisal_bonus : current.appraisal_bonus,
+        birthday: changes.birthday !== undefined ? changes.birthday : current.birthday,
+        deathday: changes.deathday !== undefined ? changes.deathday : current.deathday,
+        active: changes.active !== undefined ? changes.active : current.active,
+        user_id: changes.user_id !== undefined ? changes.user_id : current.user_id,
+    };
 
-    // Run the UPDATE inside a transaction, but send the HTTP response only
-    // after executeTransaction resolves (i.e. after COMMIT). Otherwise the
-    // frontend can refetch before the commit is visible to other pool
-    // clients (MVCC) and see stale data.
+    // Committed before responding (see addCharacter)
     const updatedCharacter = await dbUtils.executeTransaction(async (client) => {
-        // If this character is being set as active, deactivate other characters for the same user
-        if (active && (user_id || currentCharacter.user_id)) {
-            const targetUserId = user_id || currentCharacter.user_id;
+        // One active character per owner: whenever the resulting row is active
+        // (newly activated OR handed to a new owner while active), the owner's
+        // other characters in this campaign are deactivated.
+        if (final.active && final.user_id) {
             await client.query(
-                'UPDATE characters SET active = false WHERE user_id = $1 AND id != $2',
-                [targetUserId, id]
+                'UPDATE characters SET active = false WHERE user_id = $1 AND id != $2 AND campaign_id = $3',
+                [final.user_id, id, req.campaignId]
             );
         }
 
-        // Update the character
         const result = await client.query(
-            'UPDATE characters SET name = $1, appraisal_bonus = $2, birthday = $3, deathday = $4, active = $5, user_id = $6 WHERE id = $7 RETURNING *',
-            [
-                name !== undefined ? name : currentCharacter.name,
-                appraisal_bonus !== undefined ? appraisal_bonus : currentCharacter.appraisal_bonus,
-                processedBirthday !== undefined ? processedBirthday : currentCharacter.birthday,
-                processedDeathday !== undefined ? processedDeathday : currentCharacter.deathday,
-                active !== undefined ? active : currentCharacter.active,
-                user_id !== undefined ? user_id : currentCharacter.user_id,
-                id
-            ]
+            'UPDATE characters SET name = $1, appraisal_bonus = $2, birthday = $3, deathday = $4, active = $5, user_id = $6 WHERE id = $7 AND campaign_id = $8 RETURNING *',
+            [final.name, final.appraisal_bonus, final.birthday, final.deathday, final.active, final.user_id, id, req.campaignId]
         );
 
         return result.rows[0];
@@ -467,50 +576,21 @@ const updateAnyCharacter = async (req, res) => {
     return controllerFactory.sendSuccessResponse(res, updatedCharacter, 'Character updated successfully');
 };
 
-// Define validation rules
-const changePasswordValidation = {
-    requiredFields: ['oldPassword', 'newPassword']
-};
-
-const changeEmailValidation = {
-    requiredFields: ['email', 'password']
-};
-
-const updateDiscordIdValidation = {
-    requiredFields: [] // discord_id can be null to unlink
-};
-
-const addCharacterValidation = {
-    requiredFields: ['name']
-};
-
-const updateCharacterValidation = {
-    requiredFields: ['id']
-};
-
-const updateAnyCharacterValidation = {
-    requiredFields: ['id']
-};
-
-const deleteUserValidation = {
-    requiredFields: ['userId']
-};
-
 // Create handlers with validation and error handling
 module.exports = {
     changeEmail: controllerFactory.createHandler(changeEmail, {
         errorMessage: 'Error changing email',
-        validation: changeEmailValidation
+        validation: {requiredFields: ['email', 'password']}
     }),
 
     changePassword: controllerFactory.createHandler(changePassword, {
         errorMessage: 'Error changing password',
-        validation: changePasswordValidation
+        validation: {requiredFields: ['oldPassword', 'newPassword']}
     }),
 
+    // discord_id may be null/empty to unlink, so there are no required fields
     updateDiscordId: controllerFactory.createHandler(updateDiscordId, {
-        errorMessage: 'Error updating Discord ID',
-        validation: updateDiscordIdValidation
+        errorMessage: 'Error updating Discord ID'
     }),
 
     getCharacters: controllerFactory.createHandler(getCharacters, {
@@ -523,12 +603,12 @@ module.exports = {
 
     addCharacter: controllerFactory.createHandler(addCharacter, {
         errorMessage: 'Error adding character',
-        validation: addCharacterValidation
+        validation: {requiredFields: ['name']}
     }),
 
     updateCharacter: controllerFactory.createHandler(updateCharacter, {
         errorMessage: 'Error updating character',
-        validation: updateCharacterValidation
+        validation: {requiredFields: ['id']}
     }),
 
     getCurrentUser: controllerFactory.createHandler(getCurrentUser, {
@@ -537,7 +617,7 @@ module.exports = {
 
     deleteUser: controllerFactory.createHandler(deleteUser, {
         errorMessage: 'Error deleting user',
-        validation: deleteUserValidation
+        validation: {requiredFields: ['userId']}
     }),
 
     getAllUsers: controllerFactory.createHandler(getAllUsers, {
@@ -550,6 +630,6 @@ module.exports = {
 
     updateAnyCharacter: controllerFactory.createHandler(updateAnyCharacter, {
         errorMessage: 'Error updating character',
-        validation: updateAnyCharacterValidation
+        validation: {requiredFields: ['id']}
     })
 };
