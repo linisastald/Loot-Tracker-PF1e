@@ -1,6 +1,44 @@
 // Pathfinder 1e Ship Types with complete statistics
 // Based on official rulebooks and Skull & Shackles Adventure Path
 
+// Siege weapon stat blocks shared by many ship types; only the attack bonus
+// and the mount differ per ship (see weapon()).
+const LIGHT_BALLISTA = {
+  name: "Light Ballista",
+  type: "direct-fire",
+  range: "120 ft",
+  crew: 1,
+  aim: 2,
+  load: 3,
+  damage: "3d8",
+  ammunition: "ballista bolt",
+  critical: "19-20/x2"
+};
+const HEAVY_BALLISTA = {
+  name: "Heavy Ballista",
+  type: "direct-fire",
+  range: "180 ft",
+  crew: 3,
+  aim: 2,
+  load: 3,
+  damage: "4d8",
+  ammunition: "ballista bolt",
+  critical: "19-20/x2"
+};
+const STANDARD_CATAPULT = {
+  name: "Standard Catapult",
+  type: "indirect-fire",
+  range: "300 ft",
+  crew: 3,
+  aim: 3,
+  load: 3,
+  damage: "6d6",
+  ammunition: "stone",
+  critical: "x2"
+};
+
+const weapon = (base, attackBonus, mount) => ({ ...base, attack_bonus: attackBonus, mount });
+
 const SHIP_TYPES = {
   rowboat: {
     name: "Rowboat",
@@ -81,19 +119,7 @@ const SHIP_TYPES = {
     sails_oars: "8 oars, 20 squares of sails (1 mast)",
     sailing_check_bonus: 0,
     typical_weapons: [
-      {
-        name: "Light Ballista",
-        type: "direct-fire",
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+4",
-        mount: "fore"
-      }
+      weapon(LIGHT_BALLISTA, "+4", "fore")
     ],
     typical_improvements: ["Reinforced Hull"]
   },
@@ -122,32 +148,8 @@ const SHIP_TYPES = {
     sails_oars: "40 oars, 30 squares of sails (1 mast)",
     sailing_check_bonus: 0,
     typical_weapons: [
-      {
-        name: "Light Ballista",
-        type: "direct-fire",
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+5",
-        mount: "fore"
-      },
-      {
-        name: "Light Ballista",
-        type: "direct-fire",
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+5",
-        mount: "aft"
-      }
+      weapon(LIGHT_BALLISTA, "+5", "fore"),
+      weapon(LIGHT_BALLISTA, "+5", "aft")
     ],
     typical_improvements: ["Ram", "Reinforced Hull"]
   },
@@ -176,32 +178,8 @@ const SHIP_TYPES = {
     sails_oars: "90 squares of sails (3 masts)",
     sailing_check_bonus: 0,
     typical_weapons: [
-      {
-        name: "Light Ballista",
-        type: "direct-fire",
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+6",
-        mount: "port"
-      },
-      {
-        name: "Light Ballista",
-        type: "direct-fire", 
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+6",
-        mount: "starboard"
-      }
+      weapon(LIGHT_BALLISTA, "+6", "port"),
+      weapon(LIGHT_BALLISTA, "+6", "starboard")
     ],
     typical_improvements: ["Reinforced Hull", "Improved Rigging"]
   },
@@ -230,32 +208,8 @@ const SHIP_TYPES = {
     sails_oars: "160 squares of sails (3 masts), 60 oars",
     sailing_check_bonus: 1,
     typical_weapons: [
-      {
-        name: "Heavy Ballista",
-        type: "direct-fire",
-        range: "180 ft",
-        crew: 3,
-        aim: 2,
-        load: 3,
-        damage: "4d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+8",
-        mount: "fore"
-      },
-      {
-        name: "Standard Catapult",
-        type: "indirect-fire",
-        range: "300 ft",
-        crew: 3,
-        aim: 3,
-        load: 3,
-        damage: "6d6",
-        ammunition: "stone",
-        critical: "x2",
-        attack_bonus: "+7",
-        mount: "aft"
-      }
+      weapon(HEAVY_BALLISTA, "+8", "fore"),
+      weapon(STANDARD_CATAPULT, "+7", "aft")
     ],
     typical_improvements: ["Ram", "Armored Hull", "Improved Steering"]
   },
@@ -284,32 +238,8 @@ const SHIP_TYPES = {
     sails_oars: "140 oars, 80 squares of sails (2-3 masts)",
     sailing_check_bonus: 0,
     typical_weapons: [
-      {
-        name: "Light Ballista",
-        type: "direct-fire",
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+6",
-        mount: "port"
-      },
-      {
-        name: "Light Ballista",
-        type: "direct-fire",
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+6",
-        mount: "starboard"
-      },
+      weapon(LIGHT_BALLISTA, "+6", "port"),
+      weapon(LIGHT_BALLISTA, "+6", "starboard"),
       {
         name: "Ram",
         type: "special",
@@ -375,19 +305,7 @@ const SHIP_TYPES = {
     sails_oars: "90 squares of sails (3 masts)",
     sailing_check_bonus: 0,
     typical_weapons: [
-      {
-        name: "Light Ballista",
-        type: "direct-fire",
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+6",
-        mount: "port"
-      }
+      weapon(LIGHT_BALLISTA, "+6", "port")
     ],
     typical_improvements: ["Reinforced Hull", "Improved Rigging"]
   },
@@ -416,19 +334,7 @@ const SHIP_TYPES = {
     sails_oars: "100 squares of sails (3 masts)",
     sailing_check_bonus: 1,
     typical_weapons: [
-      {
-        name: "Light Ballista",
-        type: "direct-fire",
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+7",
-        mount: "starboard"
-      }
+      weapon(LIGHT_BALLISTA, "+7", "starboard")
     ],
     typical_improvements: ["Reinforced Hull", "Improved Steering", "Silk Sails"]
   },
@@ -457,32 +363,8 @@ const SHIP_TYPES = {
     sails_oars: "200 squares of sails (4 masts)",
     sailing_check_bonus: 2,
     typical_weapons: [
-      {
-        name: "Heavy Ballista",
-        type: "direct-fire",
-        range: "180 ft",
-        crew: 3,
-        aim: 2,
-        load: 3,
-        damage: "4d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+10",
-        mount: "port"
-      },
-      {
-        name: "Standard Catapult",
-        type: "indirect-fire",
-        range: "300 ft",
-        crew: 3,
-        aim: 3,
-        load: 3,
-        damage: "6d6",
-        ammunition: "stone",
-        critical: "x2",
-        attack_bonus: "+9",
-        mount: "fore"
-      }
+      weapon(HEAVY_BALLISTA, "+10", "port"),
+      weapon(STANDARD_CATAPULT, "+9", "fore")
     ],
     typical_improvements: ["Ram", "Armored Hull", "Advanced Steering", "Rapid Deploy Sails"]
   },
@@ -511,32 +393,8 @@ const SHIP_TYPES = {
     sails_oars: "80 squares of sails (2 masts, battened)",
     sailing_check_bonus: 1,
     typical_weapons: [
-      {
-        name: "Light Ballista",
-        type: "direct-fire",
-        range: "120 ft",
-        crew: 1,
-        aim: 2,
-        load: 3,
-        damage: "3d8",
-        ammunition: "ballista bolt",
-        critical: "19-20/x2",
-        attack_bonus: "+8",
-        mount: "port"
-      },
-      {
-        name: "Standard Catapult",
-        type: "indirect-fire",
-        range: "300 ft",
-        crew: 3,
-        aim: 3,
-        load: 3,
-        damage: "6d6",
-        ammunition: "stone",
-        critical: "x2",
-        attack_bonus: "+7",
-        mount: "aft"
-      }
+      weapon(LIGHT_BALLISTA, "+8", "port"),
+      weapon(STANDARD_CATAPULT, "+7", "aft")
     ],
     typical_improvements: ["Rapid Deploy Sails", "Silk Sails", "Reinforced Hull"]
   },
@@ -649,22 +507,7 @@ const getShipTypeData = (typeKey) => {
   return SHIP_TYPES[typeKey] || null;
 };
 
-const getShipTypesBySize = (size) => {
-  return Object.keys(SHIP_TYPES)
-    .filter(key => SHIP_TYPES[key].size === size)
-    .map(key => ({ key, ...SHIP_TYPES[key] }));
-};
-
-const getShipTypesByCost = (maxCost) => {
-  return Object.keys(SHIP_TYPES)
-    .filter(key => SHIP_TYPES[key].cost <= maxCost)
-    .map(key => ({ key, ...SHIP_TYPES[key] }));
-};
-
 module.exports = {
-  SHIP_TYPES,
   getShipTypesList,
-  getShipTypeData,
-  getShipTypesBySize,
-  getShipTypesByCost
+  getShipTypeData
 };
