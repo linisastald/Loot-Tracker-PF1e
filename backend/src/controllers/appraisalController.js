@@ -161,7 +161,8 @@ const getUnidentifiedItems = async (req, res) => {
     const result = await IdentificationService.getUnidentifiedItems({
       limit: pagination.limit,
       offset: pagination.offset,
-      identifiableOnly: identifiableOnly === 'true'
+      identifiableOnly: identifiableOnly === 'true',
+      isDM: hasDmRights(req)
     });
 
     return controllerFactory.sendSuccessResponse(res, {
@@ -194,7 +195,9 @@ const identifyItems = async (req, res) => {
       spellcraftRolls,
       // DM identification (no roll, auto-success) is decided server-side: the
       // client intent only counts when the caller really has DM rights.
-      dmIdentify: dmIdentify === true && hasDmRights(req)
+      dmIdentify: dmIdentify === true && hasDmRights(req),
+      // Used to check that a non-DM only identifies as their own character
+      actor: { userId: req.user.id, isDM: hasDmRights(req) }
     });
 
     const message = `${result.count.success} items identified successfully` +
