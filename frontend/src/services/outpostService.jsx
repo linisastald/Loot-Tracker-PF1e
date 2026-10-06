@@ -1,22 +1,14 @@
-// src/services/outpostService.js
+// src/services/outpostService.jsx
 import api from '../utils/api';
 
 const outpostService = {
-  getAllOutposts: async () => {
-    return await api.get('/outposts');
-  },
+  getAllOutposts: () => api.get('/outposts'),
 
-  createOutpost: async (outpostData) => {
-    return await api.post('/outposts', outpostData);
-  },
+  createOutpost: (outpostData) => api.post('/outposts', outpostData),
 
-  updateOutpost: async (id, outpostData) => {
-    return await api.put(`/outposts/${id}`, outpostData);
-  },
+  updateOutpost: (id, outpostData) => api.put(`/outposts/${id}`, outpostData),
 
-  deleteOutpost: async (id) => {
-    return await api.delete(`/outposts/${id}`);
-  }
+  deleteOutpost: (id) => api.delete(`/outposts/${id}`)
 };
 
 export default outpostService;

@@ -1,11 +1,12 @@
 import React, {useEffect, useState} from 'react';
 import {
     Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Card, CardContent, CardHeader,
-    Chip, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText,
-    DialogTitle, Divider, FormControl, Grid, IconButton, InputLabel, List, ListItem, ListItemIcon,
-    ListItemText, MenuItem, Paper, Select, Slider, Tab, Table, TableBody, TableCell, TableContainer,
-    TableHead, TableRow, Tabs, TextField, Tooltip, Typography
+    Checkbox, Chip, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogContentText,
+    DialogTitle, Divider, FormControl, FormControlLabel, Grid, IconButton, InputLabel, List, ListItem,
+    ListItemIcon, ListItemText, MenuItem, Paper, Select, Slider, Tab, Table, TableBody, TableCell,
+    TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Tooltip, Typography
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material';
 import {
     Add as AddIcon, EmojiEvents as EmojiEventsIcon, ExpandMore as ExpandMoreIcon,
     History as HistoryIcon, LocationOn as LocationOnIcon, Public as PublicIcon,
@@ -13,59 +14,72 @@ import {
     Warning as WarningIcon,
 } from '@mui/icons-material';
 import api from '../../utils/api';
+import { getErrorMessage } from '../../utils/apiErrors';
 import lootService from '../../services/lootService';
+import TabPanel from '../common/TabPanel';
 import { useIsDM } from '../../contexts/CampaignContext';
 import { useCampaignTimezone } from '../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../utils/timezoneUtils';
-
-interface TabPanelProps {
-    children?: React.ReactNode;
-    value: number;
-    index: number;
-}
+import InfamyRules from './infamy/InfamyRules';
+import {
+    FIRST_THRESHOLD, INFAMY_THRESHOLDS, MAX_PORT_INFAMY, SHACKLES_PORTS,
+    getMaxFavoredPorts, getSphereOfInfluence, getThresholdValue
+} from './infamy/infamyData';
 
 interface Imposition {
     id: number;
     name: string;
     cost: number;
-    displayCost: string;
+    displayCost: number;
     effect: string;
     description?: string;
     isAvailable?: boolean;
 }
 
-interface InfamyData {
+interface FavoredPort {
+    port_name: string;
+    bonus: number;
+}
+
+interface InfamyStatus {
     infamy: number;
     disrepute: number;
-    events: any[];
+    threshold: string;
+    favored_ports: FavoredPort[];
 }
 
-interface User {
+interface HistoryEntry {
     id: number;
-    username: string;
-    role: string;
+    created_at: string;
+    reason: string;
+    infamy_change: number;
+    disrepute_change: number;
+    port?: string | null;
+    username?: string | null;
 }
 
-// Extract TabPanel component
-function TabPanel({children, value, index, ...other}: TabPanelProps) {
-    return (
-        <div
-            role="tabpanel"
-            hidden={value !== index}
-            id={`tabpanel-${index}`}
-            aria-labelledby={`tab-${index}`}
-            {...other}
-        >
-            {value === index && (
-                <Box sx={{ p: 3 }}>
-                    {children}
-                </Box>
-            )}
-        </div>
-    );
+interface PortVisit {
+    name: string;
+    thresholds: Record<string, number>;
 }
 
-// Extract basic dialogs as reusable components  
+interface GainResult {
+    infamyGained: number;
+    newThreshold: string | null;
+    skillCheck: number;
+    dc: number;
+    isRerollAttempt: boolean;
+}
+
+type ImpositionGroups = Record<string, Imposition[]>;
+
+const EMPTY_IMPOSITIONS: ImpositionGroups = {
+    disgraceful: [], despicable: [], notorious: [], loathsome: [], vile: []
+};
+
+const HISTORY_PAGE_SIZES = [10, 25, 50, 100];
+
+// Basic dialogs as reusable components
 interface ImpositionDialogProps {
     open: boolean;
     onClose: () => void;
@@ -86,10 +100,7 @@ const ImpositionDialog: React.FC<ImpositionDialogProps> = ({open, onClose, onPur
                     </Typography>
                     <Typography variant="body1" sx={{ mb: 2 }}>{imposition.effect}</Typography>
                     {imposition.description && (
-                        <Typography variant="body2" sx={{
-                            color: "text.secondary",
-                            mb: 2
-                        }}>
+                        <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
                             {imposition.description}
                         </Typography>
                     )}
@@ -114,9 +125,9 @@ interface PortDialogProps {
     onClose: () => void;
     onSubmit: () => void;
     value: string;
-    onChange: (e: any) => void;
-    availablePorts: any[];
-    favoredPorts: any[];
+    onChange: (e: SelectChangeEvent) => void;
+    availablePorts: string[];
+    favoredPorts: FavoredPort[];
 }
 
 const PortDialog: React.FC<PortDialogProps> = ({open, onClose, onSubmit, value, onChange, availablePorts, favoredPorts}) => (
@@ -151,7 +162,15 @@ const PortDialog: React.FC<PortDialogProps> = ({open, onClose, onSubmit, value, 
     </Dialog>
 );
 
-const SacrificeDialog = ({open, onClose, onSubmit, value, onChange}) => (
+interface SacrificeDialogProps {
+    open: boolean;
+    onClose: () => void;
+    onSubmit: () => void;
+    value: string;
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+const SacrificeDialog: React.FC<SacrificeDialogProps> = ({open, onClose, onSubmit, value, onChange}) => (
     <Dialog open={open} onClose={onClose}>
         <DialogTitle>Sacrifice Crew Member</DialogTitle>
         <DialogContent>
@@ -177,15 +196,14 @@ const SacrificeDialog = ({open, onClose, onSubmit, value, onChange}) => (
     </Dialog>
 );
 
-// Extract Impositions Table component
+// Impositions table
 interface ImpositionsTableProps {
     impositions: Imposition[];
-    infamyThreshold: number;
     canPurchase: boolean;
     onPurchase: (imposition: Imposition) => void;
 }
 
-const ImpositionsTable: React.FC<ImpositionsTableProps> = ({impositions, infamyThreshold, canPurchase, onPurchase}) => (
+const ImpositionsTable: React.FC<ImpositionsTableProps> = ({impositions, canPurchase, onPurchase}) => (
     <TableContainer>
         <Table>
             <TableHead>
@@ -219,48 +237,57 @@ const ImpositionsTable: React.FC<ImpositionsTableProps> = ({impositions, infamyT
     </TableContainer>
 );
 
+// Number field with minus/plus buttons (DM adjustment)
+interface StepperFieldProps {
+    label: string;
+    value: number;
+    onChange: (value: number) => void;
+}
+
+const StepperField: React.FC<StepperFieldProps> = ({label, value, onChange}) => (
+    <TextField
+        fullWidth
+        label={label}
+        type="number"
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+        slotProps={{ input: {
+            startAdornment: (
+                <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
+                    <IconButton size="small" aria-label={`Decrease ${label}`} onClick={() => onChange(value - 1)}>
+                        <RemoveIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" aria-label={`Increase ${label}`} onClick={() => onChange(value + 1)}>
+                        <AddIcon fontSize="small" />
+                    </IconButton>
+                </Box>
+            )
+        } }}
+    />
+);
+
 const Infamy: React.FC = () => {
-    // State variables - grouped by purpose
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [tabValue, setTabValue] = useState(0);
     const isDM = useIsDM();
 
-    // Campaign timezone hook
-    const { timezone, loading: timezoneLoading } = useCampaignTimezone();
+    const { timezone } = useCampaignTimezone();
 
     // Infamy data
-    const [infamyStatus, setInfamyStatus] = useState<{infamy: number; disrepute: number; threshold: string; favored_ports: {port_name: string; bonus: number}[]}>({
+    const [infamyStatus, setInfamyStatus] = useState<InfamyStatus>({
         infamy: 0,
         disrepute: 0,
         threshold: 'None',
         favored_ports: []
     });
-    const [impositions, setImpositions] = useState<Record<string, Imposition[]>>({
-        disgraceful: [],
-        despicable: [],
-        notorious: [],
-        loathsome: [],
-        vile: []
-    });
-    const [ports, setPorts] = useState<any[]>([]);
-    const [portHistory, setPortHistory] = useState<Record<string, any>>({});
-    const [availablePorts, setAvailablePorts] = useState<string[]>([
-    'Alendruan Harbor', 'Arena', 'Banukmaud', 'Beachcomber', 'Blackblood Cay',
-    'Bogsbridge', 'Chalk Harbor', 'Cho-Tzu', 'Colvaas Gibbet', 'Downpour',
-    'Dragonsthrall', 'Drenchport', 'Drowning Rock', 'Falchion Point', 'Fort Benbem',
-    'Fort Holiday', 'Ganagsau', 'Genzei', 'Ghrinitshahara', 'Goatshead',
-    'Haigui Wan', 'Halabad', 'Heggapnod', 'Hell Harbor', 'Heslandaena',
-    'Kora', 'Kukgukmol', 'Lilywhite', 'Little Oppara', 'Maidenspool',
-    'Mezdrubal', 'Moak Harbor', 'Myscurial', 'Neruma', 'Ngozu',
-    'Ollo', 'Oyster Cay', 'Parley Point', 'Peshaka Naeu', 'Pex',
-    'Plumetown', 'Port Peril', 'Queen Bes', 'Quent', 'Raketooth',
-    'Rapier Bay', 'Rickety\'s Squibs', 'Robu', 'Rumbutter', 'Slipcove',
-    'Tyvas-Devas', 'Vezhnu', 'Vilelock', 'Yelligo Wharf', 'Zeibo',
-    'Zhenbarghua'
-]);
-    const [infamyHistory, setInfamyHistory] = useState<any[]>([]);
+    const [impositions, setImpositions] = useState<ImpositionGroups>(EMPTY_IMPOSITIONS);
+    const [portHistory, setPortHistory] = useState<Record<string, Record<string, number>>>({});
+    const [infamyHistory, setInfamyHistory] = useState<HistoryEntry[]>([]);
+    const [historyTotal, setHistoryTotal] = useState(0);
+    const [historyPage, setHistoryPage] = useState(0);
+    const [historyRowsPerPage, setHistoryRowsPerPage] = useState(HISTORY_PAGE_SIZES[1]);
 
     // Form values
     const [selectedPort, setSelectedPort] = useState('');
@@ -277,136 +304,163 @@ const Infamy: React.FC = () => {
     const [adjusting, setAdjusting] = useState(false);
 
     // Dialog states
-    const [selectedImposition, setSelectedImposition] = useState(null);
+    const [selectedImposition, setSelectedImposition] = useState<Imposition | null>(null);
     const [impositionDialogOpen, setImpositionDialogOpen] = useState(false);
     const [crewName, setCrewName] = useState('');
     const [sacrificeDialogOpen, setSacrificeDialogOpen] = useState(false);
     const [newFavoredPort, setNewFavoredPort] = useState('');
     const [favoredPortDialogOpen, setFavoredPortDialogOpen] = useState(false);
 
-    // Load data on component mount
-    useEffect(() => {
-        fetchData();
-        fetchAvailablePlunder();
-    }, []);
+    const loadStatus = async () => {
+        const [statusResponse, impositionsResponse, portsResponse] = await Promise.all([
+            api.get('/infamy/status'),
+            api.get('/infamy/impositions'),
+            api.get('/infamy/ports')
+        ]);
 
-    // Consolidated fetch function
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            // Use Promise.all to fetch data in parallel
-            const [statusResponse, impositionsResponse, portsResponse, historyResponse] = await Promise.all([
-                api.get('/infamy/status'),
-                api.get('/infamy/impositions'),
-                api.get('/infamy/ports'),
-                api.get('/infamy/history')
-            ]);
+        setInfamyStatus(statusResponse.data);
+        setImpositions(impositionsResponse.data.impositions);
 
-            setInfamyStatus(statusResponse.data);
-            setImpositions(impositionsResponse.data.impositions);
-            setPorts(portsResponse.data.ports);
-
-            // Build port history object
-            const portHistoryObj = {};
-            portsResponse.data.ports.forEach(port => {
-                portHistoryObj[port.name] = port.thresholds;
-            });
-            setPortHistory(portHistoryObj);
-
-            setInfamyHistory(historyResponse.data.history);
-            setLoading(false);
-        } catch (error) {
-            console.error('Error fetching infamy data:', error);
-            setError('Failed to load infamy data. Please try again.');
-            setLoading(false);
-        }
+        const portHistoryObj: Record<string, Record<string, number>> = {};
+        (portsResponse.data.ports as PortVisit[]).forEach((port) => {
+            portHistoryObj[port.name] = port.thresholds;
+        });
+        setPortHistory(portHistoryObj);
     };
 
-    const fetchAvailablePlunder = async () => {
+    const loadHistory = async (page: number, rowsPerPage: number) => {
+        const response = await api.get('/infamy/history', {
+            params: { limit: rowsPerPage, offset: page * rowsPerPage }
+        });
+        const history: HistoryEntry[] = response.data.history || [];
+        setInfamyHistory(history);
+        setHistoryTotal(response.data.pagination?.total ?? history.length);
+    };
+
+    const loadPlunder = async () => {
         try {
-            const plunderItems = await lootService.searchLoot({
-                itemid: '7807'
-            });
+            const plunderItems = await lootService.searchLoot({ itemid: '7807' });
 
             let plunderCount = 0;
             if (plunderItems?.data?.items) {
-                plunderItems.data.items.forEach(item => {
+                plunderItems.data.items.forEach((item: { status?: string | null; quantity?: string | number }) => {
                     // Only count items with null status (available for spending)
                     if (item.status === null || item.status === undefined) {
-                        plunderCount += parseInt(item.quantity) || 0;
+                        plunderCount += parseInt(String(item.quantity)) || 0;
                     }
                 });
             }
 
             setAvailablePlunder(plunderCount);
-        } catch (error) {
-            console.error('Error fetching plunder count:', error);
+        } catch {
+            // Keep the previous plunder count; the next refresh retries
         }
     };
 
-    // Handle tab change
-    const handleTabChange = (event, newValue) => {
+    // Refresh everything after an action without swapping the page for the spinner
+    const refresh = async () => {
+        try {
+            await Promise.all([loadStatus(), loadHistory(historyPage, historyRowsPerPage), loadPlunder()]);
+        } catch (err) {
+            setError(getErrorMessage(err, 'Failed to refresh infamy data. Please try again.'));
+        }
+    };
+
+    useEffect(() => {
+        const initialLoad = async () => {
+            try {
+                await Promise.all([loadStatus(), loadHistory(0, historyRowsPerPage), loadPlunder()]);
+            } catch {
+                setError('Failed to load infamy data. Please try again.');
+            } finally {
+                setLoading(false);
+            }
+        };
+        initialLoad();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const handleHistoryPageChange = async (_event: unknown, newPage: number) => {
+        setHistoryPage(newPage);
+        try {
+            await loadHistory(newPage, historyRowsPerPage);
+        } catch (err) {
+            setError(getErrorMessage(err, 'Failed to load history.'));
+        }
+    };
+
+    const handleHistoryRowsPerPageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const rows = parseInt(event.target.value, 10);
+        setHistoryRowsPerPage(rows);
+        setHistoryPage(0);
+        try {
+            await loadHistory(0, rows);
+        } catch (err) {
+            setError(getErrorMessage(err, 'Failed to load history.'));
+        }
+    };
+
+    const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
         setTabValue(newValue);
     };
 
-    // Calculate port status based on infamy threshold
-    const getPortStatus = (portName) => {
-        if (!portHistory[portName]) {
-            return { gained: 0, max: 5, available: true };
+    // Shared shape of the action handlers: clear stale alerts, run, show the
+    // server's message on failure, always refresh, then close any dialog.
+    const runAction = async (
+        action: () => Promise<void>,
+        fallbackError: string,
+        closeDialog?: () => void
+    ) => {
+        setError('');
+        setSuccess('');
+        try {
+            await action();
+        } catch (err) {
+            setError(getErrorMessage(err, fallbackError));
+        } finally {
+            closeDialog?.();
         }
+        await refresh();
+    };
 
-        // Determine current threshold number
-        let thresholdNum = 0;
-        if (infamyStatus.threshold === 'Vile') thresholdNum = 55;
-        else if (infamyStatus.threshold === 'Loathsome') thresholdNum = 40;
-        else if (infamyStatus.threshold === 'Notorious') thresholdNum = 30;
-        else if (infamyStatus.threshold === 'Despicable') thresholdNum = 20;
-        else if (infamyStatus.threshold === 'Disgraceful') thresholdNum = 10;
-
-        const gained = portHistory[portName][thresholdNum] || 0;
+    // Infamy already gained at a port during the current threshold
+    const getPortStatus = (portName: string) => {
+        const gained = portHistory[portName]?.[getThresholdValue(infamyStatus.infamy)] || 0;
         return {
             gained,
-            max: 5,
-            available: gained < 5
+            max: MAX_PORT_INFAMY,
+            available: gained < MAX_PORT_INFAMY
         };
     };
 
-    // Get port name with current bonus
-    const getPortWithBonus = (portName) => {
+    const getPortWithBonus = (portName: string) => {
         const favoredPort = infamyStatus.favored_ports.find(p => p.port_name === portName);
-        if (favoredPort) {
-            return `${portName} (+${favoredPort.bonus})`;
-        }
-        return portName;
+        return favoredPort ? `${portName} (+${favoredPort.bonus})` : portName;
     };
 
-    // Handle gaining infamy
     const handleGainInfamy = async () => {
-        try {
-            setError('');
-            setSuccess('');
+        setError('');
+        setSuccess('');
 
-            if (!selectedPort) {
-                setError('Please select a port');
-                return;
-            }
+        if (!selectedPort) {
+            setError('Please select a port');
+            return;
+        }
 
-            if (!skillCheck && plunderSpent === 0) {
-                setError('Please enter a skill check result or spend plunder');
-                return;
-            }
+        if (!skillCheck && plunderSpent === 0) {
+            setError('Please enter a skill check result or spend plunder');
+            return;
+        }
 
-            // Ensure at least 3 plunder is spent when reroll is selected
-            let effectivePlunderSpent = typeof plunderSpent === 'string' ? parseInt(plunderSpent) || 0 : plunderSpent;
-            if (rerollWithPlunder && effectivePlunderSpent < 3) {
-                effectivePlunderSpent = 3; // Force minimum plunder to 3 for reroll
-            }
+        // The reroll costs at least 3 plunder
+        const effectivePlunderSpent = rerollWithPlunder ? Math.max(plunderSpent, 3) : plunderSpent;
 
-            if (effectivePlunderSpent > availablePlunder) {
-                setError(`Not enough plunder available. You have ${availablePlunder} but tried to spend ${effectivePlunderSpent}.`);
-                return;
-            }
+        if (effectivePlunderSpent > availablePlunder) {
+            setError(`Not enough plunder available. You have ${availablePlunder} but tried to spend ${effectivePlunderSpent}.`);
+            return;
+        }
 
+        await runAction(async () => {
             const response = await api.post('/infamy/gain', {
                 port: selectedPort,
                 skillCheck: parseInt(skillCheck) || 0,
@@ -414,34 +468,31 @@ const Infamy: React.FC = () => {
                 plunderSpent: effectivePlunderSpent,
                 reroll: rerollWithPlunder
             });
+            const result: GainResult = response.data;
 
-            // If a new threshold was reached
-            if (response.data.newThreshold) {
-                setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}! You have reached the ${response.data.newThreshold} threshold!`);
-            } else {
-                setSuccess(`Gained ${response.data.infamyGained} Infamy at ${selectedPort}`);
-            }
-
-            // Reset form
+            // The attempt (and any plunder) is committed whether or not it succeeded
             setSkillCheck('');
             setPlunderSpent(0);
             setRerollWithPlunder(false);
 
-            // Refresh data
-            fetchData();
-            fetchAvailablePlunder();
-        } catch (error) {
-            console.error('Error gaining infamy:', error);
-            if (error.response?.data?.message) {
-                setError(error.response.data.message);
+            if (result.infamyGained > 0) {
+                setSuccess(result.newThreshold
+                    ? `Gained ${result.infamyGained} Infamy at ${selectedPort}! You have reached the ${result.newThreshold} threshold!`
+                    : `Gained ${result.infamyGained} Infamy at ${selectedPort}`);
             } else {
-                setError('Failed to gain infamy. Please try again.');
+                setError(`Failed to gain Infamy at ${selectedPort}: your check of ${result.skillCheck} did not meet the DC of ${result.dc}. ` +
+                    (result.isRerollAttempt
+                        ? 'You have used all your attempts for today (in-game).'
+                        : 'You may try a reroll by spending 3 plunder.'));
             }
-        }
+        }, 'Failed to gain infamy. Please try again.');
     };
 
-    // Handle DM adjustment of infamy/disrepute - fix the created_at date issue
+    // DM adjustment of infamy/disrepute
     const handleAdjustInfamy = async () => {
+        setError('');
+        setSuccess('');
+
         if (!adjustmentReason) {
             setError('Please provide a reason for this adjustment');
             return;
@@ -453,129 +504,71 @@ const Infamy: React.FC = () => {
             return;
         }
 
+        setAdjusting(true);
         try {
-            setAdjusting(true);
+            await runAction(async () => {
+                await api.post('/infamy/adjust', {
+                    infamyChange,
+                    disreputeChange,
+                    reason: adjustmentReason
+                });
 
-            const response = await api.post('/infamy/adjust', {
-                infamyChange,
-                disreputeChange,
-                reason: adjustmentReason,
-                created_at: new Date().toISOString() // Add created_at date to fix history issue
-            });
+                setInfamyChange(0);
+                setDisreputeChange(0);
+                setAdjustmentReason('');
 
+                setSuccess(`Infamy ${infamyChange >= 0 ? 'increased' : 'decreased'} by ${Math.abs(infamyChange)} and Disrepute ${disreputeChange >= 0 ? 'increased' : 'decreased'} by ${Math.abs(disreputeChange)}`);
+            }, 'Error adjusting infamy/disrepute');
+        } finally {
             setAdjusting(false);
-            setInfamyChange(0);
-            setDisreputeChange(0);
-            setAdjustmentReason('');
-
-            setSuccess(`Infamy ${infamyChange >= 0 ? 'increased' : 'decreased'} by ${Math.abs(infamyChange)} and Disrepute ${disreputeChange >= 0 ? 'increased' : 'decreased'} by ${Math.abs(disreputeChange)}`);
-
-            // Refresh data
-            fetchData();
-        } catch (error) {
-            setAdjusting(false);
-            if (error.response?.data?.message) {
-                setError(error.response.data.message);
-            } else {
-                setError('Error adjusting infamy/disrepute');
-            }
         }
     };
 
-    // Dialog handlers - consolidated for simplicity
-    const handleOpenImpositionDialog = (imposition) => {
+    const handleOpenImpositionDialog = (imposition: Imposition) => {
         setSelectedImposition(imposition);
         setImpositionDialogOpen(true);
     };
 
     const handlePurchaseImposition = async () => {
-        try {
+        if (!selectedImposition) return;
+        await runAction(async () => {
             const response = await api.post('/infamy/purchase', {
                 impositionId: selectedImposition.id
             });
-
-            setImpositionDialogOpen(false);
             setSuccess(`Successfully purchased "${selectedImposition.name}" for ${response.data.costPaid} Disrepute`);
-            fetchData();
-        } catch (error) {
-            console.error('Error purchasing imposition:', error);
-            if (error.response?.data?.message) {
-                setError(error.response.data.message);
-            } else {
-                setError('Failed to purchase imposition. Please try again.');
-            }
-            setImpositionDialogOpen(false);
-        }
+        }, 'Failed to purchase imposition. Please try again.', () => setImpositionDialogOpen(false));
     };
 
     const handleSetFavoredPort = async () => {
-        try {
-            if (!newFavoredPort) {
-                setError('Please select a port');
-                return;
-            }
+        if (!newFavoredPort) {
+            setError('Please select a port');
+            return;
+        }
 
+        await runAction(async () => {
             const response = await api.post('/infamy/favored-port', {
                 port: newFavoredPort
             });
-
-            setFavoredPortDialogOpen(false);
             setSuccess(`${newFavoredPort} set as a favored port with +${response.data.bonus} bonus`);
             setNewFavoredPort('');
-            fetchData();
-        } catch (error) {
-            console.error('Error setting favored port:', error);
-            if (error.response?.data?.message) {
-                setError(error.response.data.message);
-            } else {
-                setError('Failed to set favored port. Please try again.');
-            }
-            setFavoredPortDialogOpen(false);
-        }
+        }, 'Failed to set favored port. Please try again.', () => setFavoredPortDialogOpen(false));
     };
 
     const handleSacrificeCrew = async () => {
-        try {
-            if (!crewName) {
-                setError('Please enter a crew member name');
-                return;
-            }
+        if (!crewName) {
+            setError('Please enter a crew member name');
+            return;
+        }
 
+        await runAction(async () => {
             const response = await api.post('/infamy/sacrifice', {
                 crewName
             });
-
-            setSacrificeDialogOpen(false);
             setSuccess(`Sacrificed ${crewName} and gained ${response.data.disreputeGained} Disrepute`);
             setCrewName('');
-            fetchData();
-        } catch (error) {
-            console.error('Error sacrificing crew:', error);
-            if (error.response?.data?.message) {
-                setError(error.response.data.message);
-            } else {
-                setError('Failed to sacrifice crew member. Please try again.');
-            }
-            setSacrificeDialogOpen(false);
-        }
+        }, 'Failed to sacrifice crew member. Please try again.', () => setSacrificeDialogOpen(false));
     };
 
-    // Format date for display is now handled by formatInCampaignTimezone
-
-    // Get sphere of influence based on infamy level
-    const getSphereOfInfluence = () => {
-        const { infamy } = infamyStatus;
-        // Base sphere of influence is 100 miles
-        let sphere = 100;
-        if (infamy >= 10) sphere += 100;
-        if (infamy >= 20) sphere += 100;
-        if (infamy >= 30) sphere += 100;
-        if (infamy >= 40) sphere += 100;
-        if (infamy >= 55) sphere += 100;
-        return sphere;
-    };
-
-    // Render skill selector
     const renderSkillSelector = () => (
         <FormControl fullWidth margin="normal">
             <InputLabel id="skill-used-label">Skill Used</InputLabel>
@@ -592,7 +585,6 @@ const Infamy: React.FC = () => {
         </FormControl>
     );
 
-    // Loading indicator
     if (loading) {
         return (
             <Container maxWidth="lg" sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
@@ -602,9 +594,8 @@ const Infamy: React.FC = () => {
         );
     }
 
-    // Render ImpositionAccordion for each threshold level
-    const renderImpositionAccordion = (title, threshold, impositionsList) => (
-        <Accordion defaultExpanded={threshold === 10}>
+    const renderImpositionAccordion = (title: string, threshold: number, impositionsList: Imposition[] = []) => (
+        <Accordion key={title} defaultExpanded={threshold === FIRST_THRESHOLD}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="h6">
                     {title} Impositions
@@ -614,21 +605,17 @@ const Infamy: React.FC = () => {
                 </Typography>
             </AccordionSummary>
             <AccordionDetails>
-                <Typography variant="body2" sx={{
-                    color: "text.secondary",
-                    mb: 2
-                }}>
+                <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
                     Requires {threshold}+ Infamy ({title} threshold)
                 </Typography>
 
                 {impositionsList.length === 0 ? (
-                    <Typography variant="body2" sx={{
-                        color: "text.secondary"
-                    }}>No {title.toLowerCase()} impositions available</Typography>
+                    <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                        No {title.toLowerCase()} impositions available
+                    </Typography>
                 ) : (
                     <ImpositionsTable
                         impositions={impositionsList}
-                        infamyThreshold={threshold}
                         canPurchase={infamyStatus.infamy >= threshold}
                         onPurchase={handleOpenImpositionDialog}
                     />
@@ -640,15 +627,10 @@ const Infamy: React.FC = () => {
     return (
         <Container maxWidth="lg">
             <Paper sx={{ p: 3, mb: 3 }}>
-                <Box
-                    sx={{
-                        display: "flex",
-                        justifyContent: "end",
-                        alignItems: "center"
-                    }}>
+                <Box sx={{ display: "flex", justifyContent: "end", alignItems: "center" }}>
                     <Chip
                         label={infamyStatus.threshold}
-                        color={infamyStatus.infamy < 10 ? "default" : "primary"}
+                        color={infamyStatus.infamy < FIRST_THRESHOLD ? "default" : "primary"}
                         icon={<SailingIcon />}
                     />
                 </Box>
@@ -668,9 +650,7 @@ const Infamy: React.FC = () => {
                                 <Box sx={{ mb: 2 }}>
                                     <Typography variant="subtitle1">Infamy</Typography>
                                     <Typography variant="h3">{infamyStatus.infamy}</Typography>
-                                    <Typography variant="body2" sx={{
-                                        color: "text.secondary"
-                                    }}>
+                                    <Typography variant="body2" sx={{ color: "text.secondary" }}>
                                         Your ship's legends and stories throughout the Shackles
                                     </Typography>
                                 </Box>
@@ -680,9 +660,7 @@ const Infamy: React.FC = () => {
                                 <Box sx={{ mb: 2 }}>
                                     <Typography variant="subtitle1">Disrepute</Typography>
                                     <Typography variant="h3">{infamyStatus.disrepute}</Typography>
-                                    <Typography variant="body2" sx={{
-                                        color: "text.secondary"
-                                    }}>
+                                    <Typography variant="body2" sx={{ color: "text.secondary" }}>
                                         Spendable points used to purchase impositions and benefits
                                     </Typography>
                                 </Box>
@@ -691,10 +669,8 @@ const Infamy: React.FC = () => {
 
                                 <Box>
                                     <Typography variant="subtitle1">Sphere of Influence</Typography>
-                                    <Typography variant="h5">{getSphereOfInfluence()} miles</Typography>
-                                    <Typography variant="body2" sx={{
-                                        color: "text.secondary"
-                                    }}>
+                                    <Typography variant="h5">{getSphereOfInfluence(infamyStatus.infamy)} miles</Typography>
+                                    <Typography variant="body2" sx={{ color: "text.secondary" }}>
                                         The range in which your reputation holds sway
                                     </Typography>
                                 </Box>
@@ -713,11 +689,8 @@ const Infamy: React.FC = () => {
                                         variant="outlined"
                                         size="small"
                                         onClick={() => setFavoredPortDialogOpen(true)}
-                                        disabled={infamyStatus.infamy < 10 || infamyStatus.favored_ports.length >= (
-                                            infamyStatus.infamy >= 55 ? 3 :
-                                            infamyStatus.infamy >= 30 ? 2 :
-                                            infamyStatus.infamy >= 10 ? 1 : 0
-                                        )}
+                                        disabled={infamyStatus.infamy < FIRST_THRESHOLD ||
+                                            infamyStatus.favored_ports.length >= getMaxFavoredPorts(infamyStatus.infamy)}
                                     >
                                         Add Port
                                     </Button>
@@ -725,10 +698,8 @@ const Infamy: React.FC = () => {
                             />
                             <CardContent>
                                 {infamyStatus.favored_ports.length === 0 ? (
-                                    <Typography variant="body2" align="center" sx={{
-                                        color: "text.secondary"
-                                    }}>
-                                        {infamyStatus.infamy < 10
+                                    <Typography variant="body2" align="center" sx={{ color: "text.secondary" }}>
+                                        {infamyStatus.infamy < FIRST_THRESHOLD
                                             ? "Reach Disgraceful threshold (10+ Infamy) to designate favored ports"
                                             : "No favored ports designated yet"}
                                     </Typography>
@@ -781,7 +752,7 @@ const Infamy: React.FC = () => {
                                         onChange={(e) => setSelectedPort(e.target.value)}
                                         label="Port"
                                     >
-                                        {availablePorts.map((port) => {
+                                        {SHACKLES_PORTS.map((port) => {
                                             const status = getPortStatus(port);
                                             return (
                                                 <MenuItem
@@ -789,15 +760,13 @@ const Infamy: React.FC = () => {
                                                     value={port}
                                                     disabled={!status.available}
                                                 >
-                                                    {getPortWithBonus(port)} {status.gained > 0 && `(${status.gained}/5)`}
+                                                    {getPortWithBonus(port)} {status.gained > 0 && `(${status.gained}/${MAX_PORT_INFAMY})`}
                                                 </MenuItem>
                                             );
                                         })}
                                     </Select>
-                                    <Typography variant="caption" sx={{
-                                        color: "text.secondary"
-                                    }}>
-                                        Each port can provide a maximum of 5 Infamy points per threshold.
+                                    <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                                        Each port can provide a maximum of {MAX_PORT_INFAMY} Infamy points per threshold.
                                     </Typography>
                                 </FormControl>
 
@@ -826,7 +795,7 @@ const Infamy: React.FC = () => {
                                         <Typography variant="body2" sx={{ mr: 2 }}>Plunder: </Typography>
                                         <Slider
                                             value={plunderSpent}
-                                            onChange={(e, newValue) => setPlunderSpent(newValue)}
+                                            onChange={(_e, newValue) => setPlunderSpent(newValue as number)}
                                             step={1}
                                             min={0}
                                             max={Math.min(10, availablePlunder)}
@@ -843,23 +812,22 @@ const Infamy: React.FC = () => {
                                 </Box>
 
                                 <Box sx={{ mt: 2 }}>
-                                    <FormControl fullWidth>
-                                        <Tooltip title="If your check fails, you can spend 3 plunder to reroll (once per day)">
-                                            <FormControl fullWidth component="fieldset">
-                                                <label>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={rerollWithPlunder}
-                                                        onChange={(e) => setRerollWithPlunder(e.target.checked)}
-                                                        disabled={availablePlunder < 3}
-                                                    />
-                                                    <Typography variant="body2" component="span" sx={{ ml: 1 }}>
-                                                        Spend 3 Plunder to reroll if failed (requires at least 3 plunder)
-                                                    </Typography>
-                                                </label>
-                                            </FormControl>
-                                        </Tooltip>
-                                    </FormControl>
+                                    <Tooltip title="If your check fails, you can spend 3 plunder to reroll (once per day)">
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={rerollWithPlunder}
+                                                    onChange={(e) => setRerollWithPlunder(e.target.checked)}
+                                                    disabled={availablePlunder < 3}
+                                                />
+                                            }
+                                            label={
+                                                <Typography variant="body2" component="span">
+                                                    Spend 3 Plunder to reroll if failed (requires at least 3 plunder)
+                                                </Typography>
+                                            }
+                                        />
+                                    </Tooltip>
                                 </Box>
                             </Grid>
 
@@ -888,47 +856,11 @@ const Infamy: React.FC = () => {
 
                             <Grid container spacing={3} size={12}>
                                 <Grid size={{xs: 12, md: 6}}>
-                                    <TextField
-                                        fullWidth
-                                        label="Infamy Change"
-                                        type="number"
-                                        value={infamyChange}
-                                        onChange={(e) => setInfamyChange(parseInt(e.target.value) || 0)}
-                                        slotProps={{ input: {
-                                            startAdornment: (
-                                                <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
-                                                    <IconButton size="small" onClick={() => setInfamyChange(prev => prev - 1)}>
-                                                        <RemoveIcon fontSize="small" />
-                                                    </IconButton>
-                                                    <IconButton size="small" onClick={() => setInfamyChange(prev => prev + 1)}>
-                                                        <AddIcon fontSize="small" />
-                                                    </IconButton>
-                                                </Box>
-                                            )
-                                        } }}
-                                    />
+                                    <StepperField label="Infamy Change" value={infamyChange} onChange={setInfamyChange} />
                                 </Grid>
 
                                 <Grid size={{xs: 12, md: 6}}>
-                                    <TextField
-                                        fullWidth
-                                        label="Disrepute Change"
-                                        type="number"
-                                        value={disreputeChange}
-                                        onChange={(e) => setDisreputeChange(parseInt(e.target.value) || 0)}
-                                        slotProps={{ input: {
-                                            startAdornment: (
-                                                <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
-                                                    <IconButton size="small" onClick={() => setDisreputeChange(prev => prev - 1)}>
-                                                        <RemoveIcon fontSize="small" />
-                                                    </IconButton>
-                                                    <IconButton size="small" onClick={() => setDisreputeChange(prev => prev + 1)}>
-                                                        <AddIcon fontSize="small" />
-                                                    </IconButton>
-                                                </Box>
-                                            )
-                                        } }}
-                                    />
+                                    <StepperField label="Disrepute Change" value={disreputeChange} onChange={setDisreputeChange} />
                                 </Grid>
 
                                 <Grid size={12}>
@@ -956,11 +888,9 @@ const Infamy: React.FC = () => {
                         </Paper>
                     )}
 
-                    {infamyStatus.infamy >= 20 && (
+                    {infamyStatus.infamy >= INFAMY_THRESHOLDS[1].min && (
                         <Paper sx={{ p: 3, mt: 3 }}>
-                            <Grid container spacing={2} size={12} sx={{
-                                alignItems: "center"
-                            }}>
+                            <Grid container spacing={2} size={12} sx={{ alignItems: "center" }}>
                                 <Grid size={{xs: 12, md: 8}}>
                                     <Typography variant="h6" color="error">Sacrifice Crew Member</Typography>
                                     <Typography variant="body2">
@@ -991,12 +921,9 @@ const Infamy: React.FC = () => {
                         Impositions are benefits you can purchase using your Disrepute. Your current Disrepute: <strong>{infamyStatus.disrepute}</strong>
                     </Typography>
 
-                    {/* Render accordions for each threshold level */}
-                    {renderImpositionAccordion('Disgraceful', 10, impositions.disgraceful)}
-                    {renderImpositionAccordion('Despicable', 20, impositions.despicable)}
-                    {renderImpositionAccordion('Notorious', 30, impositions.notorious)}
-                    {renderImpositionAccordion('Loathsome', 40, impositions.loathsome)}
-                    {renderImpositionAccordion('Vile', 55, impositions.vile)}
+                    {INFAMY_THRESHOLDS.map((threshold) =>
+                        renderImpositionAccordion(threshold.title, threshold.min, impositions[threshold.key])
+                    )}
                 </TabPanel>
 
                 {/* History Tab */}
@@ -1042,122 +969,21 @@ const Infamy: React.FC = () => {
                                 )}
                             </TableBody>
                         </Table>
+                        <TablePagination
+                            component="div"
+                            count={historyTotal}
+                            page={historyPage}
+                            onPageChange={handleHistoryPageChange}
+                            rowsPerPage={historyRowsPerPage}
+                            onRowsPerPageChange={handleHistoryRowsPerPageChange}
+                            rowsPerPageOptions={HISTORY_PAGE_SIZES}
+                        />
                     </TableContainer>
                 </TabPanel>
 
                 {/* Rules Tab */}
                 <TabPanel value={tabValue} index={3}>
-                    <Typography variant="h6" gutterBottom>Infamy System Rules</Typography>
-
-                    <Paper sx={{ p: 3 }}>
-                        <Typography variant="body1" sx={{ mb: 2 }}>
-                            Some pirates only do what they do for the promise of wealth, being little more than brigands of the waves.
-                            Others do it for the reputation, fearsomeness, and power that comes with numbering among the most notorious
-                            scallywags on the seas. That's where Infamy comes in.
-                        </Typography>
-
-                        <Typography variant="h6" gutterBottom>Infamy and Disrepute Scores</Typography>
-                        <Typography variant="body1" sx={{ mb: 2 }}>
-                            A party has two related scores, Infamy and Disrepute. Infamy tracks how many points the crew has gained over
-                            its career—think of this as the sum of all the outlandish stories and rumors about the PCs being told throughout
-                            the Shackles. Infamy rarely, if ever, decreases, and reaching certain Infamy thresholds provides useful benefits.
-                        </Typography>
-
-                        <Typography variant="body1" sx={{ mb: 2 }}>
-                            Disrepute is a spendable resource—a group's actual ability to cash in on its reputation. This currency is used to
-                            purchase impositions, deeds others might not want to do for the group, but that they perform either to curry the
-                            group's favor or to avoid its disfavor.
-                        </Typography>
-
-                        <Typography variant="h6" gutterBottom>Winning Infamy and Disrepute</Typography>
-                        <Typography variant="body1" sx={{ mb: 2 }}>
-                            To gain Infamy, the PCs must moor their ship at a port for 1 full day, and the PC determined by the
-                            group to be its main storyteller must spend this time on shore carousing and boasting of infamous deeds.
-                            This PC must make either a Bluff, Intimidate, or Perform check. The DC of this check is equal to 15 + twice
-                            the group's average party level (APL).
-                        </Typography>
-
-                        <Box sx={{ my: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                            <Typography variant="subtitle1" gutterBottom>Success Results:</Typography>
-                            <Typography variant="body2">• Success: +1 Infamy and Disrepute</Typography>
-                            <Typography variant="body2">• Success by 5 or more: +2 Infamy and Disrepute</Typography>
-                            <Typography variant="body2">• Success by 10 or more: +3 Infamy and Disrepute</Typography>
-                            <Typography variant="body2">• Failure: No change in Infamy or Disrepute</Typography>
-                        </Box>
-
-                        <Typography variant="h6" gutterBottom>Infamy Thresholds</Typography>
-                        <TableContainer>
-                            <Table>
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell>Title & Infamy Required</TableCell>
-                                        <TableCell>Benefit</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    <TableRow>
-                                        <TableCell>
-                                            <strong>Disgraceful</strong><br />(10+ Infamy)
-                                        </TableCell>
-                                        <TableCell>
-                                            <ul>
-                                                <li>Characters may purchase disgraceful impositions.</li>
-                                                <li>The PCs may choose one favored port. They gain a +2 bonus on all Infamy checks made at that port.</li>
-                                            </ul>
-                                        </TableCell>
-                                    </TableRow>
-                                    <TableRow>
-                                        <TableCell>
-                                            <strong>Despicable</strong><br />(20+ Infamy)
-                                        </TableCell>
-                                        <TableCell>
-                                            <ul>
-                                                <li>Characters may purchase despicable impositions.</li>
-                                                <li>Once per week, the PCs can sacrifice a prisoner or crew member to immediately gain 1d3 points of Disrepute.</li>
-                                            </ul>
-                                        </TableCell>
-                                    </TableRow>
-                                    <TableRow>
-                                        <TableCell>
-                                            <strong>Notorious</strong><br />(30+ Infamy)
-                                        </TableCell>
-                                        <TableCell>
-                                            <ul>
-                                                <li>Characters may purchase notorious impositions.</li>
-                                                <li>Disgraceful impositions can be purchased for half price (rounded down).</li>
-                                                <li>The PCs may choose a second favored port. They gain a +2 bonus on all Infamy checks made at this port and a +4 bonus at their first favored port.</li>
-                                            </ul>
-                                        </TableCell>
-                                    </TableRow>
-                                    <TableRow>
-                                        <TableCell>
-                                            <strong>Loathsome</strong><br />(40+ Infamy)
-                                        </TableCell>
-                                        <TableCell>
-                                            <ul>
-                                                <li>Characters may purchase loathsome impositions.</li>
-                                                <li>Despicable impositions can be purchased for half price (rounded down).</li>
-                                                <li>PCs gain a +5 bonus on skill checks made to sell plunder.</li>
-                                            </ul>
-                                        </TableCell>
-                                    </TableRow>
-                                    <TableRow>
-                                        <TableCell>
-                                            <strong>Vile</strong><br />(55+ Infamy)
-                                        </TableCell>
-                                        <TableCell>
-                                            <ul>
-                                                <li>Characters may purchase vile impositions.</li>
-                                                <li>Notorious impositions can be purchased for half price (rounded down).</li>
-                                                <li>Disgraceful impositions are free.</li>
-                                                <li>The PCs may choose a third favored port. They gain a +2 bonus on all Infamy checks made at this port, a +4 bonus at their second favored port, and a +6 bonus at their first favored port.</li>
-                                            </ul>
-                                        </TableCell>
-                                    </TableRow>
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    </Paper>
+                    <InfamyRules />
                 </TabPanel>
             </Box>
             {/* Dialogs */}
@@ -1174,7 +1000,7 @@ const Infamy: React.FC = () => {
                 onSubmit={handleSetFavoredPort}
                 value={newFavoredPort}
                 onChange={(e) => setNewFavoredPort(e.target.value)}
-                availablePorts={availablePorts}
+                availablePorts={SHACKLES_PORTS}
                 favoredPorts={infamyStatus.favored_ports}
             />
             <SacrificeDialog

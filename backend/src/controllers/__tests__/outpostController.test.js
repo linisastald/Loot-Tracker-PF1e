@@ -13,31 +13,11 @@ jest.mock('../../utils/logger', () => ({
 
 const Outpost = require('../../models/Outpost');
 const outpostController = require('../outpostController');
-
-function createMockRes() {
-  return {
-    success: jest.fn(),
-    created: jest.fn(),
-    validationError: jest.fn(),
-    notFound: jest.fn(),
-    forbidden: jest.fn(),
-    error: jest.fn(),
-    json: jest.fn(),
-    status: jest.fn().mockReturnThis(),
-  };
-}
-
-function createMockReq(overrides = {}) {
-  return {
-    body: {},
-    params: {},
-    query: {},
-    user: { id: 1 },
-    ...overrides,
-  };
-}
+const { createMockRes, createMockReq } = require('../../../tests/utils/mockHttp');
 
 describe('outpostController', () => {
+  beforeEach(() => jest.clearAllMocks());
+
   // -------------------------------------------------------------------
   // createOutpost
   // -------------------------------------------------------------------
@@ -93,6 +73,23 @@ describe('outpostController', () => {
       // The controllerFactory validation for requiredFields catches 'name'
       expect(res.validationError).toHaveBeenCalled();
     });
+
+    it('should reject a blank or non-string name', async () => {
+      const res = createMockRes();
+      await outpostController.createOutpost(createMockReq({ body: { name: '  ' } }), res);
+      await outpostController.createOutpost(createMockReq({ body: { name: 5 } }), res);
+      expect(res.validationError).toHaveBeenCalledTimes(2);
+      expect(Outpost.create).not.toHaveBeenCalled();
+    });
+
+    it('should reject an invalid access date', async () => {
+      const res = createMockRes();
+      await outpostController.createOutpost(
+        createMockReq({ body: { name: 'Fort', access_date: 'tomorrow' } }), res
+      );
+      expect(res.validationError).toHaveBeenCalledWith('Access date must be a valid date (YYYY-MM-DD)');
+      expect(Outpost.create).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------
@@ -134,39 +131,6 @@ describe('outpostController', () => {
   });
 
   // -------------------------------------------------------------------
-  // getOutpostById
-  // -------------------------------------------------------------------
-  describe('getOutpostById', () => {
-    it('should return an outpost with crew when found', async () => {
-      const mockOutpost = {
-        id: 1,
-        name: 'Fort Rannick',
-        crew: [{ id: 10, name: 'Guard' }],
-      };
-      const req = createMockReq({ params: { id: '1' } });
-      const res = createMockRes();
-
-      Outpost.getWithCrew.mockResolvedValue(mockOutpost);
-
-      await outpostController.getOutpostById(req, res);
-
-      expect(Outpost.getWithCrew).toHaveBeenCalledWith('1');
-      expect(res.success).toHaveBeenCalledWith(mockOutpost, 'Outpost retrieved successfully');
-    });
-
-    it('should return 404 when outpost not found', async () => {
-      const req = createMockReq({ params: { id: '999' } });
-      const res = createMockRes();
-
-      Outpost.getWithCrew.mockResolvedValue(null);
-
-      await outpostController.getOutpostById(req, res);
-
-      expect(res.notFound).toHaveBeenCalledWith('Outpost not found');
-    });
-  });
-
-  // -------------------------------------------------------------------
   // updateOutpost
   // -------------------------------------------------------------------
   describe('updateOutpost', () => {
@@ -179,7 +143,7 @@ describe('outpostController', () => {
 
       await outpostController.updateOutpost(req, res);
 
-      expect(Outpost.update).toHaveBeenCalledWith('1', updateData);
+      expect(Outpost.update).toHaveBeenCalledWith(1, updateData);
       expect(res.success).toHaveBeenCalledWith(
         expect.objectContaining({ id: 1, name: 'Fort Rannick (Reclaimed)' }),
         'Outpost updated successfully'
@@ -196,6 +160,47 @@ describe('outpostController', () => {
 
       expect(res.notFound).toHaveBeenCalledWith('Outpost not found');
     });
+
+    it('only passes the fields that were sent (partial update)', async () => {
+      const req = createMockReq({ params: { id: '1' }, body: { location: 'Moved' } });
+      const res = createMockRes();
+      Outpost.update.mockResolvedValue({ id: 1, name: 'Fort', location: 'Moved' });
+
+      await outpostController.updateOutpost(req, res);
+
+      expect(Outpost.update).toHaveBeenCalledWith(1, { location: 'Moved' });
+    });
+
+    it('rejects a blank name', async () => {
+      const req = createMockReq({ params: { id: '1' }, body: { name: '   ' } });
+      const res = createMockRes();
+      await outpostController.updateOutpost(req, res);
+      expect(res.validationError).toHaveBeenCalledWith('Outpost name is required');
+      expect(Outpost.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid access date', async () => {
+      const req = createMockReq({ params: { id: '1' }, body: { access_date: '2024-02-31' } });
+      const res = createMockRes();
+      await outpostController.updateOutpost(req, res);
+      expect(res.validationError).toHaveBeenCalledWith('Access date must be a valid date (YYYY-MM-DD)');
+    });
+
+    it('accepts an ISO timestamp by keeping its date part', async () => {
+      const req = createMockReq({ params: { id: '1' }, body: { access_date: '2024-05-10T00:00:00.000Z' } });
+      const res = createMockRes();
+      Outpost.update.mockResolvedValue({ id: 1, name: 'Fort' });
+      await outpostController.updateOutpost(req, res);
+      expect(Outpost.update).toHaveBeenCalledWith(1, { access_date: '2024-05-10' });
+    });
+
+    it('rejects a non-numeric id with a 400 instead of a database error', async () => {
+      const req = createMockReq({ params: { id: 'abc' }, body: { name: 'X' } });
+      const res = createMockRes();
+      await outpostController.updateOutpost(req, res);
+      expect(res.validationError).toHaveBeenCalled();
+      expect(Outpost.update).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------
@@ -210,7 +215,7 @@ describe('outpostController', () => {
 
       await outpostController.deleteOutpost(req, res);
 
-      expect(Outpost.delete).toHaveBeenCalledWith('1');
+      expect(Outpost.delete).toHaveBeenCalledWith(1);
       expect(res.success).toHaveBeenCalledWith(null, 'Outpost deleted successfully');
     });
 
@@ -223,6 +228,14 @@ describe('outpostController', () => {
       await outpostController.deleteOutpost(req, res);
 
       expect(res.notFound).toHaveBeenCalledWith('Outpost not found');
+    });
+
+    it('rejects a non-numeric id', async () => {
+      const req = createMockReq({ params: { id: 'abc' } });
+      const res = createMockRes();
+      await outpostController.deleteOutpost(req, res);
+      expect(res.validationError).toHaveBeenCalled();
+      expect(Outpost.delete).not.toHaveBeenCalled();
     });
   });
 });
