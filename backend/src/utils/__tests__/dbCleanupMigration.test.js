@@ -184,3 +184,49 @@ describe('init.sql tenant policies', () => {
     expect(init).toMatch(/%I_tenant/);
   });
 });
+
+describe('migration 076: unused fame / fame_history / golarion_calendar_notes tables', () => {
+  const M076 = 'backend/migrations/076_drop_unused_tables.sql';
+  const mig076 = fs.existsSync(path.join(root, M076)) ? stripComments(read(M076)) : '';
+  const tables = ['fame_history', 'fame', 'golarion_calendar_notes'];
+
+  it('is transactional, uses no CASCADE and drops fame_history before fame', () => {
+    expect(mig076).not.toBe('');
+    expect(mig076).toMatch(/^BEGIN;/m);
+    expect(mig076).toMatch(/^COMMIT;/m);
+    expect(mig076).not.toMatch(/\bCASCADE\b/i);
+    const hist = mig076.search(/DROP TABLE IF EXISTS fame_history;/);
+    const fame = mig076.search(/DROP TABLE IF EXISTS fame;/);
+    expect(hist).toBeGreaterThanOrEqual(0);
+    expect(fame).toBeGreaterThan(hist);
+    expect(mig076).toMatch(/DROP TABLE IF EXISTS golarion_calendar_notes;/);
+  });
+
+  it('init.sql keeps creating the tables (migrations 040/044/045/047/051 touch them unguarded) and 076 removes them', () => {
+    for (const t of tables) {
+      expect(initCode).toMatch(new RegExp(`CREATE TABLE ${t} \\(`));
+      expect(mig076).toMatch(new RegExp(`DROP TABLE IF EXISTS ${t};`));
+    }
+    for (const n of ['044_add_campaigns', '045_enable_rls', '047_campaign_id_guc_default']) {
+      expect(read(`backend/migrations/${n}.sql`)).toMatch(/ALTER TABLE fame\b/);
+    }
+  });
+
+  it('dbUtils allow-list does not name them', () => {
+    const list = /const ALLOWED_TABLES = new Set\(\[([\s\S]*?)\]\);/.exec(dbUtilsSrc)[1];
+    for (const t of tables) expect(list).not.toContain(`'${t}'`);
+  });
+
+  it('no non-test backend, frontend or discord-handler code reads or writes them', () => {
+    const walk = (dir) => fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) return ['__tests__', 'node_modules', 'dist', 'build'].includes(e.name) ? [] : walk(p);
+      return /\.(js|jsx|ts|tsx)$/.test(e.name) && !/\.test\.[jt]sx?$/.test(e.name) ? [p] : [];
+    }) : [];
+    const dirs = ['backend/src', 'frontend/src', 'discord-handler'].map(d => path.join(root, d));
+    for (const file of dirs.flatMap(walk)) {
+      const code = fs.readFileSync(file, 'utf8');
+      expect(`${file}: ${/\bfame_history\b|\bgolarion_calendar_notes\b|\b(FROM|INTO|UPDATE|JOIN)\s+fame\b/i.test(code)}`).toBe(`${file}: false`);
+    }
+  });
+});

@@ -97,7 +97,7 @@ See `CLAUDE.md` and `docker/` for the full list (including the separate admin co
 ## Main Table Categories
 
 1. **Core** - users, characters, loot, item, mod, gold, campaigns
-2. **Feature** - ships, crew, outposts (fleet management); weather tables; fame tables
+2. **Feature** - ships, crew, outposts (fleet management); weather tables
 3. **System** - settings, game_sessions and the session task tables, identify, consumableuse
 4. **Views** - `loot_view`, `gold_totals_view`
 
