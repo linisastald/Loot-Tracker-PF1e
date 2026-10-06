@@ -7,7 +7,6 @@ class SoldModel extends BaseModel {
     super({
       tableName: 'sold',
       primaryKey: 'id',
-      fields: ['lootid', 'soldfor', 'soldon'],
       timestamps: { createdAt: false, updatedAt: false }
     });
   }

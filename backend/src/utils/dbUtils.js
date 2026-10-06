@@ -15,20 +15,18 @@ const { DATABASE } = require('../config/constants');
 const SET_CAMPAIGN_SQL = "SELECT set_config('app.current_campaign', $1, true)";
 
 /**
- * Whitelist of allowed table names to prevent SQL injection
+ * Allow-list of tables the generic helpers (insert/getById/updateById/deleteById)
+ * may touch. Only tables that are actually passed to a generic helper belong
+ * here: 'loot' (itemController, itemCreationController) and the BaseModel
+ * subclasses Gold ('gold'), Sold ('sold') and Session ('game_sessions').
+ * Everything else must use executeQuery with literal SQL.
  */
-const ALLOWED_TABLES = new Set([
-  'users', 'characters', 'ships', 'outposts', 'crew', 'item', 'mod', 'loot',
-  'appraisals', 'gold', 'sold', 'consumables', 'sessions', 'invites', 'settings',
-  'infamy', 'weather_events', 'weather_regions', 'impositions', 'spells',
-  'min_caster_levels', 'min_costs', 'password_reset_tokens',
-  'game_sessions', 'session_attendance',
-  'session_task_assignments', 'session_task_history', 'session_completions', 'session_automations',
-  'campaigns', 'user_campaign', 'campaign_settings'
-]);
+const ALLOWED_TABLES = new Set(['loot', 'gold', 'sold', 'game_sessions']);
 
 /**
- * Whitelist of allowed column names for common operations
+ * Allow-list of column names for strict-mode column validation.
+ * Id columns are validated in strict mode; data columns are validated against
+ * the identifier pattern only (they are always quoted in the generated SQL).
  */
 const ALLOWED_COLUMNS = new Set([
   'id', 'user_id', 'character_id', 'ship_id', 'outpost_id', 'location_id',
@@ -49,15 +47,10 @@ const validateTableName = (table) => {
   }
 
   const cleanTable = table.toLowerCase().trim();
-  
+
   if (!ALLOWED_TABLES.has(cleanTable)) {
     logger.error(`Attempted to access unauthorized table: ${table}`);
     throw new Error('Invalid table name');
-  }
-
-  // Additional validation: table name should match pattern
-  if (!/^[a-z_]+$/.test(cleanTable)) {
-    throw new Error('Invalid table name format');
   }
 
   return cleanTable;
@@ -93,17 +86,61 @@ const validateColumnName = (column, strict = true) => {
 };
 
 /**
- * Validate multiple column names
- * @param {Array<string>} columns - Array of column names
- * @param {boolean} [strict=false] - Whether to enforce whitelist
- * @returns {Array<string>} - Array of validated column names
+ * Validate the keys of a data object as column names (identifier pattern only)
+ * and reject keys that normalise to the same column.
+ * @param {Array<string>} keys - Keys of the caller's data object
+ * @returns {Array<string>} - Validated column names, same order as `keys`
  */
-const validateColumnNames = (columns, strict = false) => {
-  if (!Array.isArray(columns)) {
-    throw new Error('Columns must be an array');
+const validateDataColumns = (keys) => {
+  const columns = keys.map(key => validateColumnName(key, false));
+  if (new Set(columns).size !== columns.length) {
+    throw new Error('Duplicate column in data');
   }
+  return columns;
+};
 
-  return columns.map(col => validateColumnName(col, strict));
+/**
+ * Run `work(client)` inside one transaction on a pooled connection.
+ *
+ * The tenant GUC (`app.current_campaign`) is set immediately after BEGIN from
+ * the active campaign context; being transaction-local, it is cleared on
+ * COMMIT/ROLLBACK. If a ROLLBACK itself fails the connection may be stuck
+ * mid-transaction with the campaign still set, so it is destroyed
+ * (release(true)) instead of being handed to the next caller.
+ *
+ * @param {Function} work - async (client) => result
+ * @param {Function} onError - (error, rollbackError|null) => void, for logging
+ * @returns {Promise<any>} - Result of `work`
+ */
+const runInTenantTransaction = async (work, onError) => {
+  const client = await pool.connect();
+  let destroyClient = false;
+
+  try {
+    await client.query('BEGIN');
+    await client.query(SET_CAMPAIGN_SQL, [campaignContext.getCampaignId()]);
+    const result = await work(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    // Best-effort rollback; preserve and rethrow the original error
+    let rollbackError = null;
+    try {
+      await client.query('ROLLBACK');
+    } catch (err) {
+      rollbackError = err;
+      destroyClient = true;
+    }
+    onError(error, rollbackError);
+    throw error;
+  } finally {
+    // Ensure client is always released even if there was an error
+    try {
+      client.release(destroyClient);
+    } catch (releaseError) {
+      logger.error(`Failed to release database client: ${releaseError.message}`);
+    }
+  }
 };
 
 /**
@@ -121,49 +158,30 @@ const validateColumnNames = (columns, strict = false) => {
  */
 const executeQuery = async (queryText, params = [], errorMessage = 'Database query error') => {
   const startTime = Date.now();
-  const client = await pool.connect();
-  // If a rollback fails the connection may be stuck mid-transaction; returning
-  // it to the pool would leak state to the next checkout, so destroy it instead.
-  let destroyClient = false;
 
-  try {
-    await client.query('BEGIN');
-    await client.query(SET_CAMPAIGN_SQL, [campaignContext.getCampaignId()]);
-    const result = await client.query(queryText, params);
-    await client.query('COMMIT');
+  const result = await runInTenantTransaction(
+    (client) => client.query(queryText, params),
+    (error, rollbackError) => {
+      if (rollbackError) {
+        logger.error(`Failed to rollback query transaction: ${rollbackError.message}`);
+      }
+      // Get line numbers and prepare user-friendly error message
+      const stack = error.stack || '';
+      const position = error.position || '';
+      const queryPreview = queryText ? queryText.slice(0, 100) + '...' : 'Query text unavailable';
 
-    const duration = Date.now() - startTime;
-
-    // Log slow queries for performance monitoring
-    if (duration > DATABASE.SLOW_QUERY_THRESHOLD) {
-      logger.warn(`Slow query (${duration}ms): ${queryText.slice(0, 200)}${queryText.length > 200 ? '...' : ''}`);
+      logger.error(`${errorMessage}: ${error.message}\nQuery: ${queryPreview}\nPosition: ${position}\nStack: ${stack}`);
     }
+  );
 
-    return result;
-  } catch (error) {
-    // Best-effort rollback; preserve and rethrow the original error
-    try {
-      await client.query('ROLLBACK');
-    } catch (rollbackError) {
-      destroyClient = true;
-      logger.error(`Failed to rollback query transaction: ${rollbackError.message}`);
-    }
+  const duration = Date.now() - startTime;
 
-    // Get line numbers and prepare user-friendly error message
-    const stack = error.stack || '';
-    const position = error.position || '';
-    const queryPreview = queryText ? queryText.slice(0, 100) + '...' : 'Query text unavailable';
-
-    logger.error(`${errorMessage}: ${error.message}\nQuery: ${queryPreview}\nPosition: ${position}\nStack: ${stack}`);
-    throw error;
-  } finally {
-    // Ensure client is always released even if there was an error
-    try {
-      client.release(destroyClient);
-    } catch (releaseError) {
-      logger.error(`Failed to release database client: ${releaseError.message}`);
-    }
+  // Log slow queries for performance monitoring
+  if (duration > DATABASE.SLOW_QUERY_THRESHOLD) {
+    logger.warn(`Slow query (${duration}ms): ${queryText.slice(0, 200)}${queryText.length > 200 ? '...' : ''}`);
   }
+
+  return result;
 };
 
 /**
@@ -177,58 +195,15 @@ const executeQuery = async (queryText, params = [], errorMessage = 'Database que
  * @param {string} errorMessage - Custom error message for logging
  * @returns {Promise<any>} - Result from the callback
  */
-const executeTransaction = async (callback, errorMessage = 'Transaction error') => {
-  const client = await pool.connect();
-
-  try {
-    await client.query('BEGIN');
-    await client.query(SET_CAMPAIGN_SQL, [campaignContext.getCampaignId()]);
-
-    const result = await callback(client);
-
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    // Only attempt rollback if transaction was actually started
-    try {
-      await client.query('ROLLBACK');
-      logger.info('Transaction rolled back successfully');
-    } catch (rollbackError) {
+const executeTransaction = (callback, errorMessage = 'Transaction error') =>
+  runInTenantTransaction(callback, (error, rollbackError) => {
+    if (rollbackError) {
       logger.error(`Failed to rollback transaction: ${rollbackError.message}`);
-      // Don't throw rollback error, preserve original error
+    } else {
+      logger.info('Transaction rolled back successfully');
     }
-    
     logger.error(`${errorMessage}: ${error.message}\nStack: ${error.stack || ''}`);
-    throw error;
-  } finally {
-    // Ensure client is always released even if rollback fails
-    try {
-      client.release();
-    } catch (releaseError) {
-      logger.error(`Failed to release database client: ${releaseError.message}`);
-    }
-  }
-};
-
-/**
- * Check if a row exists in a table
- * @param {string} table - Table name
- * @param {string} column - Column name
- * @param {any} value - Value to check
- * @returns {Promise<boolean>} - True if exists, false otherwise
- */
-const rowExists = async (table, column, value) => {
-  // Validate inputs to prevent SQL injection
-  const validTable = validateTableName(table);
-  const validColumn = validateColumnName(column);
-
-  const result = await executeQuery(
-    `SELECT EXISTS(SELECT 1 FROM "${validTable}" WHERE "${validColumn}" = $1)`,
-    [value],
-    `Error checking if ${validTable}.${validColumn} = ${value} exists`
-  );
-  return result.rows[0].exists;
-};
+  });
 
 /**
  * Get a single row by id
@@ -264,20 +239,17 @@ const updateById = async (table, id, data, idColumn = 'id') => {
   const validIdColumn = validateColumnName(idColumn);
 
   // Filter out undefined values and prepare for query
-  const filteredData = Object.fromEntries(
-    Object.entries(data).filter(([_, v]) => v !== undefined)
-  );
+  const entries = Object.entries(data).filter(([, v]) => v !== undefined);
 
-  if (Object.keys(filteredData).length === 0) {
+  if (entries.length === 0) {
     return await getById(table, id, idColumn);
   }
 
-  // Validate all column names
-  const columns = Object.keys(filteredData);
-  const validColumns = validateColumnNames(columns, false); // Less strict for updates
+  // Validate all column names (pattern only; they are always quoted below)
+  const columns = validateDataColumns(entries.map(([key]) => key));
 
-  const setClauses = validColumns.map((col, i) => `"${col}" = $${i + 2}`);
-  const values = validColumns.map(col => filteredData[columns[columns.indexOf(col)]]);
+  const setClauses = columns.map((col, i) => `"${col}" = $${i + 2}`);
+  const values = entries.map(([, value]) => value);
 
   const query = `
     UPDATE "${validTable}"
@@ -310,13 +282,13 @@ const insert = async (table, data) => {
     throw new Error('No data provided for insert');
   }
 
-  // Validate column names
-  const validKeys = validateColumnNames(keys, false); // Less strict for inserts
-  const values = validKeys.map(key => data[keys[keys.indexOf(key)]]);
-  const placeholders = validKeys.map((_, i) => `$${i + 1}`);
+  // Validate column names (pattern only; they are always quoted below)
+  const columns = validateDataColumns(keys);
+  const values = keys.map(key => data[key]);
+  const placeholders = columns.map((_, i) => `$${i + 1}`);
 
   const query = `
-    INSERT INTO "${validTable}" (${validKeys.map(k => `"${k}"`).join(', ')})
+    INSERT INTO "${validTable}" (${columns.map(k => `"${k}"`).join(', ')})
     VALUES (${placeholders.join(', ')})
     RETURNING *
   `;
@@ -347,87 +319,12 @@ const deleteById = async (table, id, idColumn = 'id') => {
   return result.rows.length > 0;
 };
 
-/**
- * Get multiple rows with pagination
- * @param {string} table - Table name
- * @param {Object} options - Query options (limit, offset, orderBy, where)
- * @returns {Promise<Object>} - Rows and count
- */
-const getMany = async (table, options = {}) => {
-  // Validate table name
-  const validTable = validateTableName(table);
-
-  const {
-    limit = 50,
-    offset = 0,
-    orderBy = {column: 'id', direction: 'ASC'},
-    where = null
-  } = options;
-
-  // Validate orderBy
-  const validOrderColumn = validateColumnName(orderBy.column, false);
-  const validDirection = ['ASC', 'DESC'].includes(orderBy.direction.toUpperCase()) 
-    ? orderBy.direction.toUpperCase() 
-    : 'ASC';
-
-  let whereClause = '';
-  let values = [limit, offset];
-  let paramIndex = 3;
-
-  if (where) {
-    const whereClauses = [];
-    const whereValues = [];
-
-    for (const [key, value] of Object.entries(where)) {
-      const validKey = validateColumnName(key, false);
-      whereClauses.push(`"${validKey}" = $${paramIndex}`);
-      whereValues.push(value);
-      paramIndex++;
-    }
-
-    if (whereClauses.length > 0) {
-      whereClause = `WHERE ${whereClauses.join(' AND ')}`;
-      values = [...values, ...whereValues];
-    }
-  }
-
-  const query = `
-    SELECT * FROM "${validTable}"
-    ${whereClause}
-    ORDER BY "${validOrderColumn}" ${validDirection}
-    LIMIT $1 OFFSET $2
-  `;
-
-  const countQuery = `
-    SELECT COUNT(*) FROM "${validTable}"
-    ${whereClause}
-  `;
-
-  const [rows, count] = await Promise.all([
-    executeQuery(query, values, `Error fetching from ${validTable}`),
-    executeQuery(countQuery, where ? values.slice(2) : [], `Error counting rows in ${validTable}`)
-  ]);
-
-  return {
-    rows: rows.rows,
-    count: parseInt(count.rows[0].count)
-  };
-};
-
-// Export the validation functions for use in other modules
 module.exports = {
   executeQuery,
   executeTransaction,
-  rowExists,
   getById,
   updateById,
   insert,
   deleteById,
-  getMany,
-  validateTableName,
-  validateColumnName,
-  validateColumnNames,
-  SET_CAMPAIGN_SQL,
-  ALLOWED_TABLES,
-  ALLOWED_COLUMNS
+  SET_CAMPAIGN_SQL
 };

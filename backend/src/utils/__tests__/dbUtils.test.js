@@ -143,21 +143,85 @@ describe('dbUtils tenant-context plumbing', () => {
     });
   });
 
-  describe('helpers routed through executeQuery', () => {
-    it('rowExists issues the tenant-scoped sequence', async () => {
+  describe('executeTransaction rollback failure (F-0788/89/90)', () => {
+    it('destroys the client (release(true)) when the rollback itself fails', async () => {
       mockClient.query.mockImplementation((text) => {
-        if (text.includes('SELECT EXISTS')) {
-          return Promise.resolve({ rows: [{ exists: true }] });
-        }
+        if (text === 'ROLLBACK') return Promise.reject(new Error('connection broken'));
         return Promise.resolve({ rows: [] });
       });
+      const originalError = new Error('callback failed');
 
-      const exists = await dbUtils.rowExists('loot', 'id', 3);
+      await expect(
+        dbUtils.executeTransaction(async () => { throw originalError; })
+      ).rejects.toThrow(originalError);
 
-      expect(exists).toBe(true);
-      expect(mockClient.query).toHaveBeenNthCalledWith(1, 'BEGIN');
-      expect(mockClient.query).toHaveBeenNthCalledWith(2, SET_CONFIG_SQL, ['']);
-      expect(mockClient.query).toHaveBeenNthCalledWith(4, 'COMMIT');
+      expect(mockClient.release).toHaveBeenCalledWith(true);
+    });
+
+    it('returns the client to the pool normally (release(false)) after a clean rollback', async () => {
+      await expect(
+        dbUtils.executeTransaction(async () => { throw new Error('x'); })
+      ).rejects.toThrow('x');
+
+      expect(mockClient.release).toHaveBeenCalledWith(false);
+    });
+
+    it('releases with false after a successful commit', async () => {
+      await dbUtils.executeTransaction(async () => 'ok');
+      expect(mockClient.release).toHaveBeenCalledWith(false);
+    });
+  });
+
+  describe('generic helpers', () => {
+    const lastSql = () => mockClient.query.mock.calls.find(c => /^\s*(INSERT|UPDATE|SELECT \*|DELETE)/.test(c[0]));
+
+    it('insert binds values by position, even when a key differs from its normalised column name', async () => {
+      mockClient.query.mockImplementation((text) =>
+        Promise.resolve(/INSERT/.test(text) ? { rows: [{ id: 1 }] } : { rows: [] }));
+
+      await dbUtils.insert('loot', { Name: 'Sword', value: 5 });
+
+      const [sql, params] = lastSql();
+      expect(sql).toContain('"name", "value"');
+      expect(params).toEqual(['Sword', 5]);
+    });
+
+    it('updateById binds values by position, even when a key differs from its normalised column name', async () => {
+      mockClient.query.mockImplementation((text) =>
+        Promise.resolve(/UPDATE/.test(text) ? { rows: [{ id: 1 }] } : { rows: [] }));
+
+      await dbUtils.updateById('loot', 9, { Name: 'Axe', value: 7 });
+
+      const [sql, params] = lastSql();
+      expect(sql).toContain('"name" = $2');
+      expect(params).toEqual([9, 'Axe', 7]);
+    });
+
+    it('rejects two keys that normalise to the same column', async () => {
+      await expect(dbUtils.insert('loot', { name: 'a', Name: 'b' })).rejects.toThrow(/Duplicate column/);
+      await expect(dbUtils.updateById('loot', 1, { name: 'a', Name: 'b' })).rejects.toThrow(/Duplicate column/);
+      expect(pool.connect).not.toHaveBeenCalled();
+    });
+
+    it('rejects tables that are not on the allow-list, including ones that do not exist', async () => {
+      for (const table of ['users', 'consumables', 'infamy', 'loot; DROP TABLE loot', 'loot" --']) {
+        await expect(dbUtils.getById(table, 1)).rejects.toThrow('Invalid table name');
+      }
+      expect(pool.connect).not.toHaveBeenCalled();
+    });
+
+    it('rejects column names that are not plain identifiers', async () => {
+      await expect(dbUtils.insert('loot', { 'name"; DROP TABLE loot; --': 1 })).rejects.toThrow('Invalid column name format');
+      await expect(dbUtils.getById('loot', 1, 'id" OR "1"="1')).rejects.toThrow('Invalid column name format');
+      await expect(dbUtils.deleteById('loot', 1, 'id; --')).rejects.toThrow('Invalid column name format');
+      expect(pool.connect).not.toHaveBeenCalled();
+    });
+
+    it('does not export helpers that have no caller', () => {
+      for (const name of ['getMany', 'rowExists', 'validateTableName', 'validateColumnName', 'validateColumnNames', 'ALLOWED_TABLES', 'ALLOWED_COLUMNS']) {
+        expect(dbUtils[name]).toBeUndefined();
+      }
+      expect(dbUtils.SET_CAMPAIGN_SQL).toBe(SET_CONFIG_SQL);
     });
   });
 });

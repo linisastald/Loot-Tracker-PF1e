@@ -12,7 +12,6 @@ class GoldModel extends BaseModel {
     super({
       tableName: 'gold',
       primaryKey: 'id',
-      fields: ['session_date', 'transaction_type', 'platinum', 'gold', 'silver', 'copper', 'notes', 'character_id'],
       timestamps: { createdAt: false, updatedAt: false }
     });
   }

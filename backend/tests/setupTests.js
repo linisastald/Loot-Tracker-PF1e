@@ -25,7 +25,6 @@ jest.doMock('pg', () => ({
 
 jest.doMock('../src/config/db', () => {
   const mockPool = new MockPool();
-  mockPool.getPoolStatus = jest.fn();
   return mockPool;
 });
 
@@ -45,8 +44,6 @@ jest.doMock('../src/utils/dbUtils', () => ({
   executeQuery: jest.fn(),
   executeTransaction: jest.fn(),
   getPool: jest.fn(),
-  validateTableName: jest.fn(),
-  validateColumnName: jest.fn(),
   buildWhereClause: jest.fn(),
   buildOrderByClause: jest.fn(),
   buildLimitClause: jest.fn(),
@@ -54,12 +51,10 @@ jest.doMock('../src/utils/dbUtils', () => ({
   formatDateForDB: jest.fn(),
   parseDBDate: jest.fn(),
   // BaseModel required methods
-  getMany: jest.fn(),
   getById: jest.fn(),
   insert: jest.fn(),
   updateById: jest.fn(),
-  deleteById: jest.fn(),
-  rowExists: jest.fn()
+  deleteById: jest.fn()
 }));
 
 afterAll(() => {

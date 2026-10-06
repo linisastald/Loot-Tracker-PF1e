@@ -5,10 +5,8 @@ jest.mock('../../utils/dbUtils', () => ({
   executeTransaction: jest.fn(),
   insert: jest.fn(),
   getById: jest.fn(),
-  getMany: jest.fn(),
   updateById: jest.fn(),
   deleteById: jest.fn(),
-  rowExists: jest.fn(),
 }));
 
 jest.mock('../../utils/logger', () => ({
