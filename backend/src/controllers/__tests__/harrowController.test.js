@@ -131,7 +131,10 @@ describe('awardBatch', () => {
   });
 
   it('computes suitMatches + 1 (+1 when the Choosing card hit)', async () => {
-    Harrow.getCharacter.mockResolvedValue({ id: 1, name: 'X', user_id: 7 });
+    Harrow.getCharacters.mockResolvedValue([
+      { id: 1, name: 'X', user_id: 7 },
+      { id: 2, name: 'Y', user_id: 8 },
+    ]);
     Harrow.awardBatch.mockResolvedValue([{ id: 1 }, { id: 2 }]);
     Harrow.getBalances.mockResolvedValue([]);
     const res = createMockRes();
@@ -167,7 +170,7 @@ describe('spend', () => {
 
   it('rejects spending more than the balance', async () => {
     Harrow.getCharacter.mockResolvedValue({ id: 1, name: 'Valeros', user_id: 7 });
-    Harrow.getBalance.mockResolvedValue(1);
+    Harrow.addEntryGuarded.mockResolvedValue({ ok: false, balance: 1 });
     const res = createMockRes();
     await harrowController.spend(baseReq({ body: { characterId: 1, points: 3 } }), res);
     expect(res.validationError).toHaveBeenCalledWith(
@@ -177,23 +180,24 @@ describe('spend', () => {
 
   it('lets a player spend on their own character', async () => {
     Harrow.getCharacter.mockResolvedValue({ id: 1, name: 'Valeros', user_id: 7 });
-    Harrow.getBalance.mockResolvedValueOnce(5).mockResolvedValueOnce(3);
-    Harrow.addEntry.mockResolvedValue({ id: 11 });
+    Harrow.addEntryGuarded.mockResolvedValue({ ok: true, balance: 3, entry: { id: 11 } });
     const res = createMockRes();
 
     await harrowController.spend(baseReq({ body: { characterId: 1, points: 2 } }), res);
 
-    expect(Harrow.addEntry).toHaveBeenCalledWith(
+    expect(Harrow.addEntryGuarded).toHaveBeenCalledWith(
       expect.objectContaining({ delta: -2, entryType: 'spend', chapter: 2 })
     );
-    expect(res.success).toHaveBeenCalled();
+    expect(res.success).toHaveBeenCalledWith(
+      expect.objectContaining({ balance: 3, entry: { id: 11 } }),
+      expect.any(String)
+    );
   });
 
   it('lets a DM spend on any character', async () => {
     hasDmRights.mockReturnValue(true);
     Harrow.getCharacter.mockResolvedValue({ id: 2, name: 'Merisiel', user_id: 8 });
-    Harrow.getBalance.mockResolvedValueOnce(5).mockResolvedValueOnce(4);
-    Harrow.addEntry.mockResolvedValue({ id: 12 });
+    Harrow.addEntryGuarded.mockResolvedValue({ ok: true, balance: 4, entry: { id: 12 } });
     const res = createMockRes();
 
     await harrowController.spend(baseReq({ body: { characterId: 2, points: 1 } }), res);
@@ -221,7 +225,7 @@ describe('adjust', () => {
 
   it('blocks a negative adjustment beyond the balance', async () => {
     Harrow.getCharacter.mockResolvedValue({ id: 1, name: 'Valeros', user_id: 7 });
-    Harrow.getBalance.mockResolvedValue(1);
+    Harrow.addEntryGuarded.mockResolvedValue({ ok: false, balance: 1 });
     const res = createMockRes();
     await harrowController.adjust(
       baseReq({ body: { characterId: 1, delta: -5, reason: 'fix' } }),
@@ -232,17 +236,31 @@ describe('adjust', () => {
 
   it('applies a valid adjustment', async () => {
     Harrow.getCharacter.mockResolvedValue({ id: 1, name: 'Valeros', user_id: 7 });
-    Harrow.getBalance.mockResolvedValue(5);
-    Harrow.addEntry.mockResolvedValue({ id: 13 });
+    Harrow.addEntryGuarded.mockResolvedValue({ ok: true, balance: 3, entry: { id: 13 } });
     const res = createMockRes();
     await harrowController.adjust(
       baseReq({ body: { characterId: 1, delta: -2, reason: 'fix' } }),
       res
     );
-    expect(Harrow.addEntry).toHaveBeenCalledWith(
+    expect(Harrow.addEntryGuarded).toHaveBeenCalledWith(
       expect.objectContaining({ delta: -2, entryType: 'adjust' })
     );
     expect(res.success).toHaveBeenCalled();
+  });
+
+  it('applies a positive adjustment without the balance floor', async () => {
+    Harrow.getCharacter.mockResolvedValue({ id: 1, name: 'Valeros', user_id: 7 });
+    Harrow.addEntry.mockResolvedValue({ id: 14 });
+    Harrow.getBalance.mockResolvedValue(4);
+    const res = createMockRes();
+    await harrowController.adjust(
+      baseReq({ body: { characterId: 1, delta: 2, reason: 'fix' } }),
+      res
+    );
+    expect(Harrow.addEntryGuarded).not.toHaveBeenCalled();
+    expect(Harrow.addEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ delta: 2, entryType: 'adjust' })
+    );
   });
 });
 
@@ -309,5 +327,82 @@ describe('getCharacterLedger', () => {
     await harrowController.getCharacterLedger(baseReq({ params: { characterId: '1' } }), res);
     expect(Harrow.getLedger).toHaveBeenCalledWith(1, null);
     expect(res.success).toHaveBeenCalledWith({ ledger: [{ id: 1, delta: 3 }] }, expect.any(String));
+  });
+});
+
+describe('input hardening and feature gate', () => {
+  const disable = () => campaignSettings.getCampaignSetting.mockImplementation(async (name, opts) => {
+    if (name === 'harrow_current_chapter') return '2';
+    if (name === 'harrow_system_enabled') return '0';
+    return opts?.defaultValue;
+  });
+
+  it.each([
+    ['award', { characterId: 1, points: 1 }],
+    ['awardBatch', { suitMatchCount: 1, awards: [{ characterId: 1 }] }],
+    ['spend', { characterId: 1, points: 1 }],
+    ['adjust', { characterId: 1, delta: 1, reason: 'x' }],
+    ['advanceChapter', { chapter: 3 }],
+    ['setChoosing', { characterId: 1, cardName: 'Owl' }],
+  ])('%s is rejected when the Harrow system is disabled', async (handler, body) => {
+    disable();
+    const res = createMockRes();
+    await harrowController[handler](baseReq({ body }), res);
+    expect(res.forbidden).toHaveBeenCalledWith('The Harrow Point Tracker is not enabled for this campaign');
+    expect(Harrow.addEntry).not.toHaveBeenCalled();
+    expect(Harrow.addEntryGuarded).not.toHaveBeenCalled();
+    expect(Harrow.awardBatch).not.toHaveBeenCalled();
+    expect(campaignSettings.setCampaignSetting).not.toHaveBeenCalled();
+  });
+
+  it.each(['abc', '1.5', -3, 0])('rejects a non-integer characterId (%p) with 400 before touching SQL', async (bad) => {
+    const res = createMockRes();
+    await harrowController.spend(baseReq({ body: { characterId: bad, points: 1 } }), res);
+    expect(res.validationError).toHaveBeenCalledWith('characterId must be a positive integer');
+    expect(Harrow.getCharacter).not.toHaveBeenCalled();
+  });
+
+  it('rejects an over-long reason and card name', async () => {
+    const res = createMockRes();
+    await harrowController.award(
+      baseReq({ body: { characterId: 1, points: 1, reason: 'x'.repeat(256) } }), res
+    );
+    expect(res.validationError).toHaveBeenCalledWith('reason must be at most 255 characters');
+
+    const res2 = createMockRes();
+    await harrowController.setChoosing(
+      baseReq({ body: { characterId: 1, cardName: 'x'.repeat(65) } }), res2
+    );
+    expect(res2.validationError).toHaveBeenCalledWith('cardName must be at most 64 characters');
+  });
+
+  it('awardBatch rejects duplicate characters', async () => {
+    const res = createMockRes();
+    await harrowController.awardBatch(
+      baseReq({ body: { suitMatchCount: 1, awards: [{ characterId: 1 }, { characterId: '1' }] } }), res
+    );
+    expect(res.validationError).toHaveBeenCalledWith('Each character can appear only once in awards');
+    expect(Harrow.awardBatch).not.toHaveBeenCalled();
+  });
+
+  it('awardBatch looks all characters up in a single query and 404s a missing one', async () => {
+    Harrow.getCharacters.mockResolvedValue([{ id: 1, name: 'A', user_id: 7 }]);
+    const res = createMockRes();
+    await harrowController.awardBatch(
+      baseReq({ body: { suitMatchCount: 1, awards: [{ characterId: 1 }, { characterId: 2 }] } }), res
+    );
+    expect(Harrow.getCharacters).toHaveBeenCalledTimes(1);
+    expect(Harrow.getCharacters).toHaveBeenCalledWith([1, 2]);
+    expect(Harrow.getCharacter).not.toHaveBeenCalled();
+    expect(res.notFound).toHaveBeenCalledWith('Character 2 not found');
+  });
+
+  it('spend checks and inserts atomically (no separate balance read)', async () => {
+    Harrow.getCharacter.mockResolvedValue({ id: 1, name: 'Valeros', user_id: 7 });
+    Harrow.addEntryGuarded.mockResolvedValue({ ok: true, balance: 0, entry: { id: 1 } });
+    const res = createMockRes();
+    await harrowController.spend(baseReq({ body: { characterId: 1, points: 2 } }), res);
+    expect(Harrow.getBalance).not.toHaveBeenCalled();
+    expect(Harrow.addEntry).not.toHaveBeenCalled();
   });
 });
