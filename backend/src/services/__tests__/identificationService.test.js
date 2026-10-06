@@ -825,50 +825,6 @@ describe('IdentificationService', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // getIdentificationAttempts
-  // ---------------------------------------------------------------------------
-  describe('getIdentificationAttempts', () => {
-    it('should return attempts for character filtered by date', async () => {
-      const mockAttempts = [
-        { id: 1, lootid: 10, characterid: 2, spellcraft_roll: 18, success: true, item_name: 'Sword' },
-      ];
-      dbUtils.executeQuery.mockResolvedValue({ rows: mockAttempts });
-
-      const result = await IdentificationService.getIdentificationAttempts(2, '4718-3-14');
-
-      expect(result).toEqual(mockAttempts);
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('golarion_date = $2'),
-        [2, '4718-3-14']
-      );
-    });
-
-    it('should return all attempts (with LIMIT 50) when no date provided', async () => {
-      const mockAttempts = [
-        { id: 1, lootid: 10, characterid: 2, success: true, item_name: 'Sword' },
-        { id: 2, lootid: 11, characterid: 2, success: false, item_name: 'Ring' },
-      ];
-      dbUtils.executeQuery.mockResolvedValue({ rows: mockAttempts });
-
-      const result = await IdentificationService.getIdentificationAttempts(2);
-
-      expect(result).toEqual(mockAttempts);
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('LIMIT 50'),
-        [2]
-      );
-    });
-
-    it('should validate character ID', async () => {
-      await expect(
-        IdentificationService.getIdentificationAttempts(null)
-      ).rejects.toThrow();
-
-      expect(ValidationService.validateCharacterId).toHaveBeenCalledWith(null);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
   // getUnidentifiedItems
   // ---------------------------------------------------------------------------
   describe('getUnidentifiedItems', () => {

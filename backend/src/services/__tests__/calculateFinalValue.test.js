@@ -1,4 +1,5 @@
 const { calculateFinalValue } = require('../calculateFinalValue');
+const logger = require('../../utils/logger');
 
 jest.mock('../../utils/logger', () => ({
   error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn(),
@@ -98,8 +99,16 @@ describe('calculateFinalValue (PF1e item valuation)', () => {
     it('should divide enhancement value by 50 for ammunition', () => {
       const mods = [{ name: '+1', plus: 1 }];
       const result = calculateFinalValue(1, 'weapon', 'ammunition', mods, false, 'Arrow', null, 'Medium', 0.1);
-      // 1 base + 300 masterwork + (2000/50) = 1 + 300 + 40 = 341
-      expect(result).toBe(341);
+      // 1 base + 6 masterwork (300/50) + (2000/50) = 1 + 6 + 40 = 47
+      expect(result).toBe(47);
+    });
+
+    it('prices masterwork ammunition at 6 gp per piece, not 300 (F-0644; coreRulebook/equipment.html)', () => {
+      expect(calculateFinalValue(1, 'weapon', 'ammunition', [], true, 'Arrow', null, 'Medium', 0.1)).toBe(7);
+    });
+
+    it('still adds the full 300 gp masterwork cost to non-ammunition weapons', () => {
+      expect(calculateFinalValue(1, 'weapon', 'martial', [], true, 'Longbow', null, 'Medium', 3)).toBe(301);
     });
   });
 
@@ -113,6 +122,13 @@ describe('calculateFinalValue (PF1e item valuation)', () => {
     it('should not apply charge multiplier for non-wands', () => {
       const result = calculateFinalValue(15, 'rod', null, [], false, 'Rod of Power', 50, 'Medium', 0);
       expect(result).toBe(15);
+    });
+
+    it('keys on the name prefix, not the item type (F-0619)', () => {
+      // type 'wand' with a name that does not start with 'wand of' is NOT multiplied
+      expect(calculateFinalValue(15, 'wand', null, [], false, 'Staff of Healing', 50, 'Medium', 0)).toBe(15);
+      // a non-wand type whose name starts with 'wand of' IS multiplied
+      expect(calculateFinalValue(15, 'rod', null, [], false, 'Wand of Magic Missile', 10, 'Medium', 0)).toBe(150);
     });
 
     it('should not apply when charges is null', () => {
@@ -144,11 +160,29 @@ describe('calculateFinalValue (PF1e item valuation)', () => {
 
   describe('error handling', () => {
     it('should return original value on calculation error', () => {
-      // Create a scenario that would cause eval to fail
       const mods = [{ name: 'Bad', valuecalc: '+undefined_var' }];
       const result = calculateFinalValue(100, 'misc', null, mods, false, 'Item', null, 'Medium', 1);
       // Unsupported valuecalc is ignored (no-op), never evaluated
       expect(result).toBe(100);
+      expect(logger.warn).toHaveBeenCalled();
+    });
+
+    it('falls back to the base value and logs when the calculation itself throws (outer catch)', () => {
+      logger.error.mockClear();
+      const mods = [{ name: 'Broken', valuecalc: 42 }]; // not a string: .replace throws
+      const result = calculateFinalValue('100', 'misc', null, mods, false, 'Item', null, 'Medium', 1);
+      expect(result).toBe(100);
+      expect(logger.error).toHaveBeenCalled();
+    });
+
+    it('does not produce NaN when the weight is undefined (F-0641)', () => {
+      const mods = [{ name: 'Weighty', valuecalc: '+(10*item.wgt)' }];
+      expect(calculateFinalValue(100, 'misc', null, mods, false, 'Item', null, 'Medium', undefined)).toBe(110);
+    });
+
+    it('does not produce NaN for an unrecognised size (F-0641)', () => {
+      const mods = [{ name: 'Weighty', valuecalc: '+(10*item.wgt)' }];
+      expect(calculateFinalValue(100, 'misc', null, mods, false, 'Item', null, 'Gigantic', 2)).toBe(120);
     });
 
     it('should handle null itemWeight', () => {

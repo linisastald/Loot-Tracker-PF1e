@@ -329,42 +329,6 @@ class IdentificationService {
   }
 
   /**
-   * Get identification attempts for a character on a specific date
-   * @param {number} characterId - The character ID
-   * @param {string} golarionDate - The Golarion date (optional, defaults to current)
-   * @returns {Promise<Array>} - Array of identification attempts
-   */
-  static async getIdentificationAttempts(characterId, golarionDate = null) {
-    ValidationService.validateCharacterId(characterId);
-
-    let query, params;
-    
-    if (golarionDate) {
-      query = `
-        SELECT i.*, l.name as item_name
-        FROM identify i
-        JOIN loot l ON i.lootid = l.id
-        WHERE i.characterid = $1 AND i.golarion_date = $2
-        ORDER BY i.id DESC
-      `;
-      params = [characterId, golarionDate];
-    } else {
-      query = `
-        SELECT i.*, l.name as item_name
-        FROM identify i
-        JOIN loot l ON i.lootid = l.id
-        WHERE i.characterid = $1
-        ORDER BY i.id DESC
-        LIMIT 50
-      `;
-      params = [characterId];
-    }
-
-    const result = await dbUtils.executeQuery(query, params);
-    return result.rows;
-  }
-
-  /**
    * Get unidentified items
    * @param {Object} options - Query options
    * @returns {Promise<Array>} - Array of unidentified items

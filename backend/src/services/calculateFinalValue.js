@@ -90,6 +90,34 @@ const WAND_FULL_CHARGES = 50;
 const isWandName = (itemName) =>
   typeof itemName === 'string' && itemName.toLowerCase().startsWith('wand of');
 
+// Size multipliers for weight (hoisted: they never change)
+const WEIGHT_SIZE_MULTIPLIERS = {
+  Fine: 0.1, Diminutive: 0.1, Tiny: 0.1, Small: 0.5, Medium: 1,
+  Large: 2, Huge: 5, Gargantuan: 8, Colossal: 12
+};
+
+// Size multipliers for the value of weapons and armor
+const VALUE_SIZE_MULTIPLIERS = {
+  Fine: 0.5, Diminutive: 0.5, Tiny: 0.5, Small: 1, Medium: 1,
+  Large: 2, Huge: 4, Gargantuan: 8, Colossal: 16
+};
+
+// Masterwork surcharge (coreRulebook/equipment.html: +300 gp per weapon, +150 gp
+// per armor, or 6 gp per single unit of ammunition = 300 / 50).
+const MASTERWORK_COST = { weapon: 300, armor: 150 };
+const AMMUNITION_UNITS = 50;
+
+/**
+ * Cost of a total enhancement bonus on a weapon (bonus^2 x 2000 gp) or armor
+ * (bonus^2 x 1000 gp); only whole bonuses +1..+10 are priced.
+ */
+const enhancementCost = (itemType, totalPlus) => {
+  if ((itemType !== 'weapon' && itemType !== 'armor') || !Number.isInteger(totalPlus) || totalPlus < 1 || totalPlus > 10) {
+    return 0;
+  }
+  return totalPlus * totalPlus * (itemType === 'weapon' ? 2000 : 1000);
+};
+
 /**
  * Calculate the final value of an item based on its properties and modifications
  * @param {number} itemValue - Base value of the item
@@ -107,94 +135,46 @@ const calculateFinalValue = (itemValue, itemType, itemSubtype, mods, isMasterwor
   try {
     let modifiedValue = Number(itemValue);
     let totalPlus = 0;
+    const isWeaponOrArmor = itemType === 'weapon' || itemType === 'armor';
 
-    // Use itemWeight if available, otherwise default to 1
-    let weight = itemWeight !== null ? itemWeight : 1;
-
-    // Size multipliers for weight
-    const weightSizeMultipliers = {
-      'Fine': 0.1,
-      'Diminutive': 0.1,
-      'Tiny': 0.1,
-      'Small': 0.5,
-      'Medium': 1,
-      'Large': 2,
-      'Huge': 5,
-      'Gargantuan': 8,
-      'Colossal': 12
-    };
-
-    // Apply size multiplier to weight
+    // Use itemWeight if available (null/undefined default to 1), scaled by size
+    // (an unrecognised size leaves the weight unscaled).
     const appliedSize = size || 'Medium';
-    weight *= weightSizeMultipliers[appliedSize];
+    const weight = (itemWeight ?? 1) * (WEIGHT_SIZE_MULTIPLIERS[appliedSize] ?? 1);
 
-    // Size multipliers for value (weapons and armor)
-    const valueSizeMultipliers = {
-      'Fine': 0.5,
-      'Diminutive': 0.5,
-      'Tiny': 0.5,
-      'Small': 1,
-      'Medium': 1,
-      'Large': 2,
-      'Huge': 4,
-      'Gargantuan': 8,
-      'Colossal': 16
-    };
-
-    // Apply size multiplier for weapons and armor value
-    if ((itemType === 'weapon' || itemType === 'armor') && appliedSize in valueSizeMultipliers) {
-      modifiedValue *= valueSizeMultipliers[appliedSize];
+    // Size multiplier for weapons and armor value
+    if (isWeaponOrArmor && appliedSize in VALUE_SIZE_MULTIPLIERS) {
+      modifiedValue *= VALUE_SIZE_MULTIPLIERS[appliedSize];
     }
 
-    // Special case for wands
+    // Special case for wands: the catalog value is per charge
     if (isWandName(itemName) && charges) {
       modifiedValue *= charges;
-      logger.debug(`Applied wand charges multiplier: ${charges} -> ${modifiedValue}`);
     }
 
     if (mods && Array.isArray(mods)) {
       mods.forEach(mod => {
         if (mod.valuecalc) {
-          const originalValue = modifiedValue;
-          const valuecalc = mod.valuecalc.replace('item.wgt', weight.toString());
-          modifiedValue = applyValuecalc(modifiedValue, valuecalc, mod.name);
-          logger.debug(`Applied mod value calculation for ${mod.name}: ${originalValue} -> ${modifiedValue}`);
+          modifiedValue = applyValuecalc(modifiedValue, mod.valuecalc.replaceAll('item.wgt', weight.toString()), mod.name);
         }
         if (mod.plus) {
           totalPlus += Number(mod.plus);
-          logger.debug(`Added plus value from mod ${mod.name}: +${mod.plus}, total plus now: ${totalPlus}`);
         }
       });
     }
 
-    // Add masterwork value if applicable
-    if (isMasterwork || totalPlus >= 1) {
-      if (itemType === 'weapon') {
-        modifiedValue += 300;
-        logger.debug(`Added masterwork weapon value: +300 -> ${modifiedValue}`);
-      } else if (itemType === 'armor') {
-        modifiedValue += 150;
-        logger.debug(`Added masterwork armor value: +150 -> ${modifiedValue}`);
-      }
+    // Masterwork cost (also implied by any enhancement bonus). Ammunition is
+    // priced per piece: the masterwork surcharge and the enhancement cost are
+    // both divided by 50.
+    const isAmmunition = itemSubtype === 'ammunition';
+    if ((isMasterwork || totalPlus >= 1) && isWeaponOrArmor) {
+      const masterwork = MASTERWORK_COST[itemType];
+      modifiedValue += isAmmunition && itemType === 'weapon' ? masterwork / AMMUNITION_UNITS : masterwork;
     }
 
-    // Determine additional value based on total plus
-    const plusValueTables = {
-      weapon: { 1: 2000, 2: 8000, 3: 18000, 4: 32000, 5: 50000, 6: 72000, 7: 98000, 8: 128000, 9: 162000, 10: 200000 },
-      armor: { 1: 1000, 2: 4000, 3: 9000, 4: 16000, 5: 25000, 6: 36000, 7: 49000, 8: 64000, 9: 81000, 10: 100000 }
-    };
-
-    let additionalValue = 0;
-    if ((itemType === 'weapon' || itemType === 'armor') && totalPlus > 0 && totalPlus <= 10) {
-      additionalValue = plusValueTables[itemType][totalPlus] || 0;
-      logger.debug(`Added plus value for ${itemType} +${totalPlus}: +${additionalValue}`);
-    }
-
-    // Adjust additional value for ammunition
-    if (itemSubtype === 'ammunition') {
-      const originalAdditionalValue = additionalValue;
-      additionalValue /= 50;
-      logger.debug(`Adjusted value for ammunition: ${originalAdditionalValue} -> ${additionalValue}`);
+    let additionalValue = enhancementCost(itemType, totalPlus);
+    if (isAmmunition) {
+      additionalValue /= AMMUNITION_UNITS;
     }
 
     const finalValue = modifiedValue + additionalValue;
