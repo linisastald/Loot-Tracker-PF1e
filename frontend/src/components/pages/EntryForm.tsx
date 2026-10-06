@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Autocomplete,
   Box,
@@ -22,124 +22,231 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { parseISO, format } from 'date-fns';
 import { fetchItemNames } from '../../utils/lootEntryUtils';
-import api from '../../utils/api';
+import { GOLD_TRANSACTION_TYPES, ITEM_SIZES, ITEM_TYPES } from '../../utils/itemOptions';
+
+/** A catalog item offered by the item-name autocomplete. */
+export interface ItemSuggestion {
+  id: number;
+  name: string;
+  type?: string | null;
+  subtype?: string | null;
+  value?: number | string | null;
+}
+
+/** Fields of one entry row; item rows use the first group, gold rows the second. */
+export interface EntryData {
+  sessionDate?: string | Date | null;
+  notes?: string;
+  // item
+  quantity?: number | string;
+  name?: string;
+  itemId?: number | null;
+  type?: string;
+  value?: number | string | null;
+  unidentified?: boolean | null;
+  masterwork?: boolean | null;
+  size?: string;
+  parseItem?: boolean;
+  charges?: number | string;
+  // gold
+  transactionType?: string;
+  platinum?: number | string;
+  gold?: number | string;
+  silver?: number | string;
+  copper?: number | string;
+  characterId?: string;
+}
+
+export interface LootEntryItem {
+  type: string; // 'item' or 'gold'
+  data: EntryData;
+  error?: string | null;
+}
+
+interface EntryFormProps {
+  entry: LootEntryItem;
+  index: number;
+  onRemove: () => void;
+  onChange: (index: number, updates: Partial<EntryData>) => void;
+  isDM?: boolean;
+  characters?: { id: number; name: string }[];
+  /** Whether Smart Item Detection is available (an OpenAI key is configured); fetched once by the page */
+  hasOpenAiKey?: boolean;
+  /** Initial autocomplete suggestions; fetched once by the page */
+  initialItemOptions?: ItemSuggestion[];
+}
+
+type CoinField = 'platinum' | 'gold' | 'silver' | 'copper';
+const COIN_FIELDS: { field: CoinField; label: string }[] = [
+  { field: 'platinum', label: 'Platinum' },
+  { field: 'gold', label: 'Gold' },
+  { field: 'silver', label: 'Silver' },
+  { field: 'copper', label: 'Copper' },
+];
+
+// How long typing pauses before the suggestion list is refreshed
+const SUGGESTION_DEBOUNCE_MS = 250;
 
 // sessionDate is stored as a 'yyyy-MM-dd' string. Convert to/from a Date for the
 // MUI DatePicker without shifting the day across timezones (parse only the date
-// part; format in local time).
-const parseStoredDate = (v) => {
-  if (!v) return new Date();
+// part; format in local time). An empty or invalid value stays empty (null) so
+// the picker can be cleared; new entries are created with today's date.
+const parseStoredDate = (v: EntryData['sessionDate']): Date | null => {
+  if (!v) return null;
   const d = typeof v === 'string' ? parseISO(v.split('T')[0]) : new Date(v);
-  return isNaN(d.getTime()) ? new Date() : d;
+  return isNaN(d.getTime()) ? null : d;
 };
-const formatStoredDate = (date) =>
+const formatStoredDate = (date: Date | null): string | null =>
   date && !isNaN(date.getTime()) ? format(date, 'yyyy-MM-dd') : null;
 
-const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters = [] }) => {
-  const [localEntry, setLocalEntry] = useState(entry.data);
-  const [itemSuggestions, setItemSuggestions] = useState([]);
-  const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
+const NO_SUGGESTIONS: ItemSuggestion[] = [];
+
+const EntryForm: React.FC<EntryFormProps> = ({
+  entry,
+  index,
+  onRemove,
+  onChange,
+  isDM = false,
+  characters = [],
+  hasOpenAiKey = false,
+  initialItemOptions = NO_SUGGESTIONS,
+}) => {
+  const data = entry.data;
+  const [itemSuggestions, setItemSuggestions] = useState<ItemSuggestion[]>(initialItemOptions);
   const [magicDialogShown, setMagicDialogShown] = useState(false);
   const [showMagicMessage, setShowMagicMessage] = useState(false);
 
-  useEffect(() => {
-    setLocalEntry(entry.data);
-  }, [entry.data]);
+  // Latest-request guard + debounce so a slow older response cannot replace newer suggestions
+  const suggestionRequest = useRef(0);
+  const suggestionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
-    let cancelled = false;
+    setItemSuggestions(initialItemOptions);
+  }, [initialItemOptions]);
 
-    const loadItemOptions = async () => {
-      const items = await fetchItemNames();
-      if (!cancelled) setItemSuggestions(items);
-    };
-
-    const checkOpenAiKey = async () => {
-      try {
-        const response = await api.get('/settings/openai-key');
-        if (!cancelled) setHasOpenAiKey(response.data?.hasKey || false);
-      } catch {
-        if (!cancelled) setHasOpenAiKey(false);
-      }
-    };
-
-    loadItemOptions();
-    checkOpenAiKey();
-
-    return () => { cancelled = true; };
+  useEffect(() => () => {
+    clearTimeout(suggestionTimer.current);
+    suggestionRequest.current += 1;
   }, []);
 
-  const handleChange = (field, value) => {
-    // If changing unidentified to true, disable Smart Item Detection
-    const updatedEntry = { ...localEntry, [field]: value };
+  const loadSuggestions = (query: string) => {
+    clearTimeout(suggestionTimer.current);
+    const requestId = ++suggestionRequest.current;
+    if (query.length < 2) return;
+    suggestionTimer.current = setTimeout(async () => {
+      const items = await fetchItemNames(query);
+      if (requestId === suggestionRequest.current) setItemSuggestions(items);
+    }, SUGGESTION_DEBOUNCE_MS);
+  };
+
+  // Every field change goes through here: one notification to the parent
+  const applyUpdates = (updates: Partial<EntryData>) => onChange(index, updates);
+
+  const handleChange = <K extends keyof EntryData>(field: K, value: EntryData[K]) => {
+    // Smart Item Detection needs an OpenAI key
+    if (field === 'parseItem' && value === true && !hasOpenAiKey) return;
+
+    const updates: Partial<EntryData> = { [field]: value };
+
+    // An unidentified item has no catalog link and cannot be smart-detected
     if (field === 'unidentified' && value === true) {
-      updatedEntry.parseItem = false;
-      // Also clear itemId if unidentified is checked
-      updatedEntry.itemId = null;
+      updates.parseItem = false;
+      updates.itemId = null;
     }
 
-    // If trying to enable parseItem but no OpenAI key, prevent it
-    if (field === 'parseItem' && value === true && !hasOpenAiKey) {
-      return; // Don't allow enabling if no OpenAI key
-    }
-
-    // If changing type to 'magic' and not already unidentified, show message once per page load
-    // Skip if this is from autofill (isAutofill flag or itemId exists) or already shown
-    // Also skip if the current entry has isAutofill flag set
+    // Choosing the 'magic' type by hand suggests marking it unidentified instead
+    // (once per page load; autofill from the catalog never comes through here)
     if (
       field === 'type' &&
       value === 'magic' &&
-      !localEntry.unidentified &&
+      !data.unidentified &&
       !magicDialogShown &&
-      !localEntry.parseItem &&
-      !localEntry.itemId &&
-      !localEntry.isAutofill
+      !data.parseItem &&
+      !data.itemId
     ) {
       setShowMagicMessage(true);
       setMagicDialogShown(true);
     }
 
-    // Clear isAutofill flag if it exists
-    if (localEntry.isAutofill) {
-      delete updatedEntry.isAutofill;
-    }
-
-    setLocalEntry(prev => ({ ...prev, [field]: value }));
-    onChange(index, { [field]: value });
+    applyUpdates(updates);
   };
 
   const handleMarkAsUnidentified = () => {
     setShowMagicMessage(false);
-    // Set as unidentified instead of magic type
-    const updates = {
-      unidentified: true,
-      type: '',
-      parseItem: false,
-      itemId: null,
-    };
-    setLocalEntry(prev => ({ ...prev, ...updates }));
-    onChange(index, updates);
+    applyUpdates({ unidentified: true, type: '', parseItem: false, itemId: null });
   };
+
+  const handleItemNameInput = (text: string) => {
+    // Retyping a name picked from the catalog drops the catalog link and what it filled in
+    applyUpdates(
+      data.itemId != null ? { name: text, itemId: null, type: '', value: null } : { name: text }
+    );
+    loadSuggestions(text);
+  };
+
+  const handleItemSelected = (newValue: string | ItemSuggestion | null) => {
+    const selectedItem =
+      typeof newValue === 'string'
+        ? itemSuggestions.find(item => item.name.toLowerCase() === newValue.toLowerCase())
+        : newValue;
+
+    if (selectedItem) {
+      // One batched update: autofill must not trigger the magic-type tip
+      applyUpdates({
+        name: selectedItem.name,
+        itemId: selectedItem.id,
+        type: selectedItem.type || '',
+        value: selectedItem.value || null,
+      });
+    } else {
+      applyUpdates({
+        name: typeof newValue === 'string' ? newValue : '',
+        itemId: null,
+        type: '',
+        value: null,
+      });
+    }
+  };
+
+  const renderSessionDate = () => (
+    <LocalizationProvider dateAdapter={AdapterDateFns}>
+      <DatePicker
+        label="Session Date"
+        value={parseStoredDate(data.sessionDate)}
+        onChange={date => handleChange('sessionDate', formatStoredDate(date))}
+        slotProps={{ textField: { fullWidth: true } }}
+      />
+    </LocalizationProvider>
+  );
+
+  const renderBoxedCheckbox = (field: 'unidentified' | 'masterwork', label: string) => (
+    <Paper
+      variant="outlined"
+      sx={{ p: 1, display: 'flex', alignItems: 'center', height: '56px' }}
+    >
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={data[field] || false}
+            onChange={e => handleChange(field, e.target.checked)}
+          />
+        }
+        label={label}
+        sx={{ m: 0 }}
+      />
+    </Paper>
+  );
 
   const renderItemForm = () => (
     <Grid container spacing={2}>
       {/* First Line: Session Date, Quantity (same size as Type/Size), Item Name (remaining) */}
-      <Grid size={{ xs: 12, sm: 1.5 }}>
-        <LocalizationProvider dateAdapter={AdapterDateFns}>
-          <DatePicker
-            label="Session Date"
-            value={parseStoredDate(localEntry.sessionDate)}
-            onChange={date => handleChange('sessionDate', formatStoredDate(date))}
-            slotProps={{ textField: { fullWidth: true } }}
-          />
-        </LocalizationProvider>
-      </Grid>
+      <Grid size={{ xs: 12, sm: 1.5 }}>{renderSessionDate()}</Grid>
       <Grid size={{ xs: 12, sm: 1.5 }}>
         <TextField
           label="Quantity"
           type="number"
           fullWidth
-          value={localEntry.quantity}
+          value={data.quantity ?? ''}
           onChange={e => handleChange('quantity', e.target.value)}
         />
       </Grid>
@@ -147,52 +254,13 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
         <Autocomplete
           freeSolo
           options={itemSuggestions}
-          value={localEntry.name || ''}
-          inputValue={localEntry.name || ''}
-          onInputChange={async (event, newInputValue) => {
-            handleChange('name', newInputValue);
-            // Fetch items when typing
-            if (newInputValue.length >= 2) {
-              const fetchedItems = await fetchItemNames(newInputValue);
-              setItemSuggestions(fetchedItems);
-            }
+          value={data.name || ''}
+          inputValue={data.name || ''}
+          onInputChange={(event, newInputValue, reason) => {
+            // 'reset' (an option was picked) is handled by onChange, 'clear' too
+            if (reason === 'input') handleItemNameInput(newInputValue);
           }}
-          onChange={(event, newValue) => {
-            if (newValue) {
-              const selectedItem =
-                typeof newValue === 'string'
-                  ? itemSuggestions.find(
-                      item => item.name.toLowerCase() === newValue.toLowerCase()
-                    )
-                  : newValue;
-
-              if (selectedItem) {
-                // Batch update for autofill to prevent magic warning
-                const updates = {
-                  name: selectedItem.name,
-                  itemId: selectedItem.id,
-                  type: selectedItem.type || '',
-                  value: selectedItem.value || null,
-                  isAutofill: true, // Temporary flag to indicate this is from autofill
-                };
-                setLocalEntry(prev => ({ ...prev, ...updates }));
-                onChange(index, updates);
-              } else {
-                handleChange(
-                  'name',
-                  typeof newValue === 'string' ? newValue : ''
-                );
-                handleChange('itemId', null);
-                handleChange('type', '');
-                handleChange('value', null);
-              }
-            } else {
-              handleChange('name', '');
-              handleChange('itemId', null);
-              handleChange('type', '');
-              handleChange('value', null);
-            }
-          }}
+          onChange={(event, newValue) => handleItemSelected(newValue)}
           filterOptions={(options, { inputValue }) =>
             options.filter(option =>
               option.name.toLowerCase().includes(inputValue.toLowerCase())
@@ -211,20 +279,15 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
         <FormControl fullWidth>
           <InputLabel>Type</InputLabel>
           <Select
-            value={localEntry.type || ''}
+            value={data.type || ''}
             onChange={e => handleChange('type', e.target.value)}
-            disabled={
-              localEntry.itemId !== null && localEntry.itemId !== undefined
-            }
+            disabled={data.itemId !== null && data.itemId !== undefined}
             label="Type"
           >
             <MenuItem value="">None</MenuItem>
-            <MenuItem value="weapon">Weapon</MenuItem>
-            <MenuItem value="armor">Armor</MenuItem>
-            <MenuItem value="magic">Magic</MenuItem>
-            <MenuItem value="gear">Gear</MenuItem>
-            <MenuItem value="trade good">Trade Good</MenuItem>
-            <MenuItem value="other">Other</MenuItem>
+            {ITEM_TYPES.map(({ value, label }) => (
+              <MenuItem key={value} value={value}>{label}</MenuItem>
+            ))}
           </Select>
         </FormControl>
       </Grid>
@@ -232,72 +295,33 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
         <FormControl fullWidth>
           <InputLabel>Size</InputLabel>
           <Select
-            value={localEntry.size || ''}
+            value={data.size || ''}
             onChange={e => handleChange('size', e.target.value)}
             label="Size"
           >
             <MenuItem value="">None</MenuItem>
-            <MenuItem value="Fine">Fine</MenuItem>
-            <MenuItem value="Diminutive">Diminutive</MenuItem>
-            <MenuItem value="Tiny">Tiny</MenuItem>
-            <MenuItem value="Small">Small</MenuItem>
-            <MenuItem value="Medium">Medium</MenuItem>
-            <MenuItem value="Large">Large</MenuItem>
-            <MenuItem value="Huge">Huge</MenuItem>
-            <MenuItem value="Gargantuan">Gargantuan</MenuItem>
-            <MenuItem value="Colossal">Colossal</MenuItem>
+            {ITEM_SIZES.map(size => (
+              <MenuItem key={size} value={size}>{size}</MenuItem>
+            ))}
           </Select>
         </FormControl>
       </Grid>
 
       {/* Wand Charges (if applicable) */}
-      {localEntry.name &&
-        localEntry.name.toLowerCase().startsWith('wand of ') && (
-          <Grid size={{ xs: 12, sm: 2 }}>
-            <TextField
-              label="Charges"
-              type="number"
-              fullWidth
-              value={localEntry.charges || ''}
-              onChange={e => handleChange('charges', e.target.value)}
-            />
-          </Grid>
-        )}
+      {data.name && data.name.toLowerCase().startsWith('wand of ') && (
+        <Grid size={{ xs: 12, sm: 2 }}>
+          <TextField
+            label="Charges"
+            type="number"
+            fullWidth
+            value={data.charges || ''}
+            onChange={e => handleChange('charges', e.target.value)}
+          />
+        </Grid>
+      )}
 
-      <Grid size={{ xs: 6, sm: 1.5 }}>
-        <Paper
-          variant="outlined"
-          sx={{ p: 1, display: 'flex', alignItems: 'center', height: '56px' }}
-        >
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={localEntry.unidentified || false}
-                onChange={e => handleChange('unidentified', e.target.checked)}
-              />
-            }
-            label="Unidentified"
-            sx={{ m: 0 }}
-          />
-        </Paper>
-      </Grid>
-      <Grid size={{ xs: 6, sm: 1.5 }}>
-        <Paper
-          variant="outlined"
-          sx={{ p: 1, display: 'flex', alignItems: 'center', height: '56px' }}
-        >
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={localEntry.masterwork || false}
-                onChange={e => handleChange('masterwork', e.target.checked)}
-              />
-            }
-            label="Masterwork"
-            sx={{ m: 0 }}
-          />
-        </Paper>
-      </Grid>
+      <Grid size={{ xs: 6, sm: 1.5 }}>{renderBoxedCheckbox('unidentified', 'Unidentified')}</Grid>
+      <Grid size={{ xs: 6, sm: 1.5 }}>{renderBoxedCheckbox('masterwork', 'Masterwork')}</Grid>
       <Grid size={{ xs: 12, sm: 3 }}>
         <Paper
           variant="outlined"
@@ -311,17 +335,17 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           <FormControlLabel
             control={
               <Switch
-                checked={localEntry.parseItem || false}
+                checked={data.parseItem || false}
                 onChange={e => handleChange('parseItem', e.target.checked)}
-                disabled={localEntry.unidentified || !hasOpenAiKey}
+                disabled={Boolean(data.unidentified) || !hasOpenAiKey}
               />
             }
             label="Smart Item Detection"
             sx={{ m: 0 }}
           />
-          {(localEntry.unidentified || !hasOpenAiKey) && (
+          {(data.unidentified || !hasOpenAiKey) && (
             <Typography variant="caption" color="error" sx={{ ml: 1 }}>
-              {localEntry.unidentified
+              {data.unidentified
                 ? 'Not available for unidentified items'
                 : 'OpenAI key required in System Settings'}
             </Typography>
@@ -336,7 +360,7 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           fullWidth
           multiline
           rows={2}
-          value={localEntry.notes || ''}
+          value={data.notes || ''}
           onChange={e => handleChange('notes', e.target.value)}
         />
       </Grid>
@@ -346,83 +370,32 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
   const renderGoldForm = () => (
     <Grid container spacing={2}>
       {/* First Line: Session Date, Platinum, Gold, Silver, Copper */}
-      <Grid size={{ xs: 12, sm: 1.5 }}>
-        <LocalizationProvider dateAdapter={AdapterDateFns}>
-          <DatePicker
-            label="Session Date"
-            value={parseStoredDate(localEntry.sessionDate)}
-            onChange={date => handleChange('sessionDate', formatStoredDate(date))}
-            slotProps={{ textField: { fullWidth: true } }}
+      <Grid size={{ xs: 12, sm: 1.5 }}>{renderSessionDate()}</Grid>
+      {COIN_FIELDS.map(({ field, label }) => (
+        <Grid key={field} size={{ xs: 12, sm: 2.625 }}>
+          <TextField
+            label={label}
+            type="number"
+            fullWidth
+            slotProps={{ htmlInput: { min: 0 } }}
+            value={data[field] || ''}
+            onChange={e => handleChange(field, Math.max(0, parseInt(e.target.value) || 0))}
           />
-        </LocalizationProvider>
-      </Grid>
-      <Grid size={{ xs: 12, sm: 2.625 }}>
-        <TextField
-          label="Platinum"
-          type="number"
-          fullWidth
-          slotProps={{ htmlInput: { min: 0 } }}
-          value={localEntry.platinum || ''}
-          onChange={e => {
-            const value = Math.max(0, parseInt(e.target.value) || 0);
-            handleChange('platinum', value);
-          }}
-        />
-      </Grid>
-      <Grid size={{ xs: 12, sm: 2.625 }}>
-        <TextField
-          label="Gold"
-          type="number"
-          fullWidth
-          slotProps={{ htmlInput: { min: 0 } }}
-          value={localEntry.gold || ''}
-          onChange={e => {
-            const value = Math.max(0, parseInt(e.target.value) || 0);
-            handleChange('gold', value);
-          }}
-        />
-      </Grid>
-      <Grid size={{ xs: 12, sm: 2.625 }}>
-        <TextField
-          label="Silver"
-          type="number"
-          fullWidth
-          slotProps={{ htmlInput: { min: 0 } }}
-          value={localEntry.silver || ''}
-          onChange={e => {
-            const value = Math.max(0, parseInt(e.target.value) || 0);
-            handleChange('silver', value);
-          }}
-        />
-      </Grid>
-      <Grid size={{ xs: 12, sm: 2.625 }}>
-        <TextField
-          label="Copper"
-          type="number"
-          fullWidth
-          slotProps={{ htmlInput: { min: 0 } }}
-          value={localEntry.copper || ''}
-          onChange={e => {
-            const value = Math.max(0, parseInt(e.target.value) || 0);
-            handleChange('copper', value);
-          }}
-        />
-      </Grid>
+        </Grid>
+      ))}
 
       {/* Second Line: Transaction Type, Character (DM only), Notes */}
       <Grid size={{ xs: 12, sm: 4 }}>
         <FormControl fullWidth>
           <InputLabel>Transaction Type</InputLabel>
           <Select
-            value={localEntry.transactionType || ''}
+            value={data.transactionType || ''}
             onChange={e => handleChange('transactionType', e.target.value)}
             label="Transaction Type"
           >
-            <MenuItem value="Deposit">Deposit</MenuItem>
-            <MenuItem value="Withdrawal">Withdrawal</MenuItem>
-            <MenuItem value="Party Loot Purchase">Party Loot Purchase</MenuItem>
-            <MenuItem value="Party Payback">Party Payback</MenuItem>
-            <MenuItem value="Other">Other</MenuItem>
+            {GOLD_TRANSACTION_TYPES.map(type => (
+              <MenuItem key={type} value={type}>{type}</MenuItem>
+            ))}
           </Select>
         </FormControl>
       </Grid>
@@ -431,7 +404,7 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           <FormControl fullWidth>
             <InputLabel>Character (optional)</InputLabel>
             <Select
-              value={localEntry.characterId || ''}
+              value={data.characterId || ''}
               onChange={e => handleChange('characterId', e.target.value)}
               label="Character (optional)"
             >
@@ -453,7 +426,7 @@ const EntryForm = ({ entry, index, onRemove, onChange, isDM = false, characters 
           fullWidth
           multiline
           rows={2}
-          value={localEntry.notes || ''}
+          value={data.notes || ''}
           onChange={e => handleChange('notes', e.target.value)}
         />
       </Grid>
