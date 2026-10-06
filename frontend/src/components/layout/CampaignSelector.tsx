@@ -28,6 +28,7 @@ import CasinoIcon from '@mui/icons-material/Casino';
 import { useSnackbar } from 'notistack';
 import api from '../../utils/api';
 import { useCampaign } from '../../contexts/CampaignContext';
+import { getErrorMessage } from '../../utils/apiErrors';
 
 const INVITE_CODE_PATTERN = /^[A-Z0-9]{6,8}$/;
 
@@ -48,24 +49,87 @@ interface CreatedCampaign {
   is_active?: boolean;
 }
 
+/** Open / error / busy state shared by the two form dialogs. */
+const useSubmitDialog = () => {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const show = () => {
+    setError('');
+    setOpen(true);
+  };
+  const close = () => setOpen(false);
+  /** Run the submit task with the busy flag; a rejection becomes the dialog error. */
+  const run = async (task: () => Promise<void>, fallbackError: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      await task();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, fallbackError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return { open, error, setError, busy, show, close, run };
+};
+
+interface FormDialogProps {
+  title: string;
+  open: boolean;
+  error: string;
+  busy: boolean;
+  submitLabel: string;
+  submitDisabled: boolean;
+  onSubmit: () => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}
+
+const FormDialog: React.FC<FormDialogProps> = ({
+  title, open, error, busy, submitLabel, submitDisabled, onSubmit, onClose, children,
+}) => (
+  <Dialog open={open} onClose={() => !busy && onClose()} maxWidth="xs" fullWidth>
+    <DialogTitle>{title}</DialogTitle>
+    <DialogContent>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      {children}
+    </DialogContent>
+    <DialogActions>
+      <Button onClick={onClose} disabled={busy}>
+        Cancel
+      </Button>
+      <Button
+        variant="contained"
+        onClick={onSubmit}
+        disabled={busy || submitDisabled}
+        startIcon={busy ? <CircularProgress size={16} /> : undefined}
+      >
+        {submitLabel}
+      </Button>
+    </DialogActions>
+  </Dialog>
+);
+
 const CampaignSelector: React.FC = () => {
   const { campaigns, currentCampaign, isSuperadmin, switchCampaign } = useCampaign();
   const { enqueueSnackbar } = useSnackbar();
 
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
-  // Join dialog state
-  const [joinOpen, setJoinOpen] = useState(false);
+  const joinDialog = useSubmitDialog();
   const [inviteCode, setInviteCode] = useState('');
-  const [joinError, setJoinError] = useState('');
-  const [joining, setJoining] = useState(false);
 
-  // Create dialog state (superadmin only)
-  const [createOpen, setCreateOpen] = useState(false);
+  // Create dialog (superadmin only)
+  const createDialog = useSubmitDialog();
   const [newName, setNewName] = useState('');
   const [newWorld, setNewWorld] = useState('Golarion');
-  const [createError, setCreateError] = useState('');
-  const [creating, setCreating] = useState(false);
 
   const closeMenu = () => setMenuAnchor(null);
 
@@ -80,28 +144,24 @@ const CampaignSelector: React.FC = () => {
   const openJoinDialog = () => {
     closeMenu();
     setInviteCode('');
-    setJoinError('');
-    setJoinOpen(true);
+    joinDialog.show();
   };
 
   const openCreateDialog = () => {
     closeMenu();
     setNewName('');
     setNewWorld('Golarion');
-    setCreateError('');
-    setCreateOpen(true);
+    createDialog.show();
   };
 
   const handleJoin = async () => {
     const code = inviteCode.trim().toUpperCase();
     if (!INVITE_CODE_PATTERN.test(code)) {
-      setJoinError('Invite codes are 6-8 letters and numbers');
+      joinDialog.setError('Invite codes are 6-8 letters and numbers');
       return;
     }
 
-    setJoining(true);
-    setJoinError('');
-    try {
+    await joinDialog.run(async () => {
       // api interceptor returns the response body, so `.data` is the payload.
       // Validate the payload BEFORE closing the dialog so a malformed response
       // surfaces as an in-dialog error rather than throwing after close.
@@ -110,26 +170,20 @@ const CampaignSelector: React.FC = () => {
       if (!data?.campaign?.id) {
         throw new Error('Malformed redeem response');
       }
-      setJoinOpen(false);
+      joinDialog.close();
       enqueueSnackbar(`Joined campaign "${data.campaign.name ?? data.campaign.slug ?? 'campaign'}"`, { variant: 'success' });
       switchCampaign(data.campaign.id);
-    } catch (err: any) {
-      setJoinError(err.response?.data?.message || 'Failed to redeem invite code');
-    } finally {
-      setJoining(false);
-    }
+    }, 'Failed to redeem invite code');
   };
 
   const handleCreate = async () => {
     const name = newName.trim();
     if (!name) {
-      setCreateError('Campaign name is required');
+      createDialog.setError('Campaign name is required');
       return;
     }
 
-    setCreating(true);
-    setCreateError('');
-    try {
+    await createDialog.run(async () => {
       const body: { name: string; world?: string } = { name };
       const world = newWorld.trim();
       if (world) {
@@ -140,14 +194,10 @@ const CampaignSelector: React.FC = () => {
       if (!created?.id) {
         throw new Error('Malformed create response');
       }
-      setCreateOpen(false);
+      createDialog.close();
       enqueueSnackbar(`Campaign "${created.name ?? name}" created`, { variant: 'success' });
       switchCampaign(created.id);
-    } catch (err: any) {
-      setCreateError(err.response?.data?.message || 'Failed to create campaign');
-    } finally {
-      setCreating(false);
-    }
+    }, 'Failed to create campaign');
   };
 
   return (
@@ -211,91 +261,67 @@ const CampaignSelector: React.FC = () => {
       </Menu>
 
       {/* Join-a-campaign dialog */}
-      <Dialog open={joinOpen} onClose={() => !joining && setJoinOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Join a Campaign</DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Enter the invite code your DM gave you.
-          </DialogContentText>
-          {joinError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {joinError}
-            </Alert>
-          )}
-          <TextField
-            autoFocus
-            fullWidth
-            label="Invite Code"
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-            slotProps={{ htmlInput: { maxLength: 8, style: { textTransform: 'uppercase' } } }}
-            placeholder="e.g. ABCD1234"
-            disabled={joining}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleJoin();
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setJoinOpen(false)} disabled={joining}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleJoin}
-            disabled={joining || !inviteCode.trim()}
-            startIcon={joining ? <CircularProgress size={16} /> : undefined}
-          >
-            Join
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <FormDialog
+        title="Join a Campaign"
+        open={joinDialog.open}
+        error={joinDialog.error}
+        busy={joinDialog.busy}
+        submitLabel="Join"
+        submitDisabled={!inviteCode.trim()}
+        onSubmit={handleJoin}
+        onClose={joinDialog.close}
+      >
+        <DialogContentText sx={{ mb: 2 }}>
+          Enter the invite code your DM gave you.
+        </DialogContentText>
+        <TextField
+          autoFocus
+          fullWidth
+          label="Invite Code"
+          value={inviteCode}
+          onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+          slotProps={{ htmlInput: { maxLength: 8, style: { textTransform: 'uppercase' } } }}
+          placeholder="e.g. ABCD1234"
+          disabled={joinDialog.busy}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleJoin();
+            }
+          }}
+        />
+      </FormDialog>
 
       {/* Create-campaign dialog (superadmin only) */}
-      <Dialog open={createOpen} onClose={() => !creating && setCreateOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Create Campaign</DialogTitle>
-        <DialogContent>
-          {createError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {createError}
-            </Alert>
-          )}
-          <TextField
-            autoFocus
-            fullWidth
-            required
-            label="Campaign Name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            disabled={creating}
-            sx={{ mt: 1, mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            label="World"
-            value={newWorld}
-            onChange={(e) => setNewWorld(e.target.value)}
-            disabled={creating}
-            helperText="Optional — defaults to Golarion"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateOpen(false)} disabled={creating}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleCreate}
-            disabled={creating || !newName.trim()}
-            startIcon={creating ? <CircularProgress size={16} /> : undefined}
-          >
-            Create
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <FormDialog
+        title="Create Campaign"
+        open={createDialog.open}
+        error={createDialog.error}
+        busy={createDialog.busy}
+        submitLabel="Create"
+        submitDisabled={!newName.trim()}
+        onSubmit={handleCreate}
+        onClose={createDialog.close}
+      >
+        <TextField
+          autoFocus
+          fullWidth
+          required
+          label="Campaign Name"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          disabled={createDialog.busy}
+          sx={{ mt: 1, mb: 2 }}
+        />
+        <TextField
+          fullWidth
+          label="World"
+          value={newWorld}
+          onChange={(e) => setNewWorld(e.target.value)}
+          disabled={createDialog.busy}
+          helperText="Optional — defaults to Golarion"
+        />
+      </FormDialog>
     </>
   );
 };

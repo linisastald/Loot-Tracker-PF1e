@@ -14,6 +14,8 @@ export interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   isAuthenticated: boolean;
+  /** Re-read the signed-in user from the server (e.g. after the active character changed) */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -29,17 +31,20 @@ export const useAuth = (): AuthContextType => {
 interface AuthProviderProps {
   user: AuthUser | null;
   isAuthenticated: boolean;
+  onRefreshUser?: () => Promise<void>;
   children: React.ReactNode;
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({
   user,
   isAuthenticated,
+  onRefreshUser,
   children,
 }) => {
   const value: AuthContextType = {
     user,
     isAuthenticated,
+    refreshUser: onRefreshUser ?? (async () => {}),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

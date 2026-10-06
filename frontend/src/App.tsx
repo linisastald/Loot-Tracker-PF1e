@@ -118,6 +118,19 @@ function App() {
     };
   }, []);
 
+  // Re-read the user (e.g. the active character changed); failures keep the cached user
+  const refreshUser = async () => {
+    try {
+      const response: any = await api.get('/auth/status');
+      if (response?.success && response?.data?.user) {
+        setUser(response.data.user);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+      }
+    } catch {
+      // keep the cached user
+    }
+  };
+
   const handleLogin = (user: any) => {
     // Only store user info, token is in HTTP-only cookie
     localStorage.setItem('user', JSON.stringify(user));
@@ -172,7 +185,7 @@ function App() {
             without a mounted provider those calls are silent no-ops */}
         <SnackbarProvider maxSnack={3} autoHideDuration={5000}>
         <ConfigProvider>
-          <AuthProvider user={user} isAuthenticated={isAuthenticated}>
+          <AuthProvider user={user} isAuthenticated={isAuthenticated} onRefreshUser={refreshUser}>
           {/* CampaignProvider reads auth state from AuthContext and only fetches
               campaign info once authenticated (it is a no-op on the login page) */}
           <CampaignProvider>
