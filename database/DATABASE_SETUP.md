@@ -24,22 +24,20 @@ Load these in this order into a brand-new database. The repository no longer shi
 | 06 | `spells_data.sql` | Spell list |
 | 07 | `weather_regions_data.sql` | Weather regions |
 | 08 | `impositions_data.sql` | Impositions |
-| 09 | `sessions.sql` | Legacy `game_sessions` / `session_attendance` tables (migration 014 and later reshape them) |
 
 Other files:
 
-- `setup_app_role.sql` - creates the non-owner `loot_app` role that the application connects as so that row-level security is enforced. Run it as the database owner.
-- `SCHEMA_ANALYSIS.md` - reference material (column naming analysis).
+- `setup_app_role.sql` - creates the non-owner `loot_app` role that the application connects as so that row-level security is enforced. Run it as the database owner, passing the password as a psql variable: `psql -U <owner> -d <database> -v app_password="$LOOT_APP_PASSWORD" -f database/setup_app_role.sql`. The script refuses to run without the variable or with the placeholder `CHANGE_ME`.
 
 ## New Installation
 
-The repository does not ship a compose file that initialises the database. Load `database/00-extensions.sql`, then `database/init.sql`, then the `*_data.sql` seed files and `sessions.sql` in the order of the table above into an empty database; then start the backend, which applies every migration in `backend/migrations/` that is not yet recorded. For example:
+The repository does not ship a compose file that initialises the database. Load `database/00-extensions.sql`, then `database/init.sql`, then the `*_data.sql` seed files in the order of the table above into an empty database; then start the backend, which applies every migration in `backend/migrations/` that is not yet recorded. For example:
 
 ```bash
 createdb -U postgres loot_tracking
 psql -U postgres -d loot_tracking -f database/00-extensions.sql
 psql -U postgres -d loot_tracking -f database/init.sql
-for f in item_data mod_data min_caster_levels_data min_costs_data spells_data weather_regions_data impositions_data sessions; do
+for f in item_data mod_data min_caster_levels_data min_costs_data spells_data weather_regions_data impositions_data; do
   psql -U postgres -d loot_tracking -f database/$f.sql
 done
 # finally start the backend; it applies the migrations

@@ -7,7 +7,6 @@ TESTING.md
 REFACTORING_SUMMARY.md
 BUILD_SCRIPT_IMPROVEMENTS.md
 FRONTEND_API_MIGRATION_GUIDE.md
-MIGRATION_BEST_PRACTICES.md
 PASSWORD_RESET_README.md
 SECRET_ROTATION_GUIDE.md
 SECURITY.md
@@ -63,7 +62,6 @@ pids/
 # Development scripts and utilities (keep build_image.sh as it's the main build script)
 update_containers.sh
 test-runner.js
-scripts/validate-migrations.sh
 update_sql_data.sh
 scripts/test-setup.js
 

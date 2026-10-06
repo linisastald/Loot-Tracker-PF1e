@@ -15,7 +15,6 @@ setupTests.js
 
 # Development scripts
 scripts/test-setup.js
-scripts/migration-status.js
 
 # Logs and runtime files
 logs/

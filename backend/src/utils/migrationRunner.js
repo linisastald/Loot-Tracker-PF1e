@@ -12,15 +12,16 @@ const logger = require('./logger');
  * Enhanced Migration Runner v2.0
  *
  * Features:
- * - Production database detection and auto-marking of archived migrations
  * - Comprehensive migration tracking with metadata
  * - Migration locking to prevent concurrent execution
  * - Detailed error handling and rollback support
- * - Checksum validation for migration integrity
+ * - Checksum recording, with a warning when an applied file changes later
  * - Support for both new installations and existing production databases
  */
 // Numbered migration files only: NNN_description.sql (or YYYYMMDD_NNN_description.sql)
 const MIGRATION_FILE_PATTERN = /^\d+_.+\.sql$/;
+// Matches the date-style prefix before the generic numeric one (see extractMigrationId)
+const DATED_MIGRATION_PATTERN = /^\d{8}_\d{3}_/;
 
 class MigrationRunner {
   constructor() {
@@ -31,14 +32,15 @@ class MigrationRunner {
 
   /**
    * Initialize the enhanced migration system
-   * This will detect production databases and auto-mark archived migrations
+   * Creates the tracking tables when missing and imports records of the legacy
+   * schema_migrations table.
    */
   async initMigrationSystem() {
     const client = await pool.connect();
     try {
       // Check if old migration table exists and needs to be migrated
       const oldTableExists = await this.checkTableExists('schema_migrations');
-      const newSystemExists = await this.checkTableExists('schema_migrations_v2');
+      let newSystemExists = await this.checkTableExists('schema_migrations_v2');
 
       if (!newSystemExists) {
         logger.info('Enhanced migration system not found. Initializing...');
@@ -50,6 +52,7 @@ class MigrationRunner {
           const sql = fs.readFileSync(foundationMigration, 'utf8');
           await client.query(sql);
           logger.info('Enhanced migration system initialized successfully');
+          newSystemExists = true;
         } else {
           throw new Error('Foundation migration 001_initialize_migration_tracking.sql not found');
         }
@@ -129,12 +132,13 @@ class MigrationRunner {
    * Extract migration ID from filename
    */
   extractMigrationId(filename) {
-    // Handle various filename patterns
-    if (filename.match(/^\d+_/)) {
-      return filename.split('_')[0];
-    }
-    if (filename.match(/^\d{8}_\d{3}_/)) {
+    // Handle various filename patterns. The date-style pattern must be tested
+    // first: the generic numeric one would also match it and drop the sequence.
+    if (DATED_MIGRATION_PATTERN.test(filename)) {
       return filename.substring(0, 12); // YYYYMMDD_NNN
+    }
+    if (/^\d+_/.test(filename)) {
+      return filename.split('_')[0];
     }
     // Default: use filename without extension
     return filename.replace('.sql', '');
@@ -153,21 +157,28 @@ class MigrationRunner {
   async acquireLock(processId = 'unknown') {
     const client = await pool.connect();
     try {
-      // Clean up expired locks
-      await client.query(
-        'DELETE FROM migration_locks WHERE expires_at < CURRENT_TIMESTAMP'
-      );
+      // A conflicting lock can vanish (released or expired) between our INSERT
+      // and the SELECT that reports it; retry instead of claiming success.
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        // Clean up expired locks
+        await client.query(
+          'DELETE FROM migration_locks WHERE expires_at < CURRENT_TIMESTAMP'
+        );
 
-      // Try to acquire lock
-      const expiresAt = new Date(Date.now() + this.lockTimeout);
-      const result = await client.query(`
-        INSERT INTO migration_locks (lock_name, locked_by, expires_at, process_id)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (lock_name) DO NOTHING
-        RETURNING *
-      `, [this.lockName, 'migration_runner', expiresAt, processId]);
+        // Try to acquire lock
+        const expiresAt = new Date(Date.now() + this.lockTimeout);
+        const result = await client.query(`
+          INSERT INTO migration_locks (lock_name, locked_by, expires_at, process_id)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (lock_name) DO NOTHING
+          RETURNING *
+        `, [this.lockName, 'migration_runner', expiresAt, processId]);
 
-      if (result.rows.length === 0) {
+        if (result.rows.length > 0) {
+          logger.info('Migration lock acquired successfully');
+          return true;
+        }
+
         // Lock already exists
         const existingLock = await client.query(
           'SELECT * FROM migration_locks WHERE lock_name = $1',
@@ -183,8 +194,7 @@ class MigrationRunner {
         }
       }
 
-      logger.info('Migration lock acquired successfully');
-      return true;
+      throw new Error('Could not acquire the migration lock (it kept changing); try again');
     } finally {
       client.release();
     }
@@ -203,32 +213,20 @@ class MigrationRunner {
   }
 
   /**
-   * Get list of applied migrations from new system
+   * Get list of applied migrations. Errors propagate: reporting "nothing
+   * applied" on a failed read would make the runner try to re-run every file.
    */
   async getAppliedMigrations() {
     try {
       const result = await pool.query(`
-        SELECT migration_id, filename, applied_at, is_manual_marking
+        SELECT migration_id, filename, applied_at, is_manual_marking, checksum
         FROM schema_migrations_v2
         ORDER BY applied_at
       `);
       return result.rows;
     } catch (error) {
-      logger.warn('Could not fetch applied migrations (new system might not exist yet)');
-
-      // Try old system as fallback
-      try {
-        const oldResult = await pool.query('SELECT filename FROM schema_migrations ORDER BY applied_at');
-        return oldResult.rows.map(row => ({
-          migration_id: this.extractMigrationId(row.filename),
-          filename: row.filename,
-          applied_at: row.applied_at,
-          is_manual_marking: true
-        }));
-      } catch (oldError) {
-        logger.warn('Could not fetch from old migration system either');
-        return [];
-      }
+      logger.error('Could not fetch applied migrations from schema_migrations_v2:', error.message);
+      throw error;
     }
   }
 
@@ -244,9 +242,51 @@ class MigrationRunner {
     // Only numbered migrations (NNN_name.sql or YYYYMMDD_NNN_name.sql) are
     // applied. Anything else in the directory (manual verification scripts,
     // notes) is ignored so it can never be executed as a migration.
-    return fs.readdirSync(this.migrationDir)
+    const files = fs.readdirSync(this.migrationDir)
       .filter(file => MIGRATION_FILE_PATTERN.test(file) && !file.includes('rollback'))
       .sort(); // Ensure consistent order
+
+    // Applied state is keyed on the id, so two files sharing one would leave
+    // the second skipped forever once the first is recorded. Fail loudly.
+    const seen = new Map();
+    for (const file of files) {
+      const id = this.extractMigrationId(file);
+      if (seen.has(id)) {
+        throw new Error(`Duplicate migration id ${id}: ${seen.get(id)} and ${file}`);
+      }
+      seen.set(id, file);
+    }
+
+    return files;
+  }
+
+  /**
+   * Files in `available` whose id is not in the applied list, in order
+   */
+  getPendingMigrations(appliedMigrations, availableMigrations) {
+    const appliedIds = new Set(appliedMigrations.map(m => m.migration_id));
+    return availableMigrations.filter(filename => !appliedIds.has(this.extractMigrationId(filename)));
+  }
+
+  /**
+   * Warn about applied migrations whose file content changed since it was
+   * applied (applied files are meant to be immutable). Returns the filenames.
+   */
+  warnOnChecksumDrift(appliedMigrations, availableMigrations) {
+    const drifted = [];
+    for (const row of appliedMigrations) {
+      if (!row.checksum || !availableMigrations.includes(row.filename)) continue;
+      try {
+        const content = fs.readFileSync(path.join(this.migrationDir, row.filename), 'utf8');
+        if (this.calculateChecksum(content) !== row.checksum) {
+          drifted.push(row.filename);
+          logger.warn(`Applied migration ${row.filename} was modified after it was applied (checksum differs)`);
+        }
+      } catch (error) {
+        logger.debug(`Could not verify checksum of ${row.filename}: ${error.message}`);
+      }
+    }
+    return drifted;
   }
 
   /**
@@ -281,6 +321,69 @@ class MigrationRunner {
   }
 
   /**
+   * Split a SQL script into single statements on top-level semicolons.
+   * Understands line and block comments, '...' strings, "..." identifiers and
+   * dollar-quoted bodies. Needed for CREATE INDEX CONCURRENTLY, which Postgres
+   * rejects inside a multi-statement query string.
+   */
+  splitStatements(sql) {
+    const statements = [];
+    let current = '';
+    let i = 0;
+    const n = sql.length;
+    const flush = () => {
+      const stmt = current.trim();
+      if (stmt) statements.push(stmt);
+      current = '';
+    };
+    while (i < n) {
+      const c = sql[i];
+      const next = sql[i + 1];
+      if (c === '-' && next === '-') {
+        const end = sql.indexOf('\n', i);
+        const stop = end === -1 ? n : end;
+        current += sql.slice(i, stop);
+        i = stop;
+      } else if (c === '/' && next === '*') {
+        const end = sql.indexOf('*/', i + 2);
+        const stop = end === -1 ? n : end + 2;
+        current += sql.slice(i, stop);
+        i = stop;
+      } else if (c === "'" || c === '"') {
+        let j = i + 1;
+        while (j < n) {
+          if (sql[j] === c) {
+            if (sql[j + 1] === c) { j += 2; continue; }
+            break;
+          }
+          j++;
+        }
+        current += sql.slice(i, j + 1);
+        i = j + 1;
+      } else if (c === '$') {
+        const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i, i + 64));
+        if (m) {
+          const end = sql.indexOf(m[0], i + m[0].length);
+          const stop = end === -1 ? n : end + m[0].length;
+          current += sql.slice(i, stop);
+          i = stop;
+        } else {
+          current += c;
+          i++;
+        }
+      } else if (c === ';') {
+        flush();
+        i++;
+      } else {
+        current += c;
+        i++;
+      }
+    }
+    flush();
+    return statements;
+  }
+
+  /**
    * Apply a single migration with enhanced error handling and tracking
    */
   async applyMigration(filename) {
@@ -309,8 +412,36 @@ class MigrationRunner {
       if (hasConcurrentOps) {
         logger.info(`Migration ${filename} contains CONCURRENT operations - running without transaction`);
 
-        // Execute without transaction for concurrent operations
-        await client.query(migrationSQL);
+        // CREATE INDEX CONCURRENTLY is rejected inside a multi-statement query
+        // string, so send the statements one at a time, outside a transaction.
+        for (const statement of this.splitStatements(migrationSQL)) {
+          await client.query(statement);
+        }
+
+        // No transaction here, so the record is written afterwards
+        await pool.query(`
+          INSERT INTO schema_migrations_v2 (
+            migration_id,
+            filename,
+            description,
+            applied_by,
+            execution_time_ms,
+            checksum,
+            schema_version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (migration_id) DO UPDATE SET
+            applied_at = CURRENT_TIMESTAMP,
+            execution_time_ms = EXCLUDED.execution_time_ms,
+            checksum = EXCLUDED.checksum
+        `, [
+          migrationId,
+          filename,
+          'Applied via migration runner',
+          'migration_runner',
+          Date.now() - startTime,
+          checksum,
+          '2.0'
+        ]);
       } else {
         // Use transaction for regular migrations
         await client.query('BEGIN');
@@ -318,35 +449,37 @@ class MigrationRunner {
         // Execute the migration
         await client.query(migrationSQL);
 
+        // Record it in the same transaction so "applied" and "recorded" cannot
+        // diverge. (A migration file that ends the transaction itself with its
+        // own COMMIT is recorded straight after it.)
+        await client.query(`
+          INSERT INTO schema_migrations_v2 (
+            migration_id,
+            filename,
+            description,
+            applied_by,
+            execution_time_ms,
+            checksum,
+            schema_version
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (migration_id) DO UPDATE SET
+            applied_at = CURRENT_TIMESTAMP,
+            execution_time_ms = EXCLUDED.execution_time_ms,
+            checksum = EXCLUDED.checksum
+        `, [
+          migrationId,
+          filename,
+          'Applied via migration runner',
+          'migration_runner',
+          Date.now() - startTime,
+          checksum,
+          '2.0'
+        ]);
+
         await client.query('COMMIT');
       }
 
       const executionTime = Date.now() - startTime;
-
-      // Record the migration as applied
-      await pool.query(`
-        INSERT INTO schema_migrations_v2 (
-          migration_id,
-          filename,
-          description,
-          applied_by,
-          execution_time_ms,
-          checksum,
-          schema_version
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (migration_id) DO UPDATE SET
-          applied_at = CURRENT_TIMESTAMP,
-          execution_time_ms = EXCLUDED.execution_time_ms,
-          checksum = EXCLUDED.checksum
-      `, [
-        migrationId,
-        filename,
-        `Applied via migration runner`,
-        'migration_runner',
-        executionTime,
-        checksum,
-        '2.0'
-      ]);
 
       // Update history
       await pool.query(`
@@ -418,6 +551,7 @@ class MigrationRunner {
         // Get applied and available migrations
         const appliedMigrations = await this.getAppliedMigrations();
         const availableMigrations = this.getAvailableMigrations();
+        this.warnOnChecksumDrift(appliedMigrations, availableMigrations);
 
         // Log current migration status
         logger.info('Migration status:', {
@@ -427,11 +561,7 @@ class MigrationRunner {
         });
 
         // Find pending migrations
-        const appliedMigrationIds = appliedMigrations.map(m => m.migration_id);
-        const pendingMigrations = availableMigrations.filter(filename => {
-          const migrationId = this.extractMigrationId(filename);
-          return !appliedMigrationIds.includes(migrationId);
-        });
+        const pendingMigrations = this.getPendingMigrations(appliedMigrations, availableMigrations);
 
         if (pendingMigrations.length === 0) {
           logger.info('No pending migrations');
@@ -514,35 +644,13 @@ class MigrationRunner {
   }
 
   /**
-   * Check if specific tables exist (for backwards compatibility)
-   */
-  async checkTablesExist(tableNames) {
-    const query = `
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-      AND table_name = ANY($1::text[])
-    `;
-
-    const result = await pool.query(query, [tableNames]);
-    const existingTables = result.rows.map(row => row.table_name);
-
-    return tableNames.every(table => existingTables.includes(table));
-  }
-
-  /**
    * Get comprehensive migration status report
    */
   async getMigrationStatus() {
     try {
       const appliedMigrations = await this.getAppliedMigrations();
       const availableMigrations = this.getAvailableMigrations();
-      const appliedMigrationIds = appliedMigrations.map(m => m.migration_id);
-
-      const pending = availableMigrations.filter(filename => {
-        const migrationId = this.extractMigrationId(filename);
-        return !appliedMigrationIds.includes(migrationId);
-      });
+      const pending = this.getPendingMigrations(appliedMigrations, availableMigrations);
 
       // Get configuration
       let config = {};
@@ -563,7 +671,6 @@ class MigrationRunner {
         appliedList: appliedMigrations,
         availableList: availableMigrations,
         config: config,
-        isProductionDatabase: config.production_database_detected === 'true',
         migrationSystemVersion: config.migration_system_version || 'unknown'
       };
 
@@ -578,88 +685,6 @@ class MigrationRunner {
         appliedList: [],
         availableList: []
       };
-    }
-  }
-
-  /**
-   * Manually mark a migration as applied (for production databases)
-   */
-  async markMigrationApplied(filename, options = {}) {
-    const migrationId = this.extractMigrationId(filename);
-    const appliedBy = options.appliedBy || 'manual_marking';
-    const notes = options.notes || 'Manually marked as applied';
-
-    try {
-      await pool.query(`
-        INSERT INTO schema_migrations_v2 (
-          migration_id,
-          filename,
-          description,
-          applied_by,
-          is_manual_marking,
-          schema_version,
-          notes
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (migration_id) DO UPDATE SET
-          applied_at = CURRENT_TIMESTAMP,
-          applied_by = EXCLUDED.applied_by,
-          is_manual_marking = true,
-          notes = EXCLUDED.notes
-      `, [
-        migrationId,
-        filename,
-        'Manually marked as applied',
-        appliedBy,
-        true,
-        '2.0',
-        notes
-      ]);
-
-      // Add to history
-      await pool.query(`
-        INSERT INTO migration_history (
-          migration_id,
-          filename,
-          action,
-          status,
-          completed_at,
-          applied_by
-        ) VALUES ($1, $2, 'mark_applied', 'success', CURRENT_TIMESTAMP, $3)
-      `, [migrationId, filename, appliedBy]);
-
-      logger.info(`Migration ${filename} manually marked as applied`);
-      return true;
-    } catch (error) {
-      logger.error(`Error marking migration ${filename} as applied:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get migration history for a specific migration
-   */
-  async getMigrationHistory(migrationId = null) {
-    try {
-      let query = `
-        SELECT * FROM migration_history
-        ORDER BY started_at DESC
-      `;
-      let params = [];
-
-      if (migrationId) {
-        query = `
-          SELECT * FROM migration_history
-          WHERE migration_id = $1
-          ORDER BY started_at DESC
-        `;
-        params = [migrationId];
-      }
-
-      const result = await pool.query(query, params);
-      return result.rows;
-    } catch (error) {
-      logger.error('Error getting migration history:', error);
-      return [];
     }
   }
 }

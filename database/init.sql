@@ -414,6 +414,36 @@ CREATE TABLE min_costs (
     PRIMARY KEY (item_type, spell_level)
 );
 
+-- Base shape of the session tables. Migrations 014/015 (and later) ALTER these
+-- without IF EXISTS, so a fresh install needs them here; they add the columns,
+-- campaign_id and RLS on top.
+CREATE TABLE game_sessions (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    discord_message_id VARCHAR(255),
+    discord_channel_id VARCHAR(255)
+);
+
+CREATE TABLE session_attendance (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER REFERENCES game_sessions(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id),
+    character_id INTEGER REFERENCES characters(id),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('accepted', 'declined', 'tentative')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (session_id, user_id)
+);
+
+CREATE INDEX idx_session_attendance_session_id ON session_attendance(session_id);
+CREATE INDEX idx_session_attendance_user_id ON session_attendance(user_id);
+CREATE INDEX idx_session_attendance_character_id ON session_attendance(character_id);
+
 CREATE TABLE session_messages (
     message_id VARCHAR(20) PRIMARY KEY,
     channel_id VARCHAR(20) NOT NULL,

@@ -10,7 +10,7 @@
 //      along with DB_HOST / DB_NAME / DB_PORT
 //
 // Usage (from backend/):
-//   node scripts/rls-leak-test.js
+//   npm run rls:check        (same as: node scripts/rls-leak-test.js)
 //
 // The script is read-only: the single write check is wrapped in a transaction
 // that is always rolled back. Exits non-zero on any FAIL.
@@ -51,6 +51,21 @@ function fail(msg) {
 
 function info(msg) {
   console.log(`INFO: ${msg}`);
+}
+
+/**
+ * True only for the error PostgreSQL raises when a row-level security policy
+ * (USING / WITH CHECK) rejects a write: SQLSTATE 42501 with a message that
+ * names row-level security. A plain "permission denied for table" is also
+ * 42501 but is a missing grant, not a policy.
+ *
+ * @param {Error & {code?: string}} error
+ * @returns {boolean}
+ */
+function isRlsViolation(error) {
+  return Boolean(error)
+    && error.code === '42501'
+    && /row-level security/i.test(String(error.message));
 }
 
 /**
@@ -185,7 +200,14 @@ async function main() {
       // If we get here the insert was accepted -- that's a leak.
       fail(`gold: cross-campaign INSERT (campaign_id=1 under ${GUC}='${BOGUS_CAMPAIGN}') was ACCEPTED -- WITH CHECK policy missing or broken (rolled back)`);
     } catch (error) {
-      pass(`gold: cross-campaign INSERT rejected (${error.message.trim()})`);
+      // Only the RLS violation proves the WITH CHECK policy works. Any other
+      // error (missing INSERT grant, new NOT NULL column, constraint) means the
+      // policy was never exercised, so it must not count as a pass.
+      if (isRlsViolation(error)) {
+        pass(`gold: cross-campaign INSERT rejected by row-level security (${error.message.trim()})`);
+      } else {
+        fail(`gold: cross-campaign INSERT failed for another reason, so the WITH CHECK policy was NOT exercised (inconclusive): [${error.code || 'no code'}] ${error.message.trim()}`);
+      }
     } finally {
       try { await client.query('ROLLBACK'); } catch (rollbackErr) { /* ignore */ }
     }
@@ -208,4 +230,8 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { isRlsViolation };
