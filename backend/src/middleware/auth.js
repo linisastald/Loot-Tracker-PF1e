@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const dbUtils = require('../utils/dbUtils');
 const campaignContext = require('../utils/campaignContext');
+const { isTokenRevokedByPasswordChange } = require('../utils/authSession');
 
 /**
  * One row per campaign membership (campaign_id/role NULL when the user has
@@ -12,9 +13,13 @@ const campaignContext = require('../utils/campaignContext');
  * u.role is selected only to detect soft-deleted accounts (role = 'deleted');
  * zero rows means the user row itself no longer exists. Both cases must be
  * rejected even though the JWT signature is still valid.
+ *
+ * u.password_changed_at ends sessions on a password change: a token issued
+ * before it (by `iat`) is rejected. It rides on this query, so it costs no
+ * extra round trip.
  */
 const MEMBERSHIP_QUERY = `
-  SELECT u.is_superadmin, u.role AS user_role, uc.campaign_id, uc.role
+  SELECT u.is_superadmin, u.role AS user_role, u.password_changed_at, uc.campaign_id, uc.role
   FROM users u
   LEFT JOIN user_campaign uc ON uc.user_id = u.id
   WHERE u.id = $1
@@ -139,6 +144,12 @@ const createVerifyToken = ({ allowNoCampaign = false } = {}) => async (req, res,
     // LEFT JOIN) or was soft-deleted (role = 'deleted') must not authenticate.
     if (rows.length === 0 || rows[0].user_role === 'deleted') {
       logger.warn(`Authentication failed: user ${decoded.id} ${rows.length === 0 ? 'no longer exists' : 'is deleted'}`);
+      return reject(res, 401, 'Invalid token');
+    }
+
+    // The password changed after this token was issued: the session is over.
+    if (isTokenRevokedByPasswordChange(decoded, rows[0].password_changed_at)) {
+      logger.warn(`Authentication failed: token for user ${decoded.id} predates a password change`);
       return reject(res, 401, 'Invalid token');
     }
 

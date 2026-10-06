@@ -108,4 +108,15 @@ describe('user routes', () => {
       expect(res.body.handler).toBe('updateSetting');
     });
   });
+
+  describe('removed routes (F-0161, F-0484, F-0160)', () => {
+    it.each([
+      ['GET', '/api/user/5'],
+      ['PUT', '/api/user/reset-password'],
+      ['PUT', '/api/user/deactivate-all-characters'],
+    ])('%s %s no longer exists', async (method, path) => {
+      const res = await request(app)[method.toLowerCase()](path).send({});
+      expect(res.status).toBe(404);
+    });
+  });
 });

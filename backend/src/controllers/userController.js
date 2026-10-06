@@ -4,6 +4,7 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const { hasDmRights } = require('../utils/roleUtils');
+const { issueAuthCookie } = require('../utils/authSession');
 
 /**
  * Change user email
@@ -92,7 +93,14 @@ const changePassword = async (req, res) => {
 
     // Hash and update the new password
     const hashedPassword = await bcrypt.hash(normalizedNewPassword, 10);
-    await dbUtils.executeQuery('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId]);
+    await dbUtils.executeQuery(
+        'UPDATE users SET password = $1, password_changed_at = NOW() WHERE id = $2',
+        [hashedPassword, userId]
+    );
+
+    // Every other session of this user ends with the change (see verifyToken);
+    // give this device a fresh cookie so it stays logged in.
+    issueAuthCookie(res, user);
 
     logger.info(`Password changed for user ID ${userId}`);
     controllerFactory.sendSuccessMessage(res, 'Password changed successfully');
@@ -301,107 +309,6 @@ const getCurrentUser = async (req, res) => {
 };
 
 /**
- * Get user by ID
- */
-const getUserById = async (req, res) => {
-    const {id} = req.params;
-    const userId = parseInt(id, 10);
-
-    if (isNaN(userId)) {
-        throw controllerFactory.createValidationError('Invalid user ID');
-    }
-
-    // Get the user (excluding password)
-    const userResult = await dbUtils.executeQuery(
-        'SELECT id, username, role, joined, email FROM users WHERE id = $1',
-        [userId]
-    );
-
-    if (userResult.rows.length === 0) {
-        throw controllerFactory.createNotFoundError('User not found');
-    }
-
-    const user = userResult.rows[0];
-
-    // Get active character
-    const activeCharacterResult = await dbUtils.executeQuery(
-        'SELECT id as character_id FROM characters WHERE user_id = $1 AND active IS true',
-        [userId]
-    );
-
-    const activeCharacterId = activeCharacterResult.rows.length > 0
-        ? activeCharacterResult.rows[0].character_id
-        : null;
-
-    controllerFactory.sendSuccessResponse(
-        res,
-        {...user, activeCharacterId},
-        'User retrieved successfully'
-    );
-};
-
-/**
- * Deactivate all user's characters
- */
-const deactivateAllCharacters = async (req, res) => {
-    const userId = req.user.id;
-    await dbUtils.executeQuery(
-        'UPDATE characters SET active = false WHERE user_id = $1',
-        [userId]
-    );
-
-    logger.info(`All characters deactivated for user ID ${userId}`);
-    controllerFactory.sendSuccessMessage(res, 'All characters deactivated');
-};
-
-/**
- * Reset another user's password (superadmin only — account-level action)
- */
-const resetPassword = async (req, res) => {
-    const {userId, newPassword} = req.body;
-
-    // Account-level admin action: setting another user's password affects the
-    // ACCOUNT (shared across all campaigns), so it is superadmin-only — a
-    // per-campaign DM passes the route's checkRole('DM') but is rejected here.
-    if (!req.isSuperadmin) {
-        throw controllerFactory.createAuthorizationError('Only the system administrator can reset passwords');
-    }
-
-    // Validate password length
-    if (!newPassword || newPassword.length < 8) {
-        throw controllerFactory.createValidationError('Password must be at least 8 characters long');
-    }
-
-    if (newPassword.length > 64) {
-        throw controllerFactory.createValidationError('Password cannot exceed 64 characters');
-    }
-
-    // Check if user exists
-    const userCheck = await dbUtils.executeQuery(
-        'SELECT * FROM users WHERE id = $1',
-        [userId]
-    );
-
-    if (userCheck.rows.length === 0) {
-        throw controllerFactory.createNotFoundError('User not found');
-    }
-
-    // Normalize the password (Unicode normalization)
-    const normalizedPassword = newPassword.normalize('NFC');
-
-    // Hash the new password
-    const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
-
-    await dbUtils.executeQuery(
-        'UPDATE users SET password = $1 WHERE id = $2',
-        [hashedPassword, userId]
-    );
-
-    logger.info(`Password reset for user ID ${userId} by DM ${req.user.id}`);
-    controllerFactory.sendSuccessMessage(res, 'Password reset successfully');
-};
-
-/**
  * Delete a user account (mark as deleted) (superadmin only — account-level action)
  */
 const deleteUser = async (req, res) => {
@@ -585,10 +492,6 @@ const updateAnyCharacterValidation = {
     requiredFields: ['id']
 };
 
-const resetPasswordValidation = {
-    requiredFields: ['userId', 'newPassword']
-};
-
 const deleteUserValidation = {
     requiredFields: ['userId']
 };
@@ -630,19 +533,6 @@ module.exports = {
 
     getCurrentUser: controllerFactory.createHandler(getCurrentUser, {
         errorMessage: 'Error fetching current user'
-    }),
-
-    getUserById: controllerFactory.createHandler(getUserById, {
-        errorMessage: 'Error fetching user'
-    }),
-
-    deactivateAllCharacters: controllerFactory.createHandler(deactivateAllCharacters, {
-        errorMessage: 'Error deactivating characters'
-    }),
-
-    resetPassword: controllerFactory.createHandler(resetPassword, {
-        errorMessage: 'Error resetting password',
-        validation: resetPasswordValidation
     }),
 
     deleteUser: controllerFactory.createHandler(deleteUser, {

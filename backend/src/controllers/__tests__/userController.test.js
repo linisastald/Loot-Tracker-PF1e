@@ -22,8 +22,13 @@ jest.mock('bcryptjs', () => ({
   compare: jest.fn(),
 }));
 
+jest.mock('jsonwebtoken', () => ({
+  sign: jest.fn(),
+}));
+
 const dbUtils = require('../../utils/dbUtils');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const userController = require('../userController');
 
 // Helper to create a mock response object with all API response methods
@@ -36,6 +41,7 @@ function createMockRes() {
     forbidden: jest.fn(),
     error: jest.fn(),
     json: jest.fn(),
+    cookie: jest.fn(),
     status: jest.fn().mockReturnThis(),
   };
 }
@@ -184,6 +190,45 @@ describe('userController', () => {
         ['$2b$10$newhashedpassword', 1]
       );
       expect(res.success).toHaveBeenCalledWith(null, 'Password changed successfully');
+    });
+
+    it('stamps password_changed_at and keeps the changing session logged in (F-0244)', async () => {
+      const req = createMockReq({
+        body: { oldPassword: 'OldPass123', newPassword: 'NewPass456' },
+      });
+      const res = createMockRes();
+      process.env.JWT_SECRET = 'test-secret';
+
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [mockUser] })
+        .mockResolvedValueOnce({ rows: [] });
+      bcrypt.compare.mockResolvedValue(true);
+      bcrypt.hash.mockResolvedValue('$2b$10$newhashedpassword');
+      jwt.sign.mockReturnValue('fresh-token');
+
+      await userController.changePassword(req, res);
+
+      const updateSql = dbUtils.executeQuery.mock.calls[1][0];
+      expect(updateSql).toContain('password_changed_at = NOW()');
+      expect(jwt.sign).toHaveBeenCalledWith(
+        { id: mockUser.id, username: mockUser.username, role: mockUser.role },
+        'test-secret',
+        expect.any(Object)
+      );
+      expect(res.cookie).toHaveBeenCalledWith('authToken', 'fresh-token', expect.any(Object));
+    });
+
+    it('issues no cookie when the password is wrong', async () => {
+      const req = createMockReq({
+        body: { oldPassword: 'WrongPass', newPassword: 'NewPass456' },
+      });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [mockUser] });
+      bcrypt.compare.mockResolvedValue(false);
+
+      await userController.changePassword(req, res);
+
+      expect(res.cookie).not.toHaveBeenCalled();
     });
 
     it('should reject when current password is incorrect', async () => {
@@ -693,91 +738,6 @@ describe('userController', () => {
   });
 
   // ---------------------------------------------------------------
-  // deactivateAllCharacters
-  // ---------------------------------------------------------------
-  describe('deactivateAllCharacters', () => {
-    it('should deactivate all characters for the user', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await userController.deactivateAllCharacters(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE characters SET active = false'),
-        [1]
-      );
-      expect(res.success).toHaveBeenCalledWith(null, 'All characters deactivated');
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // getUserById
-  // ---------------------------------------------------------------
-  describe('getUserById', () => {
-    it('should return user with active character ID', async () => {
-      const req = createMockReq({ params: { id: '1' } });
-      const res = createMockRes();
-
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({
-          rows: [{ id: 1, username: 'testplayer', role: 'Player', joined: '2024-01-01', email: 'test@example.com' }],
-        })
-        .mockResolvedValueOnce({ rows: [{ character_id: 10 }] });
-
-      await userController.getUserById(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: 1,
-          username: 'testplayer',
-          activeCharacterId: 10,
-        }),
-        'User retrieved successfully'
-      );
-    });
-
-    it('should return null activeCharacterId when no active character', async () => {
-      const req = createMockReq({ params: { id: '1' } });
-      const res = createMockRes();
-
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({
-          rows: [{ id: 1, username: 'testplayer', role: 'Player', joined: '2024-01-01', email: 'test@example.com' }],
-        })
-        .mockResolvedValueOnce({ rows: [] });
-
-      await userController.getUserById(req, res);
-
-      expect(res.success).toHaveBeenCalledWith(
-        expect.objectContaining({ activeCharacterId: null }),
-        expect.any(String)
-      );
-    });
-
-    it('should return notFound for non-existent user', async () => {
-      const req = createMockReq({ params: { id: '999' } });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await userController.getUserById(req, res);
-
-      expect(res.notFound).toHaveBeenCalledWith('User not found');
-    });
-
-    it('should reject invalid user ID (non-numeric)', async () => {
-      const req = createMockReq({ params: { id: 'abc' } });
-      const res = createMockRes();
-
-      await userController.getUserById(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith('Invalid user ID');
-    });
-  });
-
-  // ---------------------------------------------------------------
   // getAllUsers (superadmin only — account-level listing)
   // ---------------------------------------------------------------
   describe('getAllUsers', () => {
@@ -816,109 +776,6 @@ describe('userController', () => {
       await userController.getAllUsers(req, res);
 
       expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can view all users');
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // resetPassword (superadmin only — account-level action)
-  // ---------------------------------------------------------------
-  describe('resetPassword', () => {
-    it('should reset password successfully as superadmin', async () => {
-      const req = createMockReq({
-        user: { id: 99, role: 'DM' },
-        isSuperadmin: true,
-        body: { userId: 1, newPassword: 'TempPass123' },
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [mockUser] })   // user exists
-        .mockResolvedValueOnce({ rows: [] });           // UPDATE
-
-      bcrypt.hash.mockResolvedValue('$2b$10$temphashedpassword');
-
-      await userController.resetPassword(req, res);
-
-      expect(bcrypt.hash).toHaveBeenCalledWith('TempPass123', 10);
-      expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE users SET password'),
-        ['$2b$10$temphashedpassword', 1]
-      );
-      expect(res.success).toHaveBeenCalledWith(null, 'Password reset successfully');
-    });
-
-    it('should reject a non-superadmin, even a campaign DM', async () => {
-      const req = createMockReq({
-        user: { id: 1, role: 'DM' },
-        campaignRole: 'DM',
-        isSuperadmin: false,
-        body: { userId: 2, newPassword: 'TempPass123' },
-      });
-      const res = createMockRes();
-
-      await userController.resetPassword(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledWith('Only the system administrator can reset passwords');
-    });
-
-    it('should reject short password', async () => {
-      const req = createMockReq({
-        user: { id: 99, role: 'DM' },
-        isSuperadmin: true,
-        body: { userId: 1, newPassword: 'short' },
-      });
-      const res = createMockRes();
-
-      await userController.resetPassword(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Password must be at least 8 characters long'
-      );
-    });
-
-    it('should reject password exceeding 64 characters', async () => {
-      const req = createMockReq({
-        user: { id: 99, role: 'DM' },
-        isSuperadmin: true,
-        body: { userId: 1, newPassword: 'a'.repeat(65) },
-      });
-      const res = createMockRes();
-
-      await userController.resetPassword(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Password cannot exceed 64 characters'
-      );
-    });
-
-    it('should return notFound when target user does not exist', async () => {
-      const req = createMockReq({
-        user: { id: 99, role: 'DM' },
-        isSuperadmin: true,
-        body: { userId: 999, newPassword: 'TempPass123' },
-      });
-      const res = createMockRes();
-
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await userController.resetPassword(req, res);
-
-      expect(res.notFound).toHaveBeenCalledWith('User not found');
-    });
-
-    it('should reject when required fields are missing', async () => {
-      const req = createMockReq({
-        user: { id: 99, role: 'DM' },
-        isSuperadmin: true,
-        body: {},
-      });
-      const res = createMockRes();
-
-      await userController.resetPassword(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        expect.stringContaining('required')
-      );
     });
   });
 

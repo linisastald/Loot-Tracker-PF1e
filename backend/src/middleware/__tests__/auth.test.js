@@ -20,11 +20,12 @@ jest.mock('../../utils/dbUtils', () => ({
 process.env.JWT_SECRET = 'test-secret-key';
 
 /** Build a membership-query result row. */
-const row = (campaignId, role, isSuperadmin = false, userRole = 'Player') => ({
+const row = (campaignId, role, isSuperadmin = false, userRole = 'Player', passwordChangedAt = null) => ({
   is_superadmin: isSuperadmin,
   user_role: userRole,
   campaign_id: campaignId,
   role,
+  password_changed_at: passwordChangedAt,
 });
 
 describe('verifyToken middleware', () => {
@@ -508,6 +509,64 @@ describe('verifyToken middleware', () => {
           success: false,
           message: 'Failed to resolve campaign context',
         });
+      });
+    });
+
+    describe('sessions end when the password changes (F-0244)', () => {
+      const CHANGED_AT = new Date('2026-10-05T12:00:00.500Z');
+      const changedSec = Math.floor(CHANGED_AT.getTime() / 1000);
+
+      const requestWithIat = (iat) => {
+        req.cookies.authToken = jwt.sign({ id: 1, role: 'Player', iat }, process.env.JWT_SECRET);
+      };
+      const changedRow = () => row(1, 'Player', false, 'Player', CHANGED_AT);
+
+      it('rejects a token issued before the password change (401, same body as an invalid token)', async () => {
+        requestWithIat(changedSec - 60);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [changedRow()] });
+
+        await verifyToken(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({ success: false, message: 'Invalid token' });
+      });
+
+      it('accepts a token issued in the same second as the change', async () => {
+        requestWithIat(changedSec);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [changedRow()] });
+
+        await verifyToken(req, res, next);
+
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('accepts a token issued after the change', async () => {
+        requestWithIat(changedSec + 5);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [changedRow()] });
+
+        await verifyToken(req, res, next);
+
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('accepts every token when password_changed_at is NULL', async () => {
+        requestWithIat(1000);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [row(1, 'Player')] });
+
+        await verifyToken(req, res, next);
+
+        expect(next).toHaveBeenCalled();
+      });
+
+      it('carries the column in the one existing membership query (no extra query)', async () => {
+        requestWithIat(changedSec + 5);
+        dbUtils.executeQuery.mockResolvedValue({ rows: [changedRow()] });
+
+        await verifyToken(req, res, next);
+
+        expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+        expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('password_changed_at');
       });
     });
   });

@@ -9,7 +9,8 @@ const emailService = require('../services/emailService');
 const campaignContext = require('../utils/campaignContext');
 const Invite = require('../models/Invite');
 const { assertRedeemable } = require('../utils/inviteRules');
-const { AUTH, COOKIES } = require('../config/constants');
+const { AUTH } = require('../config/constants');
+const { AUTH_COOKIE_OPTIONS, issueAuthCookie, isTokenRevokedByPasswordChange } = require('../utils/authSession');
 require('dotenv').config();
 
 /** Valid values for the registration_mode setting. */
@@ -34,29 +35,6 @@ const BCRYPT_ROUNDS = 10;
  * failed login costs the same whether or not the account exists.
  */
 const DUMMY_PASSWORD_HASH = '$2b$10$Pxby/iwm0i3..o2tXYCUUuvbnxdzgvOBKAXeKVsKLGQ.QxrD8CRy.';
-
-/** Cookie flags shared by setting and clearing the auth cookie. */
-const AUTH_COOKIE_OPTIONS = {
-    httpOnly: COOKIES.HTTP_ONLY,
-    secure: COOKIES.SECURE,
-    sameSite: COOKIES.SAME_SITE
-};
-
-/**
- * Sign a session JWT for the user and set it as the HTTP-only authToken cookie.
- * The token payload (id, username, role) is defined once, here, for register,
- * login and refresh.
- * @param {Object} res - Express response
- * @param {{id: number, username: string, role: string}} user
- */
-const issueAuthCookie = (res, user) => {
-    const token = jwt.sign(
-        {id: user.id, username: user.username, role: user.role},
-        process.env.JWT_SECRET,
-        {expiresIn: AUTH.JWT_EXPIRES_IN}
-    );
-    res.cookie('authToken', token, {...AUTH_COOKIE_OPTIONS, maxAge: COOKIES.MAX_AGE});
-};
 
 /**
  * Reject request-body fields that are not strings (JSON bodies can carry
@@ -571,12 +549,17 @@ const refreshToken = async (req, res) => {
 
     // Check if user still exists and is active
     const userResult = await dbUtils.executeQuery(
-        'SELECT id, username, role, email FROM users WHERE id = $1 AND role NOT IN (\'deleted\')',
+        'SELECT id, username, role, email, password_changed_at FROM users WHERE id = $1 AND role NOT IN (\'deleted\')',
         [decoded.id]
     );
 
     if (userResult.rows.length === 0) {
         return res.unauthorized('User no longer exists or is inactive');
+    }
+
+    // A password change ends every session issued before it
+    if (isTokenRevokedByPasswordChange(decoded, userResult.rows[0].password_changed_at)) {
+        return res.unauthorized('Invalid or expired token');
     }
 
     issueAuthCookie(res, userResult.rows[0]);
@@ -655,7 +638,7 @@ const resetPassword = async (req, res) => {
         }
 
         const updated = await client.query(
-            'UPDATE users SET password = $1, login_attempts = 0, locked_until = NULL WHERE id = $2 RETURNING username',
+            'UPDATE users SET password = $1, password_changed_at = NOW(), login_attempts = 0, locked_until = NULL WHERE id = $2 RETURNING username',
             [hashedPassword, consumed.rows[0].user_id]
         );
         return updated.rows[0]?.username;

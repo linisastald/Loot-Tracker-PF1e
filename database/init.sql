@@ -11,8 +11,10 @@ CREATE TABLE users (
     email VARCHAR(255) NOT NULL,
     google_id VARCHAR(255),
     discord_id VARCHAR(20),
-    is_superadmin BOOLEAN NOT NULL DEFAULT FALSE
+    is_superadmin BOOLEAN NOT NULL DEFAULT FALSE,
+    password_changed_at TIMESTAMPTZ
 );
+COMMENT ON COLUMN users.password_changed_at IS 'When the password was last changed or reset (UTC). JWTs issued before this moment are rejected. NULL = never changed since this column was added.';
 
 -- Create unique constraints for users
 CREATE UNIQUE INDEX users_email_idx ON users(email);

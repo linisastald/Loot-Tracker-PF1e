@@ -81,7 +81,6 @@ describe('users with zero campaign memberships', () => {
     ['POST', '/api/user/characters'],
     ['GET', '/api/user/active-characters'],
     ['GET', '/api/user/all'],
-    ['GET', '/api/user/5'],
     ['GET', '/api/campaigns/current/party-level'],
     ['GET', '/api/campaigns/current/members'],
     ['GET', '/api/invites'],

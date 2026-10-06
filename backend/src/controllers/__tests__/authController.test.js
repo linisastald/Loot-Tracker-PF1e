@@ -1153,6 +1153,39 @@ describe('authController', () => {
       expect(res.unauthorized).toHaveBeenCalledWith('Invalid or expired token');
     });
 
+    it('rejects a token issued before the password was changed (F-0244)', async () => {
+      const req = createMockReq({ cookies: { authToken: 'old-token' } });
+      const res = createMockRes();
+      const changedAt = new Date('2026-10-05T12:00:00.000Z');
+
+      jwt.verify.mockReturnValue({ id: 1, username: 'u', role: 'Player', iat: Math.floor(changedAt.getTime() / 1000) - 30 });
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ id: 1, username: 'u', role: 'Player', email: 'e', password_changed_at: changedAt }],
+      });
+
+      await authController.refreshToken(req, res);
+
+      expect(res.unauthorized).toHaveBeenCalledWith('Invalid or expired token');
+      expect(res.cookie).not.toHaveBeenCalled();
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('password_changed_at');
+    });
+
+    it('refreshes a token issued after the password change', async () => {
+      const req = createMockReq({ cookies: { authToken: 'newer-token' } });
+      const res = createMockRes();
+      const changedAt = new Date('2026-10-05T12:00:00.000Z');
+
+      jwt.verify.mockReturnValue({ id: 1, username: 'u', role: 'Player', iat: Math.floor(changedAt.getTime() / 1000) + 1 });
+      dbUtils.executeQuery.mockResolvedValueOnce({
+        rows: [{ id: 1, username: 'u', role: 'Player', email: 'e', password_changed_at: changedAt }],
+      });
+      jwt.sign.mockReturnValue('refreshed');
+
+      await authController.refreshToken(req, res);
+
+      expect(res.cookie).toHaveBeenCalledWith('authToken', 'refreshed', expect.any(Object));
+    });
+
     it('should reject when user no longer exists', async () => {
       const req = createMockReq({
         cookies: { authToken: 'valid-token' },
@@ -1319,7 +1352,7 @@ describe('authController', () => {
 
       expect(bcrypt.hash).toHaveBeenCalledWith('newpassword123', 10);
       expect(mockClient.query).toHaveBeenCalledWith(
-        'UPDATE users SET password = $1, login_attempts = 0, locked_until = NULL WHERE id = $2 RETURNING username',
+        'UPDATE users SET password = $1, password_changed_at = NOW(), login_attempts = 0, locked_until = NULL WHERE id = $2 RETURNING username',
         ['newhashedpassword', 1]
       );
       expect(res.success).toHaveBeenCalled();
