@@ -49,7 +49,8 @@ import SearchHistoryManagement from '../SearchHistoryManagement';
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const FROZEN_NOW = new Date('2026-04-24T15:00:00Z');
+const DEFAULT_NOW = new Date('2026-04-24T15:00:00Z');
+let FROZEN_NOW = DEFAULT_NOW;
 const TODAY_ISO_DATE = '2026-04-24';
 
 const mockItemSearches = [
@@ -167,6 +168,7 @@ const restoreRealDate = () => {
 describe('SearchHistoryManagement', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    FROZEN_NOW = DEFAULT_NOW;
     // The mock fn defined above also gets reset by resetAllMocks; restore its
     // implementation so the format helper produces a deterministic value.
     formatInCampaignTimezoneMock.mockImplementation(
@@ -206,6 +208,30 @@ describe('SearchHistoryManagement', () => {
       );
       expect(itemCalls).toHaveLength(1);
       expect(spellCalls).toHaveLength(1);
+    });
+  });
+
+  describe('Default date and request flow', () => {
+    it('defaults to today in the campaign timezone, not the UTC date', async () => {
+      // 02:00 UTC on the 25th is still the evening of the 24th in New York
+      FROZEN_NOW = new Date('2026-04-25T02:00:00Z');
+
+      render(<SearchHistoryManagement />);
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith('/item-search', { params: { date: '2026-04-24' } });
+      });
+      expect(screen.getByLabelText('Filter by Date')).toHaveValue('2026-04-24');
+    });
+
+    it('requests both lists at the same time instead of one after the other', async () => {
+      (api.get as any).mockImplementation(() => new Promise(() => undefined));
+
+      render(<SearchHistoryManagement />);
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledTimes(2);
+      });
     });
   });
 

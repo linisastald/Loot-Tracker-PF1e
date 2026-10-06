@@ -1,5 +1,4 @@
-// frontend/src/components/pages/ItemManagement/SearchHistoryManagement.jsx
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../../../utils/api';
 import {
   Alert,
@@ -19,50 +18,52 @@ import {
 import { useCampaignTimezone } from '../../../hooks/useCampaignTimezone';
 import { formatInCampaignTimezone } from '../../../utils/timezoneUtils';
 
+// Today's calendar date (YYYY-MM-DD) in the campaign timezone, which is the zone
+// every row's time is displayed in.
+const todayInTimezone = (timezone) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date());
+
+// Response body is { success, message, data }; tolerate a bare array too.
+const fetchList = async (path, date) => {
+  const response = await api.get(path, { params: { date } });
+  const body = response?.data ?? response;
+  return Array.isArray(body) ? body : [];
+};
+
 const SearchHistoryManagement = () => {
   const { timezone } = useCampaignTimezone();
   const [itemSearches, setItemSearches] = useState([]);
   const [spellcastingServices, setSpellcastingServices] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(() => {
-    // Default to today's date in YYYY-MM-DD format
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  });
+  // null until the user picks a date: the default follows the campaign timezone
+  const [pickedDate, setPickedDate] = useState(null);
+  const selectedDate = pickedDate ?? todayInTimezone(timezone);
 
   useEffect(() => {
+    const fetchSearchHistory = async () => {
+      try {
+        setError('');
+        setLoading(true);
+        const [searches, services] = await Promise.all([
+          fetchList('/item-search', selectedDate),
+          fetchList('/spellcasting', selectedDate),
+        ]);
+        setItemSearches(searches);
+        setSpellcastingServices(services);
+      } catch {
+        setError('Error fetching search history');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchSearchHistory();
   }, [selectedDate]);
 
-  const fetchSearchHistory = async () => {
-    try {
-      setError('');
-      setLoading(true);
-
-      // Fetch item searches - response body is { success, message, data }
-      const itemSearchResponse = await api.get('/item-search', {
-        params: { date: selectedDate }
-      });
-      const itemSearchData = itemSearchResponse?.data ?? itemSearchResponse;
-      setItemSearches(Array.isArray(itemSearchData) ? itemSearchData : []);
-
-      // Fetch spellcasting services - response body is { success, message, data }
-      const spellcastingResponse = await api.get('/spellcasting', {
-        params: { date: selectedDate }
-      });
-      const spellcastingData = spellcastingResponse?.data ?? spellcastingResponse;
-      setSpellcastingServices(Array.isArray(spellcastingData) ? spellcastingData : []);
-    } catch (err) {
-      console.error('Error fetching search history:', err);
-      setError('Error fetching search history');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDateChange = (event) => {
-    setSelectedDate(event.target.value);
+    setPickedDate(event.target.value);
   };
 
   const formatDateTime = (datetime) => {
