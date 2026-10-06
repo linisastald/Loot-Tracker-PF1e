@@ -10,7 +10,6 @@ router.get('/types/:type', verifyToken, shipController.getShipTypeData);
 // Ship CRUD endpoints
 router.post('/', verifyToken, shipController.createShip);
 router.get('/', verifyToken, shipController.getAllShips);
-router.get('/:id', verifyToken, shipController.getShipById);
 router.put('/:id', verifyToken, shipController.updateShip);
 router.delete('/:id', verifyToken, shipController.deleteShip);
 

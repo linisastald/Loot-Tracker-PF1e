@@ -4,145 +4,180 @@ const { getShipTypesList, getShipTypeData } = require('../data/shipTypes');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 
+const { createValidationError } = controllerFactory;
+
+const MAX_INT = 2147483647;
+const MAX_LIST_LENGTH = 200;
+
+// Column limits from database/init.sql
+const TEXT_LIMITS = {
+  location: 255, ship_type: 50, size: 20, propulsion: 100, ramming_damage: 20,
+  sails_oars: 100, captain_name: 255, ship_notes: 10000, flag_description: 10000
+};
+
+// Whole-number columns: [min, max]. Combat modifiers may be negative.
+const INT_LIMITS = {
+  cost: [0, MAX_INT], max_speed: [0, MAX_INT], acceleration: [0, MAX_INT],
+  min_crew: [0, MAX_INT], max_crew: [0, MAX_INT], cargo_capacity: [0, MAX_INT],
+  max_passengers: [0, MAX_INT], decks: [0, MAX_INT],
+  base_ac: [0, 50], touch_ac: [0, 50], hardness: [0, MAX_INT],
+  max_hp: [0, MAX_INT], current_hp: [0, MAX_INT],
+  cmb: [-MAX_INT, MAX_INT], cmd: [-MAX_INT, MAX_INT], saves: [-MAX_INT, MAX_INT],
+  initiative: [-MAX_INT, MAX_INT], sailing_check_bonus: [-MAX_INT, MAX_INT],
+  plunder: [0, MAX_INT], infamy: [0, MAX_INT], disrepute: [0, MAX_INT]
+};
+
+const LIST_FIELDS = ['officers', 'improvements', 'weapon_types', 'weapons'];
+
+// Statistics auto-filled from a known ship type (the body can still override each one).
+const TYPE_STAT_FIELDS = [
+  'size', 'cost', 'max_speed', 'acceleration', 'propulsion', 'min_crew', 'max_crew',
+  'cargo_capacity', 'max_passengers', 'decks', 'ramming_damage', 'base_ac', 'touch_ac',
+  'hardness', 'max_hp', 'cmb', 'cmd', 'saves', 'initiative'
+];
+
+/** Parse a positive whole number (route id or damage/repair amount) or throw a 400. */
+const parsePositiveInt = (value, label) => {
+  const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+  if (typeof number !== 'number' || !Number.isInteger(number) || number <= 0 || number > MAX_INT) {
+    throw createValidationError(`${label} must be a positive whole number`);
+  }
+  return number;
+};
+
 /**
- * Create a new ship
+ * Validate and normalise the ship fields present in a request body. Only the keys
+ * that were sent are returned (numeric strings become numbers); unknown keys are dropped.
+ * Used by create and update so both enforce the same rules.
+ */
+const parseShipBody = (body) => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw createValidationError('Request body must be an object');
+  }
+  const data = {};
+
+  if (body.name !== undefined) {
+    if (typeof body.name !== 'string' || body.name.trim() === '') {
+      throw createValidationError('Ship name is required');
+    }
+    if (body.name.trim().length > 255) {
+      throw createValidationError('Ship name must be at most 255 characters');
+    }
+    data.name = body.name.trim();
+  }
+
+  Object.entries(TEXT_LIMITS).forEach(([field, limit]) => {
+    const value = body[field];
+    if (value === undefined) return;
+    if (value === null || value === '') {
+      data[field] = value;
+    } else if (typeof value === 'string' && value.length <= limit) {
+      data[field] = value;
+    } else {
+      throw createValidationError(`${field} must be text of at most ${limit} characters`);
+    }
+  });
+
+  if (body.status !== undefined && body.status !== null) {
+    if (!Ship.getValidStatuses().includes(body.status)) {
+      throw createValidationError(`Status must be one of: ${Ship.getValidStatuses().join(', ')}`);
+    }
+    data.status = body.status;
+  }
+
+  if (body.is_squibbing !== undefined && body.is_squibbing !== null) {
+    if (typeof body.is_squibbing !== 'boolean') {
+      throw createValidationError('is_squibbing must be true or false');
+    }
+    data.is_squibbing = body.is_squibbing;
+  }
+
+  Object.entries(INT_LIMITS).forEach(([field, [min, max]]) => {
+    const value = body[field];
+    if (value === undefined || value === null) return;
+    const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+    if (typeof number !== 'number' || !Number.isInteger(number) || number < min || number > max) {
+      throw createValidationError(`${field} must be a whole number between ${min} and ${max}`);
+    }
+    data[field] = number;
+  });
+
+  LIST_FIELDS.forEach((field) => {
+    if (body[field] === undefined || body[field] === null) return;
+    if (!Array.isArray(body[field]) || body[field].length > MAX_LIST_LENGTH) {
+      throw createValidationError(`${field} must be a list of at most ${MAX_LIST_LENGTH} entries`);
+    }
+    data[field] = body[field];
+  });
+
+  if (body.cargo_manifest !== undefined && body.cargo_manifest !== null) {
+    if (typeof body.cargo_manifest !== 'object' || Array.isArray(body.cargo_manifest)) {
+      throw createValidationError('cargo_manifest must be an object');
+    }
+    data.cargo_manifest = body.cargo_manifest;
+  }
+
+  if (data.min_crew !== undefined && data.max_crew !== undefined && data.max_crew < data.min_crew) {
+    throw createValidationError('Maximum crew cannot be below minimum crew');
+  }
+  if (data.current_hp !== undefined && data.max_hp !== undefined && data.current_hp > data.max_hp) {
+    throw createValidationError('Current HP cannot exceed maximum HP');
+  }
+
+  return data;
+};
+
+/** A database CHECK violation (HP above max, max crew below min, AC range) is the caller's fault. */
+const rethrowConstraintViolation = (error) => {
+  if (error && error.code === '23514') {
+    throw createValidationError('Values violate a ship limit (HP cannot exceed max HP, max crew cannot be below min crew, AC must be 0-50)');
+  }
+  throw error;
+};
+
+/**
+ * Create a new ship. A known ship_type auto-fills its statistics (the body overrides
+ * them); anything still missing gets its column default in the Ship model.
  */
 const createShip = async (req, res) => {
-  const { 
-    name, location, status, is_squibbing, ship_type,
-    size, cost, max_speed, acceleration, propulsion,
-    min_crew, max_crew, cargo_capacity, max_passengers,
-    decks, weapons, weapon_types, ramming_damage,
-    base_ac, touch_ac, hardness, max_hp, current_hp,
-    cmb, cmd, saves, initiative,
-    // Pirate campaign fields
-    plunder, infamy, disrepute,
-    // Additional ship details
-    sails_oars, sailing_check_bonus,
-    officers, improvements, cargo_manifest,
-    ship_notes, captain_name, flag_description
-  } = req.body;
-
-  if (!name) {
-    throw controllerFactory.createValidationError('Ship name is required');
+  const data = parseShipBody(req.body);
+  if (data.name === undefined) {
+    throw createValidationError('Ship name is required');
   }
 
-  // Auto-fill from ship type if provided
-  let shipData = {
-    name,
-    location: location || null,
-    status: status || 'Active',
-    is_squibbing: is_squibbing || false,
-    ship_type: ship_type || null,
-    // Include all the new fields
-    plunder: plunder || 0,
-    infamy: infamy || 0,
-    disrepute: disrepute || 0,
-    sails_oars: sails_oars || null,
-    sailing_check_bonus: sailing_check_bonus || 0,
-    officers: officers || [],
-    improvements: improvements || [],
-    weapon_types: weapon_types || [],
-    cargo_manifest: cargo_manifest || { items: [], passengers: [], impositions: [] },
-    ship_notes: ship_notes || null,
-    captain_name: captain_name || null,
-    flag_description: flag_description || null
-  };
+  const shipData = { ...data };
 
-  if (ship_type) {
-    const typeData = getShipTypeData(ship_type);
-    if (typeData) {
-      // Auto-fill with ship type data, but allow manual overrides
-      shipData = {
-        ...shipData,
-        size: size || typeData.size,
-        cost: cost !== undefined ? cost : typeData.cost,
-        max_speed: max_speed !== undefined ? max_speed : typeData.max_speed,
-        acceleration: acceleration !== undefined ? acceleration : typeData.acceleration,
-        propulsion: propulsion || typeData.propulsion,
-        min_crew: min_crew !== undefined ? min_crew : typeData.min_crew,
-        max_crew: max_crew !== undefined ? max_crew : typeData.max_crew,
-        cargo_capacity: cargo_capacity !== undefined ? cargo_capacity : typeData.cargo_capacity,
-        max_passengers: max_passengers !== undefined ? max_passengers : typeData.max_passengers,
-        decks: decks !== undefined ? decks : typeData.decks,
-        weapons: weapons !== undefined ? weapons : (weapon_types !== undefined ? weapon_types : typeData.weapons),
-        ramming_damage: ramming_damage || typeData.ramming_damage,
-        base_ac: base_ac !== undefined ? base_ac : typeData.base_ac,
-        touch_ac: touch_ac !== undefined ? touch_ac : typeData.touch_ac,
-        hardness: hardness !== undefined ? hardness : typeData.hardness,
-        max_hp: max_hp !== undefined ? max_hp : typeData.max_hp,
-        current_hp: current_hp !== undefined ? current_hp : (max_hp !== undefined ? max_hp : typeData.max_hp),
-        cmb: cmb !== undefined ? cmb : typeData.cmb,
-        cmd: cmd !== undefined ? cmd : typeData.cmd,
-        saves: saves !== undefined ? saves : typeData.saves,
-        initiative: initiative !== undefined ? initiative : typeData.initiative,
-        // Preserve manual improvements over type defaults
-        improvements: improvements && improvements.length > 0 ? improvements : (typeData.typical_improvements || []),
-        weapon_types: weapon_types && weapon_types.length > 0 ? weapon_types : (typeData.typical_weapons || [])
-      };
-    } else {
-      // Manual entry with defaults
-      shipData = {
-        ...shipData,
-        size: size || 'Colossal',
-        cost: cost || 0,
-        max_speed: max_speed || 30,
-        acceleration: acceleration || 15,
-        propulsion: propulsion || null,
-        min_crew: min_crew || 1,
-        max_crew: max_crew || 10,
-        cargo_capacity: cargo_capacity || 10000,
-        max_passengers: max_passengers || 10,
-        decks: decks || 1,
-        weapons: weapons !== undefined ? weapons : (weapon_types || []),
-        ramming_damage: ramming_damage || '1d8',
-        base_ac: base_ac || 10,
-        touch_ac: touch_ac || 10,
-        hardness: hardness || 0,
-        max_hp: max_hp || 100,
-        current_hp: current_hp || max_hp || 100,
-        cmb: cmb || 0,
-        cmd: cmd || 10,
-        saves: saves || 0,
-        initiative: initiative || 0
-      };
-    }
-  } else {
-    // Manual entry with defaults
-    shipData = {
-      ...shipData,
-      size: size || 'Colossal',
-      cost: cost || 0,
-      max_speed: max_speed || 30,
-      acceleration: acceleration || 15,
-      propulsion: propulsion || null,
-      min_crew: min_crew || 1,
-      max_crew: max_crew || 10,
-      cargo_capacity: cargo_capacity || 10000,
-      max_passengers: max_passengers || 10,
-      decks: decks || 1,
-      weapons: weapons !== undefined ? weapons : (weapon_types || []),
-      ramming_damage: ramming_damage || '1d8',
-      base_ac: base_ac || 10,
-      touch_ac: touch_ac || 10,
-      hardness: hardness || 0,
-      max_hp: max_hp || 100,
-      current_hp: current_hp || max_hp || 100,
-      cmb: cmb || 0,
-      cmd: cmd || 10,
-      saves: saves || 0,
-      initiative: initiative || 0
-    };
+  const typeData = data.ship_type ? getShipTypeData(data.ship_type) : null;
+  if (typeData) {
+    TYPE_STAT_FIELDS.forEach((field) => {
+      shipData[field] = data[field] ?? typeData[field];
+    });
+    shipData.improvements = data.improvements && data.improvements.length > 0
+      ? data.improvements
+      : (typeData.typical_improvements || []);
+    shipData.weapon_types = data.weapon_types && data.weapon_types.length > 0
+      ? data.weapon_types
+      : (typeData.typical_weapons || []);
   }
 
-  const ship = await Ship.create(shipData);
+  shipData.current_hp = data.current_hp ?? shipData.max_hp;
+  if (shipData.current_hp !== undefined && shipData.max_hp !== undefined && shipData.current_hp > shipData.max_hp) {
+    throw createValidationError('Current HP cannot exceed maximum HP');
+  }
 
-  logger.info(`Ship created: ${name}`, {
+  let ship;
+  try {
+    ship = await Ship.create(shipData);
+  } catch (error) {
+    rethrowConstraintViolation(error);
+  }
+
+  logger.info(`Ship created: ${shipData.name}`, {
     userId: req.user.id,
     shipId: ship.id,
-    shipType: ship_type,
-    improvements: improvements ? improvements.length : 0,
-    weaponTypes: weapon_types ? weapon_types.length : 0
+    shipType: shipData.ship_type,
+    improvements: shipData.improvements ? shipData.improvements.length : 0,
+    weaponTypes: shipData.weapon_types ? shipData.weapon_types.length : 0
   });
 
   controllerFactory.sendCreatedResponse(res, ship, 'Ship created successfully');
@@ -153,7 +188,7 @@ const createShip = async (req, res) => {
  */
 const getAllShips = async (req, res) => {
   const ships = await Ship.getAllWithCrewCount();
-  
+
   controllerFactory.sendSuccessResponse(res, {
     ships,
     count: ships.length
@@ -161,33 +196,19 @@ const getAllShips = async (req, res) => {
 };
 
 /**
- * Get ship by ID with crew
- */
-const getShipById = async (req, res) => {
-  const { id } = req.params;
-  
-  const ship = await Ship.getWithCrew(id);
-  
-  if (!ship) {
-    throw controllerFactory.createNotFoundError('Ship not found');
-  }
-
-  controllerFactory.sendSuccessResponse(res, ship, 'Ship retrieved successfully');
-};
-
-/**
- * Update ship
+ * Update ship. Only the fields sent are changed.
  */
 const updateShip = async (req, res) => {
-  const { id } = req.params;
-  const updateData = req.body;
+  const id = parsePositiveInt(req.params.id, 'Ship ID');
+  const updateData = parseShipBody(req.body);
 
-  if (!id) {
-    throw controllerFactory.createValidationError('Ship ID is required');
+  let ship;
+  try {
+    ship = await Ship.update(id, updateData);
+  } catch (error) {
+    rethrowConstraintViolation(error);
   }
 
-  const ship = await Ship.update(id, updateData);
-  
   if (!ship) {
     throw controllerFactory.createNotFoundError('Ship not found');
   }
@@ -205,14 +226,10 @@ const updateShip = async (req, res) => {
  * Delete ship
  */
 const deleteShip = async (req, res) => {
-  const { id } = req.params;
-
-  if (!id) {
-    throw controllerFactory.createValidationError('Ship ID is required');
-  }
+  const id = parsePositiveInt(req.params.id, 'Ship ID');
 
   const success = await Ship.delete(id);
-  
+
   if (!success) {
     throw controllerFactory.createNotFoundError('Ship not found');
   }
@@ -230,7 +247,7 @@ const deleteShip = async (req, res) => {
  */
 const getShipTypes = async (req, res) => {
   const shipTypes = getShipTypesList();
-  
+
   controllerFactory.sendSuccessResponse(res, {
     shipTypes,
     count: shipTypes.length
@@ -242,9 +259,9 @@ const getShipTypes = async (req, res) => {
  */
 const getShipTypeDataEndpoint = async (req, res) => {
   const { type } = req.params;
-  
+
   const typeData = getShipTypeData(type);
-  
+
   if (!typeData) {
     throw controllerFactory.createNotFoundError('Ship type not found');
   }
@@ -256,19 +273,11 @@ const getShipTypeDataEndpoint = async (req, res) => {
  * Apply damage to a ship
  */
 const applyDamage = async (req, res) => {
-  const { id } = req.params;
-  const { damage } = req.body;
-
-  if (!id) {
-    throw controllerFactory.createValidationError('Ship ID is required');
-  }
-
-  if (!damage || damage <= 0) {
-    throw controllerFactory.createValidationError('Damage amount must be a positive number');
-  }
+  const id = parsePositiveInt(req.params.id, 'Ship ID');
+  const damage = parsePositiveInt(req.body.damage, 'Damage amount');
 
   const ship = await Ship.applyDamage(id, damage);
-  
+
   if (!ship) {
     throw controllerFactory.createNotFoundError('Ship not found');
   }
@@ -294,19 +303,11 @@ const applyDamage = async (req, res) => {
  * Repair a ship
  */
 const repairShip = async (req, res) => {
-  const { id } = req.params;
-  const { repair } = req.body;
-
-  if (!id) {
-    throw controllerFactory.createValidationError('Ship ID is required');
-  }
-
-  if (!repair || repair <= 0) {
-    throw controllerFactory.createValidationError('Repair amount must be a positive number');
-  }
+  const id = parsePositiveInt(req.params.id, 'Ship ID');
+  const repair = parsePositiveInt(req.body.repair, 'Repair amount');
 
   const ship = await Ship.repairShip(id, repair);
-  
+
   if (!ship) {
     throw controllerFactory.createNotFoundError('Ship not found');
   }
@@ -328,7 +329,8 @@ const repairShip = async (req, res) => {
   }, 'Ship repaired successfully');
 };
 
-// Validation rules
+// Required fields are only presence-checked by the factory (0/false still reach the
+// handlers, which validate type and range).
 const createShipValidation = {
   requiredFields: ['name']
 };
@@ -349,10 +351,6 @@ exports.createShip = controllerFactory.createHandler(createShip, {
 
 exports.getAllShips = controllerFactory.createHandler(getAllShips, {
   errorMessage: 'Error fetching ships'
-});
-
-exports.getShipById = controllerFactory.createHandler(getShipById, {
-  errorMessage: 'Error fetching ship'
 });
 
 exports.updateShip = controllerFactory.createHandler(updateShip, {
