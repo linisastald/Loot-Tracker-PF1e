@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import React from 'react';
 
@@ -77,5 +77,30 @@ describe('ItemManagement', () => {
   it('renders tablist with the correct aria label', () => {
     renderComponent();
     expect(screen.getByRole('tablist', { name: /item management tabs/i })).toBeInTheDocument();
+  });
+
+  it('marks the tab matching the URL as selected', () => {
+    renderComponent('/item-management/pending-sale');
+    expect(screen.getByRole('tab', { name: /pending sale/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /general/i })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('selects General for the index route', () => {
+    renderComponent('/item-management');
+    expect(screen.getByRole('tab', { name: /general/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('navigates to the tab route when a tab is clicked and back to the index', () => {
+    renderComponent('/item-management');
+
+    fireEvent.click(screen.getByRole('tab', { name: /search history/i }));
+    expect(screen.getByTestId('search-history')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /search history/i })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByRole('tab', { name: /unidentified items/i }));
+    expect(screen.getByTestId('unidentified-items')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /general/i }));
+    expect(screen.getByTestId('general-item-management')).toBeInTheDocument();
   });
 });
