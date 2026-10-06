@@ -114,7 +114,7 @@ describe('SearchService', () => {
     });
 
     it('should build boolean filters', () => {
-      const { conditions } = SearchService.buildSearchConditions({ unidentified: 'true', cursed: 'false' });
+      const { conditions } = SearchService.buildSearchConditions({ unidentified: 'true', cursed: 'false' }, { isDM: true });
       expect(conditions).toHaveLength(2);
     });
 
@@ -168,6 +168,96 @@ describe('SearchService', () => {
       expect(result.items).toHaveLength(1);
       expect(result.totalCount).toBe(42);
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('player redaction and limits (F-0759)', () => {
+    const secretRow = {
+      id: 1, name: 'Ring (unknown)', unidentified: true, itemid: 77, modids: [3], value: 18000,
+      cursed: true, dm_notes: 'it is cursed', spellcraft_dc: 25, base_item_name: 'Ring of Wishes',
+      item_type: 'ring', subtype: 'wondrous', notes: 'found in a vault',
+    };
+    const knownRow = { id: 2, name: 'Longsword', unidentified: false, itemid: 5, value: 315, dm_notes: 'DM only', base_item_name: 'Longsword' };
+
+    it('strips the hidden columns of unidentified rows (and dm_notes everywhere) for a non-DM caller', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ ...secretRow }, { ...knownRow }] })
+        .mockResolvedValueOnce({ rows: [{ count: '2' }] });
+
+      const { items } = await SearchService.executeSearch({}, 20, 0, { isDM: false });
+
+      expect(items[0]).toMatchObject({ id: 1, name: 'Ring (unknown)', notes: 'found in a vault', itemid: null, modids: null, value: null, cursed: null, spellcraft_dc: null, base_item_name: null, item_type: null, subtype: null });
+      expect(items[0]).not.toHaveProperty('dm_notes');
+      expect(items[1]).toMatchObject({ itemid: 5, value: 315, base_item_name: 'Longsword' });
+      expect(items[1]).not.toHaveProperty('dm_notes');
+    });
+
+    it('is redacted by default when the caller does not say it is a DM', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ ...secretRow }] })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] });
+
+      const { items } = await SearchService.executeSearch({}, 20, 0);
+
+      expect(items[0].itemid).toBeNull();
+    });
+
+    it('returns everything untouched to a DM', async () => {
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [{ ...secretRow }] })
+        .mockResolvedValueOnce({ rows: [{ count: '1' }] });
+
+      const { items } = await SearchService.executeSearch({}, 20, 0, { isDM: true });
+
+      expect(items[0]).toMatchObject({ itemid: 77, value: 18000, dm_notes: 'it is cursed', base_item_name: 'Ring of Wishes' });
+    });
+
+    it.each([
+      ['cursed', { cursed: 'true' }],
+      ['itemid', { itemid: '77' }],
+      ['itemid notnull', { itemid: 'notnull' }],
+      ['modids', { modids: 'notnull' }],
+      ['value', { value: 'notnull' }],
+      ['min_value', { min_value: '100' }],
+      ['max_value', { max_value: '100' }],
+      ['subtype', { subtype: 'wondrous' }],
+    ])('a non-DM %s filter cannot match unidentified rows (no oracle for the hidden fields)', (name, filters) => {
+      const { conditions } = SearchService.buildSearchConditions(filters, { isDM: false });
+      expect(conditions).toContain('l.unidentified IS NOT TRUE');
+      const dm = SearchService.buildSearchConditions(filters, { isDM: true });
+      expect(dm.conditions).not.toContain('l.unidentified IS NOT TRUE');
+    });
+
+    it('a non-DM text search does not match the true item name of unidentified loot', () => {
+      const { conditions } = SearchService.buildSearchConditions({ query: 'wishes' }, { isDM: false });
+      expect(conditions[0]).toBe('(l.name ILIKE $1 OR (l.unidentified IS NOT TRUE AND i.name ILIKE $1))');
+      const dm = SearchService.buildSearchConditions({ query: 'wishes' }, { isDM: true });
+      expect(dm.conditions[0]).toBe('(l.name ILIKE $1 OR i.name ILIKE $1)');
+    });
+
+    it('clamps limit to 100 and offset to >= 0', () => {
+      const { paginationParams } = SearchService.buildSearchQuery({}, 10000000, -5);
+      expect(paginationParams).toEqual([100, 0]);
+    });
+
+    it('falls back to 20 for a non-numeric limit', () => {
+      const { paginationParams } = SearchService.buildSearchQuery({}, 'abc', 'x');
+      expect(paginationParams).toEqual([20, 0]);
+    });
+
+    it('rejects a non-numeric itemid instead of sending NaN to the database', () => {
+      const { conditions, params } = SearchService.buildSearchConditions({ itemid: 'abc' }, { isDM: true });
+      expect(conditions).toEqual([]);
+      expect(params).toEqual([]);
+    });
+
+    it('never interpolates user input into the SQL text', () => {
+      const evil = "'; DROP TABLE loot; --";
+      const { sql, countSql, params } = SearchService.buildSearchQuery(
+        { query: evil, status: evil, type: evil, subtype: evil, character_id: evil, itemid: evil, min_value: evil }, 20, 0, { isDM: true }
+      );
+      expect(sql + countSql).not.toContain('DROP');
+      expect(params).toContain(evil);
     });
   });
 });

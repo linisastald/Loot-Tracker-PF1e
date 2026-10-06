@@ -1,6 +1,16 @@
 // src/services/searchService.js
 const dbUtils = require('../utils/dbUtils');
 
+// Columns that identification hides: for a non-DM caller they are blanked on
+// unidentified rows. dm_notes is DM-only on every row.
+const HIDDEN_WHEN_UNIDENTIFIED = [
+  'itemid', 'modids', 'value', 'cursed', 'spellcraft_dc',
+  'base_item_name', 'item_type', 'subtype'
+];
+
+const MAX_LIMIT = 100;
+const DEFAULT_LIMIT = 20;
+
 /**
  * Service for handling complex loot search operations
  * Refactored from itemController to improve maintainability
@@ -9,9 +19,12 @@ class SearchService {
   /**
    * Build search query conditions
    * @param {Object} filters - Search filters
+   * @param {Object} [options]
+   * @param {boolean} [options.isDM=false] - Callers without DM rights cannot filter on, or
+   *   text-match, what identification hides: those filters only see identified loot.
    * @returns {Object} - { conditions, params, paramIndex }
    */
-  static buildSearchConditions(filters) {
+  static buildSearchConditions(filters, { isDM = false } = {}) {
     const conditions = [];
     const params = [];
     let paramIndex = 1;
@@ -24,7 +37,9 @@ class SearchService {
 
     // Text search
     if (query) {
-      conditions.push(`(l.name ILIKE $${paramIndex} OR i.name ILIKE $${paramIndex})`);
+      conditions.push(isDM
+        ? `(l.name ILIKE $${paramIndex} OR i.name ILIKE $${paramIndex})`
+        : `(l.name ILIKE $${paramIndex} OR (l.unidentified IS NOT TRUE AND i.name ILIKE $${paramIndex}))`);
       params.push(`%${query}%`);
       paramIndex++;
     }
@@ -91,6 +106,13 @@ class SearchService {
     params.push(...valueResult.params);
     paramIndex += valueResult.params.length;
 
+    // A non-DM filtering on a hidden attribute would otherwise learn it for unidentified rows
+    const usesHiddenFilter = cursed !== undefined || subtype || itemIdResult.condition
+      || modIdCondition || valueResult.conditions.length > 0;
+    if (!isDM && usesHiddenFilter) {
+      conditions.push('l.unidentified IS NOT TRUE');
+    }
+
     return { conditions, params, paramIndex };
   }
 
@@ -109,10 +131,11 @@ class SearchService {
       return { condition: 'l.itemid IS NOT NULL' };
     }
     
-    if (itemid) {
+    const itemIdNumber = parseInt(itemid, 10);
+    if (Number.isInteger(itemIdNumber)) {
       return {
         condition: `l.itemid = $${paramIndex}`,
-        param: parseInt(itemid)
+        param: itemIdNumber
       };
     }
 
@@ -159,15 +182,17 @@ class SearchService {
     }
 
     // Range filters
-    if (min_value) {
+    const min = parseFloat(min_value);
+    if (Number.isFinite(min)) {
       conditions.push(`l.value >= $${paramIndex}`);
-      params.push(parseFloat(min_value));
+      params.push(min);
       paramIndex++;
     }
 
-    if (max_value) {
+    const max = parseFloat(max_value);
+    if (Number.isFinite(max)) {
       conditions.push(`l.value <= $${paramIndex}`);
-      params.push(parseFloat(max_value));
+      params.push(max);
       paramIndex++;
     }
 
@@ -181,14 +206,14 @@ class SearchService {
    * @param {number} offset - Results offset
    * @returns {Object} - { sql, countSql, params }
    */
-  static buildSearchQuery(filters, limit, offset) {
+  static buildSearchQuery(filters, limit, offset, options = {}) {
     const baseSelect = `
       SELECT l.*, i.name as base_item_name, i.type as item_type, i.subtype
       FROM loot l
       LEFT JOIN item i ON l.itemid = i.id
     `;
 
-    const { conditions, params, paramIndex } = this.buildSearchConditions(filters);
+    const { conditions, params, paramIndex } = this.buildSearchConditions(filters, options);
 
     let sql = baseSelect;
     let countSql = `
@@ -207,9 +232,26 @@ class SearchService {
     // Add ordering and pagination
     sql += ' ORDER BY l.lastupdate DESC';
     sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    params.push(parseInt(limit), parseInt(offset));
+    const safeLimit = Math.min(MAX_LIMIT, Math.max(1, parseInt(limit, 10) || DEFAULT_LIMIT));
+    const safeOffset = Math.max(0, parseInt(offset, 10) || 0);
+    params.push(safeLimit, safeOffset);
 
     return { sql, countSql, params: params.slice(0, -2), paginationParams: params };
+  }
+
+  /**
+   * Blank what identification hides on one loot row (non-DM callers).
+   * @param {Object} row - A search result row
+   * @returns {Object} - A copy without dm_notes and, when unidentified, without the hidden columns
+   */
+  static redactForPlayer(row) {
+    const { dm_notes: _dmNotes, ...rest } = row;
+    if (rest.unidentified === true) {
+      for (const column of HIDDEN_WHEN_UNIDENTIFIED) {
+        if (column in rest) rest[column] = null;
+      }
+    }
+    return rest;
   }
 
   /**
@@ -217,10 +259,12 @@ class SearchService {
    * @param {Object} filters - Search filters
    * @param {number} limit - Results limit
    * @param {number} offset - Results offset
+   * @param {Object} [options]
+   * @param {boolean} [options.isDM=false] - Only DMs get unredacted rows and hidden-field filters
    * @returns {Object} - { items, totalCount }
    */
-  static async executeSearch(filters, limit = 20, offset = 0) {
-    const { sql, countSql, params, paginationParams } = this.buildSearchQuery(filters, limit, offset);
+  static async executeSearch(filters, limit = DEFAULT_LIMIT, offset = 0, options = {}) {
+    const { sql, countSql, params, paginationParams } = this.buildSearchQuery(filters, limit, offset, options);
 
     // Execute both queries
     const [dataResult, countResult] = await Promise.all([
@@ -229,8 +273,11 @@ class SearchService {
     ]);
 
     return {
-      items: dataResult.rows,
-      totalCount: parseInt(countResult.rows[0].count, 10)
+      items: options.isDM === true ? dataResult.rows : dataResult.rows.map(row => this.redactForPlayer(row)),
+      totalCount: parseInt(countResult.rows[0].count, 10),
+      // the values actually applied (limit is clamped), for the caller's pagination block
+      limit: paginationParams[paginationParams.length - 2],
+      offset: paginationParams[paginationParams.length - 1]
     };
   }
 }

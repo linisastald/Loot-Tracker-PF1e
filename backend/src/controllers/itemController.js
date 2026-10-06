@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
 const ItemParsingService = require('../services/itemParsingService');
 const SearchService = require('../services/searchService');
+const { hasDmRights } = require('../utils/roleUtils');
 
 /**
  * Get all loot items with optional filtering
@@ -406,15 +407,15 @@ const searchLoot = async (req, res) => {
       itemid, modids, value
     };
 
-    const result = await SearchService.executeSearch(filters, limit, offset);
+    const result = await SearchService.executeSearch(filters, limit, offset, { isDM: hasDmRights(req) });
 
     return controllerFactory.sendSuccessResponse(res, {
       items: result.items,
       pagination: {
         total: result.totalCount,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: (parseInt(offset) + parseInt(limit)) < result.totalCount
+        limit: result.limit,
+        offset: result.offset,
+        hasMore: (result.offset + result.limit) < result.totalCount
       }
     }, `Found ${result.items.length} items`);
   } catch (error) {
