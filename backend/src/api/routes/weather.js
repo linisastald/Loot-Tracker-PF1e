@@ -4,11 +4,8 @@ const weatherController = require('../../controllers/weatherController');
 const verifyToken = require('../../middleware/auth');
 const checkRole = require('../../middleware/checkRole');
 
-// Get weather for a specific date and region (forecast days are filtered to
-// DMs inside the controller)
-router.get('/date/:year/:month/:day/:region', verifyToken, weatherController.getWeatherForDate);
-
-// Get weather for a date range
+// Get weather for a date range (forecast days are filtered to DMs inside the
+// controller)
 router.get('/range/:startYear/:startMonth/:startDay/:endYear/:endMonth/:endDay/:region',
     verifyToken, weatherController.getWeatherForRange);
 
