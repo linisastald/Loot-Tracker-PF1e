@@ -95,7 +95,7 @@ describe('Gold model', () => {
       });
     });
 
-    it('should apply date range filter', async () => {
+    it('should apply date range filter, inclusive of the whole end day', async () => {
       dbUtils.executeQuery
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [{ total: '0' }] });
@@ -103,9 +103,34 @@ describe('Gold model', () => {
       await Gold.findAll({ startDate: '2024-01-01', endDate: '2024-12-31' });
 
       const [query, values] = dbUtils.executeQuery.mock.calls[0];
-      expect(query).toContain('WHERE session_date BETWEEN $1 AND $2');
-      expect(values[0]).toBe('2024-01-01');
-      expect(values[1]).toBe('2024-12-31');
+      expect(query).toContain('WHERE session_date >= $1 AND session_date < ($2::date + 1)');
+      expect(values.slice(0, 2)).toEqual(['2024-01-01', '2024-12-31']);
+      const [countQuery, countValues] = dbUtils.executeQuery.mock.calls[1];
+      expect(countQuery).toContain('WHERE session_date >= $1 AND session_date < ($2::date + 1)');
+      expect(countValues).toEqual(['2024-01-01', '2024-12-31']);
+    });
+
+    it('should filter on a single-sided date range', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ total: '0' }] });
+
+      await Gold.findAll({ startDate: '2024-01-01' });
+      let [query, values] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('WHERE session_date >= $1 ORDER BY');
+      expect(values).toEqual(['2024-01-01', 50, 0]);
+
+      dbUtils.executeQuery.mockClear();
+      await Gold.findAll({ endDate: '2024-02-01' });
+      [query, values] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('WHERE session_date < ($1::date + 1) ORDER BY');
+      expect(values).toEqual(['2024-02-01', 50, 0]);
+    });
+
+    it('should order by session_date then id so pages are stable', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ total: '0' }] });
+
+      await Gold.findAll();
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('ORDER BY session_date DESC, id DESC');
     });
 
     it('should calculate pagination correctly', async () => {
@@ -155,6 +180,19 @@ describe('Gold model', () => {
       const [sql, values] = client.query.mock.calls[0];
       expect(sql).toContain('INSERT INTO gold');
       expect(values).toEqual(['2024-01-15', 'Balance', 0, 1, -10, 0, 'Balanced', null, 4]);
+    });
+  });
+
+  describe('lockLedger', () => {
+    it('takes a transaction-scoped advisory lock keyed by campaign', async () => {
+      const client = { query: jest.fn().mockResolvedValue({}) };
+
+      await Gold.lockLedger(client);
+
+      const [sql, params] = client.query.mock.calls[0];
+      expect(sql).toContain('pg_advisory_xact_lock');
+      expect(params).toHaveLength(2);
+      expect(params[0]).toBe(7301);
     });
   });
 
