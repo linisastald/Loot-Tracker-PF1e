@@ -5,6 +5,7 @@
 // per-class spell level (parsed from the positional `class` array), favoring
 // common (Core) and specialization-school spells, with a tunable "fullness".
 const catalog = require('./spellbookCatalog');
+const { clamp, weightedIndex } = require('./random');
 
 // Class → spell source. Arcanists have no spell tags of their own (they cast off
 // the wizard list), so they map to the Wizard tag. `fullCaster` drives the
@@ -31,7 +32,11 @@ const FULLNESS = {
   exhaustive: { cantrips: 40, perLevel: 14, falloff: 0.92 },
 };
 
-const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+// Caster level for generation/persistence: an integer in 1-20 (junk becomes 1).
+const clampCasterLevel = (value) => clamp(parseInt(value, 10) || 1, 1, 20);
+
+// Fullness preset key, defaulting to 'standard'.
+const resolveFullness = (key) => (FULLNESS[key] ? key : 'standard');
 
 // Resolve a (possibly messy) class input to a config key.
 const resolveClass = (casterClass) => {
@@ -82,15 +87,8 @@ const weightedSampleN = (pool, n, weightFn) => {
   const items = pool.map(p => ({ p, w: Math.max(0, weightFn(p)) })).filter(x => x.w > 0);
   const chosen = [];
   while (chosen.length < n && items.length) {
-    const total = items.reduce((s, x) => s + x.w, 0);
-    if (total <= 0) break;
-    let r = Math.random() * total;
-    let idx = 0;
-    for (; idx < items.length; idx++) {
-      if (r < items[idx].w) break;
-      r -= items[idx].w;
-    }
-    if (idx >= items.length) idx = items.length - 1;
+    const idx = weightedIndex(items.map(x => x.w));
+    if (idx < 0) break;
     chosen.push(items[idx].p);
     items.splice(idx, 1);
   }
@@ -103,10 +101,16 @@ const targetCount = (full, spellLevel) =>
     ? full.cantrips
     : Math.max(1, Math.round(full.perLevel * Math.pow(full.falloff, spellLevel - 1))));
 
-// Loot gp value of a book: a blank spellbook (15 gp) plus the material cost to
-// have scribed each spell (≈ spell level × 10 gp; cantrips a flat 5 gp).
+// Cost to write a spell into a spellbook (Core Rulebook, magic.html "Writing a New
+// Spell into a Spellbook"): 5 gp for a cantrip, otherwise spell level squared x 10 gp
+// (10/40/90/160/250/360/490/640/810).
+const writingCost = (level) => (level === 0 ? 5 : level * level * 10);
+
+// Loot gp value of a book: a blank spellbook (15 gp) plus the full writing cost of each
+// spell. This is the item's catalog-style (purchase) value; like every other loot item
+// it is halved when sold.
 const bookValue = (spells) =>
-  15 + spells.reduce((s, sp) => s + (sp.level === 0 ? 5 : sp.level * 10), 0);
+  15 + spells.reduce((s, sp) => s + writingCost(sp.level), 0);
 
 /**
  * Generate a spellbook (no DB writes).
@@ -120,9 +124,10 @@ const bookValue = (spells) =>
 const generateSpellbook = async (opts = {}) => {
   const classKey = resolveClass(opts.casterClass);
   const cfg = CLASS_CONFIG[classKey];
-  const cl = clamp(parseInt(opts.casterLevel, 10) || 1, 1, 20);
+  const cl = clampCasterLevel(opts.casterLevel);
   const maxLvl = maxSpellLevelForCL(cfg, cl);
-  const full = FULLNESS[opts.fullness] || FULLNESS.standard;
+  const fullnessKey = resolveFullness(opts.fullness);
+  const full = FULLNESS[fullnessKey];
   const school = cfg.specializable && SCHOOLS.includes(opts.school) ? opts.school : null;
   const opposition = cfg.specializable && Array.isArray(opts.opposition)
     ? opts.opposition.filter(s => SCHOOLS.includes(s) && s !== school)
@@ -148,7 +153,7 @@ const generateSpellbook = async (opts = {}) => {
     if (pool.length === 0) continue;
     const n = Math.min(targetCount(full, L), pool.length);
     weightedSampleN(pool, n, (sp) => weightFor(sp, school))
-      .forEach(sp => spells.push({ id: sp.id, name: sp.name, school: sp.school, level: sp.level }));
+      .forEach(({ source, ...spell }) => spells.push(spell));
   }
   spells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
@@ -159,7 +164,7 @@ const generateSpellbook = async (opts = {}) => {
     maxSpellLevel: maxLvl,
     school,
     opposition,
-    fullness: FULLNESS[opts.fullness] ? opts.fullness : 'standard',
+    fullness: fullnessKey,
     spells,
     spellCount: spells.length,
     value: bookValue(spells),
@@ -169,12 +174,13 @@ const generateSpellbook = async (opts = {}) => {
 module.exports = {
   generateSpellbook,
   CLASS_CONFIG,
-  SCHOOLS,
   FULLNESS,
+  resolveClass,
+  resolveFullness,
+  clampCasterLevel,
   // exported for tests
   parseClassLevel,
   maxSpellLevelForCL,
-  resolveClass,
   bookValue,
   targetCount,
 };

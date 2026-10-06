@@ -114,7 +114,6 @@ interface PreviewItem {
 
 interface Preview {
     coins: Coins;
-    coinsGp: number;
     items: PreviewItem[];
     totalGp: number;
     effectiveCr?: string | null;
@@ -261,6 +260,11 @@ const LootGenerator: React.FC = () => {
     const previewItemsValue = preview
         ? preview.items.reduce((s, it) => s + it.value * it.quantity, 0)
         : 0;
+    // Derived from the CURRENT (possibly edited) coins and items, not the server's figure.
+    const previewTotalGp = preview
+        ? Math.round((preview.coins.platinum * 10 + preview.coins.gold + preview.coins.silver / 10
+            + preview.coins.copper / 100 + previewItemsValue) * 100) / 100
+        : 0;
 
     return (
         <Container maxWidth="lg">
@@ -375,7 +379,7 @@ const LootGenerator: React.FC = () => {
                 <Paper sx={{p: 2, mb: 2, borderRadius: 2}} elevation={3}>
                     <Box sx={{display: 'flex', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1}}>
                         <Typography variant="h6">Preview</Typography>
-                        <Chip label={`Total ≈ ${preview.totalGp.toLocaleString()} gp`} color="primary" variant="outlined"/>
+                        <Chip label={`Total ≈ ${previewTotalGp.toLocaleString()} gp`} color="primary" variant="outlined"/>
                         {preview.effectiveCr && (
                             <Chip label={`Encounter CR ${preview.effectiveCr}`} size="small" variant="outlined"/>
                         )}

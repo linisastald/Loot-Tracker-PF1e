@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   Alert,
   Box,
@@ -50,6 +50,9 @@ import AutorenewIcon from '@mui/icons-material/Autorenew';
 import api from '../../utils/api';
 import {useCampaign, useIsDM} from '../../contexts/CampaignContext';
 import {
+    GOLARION_DAYS_OF_WEEK,
+    GOLARION_MONTHS,
+    formatGolarionDate,
     getGolarionDayOfWeek,
     getGolarionMonthDays,
     getGolarionMoonPhase,
@@ -57,11 +60,6 @@ import {
     compareGolarionDates,
     golarionSpanDays,
 } from '../../utils/golarionDate';
-
-interface MoonPhase {
-    name: string;
-    emoji: string;
-}
 
 // Weather conditions the DM can choose from (mirrors the backend's set).
 const WEATHER_CONDITION_OPTIONS = [
@@ -147,11 +145,6 @@ const buildWeatherDescription = (form: WeatherForm): string => {
     return parts.join(', ') + '.';
 };
 
-interface Month {
-  name: string;
-  days: number;
-}
-
 interface DateObject {
   year: number;
   month: number;
@@ -224,23 +217,6 @@ interface StyledDayProps {
   isCurrentDay?: boolean;
   isSelected?: boolean;
 }
-
-const months: Month[] = [
-    {name: 'Abadius', days: 31},
-    {name: 'Calistril', days: 28},
-    {name: 'Pharast', days: 31},
-    {name: 'Gozran', days: 30},
-    {name: 'Desnus', days: 31},
-    {name: 'Sarenith', days: 30},
-    {name: 'Erastus', days: 31},
-    {name: 'Arodus', days: 31},
-    {name: 'Rova', days: 30},
-    {name: 'Lamashan', days: 31},
-    {name: 'Neth', days: 30},
-    {name: 'Kuthona', days: 31}
-];
-
-const daysOfWeek: string[] = ['Moonday', 'Toilday', 'Wealday', 'Oathday', 'Fireday', 'Starday', 'Sunday'];
 
 const StyledDay = styled(Paper)<StyledDayProps>(({theme, isCurrentDay, isSelected}) => ({
     height: '80px',
@@ -337,6 +313,7 @@ const GolarionCalendar: React.FC = () => {
     const [daysToAdd, setDaysToAdd] = useState<string>('');
     const [weather, setWeather] = useState<Record<string, WeatherData>>({});
     const [currentRegion, setCurrentRegion] = useState('Varisia');
+    const weatherRequestId = useRef(0);
 
     // DM-only weather forecast controls
     const dmMode = useIsDM();
@@ -380,15 +357,19 @@ const GolarionCalendar: React.FC = () => {
         }
     }, [displayedDate, currentRegion]);
 
+    // Show a (new) current date everywhere: marker, displayed month and selected day.
+    const applyCurrentDate = ({year, month, day}: DateObject & {day: number}): void => {
+        setCurrentDate({year, month, day});
+        setDisplayedDate({year, month});
+        setSelectedDate({year, month, day});
+        setError(null);
+    };
+
     const fetchCurrentDate = async (): Promise<void> => {
         try {
             const response = await api.get('/calendar/current-date');
             const {year, month, day} = response.data;
-            // Both backend and frontend now use 1-indexed months
-            setCurrentDate({year, month, day});
-            setDisplayedDate({year, month});
-            setSelectedDate({year, month, day});
-            setError(null);
+            applyCurrentDate({year, month, day});
         } catch (error) {
             setError('Failed to fetch current date. Please try again later.');
         }
@@ -414,20 +395,18 @@ const GolarionCalendar: React.FC = () => {
     };
 
     const fetchWeatherForMonth = useCallback(async (year: number, month: number): Promise<void> => {
+        // Only the latest request may write the weather map (rapid month navigation).
+        const requestId = ++weatherRequestId.current;
         try {
-            // Calculate start and end dates for the month (leap-aware)
-            const startDay = 1;
+            // Month range (leap-aware); the region is a campaign setting, so encode it.
             const endDay = getGolarionMonthDays(year, month);
-            
-            // Both frontend and backend now use 1-indexed months
             const response = await api.get(
-                `/weather/range/${year}/${month}/${startDay}/${year}/${month}/${endDay}/${currentRegion}`
+                `/weather/range/${year}/${month}/1/${year}/${month}/${endDay}/${encodeURIComponent(currentRegion)}`
             );
-            
-            if (response.data) {
+
+            if (response.data && requestId === weatherRequestId.current) {
                 const weatherData: Record<string, WeatherData> = {};
                 (response.data as WeatherData[]).forEach(w => {
-                    // Both frontend and backend use 1-indexed months
                     const key = `${w.year}-${w.month}-${w.day}`;
                     weatherData[key] = w;
                 });
@@ -536,11 +515,7 @@ const GolarionCalendar: React.FC = () => {
         try {
             const response = await api.post('/calendar/next-day');
             const {year, month, day} = response.data;
-            // Both backend and frontend now use 1-indexed months
-            setCurrentDate({year, month, day});
-            setDisplayedDate({year, month});
-            setSelectedDate({year, month, day});
-            setError(null);
+            applyCurrentDate({year, month, day});
         } catch (error) {
             setError('Failed to advance day. Please try again later.');
         }
@@ -550,7 +525,6 @@ const GolarionCalendar: React.FC = () => {
         if (!selectedDate) return;
 
         try {
-            // Both frontend and backend now use 1-indexed months
             await api.post('/calendar/set-current-date', {
                 year: selectedDate.year,
                 month: selectedDate.month,
@@ -582,11 +556,8 @@ const GolarionCalendar: React.FC = () => {
             // weather for every day jumped over in one transaction.
             const response = await api.post('/calendar/advance', {days});
             const {year, month, day} = response.data;
-            setCurrentDate({year, month, day});
-            setDisplayedDate({year, month});
-            setSelectedDate({year, month, day});
+            applyCurrentDate({year, month, day});
             setDaysToAdd('');
-            setError(null);
         } catch (error) {
             setError('Failed to increase days. Please try again later.');
         }
@@ -693,7 +664,8 @@ const GolarionCalendar: React.FC = () => {
         setNoteSeparate(false);
         setNoteDmOnly(note.dmOnly);
         setSelectedDate({year: note.startDate.year, month: note.startDate.month, day: note.startDate.day});
-        // The per-day edit form lives on the Calendar tab; jump there.
+        // The per-day edit form lives on the Calendar tab; jump there and show the note's month.
+        setDisplayedDate({year: note.startDate.year, month: note.startDate.month});
         setActiveTab(0);
     };
 
@@ -712,11 +684,11 @@ const GolarionCalendar: React.FC = () => {
 
     // Format a note's date or date range for display.
     const formatNoteRange = (note: GolarionNoteData): string => {
-        const start = `${note.startDate.day} ${months[note.startDate.month - 1]?.name || ''} ${note.startDate.year}`;
+        const start = formatGolarionDate(note.startDate.year, note.startDate.month, note.startDate.day);
         if (compareGolarionDates(note.startDate, note.endDate) === 0) {
             return start;
         }
-        const end = `${note.endDate.day} ${months[note.endDate.month - 1]?.name || ''} ${note.endDate.year}`;
+        const end = formatGolarionDate(note.endDate.year, note.endDate.month, note.endDate.day);
         return `${start} – ${end}`;
     };
 
@@ -830,12 +802,8 @@ const GolarionCalendar: React.FC = () => {
         }
     };
 
-    const getMoonPhase = (date: DateObject & {day: number}): MoonPhase =>
-        getGolarionMoonPhase(date.year, date.month, date.day);
-
     const renderCalendar = () => {
-        const month = months[displayedDate.month - 1];
-        if (!month) {
+        if (!GOLARION_MONTHS[displayedDate.month - 1]) {
             return <div>Loading calendar...</div>;
         }
         // Leap-aware: Calistril has 29 days in leap years.
@@ -848,7 +816,7 @@ const GolarionCalendar: React.FC = () => {
                 <Table>
                     <TableHead>
                         <TableRow>
-                            {daysOfWeek.map(day => (
+                            {GOLARION_DAYS_OF_WEEK.map(day => (
                                 <TableCell key={day} align="center" padding="normal">{day}</TableCell>
                             ))}
                         </TableRow>
@@ -885,36 +853,17 @@ const GolarionCalendar: React.FC = () => {
                                             isForecastDate({year: displayedDate.year, month: displayedDate.month, day});
                                         const isLocked = Boolean(weatherData?.is_locked);
 
-                                        const moonPhaseData = getMoonPhase({
-                                        year: displayedDate.year,
-                                        month: displayedDate.month,
-                                        day
-                                        });
+                                        const moonPhaseData = getGolarionMoonPhase(displayedDate.year, displayedDate.month, day);
                                         const moonEmoji = moonPhaseData?.emoji || '🌑';
 
-                                        // Check if the phase changed from previous day
-                                        const prevDay = day - 1;
-                                        let showMoonPhase = false;
-
-                                        if (prevDay > 0) {
-                                        const prevPhase = getMoonPhase({
-                                        year: displayedDate.year,
-                                        month: displayedDate.month,
-                                        day: prevDay
-                                        });
-                                        showMoonPhase = prevPhase?.name && moonPhaseData?.name && prevPhase.name !== moonPhaseData.name;
-                                        } else if (day === 1) {
-                                        // First day of month - check against last day of previous month
+                                        // Show the phase only on the day it changes from the previous day
+                                        // (the 1st compares against the last day of the previous month).
                                         const prevMonth = displayedDate.month > 1 ? displayedDate.month - 1 : 12;
-                                        const prevYear = prevMonth === 12 ? displayedDate.year - 1 : displayedDate.year;
-                                        const lastDayOfPrevMonth = getGolarionMonthDays(prevYear, prevMonth);
-                                        const prevPhase = getMoonPhase({
-                                        year: prevYear,
-                                        month: prevMonth,
-                                        day: lastDayOfPrevMonth
-                                        });
-                                        showMoonPhase = prevPhase?.name && moonPhaseData?.name && prevPhase.name !== moonPhaseData.name;
-                                        }
+                                        const prevYear = displayedDate.month > 1 ? displayedDate.year : displayedDate.year - 1;
+                                        const prevPhase = day > 1
+                                            ? getGolarionMoonPhase(displayedDate.year, displayedDate.month, day - 1)
+                                            : getGolarionMoonPhase(prevYear, prevMonth, getGolarionMonthDays(prevYear, prevMonth));
+                                        const showMoonPhase = Boolean(prevPhase?.name && moonPhaseData?.name && prevPhase.name !== moonPhaseData.name);
 
                                         return (
                                             <TableCell key={dayIndex} padding="normal"
@@ -1088,7 +1037,7 @@ const GolarionCalendar: React.FC = () => {
 
                     <CalendarTitle variant="h4">
                         <EventIcon color="primary"/>
-                        {months[displayedDate.month - 1]?.name || 'Loading...'} {displayedDate.year}
+                        {GOLARION_MONTHS[displayedDate.month - 1]?.name || 'Loading...'} {displayedDate.year}
                     </CalendarTitle>
 
                     <Button
@@ -1217,7 +1166,7 @@ const GolarionCalendar: React.FC = () => {
                     <Typography variant="h5" gutterBottom color="primary"
                                 sx={{display: 'flex', alignItems: 'center', mb: 2}}>
                         <CalendarTodayIcon sx={{mr: 1}}/>
-                        {`${selectedDate.day} ${months[selectedDate.month - 1]?.name || 'Unknown Month'} ${selectedDate.year}`}
+                        {formatGolarionDate(selectedDate.year, selectedDate.month, selectedDate.day)}
                     </Typography>
 
                     <Grid container spacing={3} size={12}>
@@ -1232,24 +1181,22 @@ const GolarionCalendar: React.FC = () => {
                                             <ListItemText
                                                 primary={<Typography variant="subtitle1">Moon Phase</Typography>}
                                                 secondary={
-                                                    selectedDate && (
                                                     <Chip
                                                     icon={<span
-                                                    style={{fontSize: '1.2rem'}}>{getMoonPhase(selectedDate)?.emoji || '🌑'}</span>}
-                                                    label={getMoonPhase(selectedDate)?.name || 'Unknown Phase'}
+                                                    style={{fontSize: '1.2rem'}}>{getGolarionMoonPhase(selectedDate.year, selectedDate.month, selectedDate.day)?.emoji || '🌑'}</span>}
+                                                    label={getGolarionMoonPhase(selectedDate.year, selectedDate.month, selectedDate.day)?.name || 'Unknown Phase'}
                                                     color="primary"
                                                     variant="outlined"
                                                     size="small"
                                                     sx={{mt: 0.5}}
                                                     />
-                                                    )
                                                 }
                                             />
                                         </ListItem>
                                         <Divider component="li"/>
 
                                         <ListItem
-                                            secondaryAction={dmMode && selectedDate ? (
+                                            secondaryAction={dmMode ? (
                                                 <Button
                                                     size="small"
                                                     startIcon={<EditIcon/>}
@@ -1538,7 +1485,7 @@ const GolarionCalendar: React.FC = () => {
                 </Paper>
             ))}
             {/* Holidays tab: per-category visibility + reference list + DM management */}
-            {activeTab === 2 && (holidays.length > 0 ? (
+            {activeTab === 2 && (
                 <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
                     <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1}}>
                         <Typography variant="h5" color="primary" sx={{display: 'flex', alignItems: 'center'}}>
@@ -1554,6 +1501,9 @@ const GolarionCalendar: React.FC = () => {
                         )}
                     </Box>
 
+                    {holidays.length === 0 ? (
+                        <Typography variant="body2" sx={{color: "text.secondary"}}>No holidays defined.</Typography>
+                    ) : (<>
                     <Box sx={{display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mb: 1}}>
                         <Typography
                             variant="caption"
@@ -1600,7 +1550,7 @@ const GolarionCalendar: React.FC = () => {
                                         <Box component="span" sx={{display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap'}}>
                                             <Typography variant="subtitle2" component="span">
                                                 {h.month != null && h.day != null
-                                                    ? `${h.day} ${months[h.month - 1]?.name || ''}`
+                                                    ? `${h.day} ${GOLARION_MONTHS[h.month - 1]?.name || ''}`
                                                     : (h.movableRule || 'Movable')}
                                             </Typography>
                                             <Typography variant="body2" component="span">— {h.name}</Typography>
@@ -1637,14 +1587,9 @@ const GolarionCalendar: React.FC = () => {
                             Movable holidays (solstices, weekday-based, etc.) have no fixed day and aren't shown on the grid.
                         </Typography>
                     )}
+                    </>)}
                 </Paper>
-            ) : (
-                <Paper sx={{p: 3, mt: 3, borderRadius: 2}} elevation={3}>
-                    <Typography variant="body2" sx={{
-                        color: "text.secondary"
-                    }}>No holidays defined.</Typography>
-                </Paper>
-            ))}
+            )}
             <Dialog
                 open={confirmDialogOpen}
                 onClose={() => setConfirmDialogOpen(false)}
@@ -1657,7 +1602,7 @@ const GolarionCalendar: React.FC = () => {
                 <DialogContent>
                     <DialogContentText>
                         Are you sure you want to set the current date to {selectedDate ?
-                        `${selectedDate.day} ${months[selectedDate.month - 1]?.name || 'Unknown Month'} ${selectedDate.year}` :
+                        formatGolarionDate(selectedDate.year, selectedDate.month, selectedDate.day) :
                         ''
                     }?
                     </DialogContentText>
@@ -1689,7 +1634,7 @@ const GolarionCalendar: React.FC = () => {
             >
                 <DialogTitle>
                     {weatherEditDate
-                        ? `Set Weather — ${weatherEditDate.day} ${months[weatherEditDate.month - 1]?.name || ''} ${weatherEditDate.year}`
+                        ? `Set Weather — ${formatGolarionDate(weatherEditDate.year, weatherEditDate.month, weatherEditDate.day)}`
                         : 'Set Weather'}
                 </DialogTitle>
                 <DialogContent>
@@ -1802,7 +1747,7 @@ const GolarionCalendar: React.FC = () => {
                                         setHolidayForm({...holidayForm, month: e.target.value})}
                                 >
                                     <MenuItem value=""><em>None</em></MenuItem>
-                                    {months.map((m, i) => (
+                                    {GOLARION_MONTHS.map((m, i) => (
                                         <MenuItem key={m.name} value={String(i + 1)}>{m.name}</MenuItem>
                                     ))}
                                 </Select>

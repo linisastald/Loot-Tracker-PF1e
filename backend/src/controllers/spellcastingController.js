@@ -3,7 +3,30 @@ const SpellcastingService = require('../models/SpellcastingService');
 const City = require('../models/City');
 const controllerFactory = require('../utils/controllerFactory');
 const dbUtils = require('../utils/dbUtils');
+const { castableSpellsSource } = require('../utils/castableSpells');
 const logger = require('../utils/logger');
+
+/**
+ * Player-facing message for a spell that is not available in the city
+ * (the reason codes come from SpellcastingService.isSpellAvailable).
+ */
+const unavailableMessage = (check, { city, spellName, spellLevel }) => {
+  switch (check.reason) {
+    case 'no_spellcasters':
+      return `${city.name} is a village with no spellcasters available for ${spellName}.`;
+    case 'village_no_spellcaster':
+      return `${city.name} is a village. After searching, no spellcaster capable of casting ` +
+             `${spellName} was found (rolled ${check.roll}/100, needed 5 or less).`;
+    case 'exceeds_max_level':
+      return `${spellName} (level ${spellLevel}) is not available in ${city.name}. ` +
+             `Maximum spell level available: ${city.max_spell_level}`;
+    case 'level_9_not_found':
+      return `${spellName} is a 9th level spell. After searching ${city.name}, ` +
+             `no caster capable of casting it was found (rolled ${check.roll}/100, needed 1 or less).`;
+    default:
+      return undefined;
+  }
+};
 
 /**
  * Check spellcasting service availability and cost
@@ -22,7 +45,8 @@ const checkSpellcastingService = async (req, res) => {
   } = req.body;
 
   // Validation
-  if (!spell_name || !spell_name.trim()) {
+  const spellName = typeof spell_name === 'string' ? spell_name.trim() : '';
+  if (!spellName) {
     throw controllerFactory.createValidationError('Spell name is required');
   }
 
@@ -67,29 +91,20 @@ const checkSpellcastingService = async (req, res) => {
   // Check if spell is available in this city
   const availabilityCheck = SpellcastingService.isSpellAvailable(spell_level, city.max_spell_level);
 
-  if (!availabilityCheck.available) {
-    let message;
-    if (availabilityCheck.reason === 'no_spellcasters') {
-      message = `${city.name} is a village with no spellcasters available for ${spell_name}.`;
-    } else if (availabilityCheck.reason === 'village_no_spellcaster') {
-      message = `${city.name} is a village. After searching, no spellcaster capable of casting ` +
-                `${spell_name} was found (rolled ${availabilityCheck.roll}/100, needed 5 or less).`;
-    } else if (availabilityCheck.reason === 'exceeds_max_level') {
-      message = `${spell_name} (level ${spell_level}) is not available in ${city.name}. ` +
-                `Maximum spell level available: ${city.max_spell_level}`;
-    } else if (availabilityCheck.reason === 'level_9_not_found') {
-      message = `${spell_name} is a 9th level spell. After searching ${city.name}, ` +
-                `no caster capable of casting it was found (rolled ${availabilityCheck.roll}/100, needed 1 or less).`;
-    }
+  // Fields every outcome reports
+  const base = {
+    city,
+    spell_name: spellName,
+    spell_level,
+    caster_level,
+  };
 
+  if (!availabilityCheck.available) {
     return controllerFactory.sendSuccessResponse(res, {
       available: false,
-      city,
-      spell_name: spell_name.trim(),
-      spell_level,
-      caster_level,
+      ...base,
       max_spell_level: city.max_spell_level,
-      message,
+      message: unavailableMessage(availabilityCheck, { city, spellName, spellLevel: spell_level }),
       availability_check: availabilityCheck
     });
   }
@@ -104,17 +119,14 @@ const checkSpellcastingService = async (req, res) => {
   if (!casterLevelCheck.available) {
     return controllerFactory.sendSuccessResponse(res, {
       available: false,
-      city,
-      spell_name: spell_name.trim(),
-      spell_level,
-      caster_level,
+      ...base,
       max_spell_level: city.max_spell_level,
       min_caster_level: minCasterLevel,
       settlement_caster_level: settlementCasterLevel,
       caster_level_check: casterLevelCheck,
       message: `No spellcaster of caster level ${caster_level} could be found in ${city.name} ` +
                `(rolled ${casterLevelCheck.roll}/100, needed ${casterLevelCheck.threshold} or less). ` +
-               `A caster of CL ${minCasterLevel} (the minimum for ${spell_name.trim()}) is available here.`
+               `A caster of CL ${minCasterLevel} (the minimum for ${spellName}) is available here.`
     });
   }
 
@@ -126,7 +138,7 @@ const checkSpellcastingService = async (req, res) => {
   if (purchase) {
     serviceRecord = await SpellcastingService.create({
       spell_id: spell_id || null,
-      spell_name: spell_name.trim(),
+      spell_name: spellName,
       spell_level,
       caster_level,
       city_id: city.id,
@@ -136,7 +148,7 @@ const checkSpellcastingService = async (req, res) => {
     });
 
     logger.info(
-      `Spellcasting service purchased: ${spell_name} (level ${spell_level}, ` +
+      `Spellcasting service purchased: ${spellName} (level ${spell_level}, ` +
       `CL ${caster_level}) in ${city.name} - Cost: ${cost}gp`
     );
   }
@@ -144,7 +156,7 @@ const checkSpellcastingService = async (req, res) => {
   // Build response message for special availability cases
   let successMessage = null;
   if (availabilityCheck.reason === 'village_spellcaster_found') {
-    successMessage = `Lucky find! A wandering spellcaster capable of casting ${spell_name} was found in ` +
+    successMessage = `Lucky find! A wandering spellcaster capable of casting ${spellName} was found in ` +
                     `${city.name} (rolled ${availabilityCheck.roll}/100, needed 5 or less).`;
   } else if (availabilityCheck.reason === 'level_9_found') {
     successMessage = `Lucky find! A caster capable of casting this 9th level spell was found in ${city.name} ` +
@@ -156,10 +168,7 @@ const checkSpellcastingService = async (req, res) => {
 
   controllerFactory.sendSuccessResponse(res, {
     available: true,
-    city,
-    spell_name: spell_name.trim(),
-    spell_level,
-    caster_level,
+    ...base,
     cost,
     service: serviceRecord,
     min_caster_level: minCasterLevel,
@@ -190,56 +199,30 @@ const getAllServices = async (req, res) => {
 };
 
 /**
- * Get spellcasting service by ID
- */
-const getServiceById = async (req, res) => {
-  const { id } = req.params;
-  const service = await SpellcastingService.findById(id);
-
-  if (!service) {
-    throw controllerFactory.createNotFoundError('Service record not found');
-  }
-
-  controllerFactory.sendSuccessResponse(res, service, 'Service retrieved');
-};
-
-/**
- * Delete a spellcasting service record
- */
-const deleteService = async (req, res) => {
-  const { id } = req.params;
-
-  const service = await SpellcastingService.findById(id);
-  if (!service) {
-    throw controllerFactory.createNotFoundError('Service record not found');
-  }
-
-  await SpellcastingService.delete(id);
-  logger.info(`Spellcasting service deleted: ID ${id}`);
-  controllerFactory.sendSuccessResponse(res, null, 'Service record deleted successfully');
-};
-
-/**
  * Get available spells
  */
 const getAvailableSpells = async (req, res) => {
   const { search, max_level } = req.query;
 
-  let query = 'SELECT id, name, spelllevel, school, class FROM spells WHERE 1=1';
+  // Only real, castable spells (see utils/castableSpells): no level-less monster
+  // variants, no .MOD rows, one row per name.
+  const conditions = [];
   const params = [];
   let paramIndex = 1;
 
   if (search && search.trim()) {
-    query += ` AND LOWER(name) LIKE LOWER($${paramIndex++})`;
+    conditions.push(`LOWER(name) LIKE LOWER($${paramIndex++})`);
     params.push(`%${search.trim()}%`);
   }
 
   if (max_level !== undefined) {
-    query += ` AND spelllevel <= $${paramIndex++}`;
+    conditions.push(`spelllevel <= $${paramIndex++}`);
     params.push(parseInt(max_level));
   }
 
-  query += ' ORDER BY name LIMIT 50';
+  const query = `SELECT id, name, spelllevel, school, class
+     FROM ${castableSpellsSource(conditions.join(' AND ') || 'TRUE')} AS s
+     ORDER BY name LIMIT 50`;
 
   const result = await dbUtils.executeQuery(query, params);
   controllerFactory.sendSuccessResponse(res, result.rows, `Found ${result.rows.length} spells`);
@@ -252,14 +235,6 @@ exports.checkSpellcastingService = controllerFactory.createHandler(checkSpellcas
 
 exports.getAllServices = controllerFactory.createHandler(getAllServices, {
   errorMessage: 'Error fetching spellcasting services'
-});
-
-exports.getServiceById = controllerFactory.createHandler(getServiceById, {
-  errorMessage: 'Error fetching spellcasting service'
-});
-
-exports.deleteService = controllerFactory.createHandler(deleteService, {
-  errorMessage: 'Error deleting spellcasting service'
 });
 
 exports.getAvailableSpells = controllerFactory.createHandler(getAvailableSpells, {

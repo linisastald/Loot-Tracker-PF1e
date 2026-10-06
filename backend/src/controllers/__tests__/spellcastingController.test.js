@@ -535,64 +535,6 @@ describe('spellcastingController', () => {
   });
 
   // -------------------------------------------------------------------
-  // getServiceById
-  // -------------------------------------------------------------------
-  describe('getServiceById', () => {
-    it('should return a service when found', async () => {
-      const mockService = { id: 1, spell_name: 'Cure Light Wounds', cost: 10 };
-      const req = createMockReq({ params: { id: '1' } });
-      const res = createMockRes();
-
-      SpellcastingService.findById.mockResolvedValue(mockService);
-
-      await spellcastingController.getServiceById(req, res);
-
-      expect(SpellcastingService.findById).toHaveBeenCalledWith('1');
-      expect(res.success).toHaveBeenCalledWith(mockService, 'Service retrieved');
-    });
-
-    it('should return 404 when service not found', async () => {
-      const req = createMockReq({ params: { id: '999' } });
-      const res = createMockRes();
-
-      SpellcastingService.findById.mockResolvedValue(null);
-
-      await spellcastingController.getServiceById(req, res);
-
-      expect(res.notFound).toHaveBeenCalledWith('Service record not found');
-    });
-  });
-
-  // -------------------------------------------------------------------
-  // deleteService
-  // -------------------------------------------------------------------
-  describe('deleteService', () => {
-    it('should delete a service record successfully', async () => {
-      const req = createMockReq({ params: { id: '1' } });
-      const res = createMockRes();
-
-      SpellcastingService.findById.mockResolvedValue({ id: 1 });
-      SpellcastingService.delete.mockResolvedValue(true);
-
-      await spellcastingController.deleteService(req, res);
-
-      expect(SpellcastingService.delete).toHaveBeenCalledWith('1');
-      expect(res.success).toHaveBeenCalledWith(null, 'Service record deleted successfully');
-    });
-
-    it('should return 404 when deleting non-existent service', async () => {
-      const req = createMockReq({ params: { id: '999' } });
-      const res = createMockRes();
-
-      SpellcastingService.findById.mockResolvedValue(null);
-
-      await spellcastingController.deleteService(req, res);
-
-      expect(res.notFound).toHaveBeenCalledWith('Service record not found');
-    });
-  });
-
-  // -------------------------------------------------------------------
   // getAvailableSpells
   // -------------------------------------------------------------------
   describe('getAvailableSpells', () => {
@@ -608,10 +550,25 @@ describe('spellcastingController', () => {
       await spellcastingController.getAvailableSpells(req, res);
 
       expect(dbUtils.executeQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT id, name, spelllevel, school, class FROM spells'),
+        expect.stringContaining('SELECT id, name, spelllevel, school, class'),
         []
       );
       expect(res.success).toHaveBeenCalledWith(mockSpells, 'Found 1 spells');
+    });
+
+    it('selects only castable spells: level and class list required, no .MOD rows, one row per name', async () => {
+      const req = createMockReq({ query: {} });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await spellcastingController.getAvailableSpells(req, res);
+
+      const sql = dbUtils.executeQuery.mock.calls[0][0];
+      expect(sql).toContain('spelllevel IS NOT NULL');
+      expect(sql).toContain('CARDINALITY(class)');
+      expect(sql).toContain('.MOD');
+      expect(sql).toContain('DISTINCT ON');
+      expect(sql).toContain('ORDER BY name LIMIT 50');
     });
 
     it('should filter spells by search term', async () => {

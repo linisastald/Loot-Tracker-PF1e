@@ -9,7 +9,6 @@
 // into coins / goods (gems & art) / items, then fill the goods and items
 // budgets from the catalog (sampling within value bands, weighted by creature
 // type; magic weapons/armor are synthesized from a base item + a "+N" mod).
-const dbUtils = require('../../utils/dbUtils');
 const campaignSettings = require('../../utils/campaignSettings');
 const { calculateFinalValue } = require('../calculateFinalValue');
 const {
@@ -17,32 +16,35 @@ const {
   XP_BY_CR, crKey, crToNum, xpToCr,
 } = require('./treasureTables');
 const catalog = require('./lootCatalog');
+const { randInt, weightedIndex } = require('./random');
 const { describeGem, describeArt, ENVIRONMENTS } = require('./treasureFlavor');
 
 const MIN_ITEM_VALUE = 2;
 
-// --- random helpers ---
-const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+// --- random helpers (shared primitives live in ./random) ---
 const rollTier = (tiers) => {
-  const total = tiers.reduce((s, t) => s + t.weight, 0);
-  let r = Math.random() * total;
-  for (const t of tiers) {
-    if (r < t.weight) return t;
-    r -= t.weight;
-  }
-  return tiers[tiers.length - 1];
+  const idx = weightedIndex(tiers.map(t => t.weight));
+  return tiers[idx < 0 ? tiers.length - 1 : idx];
 };
 const weightedPickKey = (weights) => {
-  const entries = Object.entries(weights).filter(([, w]) => w > 0);
-  const total = entries.reduce((s, [, w]) => s + w, 0);
-  if (total <= 0) return null;
-  let r = Math.random() * total;
-  for (const [k, w] of entries) {
-    if (r < w) return k;
-    r -= w;
-  }
-  return entries[entries.length - 1][0];
+  const keys = Object.keys(weights);
+  const idx = weightedIndex(keys.map(k => weights[k]));
+  return idx < 0 ? null : keys[idx];
 };
+
+const TRACKS = ['slow', 'medium', 'fast'];
+const validTrack = (track) => TRACKS.includes(track);
+
+// Row shape shared by every generated loot row (catalog items, synthesized gear, goods).
+const makeRow = (fields) => ({
+  size: 'Medium',
+  itemId: null,
+  modIds: null,
+  unidentified: false,
+  spellcraftDc: null,
+  masterwork: false,
+  ...fields,
+});
 
 // The SRD "Treasure Values per Encounter" budget (per effective CR + track) is
 // the anchor. DONJON_FACTOR pulls the center to the lower, donjon-like level the
@@ -117,7 +119,7 @@ const MASTERWORK_ADD = { weapon: 300, armor: 150 };
  */
 const getTreasureSettings = async () => {
   const map = await campaignSettings.getCampaignSettings(['treasure_track', 'treasure_modifier']);
-  const track = ['slow', 'medium', 'fast'].includes(map.treasure_track) ? map.treasure_track : 'medium';
+  const track = validTrack(map.treasure_track) ? map.treasure_track : 'medium';
   let modifier = parseFloat(map.treasure_modifier);
   if (!(modifier > 0)) modifier = 1;
   return { track, modifier };
@@ -139,22 +141,26 @@ const coinsToGp = (coins) =>
 // Generic descriptor for an unidentified magic item, so the stored loot name
 // doesn't reveal what it is. The real name is recoverable on identification via
 // the item's itemId/modIds.
+const GENERIC_MAGIC_NAMES = [
+  [['scroll'], 'Scroll'],
+  [['potion'], 'Potion'],
+  [['oil of'], 'Oil'],
+  [['wand'], 'Wand'],
+  [['ring'], 'Ring'],
+  [['rod'], 'Rod'],
+  [['staff'], 'Staff'],
+  [['amulet', 'necklace', 'periapt'], 'Amulet'],
+  [['cloak', 'cape'], 'Cloak'],
+  [['boots'], 'Boots'],
+  [['gloves', 'gauntlets'], 'Gloves'],
+  [['belt'], 'Belt'],
+  [['headband', 'circlet', 'helm', 'hat'], 'Headgear'],
+  [['bracers', 'bracelet'], 'Bracers'],
+];
 const genericMagicName = (name, baseType) => {
   const n = (name || '').toLowerCase();
-  if (n.startsWith('scroll')) return 'Scroll';
-  if (n.startsWith('potion')) return 'Potion';
-  if (n.startsWith('oil of')) return 'Oil';
-  if (n.startsWith('wand')) return 'Wand';
-  if (n.startsWith('ring')) return 'Ring';
-  if (n.startsWith('rod')) return 'Rod';
-  if (n.startsWith('staff')) return 'Staff';
-  if (n.startsWith('amulet') || n.startsWith('necklace') || n.startsWith('periapt')) return 'Amulet';
-  if (n.startsWith('cloak') || n.startsWith('cape')) return 'Cloak';
-  if (n.startsWith('boots')) return 'Boots';
-  if (n.startsWith('gloves') || n.startsWith('gauntlets')) return 'Gloves';
-  if (n.startsWith('belt')) return 'Belt';
-  if (n.startsWith('headband') || n.startsWith('circlet') || n.startsWith('helm') || n.startsWith('hat')) return 'Headgear';
-  if (n.startsWith('bracers') || n.startsWith('bracelet')) return 'Bracers';
+  const match = GENERIC_MAGIC_NAMES.find(([prefixes]) => prefixes.some(p => n.startsWith(p)));
+  if (match) return match[1];
   if (baseType === 'weapon') return 'Weapon';
   if (baseType === 'armor') return 'Armor';
   return 'Wondrous item';
@@ -185,20 +191,17 @@ const sampleCatalogItem = async (category, bandMin, bandMax, unidentified) => {
   const isMagic = row.type === 'magic' || row.casterlevel != null;
   const isUnidentified = isMagic && !!unidentified;
 
-  return {
+  return makeRow({
     name: row.name,
     unidentifiedName: isUnidentified ? genericMagicName(row.name, row.type) : row.name,
     type: row.type,
-    size: 'Medium',
     value: Math.round(value),
     itemId: row.id,
-    modIds: null,
     charges,
     unidentified: isUnidentified,
     spellcraftDc: (isUnidentified && row.casterlevel != null) ? 15 + Number(row.casterlevel) : null,
-    masterwork: false,
     category,
-  };
+  });
 };
 
 // Synthesize a +N magic weapon or armor whose total value fits [bandMin, bandMax].
@@ -213,41 +216,43 @@ const synthesizeMagicGear = async (bandMin, bandMax, unidentified) => {
 
   const baseVal = Number(base.value);
   const fits = (n) => baseVal + mw + plusTable[n];
-  let chosenN = 0;
-  for (let n = 5; n >= 1; n--) {
-    if (fits(n) <= bandMax && fits(n) >= bandMin) { chosenN = n; break; }
-  }
-  if (!chosenN) {
-    for (let n = 5; n >= 1; n--) {
-      if (fits(n) <= bandMax) { chosenN = n; break; }
-    }
-  }
-  if (!chosenN) return null;
+  // Candidate +N, best first: those inside the band, then any that fit under its
+  // ceiling. A candidate is only accepted when its REAL price (calculateFinalValue,
+  // which can differ from the table estimate) also stays within the band; otherwise
+  // the next lower +N is tried.
+  const descending = [5, 4, 3, 2, 1].filter(n => fits(n) <= bandMax);
+  const candidates = [
+    ...descending.filter(n => fits(n) >= bandMin),
+    ...descending.filter(n => fits(n) < bandMin),
+  ];
 
-  const mod = await catalog.getEnhancementMod(target, chosenN);
-  if (!mod) return null;
+  for (const chosenN of candidates) {
+    const mod = await catalog.getEnhancementMod(target, chosenN);
+    if (!mod) continue;
 
-  const value = calculateFinalValue(
-    baseVal, target, base.subtype,
-    [{ plus: chosenN, name: mod.name, valuecalc: mod.valuecalc }],
-    false, base.name, null, 'Medium', base.weight
-  );
-  const cl = 3 * chosenN; // minimum caster level to craft +N arms/armor
-  return {
-    name: `+${chosenN} ${base.name}`,
-    // Unidentified, it just looks like a (masterwork) base weapon/armor.
-    unidentifiedName: unidentified ? `Masterwork ${base.name}` : `+${chosenN} ${base.name}`,
-    type: target,
-    size: 'Medium',
-    value: Math.round(value),
-    itemId: base.id,
-    modIds: [mod.id],
-    charges: null,
-    unidentified: !!unidentified,
-    spellcraftDc: unidentified ? 15 + cl : null,
-    masterwork: false,
-    category: 'magicGear',
-  };
+    const value = Math.round(calculateFinalValue(
+      baseVal, target, base.subtype,
+      [{ plus: chosenN, name: mod.name, valuecalc: mod.valuecalc }],
+      false, base.name, null, 'Medium', base.weight
+    ));
+    if (!(value <= bandMax)) continue;
+
+    const cl = 3 * chosenN; // minimum caster level to craft +N arms/armor
+    return makeRow({
+      name: `+${chosenN} ${base.name}`,
+      // Unidentified, it just looks like a (masterwork) base weapon/armor.
+      unidentifiedName: unidentified ? `Masterwork ${base.name}` : `+${chosenN} ${base.name}`,
+      type: target,
+      value,
+      itemId: base.id,
+      modIds: [mod.id],
+      charges: null,
+      unidentified: !!unidentified,
+      spellcraftDc: unidentified ? 15 + cl : null,
+      category: 'magicGear',
+    });
+  }
+  return null;
 };
 
 // Fill a goods budget with gems and art objects (value-only loot rows). Each
@@ -273,18 +278,13 @@ const fillGoodsBudget = (budget, environment) => {
     const name = isGem
       ? `${describeGem(idx)} (gem)`
       : `${describeArt(idx, environment)} (art object)`;
-    goods.push({
+    goods.push(makeRow({
       name,
       type: 'trade good',
       size: null,
       value,
-      itemId: null,
-      modIds: null,
-      unidentified: false,
-      spellcraftDc: null,
-      masterwork: false,
       category: 'goods',
-    });
+    }));
   }
   return { goods, leftover: Math.max(0, remaining) };
 };
@@ -318,7 +318,9 @@ const fillItemsBudget = async (budget, cats, unidentified) => {
       : await sampleCatalogItem(category, bandMin, bandMax, unidentified);
     if (!item) {
       item = await sampleCatalogItem('magic', bandMin, bandMax, unidentified)
-        || await sampleCatalogItem('gear', MIN_ITEM_VALUE, bandMax, unidentified);
+        // Keep the band floor here too: with a huge budget a MIN_ITEM_VALUE floor would
+        // drain it a few gp at a time through hundreds of queries.
+        || await sampleCatalogItem('gear', bandMin, bandMax, unidentified);
       if (!item) break;
     }
     remaining -= item.value;
@@ -346,7 +348,7 @@ const poolItems = (rows) => {
  */
 const generate = async (enemies, options = {}) => {
   const settings = await getTreasureSettings();
-  const track = ['slow', 'medium', 'fast'].includes(options.track) ? options.track : settings.track;
+  const track = validTrack(options.track) ? options.track : settings.track;
   const modifier = options.modifier > 0 ? options.modifier : settings.modifier;
   const unidentified = options.unidentified !== false;
   const environment = ENVIRONMENTS[options.environment] ? options.environment : 'dungeon';
@@ -378,9 +380,9 @@ const generate = async (enemies, options = {}) => {
       accumCats(cats, enemyCats, gp);
     } else {
       const factor = TREASURE_MULTIPLIERS[treasure] ?? 1;
-      const xp = (XP_BY_CR[key] || 0) * count * factor;
-      treasureXp += xp;
-      accumCats(cats, enemyCats, (XP_BY_CR[key] || 0) * count);
+      const baseXp = (XP_BY_CR[key] || 0) * count;
+      treasureXp += baseXp * factor;
+      accumCats(cats, enemyCats, baseXp);
     }
   }
 
@@ -437,5 +439,4 @@ module.exports = {
   fillGoodsBudget,
   fillItemsBudget,
   poolItems,
-  TYPE_PROFILES,
 };

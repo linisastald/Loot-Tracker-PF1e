@@ -37,7 +37,7 @@ const validateHolidayDate = (rawMonth, rawDay) => {
 /**
  * Normalize and validate the holiday body shared by create/update.
  */
-const buildHolidayFields = (body) => {
+const buildHolidayFields = (body, existing = null) => {
   const { name, category, deity, region, description, movableRule } = body;
 
   if (typeof name !== 'string' || name.trim() === '') {
@@ -46,18 +46,66 @@ const buildHolidayFields = (body) => {
 
   const { month, day } = validateHolidayDate(body.month, body.day);
 
-  const resolvedCategory = ALLOWED_CATEGORIES.includes(category) ? category : 'Cultural';
+  // A supplied category must be valid; an omitted one keeps the stored value on
+  // update (and is 'Cultural' on create).
+  let resolvedCategory;
+  if (category === undefined || category === null || category === '') {
+    resolvedCategory = existing?.category || 'Cultural';
+  } else if (ALLOWED_CATEGORIES.includes(category)) {
+    resolvedCategory = category;
+  } else {
+    throw controllerFactory.createValidationError(`Category must be one of: ${ALLOWED_CATEGORIES.join(', ')}`);
+  }
+
+  // Omitted text fields keep the stored value on update; an empty value clears it.
+  const text = (value, key) => {
+    if (value === undefined) return existing ? (existing[key] ?? null) : null;
+    return value || null;
+  };
 
   return {
     name: name.trim(),
     month,
     day,
     category: resolvedCategory,
-    deity: deity || null,
-    region: region || null,
-    description: description || null,
-    movableRule: movableRule || null,
+    deity: text(deity, 'deity'),
+    region: text(region, 'region'),
+    description: text(description, 'description'),
+    movableRule: text(movableRule, 'movableRule'),
   };
+};
+
+const OFFICIAL_READ_ONLY = 'Official holidays cannot be changed';
+
+/**
+ * Translate a duplicate-name unique violation (23505) into a validation error.
+ */
+const withDuplicateNameGuard = async (fn) => {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err && err.code === '23505') {
+      throw controllerFactory.createValidationError('A holiday with that name already exists');
+    }
+    throw err;
+  }
+};
+
+/**
+ * Load a holiday the caller may change. Row-level security hides other campaigns'
+ * custom holidays, so those surface as 404; official holidays (visible to all but
+ * writable by nobody through the app) surface as 403.
+ */
+const loadCustomHoliday = async (rawId) => {
+  const id = parseHolidayId(rawId);
+  const existing = await GolarionHoliday.getById(id);
+  if (!existing) {
+    throw controllerFactory.createNotFoundError('Holiday not found');
+  }
+  if (!existing.isCustom) {
+    throw controllerFactory.createAuthorizationError(OFFICIAL_READ_ONLY);
+  }
+  return existing;
 };
 
 const parseHolidayId = (raw) => {
@@ -80,15 +128,9 @@ const getHolidays = async (req, res) => {
  */
 const createHoliday = async (req, res) => {
   const fields = buildHolidayFields(req.body);
-  let created;
-  try {
-    created = await GolarionHoliday.create({ ...fields, createdBy: req.user?.id ?? null });
-  } catch (err) {
-    if (err && err.code === '23505') {
-      throw controllerFactory.createValidationError('A holiday with that name already exists');
-    }
-    throw err;
-  }
+  const created = await withDuplicateNameGuard(
+    () => GolarionHoliday.create({ ...fields, createdBy: req.user?.id ?? null })
+  );
   controllerFactory.sendCreatedResponse(res, created, 'Holiday created successfully');
 };
 
@@ -96,25 +138,12 @@ const createHoliday = async (req, res) => {
  * Update a custom holiday. Official (non-custom) holidays are read-only.
  */
 const updateHoliday = async (req, res) => {
-  const id = parseHolidayId(req.params.id);
+  const existing = await loadCustomHoliday(req.params.id);
 
-  const existing = await GolarionHoliday.getById(id);
-  if (!existing) {
+  const fields = buildHolidayFields(req.body, existing);
+  const updated = await withDuplicateNameGuard(() => GolarionHoliday.update(existing.id, fields));
+  if (!updated) {
     throw controllerFactory.createNotFoundError('Holiday not found');
-  }
-  if (!existing.isCustom) {
-    throw controllerFactory.createValidationError('Official holidays cannot be edited');
-  }
-
-  const fields = buildHolidayFields(req.body);
-  let updated;
-  try {
-    updated = await GolarionHoliday.update(id, fields);
-  } catch (err) {
-    if (err && err.code === '23505') {
-      throw controllerFactory.createValidationError('A holiday with that name already exists');
-    }
-    throw err;
   }
   controllerFactory.sendSuccessResponse(res, updated, 'Holiday updated successfully');
 };
@@ -123,17 +152,13 @@ const updateHoliday = async (req, res) => {
  * Delete a custom holiday. Official holidays cannot be deleted.
  */
 const deleteHoliday = async (req, res) => {
-  const id = parseHolidayId(req.params.id);
+  const existing = await loadCustomHoliday(req.params.id);
+  const id = existing.id;
 
-  const existing = await GolarionHoliday.getById(id);
-  if (!existing) {
+  const removed = await GolarionHoliday.remove(id);
+  if (!removed) {
     throw controllerFactory.createNotFoundError('Holiday not found');
   }
-  if (!existing.isCustom) {
-    throw controllerFactory.createValidationError('Official holidays cannot be deleted');
-  }
-
-  await GolarionHoliday.remove(id);
   controllerFactory.sendSuccessResponse(res, { id }, 'Holiday deleted successfully');
 };
 

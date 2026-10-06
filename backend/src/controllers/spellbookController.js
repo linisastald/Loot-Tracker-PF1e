@@ -3,9 +3,6 @@ const controllerFactory = require('../utils/controllerFactory');
 const spellbookService = require('../services/lootGenerator/spellbookService');
 const Spellbook = require('../models/Spellbook');
 
-const CLASSES = Object.keys(spellbookService.CLASS_CONFIG);
-const FULLNESS_KEYS = Object.keys(spellbookService.FULLNESS);
-
 /**
  * Generate a spellbook preview (no DB writes). DM only.
  */
@@ -18,11 +15,11 @@ const generate = async (req, res) => {
   }
 
   const book = await spellbookService.generateSpellbook({
-    casterClass: CLASSES.includes(casterClass) ? casterClass : 'wizard',
+    casterClass: spellbookService.resolveClass(casterClass),
     casterLevel: cl,
     school: typeof school === 'string' ? school : null,
     opposition: Array.isArray(opposition) ? opposition.filter(s => typeof s === 'string') : [],
-    fullness: FULLNESS_KEYS.includes(fullness) ? fullness : 'standard',
+    fullness: spellbookService.resolveFullness(fullness),
   });
 
   controllerFactory.sendSuccessResponse(res, book, 'Spellbook generated');

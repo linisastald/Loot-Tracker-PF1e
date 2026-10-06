@@ -171,6 +171,44 @@ describe('lootGeneratorController', () => {
       expect(res.created).toHaveBeenCalled();
     });
 
+    describe('item validation', () => {
+      const commitItems = async (items) => {
+        const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 1, name: 'x', quantity: 1 }] }) };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        const res = createMockRes();
+        await controller.commit(createMockReq({ body: { items, coins: {} } }), res);
+        return { client, res };
+      };
+
+      it('rejects an unnamed item instead of silently skipping it', async () => {
+        const { res } = await commitItems([{ name: '   ', quantity: 1 }]);
+        expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('Item 1'));
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+        expect(res.created).not.toHaveBeenCalled();
+      });
+
+      it.each([['abc'], [2.5], [-1]])('rejects a non-positive-integer itemId (%p)', async (itemId) => {
+        const { res } = await commitItems([{ name: 'A', itemId }]);
+        expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('itemId'));
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it('rejects a modIds entry that is not a positive integer', async () => {
+        const { res } = await commitItems([{ name: 'A', modIds: [417, 'x'] }]);
+        expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('modIds'));
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+      it('clamps negative charges and spellcraft DC to 0 and keeps valid ids', async () => {
+        const { client } = await commitItems([{ name: 'A', itemId: 7, modIds: [3, 4], charges: -5, spellcraftDc: -2 }]);
+        const params = client.query.mock.calls.find(c => c[0].includes('INTO loot'))[1];
+        expect(params[7]).toBe(7);
+        expect(params[8]).toEqual([3, 4]);
+        expect(params[12]).toBe(0);
+        expect(params[13]).toBe(0);
+      });
+    });
+
     it('rejects a commit with no items and no coins', async () => {
       const req = createMockReq({ body: { items: [], coins: {} } });
       const res = createMockRes();

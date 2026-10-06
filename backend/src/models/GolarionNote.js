@@ -15,6 +15,7 @@ const toApi = (row) => ({
 
 const INSERT_COLUMNS = `(start_year, start_month, start_day, end_year, end_month, end_day, note, dm_only, created_by)`;
 const INSERT_VALUES = `($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
+const INSERT_SQL = `INSERT INTO golarion_notes ${INSERT_COLUMNS} VALUES ${INSERT_VALUES} RETURNING *`;
 
 const insertParams = (n) => [
   n.start.year, n.start.month, n.start.day,
@@ -45,10 +46,7 @@ exports.getById = async (id) => {
  * Create a single note (single-day or spanning start..end).
  */
 exports.create = async (note) => {
-  const result = await dbUtils.executeQuery(
-    `INSERT INTO golarion_notes ${INSERT_COLUMNS} VALUES ${INSERT_VALUES} RETURNING *`,
-    insertParams(note)
-  );
+  const result = await dbUtils.executeQuery(INSERT_SQL, insertParams(note));
   return toApi(result.rows[0]);
 };
 
@@ -59,10 +57,7 @@ exports.createMany = async (notes) => {
   return dbUtils.executeTransaction(async (client) => {
     const created = [];
     for (const note of notes) {
-      const result = await client.query(
-        `INSERT INTO golarion_notes ${INSERT_COLUMNS} VALUES ${INSERT_VALUES} RETURNING *`,
-        insertParams(note)
-      );
+      const result = await client.query(INSERT_SQL, insertParams(note));
       created.push(toApi(result.rows[0]));
     }
     return created;
@@ -79,11 +74,8 @@ exports.update = async (id, note) => {
            end_year = $4, end_month = $5, end_day = $6,
            note = $7, dm_only = $8, updated_at = NOW()
      WHERE id = $9 RETURNING *`,
-    [
-      note.start.year, note.start.month, note.start.day,
-      note.end.year, note.end.month, note.end.day,
-      note.note, note.dmOnly || false, id,
-    ]
+    // The first eight insert params are the span, text and DM-only flag; created_by is not updated.
+    [...insertParams(note).slice(0, 8), id]
   );
   return result.rows.length ? toApi(result.rows[0]) : null;
 };

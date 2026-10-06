@@ -11,7 +11,5 @@ router.get('/spells', verifyToken, spellcastingController.getAvailableSpells);
 
 // Spellcasting service history endpoints
 router.get('/', verifyToken, spellcastingController.getAllServices);
-router.get('/:id', verifyToken, spellcastingController.getServiceById);
-router.delete('/:id', verifyToken, spellcastingController.deleteService);
 
 module.exports = router;

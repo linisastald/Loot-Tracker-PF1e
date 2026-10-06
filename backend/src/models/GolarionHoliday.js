@@ -1,4 +1,10 @@
 // src/models/GolarionHoliday.js
+//
+// Campaign scoping is enforced by row-level security (migration 074): official holidays
+// (campaign_id NULL) are readable by everyone and writable by nobody through the app;
+// custom holidays are visible and writable only in their own campaign, and campaign_id
+// defaults from the request's campaign context on INSERT. Queries here therefore do not
+// filter on campaign_id themselves.
 const dbUtils = require('../utils/dbUtils');
 
 const toApi = (row) => ({
