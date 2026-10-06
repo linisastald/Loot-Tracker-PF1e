@@ -251,45 +251,6 @@ describe('useLootEntryForm', () => {
     });
   });
 
-  describe('resetForm', () => {
-    it('should reset entries to a single default item entry', () => {
-      const { result } = renderHook(() => useLootEntryForm());
-
-      // Add multiple entries and modify them
-      act(() => {
-        result.current.handleAddEntry('gold');
-        result.current.handleAddEntry('item');
-        result.current.handleEntryChange(0, { name: 'Modified item' });
-      });
-      expect(result.current.entries).toHaveLength(3);
-
-      act(() => {
-        result.current.resetForm();
-      });
-
-      expect(result.current.entries).toHaveLength(1);
-      expect(result.current.entries[0].type).toBe('item');
-      expect(result.current.entries[0].data.name).toBe('');
-      expect(result.current.entries[0].error).toBeNull();
-    });
-
-    it('should clear error and success messages', () => {
-      const { result } = renderHook(() => useLootEntryForm());
-
-      act(() => {
-        result.current.setError('Something went wrong');
-        result.current.setSuccess('Item created');
-      });
-
-      act(() => {
-        result.current.resetForm();
-      });
-
-      expect(result.current.error).toBe('');
-      expect(result.current.success).toBe('');
-    });
-  });
-
   describe('setEntries (direct setter)', () => {
     it('should allow directly setting entries', () => {
       const { result } = renderHook(() => useLootEntryForm());
@@ -337,17 +298,13 @@ describe('useLootEntryForm', () => {
       expect(result.current.entries[1].data.quantity).toBe('');
     });
 
-    it('starts the first row, new item rows and a reset form with the default', () => {
+    it('starts the first row and new item rows with the default', () => {
       const { result } = renderHook(() => useLootEntryForm({ defaultQuantity: 5 }));
 
       expect(result.current.entries[0].data.quantity).toBe(5);
 
       act(() => result.current.handleAddEntry('item'));
       expect(result.current.entries[1].data.quantity).toBe(5);
-
-      act(() => result.current.resetForm());
-      expect(result.current.entries).toHaveLength(1);
-      expect(result.current.entries[0].data.quantity).toBe(5);
     });
 
     it('does not give gold rows a quantity', () => {

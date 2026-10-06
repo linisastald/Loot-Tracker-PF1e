@@ -90,12 +90,6 @@ const useLootEntryForm = ({defaultQuantity = ''} = {}) => {
     );
   };
 
-  const resetForm = () => {
-    setEntries([newItemEntry(defaultQuantity)]);
-    setError('');
-    setSuccess('');
-  };
-
   return {
     entries,
     setEntries,
@@ -105,8 +99,7 @@ const useLootEntryForm = ({defaultQuantity = ''} = {}) => {
     setSuccess,
     handleAddEntry,
     handleRemoveEntry,
-    handleEntryChange,
-    resetForm
+    handleEntryChange
   };
 };
 

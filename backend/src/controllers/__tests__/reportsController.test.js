@@ -449,8 +449,6 @@ describe('reportsController', () => {
     });
   });
 
-  // ─── getLootStatistics ──────────────────────────────────────────
-
   // ─── SQL filters and parameters ─────────────────────────────────
 
   describe('query filters', () => {
