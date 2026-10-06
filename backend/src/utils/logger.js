@@ -57,16 +57,15 @@ if (canWriteLogs) {
   );
 }
 
-// Always add console transport for production (fallback)
-if (!canWriteLogs || process.env.NODE_ENV === 'production') {
-  transports.push(new winston.transports.Console({
-    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    )
-  }));
-}
+// Console transport is always present: the only output when the log directory
+// is not writable, and the container's stdout otherwise.
+transports.push(new winston.transports.Console({
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  format: winston.format.combine(
+    winston.format.colorize(),
+    winston.format.simple()
+  )
+}));
 
 const logger = winston.createLogger({
   level: LOGGING.LEVEL,
@@ -77,16 +76,5 @@ const logger = winston.createLogger({
   ),
   transports: transports
 });
-
-// Add console transport for development if not already added
-if (process.env.NODE_ENV !== 'production' && canWriteLogs) {
-  logger.add(new winston.transports.Console({
-    level: 'debug',
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    )
-  }));
-}
 
 module.exports = logger;
