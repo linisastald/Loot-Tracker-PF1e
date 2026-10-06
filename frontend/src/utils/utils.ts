@@ -1,22 +1,8 @@
 // src/utils/utils.ts
 import React from 'react';
-import api from './api';
 import lootService from '../services/lootService';
-import { LootItem, Character, LootStatus, ItemType } from '../types/game';
-
-// API Response types
-interface UserResponse {
-  data?: {
-    user?: User;
-  };
-}
-
-interface User {
-  id: number;
-  activeCharacterId?: number;
-  username?: string;
-  role?: string;
-}
+import { getErrorMessage } from './apiErrors';
+import { LootItem, ItemType } from '../types/game';
 
 interface LootData {
   summary: LootItem[];
@@ -34,15 +20,23 @@ interface SplitQuantity {
   quantity: number;
 }
 
+// Catalog item as returned by the items API (the caster level column is `casterlevel`)
+interface CatalogItem {
+  id: number;
+  name: string;
+  type?: string;
+  casterlevel?: number | null;
+}
+
 interface ItemsMap {
-  [key: number]: LootItem;
+  [key: number]: CatalogItem;
 }
 
 interface ModsMap {
   [key: number]: {
     id: number;
     name: string;
-    casterlevel?: number;
+    casterlevel?: number | null;
     plus?: number;
   };
 }
@@ -54,26 +48,10 @@ type ErrorCallback = (message: string) => void;
 type SuccessCallback = (message: string) => void;
 
 /**
- * Fetch the currently active user from the authentication endpoint
- */
-export const fetchActiveUser = async (): Promise<User | null> => {
-  try {
-    const response: UserResponse = await api.get('/auth/status');
-    if (response?.data?.user) {
-      return response.data.user;
-    }
-    return null;
-  } catch (error: any) {
-    console.error('Error fetching active user:', error.message);
-    return null;
-  }
-};
-
-/**
  * Handle item selection for checkboxes/lists
  */
 export const handleSelectItem = (
-  id: number, 
+  id: number,
   setSelectedItems: SetStateCallback<number[]>
 ): void => {
   setSelectedItems(prevSelectedItems =>
@@ -84,96 +62,12 @@ export const handleSelectItem = (
 };
 
 /**
- * Handle selling selected items
- */
-export const handleSell = async (
-  selectedItems: number[],
-  fetchLoot: CallbackFunction,
-  activeUser?: User | null
-): Promise<void> => {
-  try {
-    const user = activeUser || (await fetchActiveUser());
-    await lootService.updateLootStatus({
-      lootIds: selectedItems,
-      status: 'Pending Sale' as LootStatus,
-      characterId: user?.activeCharacterId || user?.id || 0
-    });
-    fetchLoot();
-  } catch (error: any) {
-    console.error('Error selling items:', error);
-  }
-};
-
-/**
- * Handle trashing selected items
- */
-export const handleTrash = async (
-  selectedItems: number[],
-  fetchLoot: CallbackFunction,
-  activeUser?: User | null
-): Promise<void> => {
-  try {
-    const user = activeUser || (await fetchActiveUser());
-    await lootService.updateLootStatus({
-      lootIds: selectedItems,
-      status: 'Trashed' as LootStatus,
-      characterId: user?.activeCharacterId || user?.id || 0
-    });
-    fetchLoot();
-  } catch (error: any) {
-    console.error('Error trashing items:', error);
-  }
-};
-
-/**
- * Handle keeping items for self
- */
-export const handleKeepSelf = async (
-  selectedItems: number[],
-  fetchLoot: CallbackFunction,
-  activeUser: User
-): Promise<void> => {
-  try {
-    await lootService.updateLootStatus({
-      lootIds: selectedItems,
-      status: 'Kept Character' as LootStatus,
-      characterId: activeUser.activeCharacterId || 0,
-      saleValue: null
-    });
-    fetchLoot();
-  } catch (error: any) {
-    console.error('Error keeping items for self:', error);
-  }
-};
-
-/**
- * Handle keeping items for party
- */
-export const handleKeepParty = async (
-  selectedItems: number[],
-  fetchLoot: CallbackFunction,
-  activeUser?: User | null
-): Promise<void> => {
-  try {
-    const user = activeUser || (await fetchActiveUser());
-    await lootService.updateLootStatus({
-      lootIds: selectedItems,
-      status: 'Kept Party' as LootStatus,
-      characterId: user?.activeCharacterId || user?.id || 0
-    });
-    fetchLoot();
-  } catch (error: any) {
-    console.error('Error keeping items for party:', error);
-  }
-};
-
-/**
  * Handle opening update dialog for selected item
  */
 export const handleOpenUpdateDialog = (
-  loot: LootItem[], 
-  selectedItems: number[], 
-  setUpdatedEntry: SetStateCallback<LootItem | null>, 
+  loot: LootItem[],
+  selectedItems: number[],
+  setUpdatedEntry: SetStateCallback<LootItem | null>,
   setOpenUpdateDialog: SetStateCallback<boolean>
 ): void => {
   const selectedItem = loot.find(item => item.id === selectedItems[0]);
@@ -205,11 +99,11 @@ export const handleSplitDialogClose = (
  * Handle form input changes in update dialog
  */
 export const handleUpdateChange = (
-  e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>, 
+  e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   setUpdatedEntry: SetStateCallback<LootItem | null>
 ): void => {
   const { name, value } = e.target;
-  setUpdatedEntry((prevEntry) => 
+  setUpdatedEntry((prevEntry) =>
     prevEntry ? {
       ...prevEntry,
       [name]: value,
@@ -226,7 +120,7 @@ export const applyFilters = (loot: LootData | null, filters: Filters): LootData 
     return { summary: [], individual: [] };
   }
 
-  let filteredLoot: LootData = { 
+  let filteredLoot: LootData = {
     summary: [...loot.summary],
     individual: [...loot.individual]
   };
@@ -241,16 +135,16 @@ export const applyFilters = (loot: LootData | null, filters: Filters): LootData 
       if (filters.unidentified === 'all') {
         return true;
       }
-      
+
       // Handle the filter for unidentified items
       if (filters.unidentified === 'true' || filters.unidentified === true) {
         return item.unidentified === true;
       }
-      
+
       if (filters.unidentified === 'false' || filters.unidentified === false) {
         return item.unidentified === false;
       }
-      
+
       // If filter is not 'all', 'true', or 'false', include items with null values
       return item.unidentified === null;
     });
@@ -266,7 +160,7 @@ export const applyFilters = (loot: LootData | null, filters: Filters): LootData 
 
   if (filters.pendingSale) {
     const isPendingSale = filters.pendingSale === 'true' || filters.pendingSale === true;
-    filteredLoot.individual = filteredLoot.individual.filter(item => 
+    filteredLoot.individual = filteredLoot.individual.filter(item =>
       (item.status === 'Pending Sale') === isPendingSale
     );
   }
@@ -275,25 +169,12 @@ export const applyFilters = (loot: LootData | null, filters: Filters): LootData 
 };
 
 /**
- * Format a date string for display
- */
-export const formatDate = (dateString: string | Date | null | undefined): string => {
-  if (!dateString) return '';
-  const options: Intl.DateTimeFormatOptions = { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
-  };
-  return new Date(dateString).toLocaleDateString(undefined, options);
-};
-
-/**
  * Handle opening split dialog for an item
  */
 export const handleOpenSplitDialog = (
-  item: LootItem, 
-  setSplitItem: SetStateCallback<LootItem | null>, 
-  setSplitEntries: SetStateCallback<SplitQuantity[]>, 
+  item: LootItem,
+  setSplitItem: SetStateCallback<LootItem | null>,
+  setSplitEntries: SetStateCallback<SplitQuantity[]>,
   setSplitDialogOpen: SetStateCallback<boolean>
 ): void => {
   setSplitItem(item);
@@ -302,50 +183,21 @@ export const handleOpenSplitDialog = (
 };
 
 /**
- * Handle submitting item updates
- */
-export const handleUpdateSubmit = async (
-  updatedEntry: LootItem, 
-  fetchLoot: CallbackFunction, 
-  setOpenUpdateDialog: SetStateCallback<boolean>, 
-  setSelectedItems: SetStateCallback<number[]>
-): Promise<void> => {
-  try {
-    await lootService.updateLootItem(updatedEntry.id, {
-      session_date: updatedEntry.session_date,
-      quantity: updatedEntry.quantity,
-      name: updatedEntry.name,
-      unidentified: updatedEntry.unidentified,
-      masterwork: updatedEntry.masterwork,
-      type: updatedEntry.type,
-      size: updatedEntry.size,
-      notes: updatedEntry.notes
-    });
-    fetchLoot();
-    setOpenUpdateDialog(false);
-    setSelectedItems([]);
-  } catch (error: any) {
-    console.error('Error updating item:', error);
-  }
-};
-
-/**
  * Handle submitting stack splits
  */
 export const handleSplitSubmit = async (
-  splitQuantities: SplitQuantity[], 
-  selectedItems: number[], 
-  originalItemQuantity: number, 
-  userId: number, 
-  fetchLoot: CallbackFunction, 
-  setOpenSplitDialog: SetStateCallback<boolean>, 
+  splitQuantities: SplitQuantity[],
+  selectedItems: number[],
+  originalItemQuantity: number,
+  fetchLoot: CallbackFunction,
+  setOpenSplitDialog: SetStateCallback<boolean>,
   setSelectedItems: SetStateCallback<number[]>
 ): Promise<void> => {
   // Calculate the sum of split quantities
-  const sumOfSplits = splitQuantities.reduce((total, current) => 
+  const sumOfSplits = splitQuantities.reduce((total, current) =>
     total + parseInt(current.quantity.toString(), 10), 0
   );
-  
+
   // Ensure originalItemQuantity is a number for accurate comparison
   const originalQuantity = parseInt(originalItemQuantity.toString(), 10);
 
@@ -372,7 +224,7 @@ export const handleSplitSubmit = async (
     } else {
       console.error('Error splitting loot item:', body.message);
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error splitting loot item:', error);
   }
 };
@@ -381,89 +233,75 @@ export const handleSplitSubmit = async (
  * Update an item using the DM update endpoint
  */
 export const updateItemAsDM = async (
-  itemId: number, 
-  updatedData: Partial<LootItem>, 
-  onSuccess?: SuccessCallback, 
-  onError?: ErrorCallback, 
+  itemId: number,
+  updatedData: Partial<LootItem>,
+  onSuccess?: SuccessCallback,
+  onError?: ErrorCallback,
   onFinally?: CallbackFunction
 ): Promise<void> => {
   try {
-    // Perform the update using DM-specific endpoint
     await lootService.updateLootItemAsDM(itemId, updatedData);
-    
-    // Call success callback if provided
-    if (onSuccess) {
-      onSuccess('Item updated successfully');
-    }
-  } catch (error: any) {
+    onSuccess?.('Item updated successfully');
+  } catch (error) {
     console.error('Error updating item:', error);
-    
-    // Call error callback if provided
-    if (onError) {
-      const errorMessage = error.response?.data?.error || 'Failed to update item';
-      onError(errorMessage);
-    }
+    onError?.(getErrorMessage(error, 'Failed to update item'));
   } finally {
-    // Call finally callback if provided
-    if (onFinally) {
-      onFinally();
-    }
+    onFinally?.();
   }
 };
 
 /**
- * Calculate Spellcraft DC for an item based on its caster level
- * Uses the same logic as the backend for consistency
+ * Spellcraft DC for identifying an item: 15 + effective caster level, capped
+ * at caster level 20. Same rule as the backend identificationService: weapons
+ * and armor with mods use the highest mod caster level, everything else (and
+ * mods without a caster level) the catalog item's, defaulting to 1.
+ *
+ * @param catalogItem - the catalog row the loot is linked to
+ * @param modIds - the loot row's `modids`
+ */
+export const spellcraftDCFor = (
+  catalogItem: CatalogItem,
+  modIds: number[] | null | undefined,
+  modsMap: ModsMap
+): number => {
+  let effectiveCasterLevel = catalogItem.casterlevel || 1;
+
+  if (catalogItem.type === 'weapon' || catalogItem.type === 'armor') {
+    const modCasterLevels = (modIds ?? [])
+      .map(modId => modsMap[modId]?.casterlevel)
+      .filter((level): level is number => level !== null && level !== undefined);
+
+    if (modCasterLevels.length > 0) {
+      effectiveCasterLevel = Math.max(...modCasterLevels);
+    }
+  }
+
+  return 15 + Math.min(effectiveCasterLevel, 20);
+};
+
+/**
+ * Calculate Spellcraft DC for a loot item, or null when it is not linked to a catalog item
  */
 export const calculateSpellcraftDC = (
-  item: LootItem, 
-  itemsMap: ItemsMap, 
+  item: Pick<LootItem, 'itemid' | 'modids'>,
+  itemsMap: ItemsMap,
   modsMap: ModsMap = {}
 ): number | null => {
   if (!item.itemid || !itemsMap[item.itemid]) {
     return null;
   }
 
-  const selectedItem = itemsMap[item.itemid];
-
-  let effectiveCasterLevel: number;
-
-  // For weapons and armor with mods, use mod caster levels
-  if ((selectedItem.type === 'weapon' || selectedItem.type === 'armor') &&
-      item.mod1 && modsMap) {
-
-    // Get caster levels from mods (simplified - using mod1, mod2, mod3 instead of modids array)
-    const modIds = [item.mod1, item.mod2, item.mod3].filter(Boolean) as number[];
-    const modCasterLevels = modIds
-      .map(modId => modsMap[modId])
-      .filter(mod => mod && mod.casterlevel !== null && mod.casterlevel !== undefined)
-      .map(mod => mod.casterlevel!);
-
-    if (modCasterLevels.length > 0) {
-      // Use the highest caster level from mods
-      effectiveCasterLevel = Math.max(...modCasterLevels);
-    } else {
-      // Fallback to base item caster level
-      effectiveCasterLevel = selectedItem.caster_level || 1;
-    }
-  } else {
-    // For other items or items without mods, use base item caster level
-    effectiveCasterLevel = selectedItem.caster_level || 1;
-  }
-
-  const dc = 15 + Math.min(effectiveCasterLevel, 20);
-
-  return dc; // Cap at caster level 20
+  return spellcraftDCFor(itemsMap[item.itemid], item.modids, modsMap);
 };
 
 /**
  * Identify an unidentified item
  */
 export const identifyItem = async (
-  item: LootItem, 
-  itemsMap: ItemsMap, 
-  onSuccess?: SuccessCallback, 
-  onError?: ErrorCallback, 
+  item: LootItem,
+  itemsMap: ItemsMap,
+  onSuccess?: SuccessCallback,
+  onError?: ErrorCallback,
   refreshData?: CallbackFunction
 ): Promise<void> => {
   try {
@@ -476,29 +314,20 @@ export const identifyItem = async (
     };
 
     await lootService.updateLootItem(item.id, updatedData);
-    
-    if (onSuccess) {
-      onSuccess('Item identified successfully');
-    }
-    
-    if (refreshData) {
-      refreshData();
-    }
-  } catch (error: any) {
+    onSuccess?.('Item identified successfully');
+    refreshData?.();
+  } catch (error) {
     console.error('Error identifying item:', error);
-    
-    if (onError) {
-      onError('Failed to identify item');
-    }
+    onError?.('Failed to identify item');
   }
 };
 
 /**
- * Formats an item name with its mods
+ * Formats an item name with its mods (e.g. "+1 Flaming Longsword")
  */
 export const formatItemNameWithMods = (
-  item: LootItem, 
-  itemsMap: ItemsMap, 
+  item: Pick<LootItem, 'itemid' | 'modids'>,
+  itemsMap: ItemsMap,
   modsMap: ModsMap
 ): string | React.ReactElement => {
   if (!item?.itemid) {
@@ -510,50 +339,11 @@ export const formatItemNameWithMods = (
     return React.createElement('span', { style: { color: 'red' } }, `Not linked (ID: ${item.itemid})`);
   }
 
-  let displayName = selectedItem.name;
+  const modNames = (item.modids ?? [])
+    .map(modId => modsMap[modId]?.name)
+    .filter((name): name is string => Boolean(name))
+    // '+X' mods first
+    .sort((a, b) => Number(b.startsWith('+')) - Number(a.startsWith('+')));
 
-  // If the item has mods, add them to the name (using mod1, mod2, mod3)
-  const modIds = [item.mod1, item.mod2, item.mod3].filter(Boolean) as number[];
-  
-  if (modIds.length > 0) {
-    const modNames: string[] = [];
-
-    // Get mod names from the map
-    modIds.forEach(modId => {
-      const mod = modsMap[modId];
-      if (mod) {
-        modNames.push(mod.name);
-      }
-    });
-
-    // Sort mods to put '+X' mods first
-    modNames.sort((a, b) => {
-      if (a.startsWith('+') && !b.startsWith('+')) return -1;
-      if (!a.startsWith('+') && b.startsWith('+')) return 1;
-      return 0;
-    });
-
-    // Combine mods with the item name
-    if (modNames.length > 0) {
-      displayName = `${modNames.join(' ')} ${selectedItem.name}`;
-    }
-  }
-
-  return displayName;
-};
-/**
- * Format a date string for display with time
- * Note: This uses browser local timezone. For campaign timezone, use formatInCampaignTimezone from timezoneUtils
- */
-export const formatDateTime = (dateString: string | Date | null | undefined): string => {
-  if (!dateString) return '';
-  const options: Intl.DateTimeFormatOptions = {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  };
-  return new Date(dateString).toLocaleDateString(undefined, options);
+  return modNames.length > 0 ? `${modNames.join(' ')} ${selectedItem.name}` : selectedItem.name;
 };

@@ -15,18 +15,13 @@ vi.mock('../../services/lootService', () => ({
 // Mock utils
 vi.mock('../../utils/utils', () => ({
   applyFilters: vi.fn((loot) => loot || { summary: [], individual: [] }),
-  handleKeepParty: vi.fn(),
-  handleKeepSelf: vi.fn(),
   handleOpenSplitDialog: vi.fn(),
   handleOpenUpdateDialog: vi.fn(),
   handleSelectItem: vi.fn(),
-  handleSell: vi.fn(),
   handleSplitDialogClose: vi.fn(),
   handleSplitSubmit: vi.fn(),
-  handleTrash: vi.fn(),
   handleUpdateChange: vi.fn(),
   handleUpdateDialogClose: vi.fn(),
-  handleUpdateSubmit: vi.fn(),
 }));
 
 // Mock AuthContext
@@ -54,18 +49,13 @@ vi.mock('../../utils/api', () => ({
 import lootService from '../../services/lootService';
 import {
   applyFilters,
-  handleKeepParty,
-  handleKeepSelf,
   handleOpenSplitDialog,
   handleOpenUpdateDialog,
   handleSelectItem,
-  handleSell,
   handleSplitDialogClose,
   handleSplitSubmit,
-  handleTrash,
   handleUpdateChange,
   handleUpdateDialogClose,
-  handleUpdateSubmit,
 } from '../../utils/utils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDM } from '../../contexts/CampaignContext';
@@ -293,64 +283,6 @@ describe('useLootManagement', () => {
     });
   });
 
-  describe('action handler wrappers (handleSell, handleTrash, etc.)', () => {
-    it('handleSell should call the util handleSell with ids, fetchLoot, and authUser', async () => {
-      const { result } = renderHook(() => useLootManagement(null));
-
-      await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
-      });
-
-      act(() => {
-        result.current.handleSell([1, 2]);
-      });
-
-      expect(handleSell).toHaveBeenCalledWith([1, 2], expect.any(Function), mockAuthUser);
-    });
-
-    it('handleTrash should call the util handleTrash', async () => {
-      const { result } = renderHook(() => useLootManagement(null));
-
-      await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
-      });
-
-      act(() => {
-        result.current.handleTrash([3]);
-      });
-
-      expect(handleTrash).toHaveBeenCalledWith([3], expect.any(Function), mockAuthUser);
-    });
-
-    it('handleKeepSelf should call the util handleKeepSelf', async () => {
-      const { result } = renderHook(() => useLootManagement(null));
-
-      await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
-      });
-
-      act(() => {
-        result.current.handleKeepSelf([4, 5]);
-      });
-
-      expect(handleKeepSelf).toHaveBeenCalledWith([4, 5], expect.any(Function), mockAuthUser);
-    });
-
-    it('handleKeepParty should call the util handleKeepParty', async () => {
-      const { result } = renderHook(() => useLootManagement(null));
-
-      await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
-      });
-
-      act(() => {
-        result.current.handleKeepParty([6]);
-      });
-
-      expect(handleKeepParty).toHaveBeenCalledWith([6], expect.any(Function), mockAuthUser);
-    });
-  });
-
   describe('handleSelectItem', () => {
     it('should call util handleSelectItem with id and setter', async () => {
       const { result } = renderHook(() => useLootManagement(null));
@@ -495,7 +427,6 @@ describe('useLootManagement', () => {
         [{ quantity: 12 }, { quantity: 8 }], // splitQuantities
         [99],                                  // selectedItems
         20,                                    // splitItem.quantity
-        null,                                  // userId (always null)
         expect.any(Function),                  // fetchLoot
         expect.any(Function),                  // setOpenSplitDialog
         expect.any(Function)                   // setSelectedItems
@@ -553,23 +484,6 @@ describe('useLootManagement', () => {
       expect(handleUpdateChange).toHaveBeenCalledWith(mockEvent, expect.any(Function));
     });
 
-    it('handleUpdateSubmitWrapper should call util handleUpdateSubmit', async () => {
-      const { result } = renderHook(() => useLootManagement(null));
-
-      await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
-      });
-
-      act(() => {
-        result.current.handleUpdateSubmitWrapper();
-      });
-
-      expect(handleUpdateSubmit).toHaveBeenCalledWith(
-        expect.any(Object),  // updatedEntry
-        expect.any(Function), // fetchLoot
-        expect.any(Function)  // setOpenUpdateDialog
-      );
-    });
   });
 
   describe('handleAppraise', () => {

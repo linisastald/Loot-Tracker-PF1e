@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import api from '../../../utils/api';
 import lootService from '../../../services/lootService';
+import {spellcraftDCFor} from '../../../utils/utils';
 
 const ItemManagementDialog = ({
                                   open,
@@ -90,25 +91,13 @@ const ItemManagementDialog = ({
     }, [open, updatedItem?.itemid]);
 
     // Recompute the spellcraft DC whenever the linked catalog item or the
-    // selected mods change. Mirrors `calculateSpellcraftDC` in utils/utils.ts:
-    // weapons/armor with mods use the highest mod caster level; everything
-    // else uses the base item's caster level. DC = 15 + min(CL, 20).
+    // selected mods change, with the same rule the unidentified-items list uses
+    // (spellcraftDCFor in utils/utils.ts).
     useEffect(() => {
         if (!open || !linkedCatalogItem) return;
-        const isWeaponOrArmor =
-            linkedCatalogItem.type === 'weapon' || linkedCatalogItem.type === 'armor';
         const selectedModIds = Array.isArray(updatedItem?.modids) ? updatedItem.modids : [];
-        let effectiveCasterLevel = linkedCatalogItem.casterlevel || 1;
-        if (isWeaponOrArmor && selectedModIds.length > 0 && mods.length > 0) {
-            const modCasterLevels = selectedModIds
-                .map(id => mods.find(m => m.id === id))
-                .filter(m => m && m.casterlevel != null)
-                .map(m => m.casterlevel);
-            if (modCasterLevels.length > 0) {
-                effectiveCasterLevel = Math.max(...modCasterLevels);
-            }
-        }
-        const newDC = 15 + Math.min(effectiveCasterLevel, 20);
+        const modsById = Object.fromEntries(mods.map(m => [m.id, m]));
+        const newDC = spellcraftDCFor(linkedCatalogItem, selectedModIds, modsById);
         setUpdatedItem(prev =>
             prev?.spellcraft_dc === newDC ? prev : { ...prev, spellcraft_dc: newDC }
         );

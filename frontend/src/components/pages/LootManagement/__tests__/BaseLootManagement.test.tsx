@@ -178,3 +178,41 @@ describe('BaseLootManagement.handleUpdateSubmit role branching', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('BaseLootManagement status actions (F-1577)', () => {
+  const actionConfig: any = {
+    ...config,
+    actions: [{ actionKey: 'keepParty', label: 'Keep Party', variant: 'contained', color: 'primary' }],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsDM = false;
+    mockHookReturn.openUpdateDialog = false; // an open modal hides the action bar from the accessibility tree
+  });
+
+  it('sends the active character id when there is one', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 7, role: 'Player', activeCharacterId: 21 } });
+    render(<BaseLootManagement config={actionConfig} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep Party' }));
+
+    await waitFor(() => expect(lootService.updateLootStatus).toHaveBeenCalledTimes(1));
+    expect(lootService.updateLootStatus).toHaveBeenCalledWith({
+      lootIds: [42],
+      status: 'Kept Party',
+      characterId: 21,
+    });
+  });
+
+  it('omits characterId instead of sending the user id when there is no active character', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 7, role: 'DM' } });
+    render(<BaseLootManagement config={actionConfig} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep Party' }));
+
+    await waitFor(() => expect(lootService.updateLootStatus).toHaveBeenCalledTimes(1));
+    expect(lootService.updateLootStatus).toHaveBeenCalledWith({ lootIds: [42], status: 'Kept Party' });
+  });
+});
+

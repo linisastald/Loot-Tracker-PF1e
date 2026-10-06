@@ -2,18 +2,13 @@ import {useEffect, useState, useCallback} from 'react';
 import lootService from '../services/lootService';
 import {
   applyFilters,
-  handleKeepParty,
-  handleKeepSelf,
   handleOpenSplitDialog,
   handleOpenUpdateDialog,
   handleSelectItem,
-  handleSell,
   handleSplitDialogClose,
   handleSplitSubmit,
-  handleTrash,
   handleUpdateChange,
   handleUpdateDialogClose,
-  handleUpdateSubmit,
 } from '../utils/utils';
 import { useAuth } from '../contexts/AuthContext';
 import { useIsDM } from '../contexts/CampaignContext';
@@ -109,15 +104,10 @@ const useLootManagement = (statusToFetch) => {
       splitQuantities,
       selectedItems,
       splitItem?.quantity || 0,
-      null,
       fetchLoot,
       setOpenSplitDialog,
       setSelectedItems
     );
-  };
-
-  const handleUpdateSubmitWrapper = () => {
-    handleUpdateSubmit(updatedEntry, fetchLoot, setOpenUpdateDialog);
   };
 
   // Special function for handling appraise in UnprocessedLoot
@@ -168,13 +158,7 @@ const useLootManagement = (statusToFetch) => {
     handleSplitDialogClose: () => handleSplitDialogClose(setOpenSplitDialog),
     handleUpdateChange: (e) => handleUpdateChange(e, setUpdatedEntry),
     handleSplitSubmitWrapper,
-    handleUpdateSubmitWrapper,
     handleAppraise,
-    // Expose common action handlers
-    handleSell: (ids) => handleSell(ids, fetchLoot, authUser),
-    handleTrash: (ids) => handleTrash(ids, fetchLoot, authUser),
-    handleKeepSelf: (ids) => handleKeepSelf(ids, fetchLoot, authUser),
-    handleKeepParty: (ids) => handleKeepParty(ids, fetchLoot, authUser),
   };
 };
 

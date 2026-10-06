@@ -52,11 +52,13 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
   const performStatusChange = async (status: LootStatus) => {
     if (selectedItems.length === 0) return;
     try {
+      // Never send the user id as a character id: without an active
+      // character the loot keeps its current holder.
+      const activeCharacterId = (authUser as any)?.activeCharacterId;
       await lootService.updateLootStatus({
         lootIds: selectedItems,
         status,
-        characterId:
-          (authUser as any)?.activeCharacterId || (authUser as any)?.id || 0,
+        ...(activeCharacterId ? { characterId: activeCharacterId } : {}),
       });
       await fetchLoot();
       setSelectedItems([]);

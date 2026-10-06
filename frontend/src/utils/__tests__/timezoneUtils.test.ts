@@ -1,25 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock dependencies before imports
+// Only the API is mocked: date-fns-tz is real so the tests check actual
+// timezone conversions, not just the pattern string passed through.
 vi.mock('../api', () => ({
   default: {
     get: vi.fn(),
   },
 }));
 
-vi.mock('date-fns-tz', () => ({
-  formatInTimeZone: vi.fn(),
-}));
-
 import api from '../api';
-import { formatInTimeZone } from 'date-fns-tz';
 import {
   fetchCampaignTimezone,
   clearTimezoneCache,
   formatInCampaignTimezone,
-  formatWithTimezoneAbbr,
-  formatDateOnly,
-  formatTimeOnly,
 } from '../timezoneUtils';
 
 describe('timezoneUtils', () => {
@@ -57,14 +50,14 @@ describe('timezoneUtils', () => {
       expect(tz).toBe('America/New_York');
     });
 
-    it('caches the fallback value after error', async () => {
-      (api.get as any).mockRejectedValue(new Error('fail'));
+    it('does not cache the fallback after an error, so a later call retries (F-1569)', async () => {
+      (api.get as any)
+        .mockRejectedValueOnce(new Error('fail'))
+        .mockResolvedValueOnce({ timezone: 'America/Chicago' });
 
-      await fetchCampaignTimezone();
-      const second = await fetchCampaignTimezone();
-
-      expect(second).toBe('America/New_York');
-      expect(api.get).toHaveBeenCalledTimes(1);
+      expect(await fetchCampaignTimezone()).toBe('America/New_York');
+      expect(await fetchCampaignTimezone()).toBe('America/Chicago');
+      expect(api.get).toHaveBeenCalledTimes(2);
     });
 
     it('re-fetches after cache is cleared', async () => {
@@ -95,7 +88,7 @@ describe('timezoneUtils', () => {
     });
 
     it('deduplicates concurrent requests', async () => {
-      let resolveApi: (val: any) => void;
+      let resolveApi: (val: unknown) => void;
       (api.get as any).mockReturnValue(new Promise((resolve) => { resolveApi = resolve; }));
 
       const p1 = fetchCampaignTimezone();
@@ -117,109 +110,56 @@ describe('timezoneUtils', () => {
     });
   });
 
-  // --------------- formatInCampaignTimezone ---------------
+  // --------------- formatInCampaignTimezone (real date-fns-tz) ---------------
   describe('formatInCampaignTimezone', () => {
-    const tz = 'America/New_York';
+    it('converts a winter instant to Eastern standard time (UTC-5)', () => {
+      // 2025-11-24T00:30:00Z is 7:30 PM on Nov 23 in New York
+      expect(formatInCampaignTimezone('2025-11-24T00:30:00Z', 'America/New_York', 'yyyy-MM-dd HH:mm'))
+        .toBe('2025-11-23 19:30');
+    });
 
-    it('formats a valid ISO date string', () => {
-      (formatInTimeZone as any).mockReturnValue('Nov 23, 2025, 7:00:00 PM');
+    it('applies daylight saving time (UTC-4) in summer', () => {
+      expect(formatInCampaignTimezone('2025-07-01T00:30:00Z', 'America/New_York', 'yyyy-MM-dd HH:mm'))
+        .toBe('2025-06-30 20:30');
+    });
 
-      const result = formatInCampaignTimezone('2025-11-24T00:00:00Z', tz);
-      expect(result).toBe('Nov 23, 2025, 7:00:00 PM');
-      expect(formatInTimeZone).toHaveBeenCalledWith(
-        expect.any(Date),
-        tz,
-        'PPpp'
-      );
+    it('moves the calendar day across zones for the same instant', () => {
+      const instant = '2025-03-10T03:00:00Z';
+      expect(formatInCampaignTimezone(instant, 'America/Los_Angeles', 'yyyy-MM-dd')).toBe('2025-03-09');
+      expect(formatInCampaignTimezone(instant, 'UTC', 'yyyy-MM-dd')).toBe('2025-03-10');
+      expect(formatInCampaignTimezone(instant, 'Pacific/Auckland', 'yyyy-MM-dd')).toBe('2025-03-10');
+    });
+
+    it('uses the PPpp pattern by default (date, then time with seconds)', () => {
+      expect(formatInCampaignTimezone('2025-11-24T00:30:00Z', 'America/New_York'))
+        .toBe('Nov 23, 2025, 7:30:00 PM');
+    });
+
+    it('supports the PP date pattern and the zone abbreviation pattern', () => {
+      expect(formatInCampaignTimezone('2025-11-24T00:30:00Z', 'America/New_York', 'PP')).toBe('Nov 23, 2025');
+      expect(formatInCampaignTimezone('2025-11-24T00:30:00Z', 'America/New_York', 'p')).toBe('7:30 PM');
+      expect(formatInCampaignTimezone('2025-11-24T00:30:00Z', 'UTC', 'zzz')).toMatch(/UTC|GMT/);
     });
 
     it('accepts a Date object', () => {
-      (formatInTimeZone as any).mockReturnValue('Jan 1, 2025, 12:00:00 AM');
-
       const date = new Date('2025-01-01T05:00:00Z');
-      const result = formatInCampaignTimezone(date, tz);
-      expect(result).toBe('Jan 1, 2025, 12:00:00 AM');
-    });
-
-    it('uses custom format pattern when provided', () => {
-      (formatInTimeZone as any).mockReturnValue('2025-01-01');
-
-      formatInCampaignTimezone('2025-01-01T12:00:00Z', tz, 'yyyy-MM-dd');
-      expect(formatInTimeZone).toHaveBeenCalledWith(
-        expect.any(Date),
-        tz,
-        'yyyy-MM-dd'
-      );
+      expect(formatInCampaignTimezone(date, 'America/New_York', 'yyyy-MM-dd HH:mm')).toBe('2025-01-01 00:00');
     });
 
     it('returns empty string for null input', () => {
-      expect(formatInCampaignTimezone(null, tz)).toBe('');
+      expect(formatInCampaignTimezone(null, 'America/New_York')).toBe('');
     });
 
     it('returns empty string for undefined input', () => {
-      expect(formatInCampaignTimezone(undefined, tz)).toBe('');
+      expect(formatInCampaignTimezone(undefined, 'America/New_York')).toBe('');
     });
 
     it('returns empty string for invalid date string', () => {
-      expect(formatInCampaignTimezone('not-a-date', tz)).toBe('');
+      expect(formatInCampaignTimezone('not-a-date', 'America/New_York')).toBe('');
     });
 
-    it('returns empty string when formatInTimeZone throws', () => {
-      (formatInTimeZone as any).mockImplementation(() => { throw new Error('format error'); });
-
-      const result = formatInCampaignTimezone('2025-01-01T00:00:00Z', tz);
-      expect(result).toBe('');
-    });
-  });
-
-  // --------------- formatWithTimezoneAbbr ---------------
-  describe('formatWithTimezoneAbbr', () => {
-    const tz = 'America/New_York';
-
-    it('delegates to formatInCampaignTimezone with PPpp z pattern', () => {
-      (formatInTimeZone as any).mockReturnValue('Nov 23, 2025, 7:00:00 PM EST');
-
-      const result = formatWithTimezoneAbbr('2025-11-24T00:00:00Z', tz);
-      expect(result).toBe('Nov 23, 2025, 7:00:00 PM EST');
-      expect(formatInTimeZone).toHaveBeenCalledWith(expect.any(Date), tz, 'PPpp z');
-    });
-
-    it('returns empty string for null input', () => {
-      expect(formatWithTimezoneAbbr(null, tz)).toBe('');
-    });
-  });
-
-  // --------------- formatDateOnly ---------------
-  describe('formatDateOnly', () => {
-    const tz = 'America/New_York';
-
-    it('delegates to formatInCampaignTimezone with PP pattern', () => {
-      (formatInTimeZone as any).mockReturnValue('November 23, 2025');
-
-      const result = formatDateOnly('2025-11-24T00:00:00Z', tz);
-      expect(result).toBe('November 23, 2025');
-      expect(formatInTimeZone).toHaveBeenCalledWith(expect.any(Date), tz, 'PP');
-    });
-
-    it('returns empty string for null input', () => {
-      expect(formatDateOnly(null, tz)).toBe('');
-    });
-  });
-
-  // --------------- formatTimeOnly ---------------
-  describe('formatTimeOnly', () => {
-    const tz = 'America/New_York';
-
-    it('delegates to formatInCampaignTimezone with p pattern', () => {
-      (formatInTimeZone as any).mockReturnValue('7:00 PM');
-
-      const result = formatTimeOnly('2025-11-24T00:00:00Z', tz);
-      expect(result).toBe('7:00 PM');
-      expect(formatInTimeZone).toHaveBeenCalledWith(expect.any(Date), tz, 'p');
-    });
-
-    it('returns empty string for null input', () => {
-      expect(formatTimeOnly(null, tz)).toBe('');
+    it('returns empty string for an unknown timezone instead of throwing', () => {
+      expect(formatInCampaignTimezone('2025-01-01T00:00:00Z', 'Not/AZone')).toBe('');
     });
   });
 });

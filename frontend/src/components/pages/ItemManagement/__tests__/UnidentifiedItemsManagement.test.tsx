@@ -125,7 +125,7 @@ const mockItemsList = [
     id: 100,
     name: 'Longsword',
     type: 'weapon',
-    caster_level: 5,
+    casterlevel: 5,
   },
 ];
 

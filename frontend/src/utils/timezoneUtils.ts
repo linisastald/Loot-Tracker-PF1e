@@ -10,13 +10,18 @@ let cacheTimestamp: number | null = null;
 // Cache TTL: 5 minutes
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+// Same default the backend uses when the campaign timezone cannot be read
+const DEFAULT_TIMEZONE = 'America/New_York';
+
 interface CampaignTimezoneResponse {
-  timezone: string;
+  timezone?: string;
+  data?: { timezone?: string };
 }
 
 /**
  * Fetch the campaign timezone from the API
- * Results are cached for 5 minutes to minimize API calls
+ * Results are cached for 5 minutes to minimize API calls. A failed request
+ * answers the default timezone but is NOT cached, so the next call retries.
  */
 export const fetchCampaignTimezone = async (): Promise<string> => {
   // Check if cache is still valid (within TTL)
@@ -33,16 +38,14 @@ export const fetchCampaignTimezone = async (): Promise<string> => {
   // Start new fetch
   timezonePromise = (async () => {
     try {
-      const response = await api.get<CampaignTimezoneResponse>('/settings/campaign-timezone');
-      const timezone = (response as any).timezone || (response as any).data?.timezone || 'America/New_York';
+      const response = (await api.get('/settings/campaign-timezone')) as CampaignTimezoneResponse;
+      const timezone = response.timezone || response.data?.timezone || DEFAULT_TIMEZONE;
       cachedTimezone = timezone;
       cacheTimestamp = Date.now();
       return timezone;
-    } catch (error: any) {
-      // Fallback to Eastern Time if fetch fails
-      cachedTimezone = 'America/New_York';
-      cacheTimestamp = Date.now();
-      return cachedTimezone;
+    } catch {
+      // Transient failure: show the default zone now, retry on the next call
+      return DEFAULT_TIMEZONE;
     } finally {
       // Clear the promise so future calls can retry if needed
       timezonePromise = null;
@@ -53,7 +56,7 @@ export const fetchCampaignTimezone = async (): Promise<string> => {
 };
 
 /**
- * Clear the cached timezone (useful if timezone is updated)
+ * Clear the cached timezone (called when the campaign timezone is saved)
  */
 export const clearTimezoneCache = (): void => {
   cachedTimezone = null;
@@ -84,48 +87,7 @@ export const formatInCampaignTimezone = (
     }
 
     return formatInTimeZone(date, timezone, formatPattern);
-  } catch (error) {
+  } catch {
     return '';
   }
-};
-
-/**
- * Format a timestamp with timezone abbreviation
- * @param dateString - ISO timestamp string or Date object
- * @param timezone - IANA timezone string
- * @param formatPattern - date-fns format pattern (default includes timezone: 'PPpp z')
- * @returns Formatted date string with timezone abbreviation
- */
-export const formatWithTimezoneAbbr = (
-  dateString: string | Date | null | undefined,
-  timezone: string,
-  formatPattern: string = 'PPpp z'
-): string => {
-  return formatInCampaignTimezone(dateString, timezone, formatPattern);
-};
-
-/**
- * Format a date only (no time) in campaign timezone
- * @param dateString - ISO timestamp string or Date object
- * @param timezone - IANA timezone string
- * @returns Formatted date string (e.g., "November 23, 2025")
- */
-export const formatDateOnly = (
-  dateString: string | Date | null | undefined,
-  timezone: string
-): string => {
-  return formatInCampaignTimezone(dateString, timezone, 'PP');
-};
-
-/**
- * Format a time only (no date) in campaign timezone
- * @param dateString - ISO timestamp string or Date object
- * @param timezone - IANA timezone string
- * @returns Formatted time string (e.g., "7:00 PM")
- */
-export const formatTimeOnly = (
-  dateString: string | Date | null | undefined,
-  timezone: string
-): string => {
-  return formatInCampaignTimezone(dateString, timezone, 'p');
 };

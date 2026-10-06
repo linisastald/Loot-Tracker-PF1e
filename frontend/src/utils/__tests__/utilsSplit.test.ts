@@ -17,7 +17,7 @@ describe('handleSplitSubmit', () => {
   const quantities = [{ quantity: 2 }, { quantity: 3 }] as never;
 
   const run = () =>
-    handleSplitSubmit(quantities, [7], 5, 1, fetchLoot, setOpenSplitDialog, setSelectedItems);
+    handleSplitSubmit(quantities, [7], 5, fetchLoot, setOpenSplitDialog, setSelectedItems);
 
   beforeEach(() => {
     vi.clearAllMocks();
