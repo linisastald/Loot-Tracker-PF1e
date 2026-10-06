@@ -264,11 +264,11 @@ describe('PendingSaleManagement', () => {
       });
     });
 
-    it('rounds the displayed total UP to two decimals (Math.ceil * 100)', async () => {
-      // totalSaleValue 12.345 -> ceil(1234.5) / 100 -> 12.35
+    it('shows the backend total as it is, without rounding it up a copper', async () => {
+      // Math.ceil(1.1 * 100) / 100 would give 1.11 (1.1 * 100 = 110.00000000000001)
       setupPostMock({
-        items: [{ id: 1, saleValue: 12.345 }],
-        totalSaleValue: 12.345,
+        items: [{ id: 1, saleValue: 1.1 }],
+        totalSaleValue: 1.1,
         validCount: 1,
         invalidCount: 0,
       });
@@ -276,8 +276,25 @@ describe('PendingSaleManagement', () => {
       renderPendingSale();
 
       await waitFor(() => {
-        expect(screen.getByText('Total Value: 12.35 gold')).toBeInTheDocument();
+        expect(screen.getByText('Total Value: 1.10 gold')).toBeInTheDocument();
       });
+    });
+
+    it('keeps the list usable and shows an error when the sale values cannot be calculated', async () => {
+      (api.post as any).mockImplementation((url: string) => {
+        if (url === '/sales/calculate') {
+          return Promise.reject(new Error('calc down'));
+        }
+        return Promise.resolve({ data: { success: true } });
+      });
+
+      renderPendingSale();
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to calculate the sale values.')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Longsword')).toBeInTheDocument();
+      expect(screen.getByText('Total Value: 0.00 gold')).toBeInTheDocument();
     });
   });
 
@@ -855,6 +872,32 @@ describe('PendingSaleManagement', () => {
 
       // No items rendered
       expect(screen.queryByText('Longsword')).not.toBeInTheDocument();
+    });
+
+    it('shows the server reason when a sale is rejected, not the axios status text', async () => {
+      (api.post as any).mockImplementation((url: string) => {
+        if (url === '/sales/calculate') {
+          return Promise.resolve({ data: mockSaleCalculation });
+        }
+        if (url === '/sales/selected') {
+          return Promise.reject({
+            message: 'Request failed with status code 400',
+            response: { data: { message: 'Item 1 is not pending sale' } },
+          });
+        }
+        return Promise.resolve({ data: { success: true } });
+      });
+
+      renderPendingSale();
+      await waitForInitialLoad();
+
+      fireEvent.click(screen.getAllByRole('checkbox')[0]);
+      fireEvent.click(screen.getByRole('button', { name: /^Sell Selected$/ }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Item 1 is not pending sale')).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/status code 400/)).not.toBeInTheDocument();
     });
 
     it('shows an error when /sales/up-to fails', async () => {

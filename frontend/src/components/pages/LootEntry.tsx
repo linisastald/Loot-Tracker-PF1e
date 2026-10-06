@@ -3,7 +3,7 @@ import {fetchInitialData, prepareEntryForSubmission, validateLootEntries} from '
 import {getErrorMessage} from '../../utils/apiErrors';
 import useLootEntryForm from '../../hooks/useLootEntryForm';
 import {notifyLootCountsChanged} from '../../utils/events';
-import {Alert, Box, Button, Container, Paper, Typography} from '@mui/material';
+import {Alert, Box, Button, Container, Paper} from '@mui/material';
 import EntryForm from './EntryForm';
 import api from '../../utils/api';
 import {useCampaign, useIsDM} from '../../contexts/CampaignContext';

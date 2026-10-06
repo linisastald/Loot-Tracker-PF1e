@@ -1,9 +1,9 @@
 // frontend/src/components/pages/ItemManagement/PendingSaleManagement.js
-import React, {useEffect, useState, useCallback, useMemo} from 'react';
-import api from '../../../utils/api';
+import {useEffect, useState, useCallback, useMemo} from 'react';
 import lootService from '../../../services/lootService';
 import * as salesService from '../../../services/salesService';
 import {formatItemNameWithMods, updateItemAsDM} from '../../../utils/utils';
+import {getErrorMessage} from '../../../utils/apiErrors';
 import {
     Alert,
     Box,
@@ -40,9 +40,7 @@ const PendingSaleManagement = () => {
     const [selectedPendingItems, setSelectedPendingItems] = useState([]);
     const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState({});
-    const [items, setItems] = useState([]);
     const [itemsMap, setItemsMap] = useState({});
-    const [mods, setMods] = useState([]);
     const [modsMap, setModsMap] = useState({});
 
     useEffect(() => {
@@ -57,7 +55,6 @@ const PendingSaleManagement = () => {
     // catalog `item` table, not the loot table itself.
     useEffect(() => {
         if (!Array.isArray(pendingItems) || pendingItems.length === 0) {
-            setItems([]);
             setItemsMap({});
             return;
         }
@@ -66,7 +63,6 @@ const PendingSaleManagement = () => {
             .filter(id => id != null)
             .filter((id, idx, arr) => arr.indexOf(id) === idx);
         if (itemIds.length === 0) {
-            setItems([]);
             setItemsMap({});
             return;
         }
@@ -76,7 +72,6 @@ const PendingSaleManagement = () => {
                 const response = await lootService.getItemsByIds(itemIds);
                 if (cancelled) return;
                 const catalogItems = response?.data?.items || [];
-                setItems(catalogItems);
                 const map = {};
                 catalogItems.forEach(ci => {
                     if (ci && ci.id != null) map[ci.id] = ci;
@@ -111,15 +106,18 @@ const PendingSaleManagement = () => {
                     });
                     setSaleValues(saleValuesMap);
                     
-                    // Set the summary using the calculated total
-                    const roundedTotal = Math.ceil(saleCalculation.totalSaleValue * 100) / 100;
-                    setPendingSaleTotal(roundedTotal);
+                    // The backend already rounds the total to two decimals
+                    setPendingSaleTotal(saleCalculation.totalSaleValue);
                     setPendingSaleCount(saleCalculation.validCount);
                 } catch (error) {
                     console.error('Error calculating sale values:', error);
-                    // Fallback to the old method if API fails
-                    await calculatePendingSaleSummary(response.data.items);
+                    // Keep the list usable (the backend still validates every sale)
+                    setSaleValues({});
+                    setPendingSaleTotal(0);
+                    setPendingSaleCount(response.data.items.length);
+                    setError('Failed to calculate the sale values.');
                 }
+
                 
             } else {
                 console.error('Unexpected data structure:', response.data);
@@ -148,8 +146,6 @@ const PendingSaleManagement = () => {
                 displayName: `${mod.name}${mod.target ? ` (${mod.target}${mod.subtarget ? `: ${mod.subtarget}` : ''})` : ''}`
             }));
 
-            setMods(modsWithDisplayNames);
-
             // Create a map for easier lookups
             const newModsMap = {};
             modsWithDisplayNames.forEach(mod => {
@@ -158,179 +154,85 @@ const PendingSaleManagement = () => {
             setModsMap(newModsMap);
         } catch (error) {
             console.error('Error fetching mods:', error);
-            setMods([]);
         }
     }, []);
 
-    const calculatePendingSaleSummary = async (items) => {
-        if (!Array.isArray(items)) {
-            console.error('Items is not an array:', items);
-            setPendingSaleTotal(0);
-            setPendingSaleCount(0);
-            return;
-        }
-
-        const pendingItems = items.filter(item => item.status === 'Pending Sale' || item.status === null);
-
-        if (pendingItems.length === 0) {
-            setPendingSaleTotal(0);
-            setPendingSaleCount(0);
-            return;
-        }
-
+    // Shared skeleton of the four sale actions: reset the banners, check the precondition,
+    // call the service, refresh the list and report what was sold.
+    //   validate()      -> an error message to show instead of selling, or null
+    //   call()          -> the salesService request
+    //   describe(data, sold) -> the success message
+    //   onSold()        -> state to reset once the sale went through
+    //   failureMessage  -> shown when the server gives no reason
+    const runSale = async ({validate, call, describe, onSold, failureMessage = 'Failed to sell items.'}) => {
+        setLoading(true);
+        setError('');
+        setSuccess('');
         try {
-            // Use the backend API to calculate total sale value
-            const total = await salesService.calculateTotalSaleValue(pendingItems);
-            const roundedTotal = Math.ceil(total * 100) / 100;
-            setPendingSaleTotal(roundedTotal);
-            setPendingSaleCount(pendingItems.length);
-        } catch (error) {
-            console.error('Error calculating pending sale summary:', error);
-            setPendingSaleTotal(0);
-            setPendingSaleCount(pendingItems.length);
-        }
-    };
+            const problem = validate ? validate() : null;
+            if (problem) {
+                setError(problem);
+                return;
+            }
 
-    const handleConfirmSale = async () => {
-        try {
-            setLoading(true);
-            setError('');
-            setSuccess('');
-            
-            const response = await lootService.confirmSale({});
-            const sold = response?.data?.sold ?? {};
-            const soldCount = sold.count || 0;
-            const totalValue = sold.total || 0;
+            const response = await call();
+            const data = response?.data ?? {};
+            const sold = data.sold ?? {};
+            const summary = `Successfully sold ${sold.count || 0} items for ${(sold.total || 0).toFixed(2)} gold`;
 
-            // Refresh data first
+            if (onSold) onSold();
+            // Refresh first so the list is current when the message appears
             await fetchPendingItems();
-
-            // Then show success message
-            setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`);
+            setSuccess(describe(data, summary));
         } catch (error) {
-            console.error('Error confirming sale', error);
-            setError('Failed to complete the sale process.');
+            console.error('Error selling items:', error);
+            setError(getErrorMessage(error, failureMessage));
         } finally {
             setLoading(false);
         }
     };
 
-    const handleSellUpTo = async () => {
-        try {
-            setLoading(true);
-            setError('');
-            setSuccess('');
-            
-            const amount = parseFloat(sellUpToAmount);
-            if (isNaN(amount) || amount <= 0) {
-                setError('Please enter a valid amount');
-                setLoading(false);
-                return;
-            }
+    const handleConfirmSale = () => runSale({
+        call: () => lootService.confirmSale({}),
+        failureMessage: 'Failed to complete the sale process.',
+        describe: (data, summary) => `${summary}.`,
+    });
 
-            const response = await lootService.sellUpTo({amount});
-            const sold = response?.data?.sold ?? {};
-            const soldCount = sold.count || 0;
-            const totalValue = sold.total || 0;
-
-            setSellUpToAmount('');
-            // Make sure we await the fetch to ensure data is refreshed
-            await fetchPendingItems();
-
-            // Then show success message
-            setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`);
-        } catch (error) {
-            console.error('Error selling items up to amount:', error);
-            setError('Failed to sell items.');
-        } finally {
-            setLoading(false);
-        }
+    const handleSellUpTo = () => {
+        const amount = parseFloat(sellUpToAmount);
+        return runSale({
+            validate: () => (isNaN(amount) || amount <= 0 ? 'Please enter a valid amount' : null),
+            call: () => lootService.sellUpTo({amount}),
+            describe: (data, summary) => `${summary}.`,
+            onSold: () => setSellUpToAmount(''),
+        });
     };
 
-    const handleSellAllExcept = async () => {
-        try {
-            setLoading(true);
-            setError('');
-            setSuccess('');
-            
-            if (!selectedItemsInfo.hasSelectedItems) {
-                setError('No items selected to keep.');
-                setLoading(false);
-                return;
+    const handleSellAllExcept = () => runSale({
+        validate: () => (selectedItemsInfo.hasSelectedItems ? null : 'No items selected to keep.'),
+        call: () => lootService.sellAllExcept({itemsToKeep: selectedPendingItems}),
+        describe: (data, summary) => `${summary}, kept ${data.kept?.count || 0} items.`,
+        onSold: () => setSelectedPendingItems([]),
+    });
+
+    const handleSellSelected = () => runSale({
+        validate: () => {
+            if (!selectedItemsInfo.hasSelectedItems) return 'No items selected to sell.';
+            if (selectedItemsInfo.validSelectedItems.length === 0) {
+                return 'None of the selected items can be sold. Items must be identified and have a value.';
             }
-
-            const response = await lootService.sellAllExcept({itemsToKeep: selectedPendingItems});
-            const sold = response?.data?.sold ?? {};
-            const kept = response?.data?.kept ?? {};
-            const soldCount = sold.count || 0;
-            const totalValue = sold.total || 0;
-            const keptCount = kept.count || 0;
-
-            setSelectedPendingItems([]);
-            // Use await to ensure data is refreshed before UI updates
-            await fetchPendingItems();
-
-            // Then show success message
-            setSuccess(`Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold, kept ${keptCount} items.`);
-        } catch (error) {
-            console.error('Error selling all items except selected:', error);
-            const errorMessage = error.message || 'Failed to sell items.';
-            setError(errorMessage);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSellSelected = async () => {
-        try {
-            setLoading(true);
-            setError('');
-            setSuccess('');
-            
-            if (!selectedItemsInfo.hasSelectedItems) {
-                setError('No items selected to sell.');
-                setLoading(false);
-                return;
-            }
-
-            // Use memoized valid items
-            const validItems = selectedItemsInfo.validSelectedItems;
-
-            if (validItems.length === 0) {
-                setError('None of the selected items can be sold. Items must be identified and have a value.');
-                setLoading(false);
-                return;
-            }
-
-            // Only send valid item IDs to the backend
-            const validItemIds = validItems.map(item => item.id);
-            const response = await lootService.sellSelected({itemsToSell: validItemIds});
-            const sold = response?.data?.sold ?? {};
-            const skipped = response?.data?.skipped ?? {};
-            const soldCount = sold.count || 0;
-            const totalValue = sold.total || 0;
-            const skippedCount = skipped.count || 0;
-
-            setSelectedPendingItems([]);
-            // Use await to ensure data is refreshed before UI updates
-            await fetchPendingItems();
-
-            // Then show success message
-            let successMessage = `Successfully sold ${soldCount} items for ${totalValue.toFixed(2)} gold.`;
-            if (skippedCount > 0) {
-                successMessage += ` (${skippedCount} items were skipped)`;
-            }
-            setSuccess(successMessage);
-        } catch (error) {
-            console.error('Error selling selected items:', error);
-
-            // Extract more specific error message if available
-            const errorMessage = error.message || 'Failed to sell items.';
-            setError(errorMessage);
-        } finally {
-            setLoading(false);
-        }
-    };
+            return null;
+        },
+        // Only valid item IDs go to the backend
+        call: () => lootService.sellSelected({
+            itemsToSell: selectedItemsInfo.validSelectedItems.map(item => item.id)
+        }),
+        describe: (data, summary) => {
+            const skippedCount = data.skipped?.count || 0;
+            return skippedCount > 0 ? `${summary}. (${skippedCount} items were skipped)` : `${summary}.`;
+        },
+        onSold: () => setSelectedPendingItems([]),
+    });
 
     const handlePendingItemSelect = useCallback((itemId) => {
         setSelectedPendingItems(prev =>

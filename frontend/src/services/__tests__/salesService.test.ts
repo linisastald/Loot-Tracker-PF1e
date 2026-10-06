@@ -20,10 +20,7 @@ vi.mock('../../utils/api', () => ({
 }));
 
 import api from '../../utils/api';
-import {
-  calculateSaleValues,
-  calculateTotalSaleValue,
-} from '../salesService';
+import { calculateSaleValues } from '../salesService';
 
 // Factory for mock LootItem data
 const createMockItem = (overrides: Record<string, any> = {}) => ({
@@ -118,38 +115,4 @@ describe('salesService', () => {
     });
   });
 
-  describe('calculateTotalSaleValue', () => {
-    it('should return totalSaleValue from the response', async () => {
-      const items = [
-        createMockItem({ id: 1, value: 100 }),
-        createMockItem({ id: 2, value: 200 }),
-      ];
-      const mockResult = {
-        items: [
-          { id: 1, saleValue: 50, canSell: true, name: 'A', type: 'Weapon', value: 100, quantity: 1, totalSaleValue: 50 },
-          { id: 2, saleValue: 100, canSell: true, name: 'B', type: 'Weapon', value: 200, quantity: 1, totalSaleValue: 100 },
-        ],
-        totalSaleValue: 150,
-        validCount: 2,
-        invalidCount: 0,
-        summary: { validTotal: 150, invalidTotal: 0 },
-      };
-      vi.mocked(api.post).mockResolvedValueOnce({ data: mockResult });
-
-      const result = await calculateTotalSaleValue(items as any);
-      expect(result).toBe(150);
-    });
-
-    it('should POST to /sales/calculate with all items', async () => {
-      const items = [createMockItem({ id: 1 }), createMockItem({ id: 2 })];
-      await calculateTotalSaleValue(items as any);
-
-      expect(api.post).toHaveBeenCalledWith('/sales/calculate', { items });
-    });
-
-    it('should propagate API errors', async () => {
-      vi.mocked(api.post).mockRejectedValueOnce(new Error('Timeout'));
-      await expect(calculateTotalSaleValue([createMockItem()] as any)).rejects.toThrow('Timeout');
-    });
-  });
 });

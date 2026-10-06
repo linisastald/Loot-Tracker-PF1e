@@ -37,12 +37,3 @@ export const calculateSaleValues = async (items: LootItem[]): Promise<SaleCalcul
   return response.data;
 };
 
-/**
- * Calculate total sale value for multiple items using the backend API
- * @param items Array of items to calculate total for
- * @returns Promise with the total sale value
- */
-export const calculateTotalSaleValue = async (items: LootItem[]): Promise<number> => {
-  const result = await calculateSaleValues(items);
-  return result.totalSaleValue;
-};
