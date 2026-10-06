@@ -33,13 +33,15 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useCampaign } from '../../../contexts/CampaignContext';
 import InviteManagement from './InviteManagement';
 
-export interface CampaignMember {
+interface CampaignMember {
   user_id: number;
   username: string;
   email: string | null;
   role: 'DM' | 'Player';
   joined_at: string | null;
 }
+
+const ACCOUNT_UNAFFECTED = 'their account and other campaigns are unaffected';
 
 const formatJoined = (value: string | null): string => {
   if (!value) return '—';
@@ -110,22 +112,17 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  // Self-removal is blocked (and hidden); removing a DM requires superadmin.
-  const canRemove = (member: CampaignMember): boolean => {
-    if (user?.id === member.user_id) return false;
-    if (member.role === 'DM' && !isSuperadmin) return false;
-    return true;
-  };
+  // Removing a DM requires superadmin. (A row for the signed-in user shows "You"
+  // instead of a button, so self-removal never reaches this check.)
+  const canRemove = (member: CampaignMember): boolean => member.role !== 'DM' || isSuperadmin;
 
   return (
     <div>
       <Typography variant="h6" gutterBottom>
         Campaign Members
       </Typography>
-      <Typography variant="body2" gutterBottom sx={{
-        color: "text.secondary"
-      }}>
-        {`Members of "${campaignName}". Removing a member only affects this campaign — their account and other campaigns are unaffected.`}
+      <Typography variant="body2" gutterBottom color="text.secondary">
+        {`Members of "${campaignName}". Removing a member only affects this campaign — ${ACCOUNT_UNAFFECTED}.`}
       </Typography>
       {loadError && (
         <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
@@ -171,24 +168,19 @@ const UserManagement: React.FC = () => {
                     <TableCell>{formatJoined(member.joined_at)}</TableCell>
                     <TableCell align="right">
                       {isSelf ? (
-                        <Typography variant="caption" sx={{
-                          color: "text.secondary"
-                        }}>
+                        <Typography variant="caption" color="text.secondary">
                           You
                         </Typography>
-                      ) : canRemove(member) ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="secondary"
-                          onClick={() => openRemoveDialog(member)}
-                        >
-                          Remove from campaign
-                        </Button>
                       ) : (
-                        <Tooltip title="Only the system administrator can remove a DM">
+                        <Tooltip title={canRemove(member) ? '' : 'Only the system administrator can remove a DM'}>
                           <span>
-                            <Button size="small" variant="outlined" color="secondary" disabled>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="secondary"
+                              disabled={!canRemove(member)}
+                              onClick={() => openRemoveDialog(member)}
+                            >
                               Remove from campaign
                             </Button>
                           </span>
@@ -201,9 +193,7 @@ const UserManagement: React.FC = () => {
               {members.length === 0 && !loadError && (
                 <TableRow>
                   <TableCell colSpan={5}>
-                    <Typography variant="body2" sx={{
-                      color: "text.secondary"
-                    }}>
+                    <Typography variant="body2" color="text.secondary">
                       No members found.
                     </Typography>
                   </TableCell>
@@ -223,7 +213,7 @@ const UserManagement: React.FC = () => {
         <DialogContent>
           <DialogContentText>
             {memberToRemove
-              ? `Removes ${memberToRemove.username} from ${campaignName} — their account and other campaigns are unaffected.`
+              ? `Removes ${memberToRemove.username} from ${campaignName} — ${ACCOUNT_UNAFFECTED}.`
               : ''}
           </DialogContentText>
           {removeError && (

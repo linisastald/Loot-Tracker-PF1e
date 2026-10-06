@@ -211,4 +211,108 @@ describe('UserSettings', () => {
       expect(screen.getByText('Password changed successfully')).toBeInTheDocument();
     });
   });
+
+  describe('server errors and the other account forms (F-1087)', () => {
+    const waitForForms = async () => {
+      await screen.findByRole('heading', { name: /change password/i });
+    };
+
+    it('shows the server message when changing the password fails', async () => {
+      (api.put as any).mockRejectedValueOnce({ response: { data: { message: 'Current password is incorrect' } } });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(getPasswordInput(/^Current Password/), { target: { value: 'wrongpass1' } });
+      fireEvent.change(getPasswordInput(/^New Password/), { target: { value: 'newpassword123' } });
+      fireEvent.change(getPasswordInput(/^Confirm New Password/), { target: { value: 'newpassword123' } });
+      fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+
+      expect(await screen.findByText('Current password is incorrect')).toBeInTheDocument();
+      expect(screen.queryByText('Password changed successfully')).not.toBeInTheDocument();
+    });
+
+    it('changes the email with the entered password and refreshes the user', async () => {
+      (api.put as any).mockResolvedValueOnce({ data: { success: true } });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^New Email/), { target: { value: 'new@example.com' } });
+      fireEvent.change(getPasswordInput(/^Enter Password to Confirm/), { target: { value: 'mypassword1' } });
+      fireEvent.click(screen.getByRole('button', { name: /^change email$/i }));
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/user/change-email', {
+          email: 'new@example.com',
+          password: 'mypassword1',
+        });
+      });
+      expect(await screen.findByText('Email changed successfully')).toBeInTheDocument();
+      // initial load + refresh after the change
+      expect(api.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects a malformed new email without calling the API', async () => {
+      renderUserSettings();
+      await waitForForms();
+
+      const form = screen.getByRole('button', { name: /^change email$/i }).closest('form')!;
+      fireEvent.change(screen.getByLabelText(/^New Email/), { target: { value: 'not-an-email' } });
+      fireEvent.change(getPasswordInput(/^Enter Password to Confirm/), { target: { value: 'mypassword1' } });
+      fireEvent.submit(form);
+
+      expect(await screen.findByText('Please enter a valid email address')).toBeInTheDocument();
+      expect(api.put).not.toHaveBeenCalled();
+    });
+
+    it('shows the server message when changing the email fails', async () => {
+      (api.put as any).mockRejectedValueOnce({ response: { data: { message: 'Email already in use' } } });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^New Email/), { target: { value: 'taken@example.com' } });
+      fireEvent.change(getPasswordInput(/^Enter Password to Confirm/), { target: { value: 'mypassword1' } });
+      fireEvent.click(screen.getByRole('button', { name: /^change email$/i }));
+
+      expect(await screen.findByText('Email already in use')).toBeInTheDocument();
+      expect(screen.queryByText('Email changed successfully')).not.toBeInTheDocument();
+    });
+
+    it('updates the Discord id from the form', async () => {
+      (api.put as any).mockResolvedValueOnce({ data: { success: true } });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^Discord ID/), { target: { value: '987654321098765432' } });
+      fireEvent.click(screen.getByRole('button', { name: /update discord id/i }));
+
+      await waitFor(() => {
+        expect(api.put).toHaveBeenCalledWith('/user/update-discord-id', { discord_id: '987654321098765432' });
+      });
+      expect(await screen.findByText('Discord ID linked successfully')).toBeInTheDocument();
+    });
+
+    it('rejects a malformed Discord id without calling the API', async () => {
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^Discord ID/), { target: { value: '12345' } });
+      fireEvent.click(screen.getByRole('button', { name: /update discord id/i }));
+
+      expect(await screen.findByText(/Invalid Discord ID format/)).toBeInTheDocument();
+      expect(api.put).not.toHaveBeenCalled();
+    });
+
+    it('shows the server message when the Discord id is already linked elsewhere', async () => {
+      (api.put as any).mockRejectedValueOnce({
+        response: { data: { message: 'This Discord ID is already linked to another account' } },
+      });
+      renderUserSettings();
+      await waitForForms();
+
+      fireEvent.change(screen.getByLabelText(/^Discord ID/), { target: { value: '987654321098765432' } });
+      fireEvent.click(screen.getByRole('button', { name: /update discord id/i }));
+
+      expect(await screen.findByText('This Discord ID is already linked to another account')).toBeInTheDocument();
+    });
+  });
 });
