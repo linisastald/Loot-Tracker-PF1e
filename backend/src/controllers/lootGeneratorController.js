@@ -9,13 +9,11 @@ const { ENVIRONMENTS, listEnvironments } = require('../services/lootGenerator/tr
 const spellbookService = require('../services/lootGenerator/spellbookService');
 const Spellbook = require('../models/Spellbook');
 
-const SPELLBOOK_CLASSES = Object.keys(spellbookService.CLASS_CONFIG);
-
 // Sanitize an edited spellbook payload before persisting (clamp class/level and
 // cap/clean the spell list so malformed client input can't reach the DB).
 const sanitizeBook = (sb) => {
-  const casterClass = SPELLBOOK_CLASSES.includes(sb.casterClass) ? sb.casterClass : 'wizard';
-  const casterLevel = Math.max(1, Math.min(20, parseInt(sb.casterLevel, 10) || 1));
+  const casterClass = spellbookService.resolveClass(sb.casterClass);
+  const casterLevel = spellbookService.clampCasterLevel(sb.casterLevel);
   const school = typeof sb.school === 'string' ? sb.school.slice(0, 20) : null;
   const spells = (Array.isArray(sb.spells) ? sb.spells : [])
     .slice(0, 300)
@@ -51,10 +49,32 @@ const INSERT_GOLD = `
 // Trim and clamp a string to a DB column width (returns null for non-strings).
 const clampStr = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) || null : null);
 // Coerce to a non-negative integer or null (so a malformed edited field can't
-// reach an INTEGER column and 500).
+// reach an INTEGER column and 500); negative values clamp to 0.
 const toIntOrNull = (v) => {
   const n = parseInt(v, 10);
-  return Number.isInteger(n) ? n : null;
+  return Number.isInteger(n) ? Math.max(0, n) : null;
+};
+
+// A catalog/mod id from the edited preview: null when absent, otherwise it must be a
+// positive integer (a bad or stale id would otherwise fail the whole commit later).
+const toIdOrNull = (v, label, index) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) {
+    throw controllerFactory.createValidationError(`Item ${index + 1}: ${label} must be a positive integer`);
+  }
+  return n;
+};
+
+// Validate and normalise one edited preview item before the transaction starts.
+const validateCommitItem = (it, index) => {
+  if (!it || typeof it.name !== 'string' || it.name.trim() === '') {
+    throw controllerFactory.createValidationError(`Item ${index + 1}: a name is required`);
+  }
+  const modIds = Array.isArray(it.modIds)
+    ? it.modIds.map((m) => toIdOrNull(m, 'modIds entries', index)).filter((m) => m !== null)
+    : [];
+  return { itemId: toIdOrNull(it.itemId, 'itemId', index), modIds };
 };
 
 /**
@@ -120,13 +140,15 @@ const commit = async (req, res) => {
     throw controllerFactory.createValidationError('Invalid session date');
   }
 
+  const validated = itemList.map(validateCommitItem);
+
   const result = await dbUtils.executeTransaction(async (client) => {
     const createdItems = [];
-    for (const it of itemList) {
-      if (typeof it.name !== 'string' || it.name.trim() === '') continue;
+    for (const [index, it] of itemList.entries()) {
+      const { itemId, modIds } = validated[index];
       const quantity = Math.max(1, parseInt(it.quantity, 10) || 1);
       const value = it.value === null || it.value === undefined ? null : Number(it.value);
-      const modids = Array.isArray(it.modIds) && it.modIds.length > 0 ? it.modIds : null;
+      const modids = modIds.length > 0 ? modIds : null;
       // Unidentified items are stored under a generic name so the loot list
       // doesn't reveal what they are; the real identity is recoverable on
       // identification via itemid/modids.
@@ -141,7 +163,7 @@ const commit = async (req, res) => {
         Boolean(it.masterwork),
         clampStr(it.type, 15),
         clampStr(it.size, 15),
-        it.itemId || null,
+        itemId,
         modids,
         Number.isFinite(value) ? value : null,
         req.user?.id || null,
