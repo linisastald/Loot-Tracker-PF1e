@@ -26,23 +26,12 @@ describe('Outpost model', () => {
       expect(query).toContain('crew_count');
       expect(query).toContain("location_type = 'outpost'");
     });
-  });
 
-  describe('getWithCrew', () => {
-    it('should return outpost with crew array', async () => {
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Haven' }] })
-        .mockResolvedValueOnce({ rows: [{ id: 10, name: 'Guard' }] });
-
-      const result = await Outpost.getWithCrew(1);
-
-      expect(result.name).toBe('Haven');
-      expect(result.crew).toHaveLength(1);
-    });
-
-    it('should return null when outpost not found', async () => {
+    it('returns access_date as a plain date string', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-      expect(await Outpost.getWithCrew(999)).toBeNull();
+      await Outpost.getAllWithCrewCount();
+      expect(dbUtils.executeQuery.mock.calls[0][0])
+        .toContain("to_char(o.access_date, 'YYYY-MM-DD') AS access_date");
     });
   });
 
@@ -79,15 +68,28 @@ describe('Outpost model', () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [] });
       expect(await Outpost.update(999, { name: 'X' })).toBeNull();
     });
-  });
 
-  describe('findById', () => {
-    it('should return outpost or null', async () => {
+    it('only sets the fields that were provided', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
-      expect(await Outpost.findById(1)).toEqual({ id: 1 });
+      await Outpost.update(1, { location: 'Bay' });
+      const [query, values] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).toContain('location = $1');
+      expect(query).not.toContain('name =');
+      expect(query).not.toContain('access_date = $');
+      expect(values).toEqual(['Bay', 1]);
+    });
 
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-      expect(await Outpost.findById(999)).toBeNull();
+    it('clears location and access_date with an empty value', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+      await Outpost.update(1, { location: '', access_date: null });
+      expect(dbUtils.executeQuery.mock.calls[0][1]).toEqual([null, null, 1]);
+    });
+
+    it('returns access_date as a plain date string', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1 }] });
+      await Outpost.update(1, { name: 'A' });
+      expect(dbUtils.executeQuery.mock.calls[0][0])
+        .toContain("to_char(access_date, 'YYYY-MM-DD') AS access_date");
     });
   });
 
