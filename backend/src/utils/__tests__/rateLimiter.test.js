@@ -1,4 +1,4 @@
-const { RateLimiter } = require('../rateLimiter');
+const { RateLimiter, discordRateLimiter } = require('../rateLimiter');
 
 describe('RateLimiter', () => {
   describe('constructor', () => {
@@ -36,40 +36,58 @@ describe('RateLimiter', () => {
       expect(typeof limiter.requests[0]).toBe('number');
     });
 
-    it('should clean up expired requests', async () => {
-      const limiter = new RateLimiter(10, 50); // 50ms window
+    describe('with fake timers', () => {
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => jest.useRealTimers());
 
-      await limiter.acquire();
-      await limiter.acquire();
+      it('should clean up expired requests', async () => {
+        const limiter = new RateLimiter(10, 50); // 50ms window
 
-      // Wait for window to expire
-      await new Promise(resolve => setTimeout(resolve, 60));
+        await limiter.acquire();
+        await limiter.acquire();
 
-      await limiter.acquire();
+        jest.advanceTimersByTime(60);
+        await limiter.acquire();
 
-      // Old requests should be cleaned up
-      expect(limiter.requests.length).toBe(1);
-    });
-  });
+        // Old requests should be cleaned up
+        expect(limiter.requests.length).toBe(1);
+      });
 
-  describe('wrap', () => {
-    it('should create rate-limited version of function', async () => {
-      const limiter = new RateLimiter(10, 1000);
-      const fn = jest.fn().mockResolvedValue('result');
-      const wrapped = limiter.wrap(fn);
+      it('holds the request over the limit until the window has passed', async () => {
+        const limiter = new RateLimiter(2, 1000);
+        await limiter.acquire();
+        await limiter.acquire();
 
-      const result = await wrapped('arg1', 'arg2');
+        let resolved = false;
+        const third = limiter.acquire().then(() => { resolved = true; });
 
-      expect(fn).toHaveBeenCalledWith('arg1', 'arg2');
-      expect(result).toBe('result');
-    });
+        await jest.advanceTimersByTimeAsync(999);
+        expect(resolved).toBe(false);
 
-    it('should pass through errors', async () => {
-      const limiter = new RateLimiter(10, 1000);
-      const fn = jest.fn().mockRejectedValue(new Error('API Error'));
-      const wrapped = limiter.wrap(fn);
+        await jest.advanceTimersByTimeAsync(1);
+        await third;
+        expect(resolved).toBe(true);
+        // the two expired entries were dropped, only the new one remains
+        expect(limiter.requests.length).toBe(1);
+      });
 
-      await expect(wrapped()).rejects.toThrow('API Error');
+      it('releases queued requests in waves, never more than maxRequests per window', async () => {
+        const limiter = new RateLimiter(2, 1000);
+        const grantedAt = [];
+        const start = Date.now();
+        const all = Array.from({ length: 5 }, () =>
+          limiter.acquire().then(() => grantedAt.push(Date.now() - start)));
+
+        await jest.advanceTimersByTimeAsync(5000);
+        await Promise.all(all);
+
+        expect(grantedAt).toHaveLength(5);
+        for (const t of grantedAt) {
+          const inWindow = grantedAt.filter(o => o >= t && o < t + 1000).length;
+          expect(inWindow).toBeLessThanOrEqual(2);
+        }
+        expect(Math.max(...grantedAt)).toBeGreaterThanOrEqual(2000);
+      });
     });
   });
 
@@ -87,6 +105,14 @@ describe('RateLimiter', () => {
       await limiter.acquire();
 
       expect(limiter.requests.length).toBeLessThanOrEqual(limiter.MAX_TRACKED_REQUESTS + 1);
+    });
+  });
+
+  describe('exports', () => {
+    it('exports the shared Discord limiter and no longer offers wrap()', () => {
+      expect(discordRateLimiter).toBeInstanceOf(RateLimiter);
+      expect(discordRateLimiter.maxRequests).toBe(45);
+      expect(RateLimiter.prototype.wrap).toBeUndefined();
     });
   });
 });
