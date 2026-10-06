@@ -3,7 +3,7 @@ import Sidebar from './Sidebar';
 import CampaignSelector from './CampaignSelector';
 import NoSessionTodayBanner from './NoSessionTodayBanner';
 import NoCampaignNotice from './NoCampaignNotice';
-import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography, useMediaQuery, useTheme} from '@mui/material';
+import {AppBar, Box, CircularProgress, IconButton, Toolbar, Typography} from '@mui/material';
 import {Outlet, useLocation} from 'react-router-dom';
 import MenuIcon from '@mui/icons-material/Menu';
 import { useConfig } from '../../contexts/ConfigContext';
@@ -18,8 +18,6 @@ interface MainLayoutProps {
 const MainLayout: React.FC<MainLayoutProps> = ({ onLogout }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const location = useLocation();
   const { config } = useConfig();
   const { hasNoCampaign, currentCampaign } = useCampaign();
