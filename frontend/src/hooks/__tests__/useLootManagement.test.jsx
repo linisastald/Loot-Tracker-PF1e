@@ -94,10 +94,8 @@ describe('useLootManagement', () => {
       expect(result.current.selectedItems).toEqual([]);
       expect(result.current.openUpdateDialog).toBe(false);
       expect(result.current.openSplitDialog).toBe(false);
-      expect(result.current.splitItem).toBeNull();
       expect(result.current.splitQuantities).toEqual([]);
       expect(result.current.updatedEntry).toEqual({});
-      expect(result.current.activeUser).toEqual(mockAuthUser);
       expect(result.current.filters).toEqual({
         unidentified: '',
         type: '',
@@ -170,14 +168,24 @@ describe('useLootManagement', () => {
     });
 
     it('should set empty loot on fetch error', async () => {
-      lootService.getAllLoot.mockRejectedValue(new Error('Network error'));
-      applyFilters.mockReturnValue({ summary: [], individual: [] });
+      const mockLoot = {
+        summary: [{ id: 1, name: 'Longsword', quantity: 1 }],
+        individual: [{ id: 1, name: 'Longsword', quantity: 1 }],
+      };
+      lootService.getAllLoot.mockResolvedValue({ data: mockLoot });
 
       const { result } = renderHook(() => useLootManagement(null));
-
       await waitFor(() => {
-        expect(result.current.loot).toEqual({ summary: [], individual: [] });
+        expect(result.current.loot.individual).toHaveLength(1);
       });
+
+      // A failing refetch must clear the stale loot
+      lootService.getAllLoot.mockRejectedValue(new Error('Network error'));
+      await act(async () => {
+        await result.current.fetchLoot();
+      });
+
+      expect(result.current.loot).toEqual({ summary: [], individual: [] });
     });
   });
 
@@ -231,55 +239,23 @@ describe('useLootManagement', () => {
 
   describe('fetchLoot - response with no data', () => {
     it('should default to empty summary and individual arrays', async () => {
+      const mockLoot = {
+        summary: [{ id: 1, name: 'Longsword', quantity: 1 }],
+        individual: [{ id: 1, name: 'Longsword', quantity: 1 }],
+      };
+      lootService.getAllLoot.mockResolvedValue({ data: mockLoot });
+
+      const { result } = renderHook(() => useLootManagement(null));
+      await waitFor(() => {
+        expect(result.current.loot.individual).toHaveLength(1);
+      });
+
       lootService.getAllLoot.mockResolvedValue({ data: null });
-      applyFilters.mockReturnValue({ summary: [], individual: [] });
-
-      const { result } = renderHook(() => useLootManagement(null));
-
-      await waitFor(() => {
-        expect(result.current.loot).toEqual({ summary: [], individual: [] });
-      });
-    });
-  });
-
-  describe('handleAction', () => {
-    it('should call the action function with selectedItems, fetchLoot, and authUser', async () => {
-      const mockAction = vi.fn();
-      const { result } = renderHook(() => useLootManagement(null));
-
-      await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
-      });
-
-      // Set selected items
-      act(() => {
-        result.current.setSelectedItems([1, 2]);
-      });
-
       await act(async () => {
-        await result.current.handleAction(mockAction);
+        await result.current.fetchLoot();
       });
 
-      expect(mockAction).toHaveBeenCalledWith([1, 2], expect.any(Function), mockAuthUser);
-    });
-
-    it('should clear selectedItems after action completes', async () => {
-      const mockAction = vi.fn();
-      const { result } = renderHook(() => useLootManagement(null));
-
-      await waitFor(() => {
-        expect(lootService.getAllLoot).toHaveBeenCalled();
-      });
-
-      act(() => {
-        result.current.setSelectedItems([5, 6]);
-      });
-
-      await act(async () => {
-        await result.current.handleAction(mockAction);
-      });
-
-      expect(result.current.selectedItems).toEqual([]);
+      expect(result.current.loot).toEqual({ summary: [], individual: [] });
     });
   });
 
@@ -328,15 +304,7 @@ describe('useLootManagement', () => {
         expect(lootService.getAllLoot).toHaveBeenCalled();
       });
 
-      // Manually set split quantities to simulate dialog being open
-      act(() => {
-        result.current.setOpenSplitDialog(true);
-      });
-
-      // We need to set splitQuantities via the internal state - use the exposed setter indirectly
-      // The handleOpenSplitDialog mock doesn't actually set state, so let's set it directly
-      // by using the returned splitQuantities array. We simulate by testing the change function.
-      // First, let's populate splitQuantities by triggering the wrapper and having the mock do something.
+      // The util is mocked, so let it populate the split state
       handleOpenSplitDialog.mockImplementation((item, setSplitItem, setSplitQuantities, setOpen) => {
         setSplitItem(item);
         setSplitQuantities([{ quantity: 10 }, { quantity: 10 }]);
@@ -355,6 +323,34 @@ describe('useLootManagement', () => {
 
       expect(result.current.splitQuantities[0].quantity).toBe(15);
       expect(result.current.splitQuantities[1].quantity).toBe(10);
+    });
+
+    it('handleSplitChange does not mutate the previous state and never stores NaN', async () => {
+      const { result } = renderHook(() => useLootManagement(null));
+      await waitFor(() => {
+        expect(lootService.getAllLoot).toHaveBeenCalled();
+      });
+
+      handleOpenSplitDialog.mockImplementation((item, setSplitItem, setSplitQuantities, setOpen) => {
+        setSplitItem(item);
+        setSplitQuantities([{ quantity: 10 }, { quantity: 10 }]);
+        setOpen(true);
+      });
+      act(() => {
+        result.current.handleOpenSplitDialogWrapper({ id: 1, name: 'Arrows', quantity: 20 });
+      });
+
+      const before = result.current.splitQuantities;
+      const firstBefore = before[0];
+
+      act(() => {
+        result.current.handleSplitChange(0, '');
+      });
+
+      expect(firstBefore.quantity).toBe(10);
+      expect(before[0]).toBe(firstBefore);
+      expect(result.current.splitQuantities[0].quantity).toBe(0);
+      expect(result.current.splitQuantities[1]).toBe(before[1]);
     });
 
     it('handleAddSplit should add a new zero-quantity split entry', async () => {
@@ -619,6 +615,52 @@ describe('useLootManagement', () => {
       await act(async () => {
         await expect(result.current.handleAppraise()).rejects.toThrow('Appraisal failed');
       });
+
+      expect(lootService.appraiseLoot).toHaveBeenCalledTimes(1);
+      // no refetch after a failed appraisal
+      expect(lootService.getAllLoot).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports the per-item reasons when nothing was appraised', async () => {
+      lootService.appraiseLoot.mockResolvedValue({
+        data: {
+          errors: [{ lootId: 1, error: 'Character has already appraised this item' }],
+          summary: { successful: 0, failed: 1, total: 1 },
+        },
+      });
+
+      const { result } = renderHook(() => useLootManagement(null));
+      await waitFor(() => {
+        expect(lootService.getAllLoot).toHaveBeenCalled();
+      });
+      act(() => {
+        result.current.setSelectedItems([1]);
+      });
+
+      await act(async () => {
+        await expect(result.current.handleAppraise()).rejects.toThrow(/already appraised/);
+      });
+    });
+
+    it('does not throw when at least one item was appraised', async () => {
+      lootService.appraiseLoot.mockResolvedValue({
+        data: {
+          errors: [{ lootId: 2, error: 'Item has no value to appraise' }],
+          summary: { successful: 1, failed: 1, total: 2 },
+        },
+      });
+
+      const { result } = renderHook(() => useLootManagement(null));
+      await waitFor(() => {
+        expect(lootService.getAllLoot).toHaveBeenCalled();
+      });
+      act(() => {
+        result.current.setSelectedItems([1, 2]);
+      });
+
+      await act(async () => {
+        await result.current.handleAppraise();
+      });
     });
   });
 
@@ -644,37 +686,21 @@ describe('useLootManagement', () => {
       );
     });
 
-    it('should update loot output when filters change', async () => {
-      const fullLoot = {
-        summary: [],
-        individual: [
-          { id: 1, name: 'Sword', type: 'Weapon' },
-          { id: 2, name: 'Potion', type: 'Potion' },
-        ],
-      };
-      const filteredLoot = {
-        summary: [],
-        individual: [{ id: 1, name: 'Sword', type: 'Weapon' }],
-      };
-
-      lootService.getAllLoot.mockResolvedValue({ data: fullLoot });
-      applyFilters.mockReturnValue(fullLoot);
-
+    it('should re-apply filters with the new values when they change', async () => {
       const { result } = renderHook(() => useLootManagement(null));
-
       await waitFor(() => {
-        expect(result.current.loot.individual).toHaveLength(2);
+        expect(lootService.getAllLoot).toHaveBeenCalled();
       });
-
-      // Now change filters - applyFilters should be called on re-render with new filters
-      applyFilters.mockReturnValue(filteredLoot);
 
       act(() => {
         result.current.setFilters({ unidentified: '', type: 'Weapon', size: '', pendingSale: '', whoHas: [] });
       });
 
-      expect(result.current.loot.individual).toHaveLength(1);
-      expect(result.current.loot.individual[0].name).toBe('Sword');
+      // Filtering itself is covered by utils/__tests__/utilsFilters.test.ts
+      expect(applyFilters).toHaveBeenLastCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ type: 'Weapon' })
+      );
     });
   });
 

@@ -318,7 +318,7 @@ export const identifyItem = async (
     refreshData?.();
   } catch (error) {
     console.error('Error identifying item:', error);
-    onError?.('Failed to identify item');
+    onError?.(getErrorMessage(error, 'Failed to identify item'));
   }
 };
 

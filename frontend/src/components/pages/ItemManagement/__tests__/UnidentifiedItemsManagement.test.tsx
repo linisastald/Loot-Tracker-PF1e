@@ -570,6 +570,49 @@ describe('UnidentifiedItemsManagement', () => {
       expect(lootService.getMods).not.toHaveBeenCalled();
     });
 
+    it("shows the server's message when the list is refused", async () => {
+      (lootService.getUnidentifiedItems as any).mockRejectedValue({
+        response: { status: 403, data: { message: 'DM access required' } },
+      });
+
+      renderComponent();
+
+      await waitFor(() => {
+        expect(screen.getByText('DM access required')).toBeInTheDocument();
+      });
+    });
+
+    it('requests the catalog items once and reports a failure without a duplicate request', async () => {
+      (lootService.getItemsByIds as any).mockRejectedValue(new Error('boom'));
+
+      renderComponent();
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to load the linked items')).toBeInTheDocument();
+      });
+      expect(lootService.getItemsByIds).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the server's message when identifying is refused", async () => {
+      (lootService.updateLootItem as any).mockRejectedValue({
+        response: { status: 403, data: { message: 'Use Identify to identify items' } },
+      });
+
+      renderComponent();
+      await waitFor(() => {
+        expect(screen.getByText('Glowing Sword')).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(screen.getAllByRole('button', { name: /identify/i })[0]).not.toBeDisabled();
+      });
+
+      fireEvent.click(screen.getAllByRole('button', { name: /identify/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText('Use Identify to identify items')).toBeInTheDocument();
+      });
+    });
+
     it('shows an error alert when the response payload is malformed', async () => {
       // No `items` array under data -> component sets the "Invalid data structure" error
       (lootService.getUnidentifiedItems as any).mockResolvedValue({
