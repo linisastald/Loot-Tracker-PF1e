@@ -98,6 +98,16 @@ describe('emailService', () => {
     expect(mail.html).toContain('https://loot.example.com/reset-password?token=tok123');
   });
 
+  it('HTML-escapes the username so it cannot inject markup into the mail', async () => {
+    process.env.SMTP_HOST = 'smtp.example.com';
+    const svc = loadService();
+    await svc.sendPasswordResetEmail('a@b.c', '<a href="https://evil.example">click</a> & <script>x</script>', 'tok');
+    const html = transporter.sendMail.mock.calls[0][0].html;
+    expect(html).not.toContain('<a href="https://evil.example">');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('Hello &lt;a href=&quot;https://evil.example&quot;&gt;click&lt;/a&gt; &amp; &lt;script&gt;x&lt;/script&gt;,');
+  });
+
   it('returns false when sendMail rejects', async () => {
     process.env.SMTP_HOST = 'smtp.example.com';
     const svc = loadService();

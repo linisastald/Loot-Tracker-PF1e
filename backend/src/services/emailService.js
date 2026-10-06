@@ -3,6 +3,14 @@ const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 require('dotenv').config();
 
+// Escape text before interpolating it into the HTML mail body.
+const escapeHtml = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 class EmailService {
     constructor() {
         this.transporter = null;
@@ -36,7 +44,7 @@ class EmailService {
             }
 
             // Verify transporter configuration
-            this.transporter.verify((error, success) => {
+            this.transporter.verify((error) => {
                 if (error) {
                     logger.error('Email service configuration error:', error);
                 } else {
@@ -81,12 +89,12 @@ class EmailService {
                 subject: 'Password Reset Request - Pathfinder Loot Tracker',
                 html: `
                     <h2>Password Reset Request</h2>
-                    <p>Hello ${username},</p>
+                    <p>Hello ${escapeHtml(username)},</p>
                     <p>You have requested to reset your password for the Pathfinder Loot Tracker.</p>
                     <p>Click the link below to reset your password:</p>
-                    <p><a href="${resetUrl}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
+                    <p><a href="${escapeHtml(resetUrl)}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
                     <p>If the button doesn't work, copy and paste this link into your browser:</p>
-                    <p>${resetUrl}</p>
+                    <p>${escapeHtml(resetUrl)}</p>
                     <p>This link will expire in 1 hour.</p>
                     <p>If you did not request this password reset, please ignore this email.</p>
                     <br>
@@ -94,7 +102,7 @@ class EmailService {
                 `
             };
 
-            const result = await this.transporter.sendMail(mailOptions);
+            await this.transporter.sendMail(mailOptions);
             logger.info(`Password reset email sent to ${userEmail}`);
             return true;
         } catch (error) {
