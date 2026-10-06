@@ -3,154 +3,102 @@ const dbUtils = require('../utils/dbUtils');
 const controllerFactory = require('../utils/controllerFactory');
 const logger = require('../utils/logger');
 const ValidationService = require('../services/validationService');
-const ItemParsingService = require('../services/itemParsingService');
 const SearchService = require('../services/searchService');
 const { hasDmRights } = require('../utils/roleUtils');
+
+// Columns only a DM may see. Items still unidentified also hide what they
+// really are (the stored name is deliberately generic).
+const DM_ONLY_COLUMNS = ['dm_notes', 'cursed', 'spellcraft_dc'];
+const UNIDENTIFIED_HIDDEN_COLUMNS = ['itemid', 'modids', 'value', 'charges'];
+
+/**
+ * Strip DM-only data from a loot row before it is returned to a non-DM.
+ * DMs and superadmins get the row unchanged. (F-0350)
+ */
+const toPlayerSafeLoot = (req, row) => {
+  if (!row || hasDmRights(req)) return row;
+  const safe = { ...row };
+  DM_ONLY_COLUMNS.forEach((column) => delete safe[column]);
+  if (safe.unidentified === true) {
+    UNIDENTIFIED_HIDDEN_COLUMNS.forEach((column) => delete safe[column]);
+  }
+  return safe;
+};
 
 /**
  * Get all loot items with optional filtering
  */
 const getAllLoot = async (req, res) => {
-  try {
-    const { status, character_id, fields } = req.query;
-    // No implicit cap: loot_view returns a summary row plus individual rows per
-    // item and no caller pages, so a default LIMIT silently dropped rows.
-    // Pagination only applies when the caller explicitly sends a positive limit.
-    const parsedLimit = parseInt(req.query.limit, 10);
-    const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : null;
-    const parsedOffset = parseInt(req.query.offset, 10);
-    const offset = Number.isInteger(parsedOffset) && parsedOffset > 0 ? parsedOffset : 0;
-    
-    // Define available fields and default selection for performance
-    const availableFields = [
-      'id', 'name', 'quantity', 'statuspage', 'unidentified', 'masterwork', 'size',
-      'character_name', 'character_names', 'session_date', 'lastupdate', 'value', 'itemid', 'modids',
-      'type', 'status', 'whoupdated', 'average_appraisal', 'notes', 'appraisals', 'row_type'
-    ];
-    
-    // Default fields for list view (essential fields only)
-    const defaultFields = [
-      'id', 'name', 'quantity', 'statuspage', 'unidentified', 'character_name', 
-      'session_date', 'value', 'type', 'row_type'
-    ];
-    
-    // Parse requested fields or use defaults
-    let selectedFields = defaultFields;
-    if (fields) {
-      const requestedFields = fields.split(',').map(f => f.trim());
-      selectedFields = requestedFields.filter(field => availableFields.includes(field));
-      
-      // Always include essential fields for functionality
-      const essentialFields = ['id', 'row_type'];
-      essentialFields.forEach(field => {
-        if (!selectedFields.includes(field)) {
-          selectedFields.push(field);
-        }
-      });
-    }
-    
-    let query = `
-      SELECT ${selectedFields.join(', ')}
-      FROM loot_view
-    `;
-    
-    const conditions = [];
-    const params = [];
-    let paramIndex = 1;
+  const { status, character_id, fields } = req.query;
+  // No implicit cap: loot_view returns a summary row plus individual rows per
+  // item and no caller pages, so a default LIMIT silently dropped rows.
+  // Pagination only applies when the caller explicitly sends a positive limit.
+  const parsedLimit = parseInt(req.query.limit, 10);
+  const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : null;
+  const parsedOffset = parseInt(req.query.offset, 10);
+  const offset = Number.isInteger(parsedOffset) && parsedOffset > 0 ? parsedOffset : 0;
 
-    // If no status specified, default to unprocessed items (NULL status or Pending Sale)
-    if (status) {
-      conditions.push(`statuspage = $${paramIndex}`);
-      params.push(status);
-      paramIndex++;
-    } else {
-      conditions.push(`(statuspage IS NULL OR statuspage = 'Pending Sale')`);
-    }
+  // Columns loot_view actually exposes (the summary rows carry a single
+  // character_name; there is no character_names column on the view).
+  const availableFields = [
+    'id', 'name', 'quantity', 'statuspage', 'unidentified', 'masterwork', 'size',
+    'character_name', 'session_date', 'lastupdate', 'value', 'itemid', 'modids',
+    'type', 'status', 'whoupdated', 'average_appraisal', 'notes', 'appraisals', 'row_type'
+  ];
 
-    if (character_id) {
-      conditions.push(`(character_name = (SELECT name FROM characters WHERE id = $${paramIndex}) OR character_names @> ARRAY[(SELECT name FROM characters WHERE id = $${paramIndex})])`);
-      params.push(character_id);
-      paramIndex++;
-    }
+  // Default fields for list view (essential fields only)
+  const defaultFields = [
+    'id', 'name', 'quantity', 'statuspage', 'unidentified', 'character_name',
+    'session_date', 'value', 'type', 'row_type'
+  ];
 
-    if (conditions.length > 0) {
-      query += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    query += ' ORDER BY lastupdate DESC';
-    
-    if (limit) {
-      query += ` LIMIT $${paramIndex}`;
-      params.push(limit);
-      paramIndex++;
-      
-      if (offset) {
-        query += ` OFFSET $${paramIndex}`;
-        params.push(offset);
+  let selectedFields = defaultFields;
+  if (fields) {
+    selectedFields = fields.split(',').map(f => f.trim()).filter(field => availableFields.includes(field));
+    // Always include essential fields for functionality
+    ['id', 'row_type'].forEach(field => {
+      if (!selectedFields.includes(field)) {
+        selectedFields.push(field);
       }
-    }
-
-    const result = await dbUtils.executeQuery(query, params);
-    const allItems = result.rows;
-
-    // Separate summary and individual items
-    const summaryItems = allItems.filter(item => item.row_type === 'summary');
-    const individualItems = allItems.filter(item => item.row_type === 'individual');
-
-    return controllerFactory.sendSuccessResponse(res, {
-      summary: summaryItems,
-      individual: individualItems,
-      count: allItems.length,
-      metadata: {
-        limit,
-        offset,
-        fields: selectedFields,
-        total_fields: availableFields.length,
-        response_size_reduction: `${Math.round((1 - selectedFields.length / availableFields.length) * 100)}%`
-      }
-    }, `${allItems.length} loot items retrieved with ${selectedFields.length}/${availableFields.length} fields`);
-  } catch (error) {
-    logger.error('Error fetching all loot:', error);
-    throw error;
+    });
   }
-};
 
-/**
- * Get specific loot item by ID
- */
-const getLootById = async (req, res) => {
-  const itemId = ValidationService.validateItemId(parseInt(req.params.id));
+  const conditions = [];
+  const params = [];
 
-  try {
-    const query = `
-      SELECT l.*, i.name as base_item_name, i.type as item_type, i.subtype
-      FROM loot l
-      JOIN item i ON l.itemid = i.id
-      WHERE l.id = $1
-    `;
-
-    const result = await dbUtils.executeQuery(query, [itemId]);
-
-    if (result.rows.length === 0) {
-      throw controllerFactory.createNotFoundError('Loot item not found');
-    }
-
-    const item = result.rows[0];
-
-    // If item has mods, fetch mod details
-    if (item.modids && item.modids.length > 0) {
-      const modsResult = await dbUtils.executeQuery(
-        'SELECT * FROM mod WHERE id = ANY($1)',
-        [item.modids]
-      );
-      item.mods = modsResult.rows;
-    }
-
-    return controllerFactory.sendSuccessResponse(res, item, 'Loot item retrieved successfully');
-  } catch (error) {
-    logger.error(`Error fetching loot item ${itemId}:`, error);
-    throw error;
+  // If no status specified, default to unprocessed items (NULL status or Pending Sale)
+  if (status) {
+    params.push(status);
+    conditions.push(`statuspage = $${params.length}`);
+  } else {
+    conditions.push(`(statuspage IS NULL OR statuspage = 'Pending Sale')`);
   }
+
+  if (character_id) {
+    params.push(character_id);
+    conditions.push(`character_name = (SELECT name FROM characters WHERE id = $${params.length})`);
+  }
+
+  let query = `SELECT ${selectedFields.join(', ')} FROM loot_view WHERE ${conditions.join(' AND ')} ORDER BY lastupdate DESC`;
+
+  if (limit) {
+    params.push(limit);
+    query += ` LIMIT $${params.length}`;
+    if (offset) {
+      params.push(offset);
+      query += ` OFFSET $${params.length}`;
+    }
+  }
+
+  const result = await dbUtils.executeQuery(query, params);
+  const allItems = result.rows;
+
+  return controllerFactory.sendSuccessResponse(res, {
+    summary: allItems.filter(item => item.row_type === 'summary'),
+    individual: allItems.filter(item => item.row_type === 'individual'),
+    count: allItems.length,
+    metadata: { limit, offset, fields: selectedFields }
+  }, `${allItems.length} loot items retrieved`);
 };
 
 // Fields a player may update on any loot item. Mirrors what players can
@@ -163,20 +111,57 @@ const PLAYER_ALLOWED_FIELDS = [
 
 // Additional fields only a DM may update (via the dm-update endpoint).
 const DM_ONLY_FIELDS = [
-  'value', 'cursed', 'description',
+  'value', 'cursed',
   'session_date', 'itemid',
   'modids', 'charges', 'spellcraft_dc', 'dm_notes'
 ];
 
+// NULL is meaningful for these: it marks the item as not applicable (e.g.
+// non-magical), distinct from false, so it must not coerce to false.
+const nullableBoolean = (field) => (value) =>
+  value === null ? null : ValidationService.validateBoolean(value, field);
+
+// An empty/falsy value clears the column; anything else is validated.
+const clearableValue = (field, validate) => (value) => (value ? validate(value, field) : null);
+
+// Free text columns keep an empty value as it is and validate only real text.
+const optionalText = (field) => (value) =>
+  (value ? ValidationService.validateDescription(value, field) : value);
+
+const FIELD_VALIDATORS = {
+  name: (value) => ValidationService.validateRequiredString(value, 'name'),
+  quantity: (value) => ValidationService.validateQuantity(value),
+  value: (value) => ValidationService.validateOptionalNumber(value, 'value', { min: 0 }),
+  status: (value) => (value ? ValidationService.validateLootStatus(value) : null),
+  cursed: (value) => ValidationService.validateBoolean(value, 'cursed'),
+  unidentified: nullableBoolean('unidentified'),
+  masterwork: nullableBoolean('masterwork'),
+  notes: optionalText('notes'),
+  session_date: (value) => ValidationService.validateDate(value, 'session_date'),
+  type: clearableValue('type', (value, field) => ValidationService.validateRequiredString(value, field)),
+  size: clearableValue('size', (value, field) => ValidationService.validateRequiredString(value, field)),
+  itemid: (value) => (value ? ValidationService.validateItemId(parseInt(value)) : null),
+  modids: (value) => {
+    if (value === null || value === '') return null;
+    if (Array.isArray(value)) {
+      return value.map(id => ValidationService.validateItemId(parseInt(id)));
+    }
+    throw controllerFactory.createValidationError('modids must be an array of integers or null');
+  },
+  charges: clearableValue('charges', (value, field) => ValidationService.validateOptionalNumber(value, field, { min: 0 })),
+  spellcraft_dc: clearableValue('spellcraft_dc', (value, field) => ValidationService.validateOptionalNumber(value, field, { min: 1 })),
+  dm_notes: clearableValue('dm_notes', (value, field) => ValidationService.validateDescription(value, field))
+};
+
 /**
  * Filter update payload to allowed fields and validate each present field.
- * Mutates and returns a new object with validated values.
+ * Returns a new object with validated values.
  */
 const buildValidatedUpdateData = (updateData, allowedFields) => {
   const filteredData = {};
   for (const [key, value] of Object.entries(updateData)) {
     if (allowedFields.includes(key) && value !== undefined) {
-      filteredData[key] = value;
+      filteredData[key] = FIELD_VALIDATORS[key](value);
     }
   }
 
@@ -184,77 +169,7 @@ const buildValidatedUpdateData = (updateData, allowedFields) => {
     throw controllerFactory.createValidationError('No valid fields provided for update');
   }
 
-  if (filteredData.name) {
-    filteredData.name = ValidationService.validateRequiredString(filteredData.name, 'name');
-  }
-  if (filteredData.quantity !== undefined) {
-    filteredData.quantity = ValidationService.validateQuantity(filteredData.quantity);
-  }
-  if (filteredData.value !== undefined) {
-    filteredData.value = ValidationService.validateOptionalNumber(filteredData.value, 'value', { min: 0 });
-  }
-  if (filteredData.status !== undefined) {
-    filteredData.status = filteredData.status ? ValidationService.validateLootStatus(filteredData.status) : null;
-  }
-  if (filteredData.cursed !== undefined) {
-    filteredData.cursed = ValidationService.validateBoolean(filteredData.cursed, 'cursed');
-  }
-  if (filteredData.unidentified !== undefined) {
-    // NULL is meaningful here: it marks the item as non-magical, distinct
-    // from false ("identified magic item"), so it must not coerce to false.
-    filteredData.unidentified = filteredData.unidentified === null
-      ? null
-      : ValidationService.validateBoolean(filteredData.unidentified, 'unidentified');
-  }
-  if (filteredData.description) {
-    filteredData.description = ValidationService.validateDescription(filteredData.description, 'description');
-  }
-  if (filteredData.notes) {
-    filteredData.notes = ValidationService.validateDescription(filteredData.notes, 'notes');
-  }
-  if (filteredData.session_date) {
-    filteredData.session_date = ValidationService.validateDate(filteredData.session_date, 'session_date');
-  }
-  if (filteredData.masterwork !== undefined) {
-    // Preserve NULL (unset) rather than coercing it to false.
-    filteredData.masterwork = filteredData.masterwork === null
-      ? null
-      : ValidationService.validateBoolean(filteredData.masterwork, 'masterwork');
-  }
-  if (filteredData.type !== undefined) {
-    filteredData.type = filteredData.type ? ValidationService.validateRequiredString(filteredData.type, 'type') : null;
-  }
-  if (filteredData.size !== undefined) {
-    filteredData.size = filteredData.size ? ValidationService.validateRequiredString(filteredData.size, 'size') : null;
-  }
-  if (filteredData.itemid !== undefined) {
-    filteredData.itemid = filteredData.itemid ? ValidationService.validateItemId(parseInt(filteredData.itemid)) : null;
-  }
-  if (filteredData.modids !== undefined) {
-    if (filteredData.modids === null || filteredData.modids === '') {
-      filteredData.modids = null;
-    } else if (Array.isArray(filteredData.modids)) {
-      filteredData.modids = filteredData.modids.map(id => ValidationService.validateItemId(parseInt(id)));
-    } else {
-      throw controllerFactory.createValidationError('modids must be an array of integers or null');
-    }
-  }
-  if (filteredData.charges !== undefined) {
-    filteredData.charges = filteredData.charges ? ValidationService.validateOptionalNumber(filteredData.charges, 'charges', { min: 0 }) : null;
-  }
-  if (filteredData.spellcraft_dc !== undefined) {
-    filteredData.spellcraft_dc = filteredData.spellcraft_dc ? ValidationService.validateOptionalNumber(filteredData.spellcraft_dc, 'spellcraft_dc', { min: 1 }) : null;
-  }
-  if (filteredData.dm_notes !== undefined) {
-    filteredData.dm_notes = filteredData.dm_notes ? ValidationService.validateDescription(filteredData.dm_notes, 'dm_notes') : null;
-  }
-
   return filteredData;
-};
-
-const persistLootUpdate = async (req, res, itemId, filteredData) => {
-  const updatedItem = await dbUtils.updateById('loot', itemId, filteredData);
-  return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
 };
 
 const respondLootUpdated = (req, res, itemId, filteredData, updatedItem) => {
@@ -268,7 +183,12 @@ const respondLootUpdated = (req, res, itemId, filteredData, updatedItem) => {
     updatedFields: Object.keys(filteredData)
   });
 
-  return controllerFactory.sendSuccessResponse(res, updatedItem, 'Loot item updated successfully');
+  return controllerFactory.sendSuccessResponse(res, toPlayerSafeLoot(req, updatedItem), 'Loot item updated successfully');
+};
+
+const persistLootUpdate = async (req, res, itemId, filteredData) => {
+  const updatedItem = await dbUtils.updateById('loot', itemId, filteredData);
+  return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
 };
 
 /**
@@ -276,41 +196,36 @@ const respondLootUpdated = (req, res, itemId, filteredData, updatedItem) => {
  */
 const updateLootItem = async (req, res) => {
   const itemId = ValidationService.validateItemId(parseInt(req.params.id));
-  try {
-    const filteredData = buildValidatedUpdateData(req.body, PLAYER_ALLOWED_FIELDS);
+  const filteredData = buildValidatedUpdateData(req.body, PLAYER_ALLOWED_FIELDS);
 
-    // F-1373: players keep broad edit rights, but may not turn an unidentified
-    // item into an identified one here (that goes through Identify or a DM).
-    // Setting it back to unidentified, or re-sending the same value, is fine.
-    const wouldClearUnidentified = !hasDmRights(req) &&
-      filteredData.unidentified !== undefined && filteredData.unidentified !== true;
-    if (wouldClearUnidentified) {
-      const updatedItem = await dbUtils.executeTransaction(async (client) => {
-        const stored = await client.query('SELECT unidentified FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
-        if (stored.rows.length === 0) {
-          throw controllerFactory.createNotFoundError('Loot item not found');
-        }
-        if (stored.rows[0].unidentified === true) {
-          throw controllerFactory.createAuthorizationError(
-            'Only a DM can mark an unidentified item as identified. Use Identify to identify it.'
-          );
-        }
-        const columns = Object.keys(filteredData);
-        const setClauses = columns.map((col, i) => `"${col}" = $${i + 2}`);
-        const updated = await client.query(
-          `UPDATE "loot" SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
-          [itemId, ...columns.map((col) => filteredData[col])]
+  // F-1373: players keep broad edit rights, but may not turn an unidentified
+  // item into an identified one here (that goes through Identify or a DM).
+  // Setting it back to unidentified, or re-sending the same value, is fine.
+  const wouldClearUnidentified = !hasDmRights(req) &&
+    filteredData.unidentified !== undefined && filteredData.unidentified !== true;
+  if (wouldClearUnidentified) {
+    const updatedItem = await dbUtils.executeTransaction(async (client) => {
+      const stored = await client.query('SELECT unidentified FROM loot WHERE id = $1 FOR UPDATE', [itemId]);
+      if (stored.rows.length === 0) {
+        throw controllerFactory.createNotFoundError('Loot item not found');
+      }
+      if (stored.rows[0].unidentified === true) {
+        throw controllerFactory.createAuthorizationError(
+          'Only a DM can mark an unidentified item as identified. Use Identify to identify it.'
         );
-        return updated.rows[0];
-      });
-      return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
-    }
-
-    return await persistLootUpdate(req, res, itemId, filteredData);
-  } catch (error) {
-    logger.error(`Error updating loot item ${itemId}:`, error);
-    throw error;
+      }
+      const columns = Object.keys(filteredData);
+      const setClauses = columns.map((col, i) => `"${col}" = $${i + 2}`);
+      const updated = await client.query(
+        `UPDATE "loot" SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
+        [itemId, ...columns.map((col) => filteredData[col])]
+      );
+      return updated.rows[0];
+    });
+    return respondLootUpdated(req, res, itemId, filteredData, updatedItem);
   }
+
+  return persistLootUpdate(req, res, itemId, filteredData);
 };
 
 /**
@@ -319,42 +234,11 @@ const updateLootItem = async (req, res) => {
 const updateLootItemAsDM = async (req, res) => {
   ValidationService.requireDM(req);
   const itemId = ValidationService.validateItemId(parseInt(req.params.id));
-  try {
-    const filteredData = buildValidatedUpdateData(
-      req.body,
-      [...PLAYER_ALLOWED_FIELDS, ...DM_ONLY_FIELDS]
-    );
-    return await persistLootUpdate(req, res, itemId, filteredData);
-  } catch (error) {
-    logger.error(`Error updating loot item ${itemId} as DM:`, error);
-    throw error;
-  }
-};
-
-/**
- * Delete loot item
- */
-const deleteLootItem = async (req, res) => {
-  ValidationService.requireDM(req);
-  const itemId = ValidationService.validateItemId(parseInt(req.params.id));
-
-  try {
-    const deleted = await dbUtils.deleteById('loot', itemId);
-
-    if (!deleted) {
-      throw controllerFactory.createNotFoundError('Loot item not found');
-    }
-
-    logger.info(`Loot item ${itemId} deleted by DM ${req.user.id}`, {
-      userId: req.user.id,
-      itemId
-    });
-
-    return controllerFactory.sendSuccessResponse(res, { deleted: true }, 'Loot item deleted successfully');
-  } catch (error) {
-    logger.error(`Error deleting loot item ${itemId}:`, error);
-    throw error;
-  }
+  const filteredData = buildValidatedUpdateData(
+    req.body,
+    [...PLAYER_ALLOWED_FIELDS, ...DM_ONLY_FIELDS]
+  );
+  return persistLootUpdate(req, res, itemId, filteredData);
 };
 
 /**
@@ -363,78 +247,67 @@ const deleteLootItem = async (req, res) => {
 const updateLootStatus = async (req, res) => {
   const { lootIds, status, characterId } = req.body;
 
-  // Validate inputs
   ValidationService.validateItems(lootIds, 'lootIds');
   ValidationService.validateLootStatus(status);
-  
+
   if (characterId) {
     ValidationService.validateCharacterId(characterId);
   }
 
-  try {
-    // Run the UPDATE inside a transaction, but do NOT send the HTTP response
-    // from inside the callback — executeTransaction only COMMITs after the
-    // callback returns, so sending the response inside would release the
-    // client to refetch before the commit is visible to other pool clients
-    // (MVCC). That causes the frontend to see stale data and the table to
-    // appear "one update behind".
-    const updatedRows = await dbUtils.executeTransaction(async (client) => {
-      // F-1370: whohas must point at a character of the current campaign, and a
-      // non-DM may only name their own active character.
-      if (characterId) {
-        let characterSql = 'SELECT id, user_id, active FROM characters WHERE id = $1';
-        const characterParams = [characterId];
-        if (Number.isInteger(req.campaignId)) {
-          characterSql += ' AND campaign_id = $2';
-          characterParams.push(req.campaignId);
-        }
-        const characterResult = await client.query(characterSql, characterParams);
-        const character = characterResult.rows[0];
-        if (!character) {
-          throw controllerFactory.createValidationError('Character not found in the current campaign');
-        }
-        if (!hasDmRights(req) && (character.user_id !== req.user.id || character.active === false)) {
-          throw controllerFactory.createAuthorizationError('You can only assign loot to your own active character');
-        }
+  // The HTTP response is sent after executeTransaction resolves (after COMMIT).
+  const updatedRows = await dbUtils.executeTransaction(async (client) => {
+    // F-1370: whohas must point at a character of the current campaign, and a
+    // non-DM may only name their own active character.
+    if (characterId) {
+      let characterSql = 'SELECT id, user_id, active FROM characters WHERE id = $1';
+      const characterParams = [characterId];
+      if (Number.isInteger(req.campaignId)) {
+        characterSql += ' AND campaign_id = $2';
+        characterParams.push(req.campaignId);
       }
-
-      let updateQuery = 'UPDATE loot SET status = $1';
-      const params = [status];
-      let paramIndex = 2;
-
-      if (characterId) {
-        updateQuery += `, whohas = $${paramIndex}`;
-        params.push(characterId);
-        paramIndex++;
+      const characterResult = await client.query(characterSql, characterParams);
+      const character = characterResult.rows[0];
+      if (!character) {
+        throw controllerFactory.createValidationError('Character not found in the current campaign');
       }
-
-      updateQuery += ` WHERE id = ANY($${paramIndex}) RETURNING id, name`;
-      params.push(lootIds);
-
-      const result = await client.query(updateQuery, params);
-
-      if (result.rows.length === 0) {
-        throw controllerFactory.createNotFoundError('No loot items found with the provided IDs');
+      if (!hasDmRights(req) && (character.user_id !== req.user.id || character.active === false)) {
+        throw controllerFactory.createAuthorizationError('You can only assign loot to your own active character');
       }
+    }
 
-      return result.rows;
-    });
+    let updateQuery = 'UPDATE loot SET status = $1';
+    const params = [status];
+    let paramIndex = 2;
 
-    logger.info(`${updatedRows.length} loot items status updated to ${status}`, {
-      userId: req.user.id,
-      status,
-      characterId,
-      updatedCount: updatedRows.length
-    });
+    if (characterId) {
+      updateQuery += `, whohas = $${paramIndex}`;
+      params.push(characterId);
+      paramIndex++;
+    }
 
-    return controllerFactory.sendSuccessResponse(res, {
-      updatedItems: updatedRows,
-      count: updatedRows.length
-    }, `${updatedRows.length} items status updated to ${status}`);
-  } catch (error) {
-    logger.error('Error updating loot status:', error);
-    throw error;
-  }
+    updateQuery += ` WHERE id = ANY($${paramIndex}) RETURNING id, name`;
+    params.push(lootIds);
+
+    const result = await client.query(updateQuery, params);
+
+    if (result.rows.length === 0) {
+      throw controllerFactory.createNotFoundError('No loot items found with the provided IDs');
+    }
+
+    return result.rows;
+  });
+
+  logger.info(`${updatedRows.length} loot items status updated to ${status}`, {
+    userId: req.user.id,
+    status,
+    characterId,
+    updatedCount: updatedRows.length
+  });
+
+  return controllerFactory.sendSuccessResponse(res, {
+    updatedItems: updatedRows,
+    count: updatedRows.length
+  }, `${updatedRows.length} items status updated to ${status}`);
 };
 
 /**
@@ -442,178 +315,107 @@ const updateLootStatus = async (req, res) => {
  * Refactored to use SearchService for better maintainability
  */
 const searchLoot = async (req, res) => {
-  const { 
-    query, status, type, subtype, character_id, 
+  const {
+    query, status, type, subtype, character_id,
     unidentified, cursed, min_value, max_value,
     itemid, modids, value,
-    limit = 20, offset = 0 
+    limit = 20, offset = 0
   } = req.query;
 
-  try {
-    // Use SearchService to handle complex search logic
-    const filters = {
-      query, status, type, subtype, character_id,
-      unidentified, cursed, min_value, max_value,
-      itemid, modids, value
-    };
+  // The cursed flag is DM-only data, so players cannot filter on it either.
+  const filters = {
+    query, status, type, subtype, character_id,
+    unidentified, cursed: hasDmRights(req) ? cursed : undefined, min_value, max_value,
+    itemid, modids, value
+  };
 
-    const result = await SearchService.executeSearch(filters, limit, offset);
+  const result = await SearchService.executeSearch(filters, limit, offset);
 
-    return controllerFactory.sendSuccessResponse(res, {
-      items: result.items,
-      pagination: {
-        total: result.totalCount,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: (parseInt(offset) + parseInt(limit)) < result.totalCount
-      }
-    }, `Found ${result.items.length} items`);
-  } catch (error) {
-    logger.error('Error searching loot:', error);
-    throw error;
-  }
+  return controllerFactory.sendSuccessResponse(res, {
+    items: result.items.map((item) => toPlayerSafeLoot(req, item)),
+    pagination: {
+      total: result.totalCount,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      hasMore: (parseInt(offset) + parseInt(limit)) < result.totalCount
+    }
+  }, `Found ${result.items.length} items`);
 };
 
 /**
- * Split item stack
+ * Insert a copy of a loot row with a different quantity (id is regenerated).
+ */
+const cloneLootRow = async (client, original, quantity) => {
+  const copy = { ...original, quantity };
+  delete copy.id;
+  const keys = Object.keys(copy);
+  const placeholders = keys.map((_, idx) => `$${idx + 1}`);
+  const inserted = await client.query(
+    `INSERT INTO loot (${keys.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`,
+    Object.values(copy)
+  );
+  return inserted.rows[0];
+};
+
+/**
+ * Split item stack: the original row keeps the first quantity and one new row
+ * is created per remaining quantity. The route validates newQuantities as a
+ * non-empty array of { quantity }.
  */
 const splitItemStack = async (req, res) => {
   const itemId = ValidationService.validateItemId(parseInt(req.params.id));
-  const { newQuantities, splitQuantity } = req.body;
-  
-  // Support both old (splitQuantity) and new (newQuantities) formats
-  let quantities = [];
-  if (newQuantities && Array.isArray(newQuantities)) {
-    quantities = newQuantities.map(q => ValidationService.validateQuantity(q.quantity));
-  } else if (splitQuantity) {
-    quantities = [ValidationService.validateQuantity(splitQuantity)];
-  } else {
-    throw controllerFactory.createValidationError('Either newQuantities or splitQuantity must be provided');
+  const { newQuantities } = req.body;
+
+  if (!Array.isArray(newQuantities)) {
+    throw controllerFactory.createValidationError('newQuantities must be provided');
+  }
+  const quantities = newQuantities.map(q => ValidationService.validateQuantity(q.quantity));
+  if (quantities.length < 2) {
+    throw controllerFactory.createValidationError('A split needs at least two quantities');
   }
 
-  try {
-    // Do the whole split inside the transaction, but hold onto the result
-    // and only send the HTTP response after executeTransaction returns
-    // (which is when COMMIT has actually run). Otherwise the frontend can
-    // refetch before the commit is visible to other pool clients and see
-    // stale data.
-    const txResult = await dbUtils.executeTransaction(async (client) => {
-      // Get the original item
-      const originalResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
-      const originalItem = originalResult.rows[0];
+  // The HTTP response is sent after executeTransaction resolves (after COMMIT).
+  const txResult = await dbUtils.executeTransaction(async (client) => {
+    const originalResult = await client.query('SELECT * FROM loot WHERE id = $1', [itemId]);
+    const originalItem = originalResult.rows[0];
 
-      if (!originalItem) {
-        throw controllerFactory.createNotFoundError('Loot item not found');
-      }
+    if (!originalItem) {
+      throw controllerFactory.createNotFoundError('Loot item not found');
+    }
 
-      const newItems = [];
-      const isLegacySplit = !newQuantities || !Array.isArray(newQuantities);
+    const totalSplitQuantity = quantities.reduce((sum, qty) => sum + qty, 0);
+    if (totalSplitQuantity !== originalItem.quantity) {
+      throw controllerFactory.createValidationError(
+        `Total split quantities (${totalSplitQuantity}) must equal original quantity (${originalItem.quantity})`
+      );
+    }
 
-      // For newQuantities path, validate that total split quantities match original quantity
-      if (!isLegacySplit) {
-        const totalSplitQuantity = quantities.reduce((sum, qty) => sum + qty, 0);
-        if (totalSplitQuantity !== originalItem.quantity) {
-          throw controllerFactory.createValidationError(
-            `Total split quantities (${totalSplitQuantity}) must equal original quantity (${originalItem.quantity})`
-          );
-        }
-      }
+    await client.query('UPDATE loot SET quantity = $1 WHERE id = $2', [quantities[0], itemId]);
 
-      // For multiple splits, update the original item with the first quantity and create new items for the rest
-      if (quantities.length > 1) {
-        // Update original item with first quantity
-        await client.query(
-          'UPDATE loot SET quantity = $1 WHERE id = $2',
-          [quantities[0], itemId]
-        );
+    const newItems = [];
+    for (let i = 1; i < quantities.length; i++) {
+      newItems.push(await cloneLootRow(client, originalItem, quantities[i]));
+    }
 
-        // Create new items for the remaining quantities
-        for (let i = 1; i < quantities.length; i++) {
-          const newItemData = {
-            ...originalItem,
-            quantity: quantities[i]
-          };
-          delete newItemData.id; // Remove ID so a new one is generated
+    return {
+      originalItem: { ...originalItem, quantity: quantities[0] },
+      newItems
+    };
+  });
 
-          const keys = Object.keys(newItemData);
-          const values = Object.values(newItemData);
-          const placeholders = keys.map((_, idx) => `$${idx + 1}`);
+  logger.info(`Item ${itemId} split by user ${req.user.id}`, {
+    userId: req.user.id,
+    originalItemId: itemId,
+    newItemIds: txResult.newItems.map(item => item.id),
+    quantities,
+    totalPieces: quantities.length
+  });
 
-          const insertQuery = `
-            INSERT INTO loot (${keys.join(', ')})
-            VALUES (${placeholders.join(', ')})
-            RETURNING *
-          `;
-
-          const newItemResult = await client.query(insertQuery, values);
-          newItems.push(newItemResult.rows[0]);
-        }
-      } else {
-        // Single split (legacy behavior)
-        const splitQuantity = quantities[0];
-        if (originalItem.quantity <= splitQuantity) {
-          throw controllerFactory.createValidationError('Split quantity must be less than current quantity');
-        }
-
-        const remainingQuantity = originalItem.quantity - splitQuantity;
-        
-        // Update original item with remaining quantity
-        await client.query(
-          'UPDATE loot SET quantity = $1 WHERE id = $2',
-          [remainingQuantity, itemId]
-        );
-
-        // Create new item with split quantity
-        const newItemData = {
-          ...originalItem,
-          quantity: splitQuantity
-        };
-        delete newItemData.id;
-
-        const keys = Object.keys(newItemData);
-        const values = Object.values(newItemData);
-        const placeholders = keys.map((_, idx) => `$${idx + 1}`);
-
-        const insertQuery = `
-          INSERT INTO loot (${keys.join(', ')})
-          VALUES (${placeholders.join(', ')})
-          RETURNING *
-        `;
-
-        const newItemResult = await client.query(insertQuery, values);
-        newItems.push(newItemResult.rows[0]);
-      }
-
-      const originalNewQuantity = isLegacySplit
-        ? originalItem.quantity - quantities[0]
-        : quantities[0];
-      const totalPieces = isLegacySplit ? 2 : quantities.length;
-
-      return {
-        originalItem: { ...originalItem, quantity: originalNewQuantity },
-        newItems,
-        totalPieces,
-        loggingQuantities: quantities,
-      };
-    });
-
-    logger.info(`Item ${itemId} split by user ${req.user.id}`, {
-      userId: req.user.id,
-      originalItemId: itemId,
-      newItemIds: txResult.newItems.map(item => item.id),
-      quantities: txResult.loggingQuantities,
-      totalPieces: txResult.loggingQuantities.length
-    });
-
-    return controllerFactory.sendSuccessResponse(res, {
-      originalItem: txResult.originalItem,
-      newItems: txResult.newItems,
-      totalPieces: txResult.totalPieces
-    }, `Item split successfully into ${txResult.totalPieces} pieces`);
-  } catch (error) {
-    logger.error(`Error splitting item ${itemId}:`, error);
-    throw error;
-  }
+  return controllerFactory.sendSuccessResponse(res, {
+    originalItem: toPlayerSafeLoot(req, txResult.originalItem),
+    newItems: txResult.newItems.map((item) => toPlayerSafeLoot(req, item)),
+    totalPieces: quantities.length
+  }, `Item split successfully into ${quantities.length} pieces`);
 };
 
 // Export controller functions with factory wrappers
@@ -621,11 +423,7 @@ module.exports = {
   getAllLoot: controllerFactory.createHandler(getAllLoot, {
     errorMessage: 'Error fetching loot items'
   }),
-  
-  getLootById: controllerFactory.createHandler(getLootById, {
-    errorMessage: 'Error fetching loot item'
-  }),
-  
+
   updateLootItem: controllerFactory.createHandler(updateLootItem, {
     errorMessage: 'Error updating loot item'
   }),
@@ -634,18 +432,14 @@ module.exports = {
     errorMessage: 'Error updating loot item as DM'
   }),
 
-  deleteLootItem: controllerFactory.createHandler(deleteLootItem, {
-    errorMessage: 'Error deleting loot item'
-  }),
-  
   updateLootStatus: controllerFactory.createHandler(updateLootStatus, {
     errorMessage: 'Error updating loot status'
   }),
-  
+
   searchLoot: controllerFactory.createHandler(searchLoot, {
     errorMessage: 'Error searching loot items'
   }),
-  
+
   splitItemStack: controllerFactory.createHandler(splitItemStack, {
     errorMessage: 'Error splitting item stack'
   })

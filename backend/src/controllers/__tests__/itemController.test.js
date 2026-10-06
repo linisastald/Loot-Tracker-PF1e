@@ -16,12 +16,9 @@ jest.mock('../../services/searchService');
 
 const dbUtils = require('../../utils/dbUtils');
 const SearchService = require('../../services/searchService');
-const controllerFactory = require('../../utils/controllerFactory');
 
-// We need to test the inner functions, but they are wrapped by controllerFactory.createHandler.
-// The wrapped handler catches errors and maps them to HTTP responses.
-// We will call the exported (wrapped) handlers with mock req/res.
-
+// The exported handlers are wrapped by controllerFactory.createHandler, which maps
+// errors to HTTP responses; they are called here with mock req/res objects.
 const itemController = require('../itemController');
 
 /**
@@ -138,8 +135,9 @@ describe('itemController', () => {
       await itemController.getAllLoot(req, res);
 
       const [query, params] = dbUtils.executeQuery.mock.calls[0];
-      expect(query).toContain('character_name');
-      expect(query).toContain('character_names');
+      // loot_view has character_name only; character_names is not a column (F-0346)
+      expect(query).toContain('character_name = (SELECT name FROM characters WHERE id = $1)');
+      expect(query).not.toContain('character_names');
       expect(params).toContain('5');
     });
 
@@ -158,72 +156,6 @@ describe('itemController', () => {
       const [query, params] = dbUtils.executeQuery.mock.calls[0];
       expect(query).toContain('LIMIT $1 OFFSET $2');
       expect(params).toEqual([10, 5]);
-    });
-  });
-
-  // ──────────────────────────────────────────────────────────
-  // getLootById
-  // ──────────────────────────────────────────────────────────
-  describe('getLootById', () => {
-    it('should return a loot item when found', async () => {
-      const item = { id: 1, name: 'Longsword +1', itemid: 5, modids: null };
-      dbUtils.executeQuery.mockResolvedValue({ rows: [item] });
-
-      const req = mockReq({ params: { id: '1' } });
-      const res = mockRes();
-
-      await itemController.getLootById(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
-      expect(res.success).toHaveBeenCalledTimes(1);
-      const responseData = res.success.mock.calls[0][0];
-      expect(responseData.id).toBe(1);
-      expect(responseData.name).toBe('Longsword +1');
-    });
-
-    it('should fetch mod details when item has modids', async () => {
-      const item = { id: 1, name: 'Sword', modids: [10, 20] };
-      const mods = [
-        { id: 10, name: 'Flaming' },
-        { id: 20, name: 'Keen' },
-      ];
-      dbUtils.executeQuery
-        .mockResolvedValueOnce({ rows: [item] })
-        .mockResolvedValueOnce({ rows: mods });
-
-      const req = mockReq({ params: { id: '1' } });
-      const res = mockRes();
-
-      await itemController.getLootById(req, res);
-
-      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(2);
-      const secondCall = dbUtils.executeQuery.mock.calls[1];
-      expect(secondCall[0]).toContain('SELECT * FROM mod WHERE id = ANY($1)');
-      expect(secondCall[1]).toEqual([[10, 20]]);
-
-      const responseData = res.success.mock.calls[0][0];
-      expect(responseData.mods).toEqual(mods);
-    });
-
-    it('should return not found when item does not exist', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      const req = mockReq({ params: { id: '999' } });
-      const res = mockRes();
-
-      await itemController.getLootById(req, res);
-
-      expect(res.notFound).toHaveBeenCalledTimes(1);
-      expect(res.notFound).toHaveBeenCalledWith('Loot item not found');
-    });
-
-    it('should return validation error for invalid id', async () => {
-      const req = mockReq({ params: { id: 'abc' } });
-      const res = mockRes();
-
-      await itemController.getLootById(req, res);
-
-      expect(res.validationError).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -521,7 +453,7 @@ describe('itemController', () => {
       expect(filters.subtype).toBe('protection');
       expect(filters.character_id).toBe('3');
       expect(filters.unidentified).toBe('false');
-      expect(filters.cursed).toBe('true');
+      expect(filters.cursed).toBeUndefined(); // DM-only filter, dropped for a player
       expect(filters.min_value).toBe('100');
       expect(filters.max_value).toBe('5000');
     });
@@ -877,7 +809,8 @@ describe('itemController', () => {
       expect(filteredData.cursed).toBe(true);
       expect(filteredData.masterwork).toBe(true);
       expect(filteredData.session_date).toBeDefined();
-      expect(filteredData.description).toBe('lore');
+      // description has no loot column, so it is not an updatable field
+      expect(filteredData.description).toBeUndefined();
     });
 
     it('should reject non-DM callers', async () => {
@@ -909,55 +842,6 @@ describe('itemController', () => {
 
       expect(res.notFound).toHaveBeenCalledTimes(1);
       expect(res.notFound.mock.calls[0][0]).toContain('Loot item not found');
-    });
-  });
-
-  // ──────────────────────────────────────────────────────────
-  // deleteLootItem
-  // ──────────────────────────────────────────────────────────
-  describe('deleteLootItem', () => {
-    it('should delete a loot item when user is DM', async () => {
-      dbUtils.deleteById.mockResolvedValue({ id: 1 });
-
-      const req = mockReq({
-        params: { id: '1' },
-        user: { id: 1, role: 'DM' },
-      });
-      const res = mockRes();
-
-      await itemController.deleteLootItem(req, res);
-
-      expect(dbUtils.deleteById).toHaveBeenCalledWith('loot', 1);
-      expect(res.success).toHaveBeenCalledTimes(1);
-      expect(res.success.mock.calls[0][0]).toEqual({ deleted: true });
-    });
-
-    it('should return not found when item does not exist', async () => {
-      dbUtils.deleteById.mockResolvedValue(null);
-
-      const req = mockReq({
-        params: { id: '999' },
-        user: { id: 1, role: 'DM' },
-      });
-      const res = mockRes();
-
-      await itemController.deleteLootItem(req, res);
-
-      expect(res.notFound).toHaveBeenCalledTimes(1);
-      expect(res.notFound.mock.calls[0][0]).toContain('Loot item not found');
-    });
-
-    it('should reject non-DM users', async () => {
-      const req = mockReq({
-        params: { id: '1' },
-        user: { id: 2, role: 'player' },
-      });
-      const res = mockRes();
-
-      await itemController.deleteLootItem(req, res);
-
-      expect(res.forbidden).toHaveBeenCalledTimes(1);
-      expect(res.forbidden.mock.calls[0][0]).toContain('Only DMs');
     });
   });
 
@@ -999,38 +883,6 @@ describe('itemController', () => {
       expect(responseData.totalPieces).toBe(2);
     });
 
-    it('should split item using legacy splitQuantity (partial split off)', async () => {
-      const originalItem = { id: 1, name: 'Potion', quantity: 5 };
-      const newItem = { id: 2, name: 'Potion', quantity: 2 };
-
-      const mockClient = {
-        query: jest.fn()
-          .mockResolvedValueOnce({ rows: [originalItem] })  // SELECT original
-          .mockResolvedValueOnce({ rows: [] })               // UPDATE original (remaining = 3)
-          .mockResolvedValueOnce({ rows: [newItem] }),        // INSERT new item (split = 2)
-        release: jest.fn(),
-      };
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
-
-      const req = mockReq({
-        params: { id: '1' },
-        body: { splitQuantity: 2 },
-      });
-      const res = mockRes();
-
-      await itemController.splitItemStack(req, res);
-
-      expect(mockClient.query).toHaveBeenCalledTimes(3);
-      // Original item updated with remaining quantity (5 - 2 = 3)
-      expect(mockClient.query.mock.calls[1][1]).toEqual([3, 1]);
-      expect(res.success).toHaveBeenCalledTimes(1);
-      const responseData = res.success.mock.calls[0][0];
-      expect(responseData.originalItem.quantity).toBe(3);
-      expect(responseData.newItems).toHaveLength(1);
-      expect(responseData.newItems[0].quantity).toBe(2);
-      expect(responseData.totalPieces).toBe(2);
-    });
-
     it('should reject when total split quantities do not match original (multi-split)', async () => {
       const originalItem = { id: 1, name: 'Arrow', quantity: 20 };
 
@@ -1050,66 +902,6 @@ describe('itemController', () => {
 
       expect(res.validationError).toHaveBeenCalledTimes(1);
       expect(res.validationError.mock.calls[0][0]).toContain('Total split quantities');
-    });
-
-    it('should reject legacy split when splitQuantity equals original quantity', async () => {
-      // When splitQuantity equals original quantity, the total check passes
-      // but then the legacy else-branch checks quantity <= splitQuantity
-      const originalItem = { id: 1, name: 'Gem', quantity: 3 };
-
-      const mockClient = {
-        query: jest.fn().mockResolvedValueOnce({ rows: [originalItem] }),
-        release: jest.fn(),
-      };
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
-
-      const req = mockReq({
-        params: { id: '1' },
-        body: { splitQuantity: 3 }, // equal to quantity
-      });
-      const res = mockRes();
-
-      await itemController.splitItemStack(req, res);
-
-      // splitQuantity == original quantity passes total check,
-      // but then hits "Split quantity must be less than current quantity"
-      expect(res.validationError).toHaveBeenCalledTimes(1);
-      expect(res.validationError.mock.calls[0][0]).toContain('Split quantity must be less than');
-    });
-
-    it('should reject legacy split when splitQuantity exceeds original quantity', async () => {
-      const originalItem = { id: 1, name: 'Gem', quantity: 3 };
-
-      const mockClient = {
-        query: jest.fn().mockResolvedValueOnce({ rows: [originalItem] }),
-        release: jest.fn(),
-      };
-      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(mockClient));
-
-      const req = mockReq({
-        params: { id: '1' },
-        body: { splitQuantity: 5 }, // more than quantity
-      });
-      const res = mockRes();
-
-      await itemController.splitItemStack(req, res);
-
-      // splitQuantity (5) >= original (3) -> "must be less than" validation error
-      expect(res.validationError).toHaveBeenCalledTimes(1);
-      expect(res.validationError.mock.calls[0][0]).toContain('Split quantity must be less than');
-    });
-
-    it('should reject when neither newQuantities nor splitQuantity is provided', async () => {
-      const req = mockReq({
-        params: { id: '1' },
-        body: {},
-      });
-      const res = mockRes();
-
-      await itemController.splitItemStack(req, res);
-
-      expect(res.validationError).toHaveBeenCalledTimes(1);
-      expect(res.validationError.mock.calls[0][0]).toContain('Either newQuantities or splitQuantity');
     });
 
     it('should return not found when original item does not exist', async () => {
@@ -1173,6 +965,99 @@ describe('itemController', () => {
       const responseData = res.success.mock.calls[0][0];
       expect(responseData.newItems).toHaveLength(2);
       expect(responseData.totalPieces).toBe(3);
+    });
+  });
+  // ──────────────────────────────────────────────────────────
+  // Extra coverage for F-0346 / F-0349 / F-0350 / F-0353
+  // ──────────────────────────────────────────────────────────
+  describe('getAllLoot fields', () => {
+    it('drops character_names from the selectable fields', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+      const req = mockReq({ query: { fields: 'name,character_names,character_name' } });
+      await itemController.getAllLoot(req, mockRes());
+      const [query] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).not.toContain('character_names');
+      expect(query).toContain('character_name');
+    });
+  });
+
+  describe('searchLoot DM-only data', () => {
+    const row = { id: 1, name: 'Ring', dm_notes: 'secret', cursed: true, spellcraft_dc: 20, itemid: 4, modids: [1], value: 9, charges: 3, unidentified: true };
+
+    it('strips DM-only columns and the real identity of unidentified items for a player', async () => {
+      SearchService.executeSearch.mockResolvedValue({ items: [row], totalCount: 1 });
+      const res = mockRes();
+      await itemController.searchLoot(mockReq({ query: { cursed: 'true' } }), res);
+      const item = res.success.mock.calls[0][0].items[0];
+      expect(item).toEqual({ id: 1, name: 'Ring', unidentified: true });
+      expect(SearchService.executeSearch.mock.calls[0][0].cursed).toBeUndefined();
+    });
+
+    it('returns everything and keeps the cursed filter for a DM', async () => {
+      SearchService.executeSearch.mockResolvedValue({ items: [row], totalCount: 1 });
+      const res = mockRes();
+      await itemController.searchLoot(mockReq({ query: { cursed: 'true' }, user: { id: 2, role: 'DM' } }), res);
+      expect(res.success.mock.calls[0][0].items[0]).toEqual(row);
+      expect(SearchService.executeSearch.mock.calls[0][0].cursed).toBe('true');
+    });
+  });
+
+  describe('player-safe responses', () => {
+    it('hides DM-only columns in the update response for a player, keeps identity of identified items', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Sword', dm_notes: 's', cursed: true, spellcraft_dc: 9, itemid: 3, value: 5, unidentified: false });
+      const res = mockRes();
+      await itemController.updateLootItem(mockReq({ params: { id: '1' }, body: { name: 'Sword' } }), res);
+      expect(res.success.mock.calls[0][0]).toEqual({ id: 1, name: 'Sword', itemid: 3, value: 5, unidentified: false });
+    });
+
+    it('hides the identity of an unidentified item in the update response for a player', async () => {
+      dbUtils.updateById.mockResolvedValue({ id: 1, name: 'Ring', itemid: 3, modids: [2], value: 5, charges: 1, unidentified: true });
+      const res = mockRes();
+      await itemController.updateLootItem(mockReq({ params: { id: '1' }, body: { notes: 'n' } }), res);
+      expect(res.success.mock.calls[0][0]).toEqual({ id: 1, name: 'Ring', unidentified: true });
+    });
+
+    it('returns the full row to a DM from the dm-update endpoint', async () => {
+      const full = { id: 1, name: 'Ring', dm_notes: 's', cursed: true, itemid: 3, unidentified: true };
+      dbUtils.updateById.mockResolvedValue(full);
+      const res = mockRes();
+      await itemController.updateLootItemAsDM(mockReq({ params: { id: '1' }, body: { name: 'Ring' }, user: { id: 2, role: 'DM' } }), res);
+      expect(res.success.mock.calls[0][0]).toEqual(full);
+    });
+
+    it('hides DM-only columns in split responses for a player', async () => {
+      const original = { id: 1, name: 'Arrow', quantity: 4, dm_notes: 'x', cursed: false, unidentified: false };
+      const clone = { ...original, id: 2, quantity: 1 };
+      const client = {
+        query: jest.fn()
+          .mockResolvedValueOnce({ rows: [original] })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [clone] }),
+      };
+      dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+      const res = mockRes();
+      await itemController.splitItemStack(mockReq({ params: { id: '1' }, body: { newQuantities: [{ quantity: 3 }, { quantity: 1 }] } }), res);
+      const data = res.success.mock.calls[0][0];
+      expect(data.originalItem.dm_notes).toBeUndefined();
+      expect(data.newItems[0].dm_notes).toBeUndefined();
+      expect(data.newItems[0].cursed).toBeUndefined();
+      // the clone INSERT still copies every column of the stored row
+      expect(client.query.mock.calls[2][0]).toContain('dm_notes');
+    });
+
+    it('rejects a split with fewer than two quantities', async () => {
+      const res = mockRes();
+      await itemController.splitItemStack(mockReq({ params: { id: '1' }, body: { newQuantities: [{ quantity: 3 }] } }), res);
+      expect(res.validationError).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('update validation', () => {
+    it.each([['name', ''], ['name', null], ['session_date', '']])('rejects an empty %s (%p) instead of skipping validation', async (field, value) => {
+      const res = mockRes();
+      await itemController.updateLootItemAsDM(mockReq({ params: { id: '1' }, body: { [field]: value }, user: { id: 2, role: 'DM' } }), res);
+      expect(res.validationError).toHaveBeenCalledTimes(1);
+      expect(dbUtils.updateById).not.toHaveBeenCalled();
     });
   });
 });
