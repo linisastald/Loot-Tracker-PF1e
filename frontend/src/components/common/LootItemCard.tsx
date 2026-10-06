@@ -11,6 +11,7 @@ import {
   Typography,
 } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import { FormatAverageAppraisal, FormatBelievedValue, formatLootDate } from './lootFormatters';
 
 interface LootItemCardProps {
   item: any;
@@ -20,11 +21,9 @@ interface LootItemCardProps {
   onSelectAll: () => void;
   onSelectItem: (id: number) => void;
   selectedItems: number[];
+  /** Selection state of this item's individual rows, computed once by the table */
+  selection: { allSelected: boolean; someSelected: boolean };
   showColumns: Record<string, boolean>;
-  formatDateOnly: (dateString: string) => string;
-  formatAppraisalDetails: (item: any) => string;
-  FormatBelievedValue: React.FC<{ item: any }>;
-  FormatAverageAppraisal: React.FC<{ item: any }>;
 }
 
 const LootItemCard: React.FC<LootItemCardProps> = ({
@@ -35,14 +34,9 @@ const LootItemCard: React.FC<LootItemCardProps> = ({
   onSelectAll,
   onSelectItem,
   selectedItems,
+  selection: { allSelected, someSelected },
   showColumns,
-  formatDateOnly,
-  FormatBelievedValue,
-  FormatAverageAppraisal,
 }) => {
-  const allSelected = individualItems.length > 0 && individualItems.every(i => selectedItems.includes(i.id));
-  const someSelected = individualItems.some(i => selectedItems.includes(i.id));
-
   return (
     <Card sx={{ mb: 1, bgcolor: 'background.paper' }}>
       <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -111,7 +105,7 @@ const LootItemCard: React.FC<LootItemCardProps> = ({
                 <Typography variant="caption" sx={{
                   color: "text.secondary"
                 }}>
-                  {formatDateOnly(item.session_date)}
+                  {formatLootDate(item.session_date)}
                 </Typography>
               )}
             </Box>

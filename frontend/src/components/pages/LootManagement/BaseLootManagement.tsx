@@ -153,7 +153,6 @@ const BaseLootManagement: React.FC<BaseLootManagementProps> = ({ config }) => {
         loot={loot.summary}
         individualLoot={loot.individual}
         selectedItems={selectedItems}
-        setSelectedItems={setSelectedItems}
         openItems={openItems}
         setOpenItems={setOpenItems}
         handleSelectItem={handleSelectItem}

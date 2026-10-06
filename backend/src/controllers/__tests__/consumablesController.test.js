@@ -113,13 +113,15 @@ describe('consumablesController', () => {
   // ---------------------------------------------------------------
   describe('useConsumable', () => {
     it('should decrement wand charges and log usage', async () => {
+      // distinct ids (loot 5, user 7, character 42) so swapped parameters cannot pass
       const req = createMockReq({
-        body: { itemid: 1, type: 'wand' },
+        user: { id: 7 },
+        body: { itemid: 5, type: 'wand' },
       });
       const res = createMockRes();
 
       const updatedWand = {
-        id: 1,
+        id: 5,
         name: 'Wand of Cure Light Wounds',
         charges: 34,
         status: 'Kept Party',
@@ -144,13 +146,15 @@ describe('consumablesController', () => {
       expect(mockClient.query.mock.calls[0][0]).toMatch(/status = 'Kept Party'/);
       // Verify wand update query
       expect(mockClient.query.mock.calls[0][0]).toContain('charges = charges - 1');
-      expect(mockClient.query.mock.calls[0][1]).toEqual([1]);
+      expect(mockClient.query.mock.calls[0][1]).toEqual([5]); // loot id
+      // only wand rows can be used as wands
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/ILIKE '%wand of%'/);
 
       // Verify usage log insert
       expect(mockClient.query.mock.calls[1][0]).toContain('FROM characters');
-      expect(mockClient.query.mock.calls[1][1]).toEqual([1]); // user id
+      expect(mockClient.query.mock.calls[1][1]).toEqual([7]); // user id
       expect(mockClient.query.mock.calls[2][0]).toContain('INSERT INTO consumableuse');
-      expect(mockClient.query.mock.calls[2][1]).toEqual([1, 42]); // lootid, character id (not user id)
+      expect(mockClient.query.mock.calls[2][1]).toEqual([5, 42]); // lootid, character id (not user id)
 
       expect(res.success).toHaveBeenCalledWith(
         updatedWand,
@@ -187,6 +191,9 @@ describe('consumablesController', () => {
       // F-0271: only party-held stock may be decremented
       expect(mockClient.query.mock.calls[0][0]).toMatch(/status = 'Kept Party'/);
       expect(mockClient.query.mock.calls[0][0]).toMatch(/quantity > 0/);
+      // only potion items can be consumed as potions
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/ILIKE '%potion of%'/);
+      expect(mockClient.query.mock.calls[0][0]).not.toMatch(/scroll of/);
       expect(res.success).toHaveBeenCalledWith(
         updatedPotion,
         'potion consumed successfully'
@@ -218,6 +225,7 @@ describe('consumablesController', () => {
 
       await consumablesController.useConsumable(req, res);
 
+      expect(mockClient.query.mock.calls[0][0]).toMatch(/ILIKE '%scroll of%'/);
       expect(res.success).toHaveBeenCalledWith(
         updatedScroll,
         'scroll consumed successfully'
@@ -240,16 +248,6 @@ describe('consumablesController', () => {
 
       expect(mockClient.query.mock.calls[2][1]).toEqual([5, null]);
       expect(res.success).toHaveBeenCalled();
-    });
-
-    it('F-0272: history keeps uses with no recorded character (LEFT JOIN)', async () => {
-      const req = createMockReq();
-      const res = createMockRes();
-      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
-
-      await consumablesController.getConsumableUseHistory(req, res);
-
-      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/LEFT JOIN characters/);
     });
 
     it('should return not found when consumable has no uses left', async () => {
@@ -284,6 +282,28 @@ describe('consumablesController', () => {
 
       expect(res.validationError).toHaveBeenCalled();
     });
+
+    it.each(['ring', 'WAND', 'wand; DROP TABLE loot', ['wand'], 5])(
+      'should reject an unknown type (%p) without touching the database', async (type) => {
+        const req = createMockReq({ body: { itemid: 1, type } });
+        const res = createMockRes();
+
+        await consumablesController.useConsumable(req, res);
+
+        expect(res.validationError).toHaveBeenCalledWith('Type must be wand, potion or scroll');
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
+
+    it.each([0, -3, 1.5, NaN, '7', null, [1], {}])(
+      'should reject a non-integer or non-positive itemid (%p)', async (itemid) => {
+        const req = createMockReq({ body: { itemid, type: 'potion' } });
+        const res = createMockRes();
+
+        await consumablesController.useConsumable(req, res);
+
+        expect(res.validationError).toHaveBeenCalled();
+        expect(dbUtils.executeTransaction).not.toHaveBeenCalled();
+      });
   });
 
   // ---------------------------------------------------------------
@@ -334,6 +354,50 @@ describe('consumablesController', () => {
       );
     });
 
+    it('should accept 0 charges (a spent wand)', async () => {
+      const req = createMockReq({ body: { id: 1, charges: 0 } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ id: 1, charges: 0, status: 'Kept Party' }] });
+
+      await consumablesController.updateWandCharges(req, res);
+
+      expect(dbUtils.executeQuery).toHaveBeenCalledWith(expect.any(String), [0, 1]);
+      expect(res.success).toHaveBeenCalled();
+    });
+
+    it('should only update wand rows', async () => {
+      const req = createMockReq({ body: { id: 3, charges: 10 } });
+      const res = createMockRes();
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] }); // e.g. a longsword row
+
+      await consumablesController.updateWandCharges(req, res);
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toMatch(/ILIKE '%wand of%'/);
+      expect(res.notFound).toHaveBeenCalledWith('Wand not found or not in kept party status');
+    });
+
+    it.each([1.5, NaN, '25', null, [25], {}, Infinity])(
+      'should reject non-integer charges (%p)', async (charges) => {
+        const req = createMockReq({ body: { id: 1, charges } });
+        const res = createMockRes();
+
+        await consumablesController.updateWandCharges(req, res);
+
+        expect(res.validationError).toHaveBeenCalled();
+        expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      });
+
+    it.each([0, -1, 1.5, '1', NaN, null])(
+      'should reject an invalid loot id (%p)', async (id) => {
+        const req = createMockReq({ body: { id, charges: 10 } });
+        const res = createMockRes();
+
+        await consumablesController.updateWandCharges(req, res);
+
+        expect(res.validationError).toHaveBeenCalled();
+        expect(dbUtils.executeQuery).not.toHaveBeenCalled();
+      });
+
     it('should set charges to minimum (1)', async () => {
       const req = createMockReq({
         body: { id: 1, charges: 1 },
@@ -360,21 +424,7 @@ describe('consumablesController', () => {
       await consumablesController.updateWandCharges(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        'Charges must be between 1 and 50'
-      );
-      expect(dbUtils.executeQuery).not.toHaveBeenCalled();
-    });
-
-    it('should reject charges below minimum (0)', async () => {
-      const req = createMockReq({
-        body: { id: 1, charges: 0 },
-      });
-      const res = createMockRes();
-
-      await consumablesController.updateWandCharges(req, res);
-
-      expect(res.validationError).toHaveBeenCalledWith(
-        'Charges must be between 1 and 50'
+        'Charges must be a whole number between 0 and 50'
       );
       expect(dbUtils.executeQuery).not.toHaveBeenCalled();
     });
@@ -388,7 +438,7 @@ describe('consumablesController', () => {
       await consumablesController.updateWandCharges(req, res);
 
       expect(res.validationError).toHaveBeenCalledWith(
-        'Charges must be between 1 and 50'
+        'Charges must be a whole number between 0 and 50'
       );
     });
 

@@ -5,9 +5,11 @@ import {notifyLootCountsChanged} from '../../utils/events';
 import {Alert, Box, Button, Container, Paper, Typography} from '@mui/material';
 import EntryForm from './EntryForm';
 import api from '../../utils/api';
-import {useIsDM} from '../../contexts/CampaignContext';
+import {useCampaign, useIsDM} from '../../contexts/CampaignContext';
+import {getDefaultItemQuantity} from '../../utils/itemEntryDefaults';
 
 const LootEntry = () => {
+    const {campaignSettings} = useCampaign();
     const {
         entries,
         setEntries,
@@ -19,15 +21,30 @@ const LootEntry = () => {
         handleRemoveEntry,
         handleEntryChange,
         resetForm
-    } = useLootEntryForm();
+    } = useLootEntryForm({defaultQuantity: getDefaultItemQuantity(campaignSettings)});
 
     const [activeCharacterId, setActiveCharacterId] = useState(null);
     const [itemOptions, setItemOptions] = useState([]);
     const [characters, setCharacters] = useState([]);
+    const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
     const isDM = useIsDM();
 
     useEffect(() => {
         fetchInitialData(setItemOptions, setActiveCharacterId);
+    }, []);
+
+    // Smart Item Detection needs an OpenAI key: ask once for the whole form
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const response = await api.get('/settings/openai-key');
+                if (!cancelled) setHasOpenAiKey(Boolean(response?.data?.hasKey));
+            } catch {
+                if (!cancelled) setHasOpenAiKey(false);
+            }
+        })();
+        return () => { cancelled = true; };
     }, []);
 
     // DMs can attribute a gold entry to any character, so load the list for them
@@ -151,6 +168,8 @@ const LootEntry = () => {
                         onChange={handleEntryChange}
                         isDM={isDM}
                         characters={characters}
+                        hasOpenAiKey={hasOpenAiKey}
+                        initialItemOptions={itemOptions}
                     />
                 ))}
             </form>

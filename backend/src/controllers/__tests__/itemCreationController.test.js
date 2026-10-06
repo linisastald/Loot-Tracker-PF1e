@@ -29,11 +29,16 @@ jest.mock('../../services/itemParsingService', () => ({
   suggestMods: jest.fn(),
 }));
 
+jest.mock('../../utils/campaignSettings', () => ({
+  getCampaignSetting: jest.fn(),
+}));
+
 jest.mock('../../services/calculateFinalValue', () => ({
   calculateFinalValue: jest.fn(),
 }));
 
 const dbUtils = require('../../utils/dbUtils');
+const { getCampaignSetting } = require('../../utils/campaignSettings');
 const ItemParsingService = require('../../services/itemParsingService');
 const { calculateFinalValue } = require('../../services/calculateFinalValue');
 const itemCreationController = require('../itemCreationController');
@@ -195,6 +200,103 @@ describe('itemCreationController', () => {
 
       // controllerFactory.createHandler catches ValidationError and calls res.validationError
       expect(res.validationError).toHaveBeenCalled();
+    });
+
+    describe('auto-split stacks (per-campaign setting)', () => {
+      const splitReq = (body) => createMockReq({
+        body: { name: 'Arrow', quantity: 3, customValue: 1, charges: 7, ...body },
+      });
+      const runWithClient = (clientQuery) => {
+        const client = { query: clientQuery };
+        dbUtils.executeTransaction.mockImplementation(async (cb) => cb(client));
+        return client;
+      };
+      const rowOf = (id) => ({ rows: [{ id, name: 'Arrow', quantity: 1 }] });
+
+      it('creates N rows of quantity 1 in one transaction when the setting is on', async () => {
+        getCampaignSetting.mockResolvedValue('1');
+        const client = runWithClient(jest.fn()
+          .mockResolvedValueOnce(rowOf(1)).mockResolvedValueOnce(rowOf(2)).mockResolvedValueOnce(rowOf(3)));
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({}), res);
+
+        expect(getCampaignSetting).toHaveBeenCalledWith('auto_split_stacks_enabled', { defaultValue: '0' });
+        expect(dbUtils.executeTransaction).toHaveBeenCalledTimes(1);
+        expect(client.query).toHaveBeenCalledTimes(3);
+        expect(client.query.mock.calls[0][0]).toContain('INSERT INTO "loot"');
+        // quantity (second column) is 1 on every row; charges stay as entered on each wand
+        const cols = client.query.mock.calls[0][0].match(/\(([^)]*)\)\s+VALUES/)[1].split(',').map((c) => c.trim().replace(/"/g, ''));
+        for (const [, params] of client.query.mock.calls) {
+          expect(params[cols.indexOf('quantity')]).toBe(1);
+          expect(params[cols.indexOf('charges')]).toBe(7);
+        }
+        expect(dbUtils.insert).not.toHaveBeenCalled();
+        expect(res.success).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 1 }),
+          '3 loot items created successfully'
+        );
+      });
+
+      it('leaves a single row alone when the setting is on but quantity is 1', async () => {
+        getCampaignSetting.mockResolvedValue('1');
+        runWithClient(jest.fn());
+        dbUtils.insert.mockResolvedValue({ id: 9, quantity: 1 });
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({ quantity: 1 }), res);
+
+        expect(getCampaignSetting).not.toHaveBeenCalled();
+        expect(dbUtils.insert).toHaveBeenCalledTimes(1);
+        expect(res.success).toHaveBeenCalledWith({ id: 9, quantity: 1 }, 'Loot item created successfully');
+      });
+
+      it.each([['0'], [undefined], ['']])('keeps one stacked row when the setting is %p', async (value) => {
+        getCampaignSetting.mockResolvedValue(value);
+        runWithClient(jest.fn());
+        dbUtils.insert.mockResolvedValue({ id: 5, quantity: 3 });
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({}), res);
+
+        expect(dbUtils.insert).toHaveBeenCalledTimes(1);
+        expect(dbUtils.insert.mock.calls[0][1].quantity).toBe(3);
+        expect(res.success).toHaveBeenCalledWith({ id: 5, quantity: 3 }, 'Loot item created successfully');
+      });
+
+      it('rejects a split above the upper bound instead of creating hundreds of rows', async () => {
+        getCampaignSetting.mockResolvedValue('1');
+        const client = runWithClient(jest.fn());
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({ quantity: 101 }), res);
+
+        expect(res.validationError).toHaveBeenCalledWith(expect.stringContaining('100'));
+        expect(client.query).not.toHaveBeenCalled();
+        expect(dbUtils.insert).not.toHaveBeenCalled();
+      });
+
+      it('splits exactly at the upper bound', async () => {
+        getCampaignSetting.mockResolvedValue('1');
+        const client = runWithClient(jest.fn().mockResolvedValue(rowOf(1)));
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({ quantity: 100 }), res);
+
+        expect(client.query).toHaveBeenCalledTimes(100);
+      });
+
+      it('does not apply the upper bound when the setting is off', async () => {
+        getCampaignSetting.mockResolvedValue('0');
+        runWithClient(jest.fn());
+        dbUtils.insert.mockResolvedValue({ id: 5, quantity: 500 });
+        const res = createMockRes();
+
+        await itemCreationController.createLoot(splitReq({ quantity: 500 }), res);
+
+        expect(res.validationError).not.toHaveBeenCalled();
+        expect(dbUtils.insert).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('should return validation error when quantity is missing', async () => {

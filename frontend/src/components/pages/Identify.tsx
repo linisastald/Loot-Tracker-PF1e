@@ -368,7 +368,6 @@ const Identify: React.FC = () => {
         loot={filteredLoot.summary}
         individualLoot={filteredLoot.individual}
         selectedItems={selectedItems}
-        setSelectedItems={setSelectedItems}
         openItems={openItems}
         setOpenItems={setOpenItems}
         handleSelectItem={(id: number) => {

@@ -328,6 +328,59 @@ describe('useLootEntryForm', () => {
     });
   });
 
+  describe('default quantity', () => {
+    it('keeps quantity blank when no default is given (default quantity off)', () => {
+      const { result } = renderHook(() => useLootEntryForm());
+
+      expect(result.current.entries[0].data.quantity).toBe('');
+      act(() => result.current.handleAddEntry('item'));
+      expect(result.current.entries[1].data.quantity).toBe('');
+    });
+
+    it('starts the first row, new item rows and a reset form with the default', () => {
+      const { result } = renderHook(() => useLootEntryForm({ defaultQuantity: 5 }));
+
+      expect(result.current.entries[0].data.quantity).toBe(5);
+
+      act(() => result.current.handleAddEntry('item'));
+      expect(result.current.entries[1].data.quantity).toBe(5);
+
+      act(() => result.current.resetForm());
+      expect(result.current.entries).toHaveLength(1);
+      expect(result.current.entries[0].data.quantity).toBe(5);
+    });
+
+    it('does not give gold rows a quantity', () => {
+      const { result } = renderHook(() => useLootEntryForm({ defaultQuantity: 5 }));
+
+      act(() => result.current.handleAddEntry('gold'));
+
+      expect(result.current.entries[1].data.quantity).toBeUndefined();
+    });
+
+    it('lets the user change the prefilled quantity', () => {
+      const { result } = renderHook(() => useLootEntryForm({ defaultQuantity: 5 }));
+
+      act(() => result.current.handleEntryChange(0, { quantity: '2' }));
+
+      expect(result.current.entries[0].data.quantity).toBe('2');
+    });
+
+    it('fills blank rows when the default arrives after the first render, leaving edited rows alone', () => {
+      const { result, rerender } = renderHook(
+        ({ q }) => useLootEntryForm({ defaultQuantity: q }),
+        { initialProps: { q: '' } }
+      );
+      act(() => result.current.handleAddEntry('item'));
+      act(() => result.current.handleEntryChange(1, { quantity: '9' }));
+
+      rerender({ q: 3 });
+
+      expect(result.current.entries[0].data.quantity).toBe(3);
+      expect(result.current.entries[1].data.quantity).toBe('9');
+    });
+  });
+
   describe('entry independence (no shared references)', () => {
     it('should not share data objects between entries', () => {
       const { result } = renderHook(() => useLootEntryForm());
