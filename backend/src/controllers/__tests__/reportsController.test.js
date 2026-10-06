@@ -10,6 +10,17 @@
  * - getUnprocessedCount: count of unprocessed items
  */
 
+jest.mock('../../utils/dbUtils', () => ({
+  executeQuery: jest.fn(),
+}));
+
+jest.mock('../../utils/logger', () => ({
+  error: jest.fn(),
+  warn: jest.fn(),
+  info: jest.fn(),
+  debug: jest.fn(),
+}));
+
 const dbUtils = require('../../utils/dbUtils');
 const reportsController = require('../reportsController');
 
@@ -439,4 +450,66 @@ describe('reportsController', () => {
   });
 
   // ─── getLootStatistics ──────────────────────────────────────────
+
+  // ─── SQL filters and parameters ─────────────────────────────────
+
+  describe('query filters', () => {
+    const queueRows = () => dbUtils.executeQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ count: '0' }] });
+
+    it('party report reads only Kept Party rows, ordered by name', async () => {
+      queueRows();
+      await reportsController.getKeptPartyLoot(createMockReq(), createMockRes());
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toContain('statuspage = ANY($1::text[])');
+      expect(sql).toContain('ORDER BY name');
+      expect(params).toEqual([['Kept Party']]);
+      // the count query uses the same filter
+      expect(dbUtils.executeQuery.mock.calls[1][0]).toContain('statuspage = ANY($1::text[])');
+    });
+
+    it('character report reads Kept Character rows and filters on the character name', async () => {
+      queueRows();
+      await reportsController.getKeptCharacterLoot(createMockReq({ query: { character_id: '5' } }), createMockRes());
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params[0]).toEqual(expect.arrayContaining(['Kept Character']));
+      expect(sql).toContain('character_name = (SELECT name FROM characters WHERE id = $2)');
+      expect(params[1]).toBe('5');
+    });
+
+    it('trashed report reads Trashed and Given Away rows', async () => {
+      queueRows();
+      await reportsController.getTrashedLoot(createMockReq(), createMockRes());
+
+      const [, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(params[0]).toEqual(expect.arrayContaining(['Trashed', 'Given Away']));
+      expect(params[0]).not.toContain('Kept Party');
+    });
+
+    it('page 3 with limit 20 binds LIMIT 20 and OFFSET 40', async () => {
+      queueRows();
+      await reportsController.getKeptPartyLoot(createMockReq({ query: { page: '3', limit: '20' } }), createMockRes());
+
+      const [sql, params] = dbUtils.executeQuery.mock.calls[0];
+      expect(sql).toContain('LIMIT $2 OFFSET $3');
+      expect(params).toEqual([['Kept Party'], 20, 40]);
+    });
+
+    it('unidentified count only counts unidentified rows that still hide an item or mods', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ count: '1' }] });
+      await reportsController.getUnidentifiedCount(createMockReq(), createMockRes());
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('unidentified = true');
+    });
+
+    it('unprocessed count only counts rows without a status', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [{ count: '1' }] });
+      await reportsController.getUnprocessedCount(createMockReq(), createMockRes());
+
+      expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('status IS NULL');
+    });
+  });
 });
