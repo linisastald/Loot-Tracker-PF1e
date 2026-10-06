@@ -47,7 +47,7 @@ import api from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCampaign } from '../../contexts/CampaignContext';
 
-export interface SystemUser {
+interface SystemUser {
   id: number;
   username: string;
   email: string | null;
@@ -55,7 +55,6 @@ export interface SystemUser {
   is_superadmin?: boolean;
   /** The all-users endpoint exposes the signup date as `joined` */
   joined?: string | null;
-  created_at?: string | null;
 }
 
 const REGISTRATION_MODES = [
@@ -63,6 +62,9 @@ const REGISTRATION_MODES = [
   { value: 'invite-only', label: 'Invite only', description: 'Registration requires an invite code' },
   { value: 'closed', label: 'Closed', description: 'No new registrations' },
 ];
+
+// What the server treats a missing registration_mode as
+const DEFAULT_REGISTRATION_MODE = 'invite-only';
 
 const formatDate = (value: string | null | undefined): string => {
   if (!value) return '—';
@@ -85,6 +87,7 @@ const SystemAdmin: React.FC = () => {
   const [resetTarget, setResetTarget] = useState<SystemUser | null>(null);
   const [generatingReset, setGeneratingReset] = useState(false);
   const [generatedResetLink, setGeneratedResetLink] = useState('');
+  const [resetLinkExpiresAt, setResetLinkExpiresAt] = useState('');
 
   // Delete account (type-the-username confirmation)
   const [deleteTarget, setDeleteTarget] = useState<SystemUser | null>(null);
@@ -93,7 +96,7 @@ const SystemAdmin: React.FC = () => {
   const [deleteError, setDeleteError] = useState('');
 
   // --- Global settings section state ------------------------------------
-  const [registrationMode, setRegistrationMode] = useState('closed');
+  const [registrationMode, setRegistrationMode] = useState(DEFAULT_REGISTRATION_MODE);
   const [savingRegistrationMode, setSavingRegistrationMode] = useState(false);
   const [settingsError, setSettingsError] = useState('');
 
@@ -117,16 +120,11 @@ const SystemAdmin: React.FC = () => {
         ? response.data
         : [];
       const modeSetting = settings.find((s) => s.name === 'registration_mode');
-      if (modeSetting && REGISTRATION_MODES.some((m) => m.value === modeSetting.value)) {
-        setRegistrationMode(modeSetting.value);
-      } else {
-        // Legacy fallback: derive from registrations_open + invite_required
-        const legacyOpen = settings.find((s) => s.name === 'registrations_open');
-        const legacyInvite = settings.find((s) => s.name === 'invite_required');
-        const isOpen = legacyOpen?.value === '1' || (legacyOpen?.value as unknown) === 1;
-        const isInvite = legacyInvite?.value === '1' || (legacyInvite?.value as unknown) === 1;
-        setRegistrationMode(!isOpen ? 'closed' : isInvite ? 'invite-only' : 'open');
-      }
+      setRegistrationMode(
+        modeSetting && REGISTRATION_MODES.some((m) => m.value === modeSetting.value)
+          ? modeSetting.value
+          : DEFAULT_REGISTRATION_MODE
+      );
       setSettingsError('');
     } catch (err: any) {
       setSettingsError(err.response?.data?.message || 'Error loading global settings.');
@@ -145,6 +143,7 @@ const SystemAdmin: React.FC = () => {
     setResetTarget(target);
     setGeneratingReset(true);
     setGeneratedResetLink('');
+    setResetLinkExpiresAt('');
     try {
       const response: any = await api.post('/user/generate-manual-reset-link', {
         username: target.username,
@@ -152,6 +151,7 @@ const SystemAdmin: React.FC = () => {
       const url = response?.data?.resetUrl;
       if (url) {
         setGeneratedResetLink(url);
+        setResetLinkExpiresAt(response?.data?.expiresAt || '');
       } else {
         setResetTarget(null);
         enqueueSnackbar('No reset link returned by the server', { variant: 'error' });
@@ -311,7 +311,7 @@ const SystemAdmin: React.FC = () => {
                               '—'
                             )}
                           </TableCell>
-                          <TableCell>{formatDate(account.created_at ?? account.joined)}</TableCell>
+                          <TableCell>{formatDate(account.joined)}</TableCell>
                           <TableCell align="right">
                             <Box
                               sx={{
@@ -487,7 +487,9 @@ const SystemAdmin: React.FC = () => {
               <Typography variant="body2" sx={{
                 color: "text.secondary"
               }}>
-                This link will expire in 1 hour.
+                {resetLinkExpiresAt && !Number.isNaN(new Date(resetLinkExpiresAt).getTime())
+                  ? `This link expires on ${new Date(resetLinkExpiresAt).toLocaleString()}.`
+                  : 'This link expires soon and can be used once.'}
               </Typography>
             </>
           )}
@@ -512,7 +514,7 @@ const SystemAdmin: React.FC = () => {
         <DialogContent>
           <DialogContentText>
             {deleteTarget
-              ? `This permanently deletes the account "${deleteTarget.username}" from the entire instance, including all of their campaign memberships. This cannot be undone.`
+              ? `This deactivates the account "${deleteTarget.username}" on the entire instance: they can no longer sign in. Their username and email stay reserved and their campaign data is kept. This cannot be undone from this page.`
               : ''}
           </DialogContentText>
           <TextField

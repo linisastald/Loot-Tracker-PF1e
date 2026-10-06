@@ -204,6 +204,41 @@ describe('SystemAdmin', () => {
       });
     });
 
+    it('shows the expiry the server returned instead of a fixed lifetime (F-1453)', async () => {
+      const expiresAt = '2031-03-04T05:06:00.000Z';
+      (api.post as any).mockResolvedValueOnce({
+        success: true,
+        data: { resetUrl: 'https://example.com/reset/abc', expiresAt },
+      });
+
+      renderSystemAdmin();
+      await waitFor(() => {
+        expect(screen.getByText('alice')).toBeInTheDocument();
+      });
+      fireEvent.click(
+        within(getRow('alice')).getByRole('button', { name: /generate password reset link/i })
+      );
+
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('https://example.com/reset/abc');
+      expect(within(dialog).queryByText(/expire in 1 hour/i)).not.toBeInTheDocument();
+      expect(within(dialog).getByText(/this link expires on/i)).toHaveTextContent(
+        new Date(expiresAt).toLocaleString()
+      );
+    });
+
+    it('describes account deletion as a deactivation, not a permanent removal (F-1454)', async () => {
+      renderSystemAdmin();
+      await waitFor(() => {
+        expect(screen.getByText('alice')).toBeInTheDocument();
+      });
+      fireEvent.click(within(getRow('alice')).getByRole('button', { name: /delete account/i }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/deactivates the account "alice"/i)).toBeInTheDocument();
+      expect(within(dialog).queryByText(/permanently/i)).not.toBeInTheDocument();
+    });
+
     it('surfaces a snackbar error when reset-link generation fails', async () => {
       (api.post as any).mockRejectedValueOnce({
         response: { data: { message: 'User not found' } },
@@ -352,11 +387,11 @@ describe('SystemAdmin', () => {
       ).toHaveTextContent(/Invite only/i);
     });
 
-    it('derives the mode from legacy settings when registration_mode is missing', async () => {
+    it('shows the server default (invite only) when registration_mode is missing and ignores the legacy settings', async () => {
       setupDefaultGetMock({
         settings: [
-          { name: 'registrations_open', value: '1' },
-          { name: 'invite_required', value: '1' },
+          { name: 'registrations_open', value: '0' },
+          { name: 'invite_required', value: '0' },
         ],
       });
 
