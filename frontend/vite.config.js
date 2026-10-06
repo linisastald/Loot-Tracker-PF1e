@@ -29,7 +29,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/setupTests.ts'],
-    maxWorkers: 8, // cap workers: the default oversubscribes 16 cores and heavy jsdom/MUI renders time out
+    maxWorkers: 6, // cap workers: the default oversubscribes 16 cores and heavy jsdom/MUI renders time out
   },
   define: {
     // For compatibility with some libraries that expect process.env
