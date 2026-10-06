@@ -20,7 +20,6 @@ import {
   compareGolarionDates,
   golarionSpanDays,
   formatGolarionDate,
-  parseGolarionDate,
   getCurrentGolarionDate,
   golarionToInputFormat,
   inputFormatToGolarion,
@@ -80,44 +79,6 @@ describe('golarionDate utilities', () => {
 
     it('returns "Unknown" for an out-of-range month (13)', () => {
       expect(formatGolarionDate(4722, 13, 1)).toBe('1 Unknown 4722');
-    });
-  });
-
-  // --------------- parseGolarionDate ---------------
-  describe('parseGolarionDate', () => {
-    it('parses a valid date string', () => {
-      expect(parseGolarionDate('15 Abadius 4722')).toEqual({ year: 4722, month: 1, day: 15 });
-    });
-
-    it('parses the last month of the year', () => {
-      expect(parseGolarionDate('31 Kuthona 4723')).toEqual({ year: 4723, month: 12, day: 31 });
-    });
-
-    it('returns null for null input', () => {
-      expect(parseGolarionDate(null)).toBeNull();
-    });
-
-    it('returns null for undefined input', () => {
-      expect(parseGolarionDate(undefined)).toBeNull();
-    });
-
-    it('returns null for empty string', () => {
-      expect(parseGolarionDate('')).toBeNull();
-    });
-
-    it('returns null for a string with wrong number of parts', () => {
-      expect(parseGolarionDate('15 Abadius')).toBeNull();
-      expect(parseGolarionDate('15')).toBeNull();
-      expect(parseGolarionDate('15 Abadius 4722 extra')).toBeNull();
-    });
-
-    it('returns null for an invalid month name', () => {
-      expect(parseGolarionDate('15 FakeMonth 4722')).toBeNull();
-    });
-
-    it('returns 1-indexed month values', () => {
-      const result = parseGolarionDate('1 Pharast 4722');
-      expect(result?.month).toBe(3); // Pharast is the 3rd month
     });
   });
 

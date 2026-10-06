@@ -506,6 +506,54 @@ describe('GolarionCalendar', () => {
       expect(api.post).not.toHaveBeenCalled();
     });
 
+    it('URL-encodes the campaign region in the weather request', async () => {
+      campaignSettingsValue = { region: 'Isles/of?x', weather_forecast_days: '7' };
+      renderCalendar();
+
+      await waitFor(() =>
+        expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/Isles%2Fof%3Fx'))
+      );
+    });
+
+    it('ignores a weather response for a month the user already left', async () => {
+      let resolveFirst: (v: unknown) => void = () => {};
+      const weatherCalls: string[] = [];
+      (api.get as any).mockImplementation((url: string) => {
+        if (url === '/calendar/current-date') return Promise.resolve({ data: { year: 4722, month: 1, day: 15 } });
+        if (url.startsWith('/weather/range')) {
+          weatherCalls.push(url);
+          if (weatherCalls.length === 1) {
+            return new Promise((resolve) => { resolveFirst = resolve; });
+          }
+          return Promise.resolve({ data: [{
+            year: 4722, month: 2, day: 5, condition: 'Foggy', emoji: 'F', temp_low: 30, temp_high: 40,
+            wind_speed: 1, humidity: 50, visibility: 'Low', precipitation_type: null, is_locked: false,
+          }] });
+        }
+        return Promise.resolve({ data: [] });
+      });
+      renderCalendar();
+      await waitFor(() => expect(weatherCalls.length).toBe(1));
+
+      fireEvent.click(screen.getByRole('button', { name: /Next$/i }));
+      expect(await screen.findByText(/Foggy/)).toBeInTheDocument();
+
+      // The slow response for the first month arrives last and must not wipe February.
+      resolveFirst({ data: [] });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(screen.getByText(/Foggy/)).toBeInTheDocument();
+    });
+
+    it('editing a note from the Notes tab moves the grid to the note month', async () => {
+      mockCalendarData({ notes: [{ ...NOTE, startDate: { year: 4722, month: 3, day: 2 }, endDate: { year: 4722, month: 3, day: 2 } }] });
+      renderCalendar();
+
+      fireEvent.click(await screen.findByRole('tab', { name: 'Notes' }));
+      fireEvent.click((await screen.findAllByLabelText('edit note'))[0]);
+
+      expect(await screen.findByText(/^Pharast 4722$/)).toBeInTheDocument();
+    });
+
     it('edits an existing note through PUT with the new text', async () => {
       mockCalendarData({ notes: [NOTE] });
       renderCalendar();
