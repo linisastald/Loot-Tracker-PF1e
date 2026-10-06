@@ -293,5 +293,20 @@ describe('SpellcastingService model', () => {
       expect(query).toContain('s.character_id = $2');
       expect(values).toEqual([1, 2]);
     });
+
+    it('filters a calendar day by a start/end instant range, not DATE() in the session timezone (F-1350)', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await SpellcastingService.getAll({
+        city_id: 1,
+        dateRange: { start: '2026-10-06T04:00:00.000Z', end: '2026-10-07T04:00:00.000Z' },
+      });
+
+      const [query, values] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).not.toContain('DATE(');
+      expect(query).toContain('s.request_datetime >= $2::timestamptz');
+      expect(query).toContain('s.request_datetime < $3::timestamptz');
+      expect(values).toEqual([1, '2026-10-06T04:00:00.000Z', '2026-10-07T04:00:00.000Z']);
+    });
   });
 });

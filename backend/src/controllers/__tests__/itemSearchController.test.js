@@ -5,6 +5,10 @@
 
 jest.mock('../../models/ItemSearch');
 jest.mock('../../models/City');
+jest.mock('../../utils/timezoneUtils', () => ({
+  ...jest.requireActual('../../utils/timezoneUtils'),
+  getCampaignTimezone: jest.fn().mockResolvedValue('America/New_York'),
+}));
 jest.mock('../../utils/dbUtils', () => ({
   executeQuery: jest.fn(),
   executeTransaction: jest.fn(),
@@ -435,7 +439,7 @@ describe('itemSearchController', () => {
 
     it('should pass filter options correctly', async () => {
       const req = createMockReq({
-        query: { city_id: '1', character_id: '5', found: 'true', limit: '10', date: '4712-03-15' },
+        query: { city_id: '1', character_id: '5', found: 'true', limit: '10', date: '2026-03-15' },
       });
       const res = createMockRes();
 
@@ -448,8 +452,17 @@ describe('itemSearchController', () => {
         character_id: 5,
         found: true,
         limit: 10,
-        date: '4712-03-15',
+        dateRange: { start: '2026-03-15T04:00:00.000Z', end: '2026-03-16T04:00:00.000Z' },
       });
+    });
+
+    it('rejects a malformed date with a validation error', async () => {
+      const res = createMockRes();
+
+      await itemSearchController.getAllSearches(createMockReq({ query: { date: 'yesterday' } }), res);
+
+      expect(res.validationError).toHaveBeenCalledTimes(1);
+      expect(ItemSearch.getAll).not.toHaveBeenCalled();
     });
 
     it('should parse found=false correctly', async () => {

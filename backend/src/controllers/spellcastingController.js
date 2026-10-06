@@ -5,6 +5,7 @@ const controllerFactory = require('../utils/controllerFactory');
 const dbUtils = require('../utils/dbUtils');
 const { castableSpellsSource } = require('../utils/castableSpells');
 const logger = require('../utils/logger');
+const timezoneUtils = require('../utils/timezoneUtils');
 
 /**
  * Player-facing message for a spell that is not available in the city
@@ -192,7 +193,14 @@ const getAllServices = async (req, res) => {
   if (city_id) options.city_id = parseInt(city_id);
   if (character_id) options.character_id = parseInt(character_id);
   if (limit) options.limit = parseInt(limit);
-  if (date) options.date = date; // YYYY-MM-DD format
+  if (date) {
+    // "date" is a calendar day in the campaign's timezone (YYYY-MM-DD)
+    const dateRange = timezoneUtils.getUtcRangeForLocalDate(date, await timezoneUtils.getCampaignTimezone());
+    if (!dateRange) {
+      throw controllerFactory.createValidationError('date must be a valid YYYY-MM-DD date');
+    }
+    options.dateRange = dateRange;
+  }
 
   const services = await SpellcastingService.getAll(options);
   controllerFactory.sendSuccessResponse(res, services, 'Services retrieved');

@@ -5,6 +5,10 @@
 
 jest.mock('../../models/SpellcastingService');
 jest.mock('../../models/City');
+jest.mock('../../utils/timezoneUtils', () => ({
+  ...jest.requireActual('../../utils/timezoneUtils'),
+  getCampaignTimezone: jest.fn().mockResolvedValue('America/New_York'),
+}));
 jest.mock('../../utils/dbUtils', () => ({
   executeQuery: jest.fn(),
   executeTransaction: jest.fn(),
@@ -517,7 +521,7 @@ describe('spellcastingController', () => {
 
     it('should pass filter options correctly', async () => {
       const req = createMockReq({
-        query: { city_id: '1', character_id: '5', limit: '20', date: '4712-06-01' },
+        query: { city_id: '1', character_id: '5', limit: '20', date: '2026-06-01' },
       });
       const res = createMockRes();
 
@@ -529,8 +533,19 @@ describe('spellcastingController', () => {
         city_id: 1,
         character_id: 5,
         limit: 20,
-        date: '4712-06-01',
+        dateRange: { start: '2026-06-01T04:00:00.000Z', end: '2026-06-02T04:00:00.000Z' },
       });
+    });
+  });
+
+  describe('getAllServices date filter', () => {
+    it('rejects a malformed date with a validation error', async () => {
+      const res = createMockRes();
+
+      await spellcastingController.getAllServices(createMockReq({ query: { date: '2026-02-30' } }), res);
+
+      expect(res.validationError).toHaveBeenCalledTimes(1);
+      expect(SpellcastingService.getAll).not.toHaveBeenCalled();
     });
   });
 

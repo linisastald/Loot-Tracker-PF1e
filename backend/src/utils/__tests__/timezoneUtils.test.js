@@ -6,7 +6,7 @@ jest.mock('../logger', () => ({
   error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn(),
 }));
 
-const { isValidTimezone, getTimezoneOptions, clearTimezoneCache, getCampaignTimezone, VALID_TIMEZONES } = require('../timezoneUtils');
+const { isValidTimezone, getTimezoneOptions, clearTimezoneCache, getCampaignTimezone, getUtcRangeForLocalDate, VALID_TIMEZONES } = require('../timezoneUtils');
 const dbUtils = require('../dbUtils');
 
 // These tests call handlers directly, outside the request context that verifyToken
@@ -251,6 +251,44 @@ describe('timezoneUtils', () => {
       const result = await getCampaignTimezone({ campaignId: '3' });
 
       expect(result).toBe('America/Phoenix');
+    });
+  });
+
+  describe('getUtcRangeForLocalDate', () => {
+    it('returns the UTC instants bounding a calendar day in a western timezone', () => {
+      expect(getUtcRangeForLocalDate('2026-10-06', 'America/New_York')).toEqual({
+        start: '2026-10-06T04:00:00.000Z',
+        end: '2026-10-07T04:00:00.000Z',
+      });
+    });
+
+    it('is the plain UTC day for UTC', () => {
+      expect(getUtcRangeForLocalDate('2026-10-06', 'UTC')).toEqual({
+        start: '2026-10-06T00:00:00.000Z',
+        end: '2026-10-07T00:00:00.000Z',
+      });
+    });
+
+    it('handles a timezone ahead of UTC', () => {
+      expect(getUtcRangeForLocalDate('2026-01-15', 'Asia/Tokyo')).toEqual({
+        start: '2026-01-14T15:00:00.000Z',
+        end: '2026-01-15T15:00:00.000Z',
+      });
+    });
+
+    it('uses the offset in force at each boundary on a DST change day (23 hours)', () => {
+      // US spring forward: 2026-03-08, clocks jump from 02:00 EST to 03:00 EDT
+      expect(getUtcRangeForLocalDate('2026-03-08', 'America/New_York')).toEqual({
+        start: '2026-03-08T05:00:00.000Z',
+        end: '2026-03-09T04:00:00.000Z',
+      });
+    });
+
+    it('rejects malformed or impossible dates', () => {
+      expect(getUtcRangeForLocalDate('2026-13-01', 'UTC')).toBeNull();
+      expect(getUtcRangeForLocalDate('2026-02-30', 'UTC')).toBeNull();
+      expect(getUtcRangeForLocalDate('06/10/2026', 'UTC')).toBeNull();
+      expect(getUtcRangeForLocalDate(undefined, 'UTC')).toBeNull();
     });
   });
 });

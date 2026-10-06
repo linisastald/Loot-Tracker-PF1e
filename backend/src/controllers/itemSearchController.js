@@ -4,6 +4,7 @@ const City = require('../models/City');
 const controllerFactory = require('../utils/controllerFactory');
 const dbUtils = require('../utils/dbUtils');
 const logger = require('../utils/logger');
+const timezoneUtils = require('../utils/timezoneUtils');
 const ValidationService = require('../services/validationService');
 const { hasDmRights } = require('../utils/roleUtils');
 const { calculateFinalValue, isWandName, WAND_FULL_CHARGES } = require('../services/calculateFinalValue');
@@ -217,7 +218,14 @@ const getAllSearches = async (req, res) => {
   if (character_id) options.character_id = parseInt(character_id);
   if (found !== undefined) options.found = found === 'true';
   if (limit) options.limit = parseInt(limit);
-  if (date) options.date = date; // YYYY-MM-DD format
+  if (date) {
+    // "date" is a calendar day in the campaign's timezone (YYYY-MM-DD)
+    const dateRange = timezoneUtils.getUtcRangeForLocalDate(date, await timezoneUtils.getCampaignTimezone());
+    if (!dateRange) {
+      throw controllerFactory.createValidationError('date must be a valid YYYY-MM-DD date');
+    }
+    options.dateRange = dateRange;
+  }
 
   const searches = await ItemSearch.getAll(options);
   controllerFactory.sendSuccessResponse(res, searches, 'Searches retrieved');

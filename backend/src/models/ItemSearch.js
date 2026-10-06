@@ -2,40 +2,39 @@
 const dbUtils = require('../utils/dbUtils');
 
 /**
- * Calculate item availability based on Pathfinder 1e settlement rules
- * Items above 5x base value are never available in the settlement
+ * Availability bands: [maximum multiple of the settlement's base value, percentage chance].
+ * HOUSE RULE - not RAW. Pathfinder 1e settlement rules (Core Rulebook, "Settlements")
+ * give a flat 75% chance for an item at or below the base value and make costlier items
+ * available only through the settlement's randomly rolled minor/medium/major item slots.
+ * The graded percentages below (95% ... 2% up to 5x base value) are this project's own
+ * approximation. Items above 5x base value are never available.
+ */
+const AVAILABILITY_BANDS = [
+  [0.125, 95], [0.25, 90], [0.5, 85], [0.75, 80], [1, 75],
+  [1.5, 40], [2, 20], [3, 10], [4, 5], [5, 2]
+];
+
+const NOT_AVAILABLE = { threshold: 0, percentage: 0, description: 'Not Available', reason: 'too_expensive' };
+
+/**
+ * Calculate item availability (house rule, see AVAILABILITY_BANDS)
  * @param {number} itemValue - Total value of the item
  * @param {number} baseValue - City's base value
  * @return {Object} Availability info with threshold, percentage, and reason
  */
 const calculateAvailability = (itemValue, baseValue) => {
-  const maxValue = baseValue * 5; // Hard cap at 5x base value
-
-  // Items above max value are not available
-  if (itemValue > maxValue) {
-    return {
-      threshold: 0,
-      percentage: 0,
-      description: 'Not Available',
-      reason: 'too_expensive'
-    };
+  // Non-numeric input (or an item above the 5x cap) is never available
+  if (!Number.isFinite(itemValue) || !Number.isFinite(baseValue)) {
+    return { ...NOT_AVAILABLE };
   }
 
-  // Below base value - progressively easier
-  if (itemValue <= baseValue * 0.125) return { threshold: 95, percentage: 95, description: '95%', reason: 'available' };
-  if (itemValue <= baseValue * 0.25) return { threshold: 90, percentage: 90, description: '90%', reason: 'available' };
-  if (itemValue <= baseValue * 0.5) return { threshold: 85, percentage: 85, description: '85%', reason: 'available' };
-  if (itemValue <= baseValue * 0.75) return { threshold: 80, percentage: 80, description: '80%', reason: 'available' };
-  if (itemValue <= baseValue) return { threshold: 75, percentage: 75, description: '75%', reason: 'available' };
+  const band = AVAILABILITY_BANDS.find(([multiple]) => itemValue <= baseValue * multiple);
+  if (!band) {
+    return { ...NOT_AVAILABLE };
+  }
 
-  // Above base value - exponentially harder
-  if (itemValue <= baseValue * 1.5) return { threshold: 40, percentage: 40, description: '40%', reason: 'available' };
-  if (itemValue <= baseValue * 2) return { threshold: 20, percentage: 20, description: '20%', reason: 'available' };
-  if (itemValue <= baseValue * 3) return { threshold: 10, percentage: 10, description: '10%', reason: 'available' };
-  if (itemValue <= baseValue * 4) return { threshold: 5, percentage: 5, description: '5%', reason: 'available' };
-  if (itemValue <= baseValue * 5) return { threshold: 2, percentage: 2, description: '2%', reason: 'available' };
-
-  return { threshold: 0, percentage: 0, description: 'Not Available', reason: 'too_expensive' };
+  const percent = band[1];
+  return { threshold: percent, percentage: percent, description: `${percent}%`, reason: 'available' };
 };
 
 /**
@@ -94,7 +93,7 @@ exports.create = async (searchData) => {
 
 /**
  * Get all item searches with city and item details
- * @param {Object} options - Filter options (city_id, character_id, found)
+ * @param {Object} options - Filter options (city_id, character_id, found, dateRange {start, end}, limit)
  * @return {Promise<Array>} Array of search records
  */
 exports.getAll = async (options = {}) => {
@@ -131,10 +130,13 @@ exports.getAll = async (options = {}) => {
     values.push(options.found);
   }
 
-  if (options.date) {
-    // Filter by date (YYYY-MM-DD format)
-    conditions.push(`DATE(s.search_datetime) = $${paramIndex++}`);
-    values.push(options.date);
+  if (options.dateRange) {
+    // Half-open [start, end) UTC range for one calendar day in the campaign's timezone
+    // (see timezoneUtils.getUtcRangeForLocalDate), so "today" is the campaign's today.
+    conditions.push(`s.search_datetime >= $${paramIndex++}::timestamptz`);
+    values.push(options.dateRange.start);
+    conditions.push(`s.search_datetime < $${paramIndex++}::timestamptz`);
+    values.push(options.dateRange.end);
   }
 
   if (conditions.length > 0) {
@@ -153,46 +155,9 @@ exports.getAll = async (options = {}) => {
 };
 
 /**
- * Get search by ID
- * @param {number} id
- * @return {Promise<Object|null>} Search record or null
- */
-exports.findById = async (id) => {
-  const query = `
-    SELECT
-      s.*,
-      c.name as city_name,
-      c.size as city_size,
-      i.name as item_name,
-      i.type as item_type,
-      ch.name as character_name
-    FROM item_search s
-    JOIN city c ON s.city_id = c.id
-    LEFT JOIN item i ON s.item_id = i.id
-    LEFT JOIN characters ch ON s.character_id = ch.id
-    WHERE s.id = $1
-  `;
-
-  const result = await dbUtils.executeQuery(query, [id]);
-  return result.rows.length > 0 ? result.rows[0] : null;
-};
-
-/**
- * Delete a search record
- * @param {number} id
- * @return {Promise<boolean>} Success status
- */
-exports.delete = async (id) => {
-  const query = 'DELETE FROM item_search WHERE id = $1';
-  const result = await dbUtils.executeQuery(query, [id]);
-  return result.rowCount > 0;
-};
-
-/**
  * Export the availability calculation functions
  */
 exports.calculateAvailability = calculateAvailability;
 exports.calculateCasterLevelPenalty = calculateCasterLevelPenalty;
-exports.CASTER_LEVEL_PENALTY_PER_CL = CASTER_LEVEL_PENALTY_PER_CL;
 
 module.exports = exports;

@@ -157,7 +157,7 @@ exports.create = async (serviceData) => {
 
 /**
  * Get all spellcasting services with details
- * @param {Object} options - Filter options (city_id, character_id)
+ * @param {Object} options - Filter options (city_id, character_id, dateRange {start, end}, limit)
  * @return {Promise<Array>} Array of service records
  */
 exports.getAll = async (options = {}) => {
@@ -187,10 +187,13 @@ exports.getAll = async (options = {}) => {
     values.push(options.character_id);
   }
 
-  if (options.date) {
-    // Filter by date (YYYY-MM-DD format)
-    conditions.push(`DATE(s.request_datetime) = $${paramIndex++}`);
-    values.push(options.date);
+  if (options.dateRange) {
+    // Half-open [start, end) UTC range for one calendar day in the campaign's timezone
+    // (see timezoneUtils.getUtcRangeForLocalDate), so "today" is the campaign's today.
+    conditions.push(`s.request_datetime >= $${paramIndex++}::timestamptz`);
+    values.push(options.dateRange.start);
+    conditions.push(`s.request_datetime < $${paramIndex++}::timestamptz`);
+    values.push(options.dateRange.end);
   }
 
   if (conditions.length > 0) {
@@ -215,6 +218,5 @@ exports.calculateCost = calculateCost;
 exports.isSpellAvailable = isSpellAvailable;
 exports.getMinCasterLevel = getMinCasterLevel;
 exports.checkCasterLevelAvailability = checkCasterLevelAvailability;
-exports.CASTER_LEVEL_FIND_PENALTY_PER_CL = CASTER_LEVEL_FIND_PENALTY_PER_CL;
 
 module.exports = exports;

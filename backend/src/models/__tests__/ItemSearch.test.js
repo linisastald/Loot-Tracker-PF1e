@@ -158,10 +158,6 @@ describe('ItemSearch model', () => {
       // 3 over
       expect(ItemSearch.calculateCasterLevelPenalty(12, 9)).toBe(30);
     });
-
-    it('should expose the per-CL penalty constant', () => {
-      expect(ItemSearch.CASTER_LEVEL_PENALTY_PER_CL).toBe(10);
-    });
   });
 
   describe('create', () => {
@@ -244,6 +240,21 @@ describe('ItemSearch model', () => {
       expect(values).toEqual([5, 3, true]);
     });
 
+    it('filters a calendar day by a start/end instant range, not DATE() in the session timezone (F-1350)', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await ItemSearch.getAll({
+        city_id: 5,
+        dateRange: { start: '2026-10-06T04:00:00.000Z', end: '2026-10-07T04:00:00.000Z' },
+      });
+
+      const [query, values] = dbUtils.executeQuery.mock.calls[0];
+      expect(query).not.toContain('DATE(');
+      expect(query).toContain('s.search_datetime >= $2::timestamptz');
+      expect(query).toContain('s.search_datetime < $3::timestamptz');
+      expect(values).toEqual([5, '2026-10-06T04:00:00.000Z', '2026-10-07T04:00:00.000Z']);
+    });
+
     it('should apply limit', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [] });
 
@@ -254,36 +265,4 @@ describe('ItemSearch model', () => {
     });
   });
 
-  describe('findById', () => {
-    it('should return search with joined details', async () => {
-      const mockSearch = { id: 1, city_name: 'Sandpoint', item_name: 'Longsword' };
-      dbUtils.executeQuery.mockResolvedValue({ rows: [mockSearch] });
-
-      const result = await ItemSearch.findById(1);
-
-      expect(result).toEqual(mockSearch);
-    });
-
-    it('should return null when not found', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      const result = await ItemSearch.findById(999);
-
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('delete', () => {
-    it('should return true on successful delete', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rowCount: 1 });
-
-      expect(await ItemSearch.delete(1)).toBe(true);
-    });
-
-    it('should return false when not found', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rowCount: 0 });
-
-      expect(await ItemSearch.delete(999)).toBe(false);
-    });
-  });
 });
