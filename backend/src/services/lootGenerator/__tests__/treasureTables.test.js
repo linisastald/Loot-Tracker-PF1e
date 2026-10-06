@@ -1,11 +1,8 @@
 /**
- * Tests for the treasure data tables. `rollTreasureTable` (the raw d20 SRD per-CR
- * roller) is retained as library API for a possible future "donjon authenticity"
- * mode; the live generator currently uses the budget-anchored model instead.
+ * Tests for the treasure data tables (budget-anchored model used by the live generator).
  */
 const {
-  getTreasureGp, getNpcGearGp, xpToCr, crToNum, crKey,
-  rollTreasureTable, TREASURE_TABLE,
+  getTreasureGp, getNpcGearGp, xpToCr, crToNum, crKey, GEM_TIERS, ART_TIERS,
 } = require('../treasureTables');
 
 describe('budget + CR helpers', () => {
@@ -15,8 +12,23 @@ describe('budget + CR helpers', () => {
     expect(getTreasureGp(1, 'slow', 'standard')).toBeLessThan(getTreasureGp(1, 'fast', 'standard'));
   });
 
-  it('getNpcGearGp uses wealth-by-level for the nearest integer CR', () => {
-    expect(getNpcGearGp(10)).toBe(62000);
+  // Core Rulebook Table 14-9 (coreRulebook/creatingNPCs.html), heroic column
+  it('getNpcGearGp uses the CRB NPC Gear table for the nearest integer CR', () => {
+    expect(getNpcGearGp(1)).toBe(390);
+    expect(getNpcGearGp(5)).toBe(3450);
+    expect(getNpcGearGp(10)).toBe(12750);
+    expect(getNpcGearGp(20)).toBe(159000);
+  });
+
+  it('getNpcGearGp floors below CR 1, caps above CR 20 and rounds fractional CRs', () => {
+    expect(getNpcGearGp('1/2')).toBe(390);
+    expect(getNpcGearGp(0)).toBe(390);
+    expect(getNpcGearGp(30)).toBe(159000);
+    expect(getNpcGearGp(4.6)).toBe(3450);
+  });
+
+  it('NPC gear is well below PC wealth by level (10,500 gp at level 5)', () => {
+    expect(getNpcGearGp(5)).toBeLessThan(10500);
   });
 
   it('xpToCr maps summed XP to an effective CR; crToNum parses fractions', () => {
@@ -31,28 +43,33 @@ describe('budget + CR helpers', () => {
     expect(crKey(99)).toBe('20');
     expect(crKey('nonsense')).toBeNull();
   });
-});
 
-describe('rollTreasureTable (retained library API)', () => {
-  it('returns coins / gem+art counts / typed item slots for every CR', () => {
-    for (const cr of Object.keys(TREASURE_TABLE)) {
-      const r = rollTreasureTable(Number(cr));
-      expect(r.coins).toHaveProperty('platinum');
-      expect(typeof r.gems).toBe('number');
-      expect(typeof r.art).toBe('number');
-      expect(Array.isArray(r.items)).toBe(true);
-      r.items.forEach(it => expect(['mundane', 'minor', 'medium', 'major']).toContain(it.tier));
-    }
+  it('crKey maps decimal fractional CRs to the fractional keys', () => {
+    expect(crKey(0.5)).toBe('1/2');
+    expect(crKey('0.25')).toBe('1/4');
+    expect(crKey(0.125)).toBe('1/8');
+    expect(crKey(0.33)).toBe('1/3');
+    expect(crKey(0.167)).toBe('1/6');
+    expect(getTreasureGp(0.5, 'medium', 'standard')).toBe(130);
   });
 
-  it('never rolls medium/major items at CR 1 but can at CR 20', () => {
-    let lowHigh = false;
-    let highMajor = false;
-    for (let i = 0; i < 300; i++) {
-      rollTreasureTable(1).items.forEach(it => { if (it.tier !== 'mundane' && it.tier !== 'minor') lowHigh = true; });
-      if (rollTreasureTable(20).items.some(it => it.tier === 'major')) highMajor = true;
-    }
-    expect(lowHigh).toBe(false);
-    expect(highMajor).toBe(true);
+  it('crKey still rejects zero, negatives and in-between values', () => {
+    expect(crKey(0)).toBeNull();
+    expect(crKey(-1)).toBeNull();
+    expect(crKey(0.4)).toBeNull();
+    expect(crKey(null)).toBeNull();
+  });
+});
+
+describe('gem and art tiers', () => {
+  it('carry only the weight/min/max fields the generator reads', () => {
+    [...GEM_TIERS, ART_TIERS].flat().forEach(t => {
+      expect(Object.keys(t).sort()).toEqual(['max', 'min', 'weight']);
+    });
+  });
+
+  it('weights add up to 100', () => {
+    expect(GEM_TIERS.reduce((n, t) => n + t.weight, 0)).toBe(100);
+    expect(ART_TIERS.reduce((n, t) => n + t.weight, 0)).toBe(100);
   });
 });

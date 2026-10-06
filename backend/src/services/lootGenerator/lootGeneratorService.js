@@ -358,7 +358,7 @@ const generate = async (enemies, options = {}) => {
   // CR (so a pack of weak creatures rolls as a single, higher-CR encounter rather
   // than the sum of per-creature hauls). The creature mix is accumulated into
   // category weights that flavor how rolled item slots get filled. NPC-gear
-  // enemies are handled separately — their wealth-by-level becomes concrete gear.
+  // enemies are handled separately — their NPC-gear value (CRB Table 14-9) becomes concrete gear.
   let treasureXp = 0;
   let npcGearGp = 0;
   const cats = {};
@@ -389,7 +389,7 @@ const generate = async (enemies, options = {}) => {
   // --- Budget-anchored amount ---
   // Effective encounter CR → per-encounter wealth budget (track-adjusted),
   // pulled toward the donjon-like level and given a moderate random swing. NPC
-  // gear (wealth-by-level) is concrete carried equipment, added to the items
+  // gear (NPC Gear table) is concrete carried equipment, added to the items
   // budget rather than swung.
   const effKey = xpToCr(treasureXp);
   const swing = randTriangular(SWING_MIN, 1.0, SWING_MAX);

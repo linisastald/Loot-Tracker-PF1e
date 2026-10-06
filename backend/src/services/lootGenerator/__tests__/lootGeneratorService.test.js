@@ -191,9 +191,10 @@ describe('generate', () => {
     expect(await avg(2)).toBeGreaterThan(await avg(1) * 1.5);
   });
 
-  it('uses wealth-by-level for the npc_gear treasure type', async () => {
+  it('uses the CRB NPC Gear table (Table 14-9) for the npc_gear treasure type', async () => {
     const npc = await service.generate([{ creatureType: 'humanoid', cr: 10, count: 1, treasure: 'npc_gear' }]);
-    expect(npc.totalGp).toBeGreaterThan(40000);
+    expect(npc.totalGp).toBeGreaterThan(10000); // 12,750 gp at level 10, not PC wealth (62,000)
+    expect(npc.totalGp).toBeLessThan(20000);
   });
 });
 
