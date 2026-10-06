@@ -2,15 +2,12 @@
 const dbUtils = require('../utils/dbUtils');
 
 /**
- * Settlement size configuration with Pathfinder 1e values
- * Source: Pathfinder 1e Core Rulebook / GameMastery Guide
- * Spell levels based on official rules:
- * - Village: No guaranteed spellcasters (0)
- * - Small Town: 1st-level spells
- * - Large Town: 2nd-level spells
- * - Small City: 3rd-4th level spells (max: 4th)
- * - Large City: 5th-6th level spells (max: 6th)
- * - Metropolis: 7th-8th level guaranteed, 9th-level not guaranteed (1% chance)
+ * Settlement size configuration: base value and purchase limit follow the
+ * GameMastery Guide "Settlement Statistics" table.
+ * maxSpellLevel is a house rule and does NOT match that table (which gives
+ * Thorp 1st, Hamlet 2nd, Village 3rd, Small Town 4th, Large Town 5th, Small
+ * City 6th, Large City 7th, Metropolis 8th); migration 021 set these values
+ * deliberately and the spellcasting service layers its own 9th-level rule on top.
  */
 const SETTLEMENT_SIZES = {
   'Thorp': { baseValue: 50, purchaseLimit: 500, maxSpellLevel: 0, population: [1, 20] },
@@ -52,17 +49,6 @@ exports.getAll = async () => {
 };
 
 /**
- * Get city by ID
- * @param {number} id
- * @return {Promise<Object|null>} City or null
- */
-exports.findById = async (id) => {
-  const query = 'SELECT * FROM city WHERE id = $1';
-  const result = await dbUtils.executeQuery(query, [id]);
-  return result.rows.length > 0 ? result.rows[0] : null;
-};
-
-/**
  * Get city by name (case-insensitive)
  * @param {string} name
  * @return {Promise<Object|null>} City or null
@@ -71,17 +57,6 @@ exports.findByName = async (name) => {
   const query = 'SELECT * FROM city WHERE LOWER(name) = LOWER($1)';
   const result = await dbUtils.executeQuery(query, [name]);
   return result.rows.length > 0 ? result.rows[0] : null;
-};
-
-/**
- * Search cities by name (partial match)
- * @param {string} searchTerm
- * @return {Promise<Array>} Array of matching cities
- */
-exports.search = async (searchTerm) => {
-  const query = 'SELECT * FROM city WHERE LOWER(name) LIKE LOWER($1) ORDER BY name LIMIT 10';
-  const result = await dbUtils.executeQuery(query, [`%${searchTerm}%`]);
-  return result.rows;
 };
 
 /**
@@ -116,68 +91,47 @@ exports.create = async (cityData) => {
   return result.rows[0];
 };
 
-/**
- * Update a city
- * @param {number} id
- * @param {Object} cityData
- * @return {Promise<Object|null>} Updated city
- */
-exports.update = async (id, cityData) => {
-  const sizeConfig = SETTLEMENT_SIZES[cityData.size];
-  if (!sizeConfig) {
-    throw new Error(`Invalid city size: ${cityData.size}`);
-  }
+/** Longest city name accepted (matches city.name VARCHAR(255)). */
+const MAX_NAME_LENGTH = 255;
 
-  const query = `
-    UPDATE city
-    SET name = $1, size = $2, population = $3, region = $4, alignment = $5,
-        base_value = $6, purchase_limit = $7, max_spell_level = $8,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = $9
-    RETURNING *
-  `;
-
-  const values = [
-    cityData.name,
-    cityData.size,
-    cityData.population,
-    cityData.region,
-    cityData.alignment,
-    sizeConfig.baseValue,
-    sizeConfig.purchaseLimit,
-    sizeConfig.maxSpellLevel,
-    id
-  ];
-
-  const result = await dbUtils.executeQuery(query, values);
-  return result.rows.length > 0 ? result.rows[0] : null;
+const validationError = (message) => {
+  const error = new Error(message);
+  error.name = 'ValidationError';
+  return error;
 };
 
 /**
- * Delete a city
- * @param {number} id
- * @return {Promise<boolean>} Success status
- */
-exports.delete = async (id) => {
-  const query = 'DELETE FROM city WHERE id = $1';
-  const result = await dbUtils.executeQuery(query, [id]);
-  return result.rowCount > 0;
-};
-
-/**
- * Get or create a city by name and size
+ * Get or create a city by name and size. New rows are validated here because
+ * any member can reach this (item search / spellcasting by city name) and the
+ * city table is shared by every campaign. An existing city is returned as is.
  * @param {string} name
  * @param {string} size
  * @return {Promise<Object>} City
  */
 exports.getOrCreate = async (name, size) => {
-  let city = await exports.findByName(name);
-
-  if (!city) {
-    city = await exports.create({ name, size });
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  const city = await exports.findByName(trimmed);
+  if (city) {
+    return city;
   }
 
-  return city;
+  if (!trimmed || trimmed.length > MAX_NAME_LENGTH) {
+    throw validationError(`City name must be between 1 and ${MAX_NAME_LENGTH} characters`);
+  }
+  if (!SETTLEMENT_SIZES[size]) {
+    throw validationError(`Invalid city size: ${size}. Valid sizes: ${exports.getValidSizes().join(', ')}`);
+  }
+
+  try {
+    return await exports.create({ name: trimmed, size });
+  } catch (err) {
+    // 23505 = unique_violation: another request created the same city first.
+    if (err && err.code === '23505') {
+      const existing = await exports.findByName(trimmed);
+      if (existing) return existing;
+    }
+    throw err;
+  }
 };
 
 /**
@@ -204,14 +158,6 @@ exports.getValidSizes = () => {
  */
 exports.getEffectiveCasterLevel = (size) => {
   return SETTLEMENT_CASTER_LEVELS[size] || 1;
-};
-
-/**
- * Get the full settlement effective caster level map.
- * @return {Object} Map of size name to effective caster level
- */
-exports.getSettlementCasterLevels = () => {
-  return SETTLEMENT_CASTER_LEVELS;
 };
 
 module.exports = exports;

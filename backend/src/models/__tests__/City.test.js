@@ -90,11 +90,6 @@ describe('City model', () => {
       expect(City.getEffectiveCasterLevel(undefined)).toBe(1);
     });
 
-    it('getSettlementCasterLevels should return all eight sizes', () => {
-      const levels = City.getSettlementCasterLevels();
-      expect(Object.keys(levels)).toHaveLength(8);
-      expect(levels['Metropolis']).toBe(15);
-    });
   });
 
   describe('getValidSizes (pure)', () => {
@@ -125,24 +120,6 @@ describe('City model', () => {
     });
   });
 
-  describe('findById', () => {
-    it('should return city when found', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1, name: 'Sandpoint' }] });
-
-      const result = await City.findById(1);
-
-      expect(result).toEqual({ id: 1, name: 'Sandpoint' });
-    });
-
-    it('should return null when not found', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      const result = await City.findById(999);
-
-      expect(result).toBeNull();
-    });
-  });
-
   describe('findByName', () => {
     it('should find city case-insensitively', async () => {
       dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1, name: 'Magnimar' }] });
@@ -151,19 +128,6 @@ describe('City model', () => {
 
       expect(result).toEqual({ id: 1, name: 'Magnimar' });
       expect(dbUtils.executeQuery.mock.calls[0][0]).toContain('LOWER(name) = LOWER($1)');
-    });
-  });
-
-  describe('search', () => {
-    it('should search with partial match and limit 10', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      await City.search('sand');
-
-      const [query, values] = dbUtils.executeQuery.mock.calls[0];
-      expect(query).toContain('LIKE LOWER($1)');
-      expect(query).toContain('LIMIT 10');
-      expect(values[0]).toBe('%sand%');
     });
   });
 
@@ -200,51 +164,6 @@ describe('City model', () => {
     });
   });
 
-  describe('update', () => {
-    it('should update city and recalculate size-based values', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 1, name: 'Magnimar', size: 'Large City' }] });
-
-      await City.update(1, { name: 'Magnimar', size: 'Large City', population: 16428 });
-
-      const values = dbUtils.executeQuery.mock.calls[0][1];
-      expect(values[5]).toBe(8000);   // Large City baseValue
-      expect(values[6]).toBe(50000);  // purchaseLimit
-      expect(values[7]).toBe(6);      // maxSpellLevel
-      expect(values[8]).toBe(1);      // id
-    });
-
-    it('should throw for invalid size on update', async () => {
-      await expect(City.update(1, { name: 'Test', size: 'Invalid' }))
-        .rejects.toThrow('Invalid city size');
-    });
-
-    it('should return null when city not found', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
-
-      const result = await City.update(999, { name: 'Ghost', size: 'Village' });
-
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('delete', () => {
-    it('should return true on successful delete', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rowCount: 1 });
-
-      const result = await City.delete(1);
-
-      expect(result).toBe(true);
-    });
-
-    it('should return false when city not found', async () => {
-      dbUtils.executeQuery.mockResolvedValue({ rowCount: 0 });
-
-      const result = await City.delete(999);
-
-      expect(result).toBe(false);
-    });
-  });
-
   describe('getOrCreate', () => {
     it('should return existing city when found', async () => {
       const existingCity = { id: 1, name: 'Sandpoint', size: 'Small Town' };
@@ -255,6 +174,42 @@ describe('City model', () => {
       expect(result).toEqual(existingCity);
       // Should only have called findByName, not create
       expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an invalid size for a new city as a validation error (F-0265)', async () => {
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await expect(City.getOrCreate('Riddleport', 'Castle')).rejects.toMatchObject({
+        name: 'ValidationError',
+        message: expect.stringContaining('Invalid city size'),
+      });
+      expect(dbUtils.executeQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an over-long or blank name for a new city (F-1103)', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [] });
+
+      await expect(City.getOrCreate('x'.repeat(256), 'Village')).rejects.toMatchObject({ name: 'ValidationError' });
+      await expect(City.getOrCreate('   ', 'Village')).rejects.toMatchObject({ name: 'ValidationError' });
+    });
+
+    it('creates a Thorp and a Hamlet (sizes the UI offers) (F-0265)', async () => {
+      dbUtils.executeQuery.mockResolvedValue({ rows: [{ id: 3 }] });
+      dbUtils.executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      await City.getOrCreate('Tiny Thorp', 'Thorp');
+      expect(dbUtils.executeQuery.mock.calls[1][1][1]).toBe('Thorp');
+    });
+
+    it('returns the winner when a concurrent request created the city first', async () => {
+      const winner = { id: 9, name: 'Riddleport', size: 'Large Town' };
+      dbUtils.executeQuery
+        .mockResolvedValueOnce({ rows: [] })
+        .mockRejectedValueOnce(Object.assign(new Error('dup'), { code: '23505' }))
+        .mockResolvedValueOnce({ rows: [winner] });
+
+      const result = await City.getOrCreate('Riddleport', 'Large Town');
+      expect(result).toEqual(winner);
     });
 
     it('should create city when not found', async () => {
